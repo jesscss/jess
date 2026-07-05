@@ -2,7 +2,9 @@ import type { Context } from '../../context.js';
 import type { Declaration } from '../declaration.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
-import type { Rules, RulesOptions } from '../rules.js';
+import { Rules } from '../rules.js';
+import type { RulesVisibility } from '../rules.js';
+import { lookupScopeFrameVariable } from '../scope-frame.js';
 import { isNode } from './is-node.js';
 import {
   canEnterMixinOutputForLookup,
@@ -84,9 +86,13 @@ const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   lookupVisibility: 'Declaration',
   visibilityKey: 'Declaration',
   includeLiveBindings: false,
-  includeFallbackFrames: false,
+  includeFallbackFrames: true,
   prepareScopeFrame: false,
-  acceptsNode: (node): node is Declaration => isNode(node, N.Declaration),
+  // A property lookup must match a plain Declaration only. VarDeclaration extends
+  // Declaration (its nodeType carries BOTH bits), so an `N.Declaration` mask alone
+  // would also accept `@foo` — exclude it so `#ns[foo]` resolves the property, not
+  // a same-named variable.
+  acceptsNode: (node): node is Declaration => isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration),
   scopeMayContainFamily: scope => scope.hasDeclarationChildSurface || scope.hasReferenceImportChildSurface,
   childEntryMayContainFamily: entry => (
     entry.hasDeclarationSurface !== false || entry.hasReferenceImportSurface === true
@@ -151,7 +157,7 @@ function isRulesetBodyScope(rules: Rules): boolean {
 function getDeclarationVisibility(
   rules: Rules,
   strategy: DeclarationLookupStrategy
-): RulesOptions['rulesVisibility'][string] | undefined {
+): RulesVisibility | undefined {
   return strategy.visibilityKey === undefined
     ? undefined
     : rules.options.rulesVisibility?.[strategy.visibilityKey];
@@ -213,7 +219,7 @@ function getDirectDeclarationBucket(
   const value = scope.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (!isNode(node, N.Declaration | N.VarDeclaration)) {
+    if (!isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration)) {
       continue;
     }
     if (node.options?.setDefined) {
@@ -221,7 +227,7 @@ function getDirectDeclarationBucket(
     }
     if (String(node.name.valueOf()) === key) {
       bucket ??= [];
-      bucket.push(node);
+      bucket.push(node as Declaration);
     }
   }
   if (!bucket) {
@@ -469,38 +475,6 @@ function findLocalDeclaration(
   return undefined;
 }
 
-function findScopeBindingDeclaration(
-  scope: Rules,
-  key: string,
-  filter: DeclarationFindOptions['filter'] | undefined,
-  start: number | undefined
-): DirectDeclarationOccurrence | undefined {
-  const frame = scope._scopeFrame;
-  if (!frame?.declarationsCovered) {
-    return undefined;
-  }
-  const bucket = frame.declarationBucketsByName.get(key);
-  if (!bucket?.length) {
-    return undefined;
-  }
-  for (let i = bucket.length - 1; i >= 0; i--) {
-    const sourceNode = bucket[i]!.sourceNode;
-    if (!isNode(sourceNode, N.VarDeclaration)) {
-      continue;
-    }
-    if (sourceNode.options?.setDefined) {
-      continue;
-    }
-    if (start !== undefined && !(sourceNode.index !== undefined && sourceNode.index < start)) {
-      continue;
-    }
-    if (!filter || filter(sourceNode)) {
-      return createDeclarationOccurrence(sourceNode);
-    }
-  }
-  return undefined;
-}
-
 function findWithinScopeSurface(
   scope: Rules,
   key: string,
@@ -543,19 +517,26 @@ function findWithinScopeSurface(
   }
 
   const state = createTraversalMatchState(readonly || Boolean(scope.options.readonly));
+  let localMatch: DirectDeclarationOccurrence | undefined;
+  let skipVarDeclarations = false;
   if (includeLiveBindings) {
-    const live = scope._scopeFrame?.currentBindingsByName.get(key);
-    const liveSource = live?.live === true
-      ? live.sourceNode
-      : undefined;
+    const frameHit = lookupScopeFrameVariable(scope._scopeFrame, key, {
+      start,
+      filter: options.filter,
+      includeFallbackFrames: false,
+      searchParents: false
+    });
+    const liveHit = frameHit.kind === 'live' ? frameHit : undefined;
+    const liveSource = liveHit?.sourceNode;
     if (
-      liveSource
+      liveHit
+      && liveSource
       && isNode(liveSource, N.VarDeclaration)
       && (!options.filter || options.filter(liveSource))
     ) {
       const liveOccurrence = createDeclarationOccurrence(liveSource);
       countDirectLookup?.('declaration.liveBindingHit');
-      state.readonly ||= Boolean(live.readonly || liveSource.options?.readonly);
+      state.readonly ||= Boolean(liveHit.readonly || liveHit.cell.readonly || liveSource.options?.readonly);
       const visibility = scope.options.rulesVisibility?.VarDeclaration ?? '';
       if (visibility === 'optional' && !isRulesetBodyScope(scope)) {
         state.optionalMatch = liveOccurrence;
@@ -564,19 +545,18 @@ function findWithinScopeSurface(
         return state;
       }
     }
-  }
-
-  let localMatch: DirectDeclarationOccurrence | undefined;
-  if (includeLiveBindings) {
-    const bindingMatch = findScopeBindingDeclaration(scope, key, options.filter, start);
-    if (bindingMatch) {
+    if (
+      frameHit.kind === 'declaration'
+      && isNode(frameHit.sourceNode, N.VarDeclaration)
+      && !frameHit.sourceNode.options?.setDefined
+    ) {
       countDirectLookup?.('declaration.scopeBindingHit');
-      state.readonly ||= Boolean(bindingMatch.node.options.readonly);
-      localMatch = bindingMatch;
+      state.readonly ||= Boolean(frameHit.readonly || frameHit.cell.readonly || frameHit.sourceNode.options.readonly);
+      localMatch = createDeclarationOccurrence(frameHit.sourceNode);
+      skipVarDeclarations = strategy.skipVarsAfterBindingHit;
     }
   }
 
-  const skipVarDeclarations = Boolean(localMatch && strategy.skipVarsAfterBindingHit);
   if (!skipVarDeclarations) {
     const treeMatch = findLocalDeclaration(
       scope,
@@ -718,12 +698,21 @@ function findDeclarationLookupWithStrategy(
   let start = lookupOptions.start;
   let rules: Rules | undefined = startRules;
   let searchingFallback = false;
+  // Reference/inline imports link their evaluated member surface as a scope
+  // fallback frame on the *enclosing* scope (see rules.ts registration). The
+  // AST parent walk only sees `startRules`'s own fallback, so an import placed
+  // on an ancestor scope is missed — capture the deepest ancestor fallback
+  // entry so we descend into it once the primary chain exhausts.
+  let ancestorFallback: Rules | undefined;
   let optionalMatch = chooseCandidateMatch(undefined, lookupOptions.optionalCandidates, key, strategy, lookupOptions);
   let publicMatch = chooseCandidateMatch(undefined, lookupOptions.candidates, key, strategy, lookupOptions);
   let readonly = Boolean(lookupOptions.readonly);
 
   while (rules) {
     if (firstVisitedRules === rules || secondVisitedRules === rules || visitedParents?.has(rules)) {
+      if (searchingFallback) {
+        break;
+      }
       throw new Error(searchingFallback
         ? 'Circular fallback frame chain detected in direct declaration lookup'
         : 'Circular parent chain detected in direct declaration lookup');
@@ -759,11 +748,19 @@ function findDeclarationLookupWithStrategy(
     }
     optionalMatch = chooseTraversalMatch(optionalMatch, state.optionalMatch);
     if (searchingFallback) {
-      rules = rules._scopeFrame?.fallbackFrame?.rulesNode;
+      const nextRulesNode: object | undefined = rules._scopeFrame?.fallbackFrame?.rulesNode;
+      rules = nextRulesNode instanceof Rules ? nextRulesNode : undefined;
       continue;
     }
     if (!searchParents) {
       return undefined;
+    }
+
+    if (strategy.includeFallbackFrames && ancestorFallback === undefined) {
+      const fallback = rules._scopeFrame?.fallbackFrame?.rulesNode;
+      if (fallback instanceof Rules && fallback !== rules) {
+        ancestorFallback = fallback;
+      }
     }
 
     const parentStep = getDeclarationParentSearchStep(
@@ -775,7 +772,8 @@ function findDeclarationLookupWithStrategy(
     rules = parentStep.rules;
     start = parentStep.start;
     if (!rules && strategy.includeFallbackFrames && optionalMatch === undefined) {
-      rules = startRules._scopeFrame?.fallbackFrame?.rulesNode;
+      const fallbackRulesNode = ancestorFallback ?? startRules._scopeFrame?.fallbackFrame?.rulesNode;
+      rules = fallbackRulesNode instanceof Rules ? fallbackRulesNode : undefined;
       searchingFallback = true;
     }
   }

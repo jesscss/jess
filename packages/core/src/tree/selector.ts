@@ -1,9 +1,9 @@
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
+import { Node, type NodeLocation, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
-import { BitSetLibrary, BitSet } from './util/bitset.js';
+import { BitSetLibrary } from './util/bitset.js';
 import type { RenderBuffer } from './util/render-buffer.js';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
@@ -33,6 +33,21 @@ function nodeType(value: Node | undefined): string {
 }
 
 /**
+ * A single selector value: a selector node, or a plain string leaf. String-backed
+ * basic selectors and combinators are strings, so a bare `string` IS a selector.
+ * (Once `BasicSelector` is deleted and the base class is renamed, this becomes the
+ * canonical `Selector` and the `| string` folds away.)
+ */
+export type SelectorValue = Selector | string;
+
+/**
+ * Anything accepted where a selector is expected: a single selector value, or an
+ * array of them. An array IS a selector list — stored and consumed as-is, never
+ * materialized into a `SelectorList` wrapper node.
+ */
+export type SelectorLike = SelectorValue | SelectorValue[];
+
+/**
  * This represents anything that is valid in a selector
  *
  * @todo - Add Sass private / placeholder selectors?
@@ -42,7 +57,6 @@ function nodeType(value: Node | undefined): string {
 
 export interface Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
   valueOf(): string;
-  getKeySet(context?: Context): BitSet<string>;
   eval(context: Context): MaybePromise<Selector<T>> | MaybePromise<Nil>;
 }
 
@@ -55,14 +69,26 @@ export function attachSelectorBitLibrary<T extends Selector>(
 }
 
 export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> extends Node<IfAny<T, NodeValue, T>, O> {
-  static override childKeys = ['value'] as const;
-  isSelector = true;
+  static override childKeys: readonly string[] | null = ['value'];
+
+  readonly value: IfAny<T, NodeValue, T>;
+
+  constructor(value: IfAny<T, NodeValue, T>, options?: O, location?: NodeLocation) {
+    super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
+  }
 
   protected _valueOf: string | undefined;
 
   keySetLibrary: BitSetLibrary<string> | undefined;
 
-  protected _requireKeySetLibrary(context?: Context): BitSetLibrary<string> {
+  /**
+   * Resolve the bit-set library this selector belongs to (own, else parent/source,
+   * else context/tree). Used by the SelectorAnalysis free helpers to look up the
+   * right service instance — the node no longer surfaces key-set getters itself.
+   */
+  requireKeySetLibrary(context?: Context): BitSetLibrary<string> {
     const { keySetLibrary, sourceNode, parent } = this;
     const sourceLibrary = sourceNode !== this && isSelector(sourceNode)
       ? sourceNode.keySetLibrary
@@ -108,8 +134,8 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return inherited;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    const cloned = super.clone(deep, cloneFn);
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const cloned = super.clone(cloneFn);
     cloned.keySetLibrary = this.keySetLibrary;
     return cloned;
   }
@@ -128,7 +154,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return this.evalNode(context);
   }
 
-  writeSyntax(options: FinalPrintOptions): void {
+  override writeSyntax(options: FinalPrintOptions): void {
     this.toTrimmedString(options);
   }
 
@@ -141,107 +167,12 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       : this.renderOutput(context, node as Node, bufferOrOptions, options);
   }
 
-  /**
-   * A set of all simplified (valueOf) selectors,
-   * for easy lookup to see if the selector is extendable
-   * by the key sets in the extend scope.
-   */
-  protected _keySet: BitSet<string> | undefined;
-  /** Used for mixin registry indexing - only includes visible selectors */
-  protected _visibleKeySet: BitSet<string> | undefined;
-  /**
-   * Like keySet but excludes keys inside `:is()` SelectorList args.
-   * For `:is(.a, .b) .c`, requiredKeySet = `{.c}` while keySet = `{.a, .b, .c}`.
-   * Safe for subset rejection: if requiredKeySet keys aren't in target, no match possible.
-   */
-  protected _requiredKeySet: BitSet<string> | undefined;
-
-  get keySet() {
-    if (!this._keySet) {
-      this.computeKeySets();
-    }
-    return this._keySet!;
-  }
-
-  getKeySet(context?: Context): BitSet<string> {
-    if (!context) {
-      return this.keySet;
-    }
-    const library = this._requireKeySetLibrary(context);
-    const selectors = selectorArray(this.value);
-    if (selectors) {
-      let keySet: BitSet<string> | undefined;
-      for (const child of selectors) {
-        const childKeySet = child.getKeySet(context);
-        keySet = keySet ? keySet.or(childKeySet) : childKeySet.clone();
-      }
-      return keySet ?? library.getBitset();
-    }
-    const selectorValue = String(this.valueOf());
-    return library.getBitset([selectorValue]);
-  }
-
-  get visibleKeySet() {
-    if (!this._visibleKeySet) {
-      this.computeKeySets();
-    }
-    return this._visibleKeySet!;
-  }
-
-  get requiredKeySet() {
-    if (!this._requiredKeySet) {
-      this.computeKeySets();
-    }
-    return this._requiredKeySet!;
-  }
-
+  // Selector key-sets (keySet / visibleKeySet / requiredKeySet) are owned entirely by
+  // the SelectorAnalysis service — see util/selector-analysis.ts and its keySetOf /
+  // visibleKeySetOf / requiredKeySetOf free helpers. The node holds no key-set getters
+  // or fields; it only carries `keySetLibrary` so the service instance can be found.
   invalidateCache(): void {
     this._valueOf = undefined;
-    this._keySet = undefined;
-    this._visibleKeySet = undefined;
-    this._requiredKeySet = undefined;
-  }
-
-  /**
-   * Computes keySet, visibleKeySet, and requiredKeySet in one pass.
-   * Subclasses should override this to implement their specific logic.
-   */
-  protected computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const selectors = selectorArray(this.value);
-    if (selectors) {
-      let keySet: BitSet<string> | undefined;
-      let visibleKeySet: BitSet<string> | undefined;
-      let requiredKeySet: BitSet<string> | undefined;
-      for (const child of selectors) {
-        const childKeySet = child.keySet;
-        keySet = keySet
-          ? keySet.or(childKeySet)
-          : childKeySet.clone();
-        visibleKeySet = visibleKeySet
-          ? visibleKeySet.or(child.visibleKeySet)
-          : child.visibleKeySet.clone();
-        requiredKeySet = requiredKeySet
-          ? requiredKeySet.or(child.requiredKeySet)
-          : child.requiredKeySet.clone();
-      }
-      this._keySet = keySet ?? library.getBitset();
-      this._visibleKeySet = visibleKeySet ?? library.getBitset();
-      this._requiredKeySet = requiredKeySet ?? library.getBitset();
-      return;
-    }
-    const selectorValue = String(this.valueOf());
-    this._keySet = library.getBitset([selectorValue]);
-    this._requiredKeySet = this._keySet;
-
-    if (this.hasFlag(F_VISIBLE)) {
-      this._visibleKeySet = this._keySet;
-    } else {
-      this._visibleKeySet = library.getBitset();
-    }
   }
 }
 

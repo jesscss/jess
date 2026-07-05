@@ -1,3 +1,4 @@
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import type { Context } from '../context.js';
 import { Node, F_STATIC, defineType, type NodeLocation } from './node.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -18,31 +19,17 @@ export interface Block extends Node<Node, BlockOptions> {
   eval(context: Context): Block;
 }
 
-function getWriterTextSincePosition(writer: { position(): number }, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
-
 /**
  * A block like `{ ... }` or `[ ... ]`. This is used
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
-  static override childKeys = ['node'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly node: Node;
+  readonly value: Node;
 
   private withValue(value: Node): Block {
-    const location = this._location && this._location.length === 6
-      ? this._location
-      : undefined;
+    const location = sourceSpanOf(this);
     return new Block(
       value,
       this._options ? { ...this._options } : undefined,
@@ -58,12 +45,13 @@ export class Block extends Node<Node, BlockOptions> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
-    this.node = value;
   }
 
-  private renderBlockSyntax(value = this.node, options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  private renderBlockSyntax(value = this.value, rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const position = w.position();
     const type = this._options?.type;
@@ -72,18 +60,18 @@ export class Block extends Node<Node, BlockOptions> {
     w.add(start);
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia) {
-      w.add(consumeTriviaText(trivia, value.location[0], 'before', options));
+      w.add(consumeTriviaText(trivia, spanStartOf(value), 'before', options));
     }
     value.writeSyntax(options);
     if (trivia) {
-      w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
+      w.add(consumeTriviaText(trivia, spanEndOf(this), 'before', options));
     }
     w.add(end);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderBlockSyntax(this.node, options);
+    return this.renderBlockSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -92,8 +80,8 @@ export class Block extends Node<Node, BlockOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const value = this.hasFlag(F_STATIC) ? this.node : this.node.eval(context);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
+    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderBlockSyntax(resolved, prepared);
@@ -120,9 +108,9 @@ export class Block extends Node<Node, BlockOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const value = this.node.eval(context);
+    const value = this.value.eval(context);
     const finalize = (resolvedValue: Node): Block => {
-      if (resolvedValue === this.node) {
+      if (resolvedValue === this.value) {
         return this;
       }
       return this.withValue(resolvedValue);

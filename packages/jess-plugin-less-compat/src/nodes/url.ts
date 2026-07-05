@@ -5,7 +5,7 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformUrlToLess = createFromAdapter<Url>({
   fields: {
     value: (u, cache) => {
-      const value = u.node;
+      const value = u.value;
       return value instanceof Quoted ? toLessNode(value, { cache }) : value;
     }
   },

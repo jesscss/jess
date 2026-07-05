@@ -22,6 +22,21 @@ describe('Deprecation warnings', () => {
     });
   });
 
+  describe('digit-leading-variable', () => {
+    it('parses a digit-leading variable name but warns it is deprecated', () => {
+      const { errors, warnings } = parser.parse('.a { @3: red; color: @3; }');
+      expect(errors).toHaveLength(0);   // still valid (Less.js accepts [\w-]+)
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.message).toContain('starts with a digit');
+      expect(warnings[0]?.deprecation).toBe('digit-leading-variable');
+    });
+
+    it('does not warn for a normal variable name', () => {
+      const { warnings } = parser.parse('.a { @ok: red; color: @ok; }');
+      expect(warnings).toHaveLength(0);
+    });
+  });
+
   describe('mixin-call-whitespace', () => {
     it('should warn when there is whitespace between mixin name and parentheses', () => {
       const { warnings } = parser.parse('.mixin ();');
@@ -147,6 +162,25 @@ describe('Deprecation warnings', () => {
     it('should not warn for interpolated @{ident} in at-rule preludes', () => {
       const { warnings } = parser.parse('@media @{mode} { .foo { color: red; } }');
       const warning = warnings.find(w => w.deprecation === 'at-rule-prelude-variable');
+
+      expect(warning).toBeUndefined();
+    });
+  });
+
+  describe('at-rule-variable', () => {
+    it('should warn for a known at-rule name called as an empty-parens variable', () => {
+      const { errors, warnings } = parser.parse('a { @media(); }');
+      expect(errors.length).toBe(0);
+      const warning = warnings.find(w => w.deprecation === 'at-rule-variable');
+
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Using known at-rule names as variables is deprecated');
+    });
+
+    it('should not warn for a non-at-rule name called as a variable', () => {
+      const { errors, warnings } = parser.parse('a { @foo(); }');
+      expect(errors.length).toBe(0);
+      const warning = warnings.find(w => w.deprecation === 'at-rule-variable');
 
       expect(warning).toBeUndefined();
     });

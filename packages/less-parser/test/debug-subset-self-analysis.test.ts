@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- Chevrotain parser self-analysis harness: token-map / rule-factory casts are inherent framework integration. */
 import { describe, expect, it } from 'vitest';
 import {
   CssRecursiveParser,
@@ -11,8 +12,8 @@ import * as lessProductions from '../src/productions/index.js';
 
 type LessFactory = (this: CssRecursiveParser, T: LessTokenMap) => (...args: unknown[]) => unknown;
 
-const overrideNames = Object.keys(lessProductions).filter((name) => name in cssProductions);
-const additionNames = Object.keys(lessProductions).filter((name) => !(name in cssProductions));
+const overrideNames = Object.keys(lessProductions).filter(name => name in cssProductions);
+const additionNames = Object.keys(lessProductions).filter(name => !(name in cssProductions));
 
 class SubsetLessParser extends CssRecursiveParser {
   declare T: LessTokenMap;
@@ -55,6 +56,13 @@ function createParser(enabledOverrides: readonly string[]) {
   return new SubsetLessParser(T as LessTokenMap, new Set(enabledOverrides));
 }
 
+// performSelfAnalysis is a protected chevrotain method; expose it for the
+// debug harness without widening the parser class itself.
+function runSelfAnalysis(parser: SubsetLessParser): void {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  (parser as unknown as { performSelfAnalysis(): void }).performSelfAnalysis();
+}
+
 describe('debug override subset self-analysis', () => {
   it('documents the override/addition split', () => {
     expect(overrideNames.length).toBeGreaterThan(0);
@@ -63,17 +71,17 @@ describe('debug override subset self-analysis', () => {
 
   it('supports enabling no Less overrides', () => {
     const parser = createParser([]);
-    expect(() => parser.performSelfAnalysis()).not.toThrow();
+    expect(() => runSelfAnalysis(parser)).not.toThrow();
   });
 
   it('supports an override subset from SUBSET env', () => {
     const subset = (process.env.SUBSET ?? '')
       .split(',')
-      .map((value) => value.trim())
+      .map(value => value.trim())
       .filter(Boolean);
 
     const parser = createParser(subset);
-    parser.performSelfAnalysis();
+    runSelfAnalysis(parser);
     expect(true).toBe(true);
   });
 });

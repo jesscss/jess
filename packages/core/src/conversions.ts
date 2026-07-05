@@ -54,7 +54,7 @@ export const angleToDegrees = memoize((): ConversionPlugin => (value: unknown) =
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   if (unit === 'turn') {
     return new Num(number * 360);
   }
@@ -79,7 +79,7 @@ export const normalizeHue = memoize((): ConversionPlugin => (value: unknown) => 
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   let degrees = number;
 
   if (unit === 'turn') {
@@ -110,7 +110,7 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
   if (!(value instanceof Dimension)) {
     return value;
   }
-  const { number, unit } = value.value;
+  const { number, unit } = value;
   let result = number;
 
   if (unit === '%') {
@@ -139,96 +139,6 @@ export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
   return value; // Don't know how to handle this, pass through
 });
 
-export const clamp = (min: number, max: number): ConversionPlugin => (value: unknown) => {
-  if (typeof value === 'number') {
-    return Math.max(min, Math.min(max, value));
-  }
-  return value;
-};
-
-/**
- * Converts length units to pixels
- * Supports: px, em, rem, in, cm, mm, pt, pc
- */
-export const lengthToPx = (baseFontSize: number = 16): ConversionPlugin => (value: unknown) => {
-  if (!(value instanceof Dimension)) {
-    return value;
-  }
-  const { number, unit } = value.value;
-
-  switch (unit) {
-    case 'px': return new Num(number);
-    case 'em': return new Num(number * baseFontSize);
-    case 'rem': return new Num(number * baseFontSize);
-    case 'in': return new Num(number * 96);
-    case 'cm': return new Num(number * 96 / 2.54);
-    case 'mm': return new Num(number * 96 / 25.4);
-    case 'pt': return new Num(number * 96 / 72);
-    case 'pc': return new Num(number * 96 / 6);
-    default: return value;
-  }
-};
-
-/**
- * Converts time units to milliseconds
- * Supports: ms, s
- */
-export const timeToMs = (): ConversionPlugin => (value: unknown) => {
-  if (!(value instanceof Dimension)) {
-    return value;
-  }
-  const { number, unit } = value.value;
-  if (unit === 'ms') {
-    return new Num(number);
-  }
-  if (unit === 's') {
-    return new Num(number * 1000);
-  }
-  return value;
-};
-
-/**
- * Converts frequency units to hertz
- * Supports: hz, khz
- */
-export const frequencyToHz = (): ConversionPlugin => (value: unknown) => {
-  if (!(value instanceof Dimension)) {
-    return value;
-  }
-  const { number, unit } = value.value;
-  if (unit === 'hz') {
-    return new Num(number);
-  }
-  if (unit === 'khz') {
-    return new Num(number * 1000);
-  }
-  return value;
-};
-
-/**
- * Converts angle units to radians
- * Supports: deg, turn, rad, grad
- */
-export const angleToRadians = (): ConversionPlugin => (value: unknown) => {
-  if (!(value instanceof Dimension)) {
-    return value;
-  }
-  const { number, unit } = value.value;
-  if (unit === 'turn') {
-    return new Num(number * 2 * Math.PI);
-  }
-  if (unit === 'rad') {
-    return new Num(number);
-  }
-  if (unit === 'grad') {
-    return new Num(number * Math.PI / 200);
-  }
-  if (unit === 'deg' || unit === '') {
-    return new Num(number * Math.PI / 180);
-  }
-  return value;
-};
-
 /**
  * Creates a preprocessParams function that splits a Sequence into individual arguments.
  * Handles operations with slashes (/) by distributing the left and right operands.
@@ -253,12 +163,12 @@ export const splitSequence = (): PreprocessParams => {
 
     // Split the sequence into individual arguments
     const splitArgs: any[] = [];
-    for (let i = 0; i < sequence.items.length; i++) {
-      const item = sequence.items[i]!;
+    for (let i = 0; i < sequence.value.length; i++) {
+      const item = sequence.value[i]!;
 
       // Check if this is the last item and it's an Operation (likely a slash)
-      if (i === sequence.items.length - 1 && item instanceof Operation) {
-        const [left, , right] = item.value;
+      if (i === sequence.value.length - 1 && item instanceof Operation) {
+        const { left, right } = item;
         // Add the left operand
         splitArgs.push(left);
         // Add the right operand if it exists and is not a placeholder (Num with value 0)

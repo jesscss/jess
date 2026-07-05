@@ -17,7 +17,7 @@ const set = defineFunction(
     const keyStr = String(key.valueOf());
 
     // Create a new collection with the updated value
-    const newRules = [...map.value];
+    const newRules = [...map.rules];
 
     // Check if key already exists
     let foundIndex = -1;
@@ -35,8 +35,10 @@ const set = defineFunction(
     // Create new declaration
     // The key needs to be an Any<'property'> or Interpolated<'property'>
     let keyNode: any;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     if (isNode(key, N.Any) && (key as any).role === 'property') {
       keyNode = key;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     } else if ((key as any).type === 'Interpolated') {
       keyNode = key;
     } else {

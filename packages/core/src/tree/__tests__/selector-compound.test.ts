@@ -1,21 +1,13 @@
-import type { IToken } from 'chevrotain';
+import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf } from '../util/provenance.js';
 import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
+import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { Context } from '../../context.js';
-import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import type { Trivia, TriviaMap } from '../../types/index.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+const run = (text: string): Trivia => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -101,12 +93,12 @@ describe('Compound Selector', () => {
     test('streams compound selector parts without capture scaffolding', () => {
       const writer = new CountingWriter();
       const first = el('.sel');
-      first._location = [0, 1, 1, 3, 1, 4];
+      setSourceSpan(first, { start: 0, end: 3 });
       const second = el('.a');
-      second._location = [16, 1, 17, 17, 1, 18];
+      setSourceSpan(second, { start: 16, end: 17 });
       const trivia = createTriviaMap({
-        before: new Map([[second.location[0], [token('/*comment*/', 'BlockComment')]]]),
-        after: new Map<number, IToken[]>()
+        before: new Map([[sourceSpanOf(second)?.start, run('/*comment*/')]]),
+        after: new Map<number, Trivia>()
       }) satisfies TriviaMap;
 
       expect(compound([first, second]).toString({ trivia, writer })).toBe('.sel/*comment*/.a');
@@ -117,7 +109,7 @@ describe('Compound Selector', () => {
   test('renders resolved compound selector values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -138,7 +130,7 @@ describe('Compound Selector', () => {
   test('writes resolved compound selector output into segmented buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -173,7 +165,7 @@ describe('Compound Selector', () => {
   test('resolves compound selector values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -191,7 +183,6 @@ describe('Compound Selector', () => {
     const resolved = await selector.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo]');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -222,7 +213,7 @@ describe('Compound Selector', () => {
   test('keeps source compound selector values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -253,13 +244,15 @@ describe('Compound Selector', () => {
     ]);
     const sourceChild = selector.value[1]!;
     const sourceParent = sourceChild.parent;
-    const sourceLocation = sourceChild.location;
+    const sourceSpanStart = spanStartOf(sourceChild);
+    const sourceSpanEnd = spanEndOf(sourceChild);
     const resolved = await selector.eval(context);
 
     expect(resolved.toTrimmedString()).toBe('.keep');
     expect(resolved).not.toBe(sourceChild);
     expect(sourceChild.parent).toBe(sourceParent);
-    expect(sourceChild.location).toBe(sourceLocation);
+    expect(spanStartOf(sourceChild)).toBe(sourceSpanStart);
+    expect(spanEndOf(sourceChild)).toBe(sourceSpanEnd);
     expect(selector.toTrimmedString()).toBe('&.keep');
   });
 
@@ -271,17 +264,17 @@ describe('Compound Selector', () => {
         el('.class')
       ]);
       await sel1.eval(context);
-      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
     });
 
     test('string-backed compound', async () => {
       const sel1 = compound(['a', '#id', '.class']);
       await sel1.eval(context);
       expect(sel1.toTrimmedString()).toBe('a#id.class');
-      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
-      expect(sel1.requiredKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
+      expect(requiredKeySetOf(sel1).equals(context.selectorBits.getBitset(['a', '#id', '.class']))).toBe(true);
     });
 
     test('nested compound', async () => {
@@ -294,10 +287,10 @@ describe('Compound Selector', () => {
       ]);
 
       await sel2.eval(context);
-      expect(sel1.keySet.equals(context.selectorBits.getBitset(['a']))).toBe(true);
-      expect(sel1.visibleKeySet.equals(context.selectorBits.getBitset(['a']))).toBe(true);
-      expect(sel2.keySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
-      expect(sel2.visibleKeySet.equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+      expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['a']))).toBe(true);
+      expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['a']))).toBe(true);
+      expect(keySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
+      expect(visibleKeySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
     });
   });
 });

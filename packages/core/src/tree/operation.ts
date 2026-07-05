@@ -1,10 +1,13 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { OutputWriter, getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
+import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { Dimension } from './dimension.js';
+import { Color } from './color.js';
 import { Call } from './call.js';
 import { list } from './list.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
@@ -18,22 +21,10 @@ import {
 export type { Operator };
 /** Operation is always a tuple */
 export type OperationValue = [
-  left: Node,
+  left: string | Node,
   op: Operator,
-  right: Node
+  right: string | Node
 ];
-
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
 
 type OperationRenderResult =
   | Node
@@ -41,6 +32,30 @@ type OperationRenderResult =
     left: Node;
     right: Node;
   };
+
+/** `1px`, `.5em`, `-3`, `10%` — a numeric value terminal with an optional unit. */
+const NUMERIC_KEYWORD_RE = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]*)$/i;
+
+/**
+ * A parser value terminal like `1px` can arrive as a `Keyword`/`Any` string
+ * node. Recast a numeric-text keyword operand to an operable Dimension/Color so
+ * arithmetic works; leave true keywords untouched.
+ */
+function recastNumericOperand(node: Node): Node {
+  if (isNode(node, N.Any)) {
+    const value = (node as { value?: unknown }).value;
+    if (typeof value === 'string') {
+      if (value.startsWith('#')) {
+        return new Color(value).inherit(node);
+      }
+      const match = NUMERIC_KEYWORD_RE.exec(value);
+      if (match) {
+        return new Dimension({ number: parseFloat(match[1]!), unit: match[2] }).inherit(node);
+      }
+    }
+  }
+  return node;
+}
 
 /**
  * A math operation OR a value with a slash. CSS is ambiguous
@@ -50,12 +65,20 @@ type OperationRenderResult =
 export class Operation extends Node<OperationValue> {
   static override childKeys = ['left', 'right'] as const;
 
-  readonly left: Node;
+  readonly left: string | Node;
   readonly operator: Operator;
-  readonly right: Node;
+  readonly right: string | Node;
 
   private static isPreservedSlashList(node: Node): boolean {
     return isNode(node, N.List) && (node as Node & { options?: { sep?: string } }).options?.sep === '/';
+  }
+
+  // A Paren operand that survives eval (e.g. `(25vh - 20px)`, incompatible
+  // units under calc/preserve) is not a single operable terminal — its inner
+  // expression stays parenthesized on output. Treat it like a nested Operation:
+  // preserve the operation rather than trying to operate on the Paren.
+  private static isUnoperable(node: Node): boolean {
+    return isNode(node, N.Operation) || isNode(node, N.Paren);
   }
 
   private withOperands(left: Node, right: Node): Operation {
@@ -64,7 +87,7 @@ export class Operation extends Node<OperationValue> {
     const node = new Operation(
       [finalLeft, this.operator, finalRight],
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this._treeContext
     );
     return node.inherit(this);
@@ -72,7 +95,6 @@ export class Operation extends Node<OperationValue> {
 
   private createCalcFallback(left: Node, right: Node): Call {
     const operationNode = this.withOperands(left, right);
-    operationNode.evaluated = true;
     return (new Call(
       { name: 'calc', args: list([operationNode]) },
       undefined,
@@ -92,21 +114,52 @@ export class Operation extends Node<OperationValue> {
     this.operator = value[1];
     this.right = value[2];
     this._treeContext = treeContext;
-    // Operations are always non-static, but can inherit may_async from children
+    // Operations are always non-static, but inherit may_async from their
+    // operands so an operation wrapping an async child (e.g. a nested `calc()`
+    // Call) is itself scheduled on the async path.
     this.addFlags(F_VISIBLE, F_NON_STATIC);
+    if (this.left instanceof Node) {
+      this.propagateFlagsFrom(this.left);
+    }
+    if (this.right instanceof Node) {
+      this.propagateFlagsFrom(this.right);
+    }
+  }
+
+  // Operation's value is a positional `[left, op, right]` tuple, so the base's
+  // childKeys object-rebuild doesn't fit — own the clone (invariant 7).
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const left = cloneFn && this.left instanceof Node ? cloneFn(this.left) : this.left;
+    const right = cloneFn && this.right instanceof Node ? cloneFn(this.right) : this.right;
+    const node = new Operation(
+      [left, this.operator, right],
+      this._options ? { ...this._options } : undefined,
+      sourceSpanOf(this),
+      this._treeContext
+    );
+    node.inherit(this);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return node as this;
   }
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
     const { left, operator: op, right } = this;
+    // String operands are adjacent already-final terminals (e.g. `U+??????`
+    // unicode-range segments) — serialize verbatim with no math spacing.
+    const terminal = typeof left === 'string' || typeof right === 'string';
     const leftMark = w.mark();
-    left.writeSyntax(options);
+    if (typeof left === 'string') {
+      w.add(left, this);
+    } else {
+      left.writeSyntax(options);
+    }
     w.trimEndSince(leftMark);
-    w.add(` ${op} `, this);
-    if (options.trivia) {
+    w.add(terminal ? op : ` ${op} `, this);
+    if (typeof right !== 'string' && options.trivia) {
       emitTriviaTokens(
-        consumeTrivia(options.trivia, right.location[0], 'before', options),
+        consumeTrivia(options.trivia, spanStartOf(right), 'before', options),
         options,
         { skipLeadingWhitespace: true }
       );
@@ -114,18 +167,22 @@ export class Operation extends Node<OperationValue> {
     const saved = options.suppressBoundaryTrivia;
     options.suppressBoundaryTrivia = 'pre';
     try {
-      right.writeSyntax(options);
+      if (typeof right === 'string') {
+        w.add(right, this);
+      } else {
+        right.writeSyntax(options);
+      }
     } finally {
       options.suppressBoundaryTrivia = saved;
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const position = w.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -139,8 +196,13 @@ export class Operation extends Node<OperationValue> {
 
   private evaluateRenderOperands(context: Context): MaybePromise<OperationRenderResult> {
     const { left, operator: op, right } = this;
+    if (typeof left === 'string' || typeof right === 'string') {
+      return this;
+    }
     const maybeLeft = left.eval(context);
-    const finalize = (l: Node, r: Node): MaybePromise<OperationRenderResult> => {
+    const finalize = (rawL: Node, rawR: Node): MaybePromise<OperationRenderResult> => {
+      const l = recastNumericOperand(rawL);
+      const r = recastNumericOperand(rawR);
       const renderOperands = (): OperationRenderResult => {
         return l === left && r === right
           ? this
@@ -150,7 +212,7 @@ export class Operation extends Node<OperationValue> {
         return renderOperands();
       }
       if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
+        if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           return renderOperands();
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -203,12 +265,15 @@ export class Operation extends Node<OperationValue> {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
     const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const explicitWriter = renderBuffer ? undefined : bufferOrOptions?.writer;
-    const printOptions = renderBuffer
+    // bufferOrOptions is PrintOptions | undefined when not a RenderBuffer
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const printOptionsArg = bufferOrOptions as PrintOptions | undefined;
+    const explicitWriter = renderBuffer ? undefined : printOptionsArg?.writer;
+    const printOptions: PrintOptions | undefined = renderBuffer
       ? prepareBufferPrintState(context, options)
       : explicitWriter
-        ? prepareBufferPrintState(context, bufferOrOptions)
-        : bufferOrOptions;
+        ? prepareBufferPrintState(context, printOptionsArg)
+        : printOptionsArg;
     const finish = (leftOut: string): MaybePromise<string> => {
       const right = output.right.render(context, printOptions);
       const combine = (rightOut: string): string => `${leftOut} ${this.operator} ${rightOut}`;
@@ -242,8 +307,19 @@ export class Operation extends Node<OperationValue> {
   private evaluateOperands(context: Context): MaybePromise<Node> {
     let n = this;
     const { left, operator: op, right } = n;
+    // A string operand is an already-final terminal (e.g. a `U+??????`
+    // unicode-range segment). Math never applies — keep the operation as
+    // authored so it serializes verbatim.
+    if (typeof left === 'string' || typeof right === 'string') {
+      return n;
+    }
     const maybeLeft = left.eval(context);
-    const finalize = (l: Node, r: Node): MaybePromise<Node> => {
+    const finalize = (rawL: Node, rawR: Node): MaybePromise<Node> => {
+      // The parser may deliver a numeric value terminal (`1px`) as a Keyword.
+      // Recast numeric-text keyword operands to their operable value node so
+      // math applies instead of throwing "Cannot operate on Keyword".
+      const l = recastNumericOperand(rawL);
+      const r = recastNumericOperand(rawR);
       if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
         if (l === left && r === right) {
           return n;
@@ -251,9 +327,10 @@ export class Operation extends Node<OperationValue> {
         return n.withOperands(l, r);
       }
       if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
+        if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
-          // operation intentionally remains unevaluated under current math mode.
+          // operation intentionally remains unevaluated under current math mode,
+          // or a surviving Paren operand like `(25vh - 20px)`.
           if (l === left && r === right) {
             return n;
           }

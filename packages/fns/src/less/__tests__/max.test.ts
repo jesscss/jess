@@ -55,7 +55,7 @@ describe('max()', () => {
 
   it('uses compressed serialization and rejects non-dimension values', async () => {
     const serialized = expectAny(await callWithContext(
-      new Context({ compress: true }),
+      new Context({ output: { compress: true } }),
       max,
       new Dimension({ number: 10, unit: 'px' }),
       new Dimension({ number: 2, unit: 's' })

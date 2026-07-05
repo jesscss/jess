@@ -2,10 +2,15 @@
 import type { Selector } from '../selector.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { Node } from '../node.js';
 import type { Context } from '../../context.js';
+import {
+  isStringCompoundSelectorComponent,
+  type CompoundSelectorComponent
+} from '../selector-compound.js';
 import {
   canEnterRulesEntryForLookup,
   getMixinOutputLookupState,
@@ -41,29 +46,35 @@ export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): st
   }
   const keys: string[] = [];
   let foundBasic = false;
-  const visit = (node: Selector | Nil | undefined) => {
+  const addKey = (value: string) => {
+    if (!value || value.startsWith('*') || value.startsWith(':')) {
+      return;
+    }
+    keys.push(value);
+    foundBasic = true;
+  };
+  const visit = (node: CompoundSelectorComponent | Selector | Nil | undefined) => {
     if (!node || isNode(node, N.Nil)) {
+      return;
+    }
+    if (isCombinator(node)) {
+      return;
+    }
+    if (isStringCompoundSelectorComponent(node)) {
+      addKey(node);
       return;
     }
     if (!foundBasic && isNode(node, N.Ampersand)) {
       return;
     }
-    if (isNode(node, N.Combinator)) {
-      return;
-    }
     if (isNode(node, N.BasicSelector)) {
-      const value = String(node.valueOf?.() ?? node.value ?? '');
-      if (!value || value.startsWith('*') || value.startsWith(':')) {
-        return;
-      }
-      keys.push(value);
-      foundBasic = true;
+      addKey(String(node.valueOf?.() ?? node.value ?? ''));
       return;
     }
     const { value } = node as unknown as { value?: unknown };
     if (isArray(value)) {
       for (const child of value) {
-        visit(child as Selector | Nil | undefined);
+        visit(child as CompoundSelectorComponent | Selector | Nil | undefined);
       }
     }
   };

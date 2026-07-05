@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Color, ColorFormat, Dimension, Num } from '../index.js';
+import { Color, ColorFormat, Dimension, Num, Node } from '../index.js';
 import { Call, List } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -345,9 +345,7 @@ describe('Color Node', () => {
 
       expect(rgbColor.render(new Context())).toBe('rgb(255, 0, 0)');
       expect(hexColor.render(new Context())).toBe('#ff0000');
-      expect(rgbColor.evaluated).toBe(false);
       expect(rgbColor.registrationPrepared).toBe(false);
-      expect(hexColor.evaluated).toBe(false);
       expect(hexColor.registrationPrepared).toBe(false);
     });
 
@@ -380,7 +378,6 @@ describe('Color Node', () => {
       const resolved = await color.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('rgb(255, 0, 0)');
-      expect(color.evaluated).toBe(false);
       expect(color.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
@@ -497,12 +494,13 @@ describe('Color Node', () => {
 
   describe('call-backed colors', () => {
     it('should preserve Call node for RGB function colors', () => {
-      const args = [
+      const argItems = [
         new Dimension({ number: 255, unit: '' }),
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
-      const callNode = new Call({ name: 'rgb', args });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const callNode = new Call({ name: 'rgb', args: argItems as unknown as List<Node> });
 
       const color = new Color({
         node: callNode,
@@ -520,12 +518,13 @@ describe('Color Node', () => {
     });
 
     it('should preserve Call node for HSL function colors', () => {
-      const args = [
+      const hslArgs = [
         new Dimension({ number: 0, unit: 'deg' }),
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
-      const callNode = new Call({ name: 'hsl', args });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const callNode = new Call({ name: 'hsl', args: hslArgs as unknown as List<Node> });
 
       const color = new Color({
         node: callNode,
@@ -627,6 +626,37 @@ describe('Color Node', () => {
       expect(() => {
         color.operate(list, '+');
       }).toThrow('Cannot operate on List');
+    });
+  });
+
+  describe('clone round-trip', () => {
+    // Repro: a Color derived from `rgba(...)` has `node === undefined` and its
+    // channels on `_rgbChannels`. The base clone rebuilt from `childKeys=['node']`
+    // → `new Color({ node: undefined })`, which threw "requires rgb, hsl, or node".
+    // Declaration-merge clones such Colors (cloneForPlacement → clone).
+    it('clones a channels-only rgba Color without losing channels', () => {
+      const color = new Color({ rgb: [0, 0, 0], alpha: 0.12 }, { format: ColorFormat.RGB });
+      expect(color.node).toBeUndefined();
+
+      const cloned = color.clone();
+      expect(cloned).toBeInstanceOf(Color);
+      expect(cloned.rgb).toEqual([0, 0, 0]);
+      expect(cloned.alpha).toBe(0.12);
+      expect(cloned.toTrimmedString()).toBe(color.toTrimmedString());
+    });
+
+    it('placement-clones a channels-only Color (declaration-merge path)', () => {
+      const color = new Color({ rgb: [10, 20, 30], alpha: 0.5 }, { format: ColorFormat.RGB });
+      const cloned = color.cloneForPlacement();
+      expect(cloned).toBeInstanceOf(Color);
+      expect(cloned.toTrimmedString()).toBe(color.toTrimmedString());
+    });
+
+    it('clones a hex-string Color preserving its node text', () => {
+      const color = new Color('#ff0000');
+      const cloned = color.clone();
+      expect(cloned.node).toBe('#ff0000');
+      expect(cloned.rgb).toEqual([255, 0, 0]);
     });
   });
 });

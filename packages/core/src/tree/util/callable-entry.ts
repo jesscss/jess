@@ -46,7 +46,7 @@ export function callableGuardContainsDefault(node: Node | undefined, seen?: Set<
       return true;
     }
   }
-  for (const child of node.children()) {
+  for (const child of node.walk()) {
     if (callableGuardContainsDefault(child, seen)) {
       return true;
     }
@@ -82,10 +82,10 @@ export function isCallableEntry(entry: MixinEntry): entry is CallableEntry {
 
 export function getMixinEntryRules(entry: MixinEntry): Rules {
   if (isNode(entry, N.Mixin)) {
-    return entry.rules;
+    return entry;
   }
   if (isNode(entry, N.Ruleset)) {
-    return entry.rules;
+    return entry;
   }
   return entry.value.rules;
 }
@@ -106,4 +106,19 @@ export function getCallableEntryGuard(entry: CallableEntry): Node | undefined {
   return requireHydratedCallableGuard(isNode(entry, N.Mixin)
     ? entry.guard
     : entry.value.guard);
+}
+
+/**
+ * Reads any hydrated guard on a candidate, including Ruleset-as-mixin entries.
+ * A non-`Nil` guard means the candidate opts into termination-by-guard, so
+ * structural (rulesEvalStack) recursion blocking must defer to the call-map
+ * arg-signature check instead of pre-emptively dropping the candidate.
+ */
+export function getMixinEntryGuard(entry: MixinEntry): Node | undefined {
+  if (isCallableEntry(entry)) {
+    const guard = getCallableEntryGuard(entry);
+    return isNode(guard, N.Nil) ? undefined : guard;
+  }
+  const guard = entry.guard;
+  return isNode(guard) && !isNode(guard, N.Nil) ? guard : undefined;
 }

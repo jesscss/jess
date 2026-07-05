@@ -3,7 +3,8 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import type { Rules } from '../rules.js';
-import { type MixinEntry, getMixinEntryRules } from './callable-entry.js';
+import { type MixinEntry, getMixinEntryRules, getMixinEntryGuard } from './callable-entry.js';
+import { getRootSourceRules } from './callable-surface.js';
 
 export type CallableEvalCandidatePreparation = {
   evalCandidates: MixinEntry[];
@@ -34,21 +35,7 @@ function hasFailedGuardAncestor(node: Node): boolean {
   return false;
 }
 
-function getRootSourceRules(rules: Rules): Rules {
-  let current = rules;
-  const seen = new Set<Rules>();
-  while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
-    const next = current.sourceNode;
-    if (next === current || seen.has(next)) {
-      break;
-    }
-    seen.add(current);
-    current = next;
-  }
-  return current;
-}
-
-function getCallableCandidateIdentity(candidate: MixinEntry): object {
+function getCallableCandidateIdentity(candidate: MixinEntry): unknown {
   if (isNode(candidate, N.Ruleset)) {
     return getRootSourceRules(getMixinEntryRules(candidate));
   }
@@ -144,7 +131,7 @@ export function prepareCallableEvalCandidates({
   caller
 }: CallableEvalCandidatePreparationOptions): CallableEvalCandidatePreparation {
   const callerKey = getCallKey(caller);
-  const seenCandidateIdentities = new WeakSet<object>();
+  const seenCandidateIdentities = new Set<unknown>();
   const evalCandidates: MixinEntry[] = [];
   let hasDefault = false;
 
@@ -152,11 +139,18 @@ export function prepareCallableEvalCandidates({
     const candidate = mixinCandidates[i]!;
     const candidateRules = getMixinEntryRules(candidate);
     const sourceRules = candidateRules.sourceNode;
+    // A guarded candidate opts into termination-by-guard: structural
+    // (rulesEvalStack) recursion blocking would wrongly drop a valid guarded
+    // countdown (e.g. `.generate(@i) when (@i > 0) { ... .generate(@i - 1); }`).
+    // The call-map arg-signature check still stops same-signature infinite loops.
+    const guarded = getMixinEntryGuard(candidate) !== undefined;
     let inStack = false;
-    for (let j = 0; j < rulesEvalStack.length; j++) {
-      if (rulesEvalStack[j] === sourceRules) {
-        inStack = true;
-        break;
+    if (!guarded) {
+      for (let j = 0; j < rulesEvalStack.length; j++) {
+        if (rulesEvalStack[j] === sourceRules) {
+          inStack = true;
+          break;
+        }
       }
     }
     const blockedByFailedGuardAncestor = isNode(candidate)

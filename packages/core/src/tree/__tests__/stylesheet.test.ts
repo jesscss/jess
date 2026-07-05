@@ -17,7 +17,9 @@ describe('Stylesheet', () => {
 
     expect(root).toBeInstanceOf(Rules);
     expect(root.type).toBe('Stylesheet');
-    expect(root.rules).toBe(root.value);
+    // Slim Rules root: children live in `rules`; there is no `value` payload.
+    expect(root.rules[0]).toBe(declaration);
+    expect(Reflect.get(root, 'value')).toBeUndefined();
     expect(isNode(root, N.Rules)).toBe(true);
     expect(root.sourceRoot).toBe(root);
     expect(declaration.rulesParent).toBe(root);
@@ -30,26 +32,29 @@ describe('Stylesheet', () => {
     const root = stylesheet([
       ruleset({
         selector: '.a',
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: 'red' }),
           decl({ name: 'background', value: 'blue', important: '!important' }),
           decl({ name: '--gap', value: '  1px 2px' })
-        ])
+        ]
       })
     ]);
 
     expect(root.toTrimmedString()).toBe('.a {\n  color: red;\n  background: blue !important;\n  --gap:  1px 2px;\n}\n');
   });
 
-  it('requires hydration before evaluating string-backed fields', () => {
+  it('passes string-backed declaration values through evaluation inertly', () => {
     const stringDeclaration = decl({ name: 'color', value: 'red' });
     const stringRuleset = ruleset({
       selector: '.a',
-      rules: rules([stringDeclaration])
+      rules: [stringDeclaration]
     });
     const context = new Context();
 
-    expect(() => stringDeclaration.evalNode(context)).toThrow('String-backed declaration values must be hydrated');
-    expect(() => stringRuleset.eval(context)).toThrow('String-backed ruleset selectors must be hydrated');
+    // Inert string values are not coerced to nodes; evaluation leaves them as-is.
+    expect(() => stringDeclaration.evalNode(context)).not.toThrow();
+    expect(stringDeclaration.evalNode(context)).toBe(stringDeclaration);
+    // String-backed selectors are also used as delivered — no lazy materialization.
+    expect(() => stringRuleset.eval(context)).not.toThrow();
   });
 });

@@ -14,17 +14,17 @@ describe('callable collection helper', () => {
     context.depth = 2;
 
     const mixinDef = mixin({
-      name: any('.button'),
-      rules: rules([
+      name: '.button',
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const callerRules = rules([]);
     const root = rules([
       mixinDef,
       ruleset({
-        selector: any('.use'),
-        rules: callerRules
+        selector: '.use',
+        rules: callerRules.rules
       })
     ]);
     context.root = root;
@@ -40,7 +40,7 @@ describe('callable collection helper', () => {
     const result = await callable.evalCall(context, list([]));
 
     expect(result.toString()).toContain('color: red;');
-    expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinDef.rules);
+    expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinDef);
     expect(result.options.mixinOutputSlot?.outputRules).toBe(result);
   });
 });

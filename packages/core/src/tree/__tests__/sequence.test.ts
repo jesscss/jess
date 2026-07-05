@@ -1,8 +1,7 @@
 import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import { createToken, type IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
@@ -30,6 +29,12 @@ class CountingWriter extends OutputWriter {
 }
 
 class DirectText extends Node<string> {
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
   override toString(options?: PrintOptions): string {
     return this.toTrimmedString(options);
   }
@@ -55,6 +60,9 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
  *         as distinct tokens. We should get rid of `spaced` and properly
  *         check that the result is spaced correctly.
  */
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
+
 describe('Sequence', () => {
   let context: Context;
 
@@ -68,14 +76,13 @@ describe('Sequence', () => {
     expect(rule.toTrimmedString()).toBe('10 20 30');
   });
 
-  it('stores child nodes on a constructor-owned direct field', () => {
+  it('stores child nodes on canonical value', () => {
     const first = num(10);
     const second = num(20);
     const rule = seq([first, second]);
 
-    expect(Sequence.childKeys).toEqual(['items']);
-    expect(rule.items).toEqual([first, second]);
-    expect(rule.items).toBe(rule.value);
+    expect(Sequence.childKeys).toEqual(['value']);
+    expect(rule.value).toEqual([first, second]);
   });
 
   it('serializes empty sequence syntax without writer readback scaffolding', () => {
@@ -144,7 +151,7 @@ describe('Sequence', () => {
   it('renders resolved sequence values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -168,7 +175,6 @@ describe('Sequence', () => {
 
     expect(rendered).toBe('10 20 30');
     expect(resolveCalls).toBe(0);
-    expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
@@ -291,7 +297,7 @@ describe('Sequence', () => {
   it('writes resolved sequence render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -316,7 +322,6 @@ describe('Sequence', () => {
     expect(await sequenceNode.render(context, buffer)).toBe('10 20 30');
     expect(buffer.parts).toEqual(['10 20 30']);
     expect(resolveCalls).toBe(0);
-    expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
@@ -340,7 +345,7 @@ describe('Sequence', () => {
   it('resolves sequence values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -354,7 +359,6 @@ describe('Sequence', () => {
     const resolved = await sequenceNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('10 20 30');
-    expect(sequenceNode.evaluated).toBe(false);
     expect(sequenceNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -478,7 +482,7 @@ describe('Sequence', () => {
   it('keeps resolved single-item sequence buffer output out of explicit writers', async () => {
     const root = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('resolved')
       })
     ]);
@@ -497,7 +501,7 @@ describe('Sequence', () => {
   it('keeps source sequence child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('foo')
       })
     ]);
@@ -651,7 +655,10 @@ describe('Sequence', () => {
 
     const leftChild = any('left');
     const rightChild = any('right');
-    const left = new CountingSequence([leftChild]);
+    // Invariant 7: raw `new` shares children; parent canonically via the
+    // explicit primitive (as the `seq` factory does) so `operate` has real
+    // source parentage to preserve.
+    const left = new CountingSequence([leftChild]).parentChildren();
     const right = seq([rightChild]);
 
     CountingSequence.countConstructions = true;
@@ -718,21 +725,14 @@ describe('Sequence', () => {
   });
 
   it('writes sequence items without public toString transport when trivia is active', () => {
-    const WS = createToken({ name: 'WS', pattern: / +/ });
-    const whitespace = [{
-      image: '  ',
-      startOffset: 2,
-      endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
-      tokenType: WS
-    }] satisfies IToken[];
+    const whitespace = run('  ');
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
-    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
+    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
     let stringCalls = 0;
     first.toString = second.toString = () => {
       stringCalls++;
@@ -761,8 +761,8 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
-    const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
+    const first = num(10, undefined, { start: 0, end: 2 }, treeContext);
+    const second = num(20, undefined, { start: 2, end: 3 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -777,8 +777,8 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
-    const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
+    const first = num(10, undefined, { start: 0, end: 2 }, treeContext);
+    const second = num(20, undefined, { start: 2, end: 3 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;
@@ -792,11 +792,10 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = any('is', undefined, [0, 1, 1, 2, 1, 3], treeContext);
-    const second = any('equal', undefined, [2, 1, 3, 7, 1, 8], treeContext);
+    const first = any('is', undefined, { start: 0, end: 2 }, treeContext);
+    const second = any('equal', undefined, { start: 2, end: 7 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
-    rule.evaluated = true;
 
     expect(rule.toTrimmedString({
       trivia
@@ -804,24 +803,16 @@ describe('Sequence', () => {
   });
 
   it('falls back to sequence spacing when source whitespace was already consumed', () => {
-    const WS = createToken({ name: 'WS', pattern: / +/ });
-    const whitespace = [{
-      image: ' ',
-      startOffset: 2,
-      endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
-      tokenType: WS
-    }] satisfies IToken[];
+    const whitespace = run(' ');
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = any('is', undefined, [0, 1, 1, 1, 1, 2], treeContext);
-    const second = any('equal', undefined, [3, 1, 4, 7, 1, 8], treeContext);
+    const first = any('is', undefined, { start: 0, end: 1 }, treeContext);
+    const second = any('equal', undefined, { start: 3, end: 7 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
-    rule.evaluated = true;
 
     expect(rule.toTrimmedString({
       emittedTrivia: new Set([whitespace]),
@@ -830,21 +821,14 @@ describe('Sequence', () => {
   });
 
   it('emits consumed trivia map whitespace between source-backed sequence nodes', () => {
-    const WS = createToken({ name: 'WS', pattern: / +/ });
-    const whitespace = [{
-      image: '  ',
-      startOffset: 2,
-      endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
-      tokenType: WS
-    }] satisfies IToken[];
+    const whitespace = run('  ');
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
-    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
+    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -854,21 +838,14 @@ describe('Sequence', () => {
   });
 
   it('emits source trivia between sequence nodes while rendering through context', () => {
-    const WS = createToken({ name: 'WS', pattern: / +/ });
-    const whitespace = [{
-      image: '  ',
-      startOffset: 2,
-      endOffset: 2,
-      tokenTypeIdx: WS.tokenTypeIdx,
-      tokenType: WS
-    }] satisfies IToken[];
+    const whitespace = run('  ');
     const trivia = createTriviaMap({
       before: new Map([[3, whitespace]]),
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
-    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
+    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;

@@ -1,6 +1,6 @@
+import { sourceSpanOf } from './provenance.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
-import { Comment } from '../comment.js';
-import { F_STATIC, Node } from '../node.js';
+import { F_VISIBLE, Node } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { Rules } from '../rules.js';
@@ -12,7 +12,11 @@ export function isIndexedRuleChild(node: Node): boolean {
 export function getRootSourceRules(rules: Rules): Rules {
   let current = rules;
   const seen = new Set<Rules>();
-  while (current.sourceNode && isNode(current.sourceNode, N.Rules)) {
+  // A canonical body can be any Rules SUBCLASS (Mixin/Ruleset), not only a plain
+  // Rules — since the Mixin.sourceNode wrapper was eliminated, a mixin surface's
+  // sourceNode IS the Mixin. `instanceof Rules` walks all three; the old bitmask
+  // `N.Rules` check stopped at a Mixin/Ruleset sourceNode.
+  while (current.sourceNode instanceof Rules) {
     const next = current.sourceNode;
     if (next === current || seen.has(next)) {
       break;
@@ -23,87 +27,27 @@ export function getRootSourceRules(rules: Rules): Rules {
   return current;
 }
 
-function copyCallableAmpersand(node: Node): Node | undefined {
-  if (!isNode(node, N.Ampersand)) {
-    return undefined;
-  }
-  const copied = node.derive();
-  return copied instanceof Node ? copied : undefined;
-}
-
-function copyCallableCommentNode(node: Comment): Node {
-  return new Comment(
-    node.value,
-    node.options ? { ...node.options } : undefined,
-    node.location.length === 0 ? undefined : node.location,
-    node.sourceRoot?._treeContext
-  ).inherit(node);
-}
-
-function copyCallableReusableLeaf(node: Node): Node | undefined {
-  return node.canReuseAsLeaf() ? node.reuseAsLeaf() : undefined;
-}
-
-function copyCallableRulesNode(node: Node): Node {
-  if (isNode(node, N.Comment)) {
-    return copyCallableCommentNode(node);
-  }
-  const copiedAmpersand = copyCallableAmpersand(node);
-  if (copiedAmpersand) {
-    return copiedAmpersand;
-  }
-  const reusableLeaf = copyCallableReusableLeaf(node);
-  if (reusableLeaf) {
-    return reusableLeaf;
-  }
-  return node.clone(true, copyCallableRulesNode);
-}
-
-function copyCallableRulesChildren(sourceRules: Rules): Node[] {
-  const source = sourceRules.rules;
-  const out = new Array<Node>(source.length);
-  for (let i = 0; i < source.length; i++) {
-    out[i] = copyCallableRulesNode(source[i]!);
-  }
-  return out;
-}
-
-function createStaticCallableRulesSurface(sourceRules: Rules): Rules {
-  const output = sourceRules.derive([]);
+/**
+ * The single callable rules-surface primitive. (Formerly split into identical
+ * `createUnlocked…`/`createOwned…` variants — the Owned/Unlocked distinction did
+ * not exist in the implementation and has been collapsed.)
+ */
+export function createCallableRulesSurface(sourceRules: Rules): Rules {
+  const output = createDerivedRulesSurface(sourceRules);
+  // `sourceNode` pointing at a DIFFERENT canonical body IS the thin-surface
+  // identity: a shared child evaluated under this surface re-points its
+  // scope-frame lexical parent here (resolving up the call's scope — lexical
+  // definition + live param slots) rather than its static canonical parent.
+  // One frame model for all node re-use; no marker. See §4 / §6.2.
   output.sourceNode = sourceRules.sourceNode ?? sourceRules;
   const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
+    // Share the canonical body children (the AST is an immutable template). The
+    // per-call eval surface carries call state in its attached scope frame, not
+    // in cloned nodes; the body resolves against this surface via context.
     output.rules.push(source[i]!);
   }
   return output;
-}
-
-function canReuseStaticCallableChildren(sourceRules: Rules): boolean {
-  if (!sourceRules.hasFlag(F_STATIC)) {
-    return false;
-  }
-  const value = sourceRules.rules;
-  for (let i = 0; i < value.length; i++) {
-    const child = value[i]!;
-    if (
-      child.type === 'Ruleset'
-      || child.type === 'AtRule'
-      || child.options?.assign !== undefined
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-export function createUnlockedCallableRulesSurface(sourceRules: Rules): Rules {
-  return sourceRules.derive();
-}
-
-export function createOwnedCallableRulesSurface(sourceRules: Rules): Rules {
-  return canReuseStaticCallableChildren(sourceRules)
-    ? createStaticCallableRulesSurface(sourceRules)
-    : sourceRules.derive(copyCallableRulesChildren(sourceRules));
 }
 
 type DerivedRulesSurfaceOptions = {
@@ -117,9 +61,7 @@ function createDerivedRulesSurface(
   options?: DerivedRulesSurfaceOptions
 ): Rules {
   const sourceOptions = sourceRules.options;
-  const sourceLocation = sourceRules.location.length === 0
-    ? undefined
-    : sourceRules.location;
+  const sourceLocation = sourceSpanOf(sourceRules);
   const output = new Rules(
     [],
     {
@@ -129,6 +71,7 @@ function createDerivedRulesSurface(
     sourceLocation,
     sourceRules._treeContext
   ).inherit(sourceRules);
+  output.addFlag(F_VISIBLE);
   output.scopeFrame = undefined;
   if (options?.rulesOptions || options?.markMixinOutput) {
     output.options = {
@@ -168,7 +111,7 @@ export function createEmptyCallableOutputSurface(sourceRules: Rules): Rules {
 
 export function resolveCallableSingleOutputSourceRules(output: Rules): Rules {
   return getRootSourceRules(
-    output.sourceNode && isNode(output.sourceNode, N.Rules)
+    output.sourceNode instanceof Rules
       ? output.sourceNode
       : output
   );

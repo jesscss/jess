@@ -12,7 +12,7 @@ type AwaitablePipeModule = Record<string, unknown> & {
   pipe?: (...args: unknown[]) => unknown;
 };
 type TestContext = Context & {
-  getTree(importPath: string, importOptions?: ImportOptions): Promise<{ node: Rules; resolvedPath: string }>;
+  getTree(importPath: string, importOptions?: ImportOptions): Promise<{ node: Rules; resolvedPath: string; triedPaths: string[] }>;
 };
 
 const wrappedAsyncMethods = new WeakSet<EvalMethod>();
@@ -186,7 +186,8 @@ async function runScenario(
 
   const roots = Array.from({ length: repeats }, () => build(depth, breadth));
   for (let i = 0; i < Math.min(3, repeats); i++) {
-    const ctx: TestContext = new Context();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const ctx = new Context() as unknown as TestContext;
     if (withSparseAsync) {
       ctx.getTree = async (importPath: string) => {
         if (microDelay) {
@@ -194,7 +195,7 @@ async function runScenario(
             await Promise.resolve();
           }
         }
-        return { node: rules([]), resolvedPath: importPath };
+        return { node: rules([]), resolvedPath: importPath, triedPaths: [] };
       };
       ctx.evaldTrees = new Map();
     }
@@ -205,7 +206,8 @@ async function runScenario(
   }
   const t0 = performance.now();
   for (let i = 0; i < repeats; i++) {
-    const ctx: TestContext = new Context();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const ctx = new Context() as unknown as TestContext;
     if (withSparseAsync) {
       ctx.getTree = async (importPath: string) => {
         if (microDelay) {
@@ -213,7 +215,7 @@ async function runScenario(
             await Promise.resolve();
           }
         }
-        return { node: rules([]), resolvedPath: importPath };
+        return { node: rules([]), resolvedPath: importPath, triedPaths: [] };
       };
       ctx.evaldTrees = new Map();
     }

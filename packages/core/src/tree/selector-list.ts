@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   defineType,
@@ -8,7 +9,7 @@ import {
   type NodeOptions
 } from './node.js';
 import { type Context } from '../context.js';
-import { attachSelectorBitLibrary, Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector, type SelectorLike } from './selector.js';
 
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -22,7 +23,7 @@ import {
 } from './util/trivia.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
 
-type SelectorListItem = Selector | string;
+export type SelectorListItem = Selector | string;
 
 function emitSelectorListItem(
   item: SelectorListItem,
@@ -46,7 +47,7 @@ function emitSelectorListItem(
 export class SelectorList extends Selector<SelectorListItem[]> {
   static override childKeys = ['value'] as const;
 
-  readonly value: SelectorListItem[];
+  override readonly value: SelectorListItem[];
 
   constructor(
     value: SelectorListItem[],
@@ -79,7 +80,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
     return new SelectorList(
       ownedValue,
       this._options ? { ...this._options } : undefined,
-      this.location
+      sourceSpanOf(this)
     ).inherit(this);
   }
 
@@ -105,106 +106,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
   }
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
-    const w = printOptions.writer;
-    let depth = printOptions.depth;
-    let space = ''.padStart(depth * 2);
-    const value: Selector[] = [];
-    for (const item of this.value) {
-      if (isNode(item, N.PseudoSelector) && item.name === ':is') {
-        const arg = item.arg;
-        if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.value);
-          continue;
-        }
-      }
-      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
-          const arg = only.arg;
-          if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
-            continue;
-          }
-        }
-      }
-      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
-          const arg = only.arg;
-          if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
-            continue;
-          }
-        }
-      }
-      value.push(item);
-    }
-    if (
-      printOptions.referenceMode === true
-      && printOptions.referenceRenderEnabled === true
-      && printOptions.referenceFilterTargets === true
-    ) {
-      let extendedCount = 0;
-      for (let i = 0; i < value.length; i++) {
-        const item = value[i]!;
-        if (typeof item !== 'string' && item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
-          value[extendedCount++] = item;
-        }
-      }
-      if (extendedCount > 0) {
-        value.length = extendedCount;
-      }
-    }
-    let length = value.length;
-    if (length === 0) {
-      return;
-    }
-    let item = value[0]!;
-
-    emitSelectorListItem(item, printOptions);
-
-    for (let i = 1; i < length; i++) {
-      const prevItem = item;
-      item = value[i]!;
-      if (typeof prevItem !== 'string' && typeof item !== 'string') {
-        emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
-      }
-      w.add(`,\n${space}`);
-      if (printOptions.trivia && typeof item !== 'string') {
-        emitTriviaTokens(
-          consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions),
-          printOptions,
-          { skipLeadingWhitespace: true }
-        );
-      }
-      emitSelectorListItem(item, printOptions, true);
-    }
-  }
-
-  protected override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const value = this.value;
-    let keySet = library.getBitset();
-    let visibleKeySet = library.getBitset();
-    for (const selector of value) {
-      if (typeof selector === 'string') {
-        const selectorKeySet = library.getBitset([selector]);
-        keySet = keySet.or(selectorKeySet);
-        visibleKeySet = visibleKeySet.or(selectorKeySet);
-        continue;
-      }
-      selector.keySetLibrary ??= library;
-      keySet = keySet.or(selector.keySet);
-      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
-    }
-    this._keySet = keySet;
-    this._visibleKeySet = visibleKeySet;
-    // SelectorLists represent alternatives - requiredKeySet is empty
-    // (any branch could match, so no single key is "required")
-    this._requiredKeySet = library.getBitset();
+    emitSelectorListItems(this.value, printOptions);
   }
 
   /** Normalize value on separate lines with indentation */
@@ -242,7 +144,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
     return super.compare(b);
   }
 
-  override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
+  override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     if (!this.hasFlag(F_MAY_ASYNC)) {
       return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, false), true);
@@ -407,3 +309,134 @@ export class SelectorList extends Selector<SelectorListItem[]> {
 }
 
 export const sellist = defineType(SelectorList, 'SelectorList', 'sellist');
+
+/** A selector list stored as a node or a plain array (parser-delivered form). */
+export type SelectorListLike = SelectorList | SelectorListItem[];
+
+export function isSelectorListLike(value: unknown): value is SelectorListLike {
+  return Array.isArray(value) || isNode(value, N.SelectorList);
+}
+
+export function selectorListItems(value: SelectorListLike): SelectorListItem[] {
+  return Array.isArray(value) ? value : value.value;
+}
+
+export function selectorListValueOf(items: readonly SelectorListItem[]): string {
+  return items.map(item => (typeof item === 'string' ? item : item.valueOf())).join(', ');
+}
+
+export function selectorSurfaceValueOf(value: SelectorLike): string {
+  if (Array.isArray(value)) {
+    return selectorListValueOf(value);
+  }
+  return value.valueOf();
+}
+
+/**
+ * Finish a selector-list extend/compose result in the same representation as
+ * `inheritFrom`: arrays stay arrays; legacy `SelectorList` nodes stay nodes.
+ */
+export function finishSelectorListSurface(
+  items: SelectorListItem[],
+  inheritFrom: SelectorListLike
+): SelectorListLike {
+  if (items.length === 1) {
+    return items[0]!;
+  }
+  if (Array.isArray(inheritFrom)) {
+    return items;
+  }
+  return SelectorList.create(items).inherit(inheritFrom);
+}
+
+/**
+ * Emit a selector list — the single writer shared by `SelectorList.writeSyntax`
+ * and the bare string/array header surface. Hoists inner `:is(...)` lists to the
+ * top level, applies reference-mode extend filtering, and separates items with
+ * `,\n<indent>` so multi-selector headers break onto their own lines.
+ */
+export function emitSelectorListItems(
+  rawItems: readonly SelectorListItem[],
+  printOptions: FinalPrintOptions,
+  suppressPre = false
+): void {
+  const w = printOptions.writer;
+  const space = ''.padStart(printOptions.depth * 2);
+  const value: SelectorListItem[] = [];
+  for (const item of rawItems) {
+    if (isNode(item, N.PseudoSelector) && item.name === ':is') {
+      const arg = item.arg;
+      if (arg && isNode(arg, N.SelectorList)) {
+        value.push(...arg.value);
+        continue;
+      }
+    }
+    if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+        const arg = only.arg;
+        if (arg && isNode(arg, N.SelectorList)) {
+          value.push(...arg.value);
+          continue;
+        }
+      }
+    }
+    if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
+      const only = item.value[0]!;
+      if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+        const arg = only.arg;
+        if (arg && isNode(arg, N.SelectorList)) {
+          value.push(...arg.value);
+          continue;
+        }
+      }
+    }
+    value.push(item);
+  }
+  if (
+    printOptions.referenceMode === true
+    && printOptions.referenceRenderEnabled === true
+    && printOptions.referenceFilterTargets === true
+  ) {
+    let extendedCount = 0;
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]!;
+      if (typeof item !== 'string' && item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+        value[extendedCount++] = item;
+      }
+    }
+    if (extendedCount > 0) {
+      value.length = extendedCount;
+    }
+  }
+  const length = value.length;
+  if (length === 0) {
+    return;
+  }
+  let item = value[0]!;
+  emitSelectorListItem(item, printOptions, suppressPre);
+  for (let i = 1; i < length; i++) {
+    const prevItem = item;
+    item = value[i]!;
+    if (typeof prevItem !== 'string' && typeof item !== 'string') {
+      emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
+    }
+    w.add(`,\n${space}`);
+    if (printOptions.trivia && typeof item !== 'string') {
+      emitTriviaTokens(
+        consumeTrivia(printOptions.trivia, spanStartOf(item), 'before', printOptions),
+        printOptions,
+        { skipLeadingWhitespace: true }
+      );
+    }
+    emitSelectorListItem(item, printOptions, true);
+  }
+}
+
+export function emitSelectorListLike(
+  value: SelectorListLike,
+  options: FinalPrintOptions,
+  suppressPre = false
+): void {
+  emitSelectorListItems(selectorListItems(value), options, suppressPre);
+}

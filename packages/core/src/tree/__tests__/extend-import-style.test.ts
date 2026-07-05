@@ -30,7 +30,6 @@ let context: Context;
 
 describe('Style import extend behavior', () => {
   beforeAll(() => {
-    Node.prototype.fullRender = true;
   });
 
   beforeEach(() => {
@@ -43,13 +42,13 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(importedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) }),
             ruleset({
               selector: sellist([sel([el('.extended')])]),
-              rules: rules([])
+              rules: []
             })
-          ])
+          ]
         })
       ]));
 
@@ -61,12 +60,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -86,9 +85,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(imported1Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -101,12 +100,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]));
 
@@ -136,9 +135,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(composedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -151,12 +150,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -176,9 +175,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(composed1Path, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -191,12 +190,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]));
 
@@ -227,9 +226,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(protectedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -242,12 +241,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
 
@@ -268,9 +267,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(protectedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -283,12 +282,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
 
@@ -309,33 +308,33 @@ describe('Style import extend behavior', () => {
     const createReferencedZTree = () => rules([
       ruleset({
         selector: sellist([sel([el('.z')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([any('red')]) }),
           ruleset({
             selector: sellist([sel([el('.c')])]),
-            rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+            rules: [decl({ name: 'color', value: spaced([any('green')]) })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([sel([el('.only-with-visible')]), sel([el('.z')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([any('green')]) }),
           ruleset({
             selector: sellist([sel([amp(), pseudo({ name: ':hover' })])]),
-            rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+            rules: [decl({ name: 'color', value: spaced([any('green')]) })]
           }),
           ruleset({
             selector: sellist([sel([amp(), co('+'), amp()])]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: spaced([any('green')]) }),
               ruleset({
                 selector: sellist([sel([el('.sub')])]),
-                rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+                rules: [decl({ name: 'color', value: spaced([any('green')]) })]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -348,12 +347,12 @@ describe('Style import extend behavior', () => {
       }),
       ruleset({
         selector: sellist([sel([el('.visible')])]),
-        rules: rules([
+        rules: [
           extend({
             target: el('.z'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       })
     ]);
 
@@ -365,25 +364,25 @@ describe('Style import extend behavior', () => {
       }),
       ruleset({
         selector: sellist([sel([el('.visible')])]),
-        rules: rules([
+        rules: [
           extend({
             target: el('.z'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       })
     ]);
 
     const createSelfClassTree = () => rules([
       ruleset({
         selector: sellist([sel([el('.z')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([any('red')]) }),
           ruleset({
             selector: sellist([sel([el('.c')])]),
-            rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+            rules: [decl({ name: 'color', value: spaced([any('green')]) })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([sel([compound([
@@ -393,9 +392,9 @@ describe('Style import extend behavior', () => {
           el('[attr=i32]'),
           pseudo({ name: ':not', arg: el('.one') as Selector })
         ])])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([any('inherit')]) })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([sel([compound([
@@ -407,9 +406,9 @@ describe('Style import extend behavior', () => {
           el('.class'),
           pseudo({ name: ':not', arg: el('.one') as Selector })
         ])])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([any('inherit')]) })
-        ])
+        ]
       })
     ]);
 
@@ -422,21 +421,21 @@ describe('Style import extend behavior', () => {
       }),
       ruleset({
         selector: sellist([sel([el('.visible')])]),
-        rules: rules([
+        rules: [
           extend({
             target: el('.z'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([sel([el('.class')])]),
-        rules: rules([
+        rules: [
           extend({
             target: el('.class'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       })
     ]);
 
@@ -449,9 +448,9 @@ describe('Style import extend behavior', () => {
           el('[attr=i32]'),
           pseudo({ name: ':not', arg: el('.one') as Selector })
         ])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([any('inherit')]) })
-        ])
+        ]
       })
     ]);
 
@@ -464,12 +463,12 @@ describe('Style import extend behavior', () => {
       }),
       ruleset({
         selector: sellist([sel([el('.class')])]),
-        rules: rules([
+        rules: [
           extend({
             target: el('.class'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       })
     ]);
 
@@ -481,12 +480,12 @@ describe('Style import extend behavior', () => {
       }),
       ruleset({
         selector: sellist([sel([el('.class')])]),
-        rules: rules([
+        rules: [
           extend({
             target: el('.class'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       })
     ]);
 
@@ -505,21 +504,21 @@ describe('Style import extend behavior', () => {
       }),
       ruleset({
         selector: sellist([sel([el('.visible')])]),
-        rules: rules([
+        rules: [
           extend({
             target: el('.z'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sellist([sel([el('.class')])]),
-        rules: rules([
+        rules: [
           extend({
             target: el('.class'),
             flag: ExtendFlag.All
           })
-        ])
+        ]
       })
     ]);
 
@@ -528,9 +527,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(referencedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -543,12 +542,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -567,15 +566,15 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(referencedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) }),
             ruleset({
               selector: sellist([sel([el('.desc')])]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: spaced([any('green')]) })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]));
 
@@ -588,12 +587,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
 
@@ -608,11 +607,11 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(referencedPath, rules([
         ruleset({
           selector: sellist([sel([el('.from-ref')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.outside')
             })
-          ])
+          ]
         })
       ]));
 
@@ -625,9 +624,9 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.outside')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) })
-          ])
+          ]
         })
       ]);
 
@@ -644,9 +643,9 @@ describe('Style import extend behavior', () => {
       context.sourceTrees.set(referencedPath, rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('red')]) })
-          ])
+          ]
         })
       ]));
 
@@ -659,12 +658,12 @@ describe('Style import extend behavior', () => {
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([any('blue')]) }),
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
 
@@ -681,7 +680,7 @@ describe('Style import extend behavior', () => {
 
     it('characterization: reference extend shape with collapseNesting false', async () => {
       const localContext = createTestContext();
-      localContext.opts.collapseNesting = false;
+      localContext.opts.output = { ...localContext.opts.output, collapseNesting: false };
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
@@ -697,7 +696,7 @@ describe('Style import extend behavior', () => {
 
     it('characterization: reference extend shape with collapseNesting true', async () => {
       const localContext = createTestContext();
-      localContext.opts.collapseNesting = true;
+      localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
@@ -717,17 +716,17 @@ describe('Style import extend behavior', () => {
 
     it('reference import with collapseNesting=true does not double-compose a literal bare ampersand block', async () => {
       const localContext = createTestContext();
-      localContext.opts.collapseNesting = true;
+      localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       localContext.sourceTrees.set(referencedPath, rules([
         ruleset({
           selector: sellist([sel([el('.z')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([amp()])]),
-              rules: rules([decl({ name: 'color', value: spaced([any('green')]) })])
+              rules: [decl({ name: 'color', value: spaced([any('green')]) })]
             })
-          ])
+          ]
         })
       ]));
 
@@ -738,7 +737,7 @@ describe('Style import extend behavior', () => {
 
     it('reference import with collapseNesting=true does not double-compose an activated top-level selector list item', async () => {
       const localContext = createTestContext();
-      localContext.opts.collapseNesting = true;
+      localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       localContext.sourceTrees.set(referencedPath, createReferencedZTree());
 
@@ -749,7 +748,7 @@ describe('Style import extend behavior', () => {
 
     it('reference-mode serialization does not rewrite stored selectors on referenced rulesets', async () => {
       const localContext = createTestContext();
-      localContext.opts.collapseNesting = true;
+      localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
       const referencedTree = createReferencedZTree();
       localContext.sourceTrees.set(referencedPath, referencedTree);
@@ -766,12 +765,12 @@ describe('Style import extend behavior', () => {
       expect(css).toContain('.visible {');
       expect(cssAgain).toBe(css);
       expect(firstRuleset.selector).toBe(storedSelector);
-      expect(firstRuleset.selector.valueOf()).toBe('.z');
+      expect(firstRuleset.selector!.valueOf()).toBe('.z');
     });
 
     it('characterization: minimal reference self-extend does not activate class-only selectors', async () => {
       const localContext = createTestContext();
-      localContext.opts.collapseNesting = true;
+      localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
       const referencedPath = resolve(process.cwd(), 'referenced-import-reference-self-class.jess');
       localContext.sourceTrees.set(referencedPath, createSelfClassTree());
 
@@ -786,7 +785,7 @@ describe('Style import extend behavior', () => {
     describe('investigation matrix: import reference vs non-reference by collapse mode', () => {
       const renderMatrixCase = async (reference: boolean, collapseNesting: boolean): Promise<string> => {
         const localContext = createTestContext();
-        localContext.opts.collapseNesting = collapseNesting;
+        localContext.opts.output = { ...localContext.opts.output, collapseNesting };
         const referencedPath = resolve(process.cwd(), 'referenced-import-reference-shape.jess');
         localContext.sourceTrees.set(referencedPath, createReferencedZTree());
         const node = reference ? createReferenceExtendNode() : createNonReferenceExtendNode();
@@ -905,7 +904,7 @@ describe('Style import extend behavior', () => {
     describe('investigation matrix: self-extend duplication reference vs non-reference', () => {
       const renderSelfExtendDuplicateCase = async (reference: boolean): Promise<string> => {
         const localContext = createTestContext();
-        localContext.opts.collapseNesting = true;
+        localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
         const referencedPath = resolve(process.cwd(), 'referenced-import-self-extend-duplicate.jess');
         localContext.sourceTrees.set(referencedPath, createSelfExtendDuplicateTree());
         const node = reference ? createReferenceSelfExtendDuplicateNode() : createNonReferenceSelfExtendDuplicateNode();
@@ -934,7 +933,7 @@ describe('Style import extend behavior', () => {
 
       it('snapshot: two reference imports with class self-extend and z-all extend', async () => {
         const localContext = createTestContext();
-        localContext.opts.collapseNesting = true;
+        localContext.opts.output = { ...localContext.opts.output, collapseNesting: true };
         localContext.sourceTrees.set(
           resolve(process.cwd(), 'referenced-import-self-extend-duplicate.jess'),
           createSelfExtendDuplicateTree()

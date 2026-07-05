@@ -7,11 +7,11 @@ describe('callable eval helper', () => {
   it('evaluates callable entries through the top-level helper', async () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-      ])
+      ]
     });
     const definitionParent = rules([candidate]);
     const callerRules = rules([]);
@@ -32,11 +32,11 @@ describe('callable eval helper', () => {
   it('throws when no callable candidates match', async () => {
     const context = new Context();
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-      ])
+      ]
     });
     context.rulesContext = rules([]);
 

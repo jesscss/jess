@@ -41,14 +41,14 @@ describe('InterpolatedSelector', () => {
     });
     const node = interpolatedSelector(value);
 
-    expect(node.node).toBe(value);
-    expect(InterpolatedSelector.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(InterpolatedSelector.childKeys).toEqual(['value']);
   });
 
   it('renders resolved interpolated selectors through render(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -63,14 +63,13 @@ describe('InterpolatedSelector', () => {
     const rendered = selectorNode.render(context);
 
     expect(rendered).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved interpolated selector output into flat buffers', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -96,14 +95,13 @@ describe('InterpolatedSelector', () => {
     expect(await selectorNode.render(context, buffer)).toBe('.foo');
     expect(buffer.parts).toEqual(['.foo']);
     expect(resolveCalls).toBe(0);
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
   it('renders resolved interpolated selector output directly without public resolve', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -120,14 +118,13 @@ describe('InterpolatedSelector', () => {
     };
 
     expect(selectorNode.render(context)).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
   });
 
   it('resolves interpolated selectors without touching render state', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -142,7 +139,6 @@ describe('InterpolatedSelector', () => {
     const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('.foo');
-    expect(selectorNode.evaluated).toBe(false);
     expect(selectorNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -150,7 +146,7 @@ describe('InterpolatedSelector', () => {
   it('keeps source interpolated selector child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -173,7 +169,7 @@ describe('InterpolatedSelector', () => {
     const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo]');
-    expect(replacement.parent).toBe(selectorNode.node);
+    expect(replacement.parent).toBe(selectorNode.value);
     expect(replacement.toTrimmedString()).toBe('a[data=$capture-attr]');
     expect(selectorNode.toTrimmedString()).toBe('a[data=$capture-attr]');
   });
@@ -181,7 +177,7 @@ describe('InterpolatedSelector', () => {
   it('does not clone the source interpolated value before resolving interpolated selectors', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -237,7 +233,7 @@ describe('InterpolatedSelector', () => {
 
       expect(resolved.toTrimmedString()).toBe('.a.b');
       expect(basicSelectorCloneCalls).toBe(0);
-      expect(replacement.parent).toBe(selectorNode.node);
+      expect(replacement.parent).toBe(selectorNode.value);
       expect(left.parent).toBe(replacement);
       expect(right.parent).toBe(replacement);
     } finally {

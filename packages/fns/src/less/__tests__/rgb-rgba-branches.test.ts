@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { describe, it, expect } from 'vitest';
-import { Color, ColorFormat, Context, Dimension, List, callWithContext } from '@jesscss/core';
+import { Color, ColorFormat, Context, Dimension, List, callWithContext, RuntimeFunction } from '@jesscss/core';
 import rgb from '../rgb.js';
 import { rgbImplementation } from '../rgb.js';
 import rgba from '../rgba.js';
@@ -9,7 +10,7 @@ describe('rgb()/rgba() branch coverage', () => {
     expect(() => rgb()).toThrow();
     expect(() => rgb(new Dimension({ number: 1 }) as never)).toThrow();
     await expect(
-      rgbImplementation.call(
+      (rgbImplementation as RuntimeFunction).call(
         {
           context: new Context(),
           rawArgs: new List([]),
@@ -21,7 +22,7 @@ describe('rgb()/rgba() branch coverage', () => {
   });
 
   it('propagates modern syntax from caller options', async () => {
-    const result = await rgbImplementation.call(
+    const result = await (rgbImplementation as RuntimeFunction).call(
       {
         caller: { options: { modernSyntax: true } },
         context: new Context(),
@@ -69,7 +70,7 @@ describe('rgb()/rgba() branch coverage', () => {
       new Dimension({ number: 20, unit: '%' }),
       new Dimension({ number: 30, unit: '%' })
     ]);
-    const result = await rgbImplementation.call(
+    const result = await (rgbImplementation as RuntimeFunction).call(
       {
         context: new Context(),
         rawArgs,

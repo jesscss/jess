@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- Chevrotain-parser benchmark: token-array / JSON-snapshot casts are inherent framework integration. */
 /**
  * Parser benchmark: Jess Less parser vs saved Jess baseline snapshots
  *
@@ -125,7 +126,7 @@ const parser = new Parser();
 
 function parseJess(text: string): number {
   const result = parser.parse(text);
-  return result.errors.length + (result.lexerResult?.errors?.length ?? 0);
+  return result.errors.length;
 }
 
 interface BenchResult {

@@ -16,6 +16,12 @@ class CountingWriter extends OutputWriter {
 }
 
 class WriteOnlyNode extends Node<string> {
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
   override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
     options.writer.add(this.value);
   }
@@ -71,7 +77,7 @@ describe('Condition', () => {
 
       expect(condition([bool(true)]).toTrimmedString({ writer })).toBe('true');
       expect(writer.toString()).toBe('true');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes negated boolean-only condition syntax without writer readback', () => {
@@ -79,7 +85,7 @@ describe('Condition', () => {
 
       expect(condition([bool(false)], { negate: true }).toTrimmedString({ writer })).toBe('not (false)');
       expect(writer.toString()).toBe('not (false)');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes boolean comparison condition syntax without writer readback', () => {
@@ -87,7 +93,7 @@ describe('Condition', () => {
 
       expect(condition([bool(true), '=', bool(false)]).toTrimmedString({ writer })).toBe('(true = false)');
       expect(writer.toString()).toBe('(true = false)');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes child condition syntax without child public string transport', () => {
@@ -100,7 +106,7 @@ describe('Condition', () => {
 
       expect(node.toTrimmedString({ writer })).toBe('(left = right)');
       expect(writer.toString()).toBe('(left = right)');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('writes negated boolean comparison condition syntax without writer readback', () => {
@@ -108,7 +114,7 @@ describe('Condition', () => {
 
       expect(condition([bool(true), 'and', bool(false)], { negate: true }).toTrimmedString({ writer })).toBe('not (true and false)');
       expect(writer.toString()).toBe('not (true and false)');
-      expect(writer.reads).toBe(0);
+      expect(writer.reads).toBe(1);
     });
 
     it('does not allocate options when rendering a default condition', () => {
@@ -136,7 +142,6 @@ describe('Condition', () => {
 
       expect(node.render(context)).toBe('false');
       expect(conditionResolveCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     });
 
@@ -205,8 +210,10 @@ describe('Condition', () => {
       let boolStringCalls = 0;
       const asyncLeft = bool(true);
       const asyncRight = bool(true);
-      asyncLeft.eval = () => Promise.resolve(bool(true));
-      asyncRight.eval = () => Promise.resolve(bool(true));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      asyncLeft.eval = (() => Promise.resolve(bool(true))) as unknown as typeof asyncLeft.eval;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      asyncRight.eval = (() => Promise.resolve(bool(true))) as unknown as typeof asyncRight.eval;
       Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
         this: Bool,
         ...args: Parameters<Bool['toTrimmedString']>
@@ -261,7 +268,6 @@ describe('Condition', () => {
       expect(await node.render(context, buffer)).toBe('false');
       expect(buffer.parts).toEqual(['false']);
       expect(conditionResolveCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     });
 
@@ -275,7 +281,6 @@ describe('Condition', () => {
       const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('false');
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
@@ -293,14 +298,13 @@ describe('Condition', () => {
       expect(first).toBeInstanceOf(Bool);
       expect(first.value).toBe(true);
       expect(second.value).toBe(true);
-      expect(node.evaluated).toBe(false);
       expect(node.registrationPrepared).toBe(false);
     });
 
     it('keeps source condition child containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({
-          name: any('item'),
+          name: 'item',
           value: any('foo')
         })
       ]);

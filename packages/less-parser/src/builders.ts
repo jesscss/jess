@@ -1,0 +1,2481 @@
+/**
+ * LessGrammar — builder methods for the Less grammar.
+ *
+ * Builder-only class: no grammar rules, no Parséman Parser base.
+ * Grammar rules live in grammar-fn.ts (macro-compiled functional grammar),
+ * which uses LessGrammar via a thin BuilderHost subclass.
+ * Extends CssParser to inherit the shared CSS builder methods.
+ */
+
+import type { Span } from 'parseman';
+import type { CSTLeaf, CSTError } from 'parseman';
+import {
+  CssParser,
+  spannedComponents, type Spanned, type Component
+} from '@jesscss/css-parser';
+import { getInterpolatedOrString, getInterpolatedNode, createInterpolatedReference } from './utils.js';
+
+import {
+  type Node,
+  type LocationInfo,
+  Any, Keyword, Rules, Ruleset,
+  type Selector,
+  ComplexSelector, type ComplexSelectorValue,
+  CompoundSelector,
+  isSelectorListLike, selectorListItems,
+  Declaration,
+  VarDeclaration, type VarDeclarationOptions,
+  NESTABLE_AT_RULES,
+  Reference, type ReferenceValue,
+  Ampersand, List, DefaultGuard, Extend, ExtendFlag, Call,
+  For, type ForPattern,
+  Interpolated, InterpolatedSelector, Sequence, CustomDeclaration,
+  Color, Paren, Condition, type ConditionOperator,
+  Mixin, Expression, Operation, Negative,
+  shouldOperateWithMathFrames, type MathMode,
+  StyleImport,
+  JsImport,
+  Nil,
+  Rest,
+  Quoted,
+  Url,
+  AtRuleStatement,
+  AtRule,
+  QueryCondition,
+  INTERPOLATION_PLACEHOLDER,
+  Block
+} from '@jesscss/core';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type JessNode = Node<any, any>;
+type Child = JessNode | CSTLeaf | CSTError;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// Mirrors grammar.ts's `knownAtVar` regex (isVariableLike in the reference): a
+// known at-rule name (incl. vendor-prefixed document/keyframes/viewport) used
+// as a variable call (`@media()`) is only legal with empty parens, and is
+// itself a deprecated form.
+const KNOWN_AT_RULE_VAR_NAME_RE = /^(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)$/i;
+
+function spanToLocation(span: Span): LocationInfo {
+  return { start: span.start, end: span.end };
+}
+
+function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
+  return children.filter((c): c is JessNode => c._tag === 'node') as JessNode[];
+}
+
+// ---------------------------------------------------------------------------
+// LessGrammar
+// ---------------------------------------------------------------------------
+
+export class LessGrammar extends CssParser {
+  /** Math mode governing when arithmetic operates / when `/` divides. Less default. */
+  mathMode: MathMode = 'parens-division';
+
+  /** Bare ident/keyword token in value or guard position. */
+  private _lessKeyword(text: string, loc: LocationInfo): Keyword {
+    return this._valueKeyword(text, loc);
+  }
+
+  private _isKeywordLike(node: unknown): node is Keyword | Any {
+    return !!node && typeof node === 'object'
+      && ((node as { type?: string }).type === 'Keyword' || (node as { type?: string }).type === 'Any');
+  }
+
+  private _isEmptyKeywordLike(node: unknown): boolean {
+    return !node
+      || (this._isKeywordLike(node) && !String((node as { value?: string }).value ?? '').trim());
+  }
+
+  // -- buildNode -------------------------------------------------------------
+  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion, @typescript-eslint/naming-convention */
+
+  protected override buildNode(
+    type: string,
+    span: Span,
+    children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
+    _state: unknown,
+    _rawChildren: ReadonlyArray<{ _tag: string }>
+  ): JessNode {
+    const loc = spanToLocation(span);
+    const raw = _rawChildren;
+    switch (type) {
+      case 'VarDeclaration':      return this._buildVarDeclaration(children, raw, loc);
+      case 'Reference':           return this._buildReference(children, loc);
+      case 'LessAmpersand':       return this._buildAmpersand(children, loc);
+      case 'ComplexSelector': return this._buildComplexSelector(raw, loc);
+      case 'SelectorList':    return this._buildSelectorList(raw, loc);
+      case 'Ruleset':             return this._buildRuleset(children, raw, loc) as unknown as JessNode;
+      case 'Declaration':
+        this._warnDeprecatedValue(span);
+        return this._buildLessDeclaration(raw, loc);
+      case 'CustomDeclaration':
+        this._warnCustomPropVars(span);
+        return this._buildLessCustomDecl(children, loc);
+      case 'Block':               return this._buildLessCustomBlock(children, loc);
+      case 'AtRuleBlock':
+        this._warnAtRulePreludeVars(span);
+        return this._buildAtRuleBlock(children, loc) as unknown as JessNode;
+      case 'QueryAtRuleBlock':
+        this._warnAtRulePreludeVars(span);
+        return this._buildLessQueryAtRuleBlock(children, raw, loc);
+      case 'NamedColor':          return this._buildNamedColor(children, loc);
+      case 'Comparison':          return this._buildComparison(children, loc);
+      case 'GuardDefault':        return new DefaultGuard('default()', {}, loc) as unknown as JessNode;
+      case 'GuardInParens':       return this._buildGuardInParens(children, loc);
+      case 'GuardTerm':           return this._buildGuardTerm(children, loc);
+      case 'GuardAnd':            return this._buildGuardJoin(children, loc, 'and');
+      case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
+      case 'Guard':               return this._buildGuard(children, loc);
+      case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, loc);
+      case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
+      case 'VarCall':             return this._buildVarCall(children, raw, loc);
+      case 'MixinCall':           return this._buildMixinCall(children, raw, loc);
+      case 'Rest':                return this._buildRest(children, loc);
+      case 'NamedArg':            return this._buildNamedArg(raw, loc);
+      case 'MixinArgs':           return this._buildMixinArgs(raw, loc);
+      case 'AnonymousMixinDefinition': return this._buildAnonMixin(children, loc) as unknown as JessNode;
+      case 'DetachedRuleset':     return this._buildDetachedRuleset(children, loc) as unknown as JessNode;
+      case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
+      case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
+      case 'Negative':            return new Negative(this._negativeOperand(children), undefined, loc) as unknown as JessNode;
+      case 'OperationTop':        return this._buildOperation(children, loc, this.mathMode === 'always') as unknown as JessNode;
+      case 'EscapedValue':        return this._buildEscapedValue(children, loc);
+      case 'InterpValue':         return this._buildInterpValue(raw, loc);
+      case 'AtRuleStatement':     return this._buildAtRuleStatement(children, loc);
+      case 'ExtendTarget':        return this._buildExtendTarget(children, raw, loc);
+      case 'ExtendPseudo':        return this._buildExtendPseudo(children, loc);
+      case 'ExtendStatement':     return this._buildExtendStatement(children, raw, loc);
+      default:                    return super.buildNode(type, span, children, _state, raw) as unknown as JessNode;
+    }
+  }
+
+  // -- Private Less AST builders ---------------------------------------------
+
+  /**
+   * The operand of a `Negative` (`-value`). The grammar emits the leading `-`
+   * as a leaf followed by the operand, which may itself be a node or a bare
+   * string terminal (e.g. `-@color` → `var(--color)`'s inner `-color-accent`).
+   * Prefer a node child; otherwise take the operand leaf's text so `Negative`
+   * coerces it to the canonical node form rather than receiving `undefined`.
+   */
+  private _negativeOperand(children: ReadonlyArray<Child>): JessNode | string {
+    const node = nodeChildren(children)[0];
+    if (node) {
+      return node;
+    }
+    const operand = children.find((c): c is CSTLeaf => c._tag === 'leaf' && c.value !== '-');
+    return operand?.value ?? '';
+  }
+
+  private _buildVarDeclaration(children: ReadonlyArray<JessNode | CSTLeaf | CSTError>, rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(rawChildren);
+    const rawName = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
+    const name = rawName.startsWith('@') ? rawName.slice(1) : rawName;
+    // Less.js still accepts a digit-leading variable name (`@3`) — its name regex
+    // is `[\w-]+` — but it's a footgun (collides with numeric tokens), so flag it.
+    if (/^-?\d/.test(name)) {
+      this._warn(
+        `Variable name "@${name}" starts with a digit; digit-leading variable names are deprecated.`,
+        'digit-leading-variable'
+      );
+    }
+    const colonIdx = items.findIndex(i => i.comp === ':');
+    const afterColon = items[colonIdx + 1];
+    if (afterColon?.comp === '{') {
+      // Detached ruleset: @var: { ... }
+      const ruleNodes = nodeChildren(children);
+      const openBrace = items[colonIdx + 1]!;
+      const closeBrace = items[items.length - 1]!.comp === '}'
+        ? items[items.length - 1]!
+        : undefined;
+      // Raw-string detached ruleset (grammar's rawDetachedBlock fallback): the body
+      // had no structurable declarations but is non-empty (special-char keys like
+      // bootstrap's `@escaped-characters: { <: %3c; … }`). Historical Less keeps such
+      // a block as a raw `Quoted` string (braces included); @plugin functions such as
+      // escape-svg read it via `.value`.
+      if (ruleNodes.length === 0 && closeBrace) {
+        const bodyText = this._source.slice(openBrace.span.end, closeBrace.span.start);
+        if (bodyText.trim() !== '') {
+          const rawBlock = this._source.slice(openBrace.span.start, closeBrace.span.end);
+          const nameNode = name || undefined;
+          return new VarDeclaration(
+            { name: (nameNode ?? name) as any, value: new Quoted(rawBlock, {}, loc) as any } as any,
+            {} as VarDeclarationOptions,
+            loc
+          );
+        }
+      }
+      const mixin = new Mixin({ rules: ruleNodes }, {}, loc);
+      const nameNode = name || undefined;
+      return new VarDeclaration(
+        { name: (nameNode ?? name) as any, value: mixin as any } as any,
+        {} as VarDeclarationOptions,
+        loc
+      );
+    }
+    let end = items.length;
+    let bangIdx = -1;
+    for (let i = colonIdx + 1; i < items.length; i++) {
+      const c = items[i]!.comp;
+      if (c === '!') {
+        end = i;
+        bangIdx = i;
+        break;
+      }
+      if (c === 'important' || c === ';') {
+        end = i;
+        break;
+      }
+    }
+    const valItems = items.slice(colonIdx + 1, end);
+    if (valItems.length) {
+      const vText = this._source.slice(valItems[0]!.span.start, valItems[valItems.length - 1]!.span.end);
+      if (/(?:^|[\s,])\.-?[_a-zA-Z]/.test(vText)) {
+        this._warn(
+          `Unquoted selector capture in variable "@${name}" is deprecated; wrap the value in quotes or ~"...".`,
+          'unquoted-selector-capture'
+        );
+      }
+    }
+    const nsRef = this._tryParseNamespaceRef(valItems, loc);
+    let { value: rawValue } = nsRef ? { value: nsRef } : this._assembleLessValue(valItems, loc);
+    // Check for trailing [accessor] and/or () in source that the grammar couldn't consume.
+    // (nsRef already handles this via internal lookahead; only do it when nsRef is null)
+    if (!nsRef && valItems.length > 0) {
+      const lastSpan = valItems[valItems.length - 1]!.span;
+      const afterVal = this._source.slice(lastSpan.end);
+      // The grammar may partially consume '[' into the Reference CST due to parseman
+      // not rolling back CST leaves on optional-sequence failure. Detect this case:
+      // rawValue is Reference with target set but key='' (empty from grammar bug).
+      const rv = rawValue as any;
+      // Grammar bug: parseman leaks '[' into CST but accessor fails → Reference(target, key=''|Quoted(''))
+      const rvKey = rv?.key;
+      const isEmptyKey = rvKey === '' || rvKey === undefined
+        || (rvKey && typeof rvKey === 'object' && rvKey.type === 'Quoted' && (rvKey.value === '' || rvKey.valueOf?.() === ''));
+      const grammarPartialAccessor =
+        rv && rv.type === 'Reference' && rv.target !== undefined && isEmptyKey;
+      const accMatch = /^\s*\[([^\]]+)\]/.exec(afterVal);
+      if (accMatch) {
+        const accText = accMatch[1]!.trim();
+        const accessorKey = this._decodeAccessorKey(accText, loc);
+        if (grammarPartialAccessor) {
+          // Fix in-place: replace the wrong key on the existing Reference wrapper
+          rawValue = new Reference(
+            { target: rv.target as any, key: accessorKey as any } as unknown as ReferenceValue,
+            {},
+            loc
+          ) as unknown as JessNode;
+        } else {
+          // No partial grammar accessor: wrap with new Reference
+          rawValue = new Reference(
+            { target: rawValue as any, key: accessorKey as any } as unknown as ReferenceValue,
+            {},
+            loc
+          ) as unknown as JessNode;
+        }
+        const afterAcc = afterVal.slice(accMatch[0].length);
+        if (/^\s*\(\s*\)/.test(afterAcc)) {
+          rawValue = new Call({ name: rawValue as any } as any, {}, loc) as unknown as JessNode;
+        }
+      }
+    }
+    const value = typeof rawValue === 'string' && rawValue
+      ? this._lessKeyword(rawValue, loc)
+      : rawValue;
+    // `important` is the verbatim source text (`!important`, `! important`, …),
+    // not a boolean — the declaration stores the string it will re-emit.
+    let important: string | undefined;
+    if (bangIdx >= 0) {
+      const bang = items[bangIdx]!;
+      const kw = items[bangIdx + 1];
+      const impEnd = kw && typeof kw.comp === 'string' && kw.comp.toLowerCase() === 'important'
+        ? kw.span.end
+        : bang.span.end;
+      important = this._source.slice(bang.span.start, impEnd);
+    }
+    const nameNode = name || undefined;
+    return new VarDeclaration(
+      { name: (nameNode ?? name) as any, value, important } as any,
+      {} as VarDeclarationOptions,
+      loc
+    );
+  }
+
+  /**
+   * Build a Less variable reference and its accessor/call chain. Faithful 1:1
+   * port of the Chevrotain `varReference` + `lookupOrCall` productions
+   * (productions/values.ts, productions/guards.ts): a `@var` base glued to a
+   * left-folded chain of `[index]` accessors and `(call)`s. The grammar's
+   * noTrivia() guarantees the chain is adjacent (no whitespace between segments).
+   */
+  private _buildReference(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const varName = ls[0]?.value ?? '';
+    let base: JessNode = new Reference(
+      varName.startsWith('@') ? varName.slice(1) : varName,
+      varName.startsWith('@') ? { type: 'variable' as const } : {},
+      loc
+    ) as unknown as JessNode;
+    let i = 1;
+    while (i < ls.length) {
+      const tok = ls[i]!.value;
+      if (tok === '[') {
+        if (ls[i + 1]?.value === ']') {
+          // Empty `[]` → key = -1, type index (lookupOrCall else-branch).
+          base = new Reference(
+            { target: base as any, key: -1 } as unknown as ReferenceValue,
+            { type: 'index' }, loc
+          ) as unknown as JessNode;
+          i += 2;
+        } else {
+          base = this._applyReferenceAccessor(base, ls[i + 1]!.value, loc);
+          i += 3; // '[', key, ']'
+        }
+      } else if (tok === '(') {
+        const payload: Record<string, unknown> = { name: base };
+        if (ls[i + 1]?.value === ')') {
+          i += 2;
+        } else {
+          const args = this._buildRefCallArgs(ls[i + 1]!.value, loc);
+          if (args) {
+            payload.args = args;
+          }
+          i += 3; // '(', content, ')'
+        }
+        base = new Call(payload as any, {}, loc) as unknown as JessNode;
+      } else {
+        break;
+      }
+    }
+    return base;
+  }
+
+  /**
+   * Apply one `[key]` accessor to `base`, reproducing lookupOrCall's key logic:
+   * type is `variable` when the key token starts with `@`, else `index`; the key
+   * text runs through getInterpolatedOrString (handling `$@x`/`@{x}` interpolation),
+   * and index keys are wrapped in a Quoted.
+   */
+  private _applyReferenceAccessor(base: JessNode, keyStr: string, loc: LocationInfo): JessNode {
+    const type: 'variable' | 'index' = keyStr.startsWith('@') ? 'variable' : 'index';
+    let result: string | JessNode = getInterpolatedOrString(keyStr, loc) as string | JessNode;
+    if (type === 'index') {
+      result = new Quoted(result as any, { quote: '\'' }, loc) as unknown as JessNode;
+    }
+    return new Reference(
+      { target: base as any, key: result as any } as unknown as ReferenceValue,
+      { type }, loc
+    ) as unknown as JessNode;
+  }
+
+  /**
+   * Build mixin-call args for a `(…)` segment in a reference chain from the raw
+   * captured content. Comma-separated values become a List; an empty segment
+   * yields null (no args). Sub-structure here is intentionally shallow — the
+   * accessor-chain call form is rare and no consumer inspects nested arg shape.
+   */
+  private _buildRefCallArgs(content: string, loc: LocationInfo): JessNode | null {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parts = trimmed.split(',').map(p => p.trim()).filter(Boolean);
+    const items = parts.map(p => p.startsWith('@')
+      ? new Reference(p.slice(1), { type: 'variable' as const }, loc) as unknown as Node
+      : this._lessKeyword(p, loc) as unknown as Node);
+    return new List(items as any, undefined, loc) as unknown as JessNode;
+  }
+
+  private _buildNamedColor(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    return new Color({ node: name }, {}, loc) as unknown as JessNode;
+  }
+
+  private _normalizeCompareOp(op: string): ConditionOperator {
+    switch (op) {
+      case '=>':
+      case '>=':
+        return '>=';
+      case '=<':
+      case '<=':
+        return '<=';
+      case '>':
+        return '>';
+      case '<':
+        return '<';
+      default:
+        return '=';
+    }
+  }
+
+  private _buildComparison(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const nodes = nodeChildren(children);
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const left = nodes[0] ?? this._lessKeyword('', loc);
+    const op = ls.find(l => />=|<=|=>|=<|=~|[<>=]/.test(l.value));
+    const right = nodes[1] ?? this._lessKeyword('', loc);
+    if (op) {
+      return new Condition(
+        [left, this._normalizeCompareOp(op.value), right],
+        {},
+        loc
+      ) as unknown as JessNode;
+    }
+    return new Condition([left], {}, loc) as unknown as JessNode;
+  }
+
+  /** Coerce a default() call/reference into a DefaultGuard, mirroring isDefaultGuardCall. */
+  private _maybeDefaultGuard(node: Node, loc: LocationInfo): Node {
+    const n = node as any;
+    if (n?.type === 'Call') {
+      const name = n.name;
+      const nameStr = String(
+        typeof name === 'object' && name !== null && 'valueOf' in name ? name.valueOf() : name ?? ''
+      );
+      if (nameStr === 'default' || nameStr === '??') {
+        return new DefaultGuard('default()', {}, loc) as unknown as Node;
+      }
+    }
+    return node;
+  }
+
+  /** guardInParens: `(` guardOr `)` → Paren, or a bare default() → Paren(DefaultGuard). */
+  private _buildGuardInParens(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    let inner = nodeChildren(children)[0] ?? this._lessKeyword('', loc);
+    inner = this._maybeDefaultGuard(inner, loc) as Node;
+    // `(default())` nests guardInParens(GuardDefault) inside another guardInParens;
+    // collapse the redundant Paren-around-Paren(DefaultGuard) to a single Paren.
+    const innerAny = inner as any;
+    if (innerAny?.type === 'Paren' && (innerAny.value as any)?.type === 'DefaultGuard') {
+      return inner as unknown as JessNode;
+    }
+    return new Paren(inner as any, {}, loc) as unknown as JessNode;
+  }
+
+  /** A single guard term: optional `not`, then a paren-guard or a comparison/value. */
+  private _buildGuardTerm(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const hasNot = ls.some(l => l.value === 'not');
+    let term: Node;
+    if (nodes.length >= 1 && (nodes[0] as any).type === 'Paren') {
+      // guardInParens branch (already a Paren node)
+      term = nodes[0]!;
+    } else {
+      const left = this._maybeDefaultGuard(nodes[0] ?? this._lessKeyword('', loc), loc);
+      const op = ls.find(l => />=|<=|=>|=<|=~|[<>=]/.test(l.value));
+      if (op && nodes[1]) {
+        const right = this._maybeDefaultGuard(nodes[1], loc);
+        term = new Condition([left, this._normalizeCompareOp(op.value), right], {}, loc) as unknown as Node;
+      } else {
+        term = left;
+      }
+    }
+    if (hasNot) {
+      return new Condition([term as any], { negate: true }, loc) as unknown as JessNode;
+    }
+    return term as unknown as JessNode;
+  }
+
+  /** Fold a left-associative chain of terms joined by `and` / `or`. */
+  private _buildGuardJoin(children: ReadonlyArray<Child>, loc: LocationInfo, op: ConditionOperator) {
+    const nodes = nodeChildren(children);
+    if (nodes.length === 0) {
+      return this._lessKeyword('', loc) as unknown as JessNode;
+    }
+    let left = nodes[0]!;
+    for (let i = 1; i < nodes.length; i++) {
+      left = new Condition([left, op, nodes[i]!], {}, loc) as unknown as Node;
+    }
+    return left as unknown as JessNode;
+  }
+
+  /** guard: `when` guardOr — returns the single guardOr child. */
+  private _buildGuard(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    return (nodeChildren(children)[0] ?? this._lessKeyword('', loc)) as unknown as JessNode;
+  }
+
+  private _buildInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const replacements: Node[] = [];
+    let source = '';
+    for (const l of ls) {
+      if (l.value.startsWith('@{')) {
+        const varName = l.value.slice(2, -1);
+        replacements.push(new Reference(varName, { role: 'ident' }, loc) as unknown as Node);
+        source += INTERPOLATION_PLACEHOLDER;
+      } else {
+        source += l.value;
+      }
+    }
+    const interp = new Interpolated({ source, replacements }, { role: 'ident' }, loc);
+    return new InterpolatedSelector(interp as any, {}, loc) as unknown as JessNode;
+  }
+
+  private _buildLessPseudo(
+    type: string, span: Span,
+    children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
+    state: unknown, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
+  ): JessNode {
+    // `:extend(...)` is parsed by the dedicated ExtendPseudo grammar rule, never
+    // here — generic PseudoSelector is guarded against it (extendAhead). So this
+    // builder only ever sees real CSS pseudo-classes/elements.
+    const pseudo = super.buildNode(type, span, children, state, raw) as JessNode;
+    const pseudoArg = (pseudo as unknown as { arg?: unknown }).arg;
+    if (Array.isArray(pseudoArg)) {
+      // Unknown-pseudo: raw string array → Keyword[] for structured serialization.
+      const keywordNodes = (pseudoArg as unknown[]).map(item =>
+        typeof item === 'string' && item !== ' '
+          ? this._lessKeyword(item, loc)
+          : item as JessNode
+      );
+      (pseudo as unknown as { arg: unknown }).arg = keywordNodes;
+    }
+    return pseudo;
+  }
+
+  private _buildLessDeclaration(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(raw);
+    const decl = this._buildDeclaration(raw, loc);
+    const colonIdx = items.findIndex(i => i.comp === ':');
+    const merge = colonIdx > 0 ? items[colonIdx - 1]?.comp : undefined;
+    const assign = merge === '+_' ? '+_:' : merge === '+' ? '+,:' : ':';
+    const d = decl as unknown as { _options?: Record<string, unknown>; options?: Record<string, unknown>; name?: unknown };
+    d._options = { ...(d._options ?? {}), assign };
+    // Wrap the string name. An interpolated property name (`@{prop}`, `pre-@{x}`)
+    // becomes an Interpolated (port of `declaration`'s getInterpolatedNode branch);
+    // a plain name becomes a bare string (or Interpolated when templated).
+    if (typeof d.name === 'string' && d.name) {
+      const nameStr = d.name;
+      (decl as unknown as { name: unknown }).name =
+        (nameStr.includes('@{') || nameStr.includes('${'))
+          ? getInterpolatedNode(nameStr, loc)
+          : nameStr;
+    }
+    // Arithmetic precedence is now folded in the grammar (topSum → Operation node),
+    // so a top-level `10px + 5px` arrives as a single Operation. Wrap it in an
+    // explicit parenthesized Expression (the Jess `$( … )` form) when math mode would
+    // actually perform the operation. Port of wrapOuterExpressionIfNeeded.
+    const dvRaw = (decl as unknown as { value?: unknown }).value;
+    if (dvRaw && typeof dvRaw === 'object' && (dvRaw as { type?: string }).type === 'Operation') {
+      const f = dvRaw as unknown as { operator?: any; left?: any; right?: any };
+      if (shouldOperateWithMathFrames({ mathMode: this.mathMode, parenFrames: [], calcFrames: 0 }, f.operator, f.left, f.right)) {
+        (decl as unknown as { value: unknown }).value = new Expression(dvRaw as any, { parens: true } as any, loc);
+      }
+      return decl;
+    }
+    // A top-level `/`-list that math mode WOULD divide (e.g. `math:always`) promotes to
+    // a division Operation. Default `parens-division` keeps a top-level slash a list.
+    const dvList = (decl as unknown as { value?: unknown }).value;
+    if (dvList && (dvList as any).type === 'List' && (dvList as any).options?.sep === '/' && this.mathMode === 'always') {
+      const items = (dvList as any).value as JessNode[];
+      if (items.length >= 2 && items.every(it => this._isDivisionLike(it))) {
+        let op: JessNode = items[0]!;
+        for (let i = 1; i < items.length; i++) {
+          op = new Operation([op, '/', items[i]] as any, undefined, loc) as unknown as JessNode;
+        }
+        const f = op as unknown as { operator: any; left: any; right: any };
+        (decl as unknown as { value: unknown }).value =
+          shouldOperateWithMathFrames({ mathMode: this.mathMode, parenFrames: [], calcFrames: 0 }, f.operator, f.left, f.right)
+            ? new Expression(op as any, { parens: true } as any, loc)
+            : op;
+        return decl;
+      }
+    }
+    // Legacy IE `filter: progid:…(…)` values. Chevrotain lexes the whole run as one
+    // `LegacyMSFilter` token and `processLegacyMSFilterToken` collapses it to a single
+    // Interpolated (role=any): the raw source with every `@var` replaced by a
+    // placeholder (colorstr assignments keep the surrounding quotes) and the `@var`
+    // references as replacements. We have no such token — the value parsed into a
+    // Sequence/List/Paren tree — but for a `progid:` filter run we reconstruct the
+    // identical node from the raw value source.
+    const dv = (decl as unknown as { value?: unknown }).value;
+    const dvIsArray = Array.isArray(dv);
+    const dvHasNode = dvIsArray && (dv as unknown[]).some(p => !!p && typeof p === 'object' && 'type' in (p as object));
+    if (dvIsArray && dvHasNode) {
+      const src = this._source.slice(loc.start, loc.end);
+      const colonPos = src.indexOf(':');
+      const rawVal = colonPos >= 0 ? src.slice(colonPos + 1).trim().replace(/;\s*$/, '').trim() : src;
+      if (/^progid:/i.test(rawVal)) {
+        const legacy = this._buildLegacyMSFilter(rawVal, loc);
+        (decl as unknown as { value: unknown }).value = legacy;
+      }
+    }
+    return decl;
+  }
+
+  /**
+   * Port of `processLegacyMSFilterToken` (lessRecursiveParser.ts): a `progid:…`
+   * filter value string → Interpolated(role=any) with `@var` runs templated out,
+   * or a plain Keyword when the run has no variables.
+   */
+  private _buildLegacyMSFilter(source: string, loc: LocationInfo): JessNode {
+    source = source.replace(/\s*=\s*/g, '=');
+    const varRe = /@([_a-zA-Z\xA0-￿][-_a-zA-Z0-9\xA0-￿]*)/g;
+    const matches = [...source.matchAll(varRe)];
+    if (matches.length === 0) {
+      return this._lessKeyword(source, loc) as unknown as JessNode;
+    }
+    const templatedSource = source.replace(
+      varRe,
+      (_full, _name, offset: number, fullSource: string) => {
+        const prefix = fullSource.slice(0, offset);
+        const key = prefix.match(/([A-Za-z]+)=$/)?.[1];
+        if (key && /colorstr$/i.test(key)) {
+          return `"${INTERPOLATION_PLACEHOLDER}"`;
+        }
+        return INTERPOLATION_PLACEHOLDER;
+      }
+    );
+    const replacements = matches.map(match =>
+      createInterpolatedReference('@', match[1]!, loc) as unknown as JessNode);
+    return new Interpolated(
+      { source: templatedSource, replacements: replacements as any },
+      { role: 'any' },
+      loc
+    ) as unknown as JessNode;
+  }
+
+  // Precedence is folded in the grammar (mathSum/topSum → Operation); the base
+  // _buildOperation / _isDivisionLike (inherited from CssParser) handle the slash-
+  // vs-list decision. `OperationTop` dispatches here with slashEnabled = math:always.
+
+  private _buildAmpersand(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const hasParen = ls.some(l => l.value === '(');
+    if (!hasParen) {
+      // Glued-suffix (`&-bar`, `&1`) or prefix (`.foo-&`) template: the first leaf
+      // is the whole ampersand-token image. Mirror the reference's
+      // getAmpersandTemplateValue (selectors.ts): bare `&` → undefined; a `&`-led
+      // image keeps everything after the `&` (`&-bar` → '-bar'); a non-`&`-led image
+      // that still contains `&` keeps the full image (`.foo-&` → '.foo-&').
+      const image = ls[0]?.value ?? '&';
+      const appendValue = this._ampersandTemplateValue(image);
+      return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
+    }
+    const content = ls.find(l => l.value !== '&' && l.value !== '(' && l.value !== ')')?.value ?? '';
+    const trimmed = content.trim();
+    const appendValue = trimmed === 'nil'
+      ? ''
+      : trimmed.replace(/^(['"])([\s\S]*)\1$/, '$2');
+    return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
+  }
+
+  /** Port of selectors.ts getAmpersandTemplateValue (reference parser). */
+  private _ampersandTemplateValue(image: string): string | undefined {
+    if (image === '&') {
+      return undefined;
+    }
+    if (image.startsWith('&')) {
+      return image.slice(1) || undefined;
+    }
+    if (image.includes('&')) {
+      return image;
+    }
+    return undefined;
+  }
+
+  /**
+   * A single extend target inside `extend( … )`: a complex selector plus its
+   * optional `all` / `!all` flag (selectors.ts `complexSelector`'s OPTION2 flag).
+   * Produced as an `Extend` carrier the surrounding pseudo/statement groups.
+   */
+  private _buildExtendTarget(
+    _children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
+  ): JessNode {
+    // Components: the target selector (string or selector node) + an optional
+    // trailing `all` / `!all` flag leaf. The complexSelector builder collapses a
+    // lone `.x` to a bare string, so accept either form here.
+    const comps = spannedComponents(raw);
+    const isFlag = (c: unknown): c is string => typeof c === 'string' && /^!?all$/.test(c);
+    const hasFlag = comps.some(c => isFlag(c.comp));
+    const flag = hasFlag ? ExtendFlag.All : ExtendFlag.Exact;
+    const targetComp = comps.find(c => !isFlag(c.comp))?.comp;
+    const target = (typeof targetComp === 'string'
+      ? targetComp
+      : (targetComp ?? '&')) as Selector;
+    return new Extend({ target, flag }, {}, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `:extend( … )` pseudo form (selectors.ts `extend`): groups its ExtendTarget
+   * children. Targets sharing one flag collapse to a single Extend whose target is
+   * a SelectorList (or the lone selector); mixed flags stay as one Extend each,
+   * returned in a List. Mirrors mergeExtends' target-and-flag grouping.
+   */
+  private _buildExtendPseudo(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    // Grammar guarantees ≥1 target: `extendBody = sepBy(ExtendTarget, ',')`.
+    const targets = nodeChildren(children).filter(n => n.type === 'Extend') as unknown as Array<{
+      target: Selector; flag: number;
+    }>;
+    const firstFlag = targets[0]!.flag;
+    const allSameFlag = targets.every(t => t.flag === firstFlag);
+    if (allSameFlag) {
+      const target = targets.length === 1
+        ? targets[0]!.target
+        : this._makeSelectorList(targets.map(t => t.target) as any, loc) as unknown as Selector;
+      return new Extend({ target, flag: firstFlag }, {}, loc) as unknown as JessNode;
+    }
+    const extendNodes: JessNode[] = targets.map(t =>
+      new Extend({ target: t.target, flag: t.flag }, {}, loc) as unknown as JessNode
+    );
+    return new List(extendNodes as any, {}, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `&:extend( … );` (or bare `:extend( … );`) statement form (selectors.ts
+   * `ampersandExtend`). The ExtendPseudo child already carries the grouped
+   * Extend(s); the leading `&` is just the statement marker.
+   */
+  private _buildExtendStatement(
+    children: ReadonlyArray<Child>, _raw: ReadonlyArray<{ _tag: string }>, _loc: LocationInfo
+  ): JessNode {
+    // ExtendPseudo always yields the grouped Extend (or List of Extends).
+    const built = nodeChildren(children).find(n => n.type === 'Extend' || n.type === 'List')!;
+    return built as unknown as JessNode;
+  }
+
+  /**
+   * Decode a single `[key]` accessor into its Less lookup-key AST — the ONE shared
+   * decoder for every accessor-chain builder path (var-decl value, declaration value,
+   * at-rule prelude, namespace ref). Accepts either a raw authored key STRING (the
+   * text inside the brackets, e.g. `@@foo`, `$@x`, `bar`, ``), or a SquareParen `Paren`
+   * node whose inner content the grammar already parsed (a raw string or a `@var`
+   * Reference). Returns the key exactly as the reference lookupOrCall production would:
+   *
+   *   `[]`        → -1        (index, empty)
+   *   `[@@name]`  → Reference{type:variable,key:name}   (dynamic variable lookup)
+   *   `[$@name]` / `[@$name]` → Quoted(Interpolated(@name))  (dynamic property lookup)
+   *   `[@name]`   → 'name'    (static variable lookup; bare string key)
+   *   `[$name]`   → Quoted('name')   (property lookup; `$` marker dropped)
+   *   `[name]`    → Quoted('name')   (index)
+   *
+   * Exactly one `@`/`$` marker is the lookup marker and is never kept.
+   */
+  private _decodeAccessorKey(
+    rawTextOrNode: JessNode | string,
+    loc: LocationInfo
+  ): JessNode | string | number {
+    // Recover the authored key text: a bare string, a SquareParen node's inner
+    // content (string or parsed `@foo` Reference), or an already-extracted string.
+    let rawText: string | undefined;
+    let innerVal: unknown;
+    if (typeof rawTextOrNode === 'string') {
+      rawText = rawTextOrNode.trim();
+    } else {
+      innerVal = (rawTextOrNode as any).node ?? (rawTextOrNode as any).value;
+      // Empty `[]` — no inner content, or an empty Keyword placeholder → index key -1.
+      if (!innerVal
+        || this._isEmptyKeywordLike(innerVal)) {
+        return -1;
+      }
+      if (typeof innerVal === 'string') {
+        rawText = innerVal.trim();
+      } else if (typeof innerVal === 'object'
+        && (innerVal as any).type === 'Reference' && typeof (innerVal as any).key === 'string') {
+        rawText = '@' + (innerVal as any).key;
+      } else if (this._isKeywordLike(innerVal)
+        && typeof (innerVal as any).value === 'string') {
+        // A bare/ident/`$prop` accessor key parsed as a Keyword leaf (e.g.
+        // `#ns[foo]`, `#ns.vars[$sub]`) — recover its text so the `$`/`@`/bare
+        // key logic below applies uniformly with the string path.
+        rawText = (innerVal as any).value.trim();
+      }
+    }
+    if (rawText === undefined || rawText === '') {
+      // Empty `[]` (bare string) → index key -1. A non-string/non-@var node (e.g. an
+      // interpolated key) falls back to its `.key` or the node itself.
+      if (rawText === '') {
+        return -1;
+      }
+      return (innerVal as any)?.key ?? (innerVal as JessNode);
+    }
+    // `@@name` → dynamic variable lookup; key is a variable Reference.
+    if (rawText.startsWith('@@')) {
+      return new Reference(rawText.slice(2), { type: 'variable' as const }, loc) as unknown as JessNode;
+    }
+    // `$@name` / `@$name` → property lookup with a dynamic (variable) name:
+    // Quoted(Interpolated(@name)). The `$`/`@` markers are never kept.
+    if (rawText.startsWith('$@') || rawText.startsWith('@$')) {
+      const varRef = new Reference(rawText.slice(2), { role: 'ident' as const }, loc) as unknown as Node;
+      const interp = new Interpolated(
+        { source: INTERPOLATION_PLACEHOLDER, replacements: [varRef] as any },
+        { role: 'ident' as const }, loc
+      ) as unknown as string;
+      return new Quoted(interp, {}, loc) as unknown as JessNode;
+    }
+    // `@name` → variable lookup; key is the bare name (a string).
+    if (rawText.startsWith('@')) {
+      return rawText.slice(1);
+    }
+    // `$name` (property reference) or bare `name` (index) → Quoted(name); the `$`
+    // property marker is dropped.
+    return new Quoted(rawText.replace(/^\$/, ''), {}, loc) as unknown as JessNode;
+  }
+
+  protected override _assembleSegment(seg: Spanned[], loc: LocationInfo): Component {
+    const result = super._assembleSegment(seg, loc);
+    const isNsNameEarly = (c: unknown): c is string =>
+      typeof c === 'string' && /^[#.]-?[_a-zA-Z]/.test(c.trim());
+    if (!Array.isArray(result)) {
+      // A lone `#ns.mixin` / `.mixin` string in declaration-value position is a
+      // mixin-ruleset name Reference — not a raw string. Faithful to the reference
+      // `mixinReference`→`mixinName` (asReference:true). (The var-decl namespace path
+      // does this too via _tryParseNamespaceRef.)
+      if (isNsNameEarly(result)) {
+        const segs = (result as string).trim().match(/[#.][^#.]*/g) ?? [(result as string).trim()];
+        const nameKey: string | string[] = segs.length === 1 ? segs[0]! : segs;
+        const rawKey = segs.length > 1 ? segs.join('') : undefined;
+        return new Reference(
+          { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
+          { type: 'mixin-ruleset', role: 'name' } as any, loc
+        ) as unknown as Component;
+      }
+      return result as Component;
+    }
+    if (result.length < 2) {
+      return result as Component;
+    }
+    const comps = result as Component[];
+    const isNsName = (c: unknown): c is string =>
+      typeof c === 'string' && /^[#.]-?[_a-zA-Z-￿]/.test(c.trim());
+    const isSquareParen = (c: unknown): c is JessNode =>
+      !!c && typeof c === 'object' && (c as any).type === 'Paren'
+      && (c as any)._options?.delimiter === 'square';
+    const isRoundParen = (c: unknown): c is JessNode =>
+      !!c && typeof c === 'object' && (c as any).type === 'Paren'
+      && (c as any)._options?.delimiter !== 'square';
+    if (!isNsName(comps[0])) {
+      return comps as unknown as Component;
+    }
+    // Consume all leading #/.-prefixed strings as namespace path segments.
+    // A single token like '#ns.breakpoint' also gets split into sub-segments.
+    const splitNsToken = (s: string): string[] => s.match(/[#.][^#.]*/g) ?? [s];
+    let i = 0;
+    const pathSegs: string[] = [];
+    while (i < comps.length && isNsName(comps[i])) {
+      pathSegs.push(...splitNsToken((comps[i] as string).trim()));
+      i++;
+    }
+    const rawPathText = pathSegs.join('');
+    const nameKey: string | string[] = pathSegs.length === 1 ? pathSegs[0]! : pathSegs;
+    const rawKey = pathSegs.length > 1 ? rawPathText : undefined;
+    let base: JessNode = new Reference(
+      { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
+      { type: 'mixin-ruleset', role: 'name' } as any, loc
+    ) as unknown as JessNode;
+    // A bare `#ns.mixin` / `.mixin` / `#ns > .a` run in declaration-value position,
+    // with NO following `[`/`(`, is still a mixin-ruleset name Reference — not a raw
+    // string/array. Faithful to the reference `mixinReference`→`mixinName`
+    // (asReference:true) `flushPendingAsRef` shape. (The var-decl path does this too.)
+    if (i >= comps.length || (!isSquareParen(comps[i]) && !isRoundParen(comps[i]))) {
+      // Only rewrite when the namespace run is the WHOLE value; a trailing non-paren
+      // component means this wasn't a lone namespace target (leave it as-is).
+      return (i === comps.length ? base : comps as unknown) as Component;
+    }
+    while (i < comps.length) {
+      const item = comps[i];
+      if (isSquareParen(item)) {
+        const innerKey = this._decodeAccessorKey(item as JessNode, loc);
+        // A bare-string key (`@var`) or an `@@name` indirection Reference is a
+        // variable lookup; a Quoted/number key is a property (`index`) lookup —
+        // mirror _applyReferenceAccessor's key→type logic (the var-decl accessor
+        // path does the same).
+        const keyIsVar = typeof innerKey === 'string'
+          || (innerKey != null && typeof innerKey === 'object'
+            && (innerKey as any).type === 'Reference');
+        const accType: 'variable' | 'index' = keyIsVar ? 'variable' : 'index';
+        base = new Reference(
+          { target: base as any, key: innerKey as any } as unknown as ReferenceValue,
+          { type: accType }, loc
+        ) as unknown as JessNode;
+        i++;
+      } else if (isRoundParen(item)) {
+        const innerContent = (item as any).value ?? (item as any).node;
+        const isEmpty = this._isEmptyKeywordLike(innerContent);
+        const argsNode = isEmpty ? null : this._parenToArgs(item, loc);
+        const callPayload: Record<string, unknown> = { name: base };
+        if (argsNode) {
+          callPayload.args = argsNode;
+        }
+        base = new Call(callPayload as any, {}, loc) as unknown as JessNode;
+        i++;
+      } else {
+        break;
+      }
+    }
+    return (i === comps.length ? base : comps as unknown) as Component;
+  }
+
+  private _buildEscapedValue(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const inner = nodeChildren(children)[0];
+    if (!inner) {
+      return this._lessKeyword('', loc) as unknown as JessNode;
+    }
+    const n = inner as unknown as { _options?: Record<string, unknown> };
+    n._options = { ...(n._options ?? {}), escaped: true };
+    return inner;
+  }
+
+  // `@{colorVar}` / `pre-@{x}` in value position. Port of `processValueToken`'s
+  // InterpolatedIdent branch: getInterpolatedOrString → Interpolated (role=ident),
+  // or a plain Keyword when the run resolves to a bare string.
+  private _buildInterpValue(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    const items = spannedComponents(raw);
+    const image = items.map(i => (typeof i.comp === 'string' ? i.comp : '')).join('');
+    const result = getInterpolatedOrString(image, loc);
+    if (typeof result === 'string') {
+      return this._lessKeyword(result, loc) as unknown as JessNode;
+    }
+    return result as unknown as JessNode;
+  }
+
+  protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const call = super._buildCall(rawChildren, loc) as unknown as {
+      name: unknown; args: unknown; _options?: Record<string, unknown>;
+    };
+    const key = typeof call.name === 'string' ? call.name : '';
+    // Function calls share the mixin args grammar, so they get the same `,`/`;`
+    // mix rejection (e.g. `foo(@a: 1; @b: 2, @c: 3)`).
+    this._checkMixedArgDelimiters(call.args as unknown as JessNode, 'function', loc);
+    const nameRef = new Reference(key, { type: 'function', fallbackValue: true } as any, loc);
+    const next = new Call({ name: nameRef as any, args: call.args as any }, { silentFail: true } as any, loc);
+    return next as unknown as JessNode;
+  }
+
+  private _buildLessCustomDecl(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const propNameText = ls[0]?.value ?? '';
+    // `--@{key}: …` (port of the reference's InterpolatedCustomProperty branch):
+    // an interpolated name becomes an Interpolated node, same as a regular
+    // declaration's `getInterpolatedNode` branch.
+    const name = (propNameText.includes('@') || propNameText.includes('$'))
+      ? getInterpolatedNode(propNameText, loc)
+      : propNameText;
+    const valueNodes = nodeChildren(children);
+    if (valueNodes.length > 0) {
+      const value = valueNodes.length === 1 ? valueNodes[0]! : valueNodes;
+      return new CustomDeclaration({ name: name as any, value: value as any }, undefined, loc);
+    }
+    const valueText = ls.slice(2).filter(l => l.value !== ';').map(l => l.value).join('').trim();
+    return new CustomDeclaration({ name: name as any, value: this._lessKeyword(valueText, loc) as any }, undefined, loc);
+  }
+
+  /**
+   * `--foo: { color: @a; }` — a curly-brace custom-property value whose body
+   * opportunistically structured as a declaration list (customCurlyBlock in the
+   * grammar), so nested `@var`/calls evaluate normally instead of staying opaque
+   * text. Wrapped in a Block(type: 'curly') so `{`/`}` re-render around it.
+   */
+  private _buildLessCustomBlock(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const bodyNodes = nodeChildren(children);
+    // Block.value must remain a single Node; Sequence is the interim container until
+    // Block can hold a bare declaration array.
+    const seq = new Sequence(bodyNodes as any, undefined, loc);
+    return new Block(seq as any, { type: 'curly' }, loc) as unknown as JessNode;
+  }
+
+  private _warnDeprecatedValue(span: Span) {
+    const text = this._source.slice(span.start, span.end);
+    if (/\d\s*\.\//.test(text)) {
+      this._warn('The ./ operator is deprecated and will be removed.', 'dot-slash-operator');
+    }
+  }
+
+  private _warnCustomPropVars(span: Span) {
+    const text = this._source.slice(span.start, span.end);
+    const colon = text.indexOf(':');
+    const value = colon >= 0 ? text.slice(colon + 1) : text;
+    const at = value.match(/@[a-zA-Z][\w-]*/);
+    if (at && !value.includes('@{')) {
+      this._warn(
+        `"${at[0]}" in custom property values is treated as literal text. Use @{${at[0].slice(1)}} for interpolation.`,
+        'variable-in-unknown-value'
+      );
+    }
+    const dollar = value.match(/\$[a-zA-Z][\w-]*/);
+    if (dollar && !value.includes('${')) {
+      this._warn(
+        `"${dollar[0]}" in custom property values is treated as literal text. Use \${${dollar[0].slice(1)}} for interpolation.`,
+        'property-in-unknown-value'
+      );
+    }
+  }
+
+  private _warnAtRulePreludeVars(span: Span) {
+    const text = this._source.slice(span.start, span.end);
+    const brace = text.indexOf('{');
+    const prelude = (brace >= 0 ? text.slice(0, brace) : text).replace(/^\s*@-?[\w-]+/, '');
+    const at = prelude.match(/@[a-zA-Z][\w-]*/);
+    if (at && !prelude.includes('@{')) {
+      this._warn(
+        `"${at[0]}" in at-rule preludes is deprecated. Use @{${at[0].slice(1)}} for interpolation.`,
+        'at-rule-prelude-variable'
+      );
+    }
+  }
+
+  private _buildMixinCall(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    // `!important` (the `!`/`important` leaves) must end the name path and set
+    // markImportant — never leak into the Reference key.
+    const markImportant = ls.some(l => l.value === '!');
+    const nameParts: string[] = [];
+    for (const l of ls) {
+      if (l.value === '(' || l.value === ';' || l.value === '!') {
+        break;
+      }
+      nameParts.push(l.value);
+    }
+    const name = nameParts.join('');
+    const nodes = nodeChildren(children);
+    const argsList = nodes.find(n => n.type === 'List');
+    const hasArgs = argsList && (argsList as unknown as { value?: unknown[] }).value?.length;
+    if (argsList === undefined) {
+      this._warn('Calling a mixin without parentheses is deprecated', 'mixin-call-no-parens');
+    } else {
+      const src = this._source.slice(loc.start, loc.end);
+      if (/^\S+\s+\(/.test(src)) {
+        this._warn('Whitespace between a mixin name and parentheses is deprecated', 'mixin-call-whitespace');
+      }
+    }
+    const ref = new Reference(
+      { key: name } as unknown as ReferenceValue,
+      { type: 'mixin-ruleset', role: 'name' } as any,
+      loc
+    );
+    const callArgs = hasArgs ? this._convertArgsForCall(argsList as unknown as JessNode, loc) : undefined;
+    return new Call(
+      { name: ref as any, args: callArgs as any },
+      { markImportant } as any, loc
+    ) as unknown as JessNode;
+  }
+
+  /**
+   * `@name(...)` (no `:`) → a detached-ruleset variable CALL. Faithful port of
+   * `varDeclarationOrCall`'s LParen branch (selectors.ts): build a `Reference`
+   * over the var name (`type: 'variable', role: 'name'`), wrap in a `Call` with
+   * the (optional) args, and wrap THAT in an `Expression` (a top-level variable
+   * call is an expression, not a parenthesized one). `!important` sets
+   * `markImportant` on the Call, mirroring the production.
+   */
+  private _buildVarCall(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const markImportant = ls.some(l => l.value === '!');
+    // First leaf is the `@name` token (the MixinArgs parens live in the sub-node).
+    const nameLeaf = ls.find(l => l.value.startsWith('@'));
+    const rawName = nameLeaf?.value ?? '';
+    const name = rawName.startsWith('@') ? rawName.slice(1) : rawName;
+    const nameNode = this._lessKeyword(name, loc);
+    const nameRef = new Reference(
+      { key: nameNode } as unknown as ReferenceValue,
+      { type: 'variable', role: 'name' } as any,
+      loc
+    );
+    const nodes = nodeChildren(children);
+    const argsList = nodes.find(n => n.type === 'List');
+    const hasArgs = argsList && (argsList as unknown as { value?: unknown[] }).value?.length;
+    // `@media()` etc — a known at-rule name used as a variable call, allowed only
+    // with empty parens (port of isVariableLike's 'at-rule-variable' warning).
+    if (!hasArgs && KNOWN_AT_RULE_VAR_NAME_RE.test(name)) {
+      this._warn('Using known at-rule names as variables is deprecated', 'at-rule-variable');
+    }
+    const callArgs = hasArgs ? this._convertArgsForCall(argsList as unknown as JessNode, loc) : undefined;
+    const call = new Call(
+      { name: nameRef as any, args: callArgs as any },
+      (markImportant ? { markImportant: true } : undefined) as any,
+      loc
+    );
+    return new Expression(call as unknown as Node, undefined, loc) as unknown as JessNode;
+  }
+
+  /** `...` or `@name...` variadic arg → `Rest`. Definition-shape (string name); a
+   * CALL turns it into `Rest(Reference)` via `_convertArgsForCall`. */
+  private _buildRest(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    const items = spannedComponents(raw);
+    const nameItem = items.find(i => typeof i.comp === 'string' && i.comp.startsWith('@'));
+    const name = nameItem ? String(nameItem.comp).slice(1) : '';
+    return new Rest(name, {}, loc) as unknown as JessNode;
+  }
+
+  /** `@name: value` named arg/param → `VarDeclaration`. The value is assembled by the
+   * shared value builder (`_assembleValue`) — the same machinery as a declaration
+   * value, so trivia and Keyword-ification are handled and no manual trimming is
+   * needed. Named args flow through function calls too; the runtime decides whether
+   * the target accepts them. */
+  private _buildNamedArg(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    const items = spannedComponents(raw);
+    const colonIdx = items.findIndex(i => i.comp === ':');
+    const nameItem = items.find(i => typeof i.comp === 'string' && i.comp.startsWith('@'));
+    const name = String(nameItem?.comp ?? '').slice(1);
+    const valueItems = colonIdx >= 0 ? items.slice(colonIdx + 1) : [];
+    const { value } = this._assembleValue(valueItems, loc);
+    // A param/arg VarDeclaration value is always a Node in the callable-binding
+    // path (it calls `value.hasFlag(...)`). `_assembleValue` leaves a lone bare
+    // keyword (`@a: inherit`) as a raw string, so wrap it in a Keyword here.
+    const paramValue = typeof value === 'string' ? this._valueKeyword(value, loc) : value;
+    return new VarDeclaration(
+      { name: name as any, value: paramValue as any } as any,
+      {} as VarDeclarationOptions,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /** Mixin-call args are assembled by the SAME builder as function-call args
+   * (`_assembleArgs` via `_betweenParens`) — identical comma/semicolon and value
+   * handling. Named args are `VarDeclaration`s and variadic args `Rest`, which pass
+   * through as single components. A bare `@name` is a `Reference` (the call shape);
+   * the mixin-DEFINITION builder reinterprets a lone `@name` as a param. */
+  private _buildMixinArgs(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const inner = this._betweenParens(spannedComponents(raw));
+    const args = this._assembleArgs(inner, loc);
+    this._checkMixedArgDelimiters(args as unknown as JessNode, 'mixin', loc);
+    return args;
+  }
+
+  /** Less forbids mixing the COMMA and SEMICOLON argument separators: once a
+   * semicolon separates args, a comma is a value-list separator, so a semicolon-group
+   * may not hold 2+ named params (`@a: 1, @b: 2`). `_assembleArgs` renders such a group
+   * as a List of ≥2 VarDeclarations. (This is purely about the `,` vs `;` argument
+   * separators — a `/` inside a value is unrelated and never checked.) Applies to BOTH
+   * mixin and function calls (args are unified). */
+  private _checkMixedArgDelimiters(args: JessNode | undefined, kind: 'mixin' | 'function', loc: LocationInfo): void {
+    const list = args as unknown as { type?: string; options?: { sep?: string }; value?: JessNode[] };
+    if (list?.type !== 'List' || list.options?.sep !== ';' || !Array.isArray(list.value)) {
+      return;
+    }
+    for (const el of list.value) {
+      const group = el as unknown as { type?: string; value?: JessNode[] };
+      if (group?.type === 'List' && Array.isArray(group.value)
+        && group.value.filter(n => (n as { type?: string })?.type === 'VarDeclaration').length >= 2) {
+        this._error(`Cannot mix ; and , as delimiter types in ${kind} arguments`, loc.start);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Mixin-DEFINITION param conversion. With combinator-composed args a bare `@name`
+   * value parses as a `Reference{variable}` (the CALL shape); in a DEFINITION it is a
+   * param, so convert it to `VarDeclaration(name, Nil)`. Named params (`@a: 1`),
+   * variadic (`Rest`) and pattern-match values stay as-is. Returns a NEW List (the
+   * def/call split must not mutate a shared node).
+   */
+  private _convertArgsForDefinition(argsList: JessNode | undefined, loc: LocationInfo): JessNode | undefined {
+    if (!argsList || argsList.type !== 'List') {
+      return argsList;
+    }
+    const list = argsList as unknown as List<Node>;
+    const value = (list as unknown as { value?: JessNode[] }).value;
+    if (!value || value.length === 0) {
+      return argsList;
+    }
+    let changed = false;
+    const converted = value.map((node): JessNode => {
+      if (node.type === 'Reference'
+        && (node as unknown as { options?: { type?: string } }).options?.type === 'variable') {
+        const key = (node as unknown as { key?: unknown }).key;
+        const name = typeof key === 'string'
+          ? key
+          : String((key as { valueOf?(): unknown } | undefined)?.valueOf?.() ?? '');
+        changed = true;
+        return new VarDeclaration(
+          { name: name as any, value: new Nil('', {}, loc) as unknown as JessNode as any } as any,
+          {} as VarDeclarationOptions,
+          loc
+        ) as unknown as JessNode;
+      }
+      return node;
+    });
+    if (!changed) {
+      return argsList;
+    }
+    return new List(converted as any, list.options as any, loc) as unknown as JessNode;
+  }
+
+  /**
+   * Mixin-CALL argument conversion (reference `convertArgsForCall`, root.ts).
+   * `_buildMixinArgs` builds bare `@name` args as definition-style VarDeclarations
+   * (Nil value) — correct for a DEFINITION param, but in a CALL a bare `@name` is a
+   * variable being PASSED, i.e. a `Reference{type:variable}`. Named args (`@a: 1`)
+   * and value args stay as-is; a `Rest('name')` becomes `Rest(Reference{variable})`.
+   * Returns a NEW List (the def/call split must not mutate a shared node).
+   */
+  private _convertArgsForCall(argsList: JessNode | undefined, loc: LocationInfo): JessNode | undefined {
+    if (!argsList || argsList.type !== 'List') {
+      return argsList;
+    }
+    const list = argsList as unknown as List<Node>;
+    const value = (list as unknown as { value?: JessNode[] }).value;
+    if (!value || value.length === 0) {
+      return argsList;
+    }
+    let changed = false;
+    const converted = value.map((node): JessNode => {
+      if (node.type === 'VarDeclaration') {
+        const decl = node as unknown as { name: JessNode; value?: JessNode };
+        const val = decl.value;
+        if (!val || val.type === 'Nil') {
+          // Bare `@name` → a variable reference being passed to the call.
+          const key = (decl.name as unknown as { valueOf(): string }).valueOf();
+          changed = true;
+          return new Reference(
+            { key } as unknown as ReferenceValue,
+            { type: 'variable' } as any,
+            loc
+          ) as unknown as JessNode;
+        }
+        return node;
+      }
+      if (node.type === 'Rest') {
+        const restVal = (node as unknown as { value: unknown }).value;
+        if (typeof restVal === 'string') {
+          changed = true;
+          return new Rest(
+            new Reference({ key: restVal } as unknown as ReferenceValue, { type: 'variable' } as any, loc) as any,
+            {} as any,
+            loc
+          ) as unknown as JessNode;
+        }
+        return node;
+      }
+      return node;
+    });
+    if (!changed) {
+      return argsList;
+    }
+    return new List(
+      converted as any,
+      list.options as any,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  private _buildAnonMixin(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    // `.(@p) { … }` → a nameless Mixin (reference `anonymousMixinDefinition`,
+    // selectors.ts: `new Mixin({ params, rules })`), NOT a `.`-selector Ruleset.
+    // The MixinArgs sub-node is the param List; everything else is the body.
+    const nodes = nodeChildren(children);
+    const argsList = nodes.find(n => n.type === 'List');
+    const rules = nodes.filter(n => n !== argsList);
+    // Definition params: a bare `@name` value is a param, so reinterpret it.
+    const defParams = this._convertArgsForDefinition(argsList as unknown as JessNode, loc);
+    const params = (defParams as unknown as { value?: unknown[] })?.value?.length
+      ? defParams as unknown as List<Node>
+      : undefined;
+    return new Mixin(
+      { params, rules } as any,
+      undefined,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  /**
+   * `each(<iterable>, { … })` → a `For` control node (the $for shape), not a Call.
+   * The value(s) before the comma are the iterable; the callback block's body becomes
+   * the loop rules. A literal block callback carries no captured params here, so the
+   * pattern defaults to the Less `[value, key, index]` triple.
+   */
+  /** A bare detached ruleset `{ … }` in value / argument position → a Mixin holding
+   * its rules (same shape `@var: { … }` produces in `_buildVarDeclaration`). */
+  private _buildDetachedRuleset(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ruleNodes = nodeChildren(children);
+    return new Mixin({ rules: ruleNodes } as any, {}, loc);
+  }
+
+  private _buildEachFor(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    // Args come from the shared functionCallArgs: the callback (detached ruleset /
+    // `.(…){…}`) is a Mixin sub-node; everything else is the iterable.
+    const nodes = nodeChildren(children);
+    const callback = nodes.find(n => n.type === 'Mixin') as unknown as { rules?: JessNode[]; params?: JessNode } | undefined;
+    const iterableNodes = nodes.filter(n => (n as unknown) !== (callback as unknown));
+    const paramsList = ((callback?.params as unknown as { type?: string } | undefined)?.type === 'List')
+      ? callback!.params as JessNode
+      : undefined;
+    const ruleNodes = callback?.rules ?? [];
+    const iterable: JessNode = iterableNodes.length === 1
+      ? iterableNodes[0]!
+      : (new List(iterableNodes as any, undefined, loc) as unknown as JessNode);
+    return new For(
+      { pattern: this._eachPattern(paramsList, loc), iterable: { kind: 'node', value: iterable as unknown as Node }, rules: ruleNodes as unknown as Node[] },
+      undefined,
+      loc
+    );
+  }
+
+  private _eachPattern(paramsList: JessNode | undefined, loc: LocationInfo): ForPattern {
+    // Explicit `.(@v; @i)` callback params parse straight into VarDeclaration nodes
+    // (name 'v'/'i'); reuse them as the loop's binding pattern.
+    const params = ((paramsList as unknown as { value?: JessNode[] } | undefined)?.value ?? [])
+      .filter((p): p is JessNode => p?.type === 'VarDeclaration');
+    if (params.length === 1) {
+      return { kind: 'single', value: params[0] as any };
+    }
+    if (params.length >= 2) {
+      return { kind: 'tuple', values: [params[0], ...params.slice(1)] as any };
+    }
+    // A param-less block callback iterates with the Less default triple.
+    const paramVar = (name: string) => new VarDeclaration(
+      { name, value: this._lessKeyword('', loc) } as any,
+      { paramVar: true } as any,
+      loc
+    );
+    return { kind: 'tuple', values: [paramVar('value'), paramVar('key'), paramVar('index')] };
+  }
+
+  private _buildMixinOrQualified(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nodes = nodeChildren(children);
+    const hasBlock = ls.some(l => l.value === '{');
+    // `!important` on a mixin call: the `!`/`important` leaves are direct children
+    // (MixinArgs's own parens live in the sub-node, not in `ls`). The `!` ends the
+    // name path and flips markImportant — it must NOT leak into the Reference key.
+    const markImportant = ls.some(l => l.value === '!');
+    const nameParts: string[] = [];
+    for (const l of ls) {
+      if (l.value === '(' || l.value === '{' || l.value === '}' || l.value === ';' || l.value === ')' || l.value === '!') {
+        break;
+      }
+      nameParts.push(l.value);
+    }
+    const name = nameParts.join('');
+    const argsList = nodes.find(n => n.type === 'List');
+    const guard = nodes.find(n => n.type === 'Paren' || n.type === 'Condition' || n.type === 'DefaultGuard');
+    // argsList presence (from MixinArgs sub-node) signals explicit parens
+    const hasExplicitParens = argsList !== undefined;
+    if (hasBlock) {
+      const rawRuleNodes = nodes.filter(n => n !== argsList && n !== guard);
+      // Lift standalone comments in the body (the Mixin/qualified-rule body is built
+      // inline here, bypassing _buildRuleset's own comment lift).
+      const braceIdx = this._source.indexOf('{', loc.start);
+      const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc.start;
+      const closeIdx = this._source.lastIndexOf('}', loc.end - 1);
+      const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc.end;
+      const ruleNodes = this._liftStandaloneComments(rawRuleNodes as any, bodyStart, bodyEnd, loc);
+      if (hasExplicitParens) {
+        // Has explicit parens -- it's a Mixin definition
+        const guardText = guard !== undefined ? (guard as any).toTrimmedString?.() ?? '' : '';
+        const hasDefault = guardText.includes('default');
+        // Definition params: reinterpret a bare `@name` value as a param.
+        const defParams = this._convertArgsForDefinition(argsList as unknown as JessNode, loc);
+        const nonEmptyParams = (defParams as unknown as { value?: unknown[] })?.value?.length
+          ? defParams as unknown as List<Node>
+          : undefined;
+        return new Mixin(
+          { name, params: nonEmptyParams, rules: ruleNodes, guard: guard as any },
+          { hasDefault: !!hasDefault },
+          loc
+        ) as unknown as JessNode;
+      }
+      // No parens -- qualified rule (Ruleset)
+      // Extract any Extend nodes from the selector and prepend them to rules
+      const { cleanedSelector, extractedExtends } = this._extractExtendsFromSelectorText(name || '&', loc);
+      const finalRules = extractedExtends.length > 0
+        ? [...extractedExtends, ...ruleNodes]
+        : ruleNodes;
+      return new Ruleset(
+        { selector: cleanedSelector || '&', rules: finalRules, guard: guard as any },
+        undefined, loc
+      ) as unknown as JessNode;
+    }
+    // Build the rawKey ComplexSelector from the name parts (for complex paths)
+    const combinatorValues = new Set(['>', '+', '~']);
+    const selectorTokens = nameParts.filter(p => !combinatorValues.has(p.trim()) && p.trim() !== '');
+    const hasComplexPath = selectorTokens.length > 1;
+    const refKey: string | string[] = hasComplexPath ? selectorTokens : name;
+    const rawKey = hasComplexPath ? new ComplexSelector(nameParts as unknown as ComplexSelectorValue, undefined, loc) : undefined;
+    const isMixinName = name.startsWith('.') || name.startsWith('#');
+    const ref = isMixinName
+      ? new Reference(
+        { key: refKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
+        { type: 'mixin-ruleset', role: 'name' } as any,
+        loc
+      )
+      : new Reference(
+        { key: refKey } as unknown as ReferenceValue,
+        { type: 'function', silentFail: true, fallbackValue: true } as any,
+        loc
+      );
+    const hasArgs2 = argsList && (argsList as unknown as { value?: unknown[] }).value?.length;
+    const hasSemi = ls.some(l => l.value === ';');
+    if (hasSemi && !hasExplicitParens) {
+      this._warn('Calling a mixin without parentheses is deprecated', 'mixin-call-no-parens');
+    } else if (hasSemi && hasExplicitParens) {
+      const src = this._source.slice(loc.start, loc.end);
+      if (/^\S+\s+\(/.test(src)) {
+        this._warn('Whitespace between a mixin name and parentheses is deprecated', 'mixin-call-whitespace');
+      }
+    }
+    const callArgs = hasArgs2 ? this._convertArgsForCall(argsList, loc) : undefined;
+    return new Call(
+      { name: ref as any, args: callArgs as any },
+      { markImportant } as any, loc
+    ) as unknown as JessNode;
+  }
+
+  private _extractExtendsFromSelectorText(selectorText: string, _loc: LocationInfo) {
+    // Simple passthrough - extend extraction from selector text is handled elsewhere
+    return { cleanedSelector: selectorText, extractedExtends: [] as JessNode[] };
+  }
+
+  private _selectorHasNestedExtend(sel: JessNode | string | undefined): boolean {
+    if (!sel || typeof sel === 'string') {
+      return false;
+    }
+    if (sel.type === 'PseudoSelector') {
+      const arg = (sel as unknown as { arg?: JessNode }).arg;
+      return arg ? this._treeHasExtend(arg) : false;
+    }
+    if (sel instanceof CompoundSelector || sel instanceof ComplexSelector) {
+      return sel.value.some(p => this._selectorHasNestedExtend(p as JessNode));
+    }
+    if (isSelectorListLike(sel)) {
+      return selectorListItems(sel).some(p => this._selectorHasNestedExtend(p as JessNode));
+    }
+    return false;
+  }
+
+  private _treeHasExtend(node: JessNode): boolean {
+    if (node instanceof Extend) {
+      return true;
+    }
+    if (node instanceof CompoundSelector || node instanceof ComplexSelector) {
+      return node.value.some(p => this._treeHasExtend(p as JessNode));
+    }
+    if (isSelectorListLike(node)) {
+      return selectorListItems(node).some(p => this._treeHasExtend(p as JessNode));
+    }
+    return false;
+  }
+
+  /**
+   * A guarded ruleset (`sel when …`) is parsed by the shared CSS builder, which
+   * has no `when` concept, so the Guard CST child folds into the body as the
+   * first rule — always a Paren/Condition/DefaultGuard. Lift it into the
+   * ruleset's `guard` field (rebuilt through the canonical Ruleset ctor so the
+   * guard is adopted) so it gates output instead of rendering as a `{ true }`
+   * body. Non-guarded rulesets never begin their body with one of these node
+   * types, so the leading-node check is unambiguous.
+   */
+  private _liftRulesetGuard(base: Ruleset, loc: LocationInfo): Ruleset {
+    const rules = (base as unknown as { rules?: unknown }).rules;
+    if (!Array.isArray(rules) || rules.length === 0) {
+      return base;
+    }
+    const first = rules[0] as { type?: string } | undefined;
+    if (first?.type !== 'Paren' && first?.type !== 'Condition' && first?.type !== 'DefaultGuard') {
+      return base;
+    }
+    return new Ruleset(
+      {
+        selector: (base as unknown as { selector: any }).selector,
+        rules: rules.slice(1) as any,
+        guard: first as any
+      },
+      undefined, loc
+    ) as unknown as Ruleset;
+  }
+
+  protected override _buildRuleset(
+    children: ReadonlyArray<Child>,
+    rawChildren: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo
+  ) {
+    let base = super._buildRuleset(children, rawChildren, loc);
+    const selector = base.selector;
+    if (!selector) {
+      return base;
+    }
+    // The shared CSS builder has no notion of `when` guards, so the Guard CST
+    // child lands as the first body rule. A guarded ruleset (`sel when …`)
+    // always emits its guard as a leading Paren/Condition/DefaultGuard; lift it
+    // into the ruleset's `guard` field so it gates output instead of rendering.
+    base = this._liftRulesetGuard(base, loc);
+    if (typeof selector === 'string') {
+      return base;
+    }
+    if (this._selectorHasNestedExtend(selector as unknown as JessNode)) {
+      this._error(':extend() is not allowed inside a pseudo-class selector', loc.start);
+    }
+    const baseRules = Array.isArray(base.rules) ? base.rules as JessNode[] : [];
+    const baseGuard = (base as unknown as { guard?: unknown }).guard;
+    const withGuard = (rs: Ruleset): Ruleset => {
+      if (baseGuard !== undefined) {
+        (rs as unknown as { guard?: unknown }).guard = baseGuard;
+      }
+      return rs;
+    };
+
+    const extendKey = (e: JessNode): string => {
+      const ext = e as unknown as { target?: { valueOf?(): unknown }; flag?: unknown };
+      return `${String(ext.target?.valueOf?.() ?? ext.target)}:${ext.flag}`;
+    };
+
+    // Non-list: simple single-selector extraction.
+    if (!isSelectorListLike(selector)) {
+      const { cleanedSelector, extractedExtends } = this._extractExtendsFromSelector(
+        selector as unknown as JessNode, loc
+      );
+      if (extractedExtends.length === 0) {
+        return base;
+      }
+      return withGuard(new Ruleset(
+        { selector: cleanedSelector as any, rules: [...extractedExtends, ...baseRules] },
+        undefined, loc
+      )) as unknown as Ruleset;
+    }
+
+    // Selector list: extract extends per selector, then decide structure.
+    const perSelector: Array<{ clean: JessNode | string | undefined; extends: JessNode[] }> = [];
+    let anyExtends = false;
+    for (const item of selectorListItems(selector)) {
+      const { cleanedSelector: cs, extractedExtends: ee } = this._extractExtendsFromSelector(
+        item as unknown as JessNode, loc
+      );
+      perSelector.push({ clean: cs, extends: ee });
+      if (ee.length > 0) {
+        anyExtends = true;
+      }
+    }
+
+    if (!anyExtends) {
+      return base;
+    }
+
+    // If all selectors share identical extend sets → flat Ruleset, deduplicated extends.
+    const allExtendKeys = perSelector.map(s => s.extends.map(extendKey).sort().join('|'));
+    const allSame = allExtendKeys.every(k => k === allExtendKeys[0]!);
+
+    if (allSame) {
+      const uniqueExtends = perSelector[0]!.extends;
+      const cleanedItems = perSelector.map(s => s.clean).filter((c): c is JessNode | string => c !== undefined);
+      const combinedSel = cleanedItems.length === 1
+        ? cleanedItems[0]!
+        : this._makeSelectorList(cleanedItems as any, loc);
+      return withGuard(new Ruleset(
+        { selector: combinedSel as any, rules: [...uniqueExtends, ...baseRules] },
+        undefined, loc
+      )) as unknown as Ruleset;
+    }
+
+    // Different extends per selector → Rules wrapper with per-selector Extend nodes.
+    const wrapperRules: JessNode[] = [];
+    const cleanedItems: (JessNode | string)[] = [];
+    for (const { clean, extends: exts } of perSelector) {
+      for (const ext of exts) {
+        const extNode = ext as unknown as { target?: unknown; flag?: unknown };
+        wrapperRules.push(new Extend(
+          {
+            target: extNode.target as any,
+            flag: extNode.flag as any,
+            selector: clean as unknown as Selector
+          },
+          {}, loc
+        ) as unknown as JessNode);
+      }
+      if (clean !== undefined) {
+        cleanedItems.push(clean);
+      }
+    }
+
+    const combinedSel = cleanedItems.length === 1
+      ? cleanedItems[0]!
+      : this._makeSelectorList(cleanedItems as any, loc);
+
+    wrapperRules.push(withGuard(new Ruleset(
+      { selector: combinedSel as any, rules: baseRules },
+      undefined, loc
+    )) as unknown as JessNode);
+
+    return new Rules(wrapperRules as any, undefined, loc) as unknown as Ruleset;
+  }
+
+  private _extractExtendsFromSelector(
+    selector: JessNode | string | undefined,
+    loc: LocationInfo
+  ): { cleanedSelector: JessNode | string | undefined; extractedExtends: JessNode[] } {
+    if (!selector || typeof selector === 'string') {
+      return { cleanedSelector: selector, extractedExtends: [] };
+    }
+
+    // CompoundSelector: extract Extend nodes from .value[]
+    if (selector instanceof CompoundSelector) {
+      const extractedExtends: JessNode[] = [];
+      const newParts: any[] = [];
+      for (const part of selector.value) {
+        if (part instanceof Extend) {
+          extractedExtends.push(part as unknown as JessNode);
+        } else if (part instanceof List) {
+          // List of Extend nodes from multi-target :extend()
+          for (const item of (part as any).value ?? []) {
+            if (item instanceof Extend) {
+              extractedExtends.push(item as unknown as JessNode);
+            } else {
+              newParts.push(item);
+            }
+          }
+        } else {
+          newParts.push(part);
+        }
+      }
+      if (extractedExtends.length === 0) {
+        return { cleanedSelector: selector, extractedExtends: [] };
+      }
+      const cleanedSelector = newParts.length === 0
+        ? '&'
+        : newParts.length === 1
+          ? newParts[0] as JessNode | string
+          : new CompoundSelector(newParts, undefined, loc) as unknown as JessNode;
+      return { cleanedSelector, extractedExtends };
+    }
+
+    // ComplexSelector: recurse into its CompoundSelector components and pull out
+    // any trailing Extend / List<Extend> (the `:extend(...)` pseudo lives at the
+    // end of the complex selector — see grammar's ComplexSelector).
+    if (selector instanceof ComplexSelector) {
+      const allExtends: JessNode[] = [];
+      const newParts: any[] = [];
+      for (const part of selector.value) {
+        if (part instanceof Extend) {
+          allExtends.push(part as unknown as JessNode);
+        } else if (part instanceof List) {
+          for (const item of (part as any).value ?? []) {
+            if (item instanceof Extend) {
+              allExtends.push(item as unknown as JessNode);
+            } else {
+              newParts.push(item);
+            }
+          }
+        } else if (part instanceof CompoundSelector) {
+          const { cleanedSelector: cs, extractedExtends: ee } = this._extractExtendsFromSelector(part as unknown as JessNode, loc);
+          allExtends.push(...ee);
+          if (cs !== undefined) {
+            newParts.push(cs);
+          }
+        } else {
+          newParts.push(part);
+        }
+      }
+      if (allExtends.length === 0) {
+        return { cleanedSelector: selector, extractedExtends: [] };
+      }
+      const newComplex = newParts.length === 1
+        ? newParts[0] as JessNode | string
+        : new ComplexSelector(newParts as any, undefined, loc) as unknown as JessNode;
+      return { cleanedSelector: newComplex, extractedExtends: allExtends };
+    }
+
+    // Selector list node or parser-delivered array.
+    if (isSelectorListLike(selector)) {
+      const allExtends: JessNode[] = [];
+      const cleanedItems: (JessNode | string)[] = [];
+      let changed = false;
+      for (const item of selectorListItems(selector)) {
+        const { cleanedSelector: cs, extractedExtends: ee } = this._extractExtendsFromSelector(
+          item as unknown as JessNode, loc
+        );
+        allExtends.push(...ee);
+        if (ee.length > 0) {
+          changed = true;
+        }
+        if (cs !== undefined) {
+          cleanedItems.push(cs);
+        }
+      }
+      if (!changed) {
+        return { cleanedSelector: selector, extractedExtends: [] };
+      }
+      const newSel = cleanedItems.length === 1
+        ? cleanedItems[0]!
+        : this._makeSelectorList(cleanedItems as any, loc);
+      return { cleanedSelector: newSel as JessNode, extractedExtends: allExtends };
+    }
+
+    return { cleanedSelector: selector, extractedExtends: [] };
+  }
+
+  // -- Import helpers --------------------------------------------------------
+
+  private static _isCssUrl(url: string, opts: string[]): boolean {
+    if (opts.includes('inline') || opts.includes('less')) {
+      return false;
+    }
+    return url.endsWith('.css') || url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//');
+  }
+
+  private _buildImportAtRuleFromPrelude(
+    children: ReadonlyArray<Child>,
+    raw: ReadonlyArray<{ _tag: string }>,
+    loc: LocationInfo,
+    name: string
+  ): JessNode {
+    const preludeText = this._source.slice(loc.start, loc.end);
+    const optMatch = /^\s*\(([^)]+)\)/.exec(preludeText.replace(/^@import\s*/, ''));
+    const opts: string[] = optMatch ? optMatch[1]!.split(',').map(s => s.trim()) : [];
+    const builtNodes = nodeChildren(children);
+    // `@import url("x.css")` parses the path as a Url node, `@import "x.css"` as a
+    // Quoted. The url() wrapper is part of the serialized path — keep it as the
+    // prelude for CSS imports (and strip the whole `url(...)`, not just its inner
+    // quotes, when extracting a trailing media query).
+    const urlNode = builtNodes.find(n => n.type === 'Url') as unknown as Url | undefined;
+    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
+    let pathNode: Quoted | undefined;
+    if (quotedNode) {
+      const quote = quotedNode.quote ?? '"';
+      const inner = typeof quotedNode.value === 'string'
+        ? quotedNode.value
+        : (quotedNode.value as any)?.valueOf?.() ?? '';
+      const innerNode = inner;
+      pathNode = new Quoted(innerNode, { quote }, loc);
+    } else {
+      // Fallback: extract path from preludeText (AtRuleStatement uses scanTo leaves)
+      const _qm = preludeText.match(/(['"])([^'"]+)\1/);
+      if (_qm) {
+        const quote: '"' | '\'' = _qm[1] === '\'' ? '\'' : '"';
+        const inner = _qm[2]!;
+        const innerNode = inner;
+        pathNode = new Quoted(innerNode, { quote }, loc);
+      }
+    }
+    let mediaNode: Node | undefined;
+    {
+      // Remove @name, (options), the path (url(...) or quoted), and 'as namespace'
+      // to find a trailing media query.
+      let rest = preludeText.replace(/^@-?[_a-zA-Z][-_a-zA-Z0-9]*\s*/, '');
+      rest = rest.replace(/^\([^)]*\)\s*/, '');
+      rest = urlNode
+        ? rest.replace(/url\(\s*(['"])[^'"]*\1\s*\)\s*/i, '')
+        : rest.replace(/(['"])[^'"]*\1\s*/, '');
+      rest = rest.replace(/\bas\s+[^\s;(]+\s*/g, '');
+      rest = rest.replace(/;\s*$/, '').trim();
+      if (rest) {
+        mediaNode = this._lessKeyword(rest, loc) as unknown as Node;
+      }
+    }
+    const pathMatch2 = /['"]([^'"]+)['"]/.exec(preludeText);
+    const pathStr = pathMatch2 ? pathMatch2[1] : '';
+    const isCssImport = pathStr ? LessGrammar._isCssUrl(pathStr, opts) : false;
+    if (isCssImport || opts.includes('css')) {
+      const preludeItems: JessNode[] = [];
+      const pathPrelude = (urlNode ?? pathNode) as unknown as JessNode | undefined;
+      if (pathPrelude) {
+        preludeItems.push(pathPrelude);
+      }
+      // A plain (non-Less) import can carry a trailing media-query tail, same as
+      // the StyleImport `postlude` option below — don't drop it here.
+      if (mediaNode) {
+        preludeItems.push(mediaNode as unknown as JessNode);
+      }
+      const prelude: JessNode | string = preludeItems.length === 1
+        ? preludeItems[0]!
+        : preludeItems.map(item => item.toTrimmedString()).join(' ');
+      return new AtRuleStatement({ name, prelude }, undefined, loc) as unknown as JessNode;
+    }
+    const isForward = name === '@-export';
+    const importType: 'import' | 'compose' = isForward ? 'compose' : 'import';
+    const importOpts: Record<string, unknown> = {
+      once: !opts.includes('multiple')
+    };
+    if (opts.includes('reference')) {
+      importOpts.reference = true;
+    }
+    if (opts.includes('multiple')) {
+      importOpts.multiple = true;
+    }
+    if (opts.includes('optional')) {
+      importOpts.optional = true;
+    }
+    if (opts.includes('inline')) {
+      importOpts.inline = true;
+    }
+    if (opts.includes('less')) {
+      importOpts.type = 'less';
+    }
+    if (mediaNode) {
+      importOpts.postlude = mediaNode;
+    }
+    if (isForward) {
+      importOpts.forward = true;
+    }
+    const nsMatch2 = /\bas\s+([^\s;(]+)/.exec(preludeText);
+    const namespace = nsMatch2?.[1];
+    const styleImportOptions: Record<string, unknown> = { type: importType, importOptions: importOpts };
+    if (namespace) {
+      styleImportOptions.namespace = namespace;
+    }
+    // A Less `@import (reference) url(https://…)` with an UNQUOTED url() has no
+    // Quoted path; StyleImport accepts a Url path directly, so fall back to the
+    // parsed Url node rather than leaving `path` undefined (it later derefs
+    // `this.path.eval`).
+    const path = pathNode ?? (urlNode as unknown as JessNode | undefined);
+    return new StyleImport(
+      { path: path as any },
+      styleImportOptions as any,
+      loc
+    ) as unknown as JessNode;
+  }
+
+  protected override _buildAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const nameLf = ls[0];
+    const name = nameLf?.value ?? '';
+    const IMPORT_NAMES = ['@import', '@-import', '@-export'];
+    if (IMPORT_NAMES.includes(name)) {
+      return this._buildImportAtRuleFromPrelude(children, ls as any, loc, name);
+    }
+    const USE_NAMES = ['@use', '@-use'];
+    if (USE_NAMES.includes(name)) {
+      return this._buildUseAtRuleFromPrelude(children, loc, name);
+    }
+    const rawPreludeText = ls.slice(1).find(l => l.value !== '{' && l.value !== '}')?.value.trim();
+    return this._buildAtRuleFromParts(name, rawPreludeText, nodeChildren(children), loc);
+  }
+
+  /**
+   * Shared AtRule assembly used by both the flat `AtRuleBlock` builder and the
+   * structured, committed `QueryAtRuleBlock` builder. `preludeText` is the raw
+   * prelude source (already `{`/`}` stripped); routing it through
+   * `_buildAtRulePrelude` keeps the emitted AST identical regardless of which
+   * grammar rule matched.
+   */
+  private _buildAtRuleFromParts(
+    name: string,
+    preludeText: string | undefined,
+    ruleNodes: JessNode[],
+    loc: LocationInfo
+  ): JessNode {
+    const isNestable = (NESTABLE_AT_RULES as readonly string[]).includes(name);
+    const nestableOpts = isNestable ? { nestable: true } : undefined;
+    const nameNode = name;
+    const prelude = preludeText ? this._buildAtRulePrelude(preludeText, loc) : undefined;
+    return new AtRule(
+      { name: nameNode as any, prelude: prelude as any, rules: ruleNodes },
+      nestableOpts, loc
+    ) as unknown as JessNode;
+  }
+
+  /**
+   * Builder for the structured, committed `@media`/`@container`/`@supports`
+   * query block. The grammar rule parses the prelude with real query structure
+   * (so a stray/unbalanced bracket is rejected instead of swallowed) and commits
+   * on `expect('{')`, but the AST is reconstructed from the prelude source text
+   * via the shared `_buildAtRuleFromParts` path — so well-formed queries emit the
+   * exact same AtRule the flat `AtRuleBlock` builder would.
+   */
+  private _buildLessQueryAtRuleBlock(children: ReadonlyArray<Child>, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    const comps = spannedComponents(raw);
+    const keywordEnd = comps[0]?.span.end ?? loc.start;
+    const braceComp = comps.find(c => c.comp === '{');
+    const braceStart = braceComp?.span.start ?? loc.end;
+    const preludeText = this._source.slice(keywordEnd, braceStart).trim();
+    // `g.queryPrelude` parses the prelude into real node children (e.g. the
+    // `(max-width: 600px)` Paren), so `children` holds BOTH prelude nodes and
+    // body nodes. The prelude is reconstructed from source text above; the body
+    // is only the nodes that begin after the opening brace.
+    const bodyNodes = comps
+      .filter((c): c is Spanned & { comp: JessNode } => typeof c.comp !== 'string' && c.span.start >= braceStart)
+      .map(c => c.comp);
+    return this._buildAtRuleFromParts(name, preludeText || undefined, bodyNodes, loc);
+  }
+
+  private _buildAtRulePrelude(text: string, loc: LocationInfo): JessNode {
+    const singleVarRe = /^@(-?[_a-zA-Z\x80-￿][-_a-zA-Z0-9\x80-￿]*)$/;
+    const MEDIA_KEYWORDS = new Set(['and', 'or', 'not', 'only', 'all', 'print', 'screen', 'speech']);
+    const COMPARISON_OPS = new Set(['>', '<', '>=', '<=', '=', '!=']);
+
+    // `~"screen"` / `~'screen'` — an escaped string standing in for the whole
+    // query (lessMediaQueryFromString in the reference). Mirrors
+    // `_buildEscapedValue`: a Quoted with `escaped: true` so eval unwraps it to
+    // the literal content instead of quoted CSS.
+    const escapedStrRe = /^~(['"])([\s\S]*)\1$/;
+    const buildWord = (w: string): JessNode => {
+      const es = escapedStrRe.exec(w);
+      if (es) {
+        return new Quoted(es[2]!, { quote: es[1] as '\'' | '"', escaped: true }, loc) as unknown as JessNode;
+      }
+      const mv = singleVarRe.exec(w);
+      if (mv) {
+        return new Reference(mv[1]!, { type: 'index' as const, role: 'ident' as const }, loc) as unknown as JessNode;
+      }
+      if (MEDIA_KEYWORDS.has(w.toLowerCase())) {
+        return this._lessKeyword(w, loc) as unknown as JessNode;
+      }
+      if (COMPARISON_OPS.has(w)) {
+        return w as unknown as JessNode;
+      }
+      return this._lessKeyword(w, loc) as unknown as JessNode;
+    };
+
+    const buildParen = (inner: string): JessNode => {
+      const trimmed = inner.trim();
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx > 0 && !/[><=!]/.test(trimmed.slice(0, colonIdx))) {
+        const propName = trimmed.slice(0, colonIdx).trim();
+        const propVal = trimmed.slice(colonIdx + 1).trim();
+        const nameNode = propName;
+        // A bare `@var` value normalizes to an indexed Reference (→ `$[var]`),
+        // matching atRulePreludeBareVariableAs:'index' in productions/values.ts.
+        const valueNode = singleVarRe.test(propVal)
+          ? buildWord(propVal)
+          : this._lessKeyword(propVal, loc) as unknown as JessNode;
+        const decl = new Declaration({ name: nameNode as any, value: valueNode as any }, undefined, loc);
+        return new Paren(decl as any, undefined, loc) as unknown as JessNode;
+      }
+      const words = trimmed.split(/\s+/).filter(Boolean).map(w => buildWord(w));
+      const qc = new QueryCondition(words as any, undefined, loc);
+      return new Paren(qc as any, undefined, loc) as unknown as JessNode;
+    };
+
+    const tokenize = (t: string): JessNode[] => {
+      const tokens: JessNode[] = [];
+      let i = 0;
+      while (i < t.length) {
+        if (t[i] === '(') {
+          let depth = 1;
+          let j = i + 1;
+          while (j < t.length && depth > 0) {
+            if (t[j] === '(') {
+              depth++;
+            } else if (t[j] === ')') {
+              depth--;
+            }
+            j++;
+          }
+          tokens.push(buildParen(t.slice(i + 1, j - 1)));
+          i = j;
+        } else if (t[i] === '"' || t[i] === '\'' || (t[i] === '~' && (t[i + 1] === '"' || t[i + 1] === '\''))) {
+          // A quoted (optionally `~`-escaped) run is one token, even with spaces
+          // inside — matches the outer atPrelude scan, which already treats
+          // strings as atomic.
+          const start = i;
+          if (t[i] === '~') {
+            i++;
+          }
+          const quote = t[i]!;
+          i++;
+          while (i < t.length && t[i] !== quote) {
+            i++;
+          }
+          i = Math.min(i + 1, t.length);
+          tokens.push(buildWord(t.slice(start, i)));
+        } else if (/\s/.test(t[i]!)) {
+          i++;
+        } else {
+          let j = i;
+          while (j < t.length && !/\s/.test(t[j]!) && t[j] !== '(') {
+            j++;
+          }
+          tokens.push(buildWord(t.slice(i, j)));
+          i = j;
+        }
+      }
+      return tokens;
+    };
+
+    const splitCommas = (t: string): string[] => {
+      const parts: string[] = [];
+      let depth = 0;
+      let start = 0;
+      for (let i = 0; i < t.length; i++) {
+        if (t[i] === '(') {
+          depth++;
+        } else if (t[i] === ')') {
+          depth--;
+        } else if (t[i] === ',' && depth === 0) {
+          parts.push(t.slice(start, i).trim());
+          start = i + 1;
+        }
+      }
+      parts.push(t.slice(start).trim());
+      return parts.filter(Boolean);
+    };
+
+    // Regex: namespace path (#ns.sub or #ns > .sub), optional (args), optional [accessor]
+    const nsMediaRe = /^([#.][^(\[,\s]*)(\([^)]*\))?(\[[^\]]*\])?$/;
+    const buildItem = (t: string): JessNode => {
+      const trimmed = t.trim();
+      const mv = singleVarRe.exec(trimmed);
+      if (mv) {
+        const ref = new Reference(mv[1]!, { type: 'index' as const, role: 'ident' as const }, loc) as unknown as JessNode;
+        return new QueryCondition([ref] as any, undefined, loc) as unknown as JessNode;
+      }
+      // `@var[accessor]` prelude → Expression(Reference(target=Reference(var), key))
+      // (Authoritative accessor shape: lookupOrCall in productions/guards.ts.)
+      const varAccRe = /^@(-?[_a-zA-Z\x80-￿][-_a-zA-Z0-9\x80-￿]*)(\[([^\]]*)\])$/;
+      const vam = varAccRe.exec(trimmed);
+      if (vam) {
+        const varBase = new Reference(
+          { key: vam[1]! } as unknown as ReferenceValue, {}, loc
+        ) as unknown as JessNode;
+        const accInner = (vam[3] ?? '').trim();
+        let accKey: JessNode | string | number;
+        let accType: 'variable' | 'index';
+        if (accInner === '') {
+          accKey = -1;
+          accType = 'index';
+        } else if (accInner.startsWith('@')) {
+          accKey = accInner.slice(1);
+          accType = 'variable';
+        } else {
+          accKey = new Quoted(accInner, {}, loc) as unknown as JessNode;
+          accType = 'index';
+        }
+        const acc = new Reference(
+          { target: varBase as any, key: accKey as any } as unknown as ReferenceValue,
+          { type: accType }, loc
+        ) as unknown as JessNode;
+        return new Expression(acc as unknown as Node, undefined, loc) as unknown as JessNode;
+      }
+      const nsm = nsMediaRe.exec(trimmed);
+      if (nsm) {
+        const nsPath = nsm[1]!;
+        const argsText = nsm[2];
+        const accText = nsm[3];
+        // Build namespace reference: split compound selector path into segments
+        const segments = nsPath.match(/[#.][^#.]*/g) ?? [nsPath];
+        const nameKey: string | string[] = segments.length === 1 ? segments[0]! : segments;
+        const rawKey = segments.length > 1 ? nsPath : undefined;
+        let base: JessNode = new Reference(
+          { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
+          { type: 'mixin-ruleset', role: 'name' } as any, loc
+        ) as unknown as JessNode;
+        if (argsText) {
+          const argsInner = argsText.slice(1, -1).trim();
+          let argsNode: JessNode | null = null;
+          if (argsInner) {
+            // Build accessor-style arg ref if it looks like .sel[]
+            const argRefMatch = /^([.#][^\[\]()\s]+)(\[([^\]]*)\])?$/.exec(argsInner);
+            if (argRefMatch) {
+              let argBase: JessNode = new Reference(
+                { key: argRefMatch[1]! } as unknown as ReferenceValue,
+                { role: 'name' } as any, loc
+              ) as unknown as JessNode;
+              if (argRefMatch[2] !== undefined) {
+                const argAcc = argRefMatch[3] ?? '';
+                const argKey: string | number = argAcc === '' ? -1 : argAcc;
+                argBase = new Reference(
+                  { target: argBase as any, key: argKey as any } as unknown as ReferenceValue,
+                  {}, loc
+                ) as unknown as JessNode;
+              }
+              argsNode = new List([argBase as unknown as Node] as any, undefined, loc) as unknown as JessNode;
+            }
+          }
+          const callPayload: Record<string, unknown> = { name: base };
+          if (argsNode) {
+            callPayload.args = argsNode;
+          }
+          base = new Call(callPayload as any, {}, loc) as unknown as JessNode;
+        }
+        if (accText) {
+          const inner = accText.slice(1, -1).trim();
+          const key: string | number = inner.startsWith('@') ? inner.slice(1) : (inner === '' ? -1 : inner);
+          base = new Reference(
+            { target: base as any, key: key as any } as unknown as ReferenceValue,
+            { type: 'variable' as const }, loc
+          ) as unknown as JessNode;
+        }
+        return new Expression(base as unknown as Node, undefined, loc) as unknown as JessNode;
+      }
+      const tokens = tokenize(t);
+      return new QueryCondition(tokens as any, undefined, loc) as unknown as JessNode;
+    };
+
+    const commaItems = splitCommas(text);
+    if (commaItems.length === 1) {
+      return buildItem(commaItems[0]!);
+    }
+    return new List(commaItems.map(buildItem) as any, undefined, loc) as unknown as JessNode;
+  }
+
+  protected _buildAtRuleStatement(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const name = ls[0]?.value ?? '';
+    const IMPORT_NAMES = ['@import', '@-import', '@-export'];
+    if (IMPORT_NAMES.includes(name)) {
+      return this._buildImportAtRuleFromPrelude(children, ls as any, loc, name);
+    }
+    const USE_NAMES = ['@use', '@-use'];
+    if (USE_NAMES.includes(name)) {
+      return this._buildUseAtRuleFromPrelude(children, loc, name);
+    }
+    return super._buildAtRuleStatement(children, loc) as unknown as JessNode;
+  }
+
+  private _buildUseAtRuleFromPrelude(
+    children: ReadonlyArray<Child>,
+    loc: LocationInfo,
+    name: string
+  ): JessNode {
+    const preludeText = this._source.slice(loc.start, loc.end);
+    const builtNodes = nodeChildren(children);
+    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
+    let rawPath = '';
+    let pathNode: Quoted | undefined;
+    if (quotedNode) {
+      const quote = quotedNode.quote ?? '"';
+      const innerVal = quotedNode.value;
+      const inner = typeof innerVal === 'string'
+        ? innerVal
+        : (innerVal as any)?.value ?? String((innerVal as any)?.valueOf?.() ?? '');
+      rawPath = inner;
+      const innerNode = inner;
+      pathNode = new Quoted(innerNode, { quote }, loc);
+    } else {
+      // Fallback: extract from preludeText (AtRuleStatement uses scanTo, not Quoted node)
+      const qm = /(['"])((?:[^'"\\]|\\.)*)\1/.exec(preludeText);
+      if (qm) {
+        const quote: '"' | '\'' = qm[1] === '\'' ? '\'' : '"';
+        const inner = qm[2]!;
+        rawPath = inner;
+        const innerNode = inner;
+        pathNode = new Quoted(innerNode, { quote }, loc);
+      }
+    }
+    const nsMatch = /\bas\s+([^\s;]+)/.exec(preludeText);
+    const explicitNs = nsMatch?.[1];
+    const isJsFile = /\.[cm]?[jt]sx?$/.test(rawPath) || rawPath.startsWith('#');
+    if (isJsFile) {
+      let ns = explicitNs;
+      if (!ns) {
+        const base = rawPath.split('/').pop() ?? '';
+        ns = base.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_$]/g, '_');
+      }
+      return new JsImport(
+        { path: pathNode as any },
+        { namespace: ns },
+        loc
+      ) as unknown as JessNode;
+    }
+    // Not a JS import - build plain AtRule/AtRuleStatement
+    const nameAny = name;
+    const preludeNode: JessNode | undefined = pathNode as unknown as JessNode | undefined;
+    return new AtRule(
+      { name: nameAny as any, prelude: preludeNode as any, rules: [] },
+      undefined, loc
+    ) as unknown as JessNode;
+  }
+
+  private _parenToArgs(paren: JessNode, loc: LocationInfo): JessNode | null {
+    // Convert Paren content to List of mixin args.
+    // Handles patterns like @foo: bar (keyword args) and bare values.
+    const inner = (paren as any).value ?? (paren as any).node;
+    if (!inner) {
+      return null;
+    }
+    const items: JessNode[] = [];
+    // Inner may be a component array (e.g. [Reference, ':', 'bar']) or legacy Sequence node.
+    const isSeq = inner && typeof inner === 'object' && inner.type === 'Sequence';
+    const isRawArray = Array.isArray(inner);
+    if (isSeq || isRawArray) {
+      const rawSeq: unknown[] = isSeq ? ((inner as any).value ?? []) : (inner as unknown[]);
+      // Normalize bare strings to Keyword nodes so both the ':' / @var
+      // detection and the value-node construction below operate on real nodes.
+      const seqItems: JessNode[] = rawSeq.map(it =>
+        typeof it === 'string'
+          ? (this._lessKeyword(it.trim(), loc) as unknown as JessNode)
+          : it as JessNode);
+      // Look for @var : value patterns
+      let j = 0;
+      while (j < seqItems.length) {
+        const item = seqItems[j]!;
+        // Check for Reference (potential @foo) followed by ':' and value
+        if (
+          item.type === 'Reference'
+          && j + 2 < seqItems.length
+          && (seqItems[j + 1] as any)?.value === ':'
+        ) {
+          const varName = (item as any).key ?? '';
+          const nameAny = varName;
+          const valNode = seqItems[j + 2]!;
+          const valueNode = this._isKeywordLike(valNode)
+            ? valNode
+            : this._lessKeyword(String((valNode as any).value ?? ''), loc) as unknown as JessNode;
+          const vd = new VarDeclaration(
+            { name: nameAny as any, value: valueNode } as any,
+            {} as VarDeclarationOptions,
+            loc
+          );
+          items.push(vd as unknown as JessNode);
+          j += 3;
+        } else {
+          items.push(item);
+          j++;
+        }
+      }
+    } else if (inner && (inner as any).type === 'List') {
+      // A comma/semicolon List as the direct paren content is the ARG SEPARATOR,
+      // not a single list-valued arg: `.mixin(10px, 10px)` is two args, so spread
+      // the list's items. (The `@var(...)` path splits on comma in
+      // `_buildRefCallArgs`; this mirrors it for the namespace/mixin call path
+      // where the grammar hands us a real List node.) Space-separated content
+      // arrives as a Sequence/single node and stays one arg.
+      for (const it of ((inner as any).value ?? []) as JessNode[]) {
+        items.push(it);
+      }
+    } else if (inner) {
+      const isEmptyInner = this._isEmptyKeywordLike(inner);
+      if (!isEmptyInner) {
+        items.push(inner as JessNode);
+      }
+    }
+    if (items.length === 0) {
+      return null;
+    }
+    return new List(items as any, undefined, loc) as unknown as JessNode;
+  }
+
+  private _tryParseNamespaceRef(
+    valItems: Spanned[],
+    loc: LocationInfo
+  ): JessNode | null {
+    // Check if this looks like a namespace selector reference/call
+    // Pattern: #id or .class, optionally followed by > .mixin, [accessor], ()
+    const isSel = (s: unknown): s is string =>
+      typeof s === 'string' && /^[#.]-?[_a-zA-Z\u0080-\uffff]/.test(s.trim());
+    const isCombinator = (s: unknown): s is string =>
+      typeof s === 'string' && /^[>+~|]$|^\|\|$/.test(String(s).trim());
+    const isJessNodeVal = (x: unknown): x is JessNode =>
+      !!x && typeof x === 'object' && 'type' in x;
+
+    // Quick check: does first item look like a selector segment?
+    const first = valItems[0]?.comp;
+    const isVarRef = (x: unknown): x is JessNode =>
+      !!x && typeof x === 'object' && (x as any).type === 'Reference';
+    if (!isSel(first) && !isVarRef(first)) {
+      return null;
+    }
+    // Must have at least one SquareParen accessor when starting with a variable ref
+    if (isVarRef(first) && valItems.length < 2) {
+      return null;
+    }
+    const hasSquareAfterVar = isVarRef(first) && valItems.slice(1).some(vi =>
+      isJessNodeVal(vi.comp) && (vi.comp as any).type === 'Paren' && (vi.comp as any)._options?.delimiter === 'square'
+    );
+    if (isVarRef(first) && !hasSquareAfterVar) {
+      return null;
+    }
+
+    // Parse selector chain with interleaved calls.
+    // Each "segment ()" pair becomes a Call; subsequent "> segment" chains further.
+    // e.g.: .a() > .b() => Call(name=Ref(target=Call(name=Ref(key=.a)) key=.b))
+    // e.g.: #ns > .mixin => Ref[role=name](key=['#ns', '.mixin'])
+    let i = 0;
+    let base: JessNode | null = null;
+    // Pending segments since the last call (or since start)
+    let pendingSegments: string[] = [];
+    let hasMidCall = false; // any () seen mid-chain
+
+    const flushPendingAsRef = (): JessNode => {
+      const k: string | string[] = pendingSegments.length === 1 ? pendingSegments[0]! : pendingSegments;
+      pendingSegments = [];
+      if (base === null) {
+        return new Reference(
+          { key: k } as unknown as ReferenceValue,
+          { type: 'mixin-ruleset', role: 'name' } as any, loc
+        ) as unknown as JessNode;
+      }
+      return new Reference(
+        { target: base as any, key: k } as unknown as ReferenceValue,
+        { type: 'mixin-ruleset', role: 'name' } as any, loc
+      ) as unknown as JessNode;
+    };
+
+    while (i < valItems.length) {
+      const c = valItems[i]!.comp;
+      if (isVarRef(c) && base === null && pendingSegments.length === 0) {
+        // Variable reference node (e.g. Reference('config')) as the base.
+        // Observed: for `@config[$@prop]` the grammar emits TWO items —
+        //   1. Reference(target=Reference('config'), key=Quoted('')) — a leaked
+        //      empty-accessor wrapper, and
+        //   2. a separate `[$@prop]` SquareParen that carries the real key.
+        // Strip the empty-key wrapper so the trailing SquareParen accessor applies
+        // to Reference('config'). (Authoritative shape: lookupOrCall in productions/guards.ts.)
+        const rv = c as any;
+        const isLeakedEmptyKey = rv.target !== undefined
+          && (rv.key === '' || rv.key === undefined
+            || (rv.key && typeof rv.key === 'object'
+              && rv.key.type === 'Quoted' && !String(rv.key.value ?? '').trim()));
+        base = isLeakedEmptyKey ? rv.target as JessNode : c as JessNode;
+        i++;
+      } else if (isSel(c)) {
+        // Split compound selectors like '#ns.breakpoint' → ['#ns', '.breakpoint']
+        const seg = (c as string).trim();
+        const splitSeg = seg.match(/[#.][^#.]*/g) ?? [seg];
+        for (const s of splitSeg) {
+          pendingSegments.push(s);
+        }
+        i++;
+      } else if (isCombinator(c) && i + 1 < valItems.length && isSel(valItems[i + 1]?.comp)) {
+        // Combinator between segments — skip
+        i++;
+      } else if (isJessNodeVal(c) && (c as any).type === 'Paren' && (c as any)._options?.delimiter === 'square') {
+        // Square paren: accessor on current base
+        if (pendingSegments.length > 0) {
+          base = flushPendingAsRef();
+        }
+        if (base === null) {
+          break;
+        }
+        const innerKey = this._decodeAccessorKey(c as JessNode, loc);
+        base = new Reference(
+          { target: base as any, key: innerKey as any } as unknown as ReferenceValue,
+          { type: 'variable' as const }, loc
+        ) as unknown as JessNode;
+        i++;
+      } else if (isJessNodeVal(c) && (c as any).type === 'Paren') {
+        // Round paren: flush pending segments as Reference (if any), then wrap in Call
+        if (pendingSegments.length === 0 && base === null) {
+          break;
+        } // unexpected ()
+        if (pendingSegments.length > 0) {
+          base = flushPendingAsRef();
+        }
+        // Extract args from the Paren's inner node (may be null for empty parens)
+        const argsNode = this._parenToArgs(c as JessNode, loc);
+        const callPayload: Record<string, unknown> = { name: base as any };
+        if (argsNode) {
+          callPayload.args = argsNode;
+        }
+        base = new Call(callPayload as any, {}, loc) as unknown as JessNode;
+        hasMidCall = true;
+        i++;
+      } else {
+        break;
+      }
+    }
+
+    // Must have consumed all valItems
+    if (i !== valItems.length) {
+      return null;
+    }
+    if (pendingSegments.length === 0 && base === null) {
+      return null;
+    }
+
+    // If we still have pending segments (no trailing call), flush them
+    if (pendingSegments.length > 0) {
+      base = flushPendingAsRef();
+    }
+
+    // Check source text for (args)[accessor] AFTER the last parsed item
+    // Process in order: (args) call → [accessor] → trailing ()
+    if (valItems.length > 0) {
+      const lastSpan = valItems[valItems.length - 1]!.span;
+      let afterVal = this._source.slice(lastSpan.end).trimStart();
+
+      // Step 1: Check for a trailing call (...) when grammar didn't catch it
+      if (!hasMidCall && afterVal.startsWith('(')) {
+        const closeIdx = afterVal.indexOf(')', 1);
+        if (closeIdx > 0) {
+          const callInner = afterVal.slice(1, closeIdx).trim();
+          afterVal = afterVal.slice(closeIdx + 1).trimStart();
+          // Build args from call content if non-empty
+          let argsNode: JessNode | null = null;
+          if (callInner) {
+            // Check for .selector[accessor] pattern in call args
+            const argRefMatch = /^([.#][^\[\]()\s]+)(\[([^\]]*)\])?$/.exec(callInner);
+            if (argRefMatch) {
+              const argSel = argRefMatch[1]!;
+              const argAccContent = argRefMatch[3]; // may be undefined or empty string
+              let argBase: JessNode = new Reference(
+                { key: argSel } as unknown as ReferenceValue,
+                { role: 'name' } as any, loc
+              ) as unknown as JessNode;
+              if (argRefMatch[2] !== undefined) {
+                const argAccKey: string | number = argAccContent === undefined || argAccContent === ''
+                  ? -1
+                  : (argAccContent.startsWith('@') ? argAccContent.slice(1) : argAccContent);
+                argBase = new Reference(
+                  { target: argBase as any, key: argAccKey as any } as unknown as ReferenceValue,
+                  {}, loc
+                ) as unknown as JessNode;
+              }
+              argsNode = new List([argBase as unknown as Node] as any, undefined, loc) as unknown as JessNode;
+            }
+          }
+          const callPayload: Record<string, unknown> = { name: base as any };
+          if (argsNode) {
+            callPayload.args = argsNode;
+          }
+          base = new Call(callPayload as any, {}, loc) as unknown as JessNode;
+        }
+      }
+
+      // Step 2: Check for [accessor] suffix
+      const accMatch = /^\[([^\]]*)\]/.exec(afterVal);
+      if (accMatch) {
+        const accText = accMatch[1]!.trim();
+        let accessorKey: JessNode | string | number;
+        if (accText === '') {
+          accessorKey = -1;
+        } else if (accText.startsWith('@')) {
+          accessorKey = accText.slice(1);
+        } else {
+          accessorKey = new Quoted(accText, {}, loc) as unknown as JessNode;
+        }
+        base = new Reference(
+          { target: base as any, key: accessorKey as any } as unknown as ReferenceValue,
+          {}, loc
+        ) as unknown as JessNode;
+        const afterAcc = afterVal.slice(accMatch[0].length).trimStart();
+        if (/^\(\s*\)/.test(afterAcc)) {
+          base = new Call({ name: base as any } as any, {}, loc) as unknown as JessNode;
+        }
+      } else if (!hasMidCall) {
+        // Step 3: Check for trailing () (simple empty call)
+        const callMatch = /^\(\s*\)/.exec(afterVal);
+        if (callMatch) {
+          base = new Call({ name: base as any } as any, {}, loc) as unknown as JessNode;
+        }
+      }
+    }
+
+    return base;
+  }
+
+  private _assembleLessValue(
+    valItems: Spanned[],
+    loc: LocationInfo
+  ): { value: JessNode | string } {
+    const parts: JessNode[] = [];
+    for (const item of valItems) {
+      const c = item.comp;
+      if (typeof c === 'string') {
+        if (c.trim()) {
+          parts.push(this._lessKeyword(c.trim(), loc) as unknown as JessNode);
+        }
+      } else {
+        parts.push(c as JessNode);
+      }
+    }
+    if (parts.length === 0) {
+      return { value: '' };
+    }
+    if (parts.length === 1) {
+      return { value: parts[0]! };
+    }
+    return { value: parts as unknown as JessNode };
+  }
+
+  /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
+}

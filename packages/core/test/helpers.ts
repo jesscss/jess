@@ -1,11 +1,29 @@
 import {
   F_MAY_ASYNC, F_STATIC, F_NON_STATIC,
-  type Node, type Rules, Any,
+  type Node, type Rules, Any, Node as NodeClass, Rules as RulesNode,
   // Simplified API
   decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, op, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, interpolatedSelector, num,
   // Additional types for test helpers
   StyleImport, Quoted
 } from '../src/index.js';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function readNodeAt(value: unknown, index: number): Node | undefined {
+  if (Array.isArray(value)) {
+    const node = value[index];
+    return node instanceof NodeClass ? node : undefined;
+  }
+  if (value instanceof RulesNode) {
+    return value.rules[index];
+  }
+  if (isRecord(value) && 'rules' in value) {
+    return readNodeAt(value.rules, index);
+  }
+  return undefined;
+}
 
 // Default node instances
 const DEFAULT_COLOR = any('red');
@@ -31,7 +49,7 @@ export function createStaticRuleset(selector = DEFAULT_SELECTOR, declarations: N
   return rules([
     ruleset({
       selector: sellist([sel([selector])]),
-      rules: rules(declarations)
+      rules: declarations
     })
   ]);
 }
@@ -40,9 +58,9 @@ export function createVariableReference(property = 'color', variable = DEFAULT_V
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: property, value: variable })
-      ])
+      ]
     })
   ]);
 }
@@ -51,9 +69,9 @@ export function createOperation(operation = DEFAULT_OPERATION) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'width', value: operation })
-      ])
+      ]
     })
   ]);
 }
@@ -62,9 +80,9 @@ export function createVariableInOperation(operation = op([num(1), '+', DEFAULT_V
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'width', value: operation })
-      ])
+      ]
     })
   ]);
 }
@@ -73,9 +91,9 @@ export function createCall(functionCall = DEFAULT_CALL) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: functionCall })
-      ])
+      ]
     })
   ]);
 }
@@ -84,9 +102,9 @@ export function createVariableInCall(functionCall = call({ name: 'rgb', args: li
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: functionCall })
-      ])
+      ]
     })
   ]);
 }
@@ -95,9 +113,9 @@ export function createNegative(negValue = DEFAULT_NEGATIVE) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'width', value: negValue })
-      ])
+      ]
     })
   ]);
 }
@@ -106,9 +124,9 @@ export function createVariableInNegative(negValue = negative(DEFAULT_VARIABLE)) 
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'width', value: negValue })
-      ])
+      ]
     })
   ]);
 }
@@ -117,9 +135,9 @@ export function createParen(parenValue = DEFAULT_PAREN) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: parenValue })
-      ])
+      ]
     })
   ]);
 }
@@ -128,9 +146,9 @@ export function createVariableInParen(parenValue = paren(DEFAULT_VARIABLE)) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: parenValue })
-      ])
+      ]
     })
   ]);
 }
@@ -139,9 +157,9 @@ export function createList(listValue = DEFAULT_LIST) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'shadow', value: listValue })
-      ])
+      ]
     })
   ]);
 }
@@ -150,9 +168,9 @@ export function createVariableInList(listValue = list([DEFAULT_VARIABLE, any('2p
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'shadow', value: listValue })
-      ])
+      ]
     })
   ]);
 }
@@ -161,9 +179,9 @@ export function createSequence(sequenceValue = DEFAULT_SEQUENCE) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'border', value: sequenceValue })
-      ])
+      ]
     })
   ]);
 }
@@ -172,9 +190,9 @@ export function createVariableInSequence(sequenceValue = spaced([DEFAULT_VARIABL
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'border', value: sequenceValue })
-      ])
+      ]
     })
   ]);
 }
@@ -183,9 +201,9 @@ export function createSquareBlock(squareValue = list([any('1'), any('2')])) {
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'prop', value: squareValue })
-      ])
+      ]
     })
   ]);
 }
@@ -194,9 +212,9 @@ export function createVariableInSquareBlock(squareValue = list([DEFAULT_VARIABLE
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'prop', value: squareValue })
-      ])
+      ]
     })
   ]);
 }
@@ -214,8 +232,8 @@ export function createStyleImport(importPath = any('x.less')) {
 export function createMixinDefinition(bodyDecl = decl({ name: 'color', value: DEFAULT_COLOR })) {
   return rules([
     mixin({
-      name: any('mixin'),
-      rules: rules([bodyDecl])
+      name: 'mixin',
+      rules: [bodyDecl]
     })
   ]);
 }
@@ -224,9 +242,9 @@ export function createGuardWithStatic(guardCondition = condition([num(1), '=', n
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: DEFAULT_COLOR })
-      ]),
+      ],
       guard: guardCondition
     })
   ]);
@@ -236,9 +254,9 @@ export function createGuardWithVariable(guardCondition = condition([DEFAULT_VARI
   return rules([
     ruleset({
       selector: sellist([sel([DEFAULT_SELECTOR])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: DEFAULT_COLOR })
-      ]),
+      ],
       guard: guardCondition
     })
   ]);
@@ -247,9 +265,9 @@ export function createGuardWithVariable(guardCondition = condition([DEFAULT_VARI
 export function createAtRuleStatic(atRuleContent = createStaticRuleset(el('.a'), [decl({ name: 'color', value: DEFAULT_COLOR })])) {
   return rules([
     atrule({
-      name: new Any('media', { role: 'atkeyword' }),
+      name: 'media',
       prelude: any('screen'),
-      rules: atRuleContent
+      rules: atRuleContent.rules
     })
   ]);
 }
@@ -257,9 +275,9 @@ export function createAtRuleStatic(atRuleContent = createStaticRuleset(el('.a'),
 export function createAtRuleVariable(atRuleContent = createVariableReference('color', DEFAULT_VARIABLE)) {
   return rules([
     atrule({
-      name: new Any('media', { role: 'atkeyword' }),
+      name: 'media',
       prelude: any('screen'),
-      rules: atRuleContent
+      rules: atRuleContent.rules
     })
   ]);
 }
@@ -268,9 +286,9 @@ export function createSelectorInterpolation(interpolatedNode = interpolated({ so
   return rules([
     ruleset({
       selector: sellist([sel([interpolatedSelector(interpolatedNode)])]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: DEFAULT_COLOR })
-      ])
+      ]
     })
   ]);
 }
@@ -284,7 +302,12 @@ export function createMultipleRules(ruleNodes: Node[] = []) {
     ];
   }
 
-  return rules(ruleNodes.flatMap(rule => (rule as any).value));
+  return rules(ruleNodes.flatMap((rule) => {
+    if (rule instanceof RulesNode) {
+      return rule.rules;
+    }
+    return [];
+  }));
 }
 
 // Flag assertion helpers
@@ -375,22 +398,22 @@ export const testPatterns = {
     return rules([
       ruleset({
         selector: sellist([sel([el('.container')])]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sellist([sel([el('.nested')])]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sellist([sel([el('.deep')])]),
-                rules: rules([
+                rules: [
                   ruleset({
                     selector: sellist([sel([el('.inner')])]),
-                    rules: rules([innerContent])
+                    rules: [innerContent]
                   })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
   },
@@ -421,20 +444,11 @@ export const testPatterns = {
 export const getNestedNode = (tree: Node, path: number[]): Node => {
   let current = tree;
   for (const index of path) {
-    // Handle different node types
-    if (current && typeof current === 'object' && 'value' in current) {
-      const value = (current as any).value;
-      if (Array.isArray(value)) {
-        current = value[index]!;
-      } else if (value && typeof value === 'object' && 'rules' in value) {
-        // For ruleset nodes, access the rules
-        current = value.rules.value[index]!;
-      } else {
-        current = value[index]!;
-      }
-    } else {
+    const next = readNodeAt(current instanceof RulesNode ? current : Reflect.get(current, 'value'), index);
+    if (!next) {
       throw new Error(`Cannot access index ${index} on node: ${current}`);
     }
+    current = next;
   }
   return current;
 };

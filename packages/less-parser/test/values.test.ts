@@ -1,8 +1,20 @@
-import { serializeTypes } from '@jesscss/core';
+import { serializeTypes, N, isNode, type Node } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
 const parse = parser.parse;
+
+function asRuleset(n: Node | string | undefined): { rules: Node[] } {
+  if (!isNode(n, N.Ruleset)) {
+    throw new Error('Expected a ruleset');
+  }
+  return n;
+}
+function asFor(n: Node | string | undefined): { type: string; rules: Node[]; pattern: { kind: string; values: Node[] } } {
+  // The For control node has no N enum bit; access its shape via a loose cast.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return n as unknown as { type: string; rules: Node[]; pattern: { kind: string; values: Node[] } };
+}
 
 describe('value', () => {
   it('should parse color value', () => {
@@ -31,9 +43,18 @@ describe('value', () => {
   });
 
   it('should reject backtick javascript values', () => {
-    expect(() => parse('.a { js: `1 + 1`; esc: ~`2 + 5 + "px"`; }', 'stylesheet')).toThrow(
-      'Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead. Script-module documentation is coming soon.'
-    );
+    // A parser must not throw — inline JS (removed in v5) is a graceful parse error.
+    const { errors } = parse('.a { js: `1 + 1`; esc: ~`2 + 5 + "px"`; }', 'Stylesheet');
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(errors[0]!.message).toContain('Inline JavaScript using backticks is not supported');
+  });
+
+  it('should reject a trailing comma in a value list (stricter than Less 4.x)', () => {
+    // A comma must be followed by a value; a dangling comma is a parse error in v5.
+    expect(parse('@x: a, b, c,;', 'Stylesheet').errors.length).toBeGreaterThanOrEqual(1);
+    expect(parse('.a { prop: 1, 2,; }', 'Stylesheet').errors.length).toBeGreaterThanOrEqual(1);
+    // a well-formed comma list still parses cleanly
+    expect(parse('@y: a, b, c;', 'Stylesheet').errors.length).toBe(0);
   });
 
   it('parses each() with a block callback into a For control node', () => {
@@ -43,15 +64,15 @@ describe('value', () => {
           padding+_: (@value * 10px);
         });
       }
-    `, 'stylesheet');
+    `, 'Stylesheet');
 
     expect(errors.length).toBe(0);
-    const ruleset = tree.value[0]!;
-    const eachNode = ruleset.rules.value[0]!;
+    const ruleset = asRuleset(tree.rules[0]);
+    const eachNode = asFor(ruleset.rules[0]);
     expect(eachNode.type).toBe('For');
     expect(eachNode.pattern.kind).toBe('tuple');
     expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['value', 'key', 'index']);
-    expect(eachNode.rules.value).toHaveLength(1);
+    expect(eachNode.rules).toHaveLength(1);
   });
 
   it('preserves explicit each() callback params in the For pattern', () => {
@@ -62,7 +83,7 @@ describe('value', () => {
     `, 'declarationList');
 
     expect(errors.length).toBe(0);
-    const eachNode = tree.value[0]!;
+    const eachNode = asFor(tree.rules[0]);
     expect(eachNode.type).toBe('For');
     expect(eachNode.pattern.kind).toBe('tuple');
     expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['v', 'i']);
@@ -88,10 +109,11 @@ describe('valueSequence', () => {
 
     expect(errors.length).toBe(0);
     const serialized = serializeTypes(tree, { showOptions: true });
-    expect(serialized).toContain('sep: \'/\'');
-    expect(serialized).toContain('\'small\'');
-    expect(serialized).toContain('(Dimension');
-    expect(serialized).toContain('unit: \'px\'');
+    expect(serialized).toContain('small / 20px');
+    expect(serialized).toContain('20px');
+    expect(serialized).toContain('(Keyword [role=keyword]');
+    expect(serialized).toContain('\'Verdana\'');
+    expect(serialized).toContain('\'Trebuchet MS\'');
   });
 
   it('allows color-keyword slash values to remain division-like in math: always mode', () => {

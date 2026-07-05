@@ -223,16 +223,16 @@ line 3`;
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.test')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([anyNode('red')]) })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.other')])]),
-          rules: rules([
+          rules: [
             // This will try to extend .nonexistent which doesn't exist
             // We need to use the actual extend node, but for now let's test with a simpler approach
-          ])
+          ]
         })
       ]);
 
@@ -266,9 +266,9 @@ line 5`;
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.test')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: spaced([anyNode('red')]) })
-          ])
+          ]
         })
       ]);
 

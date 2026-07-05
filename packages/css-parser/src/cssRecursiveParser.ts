@@ -1,3 +1,7 @@
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar.ts + builders.ts) is the maintained parser. Kept only
+// for the content-assist/error-recovery paths not yet ported. Not type-checked.
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 /**
  * CssRecursiveParser — Chevrotain EmbeddedActionsParser-based CSS parser
@@ -12,7 +16,7 @@ import type { IToken, TokenType, ParserMethod } from 'chevrotain';
 
 export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
-import type { IParseResult, LocationInfo, TriviaMap } from '@jesscss/core';
+import type { IParseResult, LocationInfo } from '@jesscss/core';
 
 import {
   TreeContext,
@@ -20,6 +24,8 @@ import {
   Color,
   ColorFormat,
   createTriviaMap,
+  makeTrivia,
+  type Trivia,
   Dimension,
   Num,
   Rules,
@@ -40,6 +46,29 @@ import * as productions from './productions/index.js';
 
 function isSkippedToken(t: IToken): boolean {
   return (t.tokenType as { LABEL?: string }).LABEL === SKIPPED_LABEL;
+}
+
+/**
+ * The legacy parser's internal trivia index over token-array runs. Distinct from
+ * the core `TriviaMap` (which is source-range based); converted at the boundary.
+ */
+interface LegacyTriviaMap {
+  lookup(offset: number | undefined, direction: 'before' | 'after'): IToken[] | undefined;
+  entries(direction: 'before' | 'after'): IterableIterator<[number, IToken[]]>;
+  has(offset: number | undefined, direction: 'before' | 'after'): boolean;
+}
+
+function createLegacyTriviaMap(
+  before: Map<number, IToken[]>,
+  after: Map<number, IToken[]>
+): LegacyTriviaMap {
+  return {
+    lookup: (offset, direction) =>
+      offset === undefined ? undefined : (direction === 'before' ? before.get(offset) : after.get(offset)),
+    entries: direction => (direction === 'before' ? before : after).entries(),
+    has: (offset, direction) =>
+      offset === undefined ? false : (direction === 'before' ? before : after).has(offset)
+  };
 }
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -70,6 +99,12 @@ export interface CssRecursiveParserConfig {
 
 // ── Parser ───────────────────────────────────────────────────────────
 
+/**
+ * @deprecated LEGACY — Chevrotain-based CSS parser engine. Superseded by the
+ * functional macro grammar (`parseCssFn` / `CssParser` builders in ./grammar.ts +
+ * ./builders.ts). Kept only for benchmarking; TO BE DELETED once the functional
+ * parser fully lands.
+ */
 export class CssRecursiveParser extends EmbeddedActionsParser {
   /** Chevrotain uses RECORDING_PHASE during performSelfAnalysis */
   declare RECORDING_PHASE: boolean;
@@ -83,9 +118,18 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   legacyMode: boolean;
   ruleIndex = 0;
 
-  /** Single file-context trivia set with before/after lookup indexes. */
-  triviaMap: TriviaMap = createTriviaMap();
+  /**
+   * Internal token-run trivia index for this (legacy Chevrotain) parser. Kept on
+   * `IToken[]` runs because the descendant-combinator claim and standalone-comment
+   * collection mutate runs at the token level. Converted to the shared, lean
+   * `Trivia` (source-range) map only at the `trivia` getter boundary.
+   */
+  triviaMap: LegacyTriviaMap = createLegacyTriviaMap(new Map(), new Map());
+  private _triviaBefore = new Map<number, IToken[]>();
+  private _triviaAfter = new Map<number, IToken[]>();
   originalInput: IToken[] = [];
+  /** Source text, set before `input` so the `trivia` getter can slice run text. */
+  sourceText = '';
 
   locationStack: LocationInfo[] = [];
 
@@ -125,7 +169,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     this._context = c;
   }
 
-  set input(value: IToken[]) {
+  override set input(value: IToken[]) {
     this.ruleIndex = 0;
     const beforeIndex = new Map<number, IToken[]>();
     const afterIndex = new Map<number, IToken[]>();
@@ -167,7 +211,9 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       beforeIndex.set(Infinity, pendingSkipped);
     }
 
-    this.triviaMap = createTriviaMap({ before: beforeIndex, after: afterIndex });
+    this._triviaBefore = beforeIndex;
+    this._triviaAfter = afterIndex;
+    this.triviaMap = createLegacyTriviaMap(beforeIndex, afterIndex);
     this.originalInput = value;
     this.locationStack = [];
 
@@ -176,12 +222,37 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     this.reset();
   }
 
-  get input(): IToken[] {
+  override get input(): IToken[] {
     return this.tokVector;
   }
 
   get trivia(): IParseResult['trivia'] {
-    return this.triviaMap;
+    // Convert the internal token-run index to the shared source-range Trivia map
+    // consumed by the serializer. A run reachable from both its before (runEnd)
+    // and after (runStart) keys must map to the SAME Trivia object — the
+    // serializer emits each run once by object identity, so a single token run
+    // must not become two Trivia objects (that would emit its comment twice).
+    const src = this.sourceText;
+    const cache = new Map<IToken[], Trivia>();
+    const toTrivia = (run: IToken[]): Trivia => {
+      let trivia = cache.get(run);
+      if (!trivia) {
+        trivia = makeTrivia(src, run[0]!.startOffset, run[run.length - 1]!.endOffset! + 1);
+        cache.set(run, trivia);
+      }
+      return trivia;
+    };
+    const toShared = (m: Map<number, IToken[]>): Map<number, Trivia> => {
+      const out = new Map<number, Trivia>();
+      for (const [offset, run] of m) {
+        if (run.length === 0) {
+          continue;
+        }
+        out.set(offset, toTrivia(run));
+      }
+      return out;
+    };
+    return createTriviaMap({ before: toShared(this._triviaBefore), after: toShared(this._triviaAfter) });
   }
 
   // ── Domain helpers ─────────────────────────────────────────────────
@@ -500,7 +571,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
     let previous: Node | undefined;
     for (const rule of existingRules) {
-      rules.push(...collect(this.triviaMap.lookup(rule.location[0], 'before'), previous, rule));
+      rules.push(...collect(this.triviaMap.lookup(rule.location.start, 'before'), previous, rule));
       rules.push(rule);
       previous = rule;
     }

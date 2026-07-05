@@ -8,17 +8,29 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Parser } from '@jesscss/less-parser';
 import { lessCompatPlugin } from '../../src/index.js';
-import { LessPluginManager, createLessMock } from '../../src/less-compat-structures.js';
+import { LessPluginManager, LessVisitor, createLessMock } from '../../src/less-compat-structures.js';
 import type { Visitor } from '@jesscss/core';
 
 // Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
 function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {
-  if (!visitor) return undefined;
+  if (!visitor) {
+    return undefined;
+  }
   if (Array.isArray(visitor)) {
     return visitor[0];
   }
   return visitor;
 }
+
+type TestFunctionRegistry = {
+  _data: Record<string, Function>;
+  _base: TestFunctionRegistry | null;
+  add(name: string, func: Function): void;
+  get(name: string): Function | undefined;
+  addMultiple(functions: Record<string, Function>): void;
+  getLocalFunctions(): Record<string, Function>;
+  inherit(): TestFunctionRegistry;
+};
 
 describe('PluginManager integration', () => {
   let parser: Parser;
@@ -28,6 +40,19 @@ describe('PluginManager integration', () => {
   });
 
   describe('registerPlugin', () => {
+    it('leaves primitive raw segments outside the Less visitor surface', () => {
+      let visits = 0;
+      const visitor = new LessVisitor({
+        visit() {
+          visits++;
+        }
+      });
+
+      expect(visitor.visit('.raw-class')).toBe('.raw-class');
+      expect(visitor.visitArray(['.raw-class', 'blue'])).toEqual(['.raw-class', 'blue']);
+      expect(visits).toBe(0);
+    });
+
     it('should register a plugin with install method', () => {
       const functionRegistry = {
         add: () => {},
@@ -228,10 +253,10 @@ describe('PluginManager integration', () => {
     });
 
     it('should handle functionRegistry.inherit() with new Function()', () => {
-      const functionRegistry = {
-        _data: {} as Record<string, any>,
-        _base: null as any,
-        add(name: string, func: any) {
+      const functionRegistry: TestFunctionRegistry = {
+        _data: {},
+        _base: null,
+        add(name: string, func: Function) {
           this._data[name.toLowerCase()] = func;
         },
         get(name: string) {
@@ -244,7 +269,7 @@ describe('PluginManager integration', () => {
           }
           return undefined;
         },
-        addMultiple(functions: Record<string, any>) {
+        addMultiple(functions: Record<string, Function>) {
           Object.keys(functions).forEach((name) => {
             this.add(name, functions[name]);
           });

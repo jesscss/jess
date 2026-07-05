@@ -13,10 +13,7 @@ export interface SelectorCapture extends Node<Selector> {
 }
 
 const isSelectorNode = (value: unknown): value is Selector => (
-  value !== null
-  && typeof value === 'object'
-  && 'isSelector' in value
-  && value.isSelector === true
+  value instanceof Selector
 );
 
 /**
@@ -46,8 +43,8 @@ export class SelectorCapture extends Node<Selector> {
     return String(this.selector.valueOf());
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const mark = options.writer.mark();
     this.writeSyntax(options);
     const w = options.writer;

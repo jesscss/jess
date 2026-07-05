@@ -29,7 +29,8 @@ function getSharedLexerAndParser(config: LessParserConfig): { lexer: Lexer; pars
       lessFragments(),
       lessTokens()
     );
-    cachedTokenMap = T;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    cachedTokenMap = T as TokenMap;
     cachedLexer = new Lexer(lexer, {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
@@ -54,8 +55,10 @@ function getSharedLexerAndParser(config: LessParserConfig): { lexer: Lexer; pars
 }
 
 /**
- * Less parser using the new recursive-descent engine.
- * Keeps Chevrotain's lexer, replaces the parser.
+ * @deprecated LEGACY — Chevrotain-lexer + recursive-descent Less parser. Superseded
+ * by the functional macro grammar (`LessParser` in ./grammar.ts). Kept only for
+ * benchmarking / migration reference; TO BE DELETED once the functional parser
+ * fully lands.
  */
 export class LessParser {
   lexer: Lexer;

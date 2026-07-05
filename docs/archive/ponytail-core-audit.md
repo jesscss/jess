@@ -1,0 +1,609 @@
+# Ponytail Audit: @jesscss/core Slimming Plan
+
+Branch: `feature/parseman`.
+
+Method: [ponytail](https://github.com/DietrichGebert/ponytail) decision ladder — YAGNI →
+reuse → stdlib/platform → existing deps → minimal expression → full implementation last.
+Code gets small because it is *necessary*, not golfed; correctness/safety cuts are off the
+table. This plan complements (does not replace) the aggressive-cutting program in
+`docs/future/core-architecture/HANDOFF.md`; every item below is meant to be executed as a
+prosecutable pass under that regime.
+
+## Re-baseline — HEAD `22b8a70f0` (SCSS functional-parser tranche 8)
+
+The 7 audit commits (`c88672538`..`c9542a1b2`) are **preserved** — they are ancestors of
+HEAD, now ~15 commits deep beneath continued parseman grammar-integration + SCSS tranche
+work. Verified applied in HEAD: E6 core-side (`spanStart`/`spanEnd`), A1/A2 explicit
+exports, C2/C5 dead-code, B2 childKeys regime, E2 `_createMinimalNil`, B5 Reflect slice.
+
+**Intervening work by the branch owner that overlaps/overtakes this audit** (do not
+re-propose): `evaluated` flag deleted and re-eval gate is now `!F_STATIC` (§2.7); selector
+key-sets extracted to a `SelectorAnalysis` service (nodes no longer own key-set
+methods/fields — subsumes the selector-duplication finding under B); combinator
+construction flipped to string leaves + dead implicit-ampersand/invisible-combinator code
+removed (advances C4); per-instance `defineProperties` replaced with plain fields + `toJSON`
+(the node-shape perf work under E1/E4); single-frame scope migration with multiple
+`_passedRulesWrapper`/wrapper eliminations (adjacent to B1); `adopt`+`inherit` collapsed
+toward never-reparent (the E11/frozen precondition — in progress).
+
+**Needs a decision (⚠):** `allowRoot`/`allowRuleRoot` are now **fully deleted** at HEAD
+(base fields + all 25 overrides — my sed swept into a later broad commit). Per the owner
+these are *unimplemented* Less-4.x root-validation scaffolding (eval-time throw for
+misplaced nodes), not true dead code. Options: (a) leave deleted and re-add the fields
+*together with* the read/throw logic when root-validation is implemented (YAGNI-correct —
+write-only fields are themselves dead weight); (b) restore now as intended API stubs. See
+E12.
+
+Snapshot (at audit start): `packages/core/src` ≈ 145 non-test files, ~55k LOC. Largest:
+`tree/rules.ts` 6,247 · `tree/util/extend.ts` 4,287 · `tree/reference.ts` 3,825 ·
+`tree/ruleset.ts` 2,437 · `tree/util/selector-match-core.ts` 2,111 · `tree/node-base.ts` 1,623.
+
+---
+
+## A. Slim the API (no back-compat constraints)
+
+### Findings
+
+1. **Everything is public.** `src/index.ts` is ~15 `export *` lines and
+   `src/tree/index.ts` re-exports **every node module** (~55 `export *` lines). The
+   public surface is effectively all 145 files: internal flags (`F_EXTEND_TARGET`,
+   `F_IMPLICIT_AMPERSAND`), lookup internals, print-state helpers, scope-frame guts.
+2. **The real consumer surface is small.** `packages/css-parser/src/builders.ts:20-44`
+   imports ~35 names: node classes + a handful of types (`TriviaMap`, `LocationInfo`,
+   `CompoundSelectorComponent`…) + `makeTrivia`/`nil`. The other parsers are the same
+   shape. `fns`/plugins additionally need `defineFunction`, value-node classes,
+   `Context`, and the error/diagnostic types.
+3. **Node's public method surface is enormous** (`node-base.ts`): `toString`,
+   `toTrimmedString`, `writeSyntax`, `render` (2 overloads), `renderSource`,
+   `renderOutput`, `resolve`, `eval`, `evalNode`, `valueOf`, `compare`, `operate`,
+   `clone`, `cloneForPlacement`, `accept`, `walk`, `nodes`, `adopt`, `inherit`,
+   `detachTrivia`, `prepareRegistration`, `parentChildren`, flag methods… Most exist for
+   core-internal eval/render plumbing, not for consumers.
+
+### Plan
+
+- **A1. Replace `export *` with explicit export lists.** *Status 2026-07-03:
+  first pass LANDED — `src/index.ts` is explicit for all util/infra modules;
+  compare/cast/find-extendable-locations/collections fully internalized (census:
+  zero external consumers). Remaining: the tree barrel itself, and per-module
+  explicit lists for plugin/jess-error/define-function/types/visitor. Census
+  data: 145 unique names consumed across 12 packages; conversions.ts exports
+  `clamp`/`lengthToPx`/`timeToMs`/`frequencyToHz`/`angleToRadians` with zero
+  consumers anywhere → C-item deletion candidates. `getValues` is imported by
+  language-service but does not exist in core (pre-existing breakage, task
+  chip filed).* Derive the list empirically:
+  `grep -rhoE "import[^;]*from '@jesscss/core[^']*'" packages --include='*.ts' | grep -v packages/core/`
+  (blocked during this audit by a tooling outage — run it as the first step). Expected
+  tiers: (i) node classes + factories + `Node`/`TreeContext`/`Context`; (ii) plugin/diagnostic
+  types (`PluginInterface`, `ErrorDiagnostic`, `WarningDiagnostic`, `JessError`,
+  `defineFunction`); (iii) a small `@jesscss/core/internal` (or non-exported deep path)
+  for the language-service/tests. Everything else becomes module-private.
+- **A2. Stop exporting flag bits and print/lookup internals** from the barrel. External
+  code reaching for `F_*` constants is a missing abstraction — give parsers/plugins the
+  one or two predicates they actually need instead.
+- **A3. Shrink Node's public contract** to: construction, `clone()`, `eval/resolve`,
+  `render`, `toString`, `compare`, `valueOf`, `walk`. Mark eval/render plumbing
+  (`renderSource`, `renderOutput`, `evalNode`, `prepareRegistration`, `parentChildren`,
+  `adopt`, `inherit`, `propagateFlagsFrom`, `detachTrivia`) `protected`/`@internal`.
+  HANDOFF already states the rule: an unreleased public-looking method kept "for
+  compatibility alone" gets deleted or reshaped.
+- **A4. Delete deprecated option aliases** once the grep confirms no consumer:
+  `disablePluginRule` (`context.ts:66`), `leakyRules`/`bubbleRootAtRules` are marked
+  `@deprecated - a Less feature` but still plumbed through three layers
+  (`ContextOptions` → `TreeContext` → `Context` getters at `context.ts:481-489`). If
+  the less-compat plugin needs them, keep exactly one storage location (Context),
+  not three.
+
+## B. Proper abstraction
+
+### Findings
+
+1. **`Context` is a god object** (`context.ts:239-861`): eval state (frames, stacks,
+   extend registry, selector bits) *plus* file-path resolution (`_getPath`, ~100 lines
+   incl. `createRequire` fallback), plugin parser dispatch, JSON module importing,
+   `parseString`, `getModule`, and CSS-module class hashing. Two unrelated lifetimes in
+   one class.
+2. **Three coexisting child-ownership regimes** (`node-base.ts:392-398`): `childKeys ===
+   undefined` (legacy `.value` introspection), `null` (migrated leaf), `string[]`
+   (direct fields). Every traversal primitive (`parentChildren`, `_visitEntries`,
+   `_visitValues`, `walk`, `clone`, `detachTrivia`) branches on all three, and the
+   generic array/plain-object walkers (`visitValueEntries`, `visitLeafValues`,
+   `_walkFromValue`, `_mapChildNodes`, `cloneValue`) each reimplement
+   array/object/node recursion — five copies of the same shape-dispatch.
+3. **Four type-checking idioms in simultaneous use**: `instanceof Node`, `isNode(x,
+   N.Foo)` bitmask, string compare (`possibleRules.type !== 'Rules'`,
+   `node-base.ts:759`, inside a loop that *also* calls `isRulesNode`), and duck-typing
+   (`isSelectorLike` in `tree/index.ts:89`, `'frames' in node` at `node-base.ts:123`).
+4. **Circular-dependency patches are load-bearing**: `node.ts` patches
+   `Node.prototype.nil`/`operate`; `tree/index.ts:96` patches
+   `Selector.prototype.compare` after all exports. Module layering is inverted (base
+   class needs leaf classes).
+5. **Two construction paths with different semantics**: raw `new Foo()` shares children;
+   the `defineType`-generated lowercase factory `Reflect.construct`s then calls
+   `parentChildren()` (invariant 7, `node-base.ts:230-236`). Subtle, and `Reflect.construct`
+   defeats inlining. HANDOFF already flags `defineType` for a separate audit.
+6. **Serialization has ~8 entry points** (`toString`, `toTrimmedString`, `writeSyntax`,
+   `render`×2, `renderSource`, `renderOutput`, `valueOf`) with per-family
+   `getWriterTextSincePosition` helpers now duplicated in `control.ts`,
+   `declaration-var.ts`, `function.ts`, `operation.ts`, `ampersand.ts` (per HANDOFF, one
+   copy each — reuse rung violation).
+7. **Visitor over-abstraction**: `accept()` (`node-base.ts:1001`) supports three visitor
+   protocols via runtime reflection (`getTreeVisitMethod`/`getVisitMethod`/
+   `getTypeVisitMethod` + `ABORT` symbol) on every node visit. Ponytail rung 1: does more
+   than one protocol need to exist?
+8. **`rules.ts` (6,247 lines) is four subsystems in one file**: registration/prep,
+   scope-frame lookup (mixin/ruleset namespace machinery with sentinel symbols,
+   `rules.ts:124-130`), render-state management, and import handling. Same story in
+   `reference.ts` (3,825) and `ruleset.ts` (2,437).
+
+### Plan
+
+- **B1. Split `Context`**: keep `Context` as pure eval state; extract
+  `ImportResolver` (path resolution + plugin dispatch + module import — everything
+  `async`) behind one field. `hashClass`/`generateId` move with the module-output
+  concern. No behavior change; the split makes D/E work reviewable.
+- **B2. Finish the `childKeys` migration and delete the legacy regime.** Target state:
+  `childKeys` is `string[] | null` only. Then delete `visitValueEntries`'
+  plain-object branch, `visitLeafValues`' object branch, `_walkFromValue`'s object
+  branch, `cloneValue`'s object recursion, and `parentChildren`'s `undefined` arm.
+  This is the single highest-leverage abstraction cut: five shape-dispatch walkers
+  collapse into one `childKeys` loop.
+- **B3. One type-check idiom.** `isNode` + `N.*` everywhere hot; `instanceof` only where
+  identity matters and the bitmask is shared (`AtRuleStatement`, `RelativeSelector`,
+  `Stylesheet` — `node-type.ts:53,95,115`). Delete string-compare and duck-type checks.
+  The 32-bit mask is exhausted; if a new concrete type ever needs a bit, move `flags`
+  runtime bits out of the way first (see E4) rather than adding a second mechanism.
+- **B4. Fix the layering instead of patching prototypes**: `Nil`/`Any` are leaves with no
+  real dependency on the tree — move the `nil()`/string-`operate` defaults into a tiny
+  `node-leaves.ts` that `node-base.ts` may import directly, and delete the `node.ts`
+  patch file and the `Selector.compare` patch (give `Selector` its own `compare` in
+  `selector.ts`; `selectorCompare` already lives in `util/compare.ts`).
+- **B5. One construction path.** Make constructors own one-level parenting (call
+  `parentChildren()` at the end of each concrete constructor, or make eval-time sharing
+  the explicit opt-in) and delete the `Reflect.construct` factory wrapper in
+  `defineType`. Keep the lowercase factories as plain `(…) => new Foo(…)` sugar for
+  parsers.
+- **B6. Two serialization entry points**: `writeSyntax(printOptions)` (authored source,
+  writer-owned) and `render(context, buffer)` (evaluated output). `toString`/
+  `toTrimmedString` become thin cold wrappers on `writeSyntax`; `renderSource`/
+  `renderOutput` fold into `render`. Hoist the five duplicated
+  `getWriterTextSincePosition` helpers into `util/print.ts` (or better: give
+  `OutputWriter` the tail-text reader HANDOFF says it's missing, deleting the
+  `Reflect.get(writer, 'chunks')` boxes).
+- **B7. One visitor protocol.** Inventory actual visitors (grep `accept(` /
+  `TreeVisitor`); keep the one used, delete the reflection fallbacks and the
+  `ABORT`/`REMOVE`/`IS_PROXY` symbols (`node-base.ts:54-56` — `IS_PROXY` in particular
+  looks orphaned post-proxy-removal; verify).
+- **B8. Split `rules.ts`** along its existing seams: `rules-registration.ts`,
+  `rules-lookup.ts` (the callable/namespace machinery, already helper-shaped),
+  `rules-render.ts`. Pure file moves, no new abstraction — do this *after* dead-code
+  passes so we don't reorganize code that's about to be deleted.
+
+## C. Remove dead code
+
+Verification for each: repo-wide grep for the identifier (excluding its own file and
+tests), then delete; confidence noted. (Shell was blocked during this audit — every item
+below is from direct reading and needs the grep pass as its proof surface.)
+
+- **C1. Legacy extend (`tree/util/extend.ts`, 4,287 lines).** Walk-and-consume
+  (`extend-walk.ts`) already handles Simple/Compound application and Complex find for
+  diagnostics; legacy remains reachable via `canUseWalkAndConsumeForExtend`. This is the
+  single largest deletion available (~8% of core). Queue: extend walk to Complex
+  application parity → flip the gate → delete `extend.ts` and its test twin. Not
+  deletable today; make it the explicit target so no new code lands in the legacy file.
+- **C2. Commented-out and `@todo`-delete debris in `node-base.ts`**: *Status
+  2026-07-03: LANDED for IS_PROXY/NodeMapArray/GeneratedNodeValue/Mutable/
+  collectRoots/toModule + context exports-set/parentScope/isRuntime + the five
+  zero-consumer conversion plugins + use-webpack-resolver.ts/debug-log.ts
+  whole-file deletions. ABORT/REMOVE/Primitive are live (kept); Node.create is
+  live (B5's business).* `collectRoots`
+  (975-989), `toModule` block (1614-1619), `Primitive`/`PrimitiveOrFunc` + the three
+  symbols (49-56), `Mutable`/`ValueBearingNode` types (283-291), `NodeMapArray` (79-83),
+  `GeneratedNodeValue` (192-195), commented flag reserves (276-281). Also
+  `context.ts`: `isRuntime` comment block (466-469), `exports` set marked `@todo remove`
+  (460-464), `parentScope` marked `@todo remove` (`context.ts:114-119`). Certain-dead
+  after grep: delete.
+- **C3. `Node.create` static factory** (`node-base.ts:740-755`) — a third construction
+  path ("marks generated"). If B5 lands, `generated` becomes a constructor
+  option/flag and `create` dies. Verify callers first (likely only eval sites that can
+  set the flag directly).
+- **C4. Vestigial node classes.** Suspects: `combinator.ts` (recent commits flipped
+  combinator construction to string leaves — once parsers stop constructing
+  `Combinator`, delete the class and its `N` bit), `selector-capture.ts`,
+  `selector-interpolated.ts`, `rules-raw.ts`, `range.ts`, `log.ts`, `any.ts`-adjacent
+  leftovers. For each: check the three parser `builders.ts` files + core constructors
+  before concluding dead (builders currently still import `Combinator`,
+  `css-parser/src/builders.ts:32`).
+- **C5. Top-level modules with unclear consumers**: `use-webpack-resolver.ts`,
+  `debug-log.ts`, `conversions.ts` (root copy — `dimension.ts` has its own private
+  `conversions` table at 401-421; if the root one is the only "reuse", inline or delete),
+  `logger/deprecation-processing.ts` + `deprecation.ts` (registry exists but parser
+  deprecations are not emitted — either wire it for v5 or cut it until needed; don't
+  carry half-wired infra).
+- **C6. `accept()`/visitor fallbacks and `IS_PROXY`** — see B7.
+- **C7. Duplicated `getWriterTextSincePosition`** ×5 — see B6 (delete four copies).
+- **C8. `Dimension.unitToGroup` getter + `isConversionUnit`** (`dimension.ts:89-95`)
+  exist only to indirect a module constant — inline the constant; the getter is also a
+  per-operate megamorphic read for no benefit.
+
+## D. Reduce object creation
+
+Hot paths: per-render node eval, selector composition/matching, serialization.
+(Benchmark baseline 1,122ms vs Less 4.x 49ms — allocation churn is a first-order cost.
+Every item here needs the before/after benchmark per `PERFORMANCE-HANDOFF.md` protocol —
+no defensive slowdowns, but also no unmeasured speed claims.)
+
+**Micro-pattern guidance (from parseman profiling, 2026-07):** hoisting a repeated
+cheap access (`s.charCodeAt(pos)`, plain monomorphic field reads) into a local was
+measured MUCH slower in parseman hot loops. V8 already GVN-eliminates redundant
+effect-free inlined loads, so the manual local only adds register pressure (spills) —
+and if any closure in scope captures the local, it gets context-allocated: every read
+becomes a heap context-slot load and the captured value's lifetime extends (the GC
+angle). Rules for D/E passes: (i) repeat plain field reads freely, don't hoist by
+habit; (ii) DO hoist (or better, restructure away) side-effecting/megamorphic accesses
+V8 must re-execute — lazy `??=` getters, `.options` probes; (iii) audit hot eval/render
+loops for closures that capture loop locals — context allocation is the variant that
+actually bites; (iv) decide disputed cases with the benchmark, not intuition, in either
+direction.
+
+- **D1. Generator-based traversal on hot paths.** `walk()`/`nodes()`/`_walkFromValue`
+  (`node-base.ts:873-970`) allocate generator frames per node per traversal; `accept()`
+  spins a generator per visit. HANDOFF already names generators an audit target. Replace
+  hot-path uses with `_visitEntries`-style callback loops (already exists — reuse rung);
+  keep the generator API only if a cold consumer genuinely needs laziness.
+- **D2. `toString` mark/readback windows.** `Node.toString` (`node-base.ts:1476-1495`)
+  does `w.mark()`/`w.getSince(mark)` per node — string slicing per node per render.
+  HANDOFF has been deleting these family-by-family; finish the sweep (the base method is
+  the last and biggest copy), so interior nodes write straight through and only true
+  public boundaries read back.
+- **D3. Per-serialization array rebuilds in `SelectorList.writeSyntax`**
+  (`selector-list.ts:107-141`): every render allocates a new `value[]` and re-runs the
+  `:is()` unwrap over the same immutable list. Compute once (the unwrap is a function of
+  the parsed shape, not of print options) and cache on the node, or do the unwrap at
+  construction/eval time.
+- **D4. Clone-chain churn in selector eval**: `withSelectors` → `ownSelector` →
+  `cloneForPlacement` → `clone` (+ `{ ...this._options }` spread per clone,
+  `node-base.ts:1118`) allocates several objects per selector per eval. Options are
+  usually absent or shared-immutable: stop copying `_options` on clone (treat as frozen),
+  and let `withSelectors` return `this` when no item changed (common case).
+- **D5. `forEachNode` async bookkeeping** (`node-base.ts:782-834`) allocates
+  `nodes/keys/collections` arrays whenever `F_MAY_ASYNC` — verify the flag isn't
+  over-set (it propagates up via `adopt`, so one async leaf taints the whole spine
+  forever). A cheap win: re-derive the flag after imports resolve, or key the async path
+  off actual thenables encountered.
+- **D6. Accessors that allocate per read**: `span` and `location` are both subsumed by
+  E6 (store parseman's `Span` directly; shared frozen empty for generated nodes);
+  `options` (allocates a null-proto object on
+  first *read*, even read-only probes like `rules.options.importBoundary` at
+  `rules.ts:163` — split a cheap `hasOption`/direct-field read from the mutable getter).
+- **D7. `valueOf()` string building** (`node-base.ts:1443-1464`) concatenates via
+  `_visitValues` per comparison; selector compare paths call it repeatedly. Cache on
+  immutable nodes or compare structurally (the `keySet`/bitset machinery already exists
+  for selectors — reuse it instead of string keys).
+- **D8. `Context` eager fields**: `extendRoots`, `selectorBits`, `frames`,
+  `rulesetFrames`, `allRoots`, `rulesEvalStack`, `parenFrames`, `errors`, `warnings` are
+  allocated per Context even for tiny evals; several already use the lazy-`??=` pattern —
+  make it uniform (cheap, mechanical).
+
+## E. Optimize class shapes for V8
+
+- **E1. Kill post-construction field creation.** Fields written outside constructors
+  create hidden-class transitions or dictionary fallback: `_closureScope` (written in
+  `inherit`, `node-base.ts:1427-1431`), `frames` (written cross-class in
+  `_copyPlacementMetadataTo`, 1147-1163, on `Node`s that never declared it),
+  `fieldSpans`/`valueSpans` (`declare`d, assigned by scanners), `_scopeFrame` (Rules),
+  error tagging `_isPathResolutionError` (`rules.ts:89`). Rule: every field a class can
+  ever hold is assigned (at least `undefined`) in its constructor; `declare` +
+  late-assign is exactly the anti-pattern. Where a field is rare/cold (closureScope,
+  frames), prefer a `WeakMap` side table over widening every node.
+- **E2. `_createMinimalNil`** (`node-base.ts:1224-1233`) mutates `type`/`shortType`/
+  `nodeType`/`value` onto a raw `Node` instance — instant shape divergence *and* it
+  shadows prototype fields. B4's layering fix (base can construct a real `Nil`) deletes
+  this entirely.
+- **E3. Slim the per-node field count — concrete disposition table.** Base `Node`
+  initializes ~17 own fields; at millions of nodes this is memory + constructor time.
+  `flags` is a JS SMI (bits used through bit 8, `F_HAS_NODE_CHILD`; ~22 bits free,
+  independent of the exhausted 32-bit `nodeType` mask). All fields below have **0
+  external non-test reads** (verified repo-wide), so these are mechanical, not
+  consumer-breaking:
+  - `generated` → **F_GENERATED** (touches `inherit`'s `generated ||=`; becomes flag OR).
+  - `registrationPrepared` → **F_REG_PREPARED**.
+  - `allowRoot` / `allowRuleRoot` → **already deleted at HEAD** (see E12). Not a fold.
+  - `hoistToRoot` (tri-state) → **two flag bits** (read in 9 files, hot).
+  - `fullRender` → **delete** (see E10 — it is set `true` only in test setup; 22
+    production render guards check a field no production path ever writes).
+  - **Keep** (hot reads, self-init is what makes them branch-free): `sourceNode` (82
+    reads), `index` (56), `_treeContext`, `_sourceRoot`, `_options`, `parent`,
+    `spanStart`/`spanEnd`, `_requiredSemi`.
+  - **NOT here:** `frozen` — see E11. It is NOT a flag-fold target; folding it cements a
+    concept we want to delete. Handle by removing the *reason* (re-parenting), not by
+    making the guard cheaper.
+  Net: base `Node` sheds ~5 own boolean/tri-state fields into the existing `flags` int +
+  the prototype.
+
+- **E9. Decompose `inherit` — stop the base metadata-copy from knowing selector/closure
+  semantics (highest-value base-class cut).** `inherit` runs at **189 call sites**, once
+  per node per eval-replacement — the hottest metadata copy in core. Today the base
+  method carries concerns that belong to two subclasses:
+  - `_closureScope` is declared only on `Rules` (`rules.ts:909`) yet written via
+    `as unknown` casts onto arbitrary value/arg nodes (`reference.ts:508`,
+    `callable-args.ts:40,45`) and **probed by base `inherit` on every node**
+    (`node-base.ts:1396`, double cast). Move it to a **WeakMap side table**
+    (`closureScopeOf`/`setClosureScope`): deletes the per-node probe from the hot path
+    and all 5 `as unknown` casts, and `Rules`/`callable-args` read/write the table
+    explicitly. This is the E1 cross-class-field-via-cast hazard in its worst form.
+  - `F_IMPLICIT_AMPERSAND` / `F_EXTENDED` / `F_EXTEND_TARGET` are selector-only flags but
+    copied in base `inherit` for every non-selector node. Move into the **already-present
+    `Selector.inherit` override** (selector.ts:116).
+  After: base `inherit` = parent + location + sourceRoot + F_VISIBLE + generated + index
+  only — a short monomorphic path; selectors/rules get their extras via override. This is
+  a **binding-lane** change (placement/closure semantics): benchmark + full-suite gated,
+  NOT mechanical. Also closes a B-type abstraction leak (base `Node` knowing about
+  extend/ampersand/detached-ruleset closures).
+
+- **E10. `fullRender` is test-only in production — delete it, don't option-ify it.** Grep
+  confirms **zero production writers**; the only writers are test setup
+  (`Node.prototype.fullRender = true` in ~7 files). Yet 22 hot render/serialize guards
+  read `!visible && !fullRender`. An option (`renderHidden` on `PrintOptions`) would just
+  swap a field read for an option read — the production branch survives. Correct move
+  (per user): the tests that need invisible nodes to serialize should force it at the
+  test boundary (override `toString`/`render` on the fixture, or assert against the
+  node's structure directly), and production deletes the field AND collapses all 22
+  guards to the bare `!visible` check. Net: 22 production branches → 22 simpler ones, one
+  concept gone. Effort is in the ~7 test setups, not production.
+
+- **E11. `frozen` — delete the reason, not the field (do NOT fold to a flag).** `frozen`
+  guards `adopt`/`inherit` from re-parenting a shared node (`if (!node.frozen)
+  setParent(...)`). It is the enforcement mechanism for "share, don't copy": freeze
+  points are shared inert leaves (`reuseAsLeaf`, `cloning.ts:17`) AND placement
+  containers / derived selectors (`cloneForPlacement` `clone.frozen = true`,
+  `declaration.ts:610`, `ampersand.ts:676`, `cloning.ts:47`). The container/derived cases
+  protect nodes whose `parent` IS read by lookup, so `frozen` is **load-bearing today** —
+  61 `adopt` sites remain, many at eval/placement time; re-parenting is not yet
+  eliminated. Therefore:
+  - Do NOT fold `frozen` into `flags`: that cements a concept the architecture wants gone
+    (HANDOFF: "live lookup/binding/placement state instead of routine copied eval trees").
+  - Precondition for deletion: `parent` stops being live placement state — either moved
+    to a side table, or `adopt` split into `parentAtConstruction` (parse) vs
+    `placeWithoutReparent` (eval). Then no shared node's `parent` can be hijacked and the
+    guard is unnecessary.
+  - Cheap first probe (independent of the container work): does anything read `.parent` on
+    a *reused leaf* (static, source-free, childless — the `canReuseAsLeaf` set)? Lookup
+    walks parents from Rules/Reference/Declaration, not value leaves. If leaf `.parent` is
+    never read, **leaf-freezing is already dead** and `reuseAsLeaf`/`reuseLeaf` can drop
+    the `frozen = true` immediately, shrinking the guard's live surface to
+    containers/derived only. Verify before cutting.
+  - Note: the branch owner has already collapsed `adopt`+`inherit` toward never-reparent
+    (reflog: "only parent if unparented"), which is the same precondition — coordinate so
+    this doesn't duplicate in-flight work.
+
+- **E12. `allowRoot`/`allowRuleRoot` — RESOLVED via Less 4.x source audit (keep deleted).**
+  Audited `git -C ~/git/oss/less.js show master:packages/less/lib/less/visitors/to-css-visitor.js`.
+  Findings:
+  - `allowRoot` is a real 4.x feature but the name misleads: `checkValidNodes(rules, isRoot)`
+    runs over EVERY ruleset body during to-CSS and throws for (1) `isRoot && Declaration &&
+    !variable` → "Properties must be inside selector blocks…", (2) any surviving `Call` →
+    "Function '…' did not return a root node", (3) `type && !allowRoot` → "`{type}` node
+    returned by a function is not valid here". So `allowRoot` means **"statement-legal
+    node"** (the ~13 types allowed in a rules list: AtRule, Comment, Declaration, Extend,
+    Import, Media, MixinCall/Definition, Ruleset, VariableCall, Anonymous, escaped Quoted).
+    It catches a function/detached-ruleset leaking a bare value node into statement
+    position. It is **validation/error-reporting, not output correctness.**
+  - `allowRuleRoot` does **not exist in Less 4.x** — pure Jess invention. Keep deleted.
+  - Jess's `allowRoot` was **write-only**: it copied the field-setting but never ported
+    `checkValidNodes`, so it threw nothing. Deleting the bare fields removed zero behavior.
+  - **IMPLEMENTED (v1) — `7f3353d6a`.** `checkValidNodes` now ports the Less feature.
+    Correcting two mistakes recorded above: it is NOT a `nodeType` bitmask (that mask is
+    the type-identity mask — wrong axis) and NOT a value denylist. `allowRoot` is a
+    **node flag**, exactly as in Less (a per-instance boolean) but folded into the `flags`
+    bitmask as `F_ALLOW_ROOT`, set in the constructor of each statement-legal type.
+    `checkValidNodes` throws `eval/invalid-statement` for any node in an evaluated body
+    without `F_ALLOW_ROOT` (allowlist, faithful to Less's `!ruleNode.allowRoot`), wired at
+    `Rules.render` on the evaluated output body. Statement-legal set (name kept: allowRoot):
+    `Rules` + its container subclasses (Ruleset/AtRule/Mixin/If/For/While/Stylesheet/
+    Collection/RawRules via `super`), `Declaration` + Var/Custom via `super`,
+    `AtRuleStatement`, `Comment`, `Nil`, `ExtendList`, `Log`. Verified: unit test 4/4;
+    error fires zero times across the full suite (no false positives); neutralize-vs-active
+    suite totals equal.
+  - **Deferred (v1 scope):** the bare-`Declaration`-at-document-root throw — it needs a
+    reliable root signal that `sourceWasRoot` does not give (reads true for bare-fragment
+    test renders, causing false throws). Also deferred: unresolved-`Call` throw, and
+    message parity with Less type names. Demand for the full set: Less ships ~10 fixtures
+    (`packages/test-data/tests-error/eval/functions-{1,3-assignment,4-call,10-keyword,
+    11-operation,12-quoted,13-selector,14-url,15-value}.txt`, `detached-ruleset-3.txt`) —
+    wire those into the harness to drive the remaining cases.
+- **E4. Parséman overhead on every node**: `state` (unknown, per-node), `_tag` (constant
+  string — move to prototype), `_cstChildren` (array-typed field, initialized to a fresh
+  `[]`-typed constant per class load but an own field per instance… it's a class field
+  initializer, so it *is* per-instance shape-stable but forces the field on all nodes),
+  `span` getter. If incremental re-parse state is only needed on parse-owned roots, move
+  `state`/`_cstChildren` to a side table keyed by node; at minimum share one frozen empty
+  array and put `_tag` on the prototype.
+- **E5. Mixed-type fields are now deliberate — contain them.** `SelectorListItem =
+  Selector | string` (and compound/complex equivalents) makes every consumer site
+  polymorphic (`typeof item === 'string'` ladders throughout `selector-list.ts`). The
+  string-backing decision is sound (fewer nodes); the shape cost is confined so long as
+  loops stay monomorphic per-branch. Guard: no *new* `X | string | undefined` unions on
+  hot node fields; normalize `unit?: string` style fields to `string | ''`-or-`undefined`
+  consistently (Dimension holds `unit: string | undefined` — fine, it's always assigned).
+- **E6. One location representation, chosen by measurement (user-directed: most
+  performant wins).** *Status 2026-07-03: core-side step LANDED on
+  `feature/parseman` — `_location` is now a prototype accessor whose setter
+  denormalizes `spanStart`/`spanEnd` inline number fields on `Node`; all hot core
+  reads (`location[0]`/`location[3]` in trivia/serialize/list/sequence/selector
+  paths, `canReuseAsLeaf`/`canReuseLeaf`, the `span` getter) read the fields
+  directly. The tuple is retained solely because parser packages assign and
+  mutate it post-construction (out of core-only scope); the parser-side pass
+  below finishes the job. Core test failure set unchanged vs baseline, plus one
+  previously-failing test now passes (cloning.test.ts "inherits source-free
+  nodes without allocating empty location arrays"). No speed claim: the jess
+  benchmark harness does not build in this worktree (pre-existing
+  rolldown-plugin-dts/typescript-rc failure), so run the ref-compare A/B once
+  the branch commits.* Today the same source range exists in up to THREE forms: the
+  parser's `Span {start, end, startLine?, …}`, a fresh 6-tuple `LocationInfo` array
+  allocated per node by the builders (`spanToLocation`,
+  `css-parser/src/builders.ts:98-100`), and a fresh `{start, end}` object allocated on
+  *every* `span` getter access (`node-base.ts:459-464`) for Parséman's `NodeLike`.
+  Deleting the conversions is unconditional; the storage form is decided by a cheap A/B
+  (per the no-unmeasured-claims rule), between:
+  - **(a) Two inline numeric fields** `spanStart`/`spanEnd` assigned in the base
+    constructor — the theoretical ceiling: SMIs in-object, zero extra heap objects, zero
+    pointer chase on the hot reads (`location[0]`/`location[3]` today), and the GC never
+    sees a location object. `NodeLike.span` becomes a lazily *cached* materialization
+    (`_span ??= {start, end}`) — cold, only touched by incremental re-parse. Offsets
+    stay SMI up to 2^30 (a 1GB file), so no heap-number risk in practice.
+  - **(b) Store the parser-created `Span` object as a plain field** — zero *marginal*
+    allocation (parseman allocated it anyway), satisfies `NodeLike` directly, but keeps
+    one live object per node and costs a dereference per location read.
+  Expected winner is (a) for eval/render-heavy workloads (reads dominate) with (b) as
+  the fallback if the benchmark says the pointer chase is noise. Either way:
+  line/column columns are derived lazily via parseman's own `buildLineIndex` /
+  `offsetToLineCol` / `annotateSpan` on cold error/diagnostic paths only (rung 5: the
+  dependency already solves this), retiring the `TreeContextOptions.file.lines` cache;
+  the `LocationInfo` 6-tuple and `spanToLocation` are deleted; generated nodes get the
+  no-location representation for free ((a): `-1/-1` sentinel or 0-width; (b): one shared
+  frozen empty span) instead of the lazy `[]` allocation in the `location` getter
+  (`node-base.ts:401-403`). If (b) wins, shape guard: parser-minted spans keep one
+  consistent field set so the shared Span hidden class stays monomorphic.
+- **E7. Constructor discipline for subclasses.** Good model already exists:
+  `Dimension` assigns `number`/`unit` unconditionally in constructor order
+  (`dimension.ts:71-74`). Bad model: options-object spread/iteration into `this`
+  (`TreeContext` destructure-and-assign is cold, fine; verify no node class does
+  `Object.assign(this, value)`). Add a lint/test that every concrete node class assigns
+  the same field set on every construction path.
+- **E8. Delete the `value`-record + direct-fields double-store.** `Dimension` still
+  passes the `{number, unit}` record to `super(value…)` which stores… nothing now
+  (base `void value`), good — but nodes not yet migrated store children in a generic
+  `value` record *and* readers use typed getters, keeping both shapes alive. Completing
+  B2 makes every node direct-field only; the base constructor's `value` param then
+  disappears, shrinking every constructor call site.
+
+---
+
+## Execution checklist (ordered, each item = one prosecutable pass)
+
+Ordering principle: delete before you reorganize; reorganize before you optimize;
+measure everything in D/E against the benchmark protocol.
+
+Maintenance rule: when a pass lands, check its box and record the commit hash;
+split a box if only part of it landed. This checklist is the audit's single
+progress tracker — statuses in the sections above are detail, not the index.
+
+- [x] **E6 (core side)** `spanStart`/`spanEnd` inline offset fields; hot location
+      reads off the tuple; empty-`[]` lazy allocation deleted — `c88672538`
+- [x] **A1+A2 (first pass)** explicit `src/index.ts` exports, census-driven;
+      compare/cast/find-extendable-locations/collections internalized — `0d11e8e10`
+- [ ] **A1 (second pass)** tree barrel + explicit lists for
+      plugin/jess-error/define-function/types/visitor modules
+- [x] **C2/C5 slice** certain-dead deletions (IS_PROXY, NodeMapArray,
+      GeneratedNodeValue, Mutable, collectRoots/toModule corpses, context
+      exports-set/parentScope/isRuntime, five zero-consumer conversion plugins,
+      use-webpack-resolver.ts, debug-log.ts) — `9ec8b175f`
+- [ ] **C4/C6/C7** remaining dead-code candidates: vestigial node classes
+      (selector-capture, selector-interpolated, rules-raw, range, log), visitor
+      fallbacks, duplicated `getWriterTextSincePosition` ×5. NOTE: `Combinator`
+      construction was already flipped to string leaves by the owner + dead
+      implicit-ampersand/invisible-combinator code removed — re-verify whether
+      the `Combinator` class is still constructed before proposing its deletion.
+- [x] **B2 (legacy regime)** childKeys migration is complete class-side (all 5
+      undeclared classes inherit correct keys); deleted the `undefined` legacy
+      arm from `parentChildren` and narrowed `static childKeys` to
+      `string[] | null` — see commit for hash. NOTE: the plain-object recursion
+      in visitValueEntries/visitLeafValues/_walkFromValue/_mapChildNodes is NOT
+      legacy — it serves object-shaped childKey fields (AttributeSelector's
+      `{name, op, value, mod}` record) and stays.
+- [ ] **E8** delete the base constructor `value` param (touches every subclass
+      super() call — mechanical, large diff)
+- [x] **E2** `_createMinimalNil` deleted; Comment→Nil placement paths call
+      `this.nil()` directly — see commit for hash
+- [x] **B4 (rescoped: patches stay)** investigation proved both prototype
+      patches are load-order-necessary, not stale: `selector-match-core`
+      imports the whole selector family at module scope, so `Selector.compare`
+      cannot live in selector.ts (TDZ crash via
+      selector→compare→selector-match-core→selector-simple→`extends Selector`);
+      `nil`/`operate` need leaf constructors (true base↔leaf cycle). The two
+      patch sites (node.ts, tree/index.ts) are the minimal expression of the
+      current module graph — revisit only if the graph changes.
+- [x] **B5 (Reflect slice)** `defineType` factory constructs via direct `new`
+      instead of `Reflect.construct` (per-node parse-time win, zero semantics
+      change) — see commit for hash
+- [ ] **B5 (construction-path unification) + C3 (`Node.create`)** DEFERRED with
+      reasoning: invariant 7 (raw `new` shares children; factory parents one
+      level) is load-bearing for eval-time sharing — collapsing the two paths
+      changes placement/ownership semantics and belongs to the binding/lookup
+      lane, not a mechanical pass. `Node.create` has 8 live internal callers.
+- [ ] **B3** type-check idiom unification (isNode everywhere hot)
+- [ ] **E3 (mechanical slice)** field→flag folds, 0-external-read:
+      generated → F_GENERATED; registrationPrepared → F_REG_PREPARED;
+      hoistToRoot → 2 flag bits. Getter/setter over flag (like `visible`) keeps
+      all call sites unchanged — single-file node-base edits. Low risk, gate like
+      the deletion passes. (frozen removed — see E11; allowRoot removed — see E12)
+- [x] **E12 (resolved + `checkValidNodes` v1 IMPLEMENTED — `7f3353d6a`)**
+      `allowRuleRoot` isn't in Less 4.x (Jess invention, stays deleted). `allowRoot`
+      is reintroduced correctly — as the `F_ALLOW_ROOT` node flag (NOT a nodeType bit,
+      NOT a denylist), set in statement-legal constructors — WITH the `checkValidNodes`
+      enforcement it always lacked. v1 covers the value-node-in-statement-position case
+      (zero false positives across the suite). Deferred: Declaration-at-root throw
+      (needs a real root signal), unresolved-Call throw, Less message parity — driven by
+      the ~10 `tests-error/eval` fixtures when the harness ports them.
+- [ ] **E9** decompose `inherit`: `_closureScope` → WeakMap side table (deletes
+      base per-node probe + 5 casts); selector flags → `Selector.inherit`.
+      Binding-lane, benchmark + full-suite gated
+- [ ] **E10** delete `fullRender` entirely (0 production writers); tests force
+      render at the fixture boundary (override, not a production field/option);
+      collapse 22 guards to bare `!visible`
+- [ ] **E11** `frozen` — YAGNI-delete gated on `parent` leaving live placement
+      state (side table, or adopt split). First probe: is reused-*leaf* `.parent`
+      ever read? If not, drop leaf-freezing now. Do NOT fold to a flag.
+- [ ] **E1+E4** remaining shape hygiene: constructor-complete fields
+      (`_closureScope`/`frames`/`fieldSpans` late-assign), Parséman
+      `state`/`_tag`/`_cstChildren` to prototype/side-table — benchmark before/after
+- [ ] **E6 (parser side)** parsers pass spans; delete the `LocationInfo` tuple
+      storage + `spanToLocation`; line/col derived lazily (needs jess-error/
+      diagnostics offset→line/col first; touches parser packages)
+- [ ] **D1** hot-path generator traversal → callback loops
+- [ ] **D2** finish `toString` mark/readback deletion (base method last copy)
+- [ ] **D3** `SelectorList.writeSyntax` per-render array rebuild + `:is()` unwrap
+      cached/moved to construction
+- [ ] **D4** selector eval clone-chain churn; stop copying `_options` per clone
+- [ ] **D5** `F_MAY_ASYNC` over-taint audit; async bookkeeping only on real thenables
+- [ ] **D6** allocating accessors (`options` read-probe split; `span` covered by E6)
+- [ ] **D7** `valueOf()` string building on compare paths → structural/keyset compare
+- [x] **D8 (rejected with reasoning)** Context is ONE object per render — eager
+      arrays cost nothing measurable, and lazy-ifying hot-read fields (frames,
+      parenFrames, rulesetFrames) would add accessor indirection on eval-path
+      reads, violating the micro-pattern guidance above. Non-item.
+- [ ] **B1** Context split (eval state vs ImportResolver I/O)
+- [ ] **B8** rules.ts split (registration/lookup/render) — after deletions
+- [ ] **B6** two serialization entry points; hoist `getWriterTextSincePosition`
+      into OutputWriter (overlaps C7)
+- [ ] **B7** one visitor protocol; delete reflection fallbacks
+- [ ] **C1** extend-walk Complex-application parity → delete legacy `extend.ts`
+      (~4.3k lines; start parity early, land deletion last)
+- [ ] **A3** shrink Node public method surface to the ~8-method contract
+      (construction, clone, eval/resolve, render, toString, compare, valueOf,
+      walk). Mark eval/render plumbing protected/@internal: `renderSource`,
+      `renderOutput`, `evalNode`, `prepareRegistration`, `parentChildren`,
+      `adopt`, `propagateFlagsFrom`, `detachTrivia`, and `inherit` (0 external
+      reads — it is internal placement machinery, not API)
+- [x] **A4 (investigated, mostly rejected)** `disablePluginRule` is a SUPPORTED
+      deprecation alias (registry entry in deprecation.ts:63, config
+      normalization in options.ts:161, jess warning emission at index.ts:799,
+      dedicated tests in core/jess/config) — it stays until the deprecation
+      window closes; it's a feature, not debt. `leakyRules`/`bubbleRootAtRules`
+      dual storage (TreeContext + Context) is semantic: per-file vs global
+      resolution differ by design. Revisit only when the deprecation ships.
+
+Gates per pass (repo convention): focused tests first, `git diff --check`,
+`pnpm run verify:aggressive-cutting-review`, benchmark protocol for D/E claims,
+`pnpm --filter @jesscss/core build` before dependent-package tests.
+
+## Open verification items (blocked by tooling outage during audit)
+
+- Repo-wide import census from `@jesscss/core` (A1) — command in §A.
+- Caller counts for: `Node.create`, `accept`/visitor protocols, `IS_PROXY`/`REMOVE`/
+  `ABORT`, `use-webpack-resolver`, `debug-log`, root `conversions.ts`, `Combinator`
+  construction sites, `selector-capture`/`selector-interpolated`/`rules-raw`/`range`/`log`
+  node classes, deprecated context options.
+- Confirm no remaining `Proxy` creation in core (perf-roadmap listed ~1.2% Proxy
+  overhead; only the `IS_PROXY` symbol was seen in this read).

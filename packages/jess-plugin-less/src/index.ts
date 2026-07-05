@@ -1,16 +1,15 @@
 import {
   type Plugin,
-  type PluginInterface,
   AbstractPlugin,
   TreeContext,
   JessError,
-  logger,
   JsFunction,
   Rules,
   getErrorFromParser,
   toDiagnostic,
   extractRelevantLines,
   type ISafeParseResult,
+  type SafeParseOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic
 } from '@jesscss/core';
@@ -20,6 +19,8 @@ import { Parser } from '@jesscss/less-parser';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
+
+export type LessPluginOptions = LessOptions;
 
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
@@ -32,7 +33,7 @@ export class LessPlugin extends AbstractPlugin {
   bubbleRootAtRules: boolean;
   collapseNesting: boolean;
 
-  constructor(public opts: LessOptions = {}) {
+  constructor(public opts: LessPluginOptions = {}) {
     super();
 
     // Handle deprecated math option -> mathMode conversion
@@ -74,6 +75,25 @@ export class LessPlugin extends AbstractPlugin {
     this.parser = new Parser({
       mathMode: this.mathMode,
       leakyRules: this.leakyRules
+    });
+  }
+
+  private createTreeContext(filePath: string, source: string): TreeContext {
+    return new TreeContext({
+      file: {
+        name: path.basename(filePath),
+        path: path.dirname(filePath),
+        fullPath: filePath,
+        source: source
+      },
+      mathMode: this.mathMode,
+      unitMode: this.unitMode,
+      equalityMode: this.equalityMode,
+      plugin: this,
+      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
+      collapseNesting: this.collapseNesting,
+      leakyRules: this.leakyRules,
+      bubbleRootAtRules: this.bubbleRootAtRules
     });
   }
 
@@ -158,32 +178,25 @@ export class LessPlugin extends AbstractPlugin {
     return out;
   }
 
-  safeParse(filePath: string, source: string, parseOptions?: { compilerOptions?: Record<string, any> }): ISafeParseResult {
-    void parseOptions;
-    const context = new TreeContext({
-      file: {
-        name: path.basename(filePath),
-        path: path.dirname(filePath),
-        fullPath: filePath,
-        source: source
-      },
-      mathMode: this.mathMode,
-      unitMode: this.unitMode,
-      equalityMode: this.equalityMode,
-      plugin: this,
-      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
-      collapseNesting: this.collapseNesting,
-      leakyRules: this.leakyRules,
-      bubbleRootAtRules: this.bubbleRootAtRules
-    });
+  safeParse(filePath: string, source: string, _parseOptions?: SafeParseOptions): ISafeParseResult {
+    const context = this.createTreeContext(filePath, source);
 
     const errors: ErrorDiagnostic[] = [];
     const warnings: WarningDiagnostic[] = [];
     let tree: Rules | undefined;
 
     try {
-      const parseResult = this.parser.parse(source, 'stylesheet', { context });
+      const parseResult = this.parser.parse(source);
       tree = parseResult.tree;
+
+      // The functional Less parser is context-free: it never receives the
+      // file-bearing TreeContext, so the root Rules has no `_treeContext` and
+      // import base-dir resolution falls back to `process.cwd()`. Attach the
+      // context (built above) to the root so relative `@import` paths resolve
+      // against the importing file's directory (`context.ts` `currentDirectory`).
+      if (tree) {
+        tree._treeContext = context;
+      }
 
       // Convert parser deprecation warnings to diagnostics
       if ('warnings' in parseResult && parseResult.warnings) {
@@ -205,9 +218,9 @@ export class LessPlugin extends AbstractPlugin {
         }
       }
 
-      // Convert all parser/lexer errors to normalized diagnostics
-      if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
-        // Convert each parser error to a diagnostic
+      // Convert parser errors to normalized diagnostics. The functional parser
+      // has no separate lexer phase, so there are no lexer errors to convert.
+      if (parseResult.errors.length) {
         for (const error of parseResult.errors) {
           const line = error.token?.startLine ?? 1;
           const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
@@ -220,23 +233,6 @@ export class LessPlugin extends AbstractPlugin {
             errors.push(diagnostic);
           } else {
             warnings.push(diagnostic);
-          }
-        }
-        // Convert lexer errors
-        if (parseResult.lexerResult?.errors) {
-          for (const lexError of parseResult.lexerResult.errors) {
-            const line = typeof lexError.line === 'number' ? lexError.line : 1;
-            const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
-            const diagnostic = toDiagnostic(jessError);
-            // Ensure lines are extracted
-            if (!diagnostic.lines) {
-              diagnostic.lines = extractRelevantLines(source, line);
-            }
-            if ('errors' in diagnostic) {
-              errors.push(diagnostic);
-            } else {
-              warnings.push(diagnostic);
-            }
           }
         }
       }
@@ -283,7 +279,7 @@ export class LessPlugin extends AbstractPlugin {
 
 export type { LessOptions } from 'styles-config';
 
-const lessPlugin = ((opts?: LessOptions) => {
+const lessPlugin = ((opts?: LessPluginOptions) => {
   return new LessPlugin(opts);
 }) satisfies Plugin;
 

@@ -1,6 +1,7 @@
-import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist } from '../../index.js';
+import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist, type Selector } from '../../index.js';
 import { Context } from '../../../context.js';
 import { matchSelectors, selectorCompare } from '../selector-match-core.js';
+import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../selector-analysis.js';
 
 describe('BitSets and selectors', () => {
   let context: Context;
@@ -11,53 +12,53 @@ describe('BitSets and selectors', () => {
   it('fast rejects simple selectors', async () => {
     let selector = el('.foo');
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
 
   it('fast rejects compound selectors with simples', async () => {
     let selector = compound([el('.foo'), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
   });
 
   it('fast rejects complex selectors with simples', async () => {
     let selector = sel([el('.foo'), co(' '), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
     // visibleKeySet excludes combinators
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
   });
 
   it('fast rejects complex selectors with compounds', async () => {
     let selector = sel([compound([el('a'), el('.foo')]), co(' '), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
     // visibleKeySet excludes combinators
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
   });
 
   test('fast rejects :is selectors with simple selectors', async () => {
     let selector = sel([pseudo({ name: ':is', arg: el('.foo') })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
     // :is(.foo) with a single arg (not a SelectorList) — keys ARE required
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
 
   test(':is with selector list excludes alternatives from requiredKeySet', async () => {
     let selector = sel([pseudo({ name: ':is', arg: sellist([el('.foo'), el('.bar')]) })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     // :is() alternatives are not required
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset())).toBe(true);
   });
 
   test(':is with selector list in complex selector keeps non-:is keys in requiredKeySet', async () => {
@@ -68,49 +69,49 @@ describe('BitSets and selectors', () => {
       el('.c')
     ]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.a', '.b', ' ', '.c']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.a', '.b', ' ', '.c']))).toBe(true);
     // requiredKeySet has only the non-:is parts
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset([' ', '.c']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset([' ', '.c']))).toBe(true);
   });
 
   test('deep :is with selector list excludes alternatives from requiredKeySet', async () => {
     const inner = sel([pseudo({ name: ':is', arg: sellist([el('.foo'), el('.bar')]) })]);
     let selector = sel([pseudo({ name: ':is', arg: inner })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset())).toBe(true);
   });
 
   test(':is with compound arg includes compound keys in requiredKeySet', async () => {
     // :is(.a.b) — single compound, not a SelectorList
     let selector = pseudo({ name: ':is', arg: compound([el('.a'), el('.b')]) });
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
   });
 
   test(':is with complex arg includes complex keys in requiredKeySet', async () => {
     // :is(.a > .b) — single complex selector, not a SelectorList
     let selector = pseudo({ name: ':is', arg: sel([el('.a'), co('>'), el('.b')]) });
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.a', '>', '.b']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.a', '>', '.b']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.a', '>', '.b']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.a', '>', '.b']))).toBe(true);
   });
 
   test('complex selector with :is(compound) includes all keys in requiredKeySet', async () => {
     // foo > :is(.a.b) — :is has compound arg, all keys required
     let selector = sel([el('foo'), co('>'), pseudo({ name: ':is', arg: compound([el('.a'), el('.b')]) })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
   });
 
   test('complex selector with :is(SelectorList) excludes alternatives from requiredKeySet', async () => {
     // foo > :is(.a, .b) — :is has SelectorList arg, alternatives excluded
     let selector = sel([el('foo'), co('>'), pseudo({ name: ':is', arg: sellist([el('.a'), el('.b')]) })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['foo', '>']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['foo', '>']))).toBe(true);
   });
 });
 
@@ -123,7 +124,7 @@ describe('Fast-reject in selectorMatch', () => {
   test('evalContext-aware matcher can drive selector compare consumers when context is provided', () => {
     const parent = ruleset({
       selector: el('.alpha'),
-      rules: rules([])
+      rules: []
     });
     const patched = el('.beta');
     patched.keySetLibrary = context.selectorBits;
@@ -133,22 +134,26 @@ describe('Fast-reject in selectorMatch', () => {
     });
 
     const find = sel([
-      amp({ selectorContainer: clonedParent.value }),
+      amp({ selectorContainer: clonedParent }),
       co('>'),
       el('.tail')
     ]);
     find.keySetLibrary = context.selectorBits;
     for (const child of find.value) {
-      if ('keySetLibrary' in child) {
-        child.keySetLibrary = context.selectorBits;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if ('keySetLibrary' in (child as object)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (child as unknown as { keySetLibrary: typeof context.selectorBits }).keySetLibrary = context.selectorBits;
       }
     }
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = context.selectorBits;
     for (const child of target.value) {
-      if ('keySetLibrary' in child) {
-        child.keySetLibrary = context.selectorBits;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if ('keySetLibrary' in (child as object)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (child as unknown as { keySetLibrary: typeof context.selectorBits }).keySetLibrary = context.selectorBits;
       }
     }
 
@@ -156,7 +161,7 @@ describe('Fast-reject in selectorMatch', () => {
     findList.keySetLibrary = context.selectorBits;
 
     expect(find.compare(target, context)).toBe(0);
-    expect(findList.compare(target, context)).toBe(0);
+    expect(findList.compare(target)).toBe(0);
   });
 
   test('evalContext-aware compare does not throw when find and target use different selector-bit libraries', () => {
@@ -164,7 +169,7 @@ describe('Fast-reject in selectorMatch', () => {
     const contextB = new Context();
     const parent = ruleset({
       selector: el('.alpha'),
-      rules: rules([])
+      rules: []
     });
     const patched = el('.beta');
     patched.keySetLibrary = contextA.selectorBits;
@@ -174,22 +179,26 @@ describe('Fast-reject in selectorMatch', () => {
     });
 
     const find = sel([
-      amp({ selectorContainer: clonedParent.value }),
+      amp({ selectorContainer: clonedParent }),
       co('>'),
       el('.tail')
     ]);
     find.keySetLibrary = contextB.selectorBits;
     for (const child of find.value) {
-      if ('keySetLibrary' in child) {
-        child.keySetLibrary = contextB.selectorBits;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if ('keySetLibrary' in (child as object)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (child as unknown as { keySetLibrary: typeof contextB.selectorBits }).keySetLibrary = contextB.selectorBits;
       }
     }
 
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = contextA.selectorBits;
     for (const child of target.value) {
-      if ('keySetLibrary' in child) {
-        child.keySetLibrary = contextA.selectorBits;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      if ('keySetLibrary' in (child as object)) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (child as unknown as { keySetLibrary: typeof contextA.selectorBits }).keySetLibrary = contextA.selectorBits;
       }
     }
 
@@ -342,7 +351,8 @@ describe('Fast-reject in selectorMatch', () => {
     const sourceTarget = el('.b');
     const find = await sourceFind.eval(context);
     const target = await sourceTarget.eval(context);
-    let result = matchSelectors(target, find);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    let result = matchSelectors(target as unknown as Selector, find as unknown as Selector);
     expect(result.hasFullMatch).toBe(true);
   });
 

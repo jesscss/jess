@@ -39,14 +39,14 @@ function buildDeclTree(count: number, staticRatio: number = 1.0): Node[] {
     if (i / count < staticRatio) {
       decls.push(
         decl({
-          name: any(`prop-${i}`, { role: 'property' }),
+          name: `prop-${i}`,
           value: expr(any(`value-${i}`))
         })
       );
     } else {
       decls.push(
         decl({
-          name: any(`prop-${i}`, { role: 'property' }),
+          name: `prop-${i}`,
           value: expr(ref({ key: any(`var-${i}`) }))
         })
       );
@@ -71,13 +71,10 @@ function evalStaticWithRegistrationPrep(node: Node, context: Context): any {
       if (prepared !== node) {
         preparedNode.inherit(node);
       }
-      if (!preparedNode.evaluated) {
-        return preparedNode['evalNode'](context);
-      }
-      return preparedNode;
+      // §2.7: nodes always re-evaluate (no `evaluated` gate).
+      return preparedNode['evalNode'](context);
     },
     (evald: Node) => {
-      evald.evaluated = true;
       if (preparedNode !== evald) {
         evald.inherit(preparedNode);
       }
@@ -128,7 +125,6 @@ describe('Node Flags Performance', () => {
     expect(result).toBe(node);
     expect(node.registrationCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
-    expect(node.evaluated).toBe(true);
   });
 
   it('benchmark: optimized vs registration-prep evalStatic for static declarations', () => {

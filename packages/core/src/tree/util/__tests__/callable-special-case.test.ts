@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../../context.js';
 import { any, call, decl, el, mixin, ref, rules, ruleset, vardecl } from '../../index.js';
+import type { Node } from '../../node.js';
 import { callableRulesEntry } from '../callable-entry.js';
 import {
-  createOwnedCallableRulesSurface,
-  createUnlockedCallableRulesSurface,
+  createCallableRulesSurface,
   getRootSourceRules
 } from '../callable-surface.js';
 import { getMixinOutputPlacementRecord } from '../mixin-output-slot.js';
@@ -18,9 +18,9 @@ describe('callable special-case helper', () => {
     const callerRules = rules([]);
     const candidate = ruleset({
       selector: el('.candidate'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const root = rules([
       candidate,
@@ -43,8 +43,7 @@ describe('callable special-case helper', () => {
       candidateName: undefined,
       candidateParams: undefined,
       candidateGuard: undefined,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules
     });
 
@@ -52,11 +51,50 @@ describe('callable special-case helper', () => {
     expect(result.output).toBeDefined();
     expect(result.output?.index).toBe(candidate.index);
     expect(result.output?.toString()).toContain('color: red;');
-    expect(result.output?.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(candidate.rules);
+    expect(result.output?.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(candidate);
     expect(getMixinOutputPlacementRecord(result.output!)).toEqual({
-      source: candidate.rules,
+      source: candidate,
       output: result.output
     });
+  });
+
+  it('falls back to callSiteRules when the ruleset candidate has no parent', async () => {
+    // A detached ruleset called from a variable has no tree parent, and the
+    // caller has no parent either; `callParent` derefed undefined at `.adopt`.
+    // The call-site Rules is the placement parent.
+    const context = new Context({ leakyRules: true });
+    context.depth = 2;
+
+    const callSiteRules = rules([]);
+    // Candidate ruleset is unparented (as if held in a variable binding).
+    const candidate = ruleset({
+      selector: el('.candidate'),
+      rules: [decl({ name: 'color', value: any('red') })]
+    });
+    // Caller with no parent.
+    const caller = call({ name: ref({ key: '.candidate' }, { type: 'mixin' }) });
+    context.root = rules([]);
+    context.rulesContext = callSiteRules;
+
+    expect(caller.parent).toBeUndefined();
+    expect(candidate.parent).toBeUndefined();
+
+    const result = await evaluateCallableSpecialCaseCandidate({
+      candidate,
+      context,
+      caller,
+      callSiteRules,
+      restrictMixinOutputLookup: true,
+      candidateName: undefined,
+      candidateParams: undefined,
+      candidateGuard: undefined,
+      createCallableRules: createCallableRulesSurface,
+      getRootSourceRules
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.output).toBeDefined();
+    expect(result.output?.toString()).toContain('color: red;');
   });
 
   it('handles anonymous detached callable-rules through unlocked eval output', async () => {
@@ -94,8 +132,7 @@ describe('callable special-case helper', () => {
       candidateName: undefined,
       candidateParams: undefined,
       candidateGuard: undefined,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules
     });
 
@@ -126,8 +163,7 @@ describe('callable special-case helper', () => {
       candidateName: undefined,
       candidateParams: undefined,
       candidateGuard: undefined,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules
     });
 
@@ -140,10 +176,10 @@ describe('callable special-case helper', () => {
   it('leaves ordinary mixin candidates on the main eval path', async () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
-      name: any('.button'),
-      rules: rules([
+      name: '.button',
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     const result = await evaluateCallableSpecialCaseCandidate({
@@ -154,9 +190,9 @@ describe('callable special-case helper', () => {
       restrictMixinOutputLookup: true,
       candidateName: candidate.name,
       candidateParams: candidate.params,
-      candidateGuard: candidate.guard,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      candidateGuard: candidate.guard as Node | undefined,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules
     });
 

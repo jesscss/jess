@@ -10,6 +10,15 @@ globs:
 - **Build**: `cd packages/less-parser && pnpm build`
 - **Tests**: `cd packages/less-parser && pnpm test`
 
+## ⛔ Node shapes = the Chevrotain productions
+
+`src/grammar.ts` + `src/builders.ts` (parseman) are a 1:1 port of the legacy Chevrotain parser.
+**The authoritative spec for every AST node shape is `src/productions/*.ts`** (`root.ts`, `values.ts`,
+`selectors.ts`, `guards.ts`). Before changing a builder to "fix" a node shape, READ the matching
+production and reproduce it exactly. Never guess the shape from grammar text, parseman output, or
+test expectations, and never invent "grammar bug"/"partial accessor" explanations for a mismatch.
+See `.cursor/rules/domains/parsers.mdc` for the full rule.
+
 ## Note (repo anomaly)
 
 `packages/less-parser/vitest.config.ts` imports `../../vitest.config.js`, but the repo root contains `vitest.config.ts` (no `.js` found). Keep this in mind if test config resolution behaves oddly.

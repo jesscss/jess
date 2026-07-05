@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { any, decl, list, mixin, rules, vardecl } from '../../index.js';
+import { any, atrule, decl, Declaration, list, mixin, rules, vardecl } from '../../index.js';
+import { serializeTypes } from '../serialize-types.js';
 import { F_STATIC } from '../../node.js';
 import { callableRulesEntry } from '../callable-entry.js';
-import { createOwnedCallableRulesSurface, createUnlockedCallableRulesSurface } from '../callable-surface.js';
+import { createCallableRulesSurface } from '../callable-surface.js';
 import { matchCallableParams } from '../callable-param-match.js';
 import { prepareCallableCandidateState } from '../callable-candidate-state.js';
 
@@ -11,11 +12,11 @@ describe('callable candidate state helper', () => {
     const definitionParent = rules([]);
     const callSiteRules = rules([]);
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     definitionParent.adopt(candidate);
     callSiteRules.getScopeFrame();
@@ -33,13 +34,12 @@ describe('callable candidate state helper', () => {
       callSiteRules,
       leakyRules: true,
       resolvedBindingInfo,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 
-    expect(state.sourceRules).toBe(candidate.rules);
-    expect(state.rules).not.toBe(candidate.rules);
+    expect(state.sourceRules).toBe(candidate);
+    expect(state.rules).not.toBe(candidate);
     expect(state.rules.options.rulesVisibility?.VarDeclaration).toBe('public');
     expect(state.rules.parent).toBe(candidate.parent);
     expect(state.paramBindings).toHaveLength(1);
@@ -63,8 +63,7 @@ describe('callable candidate state helper', () => {
       candidate,
       callSiteRules,
       leakyRules: false,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 
@@ -89,8 +88,7 @@ describe('callable candidate state helper', () => {
       candidate,
       callSiteRules,
       leakyRules: false,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 
@@ -99,6 +97,45 @@ describe('callable candidate state helper', () => {
     expect(state.rules.parent).toBe(callSiteRules);
     expect(state.parentFrame).toBe(callSiteRules.getScopeFrame());
     expect(state.definitionFrame).toBeUndefined();
+  });
+
+  it('wraps string-backed at-rules in shallow callable-rules surfaces', () => {
+    const callSiteRules = rules([]);
+    const mediaRule = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: [
+        new Declaration({
+          name: 'color',
+          value: ['blue']
+        })
+      ]
+    });
+    const sourceRules = rules([
+      mediaRule
+    ]);
+    const candidate = callableRulesEntry({ name: undefined, params: undefined, rules: sourceRules });
+
+    const state = prepareCallableCandidateState({
+      candidate,
+      callSiteRules,
+      leakyRules: false,
+      createCallableRules: createCallableRulesSurface,
+      getRootSourceRules: rulesNode => rulesNode
+    });
+
+    expect(state.rules).not.toBe(sourceRules);
+    expect(state.rules.rules[0]).toBe(mediaRule);
+    expect(mediaRule.parent).toBe(sourceRules);
+    expect(state.rules.toString()).toContain('@media screen');
+    expect(state.rules.toString()).toContain('color: blue;');
+    const types = serializeTypes(state.rules);
+    expect(types).toContain('name: \'@media\'');
+    expect(types).toContain('prelude: \'screen\'');
+    expect(types).toContain('name: \'color\'');
+    expect(types).toContain('value:');
+    expect(types).not.toContain('name: (Any [role=atkeyword] \'@media\')');
+    expect(types).not.toContain('value: (Any \'blue\')');
   });
 
   it('keeps childless static callable-rules candidates on the unlocked rules path', () => {
@@ -112,10 +149,7 @@ describe('callable candidate state helper', () => {
       candidate,
       callSiteRules: undefined,
       leakyRules: false,
-      createOwnedRules: () => {
-        throw new Error('childless static candidates should not need owned rules');
-      },
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
 

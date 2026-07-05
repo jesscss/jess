@@ -142,8 +142,8 @@ export function processScssStringInterpolation(
 import { Expression } from '@jesscss/core';
 
 export function unwrapSingleSequence(n: Node): Node {
-  if (isNode(n, N.Sequence) && (n as Sequence).items.length === 1) {
-    return (n as Sequence).items[0]!;
+  if (isNode(n, N.Sequence) && (n as Sequence).value.length === 1) {
+    return (n as Sequence).value[0]!;
   }
   return n;
 }
@@ -166,7 +166,7 @@ type OptionalLocation = LocationInfo | undefined;
 export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string, value: Node, location?: OptionalLocation): VarDeclaration {
   const decl = new VarDeclaration(
     {
-      name: new Any(name, { role: 'property' }, location, parser.context),
+      name: name,
       value
     },
     undefined,
@@ -204,7 +204,7 @@ export function desugarMapLookup(
   parser: ScssRecursiveParser,
   call: Call
 ): Node {
-  const { name, args: argsList } = call.value;
+  const { name, args: argsList } = call;
   if (typeof name !== 'string') {
     return call;
   }
@@ -212,7 +212,7 @@ export function desugarMapLookup(
     return call;
   }
 
-  const args = isNode(argsList, N.List) ? (argsList as List).items : [];
+  const args = isNode(argsList, N.List) ? (argsList as List).value : [];
   if (args.length < 2) {
     return call;
   }
@@ -271,7 +271,7 @@ export function makeNamespacedReference(
 }
 
 export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): Call {
-  const { name, args } = call.value;
+  const { name, args } = call;
   if (typeof name !== 'string') {
     return call;
   }
@@ -286,9 +286,7 @@ export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): 
     return call;
   }
   const ref = makeNamespacedReference(parser, parts, 'function');
-  const location = Array.isArray(call.location) && call.location.length === 6
-    ? call.location
-    : undefined;
+  const location = Array.isArray(call.location) && call.location;
   return new Call({ name: ref, args }, call.options, location, parser.context);
 }
 

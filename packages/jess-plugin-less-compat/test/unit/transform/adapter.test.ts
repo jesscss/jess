@@ -89,7 +89,7 @@ describe('createLessAdapter', () => {
 
   it('routes deprecated Less declaration value mutation through the Jess direct field', () => {
     const declaration = new Declaration({
-      name: new Any('color', { role: 'property' }),
+      name: 'color',
       value: new Any('red')
     });
     const adapter = toLessNode(declaration);
@@ -112,7 +112,7 @@ describe('toLessNode', () => {
   it('converts a simple ruleset into a typed adapter', () => {
     const ruleset = new Ruleset({
       selector: new BasicSelector('.demo'),
-      rules: new Rules([])
+      rules: []
     });
 
     const lessRuleset = toLessNode(ruleset);
@@ -130,7 +130,7 @@ describe('toLessNode', () => {
   it('converts selector lists into selector arrays', () => {
     const ruleset = new Ruleset({
       selector: new SelectorList([new BasicSelector('.a'), new BasicSelector('.b')]),
-      rules: new Rules([])
+      rules: []
     });
 
     const lessRuleset = toLessNode(ruleset);
@@ -166,13 +166,12 @@ describe('toLessNode', () => {
 describe('toLessTree', () => {
   it('preserves adapter identity for nested reused nodes via cache', () => {
     const decl = new Declaration({
-      name: new Any('color', { role: 'property' }),
+      name: 'color',
       value: new Any('red')
     });
-    const rules = new Rules([decl]);
     const ruleset = new Ruleset({
       selector: new BasicSelector('.demo'),
-      rules
+      rules: [decl]
     });
 
     const lessTree = toLessTree(ruleset);

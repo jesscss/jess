@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
 import { Any, type AnyRole, type AnyOptions } from './any.js';
 import type { Context } from '../context.js';
@@ -28,7 +29,8 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = replacement.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const arg = (replacement as unknown as { value: unknown }).value;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -37,7 +39,8 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    const value = replacement.value;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const value = (replacement as unknown as { value: unknown }).value;
     if (value instanceof Node) {
       return value;
     }
@@ -56,13 +59,11 @@ function serializeGeneratedIsWrapper(replacement: Node): string {
 
 function stringifyReplacement(replacement: Node, options: PrintOptions, preserveQuotedSyntax?: boolean): string {
   const printOpts = getPrintOptions(options);
-  const writer = new OutputWriter();
+  const writer = printOpts.writer;
   const mark = writer.mark();
-  writeReplacementSyntax(replacement, {
-    ...printOpts,
-    writer
-  }, preserveQuotedSyntax);
+  writeReplacementSyntax(replacement, printOpts, preserveQuotedSyntax);
   const result = writer.getSince(mark);
+  writer.restore(mark);
   return isNode(replacement, N.Reference) ? result : result.trim();
 }
 
@@ -245,16 +246,16 @@ export class Interpolated<
     w.add(source.slice(sourceOffset), this);
   }
 
-  writeWithReplacements(replacements: Node[], options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  writeWithReplacements(replacements: Node[], rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const mark = w.mark();
     this.writeInterpolated(replacements, options);
     return w.getSince(mark);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const mark = w.mark();
     this.writeSyntax(options);
@@ -271,7 +272,7 @@ export class Interpolated<
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     const out = this.renderEvaluatedReplacementText(context, prepared);
     const finish = (rendered: string): string => buffer ? writeRenderText(buffer, rendered) : rendered;
     return isThenable(out)
@@ -300,9 +301,6 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (mode === 'eval' && !replacement.evaluated) {
-        throw new Error('Cannot create selector from un-evaluated interpolated node');
-      }
       if (isNode(replacement, N.Selector)) {
         const copied = replacement.cloneForPlacement();
         if (!isNode(copied, N.Selector)) {
@@ -317,9 +315,6 @@ export class Interpolated<
     for (let i = 0; i < replacements.length; i++) {
       const replacement = replacements[i]!;
       const nextPlaceholder = source.indexOf(INTERPOLATION_PLACEHOLDER, sourceOffset);
-      if (mode === 'eval' && !replacement.evaluated) {
-        throw new Error('Cannot create selector from un-evaluated interpolated node');
-      }
       const part = shouldWrapSelectorInIs(replacement)
         ? serializeGeneratedIsWrapper(replacement)
         : stringifyReplacement(replacement, {}, this.options.preserveQuotedSyntax).trim();
@@ -503,7 +498,7 @@ export class Interpolated<
         replacements: evaluatedReplacements
       },
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }

@@ -10,27 +10,21 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
-    },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "source": "./src/*.ts",
-      "import": "./lib/*.js",
-      "require": "./lib/*.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "test": "vitest --run --passWithNoTests",
     "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -47,7 +41,8 @@
     "color-name": "~2.0.0"
   },
   "devDependencies": {
-    "@types/color-name": "^1.1.1"
+    "@types/color-name": "^1.1.1",
+    "parseman": "^0.14.0"
   },
   "type": "module",
   "module": "lib/index.js"

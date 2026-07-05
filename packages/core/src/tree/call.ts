@@ -1,17 +1,25 @@
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { coerceNodeArray } from './util/evaluate-node-array.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
-import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
+import { callWithContext } from '../define-function.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
-import { callableRulesEntry } from './util/callable-entry.js';
+import { callableRulesEntry, type MixinEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
 import { Any } from './any.js';
+import { Bool } from './bool.js';
+import { Dimension } from './dimension.js';
+import { Num } from './number.js';
+import { Color } from './color.js';
+import { Sequence } from './sequence.js';
+import { Quoted } from './quoted.js';
 import { List, list } from './list.js';
 import { Reference } from './reference.js';
 import {
@@ -24,7 +32,8 @@ import {
   consumeTrivia,
   emitCommentTriviaBetweenNodes,
   emitTriviaTokens,
-  getPrintableTriviaTokens
+  printableTriviaText,
+  triviaLeadingWhitespace
 } from './util/trivia.js';
 import { Condition } from './condition.js';
 import { Operation } from './operation.js';
@@ -42,14 +51,25 @@ function isExtendedFn(value: unknown): value is ExtendedFn {
   return typeof value === 'function';
 }
 
+/**
+ * A `calc()` argument that collapses to a bare Dimension (through any
+ * redundant Parens) reduces to that Dimension — the wrapper is dropped.
+ * A preserved Operation/Paren/calc-fallback returns undefined (keep `calc`).
+ */
+function unwrapToDimension(node: Node): Dimension | undefined {
+  let n = node;
+  while (n instanceof Paren && n.value) {
+    n = n.value;
+  }
+  return n instanceof Dimension ? n : undefined;
+}
+
 function isTriviaMap(value: unknown): value is NonNullable<PrintOptions['trivia']> {
   if (!value || typeof value !== 'object') {
     return false;
   }
   return (
-    'runs' in value
-    && value.runs instanceof Set
-    && 'lookup' in value
+    'lookup' in value
     && typeof value.lookup === 'function'
     && 'entries' in value
     && typeof value.entries === 'function'
@@ -89,16 +109,14 @@ function emitCallArgSeparator(
 ): void {
   emitCommentTriviaBetweenNodes(prev, arg, options);
   const leadingTrivia = options.trivia
-    ? consumeTrivia(options.trivia, arg.location[0], 'before', options)
+    ? consumeTrivia(options.trivia, spanStartOf(arg), 'before', options)
     : undefined;
-  const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
-    ? leadingTrivia[0].image
-    : '';
-  const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+  const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {
     options.writer.add(preserveLeadingWhitespace ? ' /' : ' / ');
   } else {
-    options.writer.add(preserveLeadingWhitespace ? sep : `${sep} `);
+    const sepStr = sep ?? ',';
+    options.writer.add(preserveLeadingWhitespace ? sepStr : `${sepStr} `);
   }
   if (leadingTrivia) {
     emitTriviaTokens(
@@ -115,26 +133,24 @@ function emitCommentTriviaBetweenCallArgs(
   options: FinalPrintOptions
 ): string {
   const trivia = options.trivia ?? sourceTriviaForNode(prev) ?? sourceTriviaForNode(next);
-  const prevEnd = prev.location[3];
-  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
+  const prevEnd = spanEndOf(prev);
+  if (!trivia || prevEnd === undefined || spanStartOf(next) === undefined) {
     return '';
   }
-  const tokens = trivia.lookup(prevEnd, 'after');
-  if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
+  const run = trivia.lookup(prevEnd, 'after');
+  if (!run?.hasComment) {
     return '';
   }
   const consumed = consumeTrivia(trivia, prevEnd, 'after', options);
   emitTriviaTokens(consumed, options);
-  return getPrintableTriviaTokens(consumed, options)
-    ?.map(token => token.image)
-    .join('') ?? '';
+  return printableTriviaText(consumed, options.context);
 }
 
 function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): string | Node;
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference;
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference {
   if (
-    args?.items.length
+    args?.value.length
     && isNode(name, N.Reference)
     && name.options?.type === 'mixin-ruleset'
     && name.options.mixinRulesetCallHasArgs !== true
@@ -149,7 +165,7 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
         ...name.options,
         mixinRulesetCallHasArgs: true
       },
-      name.location.length === 0 ? undefined : name.location,
+      sourceSpanOf(name),
       name.sourceRoot?._treeContext
     );
   }
@@ -192,32 +208,9 @@ type CallEvalState = {
   preservesRulesLikeVariableTarget: boolean;
 };
 
-type CallRawArgsPlacementState = {
-  source: Call;
-  sourceArgs: List<Node>;
-};
-
-export type CallRawArgDiagnosticSource = {
-  source: Call;
-  sourceArg: Node;
-  index: number;
-};
-
 type OptionalFallbackRenderOutput = Node | string;
 type CallRenderTextState = { text: string | undefined };
 type CallRenderArgOptions = { evaluateCalcArgs: boolean };
-
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
 
 function writeCallNodeTextToActiveWriter(
   node: Node,
@@ -231,7 +224,7 @@ function writeCallNodeTextToActiveWriter(
     writer.trimHorizontalStartSince(position);
     writer.trimHorizontalEndSince(position);
   }
-  return getWriterTextSincePosition(writer, position);
+  return writer.getSince(position);
 }
 
 function getRenderedCallNameText(name: string | Node | unknown): string | undefined {
@@ -244,299 +237,262 @@ function getRenderedCallNameText(name: string | Node | unknown): string | undefi
   return undefined;
 }
 
-function getKnownRenderedCallText(node: Node): string | undefined {
-  switch (node.type) {
-    case 'Any':
-    case 'Keyword':
-    case 'Anonymous':
-      return typeof node.value === 'string' ? node.value : undefined;
-    case 'Bool':
-      return node.value ? 'true' : 'false';
-    case 'Dimension':
-      return typeof node.number === 'number'
-        ? node.toTrimmedString()
-        : undefined;
-    case 'Num':
-      return typeof node.number === 'number' ? `${node.number}` : undefined;
-    case 'Color':
-      return typeof node.node === 'string' ? node.node : undefined;
-    case 'List': {
-      const sep = node.options?.sep ?? ',';
-      const joiner = sep === '/' ? ' / ' : `${sep} `;
-      let out = '';
-      for (let i = 0; i < node.items.length; i++) {
-        const text = getKnownRenderedCallText(node.items[i]!);
-        if (text === undefined) {
-          return undefined;
-        }
-        if (i > 0) {
-          out += joiner;
-        }
-        out += text;
-      }
-      return out;
-    }
-    case 'Sequence': {
-      if (node.preserveWhitespace) {
-        return undefined;
-      }
-      let out = '';
-      for (let i = 0; i < node.items.length; i++) {
-        const text = getKnownRenderedCallText(node.items[i]!);
-        if (text === undefined) {
-          return undefined;
-        }
-        if (i > 0) {
-          out += ' ';
-        }
-        out += text;
-      }
-      return out;
-    }
-    case 'Paren': {
-      const open = node.options?.delimiter === 'square' ? '[' : '(';
-      const close = node.options?.delimiter === 'square' ? ']' : ')';
-      if (!node.value) {
-        return `${open}${close}`;
-      }
-      const value = getKnownRenderedCallText(node.value);
-      if (value === undefined) {
-        return undefined;
-      }
-      return `${open}${value}${close}`;
-    }
-    case 'Quoted': {
-      const quote = node.quote ?? '"';
-      if (typeof node.value === 'string') {
-        return node.escaped ? node.value : `${quote}${node.value}${quote}`;
-      }
-      const value = getKnownRenderedCallText(node.value);
-      if (value === undefined) {
-        return undefined;
-      }
-      return node.escaped ? value : `${quote}${value}${quote}`;
-    }
-    default:
-      if (node.constructor === QueryCondition) {
-        let out = '';
-        for (let i = 0; i < node.items.length; i++) {
-          const text = getKnownRenderedCallText(node.items[i]!);
-          if (text === undefined) {
-            return undefined;
-          }
-          if (i > 0) {
-            out += ' ';
-          }
-          out += text;
-        }
-        return out;
-      }
-      if (node.constructor === Condition) {
-        const left = getKnownRenderedCallText(node.left);
-        if (left === undefined) {
-          return undefined;
-        }
-        const needsParens = Boolean(node.right || node.negate);
-        let out = node.negate ? 'not ' : '';
-        if (needsParens) {
-          out += '(';
-        }
-        out += left;
-        if (node.operator && node.right) {
-          const right = getKnownRenderedCallText(node.right);
-          if (right === undefined) {
-            return undefined;
-          }
-          out += ` ${node.operator} ${right}`;
-        }
-        if (needsParens) {
-          out += ')';
-        }
-        return out;
-      }
-      if (node.constructor === Operation) {
-        const left = getKnownRenderedCallText(node.left);
-        const right = getKnownRenderedCallText(node.right);
-        if (left === undefined || right === undefined) {
-          return undefined;
-        }
-        return `${left} ${node.operator} ${right}`;
-      }
-      if (node.constructor === Negative) {
-        const value = getKnownRenderedCallText(node.node);
-        return value === undefined ? undefined : `-${value}`;
-      }
-      return undefined;
+function getKnownRenderedCallText(node: string | Node): string | undefined {
+  if (typeof node === 'string') {
+    return node;
   }
+  if (node instanceof Any) {
+    return typeof node.value === 'string' ? node.value : undefined;
+  }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Num) {
+    return typeof node.number === 'number' ? `${node.number}` : undefined;
+  }
+  if (node instanceof Dimension) {
+    return typeof node.number === 'number' ? node.toTrimmedString() : undefined;
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node instanceof List) {
+    const sep = node.options?.sep ?? ',';
+    const joiner = sep === '/' ? ' / ' : `${sep} `;
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += joiner;
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Sequence) {
+    if (node.preserveWhitespace) {
+      return undefined;
+    }
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Paren) {
+    const open = node.options?.delimiter === 'square' ? '[' : '(';
+    const close = node.options?.delimiter === 'square' ? ']' : ')';
+    if (!node.value) {
+      return `${open}${close}`;
+    }
+    const value = getKnownRenderedCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return `${open}${value}${close}`;
+  }
+  if (node instanceof Quoted) {
+    const quote = node.quote ?? '"';
+    if (typeof node.value === 'string') {
+      return node.escaped ? node.value : `${quote}${node.value}${quote}`;
+    }
+    const value = getKnownRenderedCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return node.escaped ? value : `${quote}${value}${quote}`;
+  }
+  if (node instanceof QueryCondition) {
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownRenderedCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Condition) {
+    const left = getKnownRenderedCallText(node.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(node.right || node.negate);
+    let out = node.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (node.operator && node.right) {
+      const right = getKnownRenderedCallText(node.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${node.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
+  }
+  if (node instanceof Operation) {
+    const left = getKnownRenderedCallText(node.left);
+    const right = getKnownRenderedCallText(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${node.operator} ${right}`;
+  }
+  if (node instanceof Negative) {
+    const value = getKnownRenderedCallText(node.value);
+    return value === undefined ? undefined : `-${value}`;
+  }
+  return undefined;
 }
 
-function getKnownSourceCallText(node: Node): string | undefined {
-  switch (node.type) {
-    case 'Any':
-    case 'Keyword':
-    case 'Anonymous':
-      return typeof node.value === 'string' ? node.value : undefined;
-    case 'Bool':
-      return node.value ? 'true' : 'false';
-    case 'Dimension':
-      return typeof node.number === 'number'
-        ? node.toTrimmedString()
-        : undefined;
-    case 'Num':
-      return typeof node.number === 'number' ? `${node.number}` : undefined;
-    case 'Color':
-      return typeof node.node === 'string' ? node.node : undefined;
-    case 'List': {
-      const sep = node.options?.sep ?? ',';
-      const joiner = sep === '/' ? ' / ' : `${sep} `;
-      let out = '';
-      for (let i = 0; i < node.items.length; i++) {
-        const text = getKnownSourceCallText(node.items[i]!);
-        if (text === undefined) {
-          return undefined;
-        }
-        if (i > 0) {
-          out += joiner;
-        }
-        out += text;
-      }
-      return out;
-    }
-    case 'Sequence': {
-      if (node.preserveWhitespace) {
-        return undefined;
-      }
-      let out = '';
-      for (let i = 0; i < node.items.length; i++) {
-        const text = getKnownSourceCallText(node.items[i]!);
-        if (text === undefined) {
-          return undefined;
-        }
-        if (i > 0) {
-          out += ' ';
-        }
-        out += text;
-      }
-      return out;
-    }
-    case 'Paren': {
-      const open = node.options?.delimiter === 'square' ? '[' : '(';
-      const close = node.options?.delimiter === 'square' ? ']' : ')';
-      if (!node.value) {
-        return `${node.options?.escaped ? '~' : ''}${open}${close}`;
-      }
-      const value = getKnownSourceCallText(node.value);
-      if (value === undefined) {
-        return undefined;
-      }
-      return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
-    }
-    case 'Quoted': {
-      const quote = node.quote ?? '"';
-      if (typeof node.value === 'string') {
-        return node.escaped ? `~${quote}${node.value}${quote}` : `${quote}${node.value}${quote}`;
-      }
-      const value = getKnownSourceCallText(node.value);
-      if (value === undefined) {
-        return undefined;
-      }
-      return node.escaped ? `~${quote}${value}${quote}` : `${quote}${value}${quote}`;
-    }
-    default:
-      if (node.constructor === QueryCondition) {
-        let out = '';
-        for (let i = 0; i < node.items.length; i++) {
-          const text = getKnownSourceCallText(node.items[i]!);
-          if (text === undefined) {
-            return undefined;
-          }
-          if (i > 0) {
-            out += ' ';
-          }
-          out += text;
-        }
-        return out;
-      }
-      if (node.constructor === Condition) {
-        const left = getKnownSourceCallText(node.left);
-        if (left === undefined) {
-          return undefined;
-        }
-        const needsParens = Boolean(node.right || node.negate);
-        let out = node.negate ? 'not ' : '';
-        if (needsParens) {
-          out += '(';
-        }
-        out += left;
-        if (node.operator && node.right) {
-          const right = getKnownSourceCallText(node.right);
-          if (right === undefined) {
-            return undefined;
-          }
-          out += ` ${node.operator} ${right}`;
-        }
-        if (needsParens) {
-          out += ')';
-        }
-        return out;
-      }
-      if (node.constructor === Operation) {
-        const left = getKnownSourceCallText(node.left);
-        const right = getKnownSourceCallText(node.right);
-        if (left === undefined || right === undefined) {
-          return undefined;
-        }
-        return `${left} ${node.operator} ${right}`;
-      }
-      if (node.constructor === Negative) {
-        const value = getKnownSourceCallText(node.node);
-        return value === undefined ? undefined : `-${value}`;
-      }
-      return undefined;
+function getKnownSourceCallText(node: string | Node): string | undefined {
+  if (typeof node === 'string') {
+    return node;
   }
+  if (node instanceof Any) {
+    return typeof node.value === 'string' ? node.value : undefined;
+  }
+  if (node instanceof Bool) {
+    return node.value ? 'true' : 'false';
+  }
+  if (node instanceof Num) {
+    return typeof node.number === 'number' ? `${node.number}` : undefined;
+  }
+  if (node instanceof Dimension) {
+    return typeof node.number === 'number' ? node.toTrimmedString() : undefined;
+  }
+  if (node instanceof Color) {
+    return typeof node.node === 'string' ? node.node : undefined;
+  }
+  if (node instanceof List) {
+    const sep = node.options?.sep ?? ',';
+    const joiner = sep === '/' ? ' / ' : `${sep} `;
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += joiner;
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Sequence) {
+    if (node.preserveWhitespace) {
+      return undefined;
+    }
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Paren) {
+    const open = node.options?.delimiter === 'square' ? '[' : '(';
+    const close = node.options?.delimiter === 'square' ? ']' : ')';
+    if (!node.value) {
+      return `${node.options?.escaped ? '~' : ''}${open}${close}`;
+    }
+    const value = getKnownSourceCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return `${node.options?.escaped ? '~' : ''}${open}${value}${close}`;
+  }
+  if (node instanceof Quoted) {
+    const quote = node.quote ?? '"';
+    if (typeof node.value === 'string') {
+      return node.escaped ? `~${quote}${node.value}${quote}` : `${quote}${node.value}${quote}`;
+    }
+    const value = getKnownSourceCallText(node.value);
+    if (value === undefined) {
+      return undefined;
+    }
+    return node.escaped ? `~${quote}${value}${quote}` : `${quote}${value}${quote}`;
+  }
+  if (node instanceof QueryCondition) {
+    let out = '';
+    for (let i = 0; i < node.value.length; i++) {
+      const text = getKnownSourceCallText(node.value[i]!);
+      if (text === undefined) {
+        return undefined;
+      }
+      if (i > 0) {
+        out += ' ';
+      }
+      out += text;
+    }
+    return out;
+  }
+  if (node instanceof Condition) {
+    const left = getKnownSourceCallText(node.left);
+    if (left === undefined) {
+      return undefined;
+    }
+    const needsParens = Boolean(node.right || node.negate);
+    let out = node.negate ? 'not ' : '';
+    if (needsParens) {
+      out += '(';
+    }
+    out += left;
+    if (node.operator && node.right) {
+      const right = getKnownSourceCallText(node.right);
+      if (right === undefined) {
+        return undefined;
+      }
+      out += ` ${node.operator} ${right}`;
+    }
+    if (needsParens) {
+      out += ')';
+    }
+    return out;
+  }
+  if (node instanceof Operation) {
+    const left = getKnownSourceCallText(node.left);
+    const right = getKnownSourceCallText(node.right);
+    if (left === undefined || right === undefined) {
+      return undefined;
+    }
+    return `${left} ${node.operator} ${right}`;
+  }
+  if (node instanceof Negative) {
+    const value = getKnownSourceCallText(node.value);
+    return value === undefined ? undefined : `-${value}`;
+  }
+  return undefined;
 }
 
 function callRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): bufferOrOptions is RenderBuffer & { shareWriter: true } {
   return Boolean(isRenderBuffer(bufferOrOptions) && 'shareWriter' in bufferOrOptions && bufferOrOptions.shareWriter);
-}
-
-export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
-  const placement = getRawArgsPlacement(rawArgs);
-  if (!placement || !(placement.source instanceof Call) || !isNode(placement.sourceArgs, N.List)) {
-    return undefined;
-  }
-  return {
-    source: placement.source,
-    sourceArgs: placement.sourceArgs
-  };
-}
-
-export function getCallRawArgSourceNode(rawArgs: List<Node>, index: number): Node | undefined {
-  const placement = getCallRawArgsPlacement(rawArgs);
-  return placement?.sourceArgs.items[index];
-}
-
-export function getCallRawArgDiagnosticSource(rawArgs: List<Node>, index: number): CallRawArgDiagnosticSource | undefined {
-  const placement = getCallRawArgsPlacement(rawArgs);
-  const sourceArg = placement?.sourceArgs.items[index];
-  if (!placement || !sourceArg) {
-    return undefined;
-  }
-  return {
-    source: placement.source,
-    sourceArg,
-    index
-  };
-}
-
-export function getCallRawArgDiagnosticMessageSource(rawArgs: List<Node>, index: number): string | undefined {
-  const diagnosticSource = getCallRawArgDiagnosticSource(rawArgs, index);
-  if (!diagnosticSource) {
-    return undefined;
-  }
-  const sourceText = getKnownSourceCallText(diagnosticSource.sourceArg) ?? diagnosticSource.sourceArg.toTrimmedString();
-  const sourceArgText = sourceText.startsWith('$') ? sourceText : `$${sourceText}`;
-  return `argument ${diagnosticSource.index + 1} from ${sourceArgText}`;
 }
 
 /**
@@ -571,6 +527,14 @@ export class Call extends Node<CallValue, CallOptions> {
   readonly args: CallValue['args'];
   readonly contentNode: CallValue['contentNode'];
 
+  /**
+   * Set on a Call that is the RESULT of eval (resolved output), so render emits
+   * it as a plain CSS call instead of re-entering dynamic name resolution. This
+   * is the narrow §2.7 replacement for the deleted general `evaluated` flag — it
+   * is purely a call-render concern, not a re-eval gate.
+   */
+  _evaluatedCallOutput = false;
+
   override _requiredSemi = true;
 
   private createEvalState(): CallEvalState {
@@ -591,7 +555,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ...name.options,
           preserveRulesLike: true
         },
-        name.location.length === 0 ? undefined : name.location,
+        sourceSpanOf(name),
         name.sourceRoot?._treeContext
       );
     }
@@ -608,7 +572,6 @@ export class Call extends Node<CallValue, CallOptions> {
   private evalState(context: Context): Promise<Node> {
     const state = this.createEvalState();
     return this.evalFromState(context, state).then((node) => {
-      node.evaluated = true;
       if (node !== this) {
         node.inherit(this);
       }
@@ -649,15 +612,16 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     const ownResults = options?.ownResults ?? true;
-    const source = nodes.items;
+    const source = coerceNodeArray(nodes.value);
     const out = new Array<Node>(source.length);
-    let changed = false;
+    // Coercing raw parser segments to nodes is itself a change — the returned
+    // list must be rebuilt from `out`, not the original raw-valued `nodes`.
+    let changed = source !== (nodes.value as unknown as Node[]);
     const evalImmediate = (node: Node): Node => {
-      const evald = node.evaluated ? node : node.evalNode(context);
+      const evald = Node.evalStatic(node, context);
       if (!(evald instanceof Node)) {
         throw new TypeError('Expected sync node result.');
       }
-      evald.evaluated = true;
       if (node !== evald) {
         evald.inherit(node);
       }
@@ -865,7 +829,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return this.runAsCaller(context, async () => {
           try {
             const result = state.args
-              ? await callWithContext(context, fn, ...state.args.items)
+              ? await callWithContext(context, fn, ...state.args.value)
               : await callWithContext(context, fn);
             return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
@@ -886,15 +850,17 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isExtendedFn(fn)) {
         return undefined;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const evaluatedNameObj = typeof evaluatedName === 'object' ? evaluatedName as object : null;
       if (
         isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-        || evaluatedName instanceof MixinCollection
+        || (evaluatedNameObj instanceof MixinCollection)
         || Array.isArray(evaluatedName)
       ) {
         return undefined;
       }
       const rendered = await state.source.renderFinalizedCallSyntax(
-        typeof evaluatedName === 'string' || evaluatedName instanceof Node
+        typeof evaluatedName === 'string' || (evaluatedNameObj instanceof Node)
           ? evaluatedName
           : stringifyValueOf(evaluatedName),
         state,
@@ -936,7 +902,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
     return this.runInCallFrame(context, { caller: true }, async () => {
       const result = state.args
-        ? await callWithContext(context, fn, ...state.args.items)
+        ? await callWithContext(context, fn, ...state.args.value)
         : await callWithContext(context, fn);
       return this.finalizeCallResult(context, result, { ownOutput });
     });
@@ -984,12 +950,12 @@ export class Call extends Node<CallValue, CallOptions> {
     textState?: CallRenderTextState,
     renderOptions: CallRenderArgOptions = { evaluateCalcArgs: true }
   ): MaybePromise<void> {
-    if (!args || args.items.length === 0) {
+    if (!args || args.value.length === 0) {
       return;
     }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const rawArgs = args.items;
+    const rawArgs = coerceNodeArray(args.value);
     const last = rawArgs.length - 1;
     const findNextArgIndex = (start: number): number => {
       let i = start;
@@ -1262,7 +1228,7 @@ export class Call extends Node<CallValue, CallOptions> {
     const contentNode = syntax && 'contentNode' in syntax ? syntax.contentNode : state.contentNode;
     if (
       typeof name === 'string'
-      && (!args || args.items.length === 0)
+      && (!args || args.value.length === 0)
       && !contentNode
     ) {
       const out = `${name}()${this._options?.markImportant ? ' !important' : ''}`;
@@ -1394,9 +1360,11 @@ export class Call extends Node<CallValue, CallOptions> {
       if (isExtendedFn(fn)) {
         return undefined;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const evaluatedNameObj2 = typeof evaluatedName === 'object' ? evaluatedName as object : null;
       if (
         isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-        || evaluatedName instanceof MixinCollection
+        || (evaluatedNameObj2 instanceof MixinCollection)
         || Array.isArray(evaluatedName)
       ) {
         return undefined;
@@ -1427,7 +1395,7 @@ export class Call extends Node<CallValue, CallOptions> {
                   ? (
                       isMetadataFunction
                         ? await callWithContext(context, fn, state.args)
-                        : await callWithContext(context, fn, ...state.args.items)
+                        : await callWithContext(context, fn, ...state.args.value)
                     )
                   : await callWithContext(context, fn);
               } catch (error) {
@@ -1460,7 +1428,7 @@ export class Call extends Node<CallValue, CallOptions> {
           const argNodes = await this.evalArgNodes(context, state.args) ?? list([]);
           const output = await evaluatedName.evalCall(context, argNodes);
           return this.renderOutput(context, output, bufferOrOptions, options);
-        } else if (isNode(evaluatedName, N.Rules | N.Collection)) {
+        } else if (isNode(evaluatedName, N.Rules | N.Collection) && evaluatedName instanceof Rules) {
           if (state.preservesRulesLikeVariableTarget) {
             const sourceParent = 'sourceNode' in evaluatedName && isNode(evaluatedName.sourceNode)
               ? evaluatedName.sourceNode.parent
@@ -1469,7 +1437,7 @@ export class Call extends Node<CallValue, CallOptions> {
               evaluatedName.parent = sourceParent;
             }
           }
-          if (state.args && state.args.items.length > 0) {
+          if (state.args && state.args.value.length > 0) {
             throw new ReferenceError(`Cannot call ${evaluatedName.type} with arguments`);
           }
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
@@ -1492,12 +1460,15 @@ export class Call extends Node<CallValue, CallOptions> {
           return this.renderOutput(context, output, bufferOrOptions, options);
         } else if (
           isNode(evaluatedName, N.Mixin | N.Ruleset)
-          || evaluatedName instanceof MixinCollection
+          || ((evaluatedName as object) instanceof MixinCollection)
           || Array.isArray(evaluatedName)
         ) {
-          const collection = evaluatedName instanceof MixinCollection
-            ? evaluatedName
-            : new MixinCollection(Array.isArray(evaluatedName) ? evaluatedName : [evaluatedName]);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const collection = ((evaluatedName as object) instanceof MixinCollection)
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            ? evaluatedName as MixinCollection
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            : new MixinCollection(Array.isArray(evaluatedName) ? evaluatedName as MixinEntry[] : [evaluatedName as MixinEntry]);
           const output = await this.runInCallFrame(context, { caller: true }, async () => {
             try {
               const result = await collection.evalCall(context, state.args);
@@ -1525,7 +1496,7 @@ export class Call extends Node<CallValue, CallOptions> {
         } else if (
           !(
             isNode(evaluatedName, N.Call | N.Mixin | N.Ruleset | N.Rules | N.Collection | N.Func)
-            || evaluatedName instanceof MixinCollection
+            || ((evaluatedName as object) instanceof MixinCollection)
             || Array.isArray(evaluatedName)
           )
           && (this.options?.silentFail || evaluatedName !== 'calc')
@@ -1574,10 +1545,10 @@ export class Call extends Node<CallValue, CallOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
-    if ((!this.args || this.args.items.length === 0) && !this.contentNode && typeof this.name === 'string') {
+    if ((!this.args || this.args.value.length === 0) && !this.contentNode && typeof this.name === 'string') {
       const out = `${this.name}${this._options?.silentFail ? '?' : ''}()${this._options?.markImportant ? ' !important' : ''}`;
       w.add(out, this);
       return out;
@@ -1588,11 +1559,11 @@ export class Call extends Node<CallValue, CallOptions> {
         : getKnownSourceCallText(this.name);
       if (nameText !== undefined) {
         let out = `${nameText}${this._options?.silentFail ? '?' : ''}(`;
-        if (this.args?.items.length) {
+        if (this.args?.value.length) {
           const sep = this.args.options?.sep ?? ',';
           const joiner = sep === '/' ? ' / ' : `${sep} `;
-          for (let i = 0; i < this.args.items.length; i++) {
-            const text = getKnownSourceCallText(this.args.items[i]!);
+          for (let i = 0; i < this.args.value.length; i++) {
+            const text = getKnownSourceCallText(this.args.value[i]!);
             if (text === undefined) {
               out = '';
               break;
@@ -1625,7 +1596,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const position = w.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
   }
 
   /** @internal */
@@ -1639,19 +1610,19 @@ export class Call extends Node<CallValue, CallOptions> {
       : directSource ? getKnownSourceCallText(name) : undefined;
     if (nameText !== undefined) {
       w.add(nameText, typeof name === 'string' ? this : name);
-    } else {
+    } else if (typeof name !== 'string') {
       name.writeSyntax(options);
     }
     if (silentFail) {
       w.add('?');
     }
     w.add('(');
-    if (args && args.items.length > 0) {
+    if (args && args.value.length > 0) {
       if (directSource) {
         const sep = args.options?.sep ?? ',';
         const joiner = sep === '/' ? ' / ' : `${sep} `;
-        for (let i = 0; i < args.items.length; i++) {
-          const arg = args.items[i]!;
+        for (let i = 0; i < args.value.length; i++) {
+          const arg = args.value[i]!;
           if (i > 0) {
             w.add(joiner);
           }
@@ -1663,11 +1634,11 @@ export class Call extends Node<CallValue, CallOptions> {
           arg.writeSyntax(options);
         }
       } else {
-        let arg = args.items[0]!;
+        let arg = args.value[0]!;
         emitCallArgSyntax(arg, options);
-        for (let i = 1; i < args.items.length; i++) {
+        for (let i = 1; i < args.value.length; i++) {
           const prev = arg;
-          arg = args.items[i]!;
+          arg = args.value[i]!;
           emitCallArgSeparator(prev, arg, options, args.options?.sep ?? ',');
           emitCallArgSyntax(arg, options, true);
         }
@@ -1702,7 +1673,7 @@ export class Call extends Node<CallValue, CallOptions> {
               : new OutputWriter(false, bufferOrOptions.kind === 'flat' ? bufferOrOptions.parts : undefined)
           })
         : prepareBufferPrintState(context, options);
-      if (this.evaluated) {
+      if (this._evaluatedCallOutput) {
         const rendered = this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
         return sharesWriter
           ? rendered
@@ -1719,7 +1690,7 @@ export class Call extends Node<CallValue, CallOptions> {
         : writeRenderTextResult(bufferOrOptions, rendered);
     }
     const prepared = prepareRenderPrintState(context, bufferOrOptions);
-    if (this.evaluated) {
+    if (this._evaluatedCallOutput) {
       return this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
     }
     if (typeof this.name === 'string') {
@@ -1729,9 +1700,6 @@ export class Call extends Node<CallValue, CallOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    if (this.evaluated) {
-      return this;
-    }
     if (
       typeof this.name === 'string'
       && !this.contentNode
@@ -1764,13 +1732,13 @@ export class Call extends Node<CallValue, CallOptions> {
         rules.rules[index] = replacement;
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
-      } else if (isNode(rule, N.AtRule)) {
-        if (rule.rules) {
-          this.makeImportant(rule.rules);
+      } else if (isNode(rule, N.AtRule) && rule instanceof Rules) {
+        if (rule.rules.length) {
+          this.makeImportant(rule);
         }
       } else if (isNode(rule, N.Ruleset)) {
-        if (rule.rules) {
-          this.makeImportant(rule.rules);
+        if (rule.rules.length) {
+          this.makeImportant(rule);
         }
       }
     }
@@ -1780,7 +1748,13 @@ export class Call extends Node<CallValue, CallOptions> {
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
     const state = this.createEvalState();
-    return this.evalFromState(context, state);
+    const result = await this.evalFromState(context, state);
+    // Mark a Call result as resolved output (render emits it as a plain CSS
+    // call). Replaces the general `evaluated` flag for the call-render path.
+    if (isNode(result, N.Call)) {
+      result._evaluatedCallOutput = true;
+    }
+    return result;
   }
 
   private async evalFromState(context: Context, state: CallEvalState): Promise<Node> {
@@ -1824,32 +1798,46 @@ export class Call extends Node<CallValue, CallOptions> {
       const argNodes = await this.evalArgNodes(context, args) ?? list([]);
       const result = await n.evalCall(context, argNodes);
       return result;
-    } else if (isNode(n, N.Rules) || isNode(n, N.Collection)) {
+    } else if (isNode(n, N.Collection)) {
+      // A no-arg call of a detached collection returns the collection surface
+      // itself (thin: no clone, no callable eval). Its declarations render from
+      // the shared surface. Args are meaningless on a collection.
+      if (args && args.value.length > 0) {
+        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
+      }
+      return this.markCallOutput(n);
+    } else if (isNode(n, N.Rules) && n instanceof Rules) {
+      const rulesNode = n;
       // PreserveRulesLike variable calls intentionally evaluate from the
       // detached ruleset's lexical parent. Removing this lets non-leaky calls
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
       if (state.preservesRulesLikeVariableTarget) {
-        const sourceParent = 'sourceNode' in n && isNode(n.sourceNode)
-          ? n.sourceNode.parent
-          : undefined;
+        // A detached ruleset resolves free vars up the surface where it was
+        // WRITTEN. Prefer the closure scope captured at arg-binding (the per-call
+        // surface T, which carries param live-slots); fall back to the canonical
+        // lexical parent when there is no closure capture.
+        const closureScope = rulesNode._closureScope;
+        const sourceParent = closureScope ?? ('sourceNode' in rulesNode && isNode(rulesNode.sourceNode)
+          ? rulesNode.sourceNode.parent
+          : undefined);
         if (sourceParent) {
-          n.parent = sourceParent;
+          rulesNode.parent = sourceParent;
         }
       }
       // Detached rulesets/collections share the same callable-body path as
       // anonymous mixin bodies. They still reject explicit arguments.
-      if (args && args.items.length > 0) {
-        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
+      if (args && args.value.length > 0) {
+        throw new ReferenceError(`Cannot call ${rulesNode.type} with arguments`);
       }
       return this.runAsCaller(context, async () => {
         const result = await evaluateCallableCollection({
           context,
           mixinEntries: [
             callableRulesEntry(
-              { rules: n },
-              n.parent,
-              n.index
+              { rules: rulesNode },
+              rulesNode.parent,
+              rulesNode.index
             )
           ],
           args: args?.value ?? []
@@ -1892,18 +1880,12 @@ export class Call extends Node<CallValue, CallOptions> {
         try {
           const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
           let callArgs = args;
-          if (shouldPassListArgs && callArgs && state.args) {
-            setRawArgsPlacement(callArgs, {
-              source: state.source,
-              sourceArgs: state.args
-            });
-          }
           const result = await (
             callArgs
               ? (
                   shouldPassListArgs
                     ? callWithContext(context, callable, callArgs)
-                    : callWithContext(context, callable, ...callArgs.items)
+                    : callWithContext(context, callable, ...callArgs.value)
                 )
               : callWithContext(context, callable)
           );
@@ -1929,24 +1911,28 @@ export class Call extends Node<CallValue, CallOptions> {
         }
       });
     } else {
-      if (n === 'calc') {
+      // The name resolves to a value (e.g. a Reference → Any 'calc'), so detect
+      // calc by its rendered text rather than string identity.
+      const isCalc = getRenderedCallNameText(n) === 'calc';
+      if (isCalc) {
         context.calcFrames++;
       }
       const evaluatedArgs = await this.evalArgNodes(context, args, {
         ownResults: !(this._options?.silentFail && typeof this.name !== 'string')
       })
         .finally(() => {
-          if (n === 'calc') {
+          if (isCalc) {
             context.calcFrames--;
           }
         });
       if (
-        n === 'calc' && evaluatedArgs
+        isCalc && evaluatedArgs && evaluatedArgs.value.length === 1
       ) {
-        if (isNode(evaluatedArgs.items[0], N.Dimension)) {
-          return evaluatedArgs.items[0]!;
+        const dim = unwrapToDimension(evaluatedArgs.value[0]!);
+        if (dim) {
+          return dim;
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.items[0]!);
+          return new Paren(evaluatedArgs.value[0]!);
         }
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
@@ -1966,7 +1952,7 @@ export class Call extends Node<CallValue, CallOptions> {
         this._options
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
-        this.location,
+        sourceSpanOf(this),
         this.sourceRoot?._treeContext
       );
       return this.markCallOutput(node);

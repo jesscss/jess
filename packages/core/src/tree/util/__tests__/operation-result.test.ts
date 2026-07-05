@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../provenance.js';
 import { describe, expect, it } from 'vitest';
 import { any } from '../../any.js';
 import { finalizeOperationMetadataResult, finalizePublicOperationResult } from '../operation-result.js';
@@ -11,7 +12,7 @@ describe('operation result finalization', () => {
     expect(finalizePublicOperationResult).toBe(finalizeOperationMetadataResult);
     expect(finalizeOperationMetadataResult(source, renderResult)).toBe(renderResult);
     expect(finalizePublicOperationResult(source, publicResult)).toBe(publicResult);
-    expect(publicResult.location).toEqual(source.location);
+    expect(sourceSpanOf(publicResult)).toEqual(sourceSpanOf(source));
     expect(publicResult._sourceRoot).toBe(source._sourceRoot);
   });
 });

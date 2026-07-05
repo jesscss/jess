@@ -1,15 +1,104 @@
 import type { Context } from '../../context.js';
 import { Node } from '../node.js';
+import { keyword } from '../any.js';
+import { spaced } from '../sequence.js';
+import { Dimension } from '../dimension.js';
+import { Color } from '../color.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+
+/** `1px`, `.5em`, `-3`, `10%` — a numeric value with an optional unit. */
+const NUMERIC_TERMINAL_RE = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]*)$/i;
+
+/**
+ * Coerce a bare value-terminal string to its canonical node. Numeric/unit and
+ * `#hex` strings become operable value nodes (Dimension/Color); everything else
+ * is a `Keyword`. Keeps `1px * 5`-style math working when a value segment
+ * arrives as a raw string terminal.
+ */
+function coerceStringTerminal(value: string): Node {
+  if (value.startsWith('#')) {
+    return new Color(value);
+  }
+  const match = NUMERIC_TERMINAL_RE.exec(value);
+  if (match) {
+    return new Dimension({ number: parseFloat(match[1]!), unit: match[2] });
+  }
+  return keyword(value);
+}
+
+/**
+ * A parser value segment. Space-separated groups arrive as raw arrays and bare
+ * value terminals as strings; both are structurally already-evaluated. Coerce
+ * to the canonical node form (space `Sequence` / `Keyword`) matching
+ * `Declaration.valueNode`, so the node-array evaluators stay node-only.
+ */
+export type NodeArrayItem = Node | string | NodeArrayItem[];
+
+/**
+ * Normalize a single parser value segment to its canonical node form: a bare
+ * string terminal becomes a `Keyword`, a raw space-group array becomes a space
+ * `Sequence`, and an existing `Node` passes through. Mirrors
+ * `Declaration.valueNode`'s coalescing so downstream node-only machinery
+ * (List/Paren/Operation eval) never sees a raw string or array.
+ */
+export function coerceValueNode(item: NodeArrayItem): Node {
+  if (item instanceof Node) {
+    return item;
+  }
+  if (typeof item === 'string') {
+    return coerceStringTerminal(item);
+  }
+  // Drop empty-string spacing placeholders emitted by the parser.
+  const items = item.filter(v => v !== '');
+  if (items.length === 1) {
+    return coerceValueNode(items[0]!);
+  }
+  return spaced(items.map(coerceValueNode));
+}
+
+/**
+ * Normalize a parser value array into a plain `Node[]`, coercing space-group
+ * arrays and bare string terminals to their canonical node form. Returns the
+ * input untouched when every item is already a `Node` (the common case).
+ */
+export function coerceNodeArray(value: NodeArrayItem[]): Node[] {
+  let out: Node[] | undefined;
+  for (let i = 0; i < value.length; i++) {
+    const item = value[i]!;
+    // Only the parser's raw value shapes — string terminals and space-group
+    // arrays — need coercion. A Node passes through; anything else is already a
+    // resolved value (List is also used as a generic argument container) and
+    // must not be run through value coercion.
+    if (typeof item !== 'string' && !Array.isArray(item)) {
+      if (out) {
+        out[i] = item as Node;
+      }
+      continue;
+    }
+    if (!out) {
+      out = value.slice(0, i) as Node[];
+    }
+    out[i] = coerceValueNode(item);
+  }
+  return out ?? (value as Node[]);
+}
 
 export function evaluateNodeArraySync(
   context: Context,
-  value: Node[]
-): Node[] {
-  let values: Node[] | undefined;
+  rawValue: NodeArrayItem[]
+): MaybePromise<Node[]> {
+  const value = coerceNodeArray(rawValue);
+  let values: Node[] | undefined = value !== (rawValue as Node[]) ? value : undefined;
   for (let index = 0; index < value.length; index++) {
     const node = value[index]!;
-    const evaluated = node.eval(context);
+    const out = node.eval(context);
+    // Coercing a raw space-group array to a Sequence can surface may-async
+    // children the parent List classified as sync (its raw-array items carried
+    // no flags). Hand off to the async path when a result is thenable.
+    if (isThenable(out)) {
+      return evaluateNodeArrayRest(context, value, values, index, out as Promise<Node>);
+    }
+    const evaluated = out as Node;
     if (!(evaluated instanceof Node)) {
       throw new TypeError('Expected node array item to evaluate to a node');
     }
@@ -28,9 +117,10 @@ export function evaluateNodeArraySync(
 
 export function evaluateNodeArrayMaybe(
   context: Context,
-  value: Node[]
+  rawValue: NodeArrayItem[]
 ): MaybePromise<Node[]> {
-  let values: Node[] | undefined;
+  const value = coerceNodeArray(rawValue);
+  let values: Node[] | undefined = value !== (rawValue as Node[]) ? value : undefined;
   for (let index = 0; index < value.length; index++) {
     const node = value[index]!;
     const out = node.eval(context);

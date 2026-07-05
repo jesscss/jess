@@ -1,6 +1,6 @@
+import { spanStartOf } from './provenance.js';
 import type { Context } from '../../context.js';
-import type { IToken } from 'chevrotain';
-import type { TriviaMap } from '../../types/index.js';
+import type { TriviaMap, Trivia } from '../../types/index.js';
 import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
@@ -29,8 +29,14 @@ export type PrintOptions = {
   referenceFilterTargets?: boolean;
   /** Stack of composed selectors for collapseNesting on-demand composition and & resolution. */
   composedSelectorStack?: Selector[];
-  /** Session-local composed selector cache keyed by rendered ruleset. */
-  composedSelectorCache?: WeakMap<Ruleset, Selector>;
+  /**
+   * Session-local composed selector cache keyed by rendered ruleset, then by the
+   * composed parent selector under which it was rendered. A shared canonical
+   * node (e.g. a mixin body's nested ruleset) is rendered under multiple parents
+   * — its own defining header and each call-site header — so the composed value
+   * must not be shared across parent contexts.
+   */
+  composedSelectorCache?: WeakMap<Ruleset, Map<string, Selector>>;
   /** Render-local override for one at-rule header prelude during direct render. */
   atRuleHeaderNode?: AtRule;
   atRuleHeaderPrelude?: AtRulePrelude;
@@ -46,9 +52,18 @@ export type PrintOptions = {
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
-  emittedTrivia?: Set<IToken[]>;
+  emittedTrivia?: Set<Trivia>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
   sourceMap?: boolean;
+  /** Output syntax target, e.g. 'jess' for Jess canonical output. */
+  syntax?: string;
+  /** Jess conversion options for rewriting import paths during serialization. */
+  conversion?: {
+    mapPath?: (sourcePath: string) => string;
+    outputDir?: string;
+    sourceRoot?: string;
+    fromFilePath?: string;
+  };
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -82,23 +97,21 @@ function isTriviaMap(value: unknown): value is TriviaMap {
     return false;
   }
   if (
-    !('runs' in value)
-    || !('lookup' in value)
+    !('lookup' in value)
     || !('entries' in value)
     || !('has' in value)
   ) {
     return false;
   }
-  return value.runs instanceof Set
-    && typeof value.lookup === 'function'
+  return typeof value.lookup === 'function'
     && typeof value.entries === 'function'
     && typeof value.has === 'function';
 }
 
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
   options.depth ??= 0;
-  if (options.sourceMap === undefined && options.context?.opts?.sourceMap !== undefined) {
-    options.sourceMap = Boolean(options.context.opts.sourceMap);
+  if (options.sourceMap === undefined && options.context?.opts?.output?.sourceMap !== undefined) {
+    options.sourceMap = Boolean(options.context.opts.output.sourceMap);
   }
   options.writer ??= new OutputWriter(options.sourceMap === true);
   options.inFrames ??= [];
@@ -149,6 +162,7 @@ type SourceMapTreeContext = {
     fullPath?: string;
     path?: string;
     name?: string;
+    source?: string;
   };
 };
 
@@ -157,7 +171,6 @@ type SourceMapSourceRoot = {
 };
 
 type SourceMapOrigin = {
-  location?: unknown;
   sourceRoot?: SourceMapSourceRoot;
 };
 
@@ -165,22 +178,39 @@ const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
   return typeof value === 'object' && value !== null;
 };
 
+/** 0-based line/column at a source offset (line/col are derived, not stored). */
+export function offsetToLineCol(source: string, offset: number): { line: number; column: number } {
+  let line = 0;
+  let lineStart = 0;
+  const end = Math.min(offset, source.length);
+  for (let i = 0; i < end; i++) {
+    if (source.charCodeAt(i) === 10 /* \n */) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, column: end - lineStart };
+}
+
 function sourceSegmentFor(originParam: unknown, genLine: number, genColumn: number): SourceSegment | undefined {
   const origin = isSourceMapOrigin(originParam) ? originParam : undefined;
-  const loc = origin?.location;
-  if (!loc || !Array.isArray(loc) || loc.length !== 6) {
+  const offset = origin ? spanStartOf(origin) : undefined;
+  if (typeof offset !== 'number') {
     return undefined;
   }
-  const startLine = (loc[1] ?? 1) - 1;
-  const startColumn = (loc[2] ?? 1) - 1;
   const treeContext = origin?.sourceRoot?._treeContext;
   const file = treeContext?.file?.fullPath || treeContext?.file?.path || treeContext?.file?.name;
+  // Original line/col derive from the source offset + source text (cold path).
+  const source = treeContext?.file?.source;
+  const { line, column } = source !== undefined
+    ? offsetToLineCol(source, offset)
+    : { line: 0, column: 0 };
   return {
     genLine,
     genColumn,
     source: file,
-    origLine: startLine,
-    origColumn: startColumn
+    origLine: line,
+    origColumn: column
   };
 }
 
@@ -196,8 +226,8 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
       );
       if (hasExplicitPrintState) {
         const detached = options;
-        if (detached.collapseNesting === undefined && detached.context?.opts?.collapseNesting !== undefined) {
-          detached.collapseNesting = Boolean(detached.context.opts.collapseNesting);
+        if (detached.collapseNesting === undefined && detached.context?.opts?.output?.collapseNesting !== undefined) {
+          detached.collapseNesting = Boolean(detached.context.opts.output.collapseNesting);
         }
         ensureFinalPrintOptions(detached);
         return detached;
@@ -205,16 +235,16 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
       return prepareContextPrintState(options.context, options);
     }
     const resolved = options.context.printState;
-    if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
-      resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
+    if (resolved.collapseNesting === undefined && resolved.context?.opts?.output?.collapseNesting !== undefined) {
+      resolved.collapseNesting = Boolean(resolved.context.opts.output.collapseNesting);
     }
     ensureFinalPrintOptions(resolved);
     return resolved;
   }
   const resolved = options ?? {};
   // Derive collapseNesting from context when missing so nested vs flat is correct for & serialization
-  if (resolved.collapseNesting === undefined && resolved.context?.opts?.collapseNesting !== undefined) {
-    resolved.collapseNesting = Boolean(resolved.context.opts.collapseNesting);
+  if (resolved.collapseNesting === undefined && resolved.context?.opts?.output?.collapseNesting !== undefined) {
+    resolved.collapseNesting = Boolean(resolved.context.opts.output.collapseNesting);
   }
   // Always ensure frameState exists - nodes should not need to check for it
   ensureFinalPrintOptions(resolved);
@@ -246,7 +276,7 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.lastRenderedFrames = [];
   state.frameHeaders = [];
   state.depth = 0;
-  state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.sourceMap);
+  state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.output?.sourceMap);
   state.writer = seed?.writer ?? new OutputWriter(state.sourceMap === true);
   state.compress = seed?.compress;
   state.collapseNesting = seed?.collapseNesting;
@@ -261,8 +291,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.trivia = seed?.trivia ?? (isTriviaMap(contextTrivia) ? contextTrivia : undefined);
   state.emittedTrivia = new Set();
 
-  if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
-    state.collapseNesting = Boolean(context.opts.collapseNesting);
+  if (state.collapseNesting === undefined && context.opts.output?.collapseNesting !== undefined) {
+    state.collapseNesting = Boolean(context.opts.output.collapseNesting);
   }
 
   ensureFinalPrintOptions(state);
@@ -335,17 +365,46 @@ export function withScratchEmittedTrivia<T>(options: PrintOptions, fn: () => T):
 
 export function getCachedComposedSelector(
   options: FinalPrintOptions,
-  ruleset: Ruleset
+  ruleset: Ruleset,
+  parentKey = ''
 ): Selector | undefined {
-  return options.composedSelectorCache?.get(ruleset);
+  return options.composedSelectorCache?.get(ruleset)?.get(parentKey);
+}
+
+/** True if `this` ruleset has produced a composed selector equal to `text` under any parent context. */
+export function cachedComposedMatches(
+  options: FinalPrintOptions,
+  ruleset: Ruleset,
+  text: string
+): boolean {
+  const byParent = options.composedSelectorCache?.get(ruleset);
+  if (!byParent) {
+    return false;
+  }
+  for (const composed of byParent.values()) {
+    if (composed.valueOf() === text) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function setCachedComposedSelector(
   options: FinalPrintOptions,
   ruleset: Ruleset,
-  selector: Selector
+  selector: Selector,
+  parentKey = ''
 ): void {
-  options.composedSelectorCache?.set(ruleset, selector);
+  const cache = options.composedSelectorCache;
+  if (!cache) {
+    return;
+  }
+  let byParent = cache.get(ruleset);
+  if (!byParent) {
+    byParent = new Map();
+    cache.set(ruleset, byParent);
+  }
+  byParent.set(parentKey, selector);
 }
 
 export class OutputWriter implements OutputWriter {
@@ -615,7 +674,7 @@ export class OutputWriter implements OutputWriter {
       this.chunks[first] = '';
       first++;
     }
-    this.refreshPositions();
+    this.refreshPositions(mark);
   }
 
   trimHorizontalStartSince(mark: number): void {
@@ -636,7 +695,7 @@ export class OutputWriter implements OutputWriter {
       this.chunks[first] = '';
       first++;
     }
-    this.refreshPositions();
+    this.refreshPositions(mark);
   }
 
   trimHorizontalEndSince(mark: number): void {
@@ -658,7 +717,7 @@ export class OutputWriter implements OutputWriter {
       this.chunks.length = last;
       last--;
     }
-    this.refreshPositions();
+    this.refreshPositions(mark);
   }
 
   trimEndSince(mark: number): void {
@@ -680,7 +739,7 @@ export class OutputWriter implements OutputWriter {
       this.chunks.length = last;
       last--;
     }
-    this.refreshPositions();
+    this.refreshPositions(mark);
   }
 
   /** Restore writer state to a given mark, discarding appended chunks and segments */
@@ -714,29 +773,38 @@ export class OutputWriter implements OutputWriter {
     this.clearQueuedSpacer();
   }
 
-  private refreshPositions(): void {
+  private refreshPositions(from = 0): void {
+    const start = from > 0 ? from : 0;
+    const seedIndex = start - 1;
     if (!this.tracksSources) {
-      this._posLength.length = 0;
-      this._length = 0;
-      for (let i = 0; i < this.chunks.length; i++) {
+      this._length = seedIndex >= 0 ? (this._posLength[seedIndex] ?? 0) : 0;
+      for (let i = start; i < this.chunks.length; i++) {
         this._length += this.chunks[i]!.length;
         this._posLength[i] = this._length;
       }
-      this._posLine.length = 0;
-      this._posColumn.length = 0;
-      this._posSegments.length = 0;
-      this._line = 0;
-      this._column = 0;
-      this._segments.length = 0;
+      this._posLength.length = this.chunks.length;
+      // The tracksSources arrays are unused in this branch, but keep
+      // line/column/segments in their reset state to match prior behavior.
+      if (start === 0) {
+        this._posLine.length = 0;
+        this._posColumn.length = 0;
+        this._posSegments.length = 0;
+        this._line = 0;
+        this._column = 0;
+        this._segments.length = 0;
+      }
       return;
     }
-    this._posLine.length = 0;
-    this._posColumn.length = 0;
-    this._posLength.length = 0;
-    this._length = 0;
-    this._line = 0;
-    this._column = 0;
-    for (let i = 0; i < this.chunks.length; i++) {
+    if (seedIndex >= 0 && seedIndex < this._posLine.length) {
+      this._length = this._posLength[seedIndex] ?? 0;
+      this._line = this._posLine[seedIndex] ?? 0;
+      this._column = this._posColumn[seedIndex] ?? 0;
+    } else {
+      this._length = 0;
+      this._line = 0;
+      this._column = 0;
+    }
+    for (let i = start; i < this.chunks.length; i++) {
       const text = this.chunks[i]!;
       const segmentCount = this._posSegments[i] ?? this._segments.length;
       this._length += text.length;
@@ -760,6 +828,9 @@ export class OutputWriter implements OutputWriter {
       this._posSegments[i] = segmentCount;
       this._posLength[i] = this._length;
     }
+    this._posLine.length = this.chunks.length;
+    this._posColumn.length = this.chunks.length;
+    this._posLength.length = this.chunks.length;
     this._posSegments.length = this.chunks.length;
     const lastIndex = this.chunks.length - 1;
     this._segments.length = lastIndex >= 0 ? (this._posSegments[lastIndex] ?? 0) : 0;

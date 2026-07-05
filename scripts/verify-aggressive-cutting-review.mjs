@@ -11,6 +11,7 @@ function git(args) {
     return execFileSync('git', args, {
       cwd: root,
       encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe']
     });
   } catch (error) {
@@ -27,11 +28,15 @@ function collectDiff() {
 }
 
 const requiredLabels = [
+  '- Architecture surface:',
+  '- Separation/duplication:',
+  '- Cumulative node weight:',
   '- New traversal:',
   '- New node/materialization:',
   '- Render path:',
   '- Helper/API surface:',
   '- Metadata mutations:',
+  '- Review-flagged diff tokens:',
   '- Evidence:',
   '- Verdict:'
 ];
@@ -64,8 +69,15 @@ for (const [label, pattern] of dangerPatterns) {
 const handoff = readFileSync(handoffPath, 'utf8');
 const sectionIndex = handoff.lastIndexOf('## Aggressive Cutting Self-Prosecution');
 const section = sectionIndex === -1 ? '' : handoff.slice(sectionIndex);
-const missingLabels = requiredLabels.filter(label => !section.includes(label));
-const stalePlaceholders = /\b(TODO|TBD|fill in|pending)\b/i.test(section);
+const latestPassIndex = section.indexOf('- Latest pass:');
+const nextPassIndex = latestPassIndex === -1
+  ? -1
+  : section.indexOf('\n- Latest pass:', latestPassIndex + 1);
+const latestPass = latestPassIndex === -1
+  ? section
+  : section.slice(latestPassIndex, nextPassIndex === -1 ? undefined : nextPassIndex);
+const missingLabels = requiredLabels.filter(label => !latestPass.includes(label));
+const stalePlaceholders = /\b(TODO|TBD|fill in|pending)\b/i.test(latestPass);
 
 let failed = false;
 
@@ -93,6 +105,24 @@ if (findings.length > 0) {
       console.error(`... ${finding.count - finding.matches.length} more`);
     }
   }
+  const reviewTokenLine = latestPass
+    .split('\n')
+    .find(line => line.startsWith('- Review-flagged diff tokens:'));
+  if (!reviewTokenLine || /\b(none|no new|n\/a)\b/i.test(reviewTokenLine)) {
+    failed = true;
+    console.error(
+      '\nDanger tokens require a non-empty "- Review-flagged diff tokens:" accounting line in the latest self-prosecution block.'
+    );
+  }
+  const missingFindingLabels = findings
+    .map(finding => finding.label)
+    .filter(label => !latestPass.includes(`[${label}]`));
+  if (missingFindingLabels.length > 0) {
+    failed = true;
+    console.error(
+      `\nLatest self-prosecution block must explicitly account for every danger category by label. Missing: ${missingFindingLabels.map(label => `[${label}]`).join(', ')}`
+    );
+  }
 }
 
 if (failed) {
@@ -102,6 +132,6 @@ if (failed) {
   if (findings.length === 0) {
     console.log('No danger tokens found in scoped diff.');
   } else {
-    console.log('Danger tokens require human/agent review; see handoff self-prosecution block.');
+    console.log('Danger tokens accounted for in the handoff self-prosecution block.');
   }
 }

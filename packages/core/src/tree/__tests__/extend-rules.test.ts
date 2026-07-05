@@ -29,18 +29,18 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.child')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base')
             }),
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -61,25 +61,25 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.child1')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.child2')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -98,19 +98,19 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.parent'), co('>'), el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.parent'), co('>'), el('.child')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base'),
               flag: ExtendFlag.All // ExtendFlag.All for partial matching
             }),
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -130,18 +130,18 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([compound([el('.btn'), el('.primary')])])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([compound([el('.btn'), el('.secondary')])])]),
-          rules: rules([
+          rules: [
             extend({
               target: compound([el('.btn'), el('.primary')])
             }),
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -160,18 +160,18 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([compound([el('.btn'), pseudo({ name: ':hover' })])])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([compound([el('.btn'), pseudo({ name: ':hover' })])])]),
-          rules: rules([
+          rules: [
             extend({
               target: compound([el('.btn'), pseudo({ name: ':hover' })])
             }),
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -189,25 +189,25 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('black') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.b')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.a')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.c')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.b')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -224,25 +224,25 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.d')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.e')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.e')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.f')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.f')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('black') })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -259,73 +259,73 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.l')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('black') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.m')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.l')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.n')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.m')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.o')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.n')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.p')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.o')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.q')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.p')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.r')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.q')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.s')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.r')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.t')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.s')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -348,30 +348,30 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.x')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.z')
             }),
             decl({ name: 'color', value: any('x') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.y')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.x')
             }),
             decl({ name: 'color', value: any('y') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.z')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.y')
             }),
             decl({ name: 'color', value: any('z') })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -398,28 +398,28 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([compound([el('.g'), el('.h')])])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('black') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([compound([el('.i'), el('.j')])])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.g'),
               flag: ExtendFlag.All
             }),
             decl({ name: 'color', value: any('inherit') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.k')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.i'),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -437,26 +437,26 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.va')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('black') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.vb')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.va')
             }),
             decl({ name: 'color', value: any('inherit') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.vc')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.vb')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -477,21 +477,21 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.w')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.w')
             }),
             decl({ name: 'color', value: any('black') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([compound([el('.v'), el('.w'), el('.v')])])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.w'),
               flag: ExtendFlag.All
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -507,41 +507,41 @@ describe('Rules extend', () => {
       const node = rules([
         ruleset({
           selector: sellist([sel([el('.base')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.branch1')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.branch2')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.base')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.chain1')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.branch1')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sellist([sel([el('.chain2')])]),
-          rules: rules([
+          rules: [
             extend({
               target: el('.branch2')
             })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);

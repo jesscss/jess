@@ -1,4 +1,4 @@
-import { Reference } from '@jesscss/core';
+import { Reference, sourceSpanOf } from '@jesscss/core';
 import { createFromAdapter } from '../transform/adapter.js';
 
 export const transformReferenceToLess = createFromAdapter<Reference>({
@@ -36,10 +36,7 @@ export const transformReferenceToLess = createFromAdapter<Reference>({
       }
       return undefined;
     },
-    index: (ref) => {
-      const loc = ref.location;
-      return loc.length ? loc[0] : undefined;
-    },
-    currentFileInfo: ref => ref.location || {}
+    index: ref => sourceSpanOf(ref)?.start,
+    currentFileInfo: () => ({})
   }
 });

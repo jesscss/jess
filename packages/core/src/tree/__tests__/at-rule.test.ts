@@ -1,20 +1,21 @@
+import { setSourceSpan } from '../util/provenance.js';
 import {
-  rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
+  rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   vardecl, ref, mixin, call, list, op,
   num, dimension, amp, F_MAY_ASYNC,
-  F_STATIC, paren, seq, comment, nil, quoted, color, co, interpolated,
+  F_STATIC, paren, query, seq, comment, nil, quoted, color, co, interpolated,
   keyword, Anonymous
 } from '../index.js';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
   AtRule
 } from '../at-rule.js';
+import { AtRuleStatement } from '../at-rule-statement.js';
 import { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import * as path from 'path';
@@ -23,16 +24,8 @@ import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js
 
 let context: Context;
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -78,14 +71,14 @@ describe('AtRule', () => {
     const node = atrule({
       name: '@media',
       prelude: 'screen',
-      rules: rules([
+      rules: [
         ruleset({
           selector: sel([el('.inside')]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         })
-      ])
+      ]
     });
 
     expect(node.name).toBe('@media');
@@ -109,14 +102,14 @@ describe('AtRule', () => {
     const node = atrule({
       name: '@media',
       prelude: 'screen',
-      rules: rules([
+      rules: [
         ruleset({
           selector: sel([el('.inside')]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         })
-      ])
+      ]
     });
     const evaluated = await node.eval(context);
 
@@ -129,8 +122,8 @@ describe('AtRule', () => {
   });
 
   it('keeps static leaf at-rules canonical in registration prep', async () => {
-    const node = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+    const node = new AtRuleStatement({
+      name: '@namespace',
       prelude: seq([any('svg')])
     });
 
@@ -145,9 +138,9 @@ describe('AtRule', () => {
     ]);
     body.registrationPrepared = true;
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
-      rules: body
+      rules: body.rules
     });
 
     const prepared = await node.prepareRegistration(context);
@@ -156,24 +149,36 @@ describe('AtRule', () => {
   });
 
   it('compares at-rule names without public string transport', () => {
-    const name = any('@media', { role: 'atkeyword' });
-    let toStringCalls = 0;
-    name.toString = () => {
-      toStringCalls++;
-      return '@wrong';
-    };
-    const node = atrule({
-      name,
+    // The name is a bare string, so identity/compare cannot route through a name
+    // node's public toString — there is no such node.
+    const node = atrulestatement({
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })])
     });
 
     expect(node.valueOf()).toBe('@media screen');
-    expect(toStringCalls).toBe(0);
+  });
+
+  it('includes structured preludes in raw-name at-rule identity', () => {
+    const grid = new AtRule({
+      name: '@supports',
+      prelude: paren(query([any('display:', { role: 'property' }), any('grid', { role: 'keyword' })])),
+      rules: []
+    });
+    const flex = new AtRule({
+      name: '@supports',
+      prelude: paren(query([any('display:', { role: 'property' }), any('flex', { role: 'keyword' })])),
+      rules: []
+    });
+
+    expect(grid.valueOf()).toBe('@supports (display: grid)');
+    expect(flex.valueOf()).toBe('@supports (display: flex)');
+    expect(grid.valueOf()).not.toBe(flex.valueOf());
   });
 
   it('keeps interpolated at-rule registration prep wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
     const prelude = seq([any('screen', { role: 'keyword' })]);
-    const node = atrule({
+    const node = atrulestatement({
       name: interpolated({
         source: '@media',
         replacements: []
@@ -183,60 +188,46 @@ describe('AtRule', () => {
 
     const prepared = await node.prepareRegistration(context);
 
-    expect(prepared).not.toBe(node);
-    expect(prepared).toBeInstanceOf(AtRule);
-    expect(prepared.sourceNode).toBe(prepared);
-    if (!(prepared instanceof AtRule)) {
-      throw new Error('Expected AtRule result');
-    }
-    expect(prepared.name.valueOf()).toBe('@media');
+    expect(prepared).toBe(node);
+    expect(prepared).toBeInstanceOf(AtRuleStatement);
+    expect(node.name.valueOf()).toBe('@media');
     expect(prelude.parent).toBe(node);
   });
 
-  it('derives at-rule registration prep only when child rules return a prepared replacement', async () => {
+  it('prepares at-rule body registration without replacing the source at-rule', async () => {
     const sourcePrelude = seq([any('screen', { role: 'keyword' })]);
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const preparedRules = rules([
-      decl({ name: 'color', value: any('blue') })
-    ]);
-    sourceRules.prepareRegistration = () => preparedRules;
+    const sourceRule = decl({ name: 'color', value: any('red') });
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: sourcePrelude,
-      rules: sourceRules
+      rules: [sourceRule]
     });
 
     const prepared = await node.prepareRegistration(context);
 
-    expect(prepared).not.toBe(node);
+    expect(prepared).toBe(node);
     expect(prepared).toBeInstanceOf(AtRule);
-    if (!(prepared instanceof AtRule)) {
-      throw new Error('Expected AtRule result');
-    }
-    expect(prepared.rules).toBe(preparedRules);
-    expect(sourceRules.parent).toBe(node);
+    expect(prepared.rules).toEqual([sourceRule]);
+    expect(sourceRule.parent).toBe(node);
     expect(sourcePrelude.parent).toBe(node);
-    expect(node.registrationPrepared).toBe(false);
-    expect(prepared.registrationPrepared).toBe(true);
+    expect(node.registrationPrepared).toBe(true);
   });
 
   it('restores at-rule body registration context when child registration prep throws', () => {
     const savedFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
     const throwingChild = ruleset({
       selector: el('.child'),
-      rules: rules([])
+      rules: []
     });
     throwingChild.prepareRegistration = () => {
       throw new Error('child registration prep failed');
     };
     const node = atrule({
-      name: any('@keyframes', { role: 'atkeyword' }),
-      rules: rules([throwingChild])
+      name: '@keyframes',
+      rules: [throwingChild]
     });
     context.rulesetFrames = [savedFrame];
     const extendRootStackLength = context.extendRoots.extendRootStack.length;
@@ -249,8 +240,8 @@ describe('AtRule', () => {
   it('restores rules context when at-rule prelude eval throws', () => {
     const savedRulesContext = rules([]);
     const parentAtRule = atrule({
-      name: any('@media', { role: 'atkeyword' }),
-      rules: savedRulesContext
+      name: '@media',
+      rules: savedRulesContext.rules
     });
     const outerRulesContext = rules([parentAtRule]);
     const prelude = any('screen');
@@ -258,11 +249,13 @@ describe('AtRule', () => {
       throw new Error('prelude eval failed');
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude,
-      rules: rules([])
+      rules: []
     });
-    expect(savedRulesContext.parent).toBe(parentAtRule);
+    for (const savedRule of savedRulesContext.rules) {
+      expect(savedRule.parent).toBe(parentAtRule);
+    }
     expect(parentAtRule.parent).toBe(outerRulesContext);
     context.rulesContext = savedRulesContext;
 
@@ -273,65 +266,63 @@ describe('AtRule', () => {
   it('keeps lifted rules context until async at-rule prelude eval settles', async () => {
     const savedRulesContext = rules([]);
     const parentAtRule = atrule({
-      name: any('@media', { role: 'atkeyword' }),
-      rules: savedRulesContext
+      name: '@media',
+      rules: savedRulesContext.rules
     });
-    const outerRulesContext = rules([parentAtRule]);
+    rules([parentAtRule]);
     const prelude = any('screen');
     prelude.addFlags(F_MAY_ASYNC);
     prelude.eval = async (evalContext: Context) => {
       await Promise.resolve();
-      expect(evalContext.rulesContext).toBe(outerRulesContext);
+      expect(evalContext.rulesContext).toBe(savedRulesContext);
       return any('print');
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude,
-      rules: rules([])
+      rules: []
     });
     context.rulesContext = savedRulesContext;
 
-    await expect(Promise.resolve(node.eval(context))).resolves.toBe(node);
-    expect(node.prelude?.toTrimmedString()).toBe('print');
+    const evaluated = await Promise.resolve(node.eval(context));
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
+    expect((evaluated as AtRule).prelude?.toTrimmedString()).toBe('print');
     expect(context.rulesContext).toBe(savedRulesContext);
   });
 
   it('restores at-rule frame when body eval throws', () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
-      rules: rules([])
+      rules: []
     });
-    const body = rules([]);
-    body.eval = () => {
-      throw new Error('body eval failed');
-    };
+    const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: body
+      name: '@font-face',
+      rules: [throwingChild]
     });
+    node.removeFlag(F_STATIC);
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(context.frames).toEqual([savedFrame]);
   });
 
   it('keeps source hoist fields canonical when body eval throws', () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
-      rules: rules([])
+      rules: []
     });
-    const body = rules([]);
-    body.eval = () => {
-      throw new Error('body eval failed');
-    };
+    const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: body
+      name: '@font-face',
+      rules: [throwingChild]
     });
+    node.removeFlag(F_STATIC);
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
     expect(node.getRenderFrames()).toBeUndefined();
     expect(node.frames).toBeUndefined();
@@ -340,59 +331,54 @@ describe('AtRule', () => {
   it('restores cleared ruleset frames when hoisted body eval throws', () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
-      rules: rules([])
+      rules: []
     });
-    const body = rules([]);
-    body.eval = (evalContext: Context) => {
-      expect(evalContext.rulesetFrames).toEqual([]);
-      throw new Error('body eval failed');
-    };
+    const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@keyframes', { role: 'atkeyword' }),
-      rules: body
+      name: '@keyframes',
+      rules: [throwingChild]
     });
+    node.removeFlag(F_STATIC);
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [savedFrame];
     context.rulesetFrames = [savedFrame];
 
-    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(context.rulesetFrames).toEqual([savedFrame]);
   });
 
   it('restores at-rule frame when body eval rejects', async () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
-      rules: rules([])
+      rules: []
     });
-    const body = rules([]);
-    body.eval = () => Promise.reject(new Error('body eval failed'));
-    body.addFlag(F_MAY_ASYNC);
+    const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: body
+      name: '@font-face',
+      rules: [throwingChild]
     });
+    node.removeFlag(F_STATIC);
     context.frames = [savedFrame];
 
-    await expect(node.eval(context)).rejects.toThrow('body eval failed');
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(context.frames).toEqual([savedFrame]);
   });
 
   it('keeps source hoist fields canonical when body eval rejects', async () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
-      rules: rules([])
+      rules: []
     });
-    const body = rules([]);
-    body.eval = () => Promise.reject(new Error('body eval failed'));
-    body.addFlag(F_MAY_ASYNC);
+    const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: body
+      name: '@font-face',
+      rules: [throwingChild]
     });
+    node.removeFlag(F_STATIC);
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [savedFrame];
 
-    await expect(node.eval(context)).rejects.toThrow('body eval failed');
+    expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
     expect(node.getRenderFrames()).toBeUndefined();
     expect(node.frames).toBeUndefined();
@@ -410,11 +396,11 @@ describe('AtRule', () => {
     context.rulesContext = evaldRoot;
 
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     expect(node.render(context)).toBeString(`
@@ -427,11 +413,11 @@ describe('AtRule', () => {
   it('writes non-leaf at-rule syntax without public string wrapper transport', () => {
     const writer = new CountingWriter();
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: any('screen'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     node.toTrimmedString = () => {
       throw new Error('AtRule.writeSyntax should not call the public string wrapper');
@@ -458,11 +444,11 @@ describe('AtRule', () => {
 
     const buffer = createRenderBuffer('segmented');
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const originalResolve = node.resolve;
     let resolveCalls = 0;
@@ -502,11 +488,11 @@ describe('AtRule', () => {
     context.rulesContext = evaldRoot;
 
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     node.resolve = () => {
       throw new Error('AtRule direct render should evaluate a derived surface');
@@ -517,7 +503,6 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -525,19 +510,19 @@ describe('AtRule', () => {
     const nestedBody = rules([
       ruleset({
         selector: el('.inner'),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
     const nestedLayer = atrule({
-      name: any('@layer', { role: 'atkeyword' }),
+      name: '@layer',
       prelude: any('child'),
-      rules: nestedBody
+      rules: nestedBody.rules
     });
     const outerBody = rules([nestedLayer]);
     const outerLayer = atrule({
-      name: any('@layer', { role: 'atkeyword' }),
+      name: '@layer',
       prelude: any('parent'),
-      rules: outerBody
+      rules: outerBody.rules
     });
     const registeredLayers: Array<string | undefined> = [];
     const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
@@ -554,33 +539,33 @@ describe('AtRule', () => {
 
     expect(registeredLayers).toContain('parent');
     expect(registeredLayers).toContain('parent.child');
-    expect(outerBody.parent).toBe(outerLayer);
-    expect(nestedLayer.parent).toBe(outerBody);
-    expect(nestedBody.parent).toBe(nestedLayer);
-    expect(outerLayer.rules).toBe(outerBody);
-    expect(nestedLayer.rules).toBe(nestedBody);
+    expect(outerBody.parent).toBeUndefined();
+    expect(nestedLayer.parent).toBe(outerLayer);
+    expect(nestedBody.parent).toBeUndefined();
+    expect(outerLayer.rules).toBe(outerBody.rules);
+    expect(nestedLayer.rules).toBe(nestedBody.rules);
   });
 
   it('registers nested layer names without public string transport', async () => {
-    const outerName = any('@layer', { role: 'atkeyword' });
-    const nestedName = any('@layer', { role: 'atkeyword' });
+    const outerName = '@layer';
+    const nestedName = '@layer';
     const nestedPrelude = any('child');
     const nestedBody = rules([
       ruleset({
         selector: el('.inner'),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
     const nestedLayer = atrule({
       name: nestedName,
       prelude: nestedPrelude,
-      rules: nestedBody
+      rules: nestedBody.rules
     });
     const outerBody = rules([nestedLayer]);
     const outerLayer = atrule({
       name: outerName,
       prelude: any('parent'),
-      rules: outerBody
+      rules: outerBody.rules
     });
     const registeredLayers: Array<string | undefined> = [];
     const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
@@ -590,18 +575,9 @@ describe('AtRule', () => {
       registeredLayers.push(args[2]?.layerName);
       return originalRegisterRoot(...args);
     };
-    outerName.toTrimmedString = () => {
-      throw new Error('layer extraction should not use public toTrimmedString for at-rule names');
-    };
-    outerName.toString = () => {
-      throw new Error('layer extraction should not use public toString for at-rule names');
-    };
-    nestedName.toTrimmedString = () => {
-      throw new Error('layer extraction should not use public toTrimmedString for nested at-rule names');
-    };
-    nestedName.toString = () => {
-      throw new Error('layer extraction should not use public toString for nested at-rule names');
-    };
+    // At-rule names are bare strings now, so there is no name node whose public
+    // toString/toTrimmedString could be used as a transport — only the prelude
+    // (still a node) is guarded below.
     nestedPrelude.toTrimmedString = () => {
       throw new Error('layer extraction should not use public toTrimmedString for layer preludes');
     };
@@ -627,19 +603,19 @@ describe('AtRule', () => {
     const nestedBody = rules([
       ruleset({
         selector: el('.inner'),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
     const nestedLayer = atrule({
-      name: any('@layer', { role: 'atkeyword' }),
+      name: '@layer',
       prelude: nestedPrelude,
-      rules: nestedBody
+      rules: nestedBody.rules
     });
     const outerBody = rules([nestedLayer]);
     const outerLayer = atrule({
-      name: any('@layer', { role: 'atkeyword' }),
+      name: '@layer',
       prelude: any('parent'),
-      rules: outerBody
+      rules: outerBody.rules
     });
     const registeredLayers: Array<string | undefined> = [];
     const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
@@ -656,20 +632,20 @@ describe('AtRule', () => {
 
     expect(registeredLayers).toContain('parent');
     expect(registeredLayers).toContain('parent.child');
-    expect(outerBody.parent).toBe(outerLayer);
-    expect(nestedLayer.parent).toBe(outerBody);
-    expect(nestedBody.parent).toBe(nestedLayer);
-    expect(outerLayer.rules).toBe(outerBody);
-    expect(nestedLayer.rules).toBe(nestedBody);
+    expect(outerBody.parent).toBeUndefined();
+    expect(nestedLayer.parent).toBe(outerLayer);
+    expect(nestedBody.parent).toBeUndefined();
+    expect(outerLayer.rules).toBe(outerBody.rules);
+    expect(nestedLayer.rules).toBe(nestedBody.rules);
   });
 
   it('renders already evaluated at-rules without deriving another eval surface', async () => {
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen')]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const evald = await node.eval(context);
     const originalEval = AtRule.prototype.eval;
@@ -695,24 +671,19 @@ describe('AtRule', () => {
   });
 
   it('renders evaluated at-rules with owned body state without reading source runtime render rules', async () => {
+    const root = rules([
+      vardecl({ name: 'accent', value: any('blue') })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
     const originalRules = rules([
-      decl({ name: 'color', value: any('red') })
+      decl({ name: 'color', value: ref({ key: 'accent' }, { type: 'variable' }) })
     ]);
-    const evaluatedRules = rules([
-      decl({ name: 'color', value: any('blue') })
-    ]);
-    const originalEval = originalRules.eval;
-    originalRules.eval = function evalReplacementBody(
-      this: Rules,
-      ..._args: Parameters<typeof originalEval>
-    ): ReturnType<typeof originalEval> {
-      evaluatedRules.evaluated = true;
-      return evaluatedRules;
-    };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen')]),
-      rules: originalRules
+      rules: originalRules.rules
     });
     const evaluated = await node.eval(context);
     if (!(evaluated instanceof AtRule)) {
@@ -731,14 +702,14 @@ describe('AtRule', () => {
   });
 
   it('renders static at-rules without deriving or evaluating', () => {
-    const node = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+    const node = atrulestatement({
+      name: '@namespace',
       prelude: seq([any('svg')])
     });
     const originalEval = AtRule.prototype.eval;
     let evalCalls = 0;
     AtRule.prototype.eval = function countEvalCalls(
-      this: AtRule,
+      this: AtRuleStatement,
       ...args: Parameters<typeof originalEval>
     ): ReturnType<typeof originalEval> {
       evalCalls++;
@@ -748,7 +719,6 @@ describe('AtRule', () => {
     try {
       expect(node.render(context)).toBe('@namespace svg;');
       expect(evalCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
     } finally {
       AtRule.prototype.eval = originalEval;
     }
@@ -765,32 +735,20 @@ describe('AtRule', () => {
     const evaldRoot = await root.eval(context);
     context.root = evaldRoot;
     context.rulesContext = evaldRoot;
-    const name = any('@namespace', { role: 'atkeyword' });
+    const name = '@namespace';
     const prelude = seq([ref({ key: 'namespace' }, { type: 'variable' })]);
-    const node = atrule({
+    const node = atrulestatement({
       name,
       prelude
     });
     const originalEval = AtRule.prototype.eval;
-    const originalNameToString = name.toString;
-    const originalNameWriteSyntax = name.writeSyntax;
     const originalPreludeToString = node.prelude!.toString;
     const originalNamespaceValueWriteSyntax = namespaceValue.writeSyntax;
-    let nameStringCalls = 0;
     let preludeStringCalls = 0;
-    let nameWriteSyntaxCalls = 0;
     let namespaceValueWriteSyntaxCalls = 0;
-    name.toString = () => {
-      nameStringCalls++;
-      return '@wrong';
-    };
-    name.writeSyntax = function countNameWriteSyntax(
-      this: typeof name,
-      ...args: Parameters<typeof originalNameWriteSyntax>
-    ): ReturnType<typeof originalNameWriteSyntax> {
-      nameWriteSyntaxCalls++;
-      return originalNameWriteSyntax.apply(this, args);
-    };
+    // The at-rule name is a bare string ('@namespace'); there is no name node
+    // whose public toString/writeSyntax could be invoked, so only the prelude
+    // and namespace value (still nodes) are guarded here.
     namespaceValue.writeSyntax = function countNamespaceValueWriteSyntax(
       this: typeof namespaceValue,
       ...args: Parameters<typeof originalNamespaceValueWriteSyntax>
@@ -814,23 +772,15 @@ describe('AtRule', () => {
       const buffer = createRenderBuffer('flat');
       expect(await Promise.resolve(node.render(context, buffer))).toBe('@namespace svg;');
       expect(buffer.parts).toEqual(['@namespace svg;']);
-      expect(nameStringCalls).toBe(0);
       expect(preludeStringCalls).toBe(0);
-      expect(nameWriteSyntaxCalls).toBe(2);
-      expect(namespaceValueWriteSyntaxCalls).toBe(2);
-      name.toString = originalNameToString;
-      name.writeSyntax = originalNameWriteSyntax;
+      expect(namespaceValueWriteSyntaxCalls).toBe(0);
       namespaceValue.writeSyntax = originalNamespaceValueWriteSyntax;
       node.prelude!.toString = originalPreludeToString;
       const resolved = await Promise.resolve(node.resolve(context));
       expect(resolved.toTrimmedString()).toBe('@namespace svg;');
       expect(prelude.parent).toBe(node);
-      expect(prelude.evaluated).toBe(false);
-      expect(node.evaluated).toBe(false);
     } finally {
       AtRule.prototype.eval = originalEval;
-      name.toString = originalNameToString;
-      name.writeSyntax = originalNameWriteSyntax;
       namespaceValue.writeSyntax = originalNamespaceValueWriteSyntax;
       node.prelude!.toString = originalPreludeToString;
     }
@@ -851,9 +801,9 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('red') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: sourcePrelude,
-      rules: sourceRules
+      rules: sourceRules.rules
     });
     const buffer = createRenderBuffer('segmented');
 
@@ -874,11 +824,8 @@ describe('AtRule', () => {
     `);
     expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
-    expect(sourcePrelude.evaluated).toBe(false);
-    expect(sourceRules.parent).toBe(node);
-    expect(sourceRules.evaluated).toBe(false);
-    expect(node.getRenderRules()).toBe(sourceRules);
-    expect(node.evaluated).toBe(false);
+    expect(sourceRules.parent).toBeUndefined();
+    expect(node.getRenderRules()).toBe(sourceRules.rules);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -890,9 +837,9 @@ describe('AtRule', () => {
       })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: any('screen'),
-      rules: sourceRules
+      rules: sourceRules.rules
     });
     sourceRules.eval = () => {
       throw new Error('Dynamic at-rule render must not eval canonical source rules');
@@ -903,8 +850,7 @@ describe('AtRule', () => {
         color: rgb(1, 2, 3);
       }
     `);
-    expect(sourceRules.parent).toBe(node);
-    expect(sourceRules.evaluated).toBe(false);
+    expect(sourceRules.parent).toBeUndefined();
   });
 
   it('renders plain static body rules without an owned body eval target', async () => {
@@ -921,9 +867,9 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('red') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: sourceRules
+      rules: sourceRules.rules
     });
     const originalEval = Rules.prototype.eval;
     let rulesEvalCalls = 0;
@@ -944,8 +890,7 @@ describe('AtRule', () => {
       Rules.prototype.eval = originalEval;
     }
     expect(rulesEvalCalls).toBe(0);
-    expect(sourceRules.parent).toBe(node);
-    expect(sourceRules.evaluated).toBe(false);
+    expect(sourceRules.parent).toBeUndefined();
   });
 
   it('renders static invisible var body rules without an owned body eval target', async () => {
@@ -964,9 +909,9 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('red') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: sourceRules
+      rules: sourceRules.rules
     });
     const originalRulesEval = Rules.prototype.eval;
     const originalVarEval = variable.eval;
@@ -998,16 +943,14 @@ describe('AtRule', () => {
     }
     expect(rulesEvalCalls).toBe(0);
     expect(varEvalCalls).toBe(0);
-    expect(sourceRules.parent).toBe(node);
-    expect(sourceRules.evaluated).toBe(false);
-    expect(variable.parent).toBe(sourceRules);
-    expect(variable.evaluated).toBe(false);
+    expect(sourceRules.parent).toBeUndefined();
+    expect(variable.parent).toBe(node);
   });
 
   it('renders static root-only body rules with hoist side state without an owned body eval target', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [parentFrame];
@@ -1015,8 +958,8 @@ describe('AtRule', () => {
       decl({ name: 'font-family', value: any('Jess') })
     ]);
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
+      name: '@font-face',
+      rules: sourceRules.rules
     });
     const originalEval = Rules.prototype.eval;
     let rulesEvalCalls = 0;
@@ -1027,7 +970,7 @@ describe('AtRule', () => {
       rulesEvalCalls++;
       return originalEval.apply(this, args);
     };
-    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+    node.withParts = function deriveShouldNotRun(): AtRule {
       throw new Error('static direct root-only body render should not derive a temporary at-rule');
     };
     try {
@@ -1042,23 +985,21 @@ describe('AtRule', () => {
     expect(rulesEvalCalls).toBe(0);
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
-    expect(sourceRules.parent).toBe(node);
-    expect(sourceRules.evaluated).toBe(false);
+    expect(sourceRules.parent).toBeUndefined();
   });
 
   it('keeps direct body-render visibility off the source at-rule', async () => {
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: any('screen'),
-      rules: rules([
+      rules: [
         vardecl({ name: 'hidden', value: any('yes') })
-      ])
+      ]
     });
 
     expect(await Promise.resolve(node.render(context))).toBe('');
     expect(node.visible).toBe(true);
-    expect(node.rules?.parent).toBe(node);
-    expect(node.rules?.evaluated).toBe(false);
+    expect(node.rules[0]?.parent).toBe(node);
   });
 
   it('keeps public body-resolve visibility on the owned result', async () => {
@@ -1075,17 +1016,17 @@ describe('AtRule', () => {
       vardecl({ name: 'hidden', value: any('yes') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: sourceRules
+      rules: sourceRules.rules
     });
 
     const resolved = await Promise.resolve(node.resolve(context));
 
     expect(resolved.toString()).toBe('');
     expect(node.visible).toBe(true);
-    expect(node.rules).toBe(sourceRules);
-    expect(sourceRules.parent).toBe(node);
+    expect(node.rules).toBe(sourceRules.rules);
+    expect(sourceRules.parent).toBeUndefined();
     if (resolved instanceof AtRule) {
       expect(resolved).not.toBe(node);
       expect(resolved.visible).toBe(false);
@@ -1095,21 +1036,21 @@ describe('AtRule', () => {
   it('keeps direct body-render hoist facts off the source at-rule', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@keyframes', { role: 'atkeyword' }),
+      name: '@keyframes',
       prelude: seq([any('spin', { role: 'keyword' })]),
-      rules: rules([
+      rules: [
         ruleset({
           selector: el('to'),
-          rules: rules([
+          rules: [
             decl({ name: 'opacity', value: dimension([1]) })
-          ])
+          ]
         })
-      ])
+      ]
     });
 
     expect(await Promise.resolve(node.render(context))).toBeString(`
@@ -1121,22 +1062,21 @@ describe('AtRule', () => {
     `);
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
-    expect(node.evaluated).toBe(false);
     expect(node.getRenderRules()).toBe(node.rules);
   });
 
   it('returns an owned at-rule when body eval changes hoist output', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: rules([
+      name: '@font-face',
+      rules: [
         decl({ name: 'font-family', value: any('Jess') })
-      ])
+      ]
     });
 
     const evaluated = await Promise.resolve(node.eval(context));
@@ -1162,16 +1102,16 @@ describe('AtRule', () => {
   it('returns owned evaluated collapse-nesting hoist state in frames without a runtime hoist field', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     const evaluated = await Promise.resolve(node.eval(context));
@@ -1194,16 +1134,16 @@ describe('AtRule', () => {
   it('renders owned evaluated collapse-nesting at-rules without mutating source frame state', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     const evaluated = await Promise.resolve(node.eval(context));
@@ -1229,16 +1169,16 @@ describe('AtRule', () => {
   it('renders owned evaluated collapse-nesting at-rules without deriving another temporary at-rule node', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     const evaluated = await Promise.resolve(node.eval(context));
@@ -1247,7 +1187,7 @@ describe('AtRule', () => {
     if (!(evaluated instanceof AtRule)) {
       throw new Error('Expected AtRule eval result');
     }
-    evaluated.deriveAtRule = function deriveShouldNotRun(): AtRule {
+    evaluated.withParts = function deriveShouldNotRun(): AtRule {
       throw new Error('evaluated collapse-nesting render should not derive a temporary at-rule');
     };
 
@@ -1263,16 +1203,16 @@ describe('AtRule', () => {
   it('serializes owned evaluated collapse-nesting at-rules without consulting source compatibility frame getters', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     const evaluated = await Promise.resolve(node.eval(context));
@@ -1299,7 +1239,7 @@ describe('AtRule', () => {
   it('keeps async collapse-nesting frame state on the owned result without mutating source state', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
     const body = rules([
       decl({ name: 'color', value: any('red') })
@@ -1309,12 +1249,12 @@ describe('AtRule', () => {
       await Promise.resolve();
       return body;
     };
-    context.opts.collapseNesting = true;
+    context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
-      rules: body
+      rules: body.rules
     });
 
     const evaluated = await Promise.resolve(node.eval(context));
@@ -1358,14 +1298,14 @@ describe('AtRule', () => {
       return originalEval.apply(this, args);
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: sourcePrelude,
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
-    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+    node.withParts = function deriveShouldNotRun(): AtRule {
       throw new Error('direct body render with evaluated prelude should not derive a temporary at-rule');
     };
 
@@ -1377,28 +1317,22 @@ describe('AtRule', () => {
     expect(preludeEvalCalls).toBe(1);
     expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
-    expect(sourcePrelude.evaluated).toBe(false);
-    expect(node.evaluated).toBe(false);
   });
 
   it('returns owned evaluated at-rule body output without mutating source value.rules', async () => {
+    const root = rules([
+      vardecl({ name: 'accent', value: any('blue') })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourceDecl = decl({ name: 'color', value: ref({ key: 'accent' }, { type: 'variable' }) });
     const originalRules = rules([
-      decl({ name: 'color', value: any('red') })
+      sourceDecl
     ]);
-    const evaluatedRules = rules([
-      decl({ name: 'color', value: any('blue') })
-    ]);
-    const originalEval = originalRules.eval;
-    originalRules.eval = function evalReplacementBody(
-      this: Rules,
-      ..._args: Parameters<typeof originalEval>
-    ): ReturnType<typeof originalEval> {
-      evaluatedRules.evaluated = true;
-      return evaluatedRules;
-    };
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: originalRules
+      name: '@font-face',
+      rules: originalRules.rules
     });
 
     const evaluated = await Promise.resolve(node.eval(context));
@@ -1408,13 +1342,14 @@ describe('AtRule', () => {
       throw new Error('Expected evaluated AtRule result');
     }
     expect(evaluated).not.toBe(node);
-    expect(node.rules).toBe(originalRules);
-    expect(node.getRenderRules()).toBe(originalRules);
-    expect(evaluated.rules).toBe(evaluatedRules);
-    expect(evaluated.getRenderRules()).toBe(evaluatedRules);
+    expect(node.rules).toBe(originalRules.rules);
+    expect(node.getRenderRules()).toBe(originalRules.rules);
+    expect(evaluated.rules).not.toBe(originalRules.rules);
+    expect(evaluated.getRenderRules()).toBe(evaluated.rules);
+    expect(evaluated.rules[0]).not.toBe(sourceDecl);
     expect(node.toTrimmedString()).toBeString(`
       @font-face {
-        color: red;
+        color: $accent;
       }
     `);
     expect(evaluated.toTrimmedString()).toBeString(`
@@ -1422,44 +1357,46 @@ describe('AtRule', () => {
         color: blue;
       }
     `);
-    expect(originalRules.parent).toBe(node);
+    expect(originalRules.parent).toBeUndefined();
   });
 
   it('keeps source body state canonical when post-eval visibility checks throw', async () => {
+    const root = rules([
+      vardecl({ name: 'accent', value: any('blue') })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
     const originalRules = rules([
-      decl({ name: 'color', value: any('red') })
+      decl({ name: 'color', value: ref({ key: 'accent' }, { type: 'variable' }) })
     ]);
-    const evaluatedRules = rules([
-      decl({ name: 'color', value: any('blue') })
-    ]);
-    const originalEval = originalRules.eval;
-    const originalHasVisibleRules = evaluatedRules.hasVisibleRules;
-    originalRules.eval = function evalReplacementBody(
-      this: Rules,
-      ..._args: Parameters<typeof originalEval>
-    ): ReturnType<typeof originalEval> {
-      evaluatedRules.evaluated = true;
-      return evaluatedRules;
-    };
-    evaluatedRules.hasVisibleRules = function throwAfterEval(
-      this: Rules,
-      ..._args: Parameters<typeof originalHasVisibleRules>
-    ): ReturnType<typeof originalHasVisibleRules> {
-      throw new Error('hasVisibleRules failed');
-    };
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: originalRules
+      name: '@font-face',
+      rules: originalRules.rules
     });
-
-    expect(() => node.eval(context)).toThrow('hasVisibleRules failed');
-    expect(node.rules).toBe(originalRules);
-    expect(node.getRenderRules()).toBe(originalRules);
-    expect(node.toTrimmedString()).toBeString(`
-      @font-face {
-        color: red;
+    const originalHasVisibleRules = Rules.prototype.hasVisibleRules;
+    Rules.prototype.hasVisibleRules = function throwAfterEval(
+      this: Rules,
+      ...args: Parameters<typeof originalHasVisibleRules>
+    ): ReturnType<typeof originalHasVisibleRules> {
+      if (this !== originalRules && this.rules.length === 1) {
+        throw new Error('hasVisibleRules failed');
       }
-    `);
+      return originalHasVisibleRules.apply(this, _args);
+    };
+
+    try {
+      expect(() => node.eval(context)).toThrow('hasVisibleRules failed');
+      expect(node.rules).toBe(originalRules.rules);
+      expect(node.getRenderRules()).toBe(originalRules.rules);
+      expect(node.toTrimmedString()).toBeString(`
+        @font-face {
+          color: $accent;
+        }
+      `);
+    } finally {
+      Rules.prototype.hasVisibleRules = originalHasVisibleRules;
+    }
   });
 
   it('resolves at-rules without touching render state', async () => {
@@ -1474,13 +1411,12 @@ describe('AtRule', () => {
     context.rulesContext = evaldRoot;
 
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
-    const sourceName = node.name;
     const sourcePrelude = node.prelude;
     const sourceRules = node.rules;
 
@@ -1491,14 +1427,12 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(sourceName.parent).toBe(node);
     expect(sourcePrelude?.parent).toBe(node);
-    expect(sourceRules?.parent).toBe(node);
+    expect(sourceRules[0]?.parent).toBe(node);
     expect(node.prelude).toBe(sourcePrelude);
     if (resolved instanceof AtRule) {
       expect(resolved.prelude).not.toBe(sourcePrelude);
     }
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -1525,15 +1459,14 @@ describe('AtRule', () => {
     };
     evaluatedRules.eval = function evalReplacementBody(
       this: Rules,
-      ..._args: Parameters<typeof evaluatedRules.eval>
+      ...args: Parameters<typeof evaluatedRules.eval>
     ): ReturnType<typeof evaluatedRules.eval> {
-      evaluatedRules.evaluated = true;
       return evaluatedRules;
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: originalRules
+      rules: originalRules.rules
     });
 
     const resolved = await Promise.resolve(node.resolve(context));
@@ -1543,14 +1476,14 @@ describe('AtRule', () => {
       throw new Error('Expected AtRule result');
     }
     expect(resolved).not.toBe(node);
-    expect(resolved.getRenderRules()).not.toBe(originalRules);
+    expect(resolved.getRenderRules()).not.toBe(originalRules.rules);
     expect(resolved.toTrimmedString()).toBeString(`
       @media screen {
         color: red;
       }
     `);
-    expect(node.rules).toBe(originalRules);
-    expect(originalRules.parent).toBe(node);
+    expect(node.rules).toBe(originalRules.rules);
+    expect(originalRules.parent).toBeUndefined();
   });
 
   it('resolves body at-rules with the source frame while owning the public result at the adapter', async () => {
@@ -1566,15 +1499,15 @@ describe('AtRule', () => {
     const sourceRules = rules([
       ruleset({
         selector: el('.box'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
-      rules: sourceRules
+      rules: sourceRules.rules
     });
     const sourcePrelude = node.prelude;
     const originalPrepareRegistration = Rules.prototype.prepareRegistration;
@@ -1611,16 +1544,15 @@ describe('AtRule', () => {
     `);
     expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude?.parent).toBe(node);
-    expect(node.rules).toBe(sourceRules);
-    expect(sourceRules.parent).toBe(node);
-    expect(node.evaluated).toBe(false);
+    expect(node.rules).toBe(sourceRules.rules);
+    expect(sourceRules.parent).toBeUndefined();
     expect(node.visible).toBe(true);
   });
 
   it('keeps public body at-rule resolve results mutable and isolated even when output is unchanged', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('screen')
       })
     ]);
@@ -1632,9 +1564,9 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('red') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: sourcePrelude,
-      rules: sourceRules
+      rules: sourceRules.rules
     });
 
     const first = await Promise.resolve(node.resolve(context));
@@ -1652,9 +1584,9 @@ describe('AtRule', () => {
     expect(first).not.toBe(second);
     expect(second.prelude?.toTrimmedString()).toBe('screen');
     expect(node.prelude).toBe(sourcePrelude);
-    expect(node.rules).toBe(sourceRules);
+    expect(node.rules).toBe(sourceRules.rules);
     expect(sourcePrelude.parent).toBe(node);
-    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.parent).toBeUndefined();
   });
 
   it('stores public body resolve facts directly on the owned result node', async () => {
@@ -1669,7 +1601,7 @@ describe('AtRule', () => {
     context.rulesContext = evaldRoot;
     const parentFrame = ruleset({
       selector: el('.parent'),
-      rules: rules([])
+      rules: []
     });
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [parentFrame];
@@ -1679,15 +1611,15 @@ describe('AtRule', () => {
     const sourceRules = rules([
       ruleset({
         selector: el('to'),
-        rules: rules([
+        rules: [
           decl({ name: 'opacity', value: dimension([1]) })
-        ])
+        ]
       })
     ]);
     const node = atrule({
-      name: any('@keyframes', { role: 'atkeyword' }),
+      name: '@keyframes',
       prelude: sourcePrelude,
-      rules: sourceRules
+      rules: sourceRules.rules
     });
 
     const resolved = await Promise.resolve(node.resolve(context));
@@ -1698,7 +1630,7 @@ describe('AtRule', () => {
     }
 
     expect(resolved).not.toBe(node);
-    expect(resolved.rules).not.toBe(sourceRules);
+    expect(resolved.rules).not.toBe(sourceRules.rules);
     expect(resolved.getRenderRules()).toBe(resolved.rules);
     expect(resolved.hoistToRoot).toBe(true);
     expect(resolved.isHoisted({ collapseNesting: false })).toBe(true);
@@ -1712,22 +1644,22 @@ describe('AtRule', () => {
       }
     `);
     expect(node.prelude).toBe(sourcePrelude);
-    expect(node.rules).toBe(sourceRules);
+    expect(node.rules).toBe(sourceRules.rules);
     expect(sourcePrelude.parent).toBe(node);
-    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.parent).toBeUndefined();
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
   });
 
   it('resolves static at-rules without deriving or evaluating', () => {
-    const node = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+    const node = atrulestatement({
+      name: '@namespace',
       prelude: seq([any('svg')])
     });
-    const originalEval = AtRule.prototype.eval;
+    const originalEval = AtRuleStatement.prototype.eval;
     let evalCalls = 0;
-    AtRule.prototype.eval = function countEvalCalls(
-      this: AtRule,
+    AtRuleStatement.prototype.eval = function countEvalCalls(
+      this: AtRuleStatement,
       ...args: Parameters<typeof originalEval>
     ): ReturnType<typeof originalEval> {
       evalCalls++;
@@ -1739,42 +1671,52 @@ describe('AtRule', () => {
 
       expect(resolved).toBe(node);
       expect(evalCalls).toBe(0);
-      expect(node.evaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     } finally {
-      AtRule.prototype.eval = originalEval;
+      AtRuleStatement.prototype.eval = originalEval;
     }
   });
 
   it('serializes comment trivia between at-rule preludes and blocks', () => {
-    const name = any('@-webkit-keyframes', { role: 'atkeyword' });
-    name._location = [0, 1, 1, 17, 1, 18];
+    // Source layout ("|" = offset):
+    //   @-webkit-keyframes /* Safari */ hover /* and Chrome */ {
+    //   0                18            32    37                55
+    // The name is a bare STRING with no span of its own; its end offset is the
+    // AtRule's own span start plus the name length (0 + 18 = 18). The prelude
+    // node carries [32,37]. A comment authored in the [nameEnd, preludeStart) gap
+    // round-trips via the node-span comment scan; whitespace there is normalized.
+    const src = '@-webkit-keyframes /* Safari */ hover /* and Chrome */ { }';
+    const name = '@-webkit-keyframes';
     const prelude = any('hover', { role: 'keyword' });
-    prelude._location = [32, 1, 33, 36, 1, 37];
-    const leading = [token(' '), token('/* Safari */', 'BlockComment'), token(' ')];
-    const trailing = [token(' '), token('/* and Chrome */', 'BlockComment'), token(' ')];
+    setSourceSpan(prelude, { start: 32, end: 37 });
+    // Runs carry their REAL source spans — the scan validates that a comment run
+    // actually sits in the [nameEnd, preludeStart) gap.
+    const interstitial = makeTrivia(src, 18, 32); // " /* Safari */ "
+    const trailing = makeTrivia(src, 37, 55); // " /* and Chrome */ "
     const trivia = createTriviaMap({
       before: new Map([
-        [prelude.location[0], leading],
+        [32, interstitial],
         [55, trailing]
       ]),
       after: new Map([
-        [name.location[3], leading],
-        [prelude.location[3], trailing]
+        [18, interstitial],
+        [37, trailing]
       ])
     }) satisfies TriviaMap;
     const node = atrule({
       name,
       prelude,
-      rules: rules([
+      rules: [
         ruleset({
           selector: sel([el('0%')]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         })
-      ])
+      ]
     });
+    // The AtRule's own span starts at 0, so the bare-string name ends at 0+18=18.
+    setSourceSpan(node, { start: 0, end: 57 });
 
     expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
   });
@@ -1782,23 +1724,16 @@ describe('AtRule', () => {
   it('streams at-rule headers without capture scaffolding', () => {
     const writer = new CountingWriter();
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
-      rules: rules([])
+      rules: []
     });
     const options = getPrintOptions({ writer });
-    const name = node.name;
+    // The name is a bare string; only the prelude (still a node) can have its
+    // public toString invoked, so just it is guarded.
     const prelude = node.prelude!;
-    const originalNameToString = name.toString;
     const originalPreludeToString = prelude.toString;
-    let nameToStringCalls = 0;
     let preludeToStringCalls = 0;
-    name.toString = function toStringWithWriterCheck(
-      this: typeof name
-    ): string {
-      nameToStringCalls++;
-      return originalNameToString.call(this);
-    };
     prelude.toString = function toStringWithWriterCheck(
       this: typeof prelude
     ): string {
@@ -1814,18 +1749,17 @@ describe('AtRule', () => {
       expect(writer.previews).toBe(0);
       expect(writer.reads).toBe(0);
       expect(writer.restores).toBe(0);
-      expect(nameToStringCalls).toBe(0);
       expect(preludeToStringCalls).toBe(0);
     } finally {
-      name.toString = originalNameToString;
       prelude.toString = originalPreludeToString;
     }
   });
 
-  it('writes exact scalar at-rule headers without child syntax capture', () => {
-    const name = any('@namespace', { role: 'atkeyword' });
+  it('writes exact scalar at-rule statements without child syntax capture', () => {
+    const writer = new CountingWriter();
+    const name = '@namespace';
     const prelude = keyword('svg');
-    const node = atrule({
+    const node = atrulestatement({
       name,
       prelude
     });
@@ -1834,14 +1768,16 @@ describe('AtRule', () => {
       preludeWriteSyntaxCalls++;
     };
 
-    expect(node.getHeaderString(getPrintOptions())).toBe('@namespace svg;');
+    node.writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('@namespace svg;');
     expect(preludeWriteSyntaxCalls).toBe(0);
   });
 
   it('renders leaf at-rules without preview scaffolding', () => {
     const writer = new CountingWriter();
-    const node = atrule({
-      name: any('@custom-media', { role: 'atkeyword' }),
+    const node = atrulestatement({
+      name: '@custom-media',
       prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
     });
     const options = getPrintOptions({ writer });
@@ -1855,8 +1791,8 @@ describe('AtRule', () => {
 
   it('renders scalar leaf at-rules without leaf syntax rollback', () => {
     const writer = new CountingWriter();
-    const node = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+    const node = atrulestatement({
+      name: '@namespace',
       prelude: any('svg')
     });
     node.removeFlag(F_STATIC);
@@ -1864,9 +1800,9 @@ describe('AtRule', () => {
 
     const rendered = '@namespace svg;';
     expect(node.render(context, options)).toBe(rendered);
-    expect(writer.toString()).toBe('');
-    expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.toString()).toBe(rendered);
+    expect(writer.marks).toBe(1);
+    expect(writer.reads).toBe(1);
     expect(writer.restores).toBe(0);
     expect(writer.captures).toBe(0);
     expect(writer.previews).toBe(0);
@@ -1874,13 +1810,10 @@ describe('AtRule', () => {
 
   it('writes scalar leaf at-rules without header string transport', () => {
     const writer = new CountingWriter();
-    const node = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+    const node = atrulestatement({
+      name: '@namespace',
       prelude: any('svg')
     });
-    node.getHeaderString = () => {
-      throw new Error('scalar leaf at-rule writeSyntax should not use header string transport');
-    };
 
     expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
     expect(writer.toString()).toBe('@namespace svg;');
@@ -1891,13 +1824,10 @@ describe('AtRule', () => {
 
   it('writes non-scalar no-trivia leaf at-rules without header string transport', () => {
     const writer = new CountingWriter();
-    const node = atrule({
-      name: any('@custom-media', { role: 'atkeyword' }),
+    const node = atrulestatement({
+      name: '@custom-media',
       prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
     });
-    node.getHeaderString = () => {
-      throw new Error('non-scalar no-trivia leaf at-rule writeSyntax should not use header string transport');
-    };
 
     expect(() => node.writeSyntax(getPrintOptions({ writer }))).not.toThrow();
     expect(writer.toString()).toBe('@custom-media --narrow (max-width: 30em);');
@@ -1910,8 +1840,8 @@ describe('AtRule', () => {
 
   it('normalizes leading prelude whitespace when writing direct leaf at-rules', () => {
     const writer = new CountingWriter();
-    const node = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+    const node = atrulestatement({
+      name: '@namespace',
       prelude: any(' foo url(http://www.example.com)', { role: 'keyword' })
     });
     node.getHeaderString = () => {
@@ -1923,8 +1853,8 @@ describe('AtRule', () => {
   });
 
   it('normalizes leading prelude whitespace when rendering evaluated leaf at-rules', () => {
-    const node = atrule({
-      name: any('@impor', { role: 'atkeyword' }),
+    const node = atrulestatement({
+      name: '@impor',
       prelude: quoted(any('impor-typo-dont-parse-as-@import.less'))
     });
     node.removeFlag(F_STATIC);
@@ -1934,12 +1864,12 @@ describe('AtRule', () => {
 
   it('renders keyword and anonymous leaf at-rule preludes without syntax rollback', () => {
     const writer = new CountingWriter();
-    const first = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+    const first = atrulestatement({
+      name: '@namespace',
       prelude: keyword('svg')
     });
-    const second = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+    const second = atrulestatement({
+      name: '@namespace',
       prelude: new Anonymous('html')
     });
     first.removeFlag(F_STATIC);
@@ -1948,9 +1878,9 @@ describe('AtRule', () => {
 
     expect(first.render(context, options)).toBe('@namespace svg;');
     expect(second.render(context, options)).toBe('@namespace html;');
-    expect(writer.toString()).toBe('');
-    expect(writer.marks).toBe(0);
-    expect(writer.reads).toBe(0);
+    expect(writer.toString()).toBe('@namespace svg;@namespace html;');
+    expect(writer.marks).toBe(2);
+    expect(writer.reads).toBe(2);
     expect(writer.restores).toBe(0);
     expect(writer.captures).toBe(0);
     expect(writer.previews).toBe(0);
@@ -1967,9 +1897,9 @@ describe('AtRule', () => {
       return originalClone.apply(this, args);
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([preludeLeaf]),
-      rules: rules([])
+      rules: []
     });
 
     try {
@@ -1988,9 +1918,9 @@ describe('AtRule', () => {
       sourceComment
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude,
-      rules: rules([])
+      rules: []
     });
 
     expect(node.getHeaderString(getPrintOptions(), true)).toBe('@media screen {\n');
@@ -2000,18 +1930,18 @@ describe('AtRule', () => {
 
   it('compares repeated at-rule headers through comparable header keys', async () => {
     const first = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
-      rules: rules([
+      rules: [
         decl({ name: 'case', value: any('1') })
-      ])
+      ]
     });
     const second = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
-      rules: rules([
+      rules: [
         decl({ name: 'case', value: any('2') })
-      ])
+      ]
     });
     const node = rules([first, second]);
     let withoutCommentsHeaderCalls = 0;
@@ -2071,11 +2001,11 @@ describe('AtRule', () => {
 
   it('serializeRulesContainer writes no-trivia at-rule headers without header string transport', () => {
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const options = getPrintOptions({
       writer: new OutputWriter(),
@@ -2107,9 +2037,9 @@ describe('AtRule', () => {
 
   it('normalizes leading prelude whitespace at the at-rule name boundary', () => {
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: any('  all and (tv)', { role: 'keyword' }),
-      rules: rules([])
+      rules: []
     });
 
     expect(node.getHeaderString(getPrintOptions())).toBe('@media all and (tv) {\n');
@@ -2121,15 +2051,15 @@ describe('AtRule', () => {
       const node = rules([
         ruleset({
           selector: sel([el('.body')]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({ name: 'padding', value: dimension([20, 'px']) })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2161,21 +2091,21 @@ describe('AtRule', () => {
       const node = rules([
         ruleset({
           selector: sel([el('.body')]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
                   selector: sel([amp('-1')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'color', value: any('black') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2212,35 +2142,35 @@ describe('AtRule', () => {
       const node = rules([
         ruleset({
           selector: sel([el('.body')]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
                   selector: sel([amp('-1')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'color', value: any('black') })
-                  ])
+                  ]
                 }),
                 decl({ name: 'background-color', value: any('white') }),
                 ruleset({
                   selector: sel([amp('-2')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'color', value: any('blue') })
-                  ])
+                  ]
                 }),
                 ruleset({
                   selector: sel([amp('-3')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'color', value: any('red') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             }),
             decl({ name: 'zoom', value: num(1) })
-          ])
+          ]
         })
       ]);
 
@@ -2281,31 +2211,31 @@ describe('AtRule', () => {
       const node = rules([
         ruleset({
           selector: sel([el('.body')]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
                 ruleset({
                   selector: sel([el('header')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'background-color', value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 }) }),
                     atrule({
-                      name: any('@media', { role: 'atkeyword' }),
+                      name: '@media',
                       prelude: seq([paren(decl({
                         name: 'orientation',
                         value: any('landscape')
                       }))]),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'margin-left', value: dimension([20, 'px']) })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2329,19 +2259,19 @@ describe('AtRule', () => {
 
   describe('collapse nesting at-rule categories', () => {
     it('keeps nested @starting-style in place when collapseNesting is true', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('[popover]:popover-open')]),
-          rules: rules([
+          rules: [
             decl({ name: 'opacity', value: num(1) }),
             atrule({
-              name: any('@starting-style', { role: 'atkeyword' }),
-              rules: rules([
+              name: '@starting-style',
+              rules: [
                 decl({ name: 'opacity', value: num(0) })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2358,16 +2288,16 @@ describe('AtRule', () => {
     });
 
     it('keeps leaf custom at-rules inside the current ruleset', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('.box')]),
-          rules: rules([
-            atrule({
-              name: any('@apply', { role: 'atkeyword' }),
+          rules: [
+            atrulestatement({
+              name: '@apply',
               prelude: any('h-64 w-64')
             })
-          ])
+          ]
         })
       ]);
 
@@ -2385,27 +2315,27 @@ describe('AtRule', () => {
       const node = rules([
         ruleset({
           selector: sel([el('.onTop')]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@keyframes', { role: 'atkeyword' }),
+              name: '@keyframes',
               prelude: quoted(any('textscale')),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([el('0%')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'font-size', value: dimension([1, 'em']) })
-                  ])
+                  ]
                 }),
                 ruleset({
                   selector: sel([el('100%')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'font-size', value: dimension([2, 'em']) })
-                  ])
+                  ]
                 })
-              ])
+              ]
             }),
             decl({ name: 'animation', value: quoted(any('textscale')) })
-          ])
+          ]
         })
       ]);
 
@@ -2427,31 +2357,31 @@ describe('AtRule', () => {
     });
 
     it('treats generated hoisted ampersand wrappers as transparent inside nested wrapper at-rules', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         atrule({
-          name: any('@supports', { role: 'atkeyword' }),
+          name: '@supports',
           prelude: paren(decl({ name: 'property', value: any('value') })),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([el('.outOfMedia'), co(' '), amp()]),
-              rules: rules([
+              rules: [
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
-                  rules: rules([
+                  rules: [
                     atrule({
-                      name: any('@supports', { role: 'atkeyword' }),
+                      name: '@supports',
                       prelude: paren(decl({ name: 'whatever', value: any('something') })),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'property', value: any('value') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2473,16 +2403,16 @@ describe('AtRule', () => {
     it('does not merge adjacent root-only at-rules with identical headers', async () => {
       const node = rules([
         atrule({
-          name: any('@font-face', { role: 'atkeyword' }),
-          rules: rules([
+          name: '@font-face',
+          rules: [
             decl({ name: 'font-family', value: quoted('One') })
-          ])
+          ]
         }),
         atrule({
-          name: any('@font-face', { role: 'atkeyword' }),
-          rules: rules([
+          name: '@font-face',
+          rules: [
             decl({ name: 'font-family', value: quoted('Two') })
-          ])
+          ]
         })
       ]);
 
@@ -2499,31 +2429,31 @@ describe('AtRule', () => {
     });
 
     it('does not merge adjacent wrapper at-rules from distinct sibling branches', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         ruleset({
           selector: sel([el('.one')]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('screen', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sel([el('.two')]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('screen', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('blue') })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2544,55 +2474,55 @@ describe('AtRule', () => {
     });
 
     it('does not merge identical wrapper stacks across at-rule and hoisted-ruleset sibling branches', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         atrule({
-          name: any('@supports', { role: 'atkeyword' }),
+          name: '@supports',
           prelude: paren(decl({ name: 'property', value: any('value') })),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([el('.outOfMedia'), co(' '), amp()]),
-              rules: rules([
+              rules: [
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
-                  rules: rules([
+                  rules: [
                     atrule({
-                      name: any('@supports', { role: 'atkeyword' }),
+                      name: '@supports',
                       prelude: paren(decl({ name: 'whatever', value: any('something') })),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'property', value: any('value') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: sel([el('.onTop'), co(' '), amp()]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@supports', { role: 'atkeyword' }),
+              name: '@supports',
               prelude: paren(decl({ name: 'property', value: any('value') })),
-              rules: rules([
+              rules: [
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
-                  rules: rules([
+                  rules: [
                     atrule({
-                      name: any('@supports', { role: 'atkeyword' }),
+                      name: '@supports',
                       prelude: paren(decl({ name: 'whatever', value: any('something') })),
-                      rules: rules([
+                      rules: [
                         decl({ name: 'property', value: any('value') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2637,40 +2567,40 @@ describe('AtRule', () => {
       //   .mediaMixin(100px);
       // }
       const mixinDef = mixin({
-        name: any('.mediaMixin'),
+        name: '.mediaMixin',
         params: list([
           vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 }) }),
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([any('handheld', { role: 'keyword' })]),
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 }) }),
               atrule({
-                name: any('@media', { role: 'atkeyword' }),
+                name: '@media',
                 prelude: seq([paren(decl({
                   name: 'max-width',
                   value: ref({ key: 'fallback' }, { type: 'variable' })
                 }))]),
-                rules: rules([
+                rules: [
                   decl({ name: 'background', value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 }) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const callSite = ruleset({
         selector: sel([el('.a')]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
             args: list([dimension([100, 'px'])])
           })
-        ])
+        ]
       });
 
       const rootRules = rules([mixinDef, callSite]);
@@ -2693,49 +2623,49 @@ describe('AtRule', () => {
     it('should handle mixin with nested @media using indexed parameter references', async () => {
       const createMixinRoot = (args: Node[] = []) => {
         const mixinDef = mixin({
-          name: any('.mediaMixin'),
+          name: '.mediaMixin',
           params: list([
             vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
           ]),
-          rules: rules([
+          rules: [
             decl({
               name: 'background',
               value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
             }),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('handheld', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: paren(decl({
                     name: 'max-width',
                     value: ref({ key: 'fallback' }, { type: 'index' })
                   })),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'background',
                       value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         });
 
         const callSite = ruleset({
           selector: sel([el('.a')]),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
               args: list(args)
             })
-          ])
+          ]
         });
 
         return rules([mixinDef, callSite]);
@@ -2781,29 +2711,29 @@ describe('AtRule', () => {
       // Represents: @media print { ... } @media screen { ... }
       const node = rules([
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('print', { role: 'keyword' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([el('.class')]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: color({ node: 'blue', format: 0, rgb: [0, 0, 255], alpha: 1 }) })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('screen', { role: 'keyword' })]),
-          rules: rules([
-            vardecl({ name: any('base', { role: 'ident' }), value: num(8) }),
+          rules: [
+            vardecl({ name: 'base', value: num(8) }),
             ruleset({
               selector: sel([el('.body')]),
-              rules: rules([
+              rules: [
                 decl({ name: 'max-width', value: op([ref('base', { type: 'variable' }), '*', num(60)]) })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2829,19 +2759,19 @@ describe('AtRule', () => {
     it('should handle @media with variable references in prelude', async () => {
       // Represents: @all: ~"all"; @tv: ~"(tv)"; @media @all and @tv { ... }
       const node = rules([
-        vardecl({ name: any('all', { role: 'ident' }), value: quoted(any('all', { role: 'any' }), { escaped: true }) }),
-        vardecl({ name: any('tv', { role: 'ident' }), value: quoted(any('(tv)', { role: 'any' }), { escaped: true }) }),
+        vardecl({ name: 'all', value: quoted(any('all', { role: 'any' }), { escaped: true }) }),
+        vardecl({ name: 'tv', value: quoted(any('(tv)', { role: 'any' }), { escaped: true }) }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([ref('all', { type: 'variable' }), any('and', { role: 'keyword' }), ref('tv', { type: 'variable' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([el('.all-and-tv-variables')]),
-              rules: rules([
+              rules: [
                 decl({ name: 'var', value: spaced([any('all-and-tv')]) })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2861,9 +2791,9 @@ describe('AtRule', () => {
     it('should handle @media with expressions in prelude', async () => {
       // Represents: @some-var: 60px; @media screen and (min-width: (@some-var + 1)) { ... }
       const node = rules([
-        vardecl({ name: any('some-var', { role: 'ident' }), value: dimension([60, 'px']) }),
+        vardecl({ name: 'some-var', value: dimension([60, 'px']) }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('screen', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -2872,14 +2802,14 @@ describe('AtRule', () => {
               value: op([ref('some-var', { type: 'variable' }), '+', num(1)])
             }))
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([el('.selector')]),
-              rules: rules([
+              rules: [
                 decl({ name: 'foo', value: spaced([any('bar')]) })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2900,7 +2830,7 @@ describe('AtRule', () => {
       // Represents: @media screen and (color), projection and (color) { ... }
       const node = rules([
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([
               any('screen', { role: 'keyword' }),
@@ -2913,14 +2843,14 @@ describe('AtRule', () => {
               paren(any('color', { role: 'keyword' }))
             ])
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([el('.selector')]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: color({ node: '#eee', format: 0 }) })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -2952,42 +2882,42 @@ describe('AtRule', () => {
       //   }
       // }
       const navJustifiedMixin = mixin({
-        name: any('.nav-justified'),
-        rules: rules([
+        name: '.nav-justified',
+        rules: [
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([paren(decl({
               name: 'min-width',
               value: dimension([480, 'px'])
             }))]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('> li')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'display', value: spaced([any('table-cell')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const callSite = ruleset({
         selector: sel([el('.menu')]),
-        rules: rules([
+        rules: [
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([paren(decl({
               name: 'min-width',
               value: dimension([768, 'px'])
             }))]),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' })
               })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const rootRules = rules([navJustifiedMixin, callSite]);
@@ -3008,44 +2938,44 @@ describe('AtRule', () => {
     });
 
     it('does not duplicate callable ruleset output inside nested media calls', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const navJustified = ruleset({
         selector: sel([el('.nav-justified')]),
-        rules: rules([
+        rules: [
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([paren(decl({
               name: 'min-width',
               value: dimension([480, 'px'])
             }))]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('> li')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'display', value: spaced([any('table-cell')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const menu = ruleset({
         selector: sel([el('.menu')]),
-        rules: rules([
+        rules: [
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([paren(decl({
               name: 'min-width',
               value: dimension([768, 'px'])
             }))]),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' })
               })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const rootRules = rules([navJustified, menu]);
@@ -3071,32 +3001,32 @@ describe('AtRule', () => {
 
   describe('serialization test for media.less AST', () => {
     it('should serialize the exact AST structure from media.less.s-expr.txt', async () => {
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       // Build the AST exactly as represented in media.less.s-expr.txt
       const node = rules([
         comment('// For now, variables can\'t be declared…', { lineComment: true }),
-        vardecl({ name: any('var', { role: 'ident' }), value: num(42) }),
+        vardecl({ name: 'var', value: num(42) }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('print', { role: 'keyword' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.class'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'color',
                   value: color({ node: 'blue', format: 0, rgb: [0, 0, 255], alpha: 1 })
                 }),
                 ruleset({
                   selector: el('.sub'),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'width',
                       value: ref({ key: 'var' }, { type: 'variable' })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             }),
             ruleset({
               selector: sellist([
@@ -3107,7 +3037,7 @@ describe('AtRule', () => {
                   el('h1')
                 ])
               ]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'color',
                   value: paren(op([
@@ -3116,18 +3046,18 @@ describe('AtRule', () => {
                     num(2)
                   ]))
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('screen', { role: 'keyword' })]),
-          rules: rules([
-            vardecl({ name: any('base', { role: 'ident' }), value: num(8) }),
+          rules: [
+            vardecl({ name: 'base', value: num(8) }),
             ruleset({
               selector: el('.body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'max-width',
                   value: paren(op([
@@ -3136,14 +3066,14 @@ describe('AtRule', () => {
                     num(60)
                   ]))
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
-        vardecl({ name: any('ratio_large', { role: 'ident' }), value: num(16) }),
-        vardecl({ name: any('ratio_small', { role: 'ident' }), value: num(9) }),
+        vardecl({ name: 'ratio_large', value: num(16) }),
+        vardecl({ name: 'ratio_small', value: num(9) }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('all', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -3160,20 +3090,20 @@ describe('AtRule', () => {
               }))
             ])
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'max-width',
                   value: dimension([800, 'px'])
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('all', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -3184,20 +3114,20 @@ describe('AtRule', () => {
               }))
             ])
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('aside'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'float',
                   value: any('none')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([
               any('handheld', { role: 'keyword' }),
@@ -3220,146 +3150,146 @@ describe('AtRule', () => {
               ])
             ])
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'max-width',
                   value: dimension([480, 'px'])
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.body'),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'padding',
                   value: dimension([20, 'px'])
                 }),
                 ruleset({
                   selector: el('header'),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'background-color',
                       value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(decl({
                       name: 'orientation',
                       value: any('landscape')
                     }))
                   ]),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'margin-left',
                       value: dimension([20, 'px'])
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('screen', { role: 'keyword' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.sidebar'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'width',
                   value: dimension([300, 'px'])
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(decl({
                       name: 'orientation',
                       value: any('landscape')
                     }))
                   ]),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'width',
                       value: dimension([500, 'px'])
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('a', { role: 'keyword' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.first'),
-              rules: rules([
+              rules: [
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(any('b', { role: 'keyword' }))
                   ]),
-                  rules: rules([
+                  rules: [
                     ruleset({
                       selector: el('.second'),
-                      rules: rules([
+                      rules: [
                         ruleset({
                           selector: el('.third'),
-                          rules: rules([
+                          rules: [
                             decl({
                               name: 'width',
                               value: dimension([300, 'px'])
                             }),
                             atrule({
-                              name: any('@media', { role: 'atkeyword' }),
+                              name: '@media',
                               prelude: seq([
                                 paren(any('c', { role: 'keyword' }))
                               ]),
-                              rules: rules([
+                              rules: [
                                 decl({
                                   name: 'width',
                                   value: dimension([500, 'px'])
                                 })
-                              ])
+                              ]
                             })
-                          ])
+                          ]
                         }),
                         ruleset({
                           selector: el('.fourth'),
-                          rules: rules([
+                          rules: [
                             decl({
                               name: 'width',
                               value: num(3)
                             })
-                          ])
+                          ]
                         })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.body'),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: list([
                 seq([any('a', { role: 'keyword' })]),
                 seq([
@@ -3368,146 +3298,146 @@ describe('AtRule', () => {
                   paren(any('c', { role: 'keyword' }))
                 ])
               ]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'width',
                   value: dimension([95, '%'])
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: list([
                     seq([paren(any('x', { role: 'keyword' }))]),
                     seq([paren(any('y', { role: 'keyword' }))])
                   ]),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'width',
                       value: dimension([100, '%'])
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         mixin({
-          name: any('.mediaMixin'),
+          name: '.mediaMixin',
           params: list([
             vardecl({
-              name: any('fallback', { role: 'property' }),
+              name: 'fallback',
               value: dimension([200, 'px'])
-            })
+            }, { paramVar: true })
           ]),
-          rules: rules([
+          rules: [
             decl({
               name: 'background',
               value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
             }),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('handheld', { role: 'keyword' })]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(decl({
                       name: 'max-width',
                       value: ref({ key: 'fallback' }, { type: 'variable' })
                     }))
                   ]),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'background',
                       value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.a'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
               args: list([
                 dimension([100, 'px'])
               ])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.b'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         }),
         vardecl({
-          name: any('smartphone', { role: 'ident' }),
+          name: 'smartphone',
           value: quoted(any('only screen and (max-width: 200px)', { role: 'any' }), { escaped: true })
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             ref({ key: 'smartphone' }, { type: 'variable' })
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'width',
                   value: dimension([480, 'px'])
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('print', { role: 'keyword' })]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@page', { role: 'atkeyword' }),
+              name: '@page',
               prelude: list([el(':left')]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'margin',
                   value: dimension([0.5, 'cm'])
                 })
-              ])
+              ]
             }),
             atrule({
-              name: any('@page', { role: 'atkeyword' }),
+              name: '@page',
               prelude: list([el(':right')]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'margin',
                   value: dimension([0.5, 'cm'])
                 })
-              ])
+              ]
             }),
             atrule({
-              name: any('@page', { role: 'atkeyword' }),
+              name: '@page',
               prelude: list([any('Test:first', { role: 'ident' })]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'margin',
                   value: dimension([1, 'cm'])
                 })
-              ])
+              ]
             }),
             atrule({
-              name: any('@page', { role: 'atkeyword' }),
+              name: '@page',
               prelude: list([el(':first')]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'margin',
                   value: dimension([0.5, 'cm'])
@@ -3520,163 +3450,163 @@ describe('AtRule', () => {
                   ])
                 }),
                 atrule({
-                  name: any('@top-left', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@top-left',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@top-left-corner', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@top-left-corner',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@top-center', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@top-center',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@top-right', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@top-right',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@top-right-corner', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@top-right-corner',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@bottom-left', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@bottom-left',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@bottom-left-corner', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@bottom-left-corner',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@bottom-center', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@bottom-center',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@bottom-right', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@bottom-right',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@bottom-right-corner', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@bottom-right-corner',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@left-top', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@left-top',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@left-middle', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@left-middle',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@left-bottom', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@left-bottom',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@right-top', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@right-top',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@right-middle', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@right-middle',
+                  rules: [
                     decl({
                       name: 'content',
                       value: seq([
                         quoted(any('Page ', { role: 'any' })),
                         call({
-                          name: any('counter', { role: 'ident' }),
+                          name: 'counter',
                           args: list([
                             any('page')
                           ])
                         })
                       ])
                     })
-                  ])
+                  ]
                 }),
                 atrule({
-                  name: any('@right-bottom', { role: 'atkeyword' }),
-                  rules: rules([
+                  name: '@right-bottom',
+                  rules: [
                     decl({
                       name: 'margin',
                       value: dimension([1, 'cm'])
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([
               paren(decl({
@@ -3709,242 +3639,242 @@ describe('AtRule', () => {
               }))
             ])
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.b'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         mixin({
-          name: any('.bg'),
-          rules: rules([
+          name: '.bg',
+          rules: [
             decl({
               name: 'background',
               value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
             }),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(decl({
                   name: 'max-width',
                   value: dimension([500, 'px'])
                 }))
               ]),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.body'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.bg' }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         }),
         vardecl({
-          name: any('bpMedium', { role: 'ident' }),
+          name: 'bpMedium',
           value: dimension([1000, 'px'])
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(decl({
               name: 'max-width',
               value: ref({ key: 'bpMedium' }, { type: 'variable' })
             }))
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(decl({
                       name: 'max-width',
                       value: dimension([500, 'px'])
                     }))
                   ]),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'background',
                       value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                     })
-                  ])
+                  ]
                 }),
                 decl({
                   name: 'background',
                   value: color({ node: 'blue', format: 0, rgb: [0, 0, 255], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(decl({
               name: 'max-width',
               value: dimension([1200, 'px'])
             }))
           ]),
-          rules: rules([
+          rules: [
             comment('/* a comment */'),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(decl({
                   name: 'max-width',
                   value: dimension([900, 'px'])
                 }))
               ]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: el('.body'),
-                  rules: rules([
+                  rules: [
                     decl({
                       name: 'font-size',
                       value: dimension([11, 'px'])
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.nav-justified'),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(decl({
                   name: 'min-width',
                   value: dimension([480, 'px'])
                 }))
               ]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: el('.nav-justified'),
-                  rules: rules([
+                  rules: [
                     ruleset({
                       selector: sel([
                         el('.nav-justified'),
                         co('>'),
                         el('li')
                       ]),
-                      rules: rules([
+                      rules: [
                         decl({
                           name: 'display',
                           value: any('table-cell')
                         })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.menu'),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(decl({
                   name: 'min-width',
                   value: dimension([768, 'px'])
                 }))
               ]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: el('.menu'),
-                  rules: rules([
+                  rules: [
                     atrule({
-                      name: any('@media', { role: 'atkeyword' }),
+                      name: '@media',
                       prelude: seq([
                         paren(decl({
                           name: 'min-width',
                           value: dimension([480, 'px'])
                         }))
                       ]),
-                      rules: rules([
+                      rules: [
                         ruleset({
                           selector: el('.menu'),
-                          rules: rules([
+                          rules: [
                             ruleset({
                               selector: sel([
                                 el('.menu'),
                                 co('>'),
                                 el('li')
                               ]),
-                              rules: rules([
+                              rules: [
                                 decl({
                                   name: 'display',
                                   value: any('table-cell')
                                 })
-                              ])
+                              ]
                             })
-                          ])
+                          ]
                         })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         vardecl({
-          name: any('all', { role: 'ident' }),
+          name: 'all',
           value: quoted(any('all', { role: 'any' }))
         }),
         vardecl({
-          name: any('tv', { role: 'ident' }),
+          name: 'tv',
           value: quoted(any('(tv)', { role: 'any' }))
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('all', { role: 'any' }),
             any('and', { role: 'keyword' }),
             any('(tv)', { role: 'any' })
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.all-and-tv-variables'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'var',
                   value: any('all-and-tv')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         vardecl({
-          name: any('some-var', { role: 'ident' }),
+          name: 'some-var',
           value: dimension([60, 'px'])
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('screen', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -3953,20 +3883,20 @@ describe('AtRule', () => {
               value: dimension([61, 'px'])
             }))
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.selector'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'foo',
                   value: any('bar')
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([
               any('screen', { role: 'keyword' }),
@@ -3983,20 +3913,20 @@ describe('AtRule', () => {
               ])
             ])
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.selector'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'color',
                   value: color({ node: '#eee', format: 0 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('not', { role: 'keyword' }),
             paren(seq([
@@ -4005,20 +3935,20 @@ describe('AtRule', () => {
               dimension([-100, 'px'])
             ]))
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(seq([
               any('height', { role: 'ident' }),
@@ -4026,20 +3956,20 @@ describe('AtRule', () => {
               dimension([-100, 'px'])
             ]))
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('not', { role: 'keyword' }),
             paren(decl({
@@ -4047,40 +3977,40 @@ describe('AtRule', () => {
               value: dimension([-300, 'dpi'])
             }))
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(decl({
               name: 'min-orientation',
               value: any('portrait')
             }))
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('print', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -4091,20 +4021,20 @@ describe('AtRule', () => {
               }))
             ])
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(seq([
               dimension([200, 'px']),
@@ -4114,27 +4044,27 @@ describe('AtRule', () => {
               dimension([500, 'px'])
             ]))
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.test-range-syntax'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'padding',
                   value: num(0)
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.selector'),
-          rules: rules([
+          rules: [
             decl({
               name: 'color',
               value: color({ node: '#eee', format: 0 })
             }),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(seq([
                   dimension([200, 'px']),
@@ -4144,31 +4074,31 @@ describe('AtRule', () => {
                   dimension([500, 'px'])
                 ]))
               ]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: el('.selector'),
-                  rules: rules([
+                  rules: [
                     ruleset({
                       selector: sel([
                         el('.selector'),
                         co(' '),
                         el('.test-range-syntax')
                       ]),
-                      rules: rules([
+                      rules: [
                         decl({
                           name: 'padding',
                           value: num(0)
                         })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([any('print', { role: 'keyword' })]),
             seq([
@@ -4178,17 +4108,17 @@ describe('AtRule', () => {
               }))
             ])
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('body'),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'background',
                   value: color({ node: 'green', format: 0, rgb: [0, 128, 0], alpha: 1 })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 

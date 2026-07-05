@@ -1,4 +1,5 @@
 import { BitSetLibrary, isSubsetOf } from '../bitset.js';
+import { keySetOf, visibleKeySetOf } from '../selector-analysis.js';
 import { compound, el, sel, pseudo, co, num, type ComplexSelector } from '../../index.js';
 import { Context } from '../../../context.js';
 
@@ -77,39 +78,39 @@ describe('BitSets and selectors', () => {
   it('can create a bitset from a selector', async () => {
     let selector = el('.foo');
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
 
   it('bubbles selectors into compound keysets', async () => {
     let selector = compound([el('.foo'), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
   });
 
   it('bubbles selectors into complex keysets #1', async () => {
     let selector = sel([el('.foo'), co(' '), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
     // visibleKeySet excludes combinators
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
   });
 
   it('bubbles selectors into complex keysets #2', async () => {
     let selector = sel([compound([el('a'), el('.foo')]), co(' '), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
     // visibleKeySet excludes combinators
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
   });
 
   it('bubbles selectors into complex keysets #3', async () => {
     let selector = sel([compound([el('a'), el('.foo')]), co('>'), el('.bar'), co('+'), el('.baz')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', '>', '.bar', '+', '.baz']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '>', '.bar', '+', '.baz']))).toBe(true);
     // visibleKeySet excludes combinators
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '.bar', '.baz']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '.bar', '.baz']))).toBe(true);
   });
 
   it('calculates subset keysets of complex selectors', async () => {
@@ -117,29 +118,29 @@ describe('BitSets and selectors', () => {
     let sel2 = sel([el('.foo'), co('>'), el('.bar'), co('+'), el('.baz')]);
     let evald1 = await sel1.eval(context) as ComplexSelector;
     let evald2 = await sel2.eval(context) as ComplexSelector;
-    expect(isSubsetOf(evald2.keySet, evald1.keySet)).toBe(true);
+    expect(isSubsetOf(keySetOf(evald2), keySetOf(evald1))).toBe(true);
     /** Larger one doesn't fit into smaller */
-    expect(isSubsetOf(evald1.keySet, evald2.keySet)).toBe(false);
+    expect(isSubsetOf(keySetOf(evald1), keySetOf(evald2))).toBe(false);
   });
 
   test(':is doesn\'t get added to keyset', async () => {
     let selector = sel([pseudo({ name: ':is', arg: el('.foo') })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
 
   test('other pseudo selectors get added to keyset', async () => {
     let selector = sel([pseudo({ name: ':not', arg: el('.foo') })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', ':not']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', ':not']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ':not']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ':not']))).toBe(true);
   });
 
   test('nth selectors', async () => {
     let sel = pseudo({ name: ':nth-child', arg: num(1) });
     await sel.eval(context);
-    expect(sel.keySet.equals(context.selectorBits.getBitset([':nth-child(1)']))).toBe(true);
-    expect(sel.visibleKeySet.equals(context.selectorBits.getBitset([':nth-child(1)']))).toBe(true);
+    expect(keySetOf(sel).equals(context.selectorBits.getBitset([':nth-child(1)']))).toBe(true);
+    expect(visibleKeySetOf(sel).equals(context.selectorBits.getBitset([':nth-child(1)']))).toBe(true);
   });
 });

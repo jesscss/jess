@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { type Context } from '../context.js';
 import { Any } from './any.js';
 import { Bool, createPublicBool } from './bool.js';
@@ -16,6 +17,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { getDefaultGuardValue } from './util/default-guard.js';
+import { coerceValueNode, type NodeArrayItem } from './util/evaluate-node-array.js';
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
@@ -36,7 +38,7 @@ const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | u
 function writeParenValue(value: Node, options: FinalPrintOptions): void {
   if (options.trivia) {
     emitTriviaTokens(
-      consumeTrivia(options.trivia, value.location[0], 'before', options),
+      consumeTrivia(options.trivia, spanStartOf(value), 'before', options),
       options,
       { skipLeadingWhitespace: true }
     );
@@ -54,9 +56,9 @@ function writeParenValue(value: Node, options: FinalPrintOptions): void {
  * An expression in parenthesis
  */
 export class Paren extends Node<Node | undefined, ParenOptions> {
-  static override childKeys = ['node'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly node: Node | undefined;
+  readonly value: Node | undefined;
 
   private getDelimiters(): [open: string, close: string] {
     return this._options?.delimiter === 'square' ? ['[', ']'] : ['(', ')'];
@@ -97,29 +99,41 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return new Paren(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
   constructor(
-    value?: Node,
+    value?: NodeArrayItem,
     options?: ParenOptions,
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    // A parser space-group arrives as a raw string/array; normalize to the
+    // canonical node form so paren eval/render stays node-only.
+    const node = value === undefined || value instanceof Node
+      ? value
+      : coerceValueNode(value);
+    super(node, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = node;
     this._treeContext = treeContext;
-    this.node = value;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
+    }
+    // Inherit may_async (and other child-derived flags) from the wrapped value
+    // so a paren around an async child (e.g. `(min(...))`) is itself scheduled
+    // on the async path.
+    if (node instanceof Node) {
+      this.propagateFlagsFrom(node);
     }
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     if (!printOptions.trivia) {
-      const simple = this.writeSimpleWrappedSyntax(this.node, printOptions);
+      const simple = this.writeSimpleWrappedSyntax(this.value, printOptions);
       if (simple !== undefined) {
         return simple;
       }
@@ -132,7 +146,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    if (!options.trivia && this.writeSimpleWrappedSyntax(this.node, options) !== undefined) {
+    if (!options.trivia && this.writeSimpleWrappedSyntax(this.value, options) !== undefined) {
       return;
     }
     const w = options.writer;
@@ -142,7 +156,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
     const [open, close] = this.getDelimiters();
     w.add(open);
-    const value = this.node;
+    const value = this.value;
     if (value) {
       writeParenValue(value, options);
     }
@@ -152,7 +166,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    const guardValue = getDefaultGuardValue(this.node, context);
+    const guardValue = getDefaultGuardValue(this.value, context);
     if (guardValue !== undefined) {
       const out = String(guardValue);
       return isRenderBuffer(bufferOrOptions)
@@ -167,7 +181,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): MaybePromise<string> {
-    const currentValue = this.node;
+    const currentValue = this.value;
     if (!currentValue) {
       return this.renderOutput(context, this, bufferOrOptions, options);
     }
@@ -233,8 +247,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       }
       return this.renderWrappedValue(context, value, bufferOrOptions, options);
     }
-    while (value instanceof Paren && value.node) {
-      value = value.node;
+    while (value instanceof Paren && value.value) {
+      value = value.value;
     }
     if (value instanceof Bool || value instanceof Dimension) {
       return this.renderOutput(context, value, bufferOrOptions, options);
@@ -302,15 +316,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const out = renderListValueSyntax(value.items, prepared, ',');
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
+    const out = renderListValueSyntax(value.value, prepared, ',');
     return buffer
       ? writeRenderText(buffer, out)
       : out;
   }
 
   private evaluateValue(context: Context): MaybePromise<Node> {
-    const currentValue = this.node;
+    const currentValue = this.value;
     if (currentValue) {
       const guardBool = getDefaultGuardBool(currentValue, context);
       if (guardBool) {
@@ -332,7 +346,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         }
         if (this._options?.escaped) {
           if (value instanceof List && value.options?.sep === ';') {
-            return new Any(renderListValueSyntax(value.items, {}, ','));
+            return new Any(renderListValueSyntax(value.value, {}, ','));
           }
           return value;
         }
@@ -343,8 +357,8 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
          * so it's really just a DX tool that can be ignored
          * on output.
          */
-        while (value instanceof Paren && value.node) {
-          value = value.node;
+        while (value instanceof Paren && value.value) {
+          value = value.value;
         }
         if (value instanceof Bool || value instanceof Dimension) {
           return value;
@@ -380,7 +394,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   out.add('$J.paren(', loc)
   //   this.value.toModule(context, out)
   //   out.add(')')

@@ -8,7 +8,6 @@ import {
   compound,
   sellist,
   sel,
-  co,
   decl,
   any,
   ExtendFlag
@@ -21,36 +20,36 @@ describe('extend serialized target repro', () => {
       ruleset({
         selector: sellist([
           compound([el('.replace'), el('.replace')]),
-          sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+          sel([compound([el('.c'), el('.replace')]), '+', el('.replace')])
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sellist([el('.replace'), el('.c')]),
-            rules: rules([decl({ name: 'prop', value: any('copy-paste-replace') })])
+            rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.rep_ace'),
-        rules: rules([
+        rules: [
           extend({
-            target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
+            target: sel([compound([el('.replace'), el('.replace')]), ' ', el('.replace')]),
             flag: ExtendFlag.Exact
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.effected'),
-        rules: rules([
+        rules: [
           extend({
             target: el('.c'),
             flag: ExtendFlag.Exact
           })
-        ])
+        ]
       })
     ]);
 
-    const context = new Context({ collapseNesting: false });
+    const context = new Context({ output: { collapseNesting: false } });
     const css = await renderNodeToString(root, context, { context });
 
     const firstHeader = css.split('{')[0]?.trim() ?? '';

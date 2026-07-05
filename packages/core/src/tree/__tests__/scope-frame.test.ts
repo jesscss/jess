@@ -234,6 +234,28 @@ describe('ScopeFrame variable facade', () => {
     expect(hit.kind === 'declaration' && hit.cell.value?.valueOf()).toBe('blue');
   });
 
+  it('can limit lookup to the current frame without parent or fallback frames', async () => {
+    const parentRules = rules([
+      vardecl({ name: 'x', value: any('parent') })
+    ]);
+    const fallbackRules = rules([
+      vardecl({ name: 'x', value: any('fallback') })
+    ]);
+    const childRules = rules([]);
+    await parentRules.eval(new Context());
+    await fallbackRules.eval(new Context());
+    await childRules.eval(new Context());
+    const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
+    childFrame.fallbackFrame = fallbackRules.getScopeFrame();
+
+    const hit = lookupScopeFrameVariable(childFrame, 'x', {
+      includeFallbackFrames: false,
+      searchParents: false
+    });
+
+    expect(hit.kind).toBe('miss');
+  });
+
   it('returns a covered miss across fallback frames', async () => {
     const fallbackRules = rules([
       vardecl({ name: 'x', value: any('blue') })
@@ -251,10 +273,23 @@ describe('ScopeFrame variable facade', () => {
     expect(hit.kind).toBe('miss');
   });
 
+  it('treats fallback frame revisits as covered misses', async () => {
+    const root = rules([]);
+    await root.eval(new Context());
+    const frame = root.getScopeFrame();
+    frame.fallbackFrame = frame;
+
+    const hit = lookupScopeFrameVariable(frame, 'missing', {
+      bailOnPendingDeclarations: true
+    });
+
+    expect(hit.kind).toBe('miss');
+  });
+
   it('separates unconsumed callable candidates from child-surface uncertainty', () => {
     const namespace = mixin({
-      name: any('.namespace'),
-      rules: rules([decl({ name: 'color', value: any('blue') })])
+      name: '.namespace',
+      rules: [decl({ name: 'color', value: any('blue') })]
     });
     const frame = buildScopeFrame(
       undefined,

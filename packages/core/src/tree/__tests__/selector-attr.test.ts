@@ -59,7 +59,6 @@ describe('Attribute Selector', () => {
     const rendered = attrNode.render(context);
 
     expect(rendered).toBe('[data=foo]');
-    expect(attrNode.evaluated).toBe(false);
     expect(attrNode.registrationPrepared).toBe(false);
   });
 
@@ -94,7 +93,6 @@ describe('Attribute Selector', () => {
     expect(rendered).toBe('[data=foo]');
     expect(buffer.segments).toEqual(['[data=foo]']);
     expect(resolveCalls).toBe(0);
-    expect(attrNode.evaluated).toBe(false);
     expect(attrNode.registrationPrepared).toBe(false);
   });
 
@@ -117,7 +115,6 @@ describe('Attribute Selector', () => {
     const resolved = await attrNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('[data=foo]');
-    expect(attrNode.evaluated).toBe(false);
     expect(attrNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -179,9 +176,9 @@ describe('Attribute Selector', () => {
           op: '=',
           value: any('@{attr-data}')
         }),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       })
     ]);
 
@@ -191,16 +188,15 @@ describe('Attribute Selector', () => {
   });
 
   test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {
-    context = new Context({
-      collapseNesting: true,
+    context = new Context({ output: { collapseNesting: true },
       leakyRules: true
     });
 
     const node = rules([
       mixin({
-        name: any('.emit'),
+        name: '.emit',
         params: list([any('name', { role: 'property' })]),
-        rules: rules([
+        rules: [
           vardecl({
             name: 'attr-data',
             value: ref({ key: 'name' }, { type: 'variable' })
@@ -211,29 +207,29 @@ describe('Attribute Selector', () => {
               op: '=',
               value: any('@{attr-data}')
             }),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.one'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.emit' }, { type: 'mixin' }),
             args: list([any('foo')])
           })
-        ])
+        ]
       }),
       ruleset({
         selector: el('.two'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.emit' }, { type: 'mixin' }),
             args: list([any('bar')])
           })
-        ])
+        ]
       })
     ]);
     context.root = node;

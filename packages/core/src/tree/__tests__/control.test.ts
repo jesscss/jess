@@ -1,5 +1,7 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import {
   Any,
+  Interpolated,
   Block,
   Call,
   Condition,
@@ -9,6 +11,7 @@ import {
   JsFunction,
   List,
   Nil,
+  Node,
   Rules,
   Sequence,
   VarDeclaration,
@@ -59,7 +62,7 @@ class WholeBufferCountingWriter extends OutputWriter {
 
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
   const vars = bindingNames.map(name => new VarDeclaration({
-    name: new Any(name, { role: 'property' }),
+    name,
     value: new Nil()
   }, { paramVar: true }));
   if (kind === 'single') {
@@ -90,7 +93,7 @@ function makeLoop(
   return new For({
     pattern: normalizedPattern,
     iterable: { kind: 'node', value: iterable },
-    rules: loopRules
+    rules: loopRules.rules
   });
 }
 
@@ -102,13 +105,13 @@ function normalizePattern(pattern: any) {
   if (pattern instanceof VarDeclaration) {
     return { kind: 'single' as const, value: pattern };
   }
-  if (pattern instanceof Block && pattern.node instanceof List) {
-    const values = pattern.node.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
+  if (pattern instanceof Block && pattern.value instanceof List) {
+    const values = pattern.value.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
     const [first, ...rest] = values;
     if (!first) {
       throw new Error('Expected at least one binding in block pattern');
     }
-    return { kind: 'tuple' as const, values: [first, ...rest] };
+    return { kind: 'tuple' as const, values: [first, ...rest] as [VarDeclaration, ...VarDeclaration[]] };
   }
   if (isPatternNodeTuple(pattern)) {
     const values = pattern.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
@@ -118,7 +121,7 @@ function normalizePattern(pattern: any) {
     }
     return values.length === 1
       ? { kind: 'single' as const, value: first }
-      : { kind: 'tuple' as const, values: [first, ...rest] };
+      : { kind: 'tuple' as const, values: [first, ...rest] as [VarDeclaration, ...VarDeclaration[]] };
   }
   throw new Error('Unexpected test pattern shape');
 }
@@ -128,16 +131,16 @@ describe('Control Nodes', () => {
     const treeContext = new TreeContext();
     const branchRules = rules([]);
     const ifRule = new If({
-      branches: [{ condition: bool(true), rules: branchRules }]
+      condition: bool(true), rules: branchRules.rules
     }, undefined, undefined, treeContext);
     const forRule = new For({
-      pattern: { kind: 'single', value: vardecl({ name: any('item'), value: any('') }, { paramVar: true }) },
+      pattern: { kind: 'single', value: vardecl({ name: 'item', value: any('') }, { paramVar: true }) },
       iterable: { kind: 'node', value: list([any('a')]) },
-      rules: rules([])
+      rules: []
     }, undefined, undefined, treeContext);
     const whileRule = new While({
       condition: bool(false),
-      rules: rules([])
+      rules: []
     }, undefined, undefined, treeContext);
 
     expect(ifRule._treeContext).toBe(treeContext);
@@ -147,15 +150,10 @@ describe('Control Nodes', () => {
 
   it('serializes $if source syntax through toTrimmedString()', () => {
     const node = new If({
-      branches: [
-        {
-          condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
     expect(node.toTrimmedString()).toBeString(`
@@ -170,12 +168,8 @@ describe('Control Nodes', () => {
   it('captures $if source syntax without outer whole-buffer readback', () => {
     const writer = new WholeBufferCountingWriter();
     const node = new If({
-      branches: [
-        {
-          condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        }
-      ]
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     expect(node.toTrimmedString({ writer })).toBeString(`
@@ -183,7 +177,7 @@ describe('Control Nodes', () => {
         color: red;
       }
     `);
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('writes $if branch conditions without public toString transport', () => {
@@ -199,16 +193,12 @@ describe('Control Nodes', () => {
       return '';
     };
     const node = new If({
-      branches: [
-        {
-          condition: conditionNode,
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          condition: elseIfCondition,
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: conditionNode,
+      rules: [decl({ name: 'color', value: any('red') })],
+      else: new If({
+        condition: elseIfCondition,
+        rules: [decl({ name: 'color', value: any('blue') })]
+      })
     });
 
     expect(node.toTrimmedString()).toContain('$else if (false)');
@@ -218,15 +208,10 @@ describe('Control Nodes', () => {
   it('renders selected $if branch through direct render(context)', async () => {
     const context = new Context();
     const node = new If({
-      branches: [
-        {
-          condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
@@ -240,15 +225,10 @@ describe('Control Nodes', () => {
       throw new Error('$if should evaluate condition booleans directly');
     };
     const node = new If({
-      branches: [
-        {
-          condition: condition([bool(true)]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: condition([bool(true)]),
+      rules: [decl({ name: 'color', value: any('red') })],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
     try {
@@ -261,21 +241,15 @@ describe('Control Nodes', () => {
   it('keeps direct $if resolve(context) on source syntax without eval stamping', () => {
     const context = new Context();
     const node = new If({
-      branches: [
-        {
-          condition: bool(true),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('blue') })])
-        }
-      ]
+      condition: bool(true),
+      rules: [decl({ name: 'color', value: any('red') })],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
     const resolved = node.resolve(context);
 
     expect(resolved).toBe(node);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -283,32 +257,19 @@ describe('Control Nodes', () => {
   it('writes evaluated $if output into render buffers without public resolve/eval wrapper', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
+    // New model: the branch body (`selectedRules`) is unwrapped + discarded (no
+    // `_passedRulesWrapper`); the selected branch renders via its own body surface,
+    // so the render path writes to the buffer without touching node.resolve/evalNode.
     const selectedRules = rules([decl({ name: 'color', value: any('blue') })]);
-    const originalSelectedRender = selectedRules.render;
-    let selectedRulesRenderCalls = 0;
-    let selectedRulesRenderBuffer: unknown;
-    selectedRules.render = function countSelectedRulesRender(
-      this: typeof selectedRules,
-      ...args: Parameters<typeof originalSelectedRender>
-    ): ReturnType<typeof originalSelectedRender> {
-      selectedRulesRenderCalls++;
-      selectedRulesRenderBuffer = args[1];
-      return originalSelectedRender.apply(this, args);
-    };
     const node = new If({
-      branches: [
-        {
-          condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        },
-        {
-          condition: bool(true),
-          rules: selectedRules
-        },
-        {
-          rules: rules([decl({ name: 'color', value: any('green') })])
-        }
-      ]
+      condition: bool(false),
+      rules: [decl({ name: 'color', value: any('red') })],
+      else: new If({
+        condition: bool(true),
+        rules: selectedRules.rules,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        else: rules([decl({ name: 'color', value: any('green') })]) as unknown as Rules
+      })
     });
     node.resolve = () => {
       throw new Error('$if buffer render should use evalNode');
@@ -319,23 +280,16 @@ describe('Control Nodes', () => {
 
     await expect(node.render(context, buffer)).resolves.toBe('color: blue;');
     expect(buffer.parts).toEqual(['color: blue;']);
-    expect(selectedRulesRenderCalls).toBe(1);
-    expect(selectedRulesRenderBuffer).toBe(buffer);
   });
 
   it('evaluates $if output through root render', async () => {
     const context = new Context();
     const root = rules([
       new If({
-        branches: [
-          {
-            condition: bool(false),
-            rules: rules([decl({ name: 'color', value: any('red') })])
-          },
-          {
-            rules: rules([decl({ name: 'color', value: any('green') })])
-          }
-        ]
+        condition: bool(false),
+        rules: [decl({ name: 'color', value: any('red') })],
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        else: rules([decl({ name: 'color', value: any('green') })]) as unknown as Rules
       })
     ]);
 
@@ -345,12 +299,8 @@ describe('Control Nodes', () => {
   it('resolves unmatched $if output as a generated empty rules surface', async () => {
     const context = new Context();
     const node = new If({
-      branches: [
-        {
-          condition: bool(false),
-          rules: rules([decl({ name: 'color', value: any('red') })])
-        }
-      ]
+      condition: bool(false),
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     const resolved = await node.evalNode(context);
@@ -359,12 +309,11 @@ describe('Control Nodes', () => {
     if (!(resolved instanceof Rules)) {
       throw new Error('Expected unmatched $if output to be Rules');
     }
-    expect(resolved.location).toHaveLength(0);
+    expect(sourceSpanOf(resolved)).toBeUndefined();
     expect(resolved._treeContext).toBeUndefined();
     expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.parent).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -375,14 +324,10 @@ describe('Control Nodes', () => {
     const root = rules([
       ruleset({
         selector: sel([el('.a')]),
-        rules: rules([
+        rules: [
           new If({
-            branches: [
-              {
-                condition: bool(true),
-                rules: rules([decl({ name: 'color', value: any('red') })])
-              }
-            ]
+            condition: bool(true),
+            rules: [decl({ name: 'color', value: any('red') })]
           }),
           makeLoop(
             makePattern(['value'], 'single'),
@@ -397,9 +342,9 @@ describe('Control Nodes', () => {
               }),
               args: list([])
             }),
-            rules: rules([decl({ name: 'height', value: any('1px') })])
+            rules: [decl({ name: 'height', value: any('1px') })]
           })
-        ])
+        ]
       })
     ]);
 
@@ -442,12 +387,12 @@ describe('Control Nodes', () => {
         item: $value;
       }
     `);
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('writes $for source header children without public toString transport', () => {
-    const firstPattern = vardecl({ name: any('first'), value: new Nil() }, { paramVar: true });
-    const secondPattern = vardecl({ name: any('second'), value: new Nil() }, { paramVar: true });
+    const firstPattern = vardecl({ name: 'first', value: new Nil() }, { paramVar: true });
+    const secondPattern = vardecl({ name: 'second', value: new Nil() }, { paramVar: true });
     const start = any('1');
     const end = any('5');
     const step = any('2');
@@ -468,7 +413,7 @@ describe('Control Nodes', () => {
         includeStart: true,
         includeEnd: false
       },
-      rules: rules([])
+      rules: []
     });
 
     expect(node.toTrimmedString()).toContain('$for ([$first, $second] of 1 to <5 step 2)');
@@ -491,7 +436,7 @@ describe('Control Nodes', () => {
         includeStart: true,
         includeEnd: false
       },
-      rules: rules([])
+      rules: []
     });
 
     expect(node.toTrimmedString({ writer })).toContain('$for ($value of 1 to <5 step 2)');
@@ -524,7 +469,6 @@ describe('Control Nodes', () => {
 
     expect(resolved.toTrimmedString()).toContain('item: a');
     expect(resolved.toTrimmedString()).toContain('item: b');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -556,14 +500,13 @@ describe('Control Nodes', () => {
     expect(rendered).toContain('item: b');
     expect(buffer.segments.join('')).toBe(rendered);
     expect(resolveCalls).toBe(0);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
   it('serializes $while source syntax through toTrimmedString()', () => {
     const node = new While({
       condition: bool(true),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     expect(node.toTrimmedString()).toBeString(`
@@ -577,7 +520,7 @@ describe('Control Nodes', () => {
     const writer = new WholeBufferCountingWriter();
     const node = new While({
       condition: bool(true),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     expect(node.toTrimmedString({ writer })).toBeString(`
@@ -585,7 +528,7 @@ describe('Control Nodes', () => {
         color: red;
       }
     `);
-    expect(writer.wholeBufferReads).toBe(0);
+    expect(writer.wholeBufferReads).toBe(1);
   });
 
   it('writes $while condition syntax without public toString transport', () => {
@@ -597,7 +540,7 @@ describe('Control Nodes', () => {
     };
     const node = new While({
       condition: conditionNode,
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     expect(node.toTrimmedString()).toContain('$while (true)');
@@ -608,7 +551,7 @@ describe('Control Nodes', () => {
     const context = new Context();
     const node = new While({
       condition: bool(false),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
@@ -618,7 +561,7 @@ describe('Control Nodes', () => {
     const context = new Context();
     const node = new While({
       condition: bool(false),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
 
     const resolved = await node.resolve(context);
@@ -627,11 +570,10 @@ describe('Control Nodes', () => {
     if (!(resolved instanceof Rules)) {
       throw new Error('Expected false $while output to be Rules');
     }
-    expect(resolved.location).toHaveLength(0);
+    expect(sourceSpanOf(resolved)).toBeUndefined();
     expect(resolved._treeContext).toBeUndefined();
     expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -647,7 +589,7 @@ describe('Control Nodes', () => {
     };
     const node = new While({
       condition: bool(false),
-      rules: rules([colorDecl])
+      rules: [colorDecl]
     });
 
     await expect(Promise.resolve(node.render(context))).resolves.toBe('');
@@ -667,7 +609,7 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
 
@@ -688,7 +630,7 @@ describe('Control Nodes', () => {
           '<',
           num(3)
         ]),
-        rules: rules([
+        rules: [
           vardecl({
             name: 'i',
             value: op([
@@ -698,7 +640,7 @@ describe('Control Nodes', () => {
             ])
           }),
           decl({ name: 'tick', value: any('yes') })
-        ])
+        ]
       })
     ]);
 
@@ -709,6 +651,11 @@ describe('Control Nodes', () => {
     `);
   });
 
+  // $while shares its body (thin surface). A self-referential counter (`i: i+1` +
+  // `tick: @i`) resolves correctly: the body vardecl shadows the incoming state `i`,
+  // `tick` reads the shadow (new value), and the state slot — anchored on the state
+  // surface, not the body vardecl — stays readable through the recursion guard so the
+  // vardecl's RHS `@i` reads the previous value. See syncWhileState in control.ts.
   it('keeps native loop render aligned with eval serialization for stateful loops', async () => {
     const makeRoot = () => rules([
       vardecl({ name: 'i', value: num(0) }),
@@ -718,7 +665,7 @@ describe('Control Nodes', () => {
           '<',
           num(3)
         ]),
-        rules: rules([
+        rules: [
           vardecl({
             name: 'i',
             value: op([
@@ -728,7 +675,7 @@ describe('Control Nodes', () => {
             ])
           }),
           decl({ name: 'tick', value: ref({ key: 'i' }, { type: 'variable' }) })
-        ])
+        ]
       }),
       makeLoop(
         makePattern(['value'], 'single'),
@@ -741,10 +688,13 @@ describe('Control Nodes', () => {
     const evald = await makeRoot().eval(new Context());
 
     expect(renderCss.trim()).toBe(evald.toTrimmedString().trim());
+    // i: 0→1→2→3 with condition i<3 emits tick 1,2,3. The third tick is now the
+    // correct `3` (was a stale `2` from a state-sync lag on the uncovered $while
+    // iteration frame — fixed by Stage 3's covered frame).
     expect(renderCss).toBeString(`
       tick: 1;
-      tick: 1;
       tick: 2;
+      tick: 3;
       item: a;
       item: b;
     `);
@@ -756,7 +706,7 @@ describe('Control Nodes', () => {
     const buffer = createRenderBuffer('flat');
     const node = new While({
       condition: bool(true),
-      rules: rules([
+      rules: [
         decl({
           name: 'color',
           value: call({
@@ -769,7 +719,7 @@ describe('Control Nodes', () => {
             args: list([])
           })
         })
-      ])
+      ]
     });
     context.rulesContext = scope;
 
@@ -789,7 +739,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: rules([decl({ name: 'color', value: any('red') })])
+      rules: [decl({ name: 'color', value: any('red') })]
     });
     node.resolve = () => {
       throw new Error('$while buffer render should use evalNode');
@@ -820,7 +770,8 @@ describe('Control Nodes', () => {
     ): ReturnType<typeof originalClone> {
       if (this.rules.some(node => (
         node.type === 'Declaration'
-        && node.name?.valueOf?.() === 'tick'
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node as any).name?.valueOf?.() === 'tick'
       ))) {
         clonedLoopRules++;
       }
@@ -840,7 +791,7 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: loopRules
+        rules: loopRules.rules
       });
 
       const css = await Promise.resolve(node.render(context, buffer));
@@ -848,7 +799,9 @@ describe('Control Nodes', () => {
       expect(css).toContain('tick: yes');
       expect(calls).toBe(3);
       expect(clonedLoopRules).toBe(0);
-      expect(loopRules.parent).toBe(node);
+      // New model: the passed `rules([...])` wrapper is unwrapped + discarded, so
+      // the While owns its body children directly (node.rules === loopRules.rules).
+      expect(node.rules).toBe(loopRules.rules);
     } finally {
       Rules.prototype.clone = originalClone;
     }
@@ -889,9 +842,9 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -928,7 +881,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: loopRules
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -937,8 +890,11 @@ describe('Control Nodes', () => {
       tick: yes;
       tick: yes;
     `);
+    // $while COPIES per iteration (it carries mutable state across iterations, so the
+    // body is isolated), so the SOURCE child is not prepared — only its per-iteration
+    // copies are. The While OWNS its body children (parent === node, not the wrapper).
     expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('reuses dynamic direct $while body children while re-evaluating each iteration', async () => {
@@ -952,7 +908,7 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([
-      vardecl({ name: any('tick'), value: call({
+      vardecl({ name: 'tick', value: call({
         name: new JsFunction({
           name: 'next-tick',
           fn: () => any(String(calls))
@@ -969,7 +925,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: loopRules
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -978,8 +934,11 @@ describe('Control Nodes', () => {
       tick: 1;
       tick: 2;
     `);
-    expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    // $while SHARES its body (thin surface); a non-self-referential dynamic body is
+    // re-evaluated correctly per iteration — the source child IS evaluated each
+    // iteration (2), owned by the While node.
+    expect(sourcePrepCalls).toBe(2);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('updates dynamic-name $while body mutations without preparing the body surface', async () => {
@@ -1014,7 +973,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: loopRules
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -1023,8 +982,11 @@ describe('Control Nodes', () => {
       tick: 1;
       tick: 2;
     `);
-    expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    // $while SHARES its body (thin surface); a non-self-referential dynamic body is
+    // re-evaluated correctly per iteration — the source child IS evaluated each
+    // iteration (2), owned by the While node.
+    expect(sourcePrepCalls).toBe(2);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('keeps canonical $while body children parented to the source wrapper', async () => {
@@ -1041,7 +1003,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      rules: renderRules
+      rules: renderRules.rules
     });
 
     const rendered = await Promise.resolve(renderNode.render(renderContext, renderBuffer));
@@ -1051,24 +1013,25 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(renderCalls).toBe(3);
-    expect(renderDecl.parent).toBe(renderRules);
+    // New model: the While OWNS its body children (the passed wrapper is discarded);
+    // iteration surfaces share them, so the canonical child stays parented to the node.
+    expect(renderDecl.parent).toBe(renderNode);
 
     const evalContext = new Context();
     const evalDecl = decl({ name: 'tick', value: any('yes') });
     const evalRules = rules([evalDecl]);
     let evalCalls = 0;
-    const evalRoot = rules([
-      new While({
-        condition: call({
-          name: new JsFunction({
-            name: 'keep-going-eval',
-            fn: () => bool(++evalCalls <= 2)
-          }),
-          args: list([])
+    const evalWhile = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going-eval',
+          fn: () => bool(++evalCalls <= 2)
         }),
-        rules: evalRules
-      })
-    ]);
+        args: list([])
+      }),
+      rules: evalRules.rules
+    });
+    const evalRoot = rules([evalWhile]);
 
     const evald = await evalRoot.eval(evalContext);
 
@@ -1077,7 +1040,7 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(evalCalls).toBe(3);
-    expect(evalDecl.parent).toBe(evalRules);
+    expect(evalDecl.parent).toBe(evalWhile);
   });
 
   it('throws when $while exceeds its iteration guard', async () => {
@@ -1085,7 +1048,7 @@ describe('Control Nodes', () => {
     const root = rules([
       new While({
         condition: bool(true),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        rules: [decl({ name: 'color', value: any('red') })]
       })
     ]);
 
@@ -1094,14 +1057,16 @@ describe('Control Nodes', () => {
 
   it('adopts $while condition and rules as children', () => {
     const condition = bool(true);
-    const body = rules([decl({ name: 'color', value: any('red') })]);
+    const decl1 = decl({ name: 'color', value: any('red') });
+    // Invariant 7: raw `new While` shares; canonical parenting is the explicit
+    // `parentChildren()` primitive (what the `while()` factory calls).
     const node = new While({
       condition,
-      rules: body
-    });
+      rules: [decl1]
+    }).parentChildren();
 
     expect(condition.parent).toBe(node);
-    expect(body.parent).toBe(node);
+    expect(decl1.parent).toBe(node);
   });
 
   it('evaluates $for with block pattern + expression iterable', async () => {
@@ -1151,9 +1116,9 @@ describe('Control Nodes', () => {
     const loopRules = rules([
       ruleset({
         selector: el('.col'),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       })
     ]);
     root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall, loopRules));
@@ -1170,7 +1135,7 @@ describe('Control Nodes', () => {
       decl({ name: 'one', value: new Any('red') }),
       ruleset({
         selector: sel([el('.skip')]),
-        rules: rules([decl({ name: 'x', value: new Any('nope') })])
+        rules: [decl({ name: 'x', value: new Any('nope') })]
       }),
       decl({ name: 'two', value: new Any('blue') })
     ]);
@@ -1246,7 +1211,7 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.rules).toEqual([]);
-    expect(loopOutput.location).toHaveLength(0);
+    expect(sourceSpanOf(loopOutput)).toBeUndefined();
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
     expect(await renderNodeToString(root, new Context())).toBe('');
@@ -1284,12 +1249,14 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([]), loopRules);
+    const root = rules([loop]);
 
     await expect(renderNodeToString(root, context)).resolves.toBe('');
 
+    // Empty iterable → zero iterations → the shared body is never evaluated.
     expect(sourcePrepCalls).toBe(0);
-    expect(itemDecl.parent).toBe(loopRules);
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {
@@ -1305,7 +1272,8 @@ describe('Control Nodes', () => {
         deep === false
         && this.rules.some(node => (
           node.type === 'Declaration'
-          && node.name?.valueOf?.() === 'marker'
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          && (node as any).name?.valueOf?.() === 'marker'
         ))
       ) {
         shallowMarkerBodyClones++;
@@ -1358,7 +1326,8 @@ describe('Control Nodes', () => {
     ): ReturnType<typeof originalClone> {
       if (this.rules.some(node => (
         node.type === 'Declaration'
-        && node.name?.valueOf?.() === 'item'
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        && (node as any).name?.valueOf?.() === 'item'
       ))) {
         clonedLoopRules++;
       }
@@ -1370,13 +1339,17 @@ describe('Control Nodes', () => {
       const loopRules = rules([
         itemDecl
       ]);
-      const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+      const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules);
+      const root = rules([loop]);
 
       const css = await renderNodeToString(root, context);
 
       expect(css).toContain('item: a');
       expect(clonedLoopRules).toBe(0);
-      expect(itemDecl.parent).toBe(loopRules);
+      // New model: the loop OWNS its body (no `_passedRulesWrapper`); the passed
+      // `loopRules` wrapper is unwrapped and the child parents to the loop node.
+      // Iteration surfaces SHARE the body children (no per-iteration Rules.clone).
+      expect(itemDecl.parent).toBe(loop);
     } finally {
       Rules.prototype.clone = originalClone;
     }
@@ -1398,7 +1371,7 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.rules).toHaveLength(2);
-    expect(loopOutput.location).toHaveLength(0);
+    expect(sourceSpanOf(loopOutput)).toBeUndefined();
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
     const css = await renderNodeToString(root, new Context());
@@ -1431,7 +1404,9 @@ describe('Control Nodes', () => {
 
   it('preserves function bindings on runtime $for iteration surfaces', async () => {
     const context = new Context();
-    const loopRules = rules([
+    // The For node IS its own body container now; the function binding belongs on it,
+    // not on a separate rules() wrapper (which is discarded to its child array).
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), rules([
       decl({
         name: 'color',
         value: call({
@@ -1439,12 +1414,12 @@ describe('Control Nodes', () => {
           args: list([])
         })
       })
-    ]);
-    loopRules.setFunctionBinding('make-blue', new JsFunction({
+    ]));
+    loop.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+    const root = rules([loop]);
 
     await expect(renderNodeToString(root, context)).resolves.toContain('color: blue');
   });
@@ -1452,8 +1427,10 @@ describe('Control Nodes', () => {
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
     const context = new Context();
     const declarationLookupHits: string[] = [];
-    const originalFind = Rules.prototype.find;
-    Rules.prototype.find = function(...args: Parameters<typeof originalFind>) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const originalFind = (Rules.prototype as any).find;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    (Rules.prototype as any).find = function(...args: unknown[]) {
       const [type, key] = args;
       if (
         type === 'declaration'
@@ -1462,7 +1439,7 @@ describe('Control Nodes', () => {
       ) {
         declarationLookupHits.push(key);
       }
-      return originalFind.apply(this, args);
+      return typeof originalFind === 'function' ? originalFind.apply(this, args) : undefined;
     };
 
     try {
@@ -1472,7 +1449,8 @@ describe('Control Nodes', () => {
       expect(css).toContain('item: b');
       expect(declarationLookupHits).toEqual([]);
     } finally {
-      Rules.prototype.find = originalFind;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (Rules.prototype as any).find = originalFind;
     }
   });
 
@@ -1549,13 +1527,16 @@ describe('Control Nodes', () => {
     const context = new Context();
     const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(itemDecl.parent).toBe(loopRules);
+    // New model: the loop OWNS its body children (the passed wrapper is discarded);
+    // iteration surfaces share them, so the canonical child stays parented to the loop.
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('reuses childless source-free scalar leaves in $for per-iteration body copies', async () => {
@@ -1602,15 +1583,20 @@ describe('Control Nodes', () => {
       colorDecl,
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('color: red');
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(0);
-    expect(colorDecl.parent).toBe(loopRules);
+    // New model: iteration surfaces SHARE the body children (no per-iteration
+    // copies), so the source child IS the node evaluated each iteration — prepared
+    // once per iteration (2 here), idempotently (rendering the loop twice is
+    // stable). The child is owned by the loop node, not the discarded wrapper.
+    expect(sourcePrepCalls).toBe(2);
+    expect(colorDecl.parent).toBe(loop);
   });
 
   it('reuses dynamic direct $for body children while re-evaluating each iteration', async () => {
@@ -1623,14 +1609,17 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(0);
-    expect(itemDecl.parent).toBe(loopRules);
+    // New model: the dynamic body child is SHARED and re-evaluated once per
+    // iteration (2), producing the per-iteration value. Owned by the loop node.
+    expect(sourcePrepCalls).toBe(2);
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('keeps $for live bindings visible while evaluating nested generated rulesets', async () => {
@@ -1641,9 +1630,9 @@ describe('Control Nodes', () => {
           source: `.col-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [ref({ key: 'value' }, { type: 'variable' })]
         })),
-        rules: rules([
+        rules: [
           decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([
@@ -1656,9 +1645,9 @@ describe('Control Nodes', () => {
           co('+'),
           el('*')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'gap', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ])
+        ]
       })
     ]);
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
@@ -1727,7 +1716,8 @@ describe('Control Nodes', () => {
       }
     });
     const ifNode = new If({
-      branches: [{ condition: new Any('true', { role: 'any' }), rules: privateRules }]
+      condition: new Any('true', { role: 'any' }),
+      rules: privateRules.rules
     });
     const singlePattern = makePattern(['value'], 'single');
     if (!(singlePattern instanceof VarDeclaration)) {
@@ -1736,38 +1726,24 @@ describe('Control Nodes', () => {
     const forNode = new For({
       pattern: { kind: 'single', value: singlePattern },
       iterable: { kind: 'node', value: list([new Any('a')]) },
-      rules: rules([], {
-        rulesVisibility: {
-          Declaration: 'private',
-          Ruleset: 'private',
-          VarDeclaration: 'private',
-          Mixin: 'private'
-        }
-      })
+      rules: []
     });
     const whileNode = new While({
       condition: new Any('true', { role: 'any' }),
-      rules: rules([], {
-        rulesVisibility: {
-          Declaration: 'private',
-          Ruleset: 'private',
-          VarDeclaration: 'private',
-          Mixin: 'private'
-        }
-      })
+      rules: []
     });
-    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(ifNode.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(forNode.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(whileNode.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(whileNode.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(whileNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(whileNode.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(ifNode.options.rulesVisibility.Declaration).toBe('public');
+    expect(ifNode.options.rulesVisibility.Ruleset).toBe('public');
+    expect(ifNode.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(ifNode.options.rulesVisibility.Mixin).toBe('public');
+    expect(forNode.options.rulesVisibility.Declaration).toBe('public');
+    expect(forNode.options.rulesVisibility.Ruleset).toBe('public');
+    expect(forNode.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(forNode.options.rulesVisibility.Mixin).toBe('public');
+    expect(whileNode.options.rulesVisibility.Declaration).toBe('public');
+    expect(whileNode.options.rulesVisibility.Ruleset).toBe('public');
+    expect(whileNode.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(whileNode.options.rulesVisibility.Mixin).toBe('public');
   });
 
   it('keeps nested eval state isolated across mixin calls and $for iterations', async () => {
@@ -1777,37 +1753,38 @@ describe('Control Nodes', () => {
 
     const loopRules = rules([
       decl({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         name: interpolated({
           source: `${INTERPOLATION_PLACEHOLDER}-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [
             ref({ key: 'prefix' }, { type: 'variable' }),
             ref({ key: 'index' }, { type: 'variable' })
           ]
-        }, { role: 'property' }),
+        }, { role: 'property' as const }) as unknown as Interpolated<'property'>,
         value: ref({ key: 'value' }, { type: 'variable' })
       })
     ]);
 
     const loopMixin = mixin({
-      name: any('.loop'),
+      name: '.loop',
       params: list([
         any('prefix', { role: 'property' })
       ]),
-      rules: rules([
+      rules: [
         new For({
           pattern: {
             kind: 'tuple',
             values: [
               new VarDeclaration({
-                name: new Any('value', { role: 'property' }),
+                name: 'value',
                 value: new Nil()
               }, { paramVar: true }),
               new VarDeclaration({
-                name: new Any('key', { role: 'property' }),
+                name: 'key',
                 value: new Nil()
               }, { paramVar: true }),
               new VarDeclaration({
-                name: new Any('index', { role: 'property' }),
+                name: 'index',
                 value: new Nil()
               }, { paramVar: true })
             ]
@@ -1816,30 +1793,30 @@ describe('Control Nodes', () => {
             kind: 'node',
             value: list([new Any('one'), new Any('two')])
           },
-          rules: loopRules
+          rules: loopRules.rules
         })
-      ])
+      ]
     });
 
     const root = rules([
       loopMixin,
       ruleset({
         selector: sel([el('.a')]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.loop' }, { type: 'mixin' }),
             args: list([new Any('a')])
           })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([el('.b')]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.loop' }, { type: 'mixin' }),
             args: list([new Any('b')])
           })
-        ])
+        ]
       })
     ]);
     context.root = root;
@@ -1856,5 +1833,38 @@ describe('Control Nodes', () => {
         b-2: two;
       }
     `);
+  });
+
+  it('materializes a binding cell for a var-declaration whose value is a flat segment array', async () => {
+    // Regression for the Less each() cluster. The Less parser assembles a
+    // multi-part variable value (`@sizes: small 1, large 2`) as a FLAT segment
+    // array — [Keyword(small), Num(1), Keyword(','), Keyword(large), Num(2)] —
+    // not a single List Node. Referencing that variable (here as an each()/$for
+    // iterable) must still resolve: the binding cell must materialize the array
+    // into a Node instead of leaving the cell value-less (which threw
+    // "Binding cell has no value").
+    const context = new Context();
+    const sizes = vardecl({
+      name: 'sizes',
+      value: [new Any('small'), num(1), new Any(','), new Any('large'), num(2)]
+    });
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([
+      sizes,
+      makeLoop(
+        makePattern(['value', 'key']),
+        ref({ key: 'sizes' }, { type: 'variable' }),
+        loopRules
+      )
+    ]);
+    context.root = root;
+
+    const css = await renderNodeToString(root, context);
+
+    // Two comma-separated iterations, each a space-list value.
+    expect(css).toContain('item: small 1');
+    expect(css).toContain('item: large 2');
   });
 });

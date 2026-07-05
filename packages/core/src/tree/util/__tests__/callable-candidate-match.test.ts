@@ -1,21 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { any, call, condition, defaultguard, el, list, ref, rules, ruleset, vardecl } from '../../index.js';
 import { Nil } from '../../nil.js';
-import { N } from '../../node-type.js';
 import {
-  callableRulesEntry,
-  getCallableEntryParams,
-  type CallableEntry,
-  type MixinEntry
+  callableRulesEntry
 } from '../callable-entry.js';
 import { prepareCallableCandidateMatches, resolveCallableCandidateMatches } from '../callable-candidate-match.js';
-import { isNode } from '../is-node.js';
 
 describe('callable candidate match helper', () => {
   it('skips zero-param candidates when call args are present and keeps matched callable bindings', () => {
     const zeroArgRuleset = ruleset({
       selector: el('.zero'),
-      rules: rules([])
+      rules: []
     });
     const callable = callableRulesEntry({
       name: '.tone',
@@ -27,9 +22,7 @@ describe('callable candidate match helper', () => {
       mixinEntries: [zeroArgRuleset, callable],
       nodeArgs: [any('blue')],
       hasFileContext: false,
-      rulesEvalStack: [],
-      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams
+      rulesEvalStack: []
     });
 
     expect(prepared.evalCandidates).toEqual([callable]);
@@ -54,9 +47,7 @@ describe('callable candidate match helper', () => {
       mixinEntries: [defaultCallable, plainCallable],
       nodeArgs: [any('blue')],
       hasFileContext: false,
-      rulesEvalStack: [],
-      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams
+      rulesEvalStack: []
     });
 
     expect(prepared.hasDefault).toBe(true);
@@ -68,9 +59,9 @@ describe('callable candidate match helper', () => {
   it('drops recursive ruleset candidates during the prepared eval-candidate pass', () => {
     const recursiveRuleset = ruleset({
       selector: el('.loop'),
-      rules: rules([
+      rules: [
         call({ name: ref({ key: '.loop' }, { type: 'mixin' }) })
-      ])
+      ]
     });
     const caller = call({ name: ref({ key: '.loop' }, { type: 'mixin' }) });
 
@@ -79,9 +70,7 @@ describe('callable candidate match helper', () => {
       nodeArgs: [],
       hasFileContext: false,
       rulesEvalStack: [],
-      caller,
-      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams
+      caller
     });
 
     expect(prepared.evalCandidates).toEqual([]);
@@ -99,9 +88,7 @@ describe('callable candidate match helper', () => {
       mixinEntries: [requiredCallable],
       nodeArgs: [],
       hasFileContext: false,
-      rulesEvalStack: [],
-      isCallableEntry: (entry: MixinEntry): entry is CallableEntry => !isNode(entry, N.Ruleset),
-      getCallableEntryParams
+      rulesEvalStack: []
     })).toThrowError(new ReferenceError('No matching mixins found.'));
   });
 });

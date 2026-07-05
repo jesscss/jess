@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar-rules.ts + builders.ts) is the maintained parser.
+// Not type-checked.
 // Selector-related production rules for LessRecursiveParser
 // Converted from Chevrotain-based productions.ts lines 1145-2060
 
@@ -18,6 +23,7 @@ import {
   Call,
   Quoted,
   AtRule,
+  AtRuleStatement,
   Interpolated,
   InterpolatedSelector,
   AttributeSelector,
@@ -50,16 +56,20 @@ import { all } from 'known-css-properties';
 type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
+type ProductionRule = (...args: any[]) => any;
 const COMBINATORS = new Set<string>([' ', '>', '+', '~', '|', '||']);
 
 function toCombinator(image: string): Combinators {
   if (COMBINATORS.has(image)) {
-    return image;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return image as Combinators;
   }
   throw new Error(`Unexpected selector combinator "${image}".`);
 }
 
-function isComplexSelectorComponentNode(node: Node | undefined): node is ComplexSelectorComponent {
+type ComplexSelectorComponentNode = Exclude<ComplexSelectorComponent, string>;
+
+function isComplexSelectorComponentNode(node: Node | undefined): node is ComplexSelectorComponentNode {
   return node instanceof Call
     || (node instanceof Selector
       && !(node instanceof SelectorList)
@@ -138,7 +148,7 @@ export function attributeSelector(this: P, T: TokenMap, valueAlt?: AltContext) {
 
 // ── Helper: getAmpersandTemplateValue ────────────────────────────────
 
-function getAmpersandTemplateValue(image: string): string | Nil | undefined {
+function getAmpersandTemplateValue(image: string): string | undefined {
   if (image === '&') {
     return undefined;
   }
@@ -165,7 +175,12 @@ function getAllowedExtendSelectors(context: TreeContext): ExtendSelectorKind[] |
   return val;
 }
 
-function findDisallowedExtendSelector(selector: Selector, allowed?: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: Selector } | undefined {
+function findDisallowedExtendSelector(selector: Selector | string, allowed?: readonly ExtendSelectorKind[]): { kind: ExtendSelectorKind; selector: Selector } | undefined {
+  // A bare-string selector (strings-not-nodes) is a plain simple selector — not a
+  // disallowed extend target.
+  if (typeof selector === 'string') {
+    return undefined;
+  }
   if (!allowed) {
     return undefined;
   }
@@ -330,10 +345,10 @@ function isSelectorLikeListItem(node: Node): boolean {
     return node.options.type === 'mixin-ruleset';
   }
   if (node instanceof List) {
-    return node.items.length > 0 && node.items.every(isSelectorLikeListItem);
+    return node.value.length > 0 && node.value.every(isSelectorLikeListItem);
   }
   if (node instanceof Sequence) {
-    return node.items.length > 0 && node.items.every(isSelectorLikeListItem);
+    return node.value.length > 0 && node.value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -347,10 +362,10 @@ function isLegacySelectorLikeValue(node: Node): boolean {
     return false;
   }
   if (node instanceof List) {
-    return node.items.length > 1 && node.items.every(isSelectorLikeListItem);
+    return node.value.length > 1 && node.value.every(isSelectorLikeListItem);
   }
   if (node instanceof Sequence) {
-    return node.items.length > 1 && node.items.every(isSelectorLikeListItem);
+    return node.value.length > 1 && node.value.every(isSelectorLikeListItem);
   }
   return false;
 }
@@ -397,7 +412,8 @@ export function relativeSelector(this: P, T: TokenMap) {
             }
           } else {
             if (!isComplexSelectorComponentNode(targetNode)) {
-              throw new Error(`Expected selector component after relative combinator; got ${targetNode?.type ?? 'none'}.`);
+              const targetType = typeof targetNode === 'string' ? 'string' : (targetNode as Node | undefined)?.type ?? 'none';
+              throw new Error(`Expected selector component after relative combinator; got ${targetType}.`);
             }
             let nodes = [combinator, targetNode];
             let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
@@ -503,7 +519,7 @@ export function selectorList(this: P, T: TokenMap) {
   };
 }
 
-export function compoundSelector(this: P, T: TokenMap) {
+export function compoundSelector(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     /**
@@ -546,7 +562,7 @@ export function compoundSelector(this: P, T: TokenMap) {
 /**
  * Extended with :extend
  */
-export function complexSelector(this: P, T: TokenMap) {
+export function complexSelector(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;
@@ -596,7 +612,8 @@ export function complexSelector(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       const location = $.endRule();
       selector = value!.length === 1
-        ? value![0]
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        ? value![0] as Selector | undefined
         : new ComplexSelector(value!, undefined, location, $.context);
     }
 
@@ -728,7 +745,7 @@ export function extend(this: P, T: TokenMap) {
   };
 }
 
-export function simpleSelector(this: P, T: TokenMap) {
+export function simpleSelector(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let selectorAlt: Alt = [
@@ -949,7 +966,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
     }
 
     // If anonToken exists, it's an anonymous mixin with (optional) parameters, return as Mixin
-    return new Mixin({ params, rules }, undefined, $.endRule(), $.context);
+    return new Mixin({ params, rules: rules.rules }, undefined, $.endRule(), $.context);
   };
 }
 
@@ -1040,8 +1057,8 @@ export function importAtRule(this: P, T: TokenMap) {
       let location = $.endRule();
       if (isAtRule) {
         const prelude = new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context);
-        const atRule = new AtRule({
-          name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+        const atRule = new AtRuleStatement({
+          name: name.image,
           prelude: prelude
         }, undefined, location, $.context);
         return atRule;
@@ -1136,7 +1153,7 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
       return;
     }
     let nameVal = getInterpolatedOrString(name!.image);
-    let nameNode: Node;
+    let nameNode: Any | Interpolated;
     if (!(nameVal instanceof Interpolated)) {
       nameNode = new Any(nameVal, { role: 'ident' }, $.getLocationInfo(name!), $.context);
     } else {
@@ -1177,7 +1194,7 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
     }
 
     return new VarDeclaration({
-      name: nameNode,
+      name: nameNode instanceof Any ? String(nameNode.valueOf()) : nameNode,
       value: value,
       important: important ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context) : undefined
     }, undefined, location, $.context);
@@ -1215,7 +1232,7 @@ export function selectorCapture(this: P, T: TokenMap) {
   };
 }
 
-export function valueSequence(this: P, _T: TokenMap) {
+export function valueSequence(this: P, _T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const RECORDING_PHASE = $.RECORDING_PHASE;

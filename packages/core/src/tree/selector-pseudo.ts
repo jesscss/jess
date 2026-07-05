@@ -1,3 +1,4 @@
+import { sourceSpanOf, spanStartOf, spanEndOf } from './util/provenance.js';
 import {
   defineType,
   type Node
@@ -8,6 +9,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 function normalizeSelectorArg(text: string): string {
@@ -47,7 +49,7 @@ function createEvaluatedPseudoSelector(
       generatedPseudoPlacementOverride: source.generatedPseudoPlacementOverride
     },
     source.options ? { ...source.options } : undefined,
-    source.location.length === 6 ? source.location : undefined,
+    sourceSpanOf(source),
     source.sourceRoot?._treeContext
   ).inherit(source);
   node.generated = source.generated;
@@ -68,7 +70,13 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
 
   readonly name: string;
   arg: Node | undefined;
-  generatedPseudoPlacementOverride: GeneratedPseudoPlacementOverrideState | undefined;
+  /**
+   * Rare: only set on generated `:is()` wrappers (see `setGeneratedPseudoPlacementOverride`).
+   * `declare` + conditional ctor assignment so the common pseudo shape (`:hover`,
+   * `:focus`, ...) carries NO own slot for it — the eager `= undefined` used to add
+   * a hidden-class slot to every one of ~3000 instances in the collapse census.
+   */
+  declare generatedPseudoPlacementOverride?: GeneratedPseudoPlacementOverrideState;
 
   constructor(
     value: PseudoSelectorValue,
@@ -80,7 +88,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     this._treeContext = treeContext;
     this.name = value.name;
     this.arg = value.arg;
-    this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+    if (value.generatedPseudoPlacementOverride !== undefined) {
+      this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+    }
   }
 
   private renderPseudoSyntax(options?: PrintOptions): string {
@@ -115,7 +125,73 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     w.add(name, this);
     if (arg) {
       w.add('(');
-      if (isNode(arg, N.SelectorList)) {
+      if (Array.isArray(arg)) {
+        // Generic (unknown-pseudo) argument: a raw component array. String
+        // components carry no own source span, so authored inter-component
+        // whitespace is normalized; COMMENTS in those gaps still round-trip.
+        // Pull the in-span comment runs in source order and place one at each
+        // gap (combinator or adjacent-part boundary), mirroring ComplexSelector.
+        const spanComments = options.trivia
+          ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
+          : [];
+        let cursor = 0;
+        for (let i = 0; i < arg.length; i++) {
+          const part = arg[i];
+          if (part === ' ') {
+            if (cursor < spanComments.length) {
+              cursor = emitNextSpanComment(spanComments, cursor, options);
+            } else {
+              w.add(' ', this);
+            }
+            continue;
+          }
+          // Emit a comment authored before this part — unless the previous part
+          // was a ' ' combinator, which already emitted the gap comment.
+          if (i > 0 && arg[i - 1] !== ' ' && cursor < spanComments.length) {
+            cursor = emitNextSpanComment(spanComments, cursor, options);
+          }
+          if (typeof part === 'string') {
+            w.add(part, this);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          } else if (part && typeof (part as Node).toString === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            (part as Node).toString(options);
+          }
+        }
+      } else if (isNode(arg, N.Sequence)) {
+        // Unknown-pseudo arg stored as Sequence for AST serialization.
+        // Render each Any item inline; comments between items round-trip via the
+        // in-span comment runs, inter-item whitespace is normalized.
+        const seqItems = arg.value;
+        const spanComments = options.trivia
+          ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
+          : [];
+        let cursor = 0;
+        let prevWasSpace = false;
+        for (let i = 0; i < seqItems.length; i++) {
+          const item = seqItems[i]!;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const itemStr = (item as unknown as { value?: unknown }).value;
+          if (itemStr === ' ') {
+            if (cursor < spanComments.length) {
+              cursor = emitNextSpanComment(spanComments, cursor, options);
+            } else {
+              w.add(' ', this);
+            }
+            prevWasSpace = true;
+            continue;
+          }
+          if (i > 0 && !prevWasSpace && cursor < spanComments.length) {
+            cursor = emitNextSpanComment(spanComments, cursor, options);
+          }
+          if (typeof itemStr === 'string') {
+            w.add(itemStr, this);
+          } else {
+            item.toString(options);
+          }
+          prevWasSpace = false;
+        }
+      } else if (isNode(arg, N.SelectorList)) {
         const argMark = w.mark();
         arg.toString(options);
         w.replaceSince(argMark, normalizeSelectorArg, arg);
@@ -125,44 +201,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       w.add(')');
     }
     return w.getSince(mark);
-  }
-
-  override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const { name } = this;
-    const { arg } = this;
-    const library = this._requireKeySetLibrary();
-    if (isNode(arg, N.Selector)) {
-      arg.keySetLibrary ??= library;
-      if (name === ':is') {
-        this._keySet = arg.keySet;
-        this._visibleKeySet = arg.visibleKeySet;
-        if (isNode(arg, N.SelectorList)) {
-          const omitGeneratedWrapper = this.generated
-            && this.generatedPseudoPlacementOverride?.omitWrapperForSingleSelectorList === true
-            && arg.value.length === 1;
-          this._requiredKeySet = omitGeneratedWrapper
-            ? arg.value[0]!.requiredKeySet
-            : library.getBitset();
-        } else {
-          this._requiredKeySet = arg.requiredKeySet;
-        }
-      } else {
-        let pos = library.add(name);
-        let keySet = this._keySet = arg.keySet.clone();
-        let visibleKeySet = this._visibleKeySet = arg.visibleKeySet.clone();
-        keySet.set(pos, 1);
-        visibleKeySet.set(pos, 1);
-        this._requiredKeySet = arg.requiredKeySet.clone();
-        this._requiredKeySet.set(pos, 1);
-      }
-    } else {
-      this._keySet = library.getBitset([this.valueOf()]);
-      this._visibleKeySet = this._keySet;
-      this._requiredKeySet = this._keySet;
-    }
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -190,10 +228,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return valueOf;
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+  override clone(cloneFn?: (n: Node) => Node): this {
     const currentArg = this.arg;
-    cloneFn ??= n => n.clone(deep);
-    const clonedArg = deep && currentArg ? cloneFn(currentArg) : currentArg;
+    const clonedArg = cloneFn && currentArg ? cloneFn(currentArg) : currentArg;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const cloned = new PseudoSelector(
       {
         name: this.name,
@@ -201,7 +239,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
       },
       this._options ? { ...this._options } : undefined,
-      this._location?.length ? this._location : undefined,
+      sourceSpanOf(this),
       this._treeContext
     ).inherit(this) as this;
     cloned.keySetLibrary = this.keySetLibrary;

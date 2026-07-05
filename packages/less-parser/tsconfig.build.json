@@ -7,7 +7,11 @@
     "noEmit": false,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "paths": {
+      "@jesscss/css-parser": ["./node_modules/@jesscss/css-parser/lib/index.d.ts"],
+      "@jesscss/parser": ["./node_modules/@jesscss/parser/lib/index.d.ts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": [

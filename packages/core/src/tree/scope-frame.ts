@@ -14,12 +14,14 @@
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/future/core-architecture/PERFORMANCE-HANDOFF.md
+ * @see docs/archive/PERFORMANCE-HANDOFF.md
  */
 
 import { F_STATIC, Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { CallableLookupEntry } from './util/callable-entry.js';
+
+// AUDIT: if this does NOT inherit from Node it does not belong in the tree folder. It is a utility, so should be in a util sub-folder
 
 /**
  * One live binding slot.  Value is updated in place for loop counters and
@@ -36,6 +38,13 @@ export interface BindingCell {
   rulesContext?: object;
   readonly?: boolean;
   live?: boolean;
+  /**
+   * Leaky Less mode: a mixin-call output declaration injected into the caller
+   * frame. Unlike ordinary current bindings, a leak binding is source-order
+   * gated at read time (a reader before the emitting call must not see it), so
+   * the lookup only accepts it when the reader's `leakStart` is past the call.
+   */
+  leak?: boolean;
 }
 
 export function getBindingCellValue(cell: BindingCell): Node {
@@ -62,9 +71,15 @@ export interface BindingEntry {
 }
 
 export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
+  const declValue = decl.value;
+  // A parser may deliver a multi-part value as a flat segment array (or a bare
+  // string) rather than a single Node — e.g. Less `@sizes: small 1, large 2`.
+  // Coalesce it to its structured node lazily on first read so the cell always
+  // materializes a value instead of staying value-less.
   return {
     cell: {
-      value: decl.value,
+      value: declValue instanceof Node ? declValue : undefined,
+      prepareValue: declValue instanceof Node ? undefined : () => decl.valueNode(),
       sourceNode: decl,
       readonly: decl.options?.readonly
     },
@@ -305,7 +320,13 @@ export function buildScopeFrame(
   mixinCallableMissCoverageKnown = callableMissCoverageKnown,
   hasReferenceImports = false
 ): ScopeFrame {
-  const declarationBucketsByName = new Map<string, BindingEntry[]>();
+  // Step 1 (frame identity): the declaration index is immutable/canonical per
+  // Rules — `varsByName` IS that index. Share it by reference instead of copying
+  // it into a fresh per-frame Map (the registration sites in rules.ts/reference.ts
+  // mutate the shared index; a body decl is canonical, so this is correct and
+  // saves one Map allocation + full copy per frame build). Live-slot-only frames
+  // (varsByName undefined) still get their own empty map.
+  const declarationBucketsByName = varsByName ?? new Map<string, BindingEntry[]>();
   const currentBindingsByName = new Map<string, BindingCell>();
 
   if (varsByName) {
@@ -313,7 +334,6 @@ export function buildScopeFrame(
       for (let i = 0; i < entries.length; i++) {
         ensureBindingCellLookupIdentity(entries[i]!.cell);
       }
-      declarationBucketsByName.set(name, entries);
       const currentEntry = entries[entries.length - 1];
       if (currentEntry) {
         currentBindingsByName.set(name, currentEntry.cell);
@@ -378,6 +398,49 @@ export function setScopeFrameDeclarationBinding(
   setCurrentBindingCell(frame, name, entry.cell);
 }
 
+/**
+ * Leaky Less mode: a mixin CALL's evaluated output declarations are visible to
+ * LATER siblings in the caller scope. The output declarations live on the output
+ * child Rules, not in the caller frame's binding buckets, so a later sibling's
+ * `full` scope-frame lookup misses them. Register them here at the call's source
+ * index so a later sibling resolves them while an earlier sibling (start-gated,
+ * same frame) still does not — the bucket's source-order index gate enforces
+ * that ordering.
+ */
+export function injectFrameLeakBinding(
+  frame: ScopeFrame,
+  name: string,
+  entry: BindingEntry
+): void {
+  entry.cell.leak = true;
+  let bucket = frame.declarationBucketsByName.get(name);
+  if (!bucket) {
+    frame.declarationBucketsByName.set(name, bucket = []);
+  }
+  bucket.push(entry);
+  setCurrentBindingCell(frame, name, entry.cell);
+}
+
+/**
+ * A leak binding is visible only to readers positioned after the emitting call.
+ * `leakStart` is the reader's own source index; the binding's source node carries
+ * the call index. Non-leak cells are never gated here.
+ */
+function leakBindingVisible(
+  cell: BindingCell,
+  sourceNode: Node | undefined,
+  leakStart: number | undefined
+): boolean {
+  if (!cell.leak) {
+    return true;
+  }
+  if (leakStart === undefined) {
+    return true;
+  }
+  const callIndex = sourceNode?.index;
+  return callIndex !== undefined && callIndex < leakStart;
+}
+
 function pendingDeclarationMayAffectName(
   pendingDeclarationNames: VarDeclaration[],
   name: string
@@ -423,44 +486,61 @@ export function lookupScopeFrameVariable(
   name: string,
   options?: {
     start?: number;
+    leakStart?: number;
     filter?: (node: Node) => boolean;
     blockedSource?: (node: Node) => boolean;
     includeLive?: boolean;
     includeDeclarations?: boolean;
     includeAssignmentTargets?: boolean;
     bailOnPendingDeclarations?: boolean;
+    searchParents?: boolean;
+    includeFallbackFrames?: boolean;
   }
 ): ScopeFrameVariableLookupResult {
   let f = frame;
   let start = options?.start;
-  let fallbackFrame = frame?.fallbackFrame;
+  let leakStart = options?.leakStart;
+  const searchParents = options?.searchParents !== false;
+  const includeFallbackFrames = options?.includeFallbackFrames !== false;
+  let fallbackFrame = includeFallbackFrames ? frame?.fallbackFrame : undefined;
+  let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
     while (f) {
-      let currentCellRejectedByGuard = false;
-      if (start === undefined) {
-        const currentCell = f.currentBindingsByName.get(name);
+      if (visitedFallbackFrames?.has(f)) {
+        // Already searched this frame on an earlier fallback/parent walk. Stop
+        // walking THIS branch's parents, but keep consulting remaining fallback
+        // frames — a later fallback (e.g. an earlier top-level `@import`) may
+        // still hold the symbol. A nested import's placement frame lexically
+        // parents back to the import site, so its parent walk re-enters an
+        // already-visited frame; aborting the whole search here would drop every
+        // fallback queued past it. The fallback chain is finite and acyclic, so
+        // breaking (not returning) still terminates.
+        break;
+      }
+      visitedFallbackFrames?.add(f);
+      const currentCell = f.currentBindingsByName.get(name);
+      if (
+        currentCell
+        && currentCell.live === true
+        && options?.includeLive !== false
+      ) {
+        const sourceNode = currentCell.sourceNode;
+        if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
+          return {
+            kind: 'live',
+            cell: currentCell,
+            sourceNode,
+            frame: f,
+            readonly: currentCell.readonly
+          };
+        }
+      } else if (start === undefined) {
         if (
-          currentCell
-          && currentCell.live === true
-          && options?.includeLive !== false
-        ) {
-          const sourceNode = currentCell.sourceNode;
-          if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
-            return {
-              kind: 'live',
-              cell: currentCell,
-              sourceNode,
-              frame: f,
-              readonly: currentCell.readonly
-            };
-          }
-          currentCellRejectedByGuard = sourceNode !== undefined
-            && options?.blockedSource?.(sourceNode) === true;
-        } else if (
           currentCell
           && options?.includeDeclarations !== false
           && f.declarationsCovered
           && currentCell.sourceNode
+          && leakBindingVisible(currentCell, currentCell.sourceNode, leakStart)
         ) {
           if (
             !options?.blockedSource?.(currentCell.sourceNode)
@@ -474,7 +554,6 @@ export function lookupScopeFrameVariable(
               readonly: currentCell.readonly
             };
           }
-          currentCellRejectedByGuard = true;
         }
       }
 
@@ -522,7 +601,6 @@ export function lookupScopeFrameVariable(
       }
 
       const bucket = options?.includeDeclarations === false
-        || currentCellRejectedByGuard
         ? undefined
         : f.declarationBucketsByName.get(name);
       if (bucket?.length) {
@@ -532,6 +610,9 @@ export function lookupScopeFrameVariable(
             start !== undefined
             && !(entry.sourceNode.index !== undefined && entry.sourceNode.index < start)
           ) {
+            continue;
+          }
+          if (!leakBindingVisible(entry.cell, entry.sourceNode, leakStart)) {
             continue;
           }
           if (!options?.filter || options.filter(entry.sourceNode)) {
@@ -546,15 +627,37 @@ export function lookupScopeFrameVariable(
         }
       }
 
+      if (!searchParents) {
+        return { kind: 'miss' };
+      }
+      if (includeFallbackFrames) {
+        fallbackFrame ??= f.fallbackFrame;
+      }
       start = undefined;
+      // A leak binding on the parent frame is source-order gated against where
+      // THIS frame's subtree is anchored in the parent, not the reader's inner
+      // index — a descendant reader is structurally after a parent-level call
+      // iff its enclosing block sits after that call.
+      if (leakStart !== undefined) {
+        const rulesNode = f.rulesNode as { index?: number } | undefined;
+        leakStart = rulesNode?.index;
+      }
       f = f.parent;
     }
 
     if (!fallbackFrame) {
       return { kind: 'miss' };
     }
+    // If the next fallback head was already searched, the fallback chain has
+    // cycled — every remaining frame is visited, so the symbol is not here.
+    // Terminate (the inner `break` above only stops a single parent walk; this
+    // guard is what keeps a cyclic chain from spinning forever).
+    if (visitedFallbackFrames?.has(fallbackFrame)) {
+      return { kind: 'miss' };
+    }
 
     f = fallbackFrame;
+    visitedFallbackFrames ??= new Set();
     fallbackFrame = fallbackFrame.fallbackFrame;
     start = undefined;
   }
@@ -584,7 +687,7 @@ export function lookupScopeFrameCallable(
     if (bucket?.length) {
       for (let i = bucket.length - 1; i >= 0; i--) {
         const entry = bucket[i]!;
-        if (options?.includeRulesets === false && entry.value.type === 'Ruleset') {
+        if (options?.includeRulesets === false && entry.value instanceof Node && entry.value.type === 'Ruleset') {
           continue;
         }
         if (
@@ -626,10 +729,6 @@ export function assignScopeFrameVariable(
   if (hit.kind === 'miss' || hit.kind === 'uncovered') {
     return undefined;
   }
-  if (hit.kind === 'live') {
-    hit.cell.value = value;
-  } else {
-    hit.cell.value = value;
-  }
+  hit.cell.value = value;
   return hit;
 }

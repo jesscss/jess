@@ -6,11 +6,15 @@ import {
   SelectorList,
   Combinator,
   Ampersand,
-  Node
+  Node,
+  type SelectorLike
 } from '@jesscss/core';
 import { createLessAdapter } from '../transform/less-adapter.js';
 import { toLessNode } from '../transform/to-less.js';
-import type { LessNode } from '../types.js';
+import type {
+  LessNode,
+  RawLessCombinator
+} from '../types.js';
 
 /**
  * Flatten a hierarchical Jess selector into Less's flat Element array.
@@ -20,10 +24,21 @@ import type { LessNode } from '../types.js';
  * the combinator attached to the following selector component.
  */
 function flattenSelectorToElements(
-  selector: Selector | SelectorList,
-  cache?: WeakMap<Node, LessNode>
+  selector: SelectorLike,
+  cache?: WeakMap<Node, unknown>
 ): LessNode[] {
   const elements: LessNode[] = [];
+
+  if (typeof selector === 'string') {
+    elements.push(createElementAdapter(selector, createLessCombinator(''), cache));
+    return elements;
+  }
+
+  // An array IS a selector list (strings-not-nodes model). Flatten the first item.
+  if (Array.isArray(selector)) {
+    const first = selector[0];
+    return first !== undefined ? flattenSelectorToElements(first, cache) : [];
+  }
 
   if (selector instanceof SelectorList) {
     const selectorListValue = selector.value;
@@ -57,6 +72,9 @@ function flattenSelectorToElements(
           const elementCombinator = createLessCombinator(j === 0 ? nextCombinatorValue : '');
           elements.push(createElementAdapter(simple, elementCombinator, cache));
         }
+      } else if (typeof component === 'string') {
+        const elementCombinator = createLessCombinator(nextCombinatorValue);
+        elements.push(createElementAdapter(component, elementCombinator, cache));
       } else if (component instanceof BasicSelector || component instanceof Ampersand) {
         const elementCombinator = createLessCombinator(nextCombinatorValue);
         elements.push(createElementAdapter(component, elementCombinator, cache));
@@ -84,22 +102,39 @@ function flattenSelectorToElements(
   return elements;
 }
 
-function createLessCombinator(value: string): LessNode {
-  const base = new Combinator(' ');
-  return createLessAdapter(base, {
-    lessType: 'Combinator',
-    fields: {
-      value: () => value,
-      emptyOrWhitespace: () => value === '' || value === ' '
+function createLessCombinator(value: string): RawLessCombinator {
+  return {
+    type: 'Combinator',
+    typeIndex: undefined,
+    value,
+    emptyOrWhitespace: value === '' || value === ' ',
+    accept() {
+      return value;
     }
-  });
+  };
 }
 
 function createElementAdapter(
-  basic: Node,
-  combinator: LessNode,
-  cache?: WeakMap<Node, LessNode>
+  basic: string | Node,
+  combinator: RawLessCombinator,
+  cache?: WeakMap<Node, unknown>
 ): LessNode {
+  if (typeof basic === 'string') {
+    return {
+      type: 'Element',
+      typeIndex: undefined,
+      combinator,
+      value: basic,
+      isVariable: false,
+      accept(visitor: { visit?: (n: unknown) => void }) {
+        if (combinator && visitor.visit) {
+          visitor.visit(combinator);
+        }
+        return basic;
+      }
+    };
+  }
+
   const adapter = createLessAdapter(basic, {
     lessType: 'Element',
     fields: {
@@ -128,10 +163,25 @@ function createElementAdapter(
 }
 
 export function transformSelectorToLess(
-  sel: Selector | SelectorList,
-  cache?: WeakMap<Node, LessNode>
+  sel: SelectorLike,
+  cache?: WeakMap<Node, unknown>
 ): LessNode {
   const elements = flattenSelectorToElements(sel, cache);
+  if (typeof sel === 'string' || Array.isArray(sel)) {
+    return {
+      type: 'Selector',
+      typeIndex: undefined,
+      elements,
+      length: elements.length,
+      accept(visitor: { visitArray?: (nodes: unknown[]) => void }) {
+        if (visitor.visitArray) {
+          visitor.visitArray(elements);
+        }
+        return sel;
+      }
+    };
+  }
+
   const adapter = createLessAdapter(sel, {
     lessType: 'Selector',
     fields: {

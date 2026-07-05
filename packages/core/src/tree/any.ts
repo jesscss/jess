@@ -27,6 +27,7 @@ export type AnyOptions<T extends string> = NodeOptions & {
   role?: T;
 };
 
+// AUDIT: Do we still need this? Now that we're storing strings?
 export interface Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
@@ -48,6 +49,8 @@ export class Any<
 > extends Node<string, AnyOptions<Role>> {
   static override childKeys = null;
 
+  readonly value: string;
+
   readonly role: Role | undefined;
 
   constructor(
@@ -57,6 +60,8 @@ export class Any<
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Each node owns its field values (invariant 7): the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);

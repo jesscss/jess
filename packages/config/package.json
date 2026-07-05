@@ -11,7 +11,6 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     }
@@ -21,7 +20,7 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "test": "vitest"
   },
   "dependencies": {

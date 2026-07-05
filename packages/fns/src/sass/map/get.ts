@@ -12,7 +12,13 @@ import type { FunctionThis } from '@jesscss/core';
 import { isNode, N } from '@jesscss/core';
 
 function declarationValueNode(value: Declaration['value']): Node {
-  return typeof value === 'string' ? new Any(value) : value;
+  if (typeof value === 'string') {
+    return new Any(value);
+  }
+  if (value instanceof Node) {
+    return value;
+  }
+  return new Any(value.map(seg => typeof seg === 'string' ? seg : String(seg.valueOf())).join(''));
 }
 
 const get = defineFunction(
@@ -33,7 +39,7 @@ const get = defineFunction(
 
     // Helper to find declaration by key string in a collection
     const findDeclaration = (map: Collection, keyStr: string): Declaration | null => {
-      for (const node of map.value) {
+      for (const node of map.rules) {
         if (isNode(node, N.Declaration)) {
           const nodeKey = String(node.name.valueOf());
           if (nodeKey === keyStr) {

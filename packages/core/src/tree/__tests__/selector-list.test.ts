@@ -1,4 +1,4 @@
-import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, sel, sellist, SelectorList, vardecl } from '../index.js';
+import { any, attr, co, compound, el, Node, pseudo, ref, rules, Rules as RulesClass, sel, sellist, SelectorList, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
@@ -152,7 +152,7 @@ describe('Selector list', () => {
   test('renders resolved selector-list values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);
@@ -177,7 +177,7 @@ describe('Selector list', () => {
   test('writes resolved selector-list output into segmented buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);
@@ -216,7 +216,7 @@ describe('Selector list', () => {
   test('resolves selector-list values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);
@@ -238,7 +238,6 @@ describe('Selector list', () => {
     const resolved = await selector.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo],\n.bar');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -304,7 +303,7 @@ describe('Selector list', () => {
   test('keeps source selector-list values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);
@@ -322,8 +321,10 @@ describe('Selector list', () => {
       ]),
       el('.bar')
     ]);
-    const sourceFirst = selector.value[0]!;
-    const sourceSecond = selector.value[1]!;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceFirst = selector.value[0]! as Node;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceSecond = selector.value[1]! as Node;
     const resolved = await selector.resolve(context);
 
     expect(resolved.render(context)).toBe('a[data=foo],\n.bar');
@@ -334,7 +335,8 @@ describe('Selector list', () => {
 
   test('owns single resolved selector-list output without reparenting the source child', async () => {
     const inner = sellist([sel([el('.source'), co(' '), el('.child')])]);
-    const sourceChild = inner.value[0]!;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const sourceChild = inner.value[0]! as Node;
     const selector = pseudo({ name: ':is', arg: inner });
 
     const resolved = await selector.resolve(context);

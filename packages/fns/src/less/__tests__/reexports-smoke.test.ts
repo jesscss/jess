@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Color, Dimension } from '@jesscss/core';
+import { Color, ColorFormat, Dimension } from '@jesscss/core';
 import lessAbs from '../abs.js';
 import lessAlpha from '../alpha.js';
 import lessBlue from '../blue.js';
@@ -19,7 +19,7 @@ describe('tiny re-export wrappers', () => {
 
     const color = new Color({
       rgb: [12, 34, 56],
-      format: 'rgb',
+      format: ColorFormat.RGB,
       alpha: 0.5
     });
     expect(lessRed(color).number).toBe(12);

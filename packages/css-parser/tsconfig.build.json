@@ -5,7 +5,11 @@
     "rootDir": "./src",
     "allowJs": false,
     "types": ["node"],
-    "noEmit": false
+    "noEmit": false,
+    "composite": false,
+    "paths": {
+      "@jesscss/parser": ["./node_modules/@jesscss/parser/lib/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": [

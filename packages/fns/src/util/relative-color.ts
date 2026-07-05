@@ -8,14 +8,17 @@ import {
   Call,
   Dimension,
   Operation,
-  type LocationInfo
+  type LocationInfo,
+  sourceSpanOf
 } from '@jesscss/core';
 
 type RGBChannelValues = { r: number; g: number; b: number; alpha: number };
 type HSLChannelValues = { h: number; s: number; l: number; alpha: number };
 
+// Source spans live in the provenance side-table, not on the node — read them
+// via `sourceSpanOf`. (Nodes have no `.location` field.)
 function nodeLocation(node: Node): LocationInfo | undefined {
-  return node.location.length === 6 ? node.location : undefined;
+  return sourceSpanOf(node);
 }
 
 function unwrapCalcChannelExpression(node: Node): Node {
@@ -31,7 +34,7 @@ function unwrapCalcChannelExpression(node: Node): Node {
     return node;
   }
   const { args } = node;
-  const items = args?.items;
+  const items = args?.value;
   return items?.[0] ?? node;
 }
 
@@ -47,15 +50,15 @@ export function parseRelativeColorSyntax(rawArgs: List): {
   channels: Node[];
   alpha?: Node;
 } | null {
-  if (!rawArgs || rawArgs.items.length === 0) {
+  if (!rawArgs || rawArgs.value.length === 0) {
     return null;
   }
 
-  const firstArg = rawArgs.items[0];
+  const firstArg = rawArgs.value[0];
 
   // Check if first argument is a Sequence starting with "from"
-  if (firstArg instanceof Sequence && firstArg.items.length > 0) {
-    const seqValues = firstArg.items;
+  if (firstArg instanceof Sequence && firstArg.value.length > 0) {
+    const seqValues = firstArg.value;
     const firstItem = seqValues[0];
 
     // Check if first item is "from" keyword
@@ -68,10 +71,10 @@ export function parseRelativeColorSyntax(rawArgs: List): {
       const originColor = seqValues[1]!;
       const channels = seqValues.slice(2) || [];
 
-      // Check if there's an alpha value separated by / (rawArgs.items[1] when sep is '/')
+      // Check if there's an alpha value separated by / (rawArgs.value[1] when sep is '/')
       let alpha: Node | undefined;
-      if (rawArgs.items.length > 1 && rawArgs.options?.sep === '/') {
-        alpha = rawArgs.items[1];
+      if (rawArgs.value.length > 1 && rawArgs.options?.sep === '/') {
+        alpha = rawArgs.value[1];
       }
 
       return {
@@ -149,7 +152,7 @@ function substituteChannelVariables(
     const { args } = node;
     const substitutedArgs = args
       ? new List(
-          args.items.map((arg: Node) =>
+          args.value.map((arg: Node) =>
             substituteChannelVariables(arg, channelValues, format)
           ),
           args.options,
@@ -175,7 +178,7 @@ function substituteChannelVariables(
   // If it's a Sequence or List, recursively substitute in its values
   if (node instanceof Sequence) {
     return new Sequence(
-      node.items.map((item: Node) =>
+      node.value.map((item: Node) =>
         substituteChannelVariables(item, channelValues, format)
       ),
       node.options,
@@ -185,7 +188,7 @@ function substituteChannelVariables(
 
   if (node instanceof List) {
     return new List(
-      node.items.map((item: Node) =>
+      node.value.map((item: Node) =>
         substituteChannelVariables(item, channelValues, format)
       ),
       node.options,
@@ -235,7 +238,7 @@ export async function evaluateRGBChannelReference(
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
-      const { number: value } = evaluated.value;
+      const value = evaluated.number;
       // Clamp to 0-255 range for RGB
       return Math.max(0, Math.min(255, value));
     }
@@ -307,7 +310,8 @@ export async function evaluateHSLChannelReference(
 
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
-      const { number: value, unit } = evaluated.value;
+      const value = evaluated.number;
+      const unit = evaluated.unit;
 
       // Handle different units for hue (deg, turn, rad, grad)
       if (unit === 'deg' || unit === '' || unit === undefined) {
@@ -334,7 +338,8 @@ export async function evaluateHSLChannelReference(
   // For other node types, try to evaluate and extract numeric value
   const evaluated = await channel.eval(context);
   if (evaluated instanceof Dimension) {
-    const { number: value, unit } = evaluated.value;
+    const value = evaluated.number;
+    const unit = evaluated.unit;
 
     // Handle percentage units for s/l
     if (unit === '%') {

@@ -1,21 +1,13 @@
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { any, comment, decl, el, rules, ruleset, sel, vardecl } from '../index.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  tokenType: { name: tokenTypeName } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   marks = 0;
@@ -56,7 +48,6 @@ describe('Comment', () => {
     const node = comment('/* keep me */');
 
     expect(node.render(context)).toBe('/* keep me */');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
 
@@ -83,41 +74,30 @@ describe('Comment', () => {
     expect(resolveCalls).toBe(0);
   });
 
-  it('keeps source-only line comments out of render buffers unless full render is enabled', () => {
+  it('keeps source-only line comments out of render buffers', () => {
     const hiddenBuffer = createRenderBuffer('flat');
-    const fullBuffer = createRenderBuffer('flat');
     const hidden = comment('// source-only', { lineComment: true });
-    const full = comment('// source-only', { lineComment: true });
-    full.fullRender = true;
-
     expect(hidden.render(context, hiddenBuffer)).toBe('');
     expect(hiddenBuffer.parts).toEqual([]);
-    expect(full.render(context, fullBuffer)).toBe('// source-only');
-    expect(fullBuffer.parts).toEqual(['// source-only']);
+    // TODO(F_VISIBLE stage 2): the render-ignoring-visibility walker restores the
+    // "shown under full render" case — `fullRender` was deleted from the hot path.
   });
 
   it('preserves printable block trivia before invisible nodes', () => {
     const hidden = vardecl({ name: 'tone', value: any('red') });
-    hidden._location = [100, 1, 1, 110, 1, 11];
+    setSourceSpan(hidden, { start: 100, end: 110 });
     const visible = ruleset({
       selector: sel([el('.a')]),
-      rules: rules([
-        decl({ name: any('color'), value: any('red') })
-      ])
+      rules: [
+        decl({ name: 'color', value: any('red') })
+      ]
     });
-    visible._location = [120, 8, 1, 136, 10, 1];
+    setSourceSpan(visible, { start: 120, end: 136 });
     const trivia = createTriviaMap({
       before: new Map([
-        [hidden.location[0], [
-          token('// source-only', 'LineComment'),
-          token('\n'),
-          token('/*\n\n    Comment\n\n*/', 'Comment'),
-          token('\n\n'),
-          token('/*\n * Keep indent\n */', 'Comment'),
-          token('\n')
-        ]]
+        [sourceSpanOf(hidden)?.start, run('// source-only\n/*\n\n    Comment\n\n*/\n\n/*\n * Keep indent\n */\n')]
       ]),
-      after: new Map<number, IToken[]>()
+      after: new Map()
     });
 
     expect(rules([hidden, visible]).toString({ context, trivia })).toBe(`/*
@@ -137,20 +117,17 @@ describe('Comment', () => {
   it('preserves printable block trivia before visible rulesets', () => {
     const visible = ruleset({
       selector: sel([el('.a')]),
-      rules: rules([
-        decl({ name: any('color'), value: any('red') })
-      ])
+      rules: [
+        decl({ name: 'color', value: any('red') })
+      ]
     });
-    visible._location = [100, 8, 1, 116, 10, 1];
-    visible.selector._location = visible.location;
+    setSourceSpan(visible, { start: 100, end: 116 });
+    setSourceSpan(visible.selector, sourceSpanOf(visible));
     const trivia = createTriviaMap({
       before: new Map([
-        [visible.location[0], [
-          token('/* Colors\n * ------\n */', 'Comment'),
-          token('\n')
-        ]]
+        [sourceSpanOf(visible)?.start, run('/* Colors\n * ------\n */\n')]
       ]),
-      after: new Map<number, IToken[]>()
+      after: new Map()
     });
 
     expect(rules([visible]).toString({ context, trivia })).toBe(`/* Colors
@@ -164,25 +141,21 @@ describe('Comment', () => {
 
   it('keeps block trivia from hidden nodes on its own line', () => {
     const hidden = vardecl({ name: 'void-result', value: any('') });
-    hidden._location = [100, 1, 1, 110, 1, 11];
-    const visible = decl({ name: any('color'), value: any('green') });
-    visible._location = [140, 4, 3, 152, 4, 15];
+    setSourceSpan(hidden, { start: 100, end: 110 });
+    const visible = decl({ name: 'color', value: any('green') });
+    setSourceSpan(visible, { start: 140, end: 152 });
     const container = ruleset({
       selector: sel([el('.a')]),
-      rules: rules([hidden, visible])
+      rules: [hidden, visible]
     });
-    container._location = [90, 1, 1, 160, 5, 1];
-    const hiddenPost = [
-      token(' '),
-      token('/* results in void */', 'Comment'),
-      token('\n\n  ')
-    ];
+    setSourceSpan(container, { start: 90, end: 160 });
+    const hiddenPost = run(' /* results in void */\n\n  ');
     const trivia = createTriviaMap({
       before: new Map([
-        [visible.location[0], hiddenPost]
+        [sourceSpanOf(visible)?.start, hiddenPost]
       ]),
       after: new Map([
-        [hidden.location[3], hiddenPost]
+        [sourceSpanOf(hidden)?.end, hiddenPost]
       ])
     });
 
@@ -195,20 +168,18 @@ describe('Comment', () => {
 
   it('uses context-owned trivia for cloned nodes with source offsets', async () => {
     const empty = rules([]);
-    empty._location = [100, 1, 1, 100, 1, 1];
-    const visible = decl({ name: any('color'), value: any('red') });
-    visible._location = [120, 2, 3, 130, 2, 13];
+    setSourceSpan(empty, { start: 100, end: 100 });
+    const visible = decl({ name: 'color', value: any('red') });
+    setSourceSpan(visible, { start: 120, end: 130 });
     const container = ruleset({
       selector: sel([el('.a')]),
-      rules: rules([empty, visible])
+      rules: [empty, visible]
     });
     const trivia = createTriviaMap({
       before: new Map([
-        [empty.location[0], [
-          token('/**/', 'Comment')
-        ]]
+        [sourceSpanOf(empty)?.start, run('/**/')]
       ]),
-      after: new Map<number, IToken[]>()
+      after: new Map()
     });
     context.opts.trivia = trivia;
 
@@ -222,20 +193,16 @@ describe('Comment', () => {
   it('preserves printable block trivia after visible rulesets', () => {
     const visible = ruleset({
       selector: sel([el('.a')]),
-      rules: rules([
-        decl({ name: any('color'), value: any('red') })
-      ])
+      rules: [
+        decl({ name: 'color', value: any('red') })
+      ]
     });
-    visible._location = [100, 8, 1, 116, 10, 1];
-    const tokens = [
-      token('\n'),
-      token('/*comment on last line*/', 'Comment'),
-      token('\n')
-    ];
+    setSourceSpan(visible, { start: 100, end: 116 });
+    const tokens = run('\n/*comment on last line*/\n');
     const trivia = createTriviaMap({
       before: new Map([[Infinity, tokens]]),
       after: new Map([
-        [visible.location[3], tokens]
+        [sourceSpanOf(visible)?.end, tokens]
       ])
     });
 
@@ -252,7 +219,6 @@ describe('Comment', () => {
     const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('/* keep me */');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });

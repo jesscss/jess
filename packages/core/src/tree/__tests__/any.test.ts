@@ -1,7 +1,8 @@
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { any, keyword, seq } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
-import { OutputWriter } from '../util/print.js';
+import { OutputWriter, getPrintOptions } from '../util/print.js';
 
 class CountingWriter extends OutputWriter {
   marks = 0;
@@ -41,7 +42,7 @@ describe('Any and Keyword', () => {
       return 'not-foo';
     };
 
-    node.writeSyntax({ writer });
+    node.writeSyntax(getPrintOptions({ writer }));
 
     expect(writer.toString()).toBe('foo');
     expect(writer.marks).toBe(0);
@@ -55,12 +56,10 @@ describe('Any and Keyword', () => {
     const node = any('foo');
 
     expect(node.render(renderContext)).toBe('foo');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
 
     const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('foo');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });
@@ -98,14 +97,14 @@ describe('Any and Keyword', () => {
   it('renders custom-property Any values from source without result inheritance', async () => {
     const context = new Context();
     const node = any('var(--tone)', { role: 'customprop' });
-    const originalLocation = [4, 1, 5, 15, 1, 16] as const;
-    node._location = [...originalLocation];
+    const originalLocation = { start: 4, end: 15 } as const;
+    setSourceSpan(node, originalLocation);
     node.resolve = () => {
       throw new Error('Any.render should not resolve static custom property fragments');
     };
 
     expect(node.render(context)).toBe('var(--tone)');
-    expect(node.location).toEqual([...originalLocation]);
+    expect(sourceSpanOf(node)).toEqual(originalLocation);
     expect(node.sourceNode ?? node).toBe(node);
   });
 
@@ -119,12 +118,10 @@ describe('Any and Keyword', () => {
     const node = keyword('inherit');
 
     expect(node.render(renderContext)).toBe('inherit');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
 
     const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('inherit');
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });

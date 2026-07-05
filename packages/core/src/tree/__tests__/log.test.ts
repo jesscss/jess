@@ -104,7 +104,6 @@ describe('Log node', () => {
 
     expect(logSpy).toHaveBeenCalledWith('test message');
     expect(resolved).toBeInstanceOf(Nil);
-    expect(logNode.evaluated).toBe(false);
     expect(logNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -125,7 +124,6 @@ describe('Log node', () => {
 
     expect(logSpy).toHaveBeenCalledWith('buffer message');
     expect(buffer.parts).toEqual([]);
-    expect(logNode.evaluated).toBe(false);
   });
 
   it('renders log side effects without calling public evalNode()', async () => {
@@ -142,7 +140,6 @@ describe('Log node', () => {
     await expect(Promise.resolve(logNode.render(context))).resolves.toBe('');
 
     expect(logSpy).toHaveBeenCalledWith('direct message');
-    expect(logNode.evaluated).toBe(false);
     expect(logNode.registrationPrepared).toBe(false);
   });
 
@@ -151,7 +148,8 @@ describe('Log node', () => {
     logger.warn = warnSpy;
     const buffer = createRenderBuffer('flat');
     const message = new Any('async direct message');
-    message.eval = () => Promise.resolve(new Any('async direct message'));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    message.eval = (() => Promise.resolve(new Any('async direct message'))) as unknown as typeof message.eval;
     const logNode = new Log({
       level: 'warn',
       message
@@ -164,7 +162,6 @@ describe('Log node', () => {
 
     expect(warnSpy).toHaveBeenCalledWith('async direct message');
     expect(buffer.parts).toEqual([]);
-    expect(logNode.evaluated).toBe(false);
     expect(logNode.registrationPrepared).toBe(false);
   });
 });

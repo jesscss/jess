@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo } from './node.js';
+import { Node, F_ALLOW_ROOT, F_VISIBLE, F_STATIC, defineType, type LocationInfo } from './node.js';
 import { type FinalPrintOptions, getPrintOptions, type PrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
@@ -11,21 +11,25 @@ export interface Comment extends Node<string, CommentOptions> {
   eval(context: Context): Comment;
 }
 
+// AUDIT: Probably don't need this unless a parent is visited.
 /**
  * A comment node
  */
 export class Comment extends Node<string, CommentOptions> {
   static override childKeys = null;
 
-  override allowRoot = true;
-  override allowRuleRoot = true;
+  readonly value: string;
+
   readonly lineComment: boolean;
 
   constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.lineComment = options?.lineComment === true || value.startsWith('//');
     this.addFlag(F_STATIC);
+    this.addFlag(F_ALLOW_ROOT);
     if (this.lineComment) {
       this.removeFlag(F_VISIBLE);
     }
@@ -49,7 +53,7 @@ export class Comment extends Node<string, CommentOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+    if (!this.hasFlag(F_VISIBLE)) {
       return '';
     }
     const out = this.value;

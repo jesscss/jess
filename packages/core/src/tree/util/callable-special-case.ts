@@ -4,7 +4,7 @@ import { F_MAY_ASYNC, type Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { List } from '../list.js';
-import type { Rules } from '../rules.js';
+import { Rules } from '../rules.js';
 import { getMixinEntryRules, type MixinEntry } from './callable-entry.js';
 import { isNode } from './is-node.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
@@ -24,8 +24,7 @@ type EvaluateCallableSpecialCaseCandidateOptions = {
   candidateName?: unknown;
   candidateParams?: List<Node>;
   candidateGuard?: Node | Nil;
-  createOwnedRules: (sourceRules: Rules) => Rules;
-  createUnlockedRules: (sourceRules: Rules) => Rules;
+  createCallableRules: (sourceRules: Rules) => Rules;
   getRootSourceRules: (rules: Rules) => Rules;
 };
 
@@ -38,8 +37,7 @@ export async function evaluateCallableSpecialCaseCandidate({
   candidateName,
   candidateParams,
   candidateGuard,
-  createOwnedRules,
-  createUnlockedRules,
+  createCallableRules,
   getRootSourceRules
 }: EvaluateCallableSpecialCaseCandidateOptions): Promise<CallableSpecialCaseResult> {
   if (isNode(candidate, N.Ruleset)) {
@@ -48,9 +46,18 @@ export async function evaluateCallableSpecialCaseCandidate({
       return { handled: true };
     }
 
-    const sourceRules = getRootSourceRules(candidate.rules);
-    let rules = createOwnedRules(sourceRules);
-    const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
+    // The Ruleset IS its own canonical body now (the `_passedRulesWrapper`
+    // duplicate frame was eliminated); its children parent to the Ruleset, so
+    // the candidate itself is the source rules for the callable surface.
+    const sourceRules = getRootSourceRules(candidate);
+    let rules = createCallableRules(sourceRules);
+    // A detached ruleset called from a variable has no tree parent (neither the
+    // caller nor the candidate is parented); the call-site Rules is its natural
+    // placement parent — same fallback the non-Ruleset branch below uses.
+    const callParent = (caller?.parent as Node | undefined) ?? candidate.parent ?? callSiteRules;
+    if (!callParent) {
+      throw new TypeError('Callable special-case setup requires a caller, candidate, or call-site parent');
+    }
     let needsCallerPlacementDuringEval = false;
     for (let i = 0; i < sourceRules.rules.length; i++) {
       if (isNode(sourceRules.rules[i], N.Ruleset | N.AtRule)) {
@@ -75,7 +82,7 @@ export async function evaluateCallableSpecialCaseCandidate({
 
   if (!isNode(candidate, N.Mixin) && !candidateName && !candidateParams && !candidateGuard) {
     const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
-    let unlocked = createUnlockedRules(sourceRules);
+    let unlocked = createCallableRules(sourceRules);
     const parentFrame = isNode(callSiteRules, N.Rules)
       ? callSiteRules.getScopeFrame()
       : undefined;

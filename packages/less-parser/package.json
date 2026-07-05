@@ -11,25 +11,25 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
-    "bench": "tsx test/bench.ts",
-    "bench:save": "tsx test/bench.ts --save",
-    "bench:memory": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --memory",
-    "bench:heap": "cross-env NODE_OPTIONS=--expose-gc tsx test/bench.ts --heap-snapshot",
+    "bench": "node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts",
+    "bench:save": "node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --save",
+    "bench:memory": "node --expose-gc --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --memory",
+    "bench:heap": "node --expose-gc --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --heap-snapshot",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -38,12 +38,13 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
-    "@jesscss/parser": "workspace:*",
     "chevrotain": "^12.0.0",
     "known-css-properties": "~0.37.0"
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
+    "less": "^4.6.3",
+    "parseman": "^0.14.0",
     "@types/node": "^18.19.31",
     "tsx": "~4.21.0"
   },

@@ -1,4 +1,5 @@
-import { F_VISIBLE, Node, NO_VALUE, defineType, type LocationInfo } from './node.js';
+import { sourceSpanOf } from './util/provenance.js';
+import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
 import { Condition } from './condition.js';
 import { List } from './list.js';
 import { Any, type AnyRole } from './any.js';
@@ -7,7 +8,9 @@ import { Interpolated } from './interpolated.js';
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf, copyNodesForOwnership } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
+import { renderInvisibleEffect, type RenderBuffer } from './util/render-buffer.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -24,13 +27,13 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    *
    * @todo - Should anonymous mixins have a different class type?
    */
-  name?: Any<Name> | Interpolated<Name>;
+  name?: string | Interpolated<Name>;
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
    * and an implicit `return`
    */
-  rules: Rules;
+  rules: Node[];
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
@@ -38,7 +41,7 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    * - A rest is a rest parameter.
    */
   params?: List<Node>;
-  guard?: Condition | string;
+  guard?: string | Condition;
 }
 
 export type MixinOptions = {
@@ -75,11 +78,11 @@ export type MixinOptions = {
  *
  * @todo - Even though we allow a selector as a name.
  */
-export class Mixin extends Node<MixinValue, MixinOptions> {
+export class Mixin extends Rules<MixinValue, MixinOptions> {
   static override childKeys = ['name', 'params', 'rules', 'guard'] as const;
 
   readonly name: MixinValue['name'];
-  readonly rules: Rules;
+  declare readonly rules: Node[];
   readonly params: MixinValue['params'];
   readonly guard: MixinValue['guard'];
 
@@ -89,41 +92,63 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     location?: LocationInfo,
     treeContext?: Context['treeContext']
   ) {
-    if (options?.hasDefault === undefined && value.guard instanceof Node && callableGuardContainsDefault(value.guard)) {
+    if (
+      options?.hasDefault === undefined
+      && value.guard instanceof Node
+      && callableGuardContainsDefault(value.guard)
+    ) {
       options = { ...options, hasDefault: true };
     }
-    super(NO_VALUE, options, location);
-    this._treeContext = treeContext;
-    this.name = this._processNodes(value.name);
-    this.rules = this._processNodes(value.rules);
-    this.params = this._processNodes(value.params);
-    this.guard = this._processNodes(value.guard);
+    super(value.rules, options, location, treeContext);
+    this.name = value.name;
+    this.params = value.params;
+    this.guard = value.guard;
+    // A mixin owns its structural parts: name, params, and guard parent to the
+    // mixin (body is adopted below or via the Rules array in super()). This
+    // keeps scope resolution able to walk up from any part to the mixin, and
+    // keeps the canonical definition owning its parts when prepareRegistration
+    // builds a separate prepared wrapper from copies.
+    if (value.name instanceof Node) {
+      this.adopt(value.name);
+    }
+    if (value.params instanceof Node) {
+      this.adopt(value.params);
+    }
+    if (value.guard instanceof Node) {
+      this.adopt(value.guard);
+    }
     this.removeFlag(F_VISIBLE);
+    // R2 SINGLE-FRAME: the Mixin IS its own canonical body. Body children are
+    // parented to the Mixin by the `mixin()` factory's parentChildren (childKeys
+    // includes 'rules'); the Mixin's own scope frame is the single body-decl
+    // frame. (Formerly a factory-passed `rules([...])` wrapper was recorded as
+    // `sourceNode` and the children re-parented to it — a DUPLICATE body frame
+    // that the parser path never created, and that split params (per-call
+    // surface) from body decls. Eliminated.)
   }
 
   // Mixin owns registration prep and marks `registrationPrepared` directly.
 
   private ownName(value: NonNullable<MixinValue['name']>): NonNullable<MixinValue['name']> {
-    const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
-    if (owned instanceof Interpolated || owned instanceof Any) {
+    if (typeof value === 'string') {
+      return value;
+    }
+    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
+    if (owned instanceof Interpolated) {
       return owned;
     }
     throw new TypeError('Expected mixin name copy');
   }
 
-  private ownRules(value: Rules): Rules {
-    const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
-    if (owned instanceof Rules) {
-      return owned;
-    }
-    throw new TypeError('Expected mixin rules copy');
+  private ownRules(value: Node[]): Node[] {
+    return copyNodesForOwnership(value, copyWithReusableLeaves);
   }
 
   private ownParams(value: List<Node> | undefined): List<Node> | undefined {
     if (!value) {
       return undefined;
     }
-    const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
+    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
     if (owned instanceof List) {
       return owned;
     }
@@ -137,14 +162,14 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (typeof value === 'string') {
       return value;
     }
-    const owned = value.canReuseAsLeaf() ? value.reuseAsLeaf() : value.cloneForPlacement();
+    const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
     if (owned instanceof Condition) {
       return owned;
     }
     throw new TypeError('Expected mixin guard copy');
   }
 
-  private deriveMixin(value: MixinValue): Mixin {
+  private withParts(value: MixinValue): Mixin {
     const ownedName = value.name === undefined ? undefined : this.ownName(value.name);
     const ownedRules = this.ownRules(value.rules);
     const derived: MixinValue = {
@@ -162,45 +187,31 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return new Mixin(
       derived,
       this._options ? { ...this._options } : undefined,
-      this.location.length === 6 ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
-  override clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    cloneFn ??= n => n.clone(deep);
-    const cloneNodePart = <T extends Node>(part: T): T => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn is the node-clone contract and preserves the field's node family for direct-field clones.
-      return cloneFn(part) as T;
-    };
-    let name = this.name;
-    if (deep && name instanceof Node) {
-      name = cloneNodePart(name);
-    }
-    let rules = this.rules;
-    if (deep) {
-      rules = cloneNodePart(rules);
-    }
-    let params = this.params;
-    if (deep && params instanceof Node) {
-      params = cloneNodePart(params);
-    }
-    let guard = this.guard;
-    if (deep && guard instanceof Node) {
-      guard = cloneNodePart(guard);
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- clone preserves the concrete runtime node surface; TypeScript cannot express constructor-polymorphic `this` here.
-    return new Mixin(
-      {
-        name,
-        rules,
-        params,
-        guard
-      },
-      this._options ? { ...this._options } : undefined,
-      this._location?.length ? this._location : undefined,
-      this._treeContext
-    ).inherit(this) as this;
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const rules = cloneFn
+      ? this.rules.map(rule => cloneFn(rule))
+      : [...this.rules];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return this.withParts({
+      rules,
+      ...(this.name !== undefined && { name: this.name }),
+      ...(this.params !== undefined && { params: this.params }),
+      ...(this.guard !== undefined && { guard: this.guard })
+    }) as this;
+  }
+
+  override derive(rules: Node[] = [...this.rules]): Mixin {
+    return this.withParts({
+      rules,
+      ...(this.name !== undefined && { name: this.name }),
+      ...(this.params !== undefined && { params: this.params }),
+      ...(this.guard !== undefined && { guard: this.guard })
+    });
   }
 
   /** Return a selector-like keySet */
@@ -212,24 +223,36 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       if (!name) {
         return (this._keySet = new Set());
       }
-      keySet = this._keySet = new Set([name.valueOf()]);
+      keySet = this._keySet = new Set([typeof name === 'string' ? name : name.valueOf()]);
     }
     return keySet;
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const mark = w.mark();
     this.writeSyntax(options);
     return w.getSince(mark);
   }
 
+  // Static-by-type invisibility: a mixin definition is never CSS output. The
+  // no-op render keeps the base render() gate off the common hot path (D.1 §2).
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
+  }
+
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
-    const { name, rules, params, guard } = this;
+    const { name, params, guard } = this;
     if (name) {
-      name.writeSyntax(options);
+      if (typeof name === 'string') {
+        w.add(name, this);
+      } else {
+        name.writeSyntax(options);
+      }
     } else {
       w.add('@', this);
     }
@@ -243,7 +266,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     if (guard) {
       w.add(' when ');
       if (typeof guard === 'string') {
-        w.add(guard, this);
+        w.add(guard);
       } else {
         guard.writeSyntax(options);
       }
@@ -252,33 +275,33 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       w.add(' ');
     }
     // Emit rules directly into shared writer; do not re-add return value
-    rules.writeBraced(options);
+    this.writeBraced(options);
   }
 
-  override prepareRegistration(context: Context): MaybePromise<Mixin> {
+  override prepareRegistration(context: Context): MaybePromise<this> {
     if (this.registrationPrepared) {
       return this;
     }
-    return this._prepareMixinRegistration(context);
+
+    return this._prepareMixinRegistration(context) as MaybePromise<this>;
   }
 
   private _prepareMixinRegistration(context: Context): MaybePromise<Mixin> {
     // Mixins should NOT prepare their body rules during initial registration.
     // Body rules are prepared/evaluated when the mixin is called.
     let node: Mixin = this;
-    let { name, rules } = node;
+    let { name } = node;
     if (name && name instanceof Interpolated) {
-      node = this.deriveMixin({
+      node = this.withParts({
         name: this.name,
         rules: this.rules,
         params: this.params,
         guard: this.guard
       });
       name = node.name;
-      rules = node.rules;
     }
     node.registrationPrepared = true;
-    this._prepareMixinBodyVisibility(rules, context);
+    this._prepareMixinBodyVisibility(node, context);
     return this._prepareMixinNameIdentity(node, name, context);
   }
 
@@ -306,18 +329,18 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
           if (!(key instanceof Any)) {
             throw new TypeError('Expected evaluated mixin name');
           }
-          return this.createPreparedNameMixin(node, key as Any<'name'>);
+          return this.createPreparedNameMixin(node, String(key.valueOf()));
         });
       }
       if (!(maybeKey instanceof Any)) {
         throw new TypeError('Expected evaluated mixin name');
       }
-      return this.createPreparedNameMixin(node, maybeKey as Any<'name'>);
+      return this.createPreparedNameMixin(node, String(maybeKey.valueOf()));
     }
     return node;
   }
 
-  private createPreparedNameMixin(node: Mixin, key: Any<'name'>): Mixin {
+  private createPreparedNameMixin(node: Mixin, key: string): Mixin {
     const value: MixinValue = {
       name: key,
       rules: node.rules
@@ -331,7 +354,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     const out = new Mixin(
       value,
       node.options,
-      node.location.length ? node.location : undefined,
+      sourceSpanOf(node),
       node.sourceRoot?._treeContext
     ).inherit(node);
     out.registrationPrepared = node.registrationPrepared;
@@ -339,12 +362,27 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
-  override evalNode() {
+  override evalNode(context?: Context): MaybePromise<this> {
+    // A mixin definition is a lazy template — evalNode returns self without
+    // walking the body. But callers that DO evaluate a mixin body rely on the
+    // narrow §2.7 eval-state signal to distinguish evaluated from cold. Rules.evalNode
+    // is bypassed here, so stamp it directly. See rules.ts callable-descendant gate.
+    this._bodyEvaluated = true;
+    // A `reference:true` import inside a namespace-mixin body must still become a
+    // reachable callable descendant when the body itself is evaluated directly
+    // (namespace descent) — the lazy self-return above never walks the body, so
+    // resolve just the reference-import lane. No-op unless the body carries one.
+    if (context !== undefined) {
+      const resolved = this.resolveBodyReferenceImports(context);
+      if (isThenable(resolved)) {
+        return (resolved as Promise<Rules>).then(() => this);
+      }
+    }
     return this;
   }
 
-  override resolve(_context: Context): this {
-    return this.evalNode();
+  override resolve(context: Context): MaybePromise<this> {
+    return this.evalNode(context);
   }
 
   // override async evalNode(context: Context): Promise<Rules | Expression> {
@@ -364,7 +402,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   //   const { name, args, value } = this
   //   const nm = name.value
   //   if (context.depth === 0) {
-  //     out.add(`export let ${nm}`, this.location)
+  //     out.add(`export let ${nm}`, sourceSpanOf(this))
   //     context.exports.add(nm)
   //   } else {
   //     if (context.depth !== 1) {

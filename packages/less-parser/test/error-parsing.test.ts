@@ -3,8 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Parser } from '../src/index.js';
 import { invalidLess, invalidCSSOutput, notSameSerialized } from '@jesscss/shared';
+import { resolveLessTestDataRoot } from './test-data.js';
 
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 const lessParser = new Parser();
 
 const skippedErrors = [
@@ -31,7 +32,6 @@ const skippedErrors = [
    * Currently tolerated by parser; should become a hard parse error again.
    * Tracked as a less-parser grammar TODO.
    */
-  'tests-error/parse/mixed-mixin-definition-args-1.less',
   'tests-error/parse/mixins-guards-cond-expected.less'
 ];
 
@@ -47,8 +47,7 @@ describe('should throw parsing errors', () => {
     .forEach((file) => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file));
-        const { lexerResult, errors } = lessParser.parse(result.toString());
-        expect(lexerResult.errors.length).toBe(0);
+        const { errors } = lessParser.parse(result.toString());
         expect(errors.length).toBe(1);
       });
     });

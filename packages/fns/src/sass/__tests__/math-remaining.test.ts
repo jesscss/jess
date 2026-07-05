@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { Dimension, Context, Quoted, Any } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 import percentage from '../percentage.js';
@@ -64,7 +65,7 @@ describe('Sass remaining math functions', () => {
 
     it('changes unit when second argument provided', () => {
       const number = new Dimension({ number: 10, unit: 'px' });
-      const newUnit = new Any('em', 'keyword');
+      const newUnit = new Any('em', { role: 'keyword' });
       const result = unit(number, newUnit);
       expect(result).toBeInstanceOf(Dimension);
       expect((result as Dimension).number).toBe(10);
@@ -73,7 +74,7 @@ describe('Sass remaining math functions', () => {
 
     it('preserves number when changing unit', () => {
       const number = new Dimension({ number: 20, unit: 'px' });
-      const newUnit = new Any('rem', 'keyword');
+      const newUnit = new Any('rem', { role: 'keyword' });
       const result = unit(number, newUnit);
       expect((result as Dimension).number).toBe(20);
       expect((result as Dimension).unit).toBe('rem');

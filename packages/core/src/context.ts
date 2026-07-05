@@ -5,11 +5,13 @@ import type {
   ImportOptions,
   Node,
   Any,
+  AtRuleStatement,
   Selector
 } from './tree/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
+import type { StylesConfig } from './types.js';
 import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -21,6 +23,7 @@ import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
+import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
@@ -52,7 +55,6 @@ export interface ContextOptions {
    * generate a separate module for calculated CSS variables.
    */
   dynamic?: boolean;
-  collapseNesting?: boolean;
 
   mathMode?: MathMode;
   unitMode?: UnitMode;
@@ -94,6 +96,9 @@ export interface ContextOptions {
    */
   breakOnError?: boolean;
 
+  /** Output options — mirrors StylesConfig['output']; overrides any config-file setting. */
+  output?: StylesConfig['output'];
+
   /**
    * Lazily supplies an importer plugin after path resolution proves a module
    * extension needs one. This keeps heavyweight optional runtimes out of
@@ -105,13 +110,6 @@ export interface ContextOptions {
 export interface TreeContextOptions extends ContextOptions {
   inlineJavaScript?: boolean;
 
-  /**
-   * For instances where a new tree needs to inherit from scope
-   * (like Less / SCSS `@import` rule)
-   *
-   * @todo - remove?
-   */
-  parentScope?: Rules;
   scope?: Rules;
 
   isModule?: boolean;
@@ -253,7 +251,7 @@ export class Context {
    * A feature ported from Less - we suppress any `@charset`
    * after the first one.
    */
-  currentCharset?: Any;
+  currentCharset?: Any | AtRuleStatement;
   /** Track whether charset has been emitted during toString to avoid duplicates */
   charsetEmitted?: boolean;
 
@@ -312,6 +310,15 @@ export class Context {
   ruleCounter = 1;
 
   selectorBits = new BitSetLibrary<string>();
+
+  /**
+   * Selector key-set analysis (keySet / visibleKeySet / requiredKeySet), computed
+   * off the selector nodes. Scoped to this Context's bit library, so its cache and
+   * interned keys live and die with the compilation — no cross-run leak.
+   */
+  get selectorAnalysis(): SelectorAnalysis {
+    return selectorAnalysisFor(this.selectorBits);
+  }
 
   /** Rules depth, used to figure out source order */
   depth = -1;
@@ -437,24 +444,6 @@ export class Context {
   parenFrames: boolean[] = [];
 
   /**
-   * Keys of @let variables --
-   * We need this b/c we need to generate code
-   * for over-riding in the exported function.
-   *
-   * @todo - remove?
-   */
-  private _exports: Set<string> | undefined;
-  get exports(): Set<string> {
-    return (this._exports ??= new Set());
-  }
-
-  /**
-   * currently generating a runtime module or not
-   * @todo - remove in favor of ToModuleVisitor?
-   */
-  // isRuntime: boolean
-
-  /**
    * In a custom declaration's value. All nodes should
    * be preserved as-is and not evaluated, except for
    * $() expressions.
@@ -483,6 +472,9 @@ export class Context {
     }
     if (opts.bubbleRootAtRules !== undefined) {
       this._bubbleRootAtRules = opts.bubbleRootAtRules;
+    }
+    if (opts.output?.compress !== undefined) {
+      this.printState.compress = opts.output.compress;
     }
   }
 
@@ -650,7 +642,7 @@ export class Context {
     const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
     const source = await sourceGetter.getSource!(resolvedPath);
-    const parseResult = plugin.safeParse!(resolvedPath, source);
+    const parseResult = plugin.safeParse!(resolvedPath, source, { importOptions });
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
@@ -707,6 +699,20 @@ export class Context {
    */
   async resolveImportPath(importPath: string) {
     return this._getPath(importPath);
+  }
+
+  /**
+   * Read a file's raw bytes, resolving the path through the same plugin file
+   * manager the import subsystem uses (`_getPath`: expand → resolve → locate,
+   * honoring search paths). Used by file-reading functions like `data-uri()`
+   * and `image-size()` so they never touch raw `fs` for path resolution.
+   *
+   * A `#fragment` or `?query` suffix is stripped before resolution.
+   */
+  async readBinary(importPath: string): Promise<Buffer> {
+    const cleanPath = importPath.split(/[?#]/)[0]!;
+    const { resolvedPath } = await this._getPath(cleanPath);
+    return readFile(resolvedPath);
   }
 
   /**

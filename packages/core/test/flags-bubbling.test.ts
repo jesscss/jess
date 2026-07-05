@@ -32,14 +32,14 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') }),
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, true, false); // F_STATIC, not F_MAY_ASYNC
     });
 
@@ -47,14 +47,14 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: DEFAULT_VARIABLE }),
             decl({ name: 'background', value: any('blue') })
-          ])
+          ]
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC
     });
 
@@ -62,15 +62,15 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') }),
             decl({ name: 'background', value: DEFAULT_VARIABLE }),
             decl({ name: 'width', value: op([num(10), '+', num(5)]) })
-          ])
+          ]
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC (due to variable)
     });
   });
@@ -80,43 +80,43 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: DEFAULT_VARIABLE })
-          ])
+          ]
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, false, true); // F_MAY_ASYNC
     });
 
     test('mayAsync bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'color', value: DEFAULT_VARIABLE })])
+        rules: [decl({ name: 'color', value: DEFAULT_VARIABLE })]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
       // All levels should bubble up mayAsync
       expectFlags(tree, false, true);
-      expectFlags(tree.value[0]! as Ruleset, false, true);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(tree.rules[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
     });
 
@@ -124,13 +124,13 @@ describe('Flag bubbling', () => {
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.a')])]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })
-          ])
+          ]
         })
       ]);
 
-      const rulesetNode = tree.value[0]! as Ruleset;
+      const rulesetNode = tree.rules[0]! as Ruleset;
       expectFlags(rulesetNode, false, true); // F_MAY_ASYNC
     });
   });
@@ -139,34 +139,34 @@ describe('Flag bubbling', () => {
     test('variable reference bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'color', value: list([any('red'), DEFAULT_VARIABLE, any('blue')]) })])
+        rules: [decl({ name: 'color', value: list([any('red'), DEFAULT_VARIABLE, any('blue')]) })]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
       // All levels should bubble up mayAsync
       expectFlags(tree, false, true);
-      expectFlags(tree.value[0]! as Ruleset, false, true);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(tree.rules[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
 
       // Get the deepest nodes to verify specific types
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
+      const declaration = innerRuleset.rules[0]! as Declaration;
       const listNode = declaration.value as List;
 
       // List should have both flags (non-static + mayAsync)
@@ -176,34 +176,34 @@ describe('Flag bubbling', () => {
     test('operation bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'width', value: op([num(10), '+', num(5)]) })])
+        rules: [decl({ name: 'width', value: op([num(10), '+', num(5)]) })]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
       // All levels should bubble up non-static
       expectFlags(tree, false, false);
-      expectFlags(tree.value[0]! as Ruleset, false, false);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, false);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, false);
+      expectFlags(tree.rules[0]! as Ruleset, false, false);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, false, false);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, false, false);
       expectFlags(innerRuleset, false, false);
 
       // Get the deepest nodes to verify specific types
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
+      const declaration = innerRuleset.rules[0]! as Declaration;
       const operation = declaration.value as Operation;
 
       // Operation should have non-static
@@ -213,34 +213,34 @@ describe('Flag bubbling', () => {
     test('function call bubbles through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })])
+        rules: [decl({ name: 'color', value: call({ name: 'rgb', args: list([num(255), num(0), num(0)]) }) })]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
       // All levels should bubble up non-static and mayAsync
       expectFlags(tree, false, true);
-      expectFlags(tree.value[0]! as Ruleset, false, true);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, false, true);
+      expectFlags(tree.rules[0]! as Ruleset, false, true);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, false, true);
       expectFlags(innerRuleset, false, true);
 
       // Get the deepest nodes to verify specific types
-      const declaration = innerRuleset.value.rules.value[0]! as Declaration;
+      const declaration = innerRuleset.rules[0]! as Declaration;
       const callNode = declaration.value as Call;
 
       // Call should have both flags
@@ -250,38 +250,38 @@ describe('Flag bubbling', () => {
     test('static content maintains clean state through multiple levels', () => {
       const innerRuleset = ruleset({
         selector: sellist([sel([el('.inner')])]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') }),
           decl({ name: 'background', value: any('blue') })
-        ])
+        ]
       });
       const tree = rules([
         ruleset({
           selector: sellist([sel([el('.level1')])]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([sel([el('.level2')])]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sellist([sel([el('.level3')])]),
-                  rules: rules([innerRuleset])
+                  rules: [innerRuleset]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
       // All levels should remain static
       expectFlags(tree, true, false);
-      expectFlags(tree.value[0]! as Ruleset, true, false);
-      expectFlags((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, true, false);
-      expectFlags(((tree.value[0]! as Ruleset).value.rules.value[0]! as Ruleset).value.rules.value[0]! as Ruleset, true, false);
+      expectFlags(tree.rules[0]! as Ruleset, true, false);
+      expectFlags((tree.rules[0]! as Ruleset).rules[0]! as Ruleset, true, false);
+      expectFlags(((tree.rules[0]! as Ruleset).rules[0]! as Ruleset).rules[0]! as Ruleset, true, false);
       expectFlags(innerRuleset, true, false);
 
       // Get the deepest nodes to verify specific types
-      const declaration1 = innerRuleset.value.rules.value[0]! as Declaration;
-      const declaration2 = innerRuleset.value.rules.value[1]! as Declaration;
+      const declaration1 = innerRuleset.rules[0]! as Declaration;
+      const declaration2 = innerRuleset.rules[1]! as Declaration;
 
       // Declarations should be static
       expectFlags(declaration1, true, false);

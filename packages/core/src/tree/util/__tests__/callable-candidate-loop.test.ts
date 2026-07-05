@@ -3,15 +3,12 @@ import { Context } from '../../../context.js';
 import { any, decl, el, list, mixin, ref, rules, ruleset, vardecl } from '../../index.js';
 import {
   callableRulesEntry,
-  getCallableEntryGuard,
-  getCallableEntryName,
-  getCallableEntryParams,
-  getMixinEntryRules
+  type CallableEntry
 } from '../callable-entry.js';
+import type { CallableParamMatch } from '../callable-param-match.js';
 import {
   createCallableOuterRules,
-  createOwnedCallableRulesSurface,
-  createUnlockedCallableRulesSurface
+  createCallableRulesSurface
 } from '../callable-surface.js';
 import { createCallableDefaultState } from '../callable-default-guard.js';
 import { createCallableOutputState } from '../callable-output.js';
@@ -25,9 +22,9 @@ describe('callable candidate loop helper', () => {
     const callerRules = rules([]);
     const candidate = ruleset({
       selector: el('.candidate'),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
     const root = rules([candidate, callerRules]);
     context.root = root;
@@ -47,21 +44,15 @@ describe('callable candidate loop helper', () => {
       debugCaller: () => '<test>',
       specialCaseCallSiteRules: callerRules,
       ordinaryCallSiteRules: callerRules,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
-      createOuterRules: createCallableOuterRules,
-      isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules,
-      getCallableEntryName,
-      getCallableEntryParams,
-      getCallableEntryGuard
+      createOuterRules: createCallableOuterRules
     });
 
-    expect(outputState.sourceRules).toBe(candidate.rules);
+    expect(outputState.sourceRules).toBe(candidate);
     expect(outputState.outputRules).toHaveLength(1);
     expect(getMixinOutputPlacementRecord(outputState.outputRules[0]!)).toEqual({
-      source: candidate.rules,
+      source: candidate,
       output: outputState.outputRules[0]
     });
   });
@@ -69,11 +60,11 @@ describe('callable candidate loop helper', () => {
   it('handles ordinary callable entries through candidate setup and execution', async () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-      ])
+      ]
     });
     const definitionParent = rules([candidate]);
     const callerRules = rules([]);
@@ -88,7 +79,7 @@ describe('callable candidate loop helper', () => {
     });
     expect(bindingInfo).toBeDefined();
 
-    const resolvedParamBindings = new WeakMap();
+    const resolvedParamBindings = new WeakMap<CallableEntry, CallableParamMatch>();
     resolvedParamBindings.set(candidate, bindingInfo!);
     const outputState = createCallableOutputState();
     await executeCallableCandidateLoop({
@@ -104,18 +95,12 @@ describe('callable candidate loop helper', () => {
       debugCaller: () => '<test>',
       specialCaseCallSiteRules: callerRules,
       ordinaryCallSiteRules: callerRules,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
-      createOuterRules: createCallableOuterRules,
-      isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules,
-      getCallableEntryName,
-      getCallableEntryParams,
-      getCallableEntryGuard
+      createOuterRules: createCallableOuterRules
     });
 
-    expect(outputState.sourceRules).toBe(candidate.rules);
+    expect(outputState.sourceRules).toBe(candidate);
     expect(outputState.outputRules).toHaveLength(1);
     expect(outputState.outputRules[0]?.toString()).toContain('color: blue;');
   });
@@ -145,15 +130,9 @@ describe('callable candidate loop helper', () => {
       debugCaller: () => '<test>',
       specialCaseCallSiteRules: callerRules,
       ordinaryCallSiteRules: callerRules,
-      createOwnedRules: createOwnedCallableRulesSurface,
-      createUnlockedRules: createUnlockedCallableRulesSurface,
+      createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode,
-      createOuterRules: createCallableOuterRules,
-      isCallableEntry: entry => !('type' in entry && entry.type === 'Ruleset'),
-      getMixinEntryRules,
-      getCallableEntryName,
-      getCallableEntryParams,
-      getCallableEntryGuard
+      createOuterRules: createCallableOuterRules
     });
 
     expect(outputState.outputRules).toHaveLength(1);

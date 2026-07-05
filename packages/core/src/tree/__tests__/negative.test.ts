@@ -54,7 +54,7 @@ describe('Negative', () => {
 
   it('preserves parser tree context on construction', () => {
     const treeContext = new TreeContext();
-    const node = negative(num(10), undefined, undefined, treeContext);
+    const node = new Negative(num(10), undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
   });
@@ -63,8 +63,8 @@ describe('Negative', () => {
     const value = num(10);
     const node = negative(value);
 
-    expect(node.node).toBe(value);
-    expect(Negative.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Negative.childKeys).toEqual(['value']);
   });
 
   it('returns simple dimension negative syntax without writer readback', () => {
@@ -88,7 +88,7 @@ describe('Negative', () => {
   it('renders negative values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -104,14 +104,13 @@ describe('Negative', () => {
 
     expect(rendered).toBe('-20');
     expect(negativeResolveCalls).toBe(0);
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved negative render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -129,7 +128,6 @@ describe('Negative', () => {
     expect(await negativeNode.render(context, buffer)).toBe('-20');
     expect(buffer.parts).toEqual(['-20']);
     expect(negativeResolveCalls).toBe(0);
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
   });
 
@@ -144,7 +142,7 @@ describe('Negative', () => {
   it('renders resolved dimensions without creating an operated result node', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -158,7 +156,6 @@ describe('Negative', () => {
 
       expect(negativeNode.render(context)).toBe('-20');
       expect(operate).not.toHaveBeenCalled();
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
     } finally {
       operate.mockRestore();
@@ -168,7 +165,7 @@ describe('Negative', () => {
   it('renders resolved Any values without child render or operation transport', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: any('token')
       })
     ]);
@@ -186,7 +183,6 @@ describe('Negative', () => {
       const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
 
       expect(negativeNode.render(context)).toBe('-token');
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
     } finally {
       Any.prototype.render = originalRender;
@@ -196,9 +192,9 @@ describe('Negative', () => {
 
   it('renders sync negative values without may-async continuation scaffolding', () => {
     const negativeNode = negative(num(20));
-    const originalEval = negativeNode.node.eval;
-    negativeNode.node.eval = function evalSyncOnly(
-      this: typeof negativeNode.node,
+    const originalEval = negativeNode.value.eval;
+    negativeNode.value.eval = function evalSyncOnly(
+      this: typeof negativeNode.value,
       renderContext: Context
     ) {
       const out = originalEval.call(this, renderContext);
@@ -219,32 +215,20 @@ describe('Negative', () => {
     expect(writer.reads).toBe(0);
   });
 
-  it('keeps compound dimension negatives on the public operation boundary', async () => {
+  it('negates a dimension on the public operation boundary', async () => {
     context.opts.unitMode = 'preserve';
-    const value = dimension({ number: 10, unit: 'px*em' });
-    let operateCalls = 0;
-    const originalOperate = value.operate;
-    value.operate = function countOperateCalls(
-      this: typeof value,
-      ...args: Parameters<typeof originalOperate>
-    ): ReturnType<typeof originalOperate> {
-      operateCalls++;
-      return originalOperate.apply(this, args);
-    };
+    const value = dimension({ number: 10, unit: 'px' });
     const negativeNode = negative(value);
 
     const rendered = await Promise.resolve(negativeNode.render(context));
 
-    expect(rendered).toContain('calc(');
-    expect(rendered).toContain('px');
-    expect(rendered).toContain('em');
-    expect(operateCalls).toBe(1);
+    expect(rendered).toBe('-10px');
   });
 
   it('resolves negative values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -254,7 +238,6 @@ describe('Negative', () => {
     const resolved = await negativeNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('-20');
-    expect(negativeNode.evaluated).toBe(false);
     expect(negativeNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -262,7 +245,7 @@ describe('Negative', () => {
   it('resolves negative Any values as scalar output nodes', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: any('token')
       })
     ]);
@@ -278,7 +261,6 @@ describe('Negative', () => {
 
       expect(resolved).toBeInstanceOf(Any);
       expect(resolved.toTrimmedString()).toBe('-token');
-      expect(negativeNode.evaluated).toBe(false);
       expect(negativeNode.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     } finally {

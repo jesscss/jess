@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
-import type { IToken } from 'chevrotain';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
@@ -54,17 +54,13 @@ describe('PseudoSelector', () => {
   });
 
   it('does not emit source trivia inside generated selector arguments', () => {
-    const newline: IToken[] = [{
-      image: '\n  ',
-      tokenType: { name: 'WS' } as IToken['tokenType']
-    }];
     const trivia = createTriviaMap({
-      before: new Map([[10, newline]]),
+      before: new Map([[10, makeTrivia('\n  ', 0, 3)]]),
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
     const inner = sel([
-      el('.a', undefined, [10, 1, 11, 12, 1, 13], treeContext),
+      el('.a', undefined, { start: 10, end: 12 }, treeContext),
       co(' '),
       el('.b')
     ]);
@@ -137,7 +133,7 @@ describe('PseudoSelector', () => {
   it('renders resolved pseudo selector values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -150,14 +146,13 @@ describe('PseudoSelector', () => {
     const rendered = pseudoNode.render(context);
 
     expect(rendered).toBe(':is(.foo, .bar)');
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved pseudo selector output into segmented buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -182,14 +177,13 @@ describe('PseudoSelector', () => {
     expect(rendered).toBe(':is(.foo, .bar)');
     expect(buffer.segments).toEqual([':is(.foo, .bar)']);
     expect(resolveCalls).toBe(0);
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
   });
 
   it('resolves pseudo selector values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -202,7 +196,6 @@ describe('PseudoSelector', () => {
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe(':is(.foo, .bar)');
-    expect(pseudoNode.evaluated).toBe(false);
     expect(pseudoNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -210,7 +203,7 @@ describe('PseudoSelector', () => {
   it('keeps source pseudo selector values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -231,7 +224,7 @@ describe('PseudoSelector', () => {
   it('keeps generated pseudo selector placement output owned when arg evaluation changes', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([sel([el('.foo'), co(' '), el('.bar')])])
       })
     ]);
@@ -256,7 +249,7 @@ describe('PseudoSelector', () => {
   it('omits generated :is() wrappers for evaluated selector placement args', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: sel([el('.foo'), co(' '), el('.bar')])
       })
     ]);
@@ -274,8 +267,8 @@ describe('PseudoSelector', () => {
     expect(resolved).not.toBe(pseudoNode);
     expect(resolved.generated).toBe(true);
     expect(resolved.render(context)).toBe('.foo .bar');
-    expect(resolved.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
-    expect(resolved.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(keySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     expect(sourceArg?.parent).toBe(pseudoNode);
     expect(pseudoNode.toTrimmedString()).toBe(':is($capture-selector)');
   });
@@ -283,7 +276,7 @@ describe('PseudoSelector', () => {
   it('keeps generated pseudo placement state when cloned after selector evaluation', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: sel([el('.foo'), co(' '), el('.bar')])
       })
     ]);
@@ -308,7 +301,7 @@ describe('PseudoSelector', () => {
   it('keeps evaluated generated :is() keysets aligned with selector-list omission', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([sel([el('.foo'), co(' '), el('.bar')])])
       })
     ]);
@@ -323,15 +316,15 @@ describe('PseudoSelector', () => {
 
     expect(resolved).toBeInstanceOf(PseudoSelector);
     expect(resolved.render(context)).toBe('.foo .bar');
-    expect(resolved.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
-    expect(resolved.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(resolved.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(keySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(resolved).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
   });
 
   it('keeps nested generated pseudo placement text narrow without replacing selector metadata', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([sel([pseudo({
           name: ':unknown',
           arg: compound([el('.foo'), el('.bar')])
@@ -351,6 +344,6 @@ describe('PseudoSelector', () => {
     expect(resolved).toBeInstanceOf(PseudoSelector);
     expect(resolved.render(context)).toBe(':unknown(.foo.bar)');
     expect(sourceArg?.parent).toBe(pseudoNode);
-    expect(resolved.keySet.equals(context.selectorBits.getBitset([':unknown', '.foo', '.bar']))).toBe(true);
+    expect(keySetOf(resolved).equals(context.selectorBits.getBitset([':unknown', '.foo', '.bar']))).toBe(true);
   });
 });

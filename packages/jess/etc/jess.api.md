@@ -8,6 +8,7 @@ import { Context } from '@jesscss/core';
 import { Deprecation } from '@jesscss/core';
 import { ErrorDiagnostic } from '@jesscss/core';
 import { Rules } from '@jesscss/core';
+import { RulesOptions } from '@jesscss/core';
 import { StylesConfig } from 'styles-config';
 import { WarningDiagnostic } from '@jesscss/core';
 
@@ -16,7 +17,9 @@ export class Compiler {
     constructor(opts?: ConfigOptions);
     // @internal (undocumented)
     compile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-        tree: Rules;
+        tree: Rules<never, RulesOptions & Record<string, any> & {
+            semi?: boolean;
+        }>;
         context: Context;
     }>;
     // @internal
@@ -67,11 +70,11 @@ export class Compiler {
 
 // @public (undocumented)
 export type ConfigOptions = StylesConfig & {
-    outputFile?: string; /** Suppress warnings (similar to Less's suppressWarnings option) */
-    suppressWarnings?: boolean; /** Break on first error (stop processing after first error). Default: true */
-    breakOnError?: boolean; /** Show detailed reason and fix in diagnostics. Default: false */
-    verbose?: boolean; /** Deprecation warnings of these types will cause an error to be thrown */
-    fatalDeprecations?: Iterable<Deprecation>; /** Whether to limit repetition of deprecation warnings (max 5). Default: true */
+    outputFile?: string;
+    suppressWarnings?: boolean;
+    breakOnError?: boolean;
+    verbose?: boolean;
+    fatalDeprecations?: Iterable<Deprecation>;
     limitDeprecationRepetition?: boolean;
 };
 

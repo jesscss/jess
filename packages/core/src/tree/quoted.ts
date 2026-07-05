@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
@@ -27,6 +28,8 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   static override childKeys = ['value'] as const;
 
+  readonly value: string | Any | Interpolated;
+
   readonly quote: '"' | '\'' | undefined;
   readonly escaped: boolean;
 
@@ -34,7 +37,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return new Quoted(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
@@ -65,6 +68,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.quote = options?.quote;
     this.escaped = !!options?.escaped;
@@ -114,7 +119,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     const out = this.renderQuotedSyntax(value, prepared);
     return buffer
       ? writeRenderText(buffer, out)

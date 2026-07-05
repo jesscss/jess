@@ -19,6 +19,8 @@ import {
 } from './node.js';
 import { TreeContext } from '../context.js';
 import { compare } from './util/compare.js';
+import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 
 export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC, F_HAS_NODE_CHILD };
 export { N } from './node-type.js';
@@ -60,7 +62,6 @@ export * from './range.js';
 export * from './ruleset.js';
 export * from './rules.js';
 export * from './stylesheet.js';
-export * from './rules-raw.js';
 export * from './collection.js';
 export * from './selector.js';
 export * from './selector-attr.js';
@@ -87,9 +88,10 @@ export * from './url.js';
 import { selectorCompare } from './util/compare.js';
 
 function isSelectorLike(value: unknown): value is Selector {
-  return !!value
-    && typeof value === 'object'
-    && (value as { isSelector?: unknown }).isSelector === true;
+  // Realm-safe: the nodeType bitmask is a prototype value keyed by string type,
+  // so it survives the same-file-via-different-specifier divergence that makes a
+  // bare `instanceof Selector` unreliable here (see compare patch below).
+  return isNode(value, N.Selector);
 }
 
 /** Patch Selector to avoid circularity */

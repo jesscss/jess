@@ -1,25 +1,14 @@
 import { type Context } from '../context.js';
 import { defineType, F_VISIBLE, Node, type LocationInfo } from './node.js';
-import type { Any, AnyRole } from './any.js';
+import type { AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
 import { type List, list } from './list.js';
-import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { callableRulesEntry } from './util/callable-entry.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
 import { findPropertyDeclarationOccurrence } from './util/direct-rules-lookup.js';
-
-function getWriterTextSincePosition(writer: OutputWriter, position: number): string {
-  const chunks = Reflect.get(writer as object, 'chunks');
-  if (!Array.isArray(chunks) || position >= chunks.length) {
-    return '';
-  }
-  let out = '';
-  for (let i = position; i < chunks.length; i++) {
-    out += chunks[i] ?? '';
-  }
-  return out;
-}
+import { renderInvisibleEffect, type RenderBuffer } from './util/render-buffer.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -32,7 +21,7 @@ function getWriterTextSincePosition(writer: OutputWriter, position: number): str
  * - Then look up a declaration by name (default: `return`) and return its value.
  */
 export type FuncValue<Name extends AnyRole = 'name'> = {
-  name?: Any<Name> | Interpolated<Name>;
+  name?: string | Interpolated<Name>;
   params?: List<Node>;
   body: Rules;
 };
@@ -82,10 +71,12 @@ export class Func extends Node<FuncValue, FuncOptions> {
 
     w.add('$function', this);
     w.add(' ');
-    if (name) {
-      name.writeSyntax(options);
-    } else {
+    if (name === undefined) {
       w.add('@', this);
+    } else if (typeof name === 'string') {
+      w.add(name, this);
+    } else {
+      name.writeSyntax(options);
     }
     w.add('(');
     params?.writeSyntax(options);
@@ -93,12 +84,20 @@ export class Func extends Node<FuncValue, FuncOptions> {
     body.writeBraced(options);
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
     const w = options.writer!;
     const position = w.position();
     this.writeSyntax(options);
-    return getWriterTextSincePosition(w, position);
+    return w.getSince(position);
+  }
+
+  // Static-by-type invisibility: a function definition is never CSS output. The
+  // no-op render keeps the base render() gate off the common hot path (D.1 §2).
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
   }
 
   override resolve(_context: Context): this {
@@ -135,7 +134,11 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    return await decl.value.eval(context);
+    const declVal = decl.value;
+    if (!(declVal instanceof Node)) {
+      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} return value is not a Node`);
+    }
+    return await declVal.eval(context);
   }
 }
 

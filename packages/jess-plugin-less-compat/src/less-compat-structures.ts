@@ -29,6 +29,9 @@ export class LessVisitor {
     if (!node) {
       return node;
     }
+    if (typeof node !== 'object') {
+      return node;
+    }
 
     if (!this.visitor) {
       return node;

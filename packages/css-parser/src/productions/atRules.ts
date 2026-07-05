@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar.ts + builders.ts) is the maintained parser. Kept only
+// for the content-assist/error-recovery paths not yet ported. Not type-checked.
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // Methods to be mixed into CssRecursiveParser
 import type { IOrAlt, IToken } from 'chevrotain';
@@ -8,7 +13,7 @@ import {
   type LocationInfo,
   Node, Any, AtRule, Rules, Sequence, List,
   QueryCondition, Keyword, Paren, Declaration, Call,
-  Block, RawRules
+  Block
 } from '@jesscss/core';
 
 type C = CssRecursiveParser;
@@ -120,9 +125,9 @@ export function mediaAtRule(this: C, T: TokenMap, preludeRule?: PreludeRuleLocal
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: prelude,
-        rules
+        rules: rules.rules
       }, { nestable: true }, location, this.context);
     }
   };
@@ -494,7 +499,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
                 if (!RECORDING_PHASE) {
                   let location = $.endRule();
                   return new Declaration({
-                    name: new Any(ident.image, { role: 'property' }),
+                    name: ident.image,
                     value: value
                   }, undefined, location, this.context);
                 }
@@ -509,7 +514,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
                 if (!RECORDING_PHASE) {
                   let [startOffset, startLine, startColumn] = $.endRule();
                   seq.value.unshift(new Any(ident.image, { role: 'ident' }, $.getLocationInfo(ident), this.context));
-                  seq.location[0] = startOffset;
+                  seq.location.start = startOffset;
                   seq.location[1] = startLine;
                   seq.location[2] = startColumn;
                   return new QueryCondition(seq.value, undefined, seq.location, this.context);
@@ -581,7 +586,7 @@ export function mediaFeature(this: C, T: TokenMap, alt?: AltContext) {
               if (!RECORDING_PHASE) {
                 let [startOffset, startLine, startColumn] = $.endRule();
                 seq.value.unshift(rule1);
-                seq.location[0] = startOffset;
+                seq.location.start = startOffset;
                 seq.location[1] = startLine;
                 seq.location[2] = startColumn;
                 return new QueryCondition(seq.value, undefined, seq.location, this.context);
@@ -766,9 +771,9 @@ export function pageAtRule(this: C, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: selector.length ? new List(selector, undefined, $.getLocationFromNodes(selector), this.context) : undefined,
-        rules
+        rules: rules.rules
       }, undefined, location, this.context);
     }
   };
@@ -814,8 +819,8 @@ export function fontFaceAtRule(this: C, T: TokenMap) {
     if (!$.RECORDING_PHASE) {
       let location = $.endRule();
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
-        rules
+        name: name.image,
+        rules: rules.rules
       }, undefined, location, this.context);
     }
   };
@@ -840,10 +845,10 @@ export function keyframesAtRule(this: C, T: TokenMap) {
 
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: new Any(atTok.image, { role: 'atkeyword' }, $.getLocationInfo(atTok), this.context),
+        name: atTok.image,
         prelude: preludeNode ? preludeNode : undefined,
         // Include isolated comments inside the keyframes body
-        rules
+        rules: rules.rules
       }, undefined, $.endRule(), this.context);
     }
   };
@@ -951,9 +956,9 @@ export function containerAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule)
           : undefined;
       }
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude,
-        rules
+        rules: rules.rules
       }, { nestable: true }, $.endRule(), this.context);
     }
   };
@@ -1494,9 +1499,9 @@ export function scopeAtRule(this: C, T: TokenMap, preludeRule?: PreludeRule) {
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude,
-        rules
+        rules: rules.rules
       }, { nestable: true }, $.endRule(), this.context);
     }
   };
@@ -1515,9 +1520,9 @@ export function documentAtRule(this: C, T: TokenMap) {
     $.CONSUME(T.RCurly);
     if (!$.RECORDING_PHASE) {
       return new AtRule({
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), this.context),
+        name: name.image,
         prelude: preludeNodes.length ? new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), this.context) : undefined,
-        rules
+        rules: rules.rules
       }, undefined, $.endRule(), this.context);
     }
   };

@@ -1,3 +1,8 @@
+> ⚠️ **The active cleanup queue is now [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).** The
+> per-focus trackers this doc references (SINGLE_FRAME_PLAN, NODE-REWRITE-TRACKER,
+> PERFORMANCE-HANDOFF, BINDING-LOOKUP-REMAINING) were consolidated there; their history
+> lives in `docs/archive/`. This doc is kept for its routing/guardrail context.
+
 # Core Architecture Handoff
 
 This is the stable router for Jess core architecture work. Keep it short: it
@@ -102,6 +107,174 @@ fixture gate. The current hook path has previously looped, so commit and push
 with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Latest pass: `defineType` Reflect.construct removal (ponytail B5 slice).
+- Verdict: accepted as an indirection cut on the factory construction path.
+  `Reflect.construct(Clazz, args)` with default newTarget is semantically
+  identical to direct `new`; the Reflect form existed only to satisfy the
+  `AbstractClass<Node>` compile-time constraint, now handled by one typed cast
+  at factory-definition time. No construction semantics changed (invariant 7
+  untouched). Full construction-path unification and `Node.create` deletion
+  are recorded as deferred in the audit checklist: raw-new-shares vs
+  factory-parents is load-bearing for eval-time sharing.
+- Architecture surface: none changed — one factory helper's construction call.
+- Separation/duplication: none added; one Reflect indirection deleted.
+- Cumulative node weight: unchanged (same constructions, one fewer builtin call
+  per factory construction).
+- New traversal: none.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: unchanged; the factory signature is identical.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [node construction] — the direct `new` replacing
+  `Reflect.construct` in `defineType`; same semantics, prosecuted here.
+  [generic defensive read]: the one typed cast to a concrete constructor at
+  factory-definition time replaces the runtime Reflect indirection; it is a
+  compile-time-only assertion, not a runtime defensive read.
+- Evidence: zero `Reflect.construct` remains in core src; core build; suite
+  failure set identical to post-E2 state. No speed claim (parse-path change;
+  benchmark harness still unbuildable in this worktree).
+
+- Latest pass: `_createMinimalNil` deletion (ponytail E2) + B4 patch verdict.
+- Verdict: accepted as shape-hazard deletion. The fallback mutated
+  type/shortType/nodeType/value onto a raw abstract `Node` instance (instant
+  hidden-class divergence); every runtime path loads `node.js` before
+  constructing nodes, so `this.nil()` is always patched. Comment→Nil placement
+  paths in node-base and cloning.ts now call it directly. B4 investigation
+  verdict recorded: both prototype patch sites are load-order-necessary (module
+  graph proof in the audit doc), so they stay as documented seams.
+- New traversal / node / render / metadata / error control / allocations: none.
+- Evidence: core build; suite failure set identical to post-B2 state.
+
+- Latest pass: legacy `childKeys === undefined` regime deletion (ponytail B2).
+- Verdict: accepted as machinery deletion. Inventory proved every node class
+  resolves a `childKeys` (Collection/RawRules/Stylesheet inherit `Rules`'s;
+  SimpleSelector/AttributeSelector inherit the selector base's `['value']`, the
+  latter documented as a deliberate record-value exception). The base default is
+  now `null` (typed `readonly string[] | null`) and `parentChildren` lost its
+  legacy `.value`-introspection arm. The plain-object recursion in the leaf/
+  entry walkers stays: it serves object-shaped childKey fields, not the legacy
+  regime. External `childKeys` readers all use `?? []` (verified) and no
+  package outside core subclasses `Node`.
+- New traversal / node / render / metadata / error control / allocations: none.
+- Evidence: core build; core suite failure set identical to the post-C2/C5
+  state; repo-wide grep for `extends Node` and `childKeys` outside core.
+
+- Latest pass: certain-dead deletions (ponytail audit C2/C5 slice).
+- Verdict: accepted as pure machinery deletion, grep-proven zero consumers per
+  item. Deleted: `use-webpack-resolver.ts` and `debug-log.ts` (whole files, no
+  importers); `IS_PROXY` symbol, `NodeMapArray`, `GeneratedNodeValue`,
+  `Mutable` types, the commented `collectRoots`/`toModule` blocks
+  (node-base.ts); the `_exports`/`exports` Set, `parentScope` option, and
+  `isRuntime` comment (context.ts); `clamp`, `lengthToPx`, `timeToMs`,
+  `frequencyToHz`, `angleToRadians` conversion plugins (test-only consumers —
+  tests deleted with them). Kept after grep proved live: `ABORT`, `REMOVE`,
+  `Node.create`, `Primitive`/`PrimitiveOrFunc` (referenced by the legacy value
+  regime until the childKeys migration completes).
+- New traversal / node / render / metadata / error control / allocations:
+  none — deletions only.
+- Evidence: per-identifier repo-wide grep (excluding build output), core
+  build, core suite failure set vs saved baseline, `git diff --check`.
+
+- Latest pass: explicit `@jesscss/core` export surface (ponytail audit A1/A2).
+- Verdict: accepted as an API-surface cut. `src/index.ts` no longer wildcard
+  re-exports internal util modules; `compare`, `cast`,
+  `find-extendable-locations`, and `collections` are fully internal (a
+  repo-wide import census found zero external consumers), and
+  context/logger/is-node/calculate/should-operate/print/trivia/list-like/
+  serialize-types/conversions are narrowed to the names the census proved
+  consumed. The tree barrel, plugin, jess-error, deprecation, define-function,
+  types, and visitor modules keep their module-level exports for now.
+- New traversal / node / render / metadata / error control: none — export
+  statements only.
+- Helper/API surface: shrunk. Names cut from the public barrel remain
+  importable only relatively inside core.
+- Evidence: census script over all consumer packages (145 unique imported
+  names); core build; consumer builds green for css/less/scss/jess-parser,
+  fns, style-resolver, patch-css, plugin-less, plugin-scss,
+  plugin-node-modules, plugin-less-compat; runtime export presence check for
+  every census name (only misses: `RuntimeFunction`, a type, still exported;
+  `getValues`, which does not exist in core at all — pre-existing
+  language-service breakage, flagged separately); `verify:package-exports`
+  passed; `verify:public-packages` fails only on packages whose builds are
+  already broken by the rolldown-plugin-dts/typescript-rc toolchain issue
+  (jess, plugin-js, rollup-plugin-jess, config); full core suite failure set
+  identical to the saved baseline.
+
+- Latest pass: denormalized `spanStart`/`spanEnd` offset fields on `Node`.
+- Verdict: accepted as a hot-read/object-avoidance slice under the ponytail core
+  audit (`docs/future/ponytail-core-audit.md` E6), not a measured performance
+  pass. `_location` is now a prototype accessor whose setter syncs two plain
+  number fields; all hot core location reads (`location[0]`/`location[3]` in
+  trivia/serialize/list/sequence/call/selector paths, `canReuseAsLeaf`,
+  `canReuseLeaf`, the Parséman `span` getter, base `toString`) read the fields
+  directly. Generated nodes no longer lazily allocate an empty `[]` tuple via
+  the `location` getter on serialization reads. The tuple is retained because
+  parser packages assign and mutate it post-construction; the parser-side pass
+  (spans in, tuple deleted) is queued in the audit doc.
+- New traversal: none.
+- Review-flagged allocations: none added. One baseline-failing test that
+  asserts inherit does not allocate empty location arrays now passes.
+- New node/materialization: none.
+- Render path: unchanged behavior; identical core test failure set vs the
+  pre-change baseline plus the one fixed test
+  (`cloning.test.ts` source-free inherit).
+- Helper/API surface: two public readonly-in-practice fields (`spanStart`,
+  `spanEnd`) on `Node`; no exports added.
+- Metadata mutations: `inherit` copies `_location`/span fields directly instead
+  of materializing the source's empty tuple through the `location` getter.
+- Routine error control: none added.
+- Allocation changes: deleted lazy `[]` materialization on hot reads; +2 inline
+  number fields per node until the parser-side tuple deletion lands.
+- Evidence: `pnpm --filter @jesscss/core build`, full core suite failure-set
+  diff vs saved baseline (identical minus one fixed test), `git diff --check`,
+  and `verify:aggressive-cutting-review` passed. No speed claim: the jess
+  benchmark harness does not currently build in this worktree (pre-existing
+  rolldown-plugin-dts/typescript-rc failure); run the ref-compare A/B when the
+  harness is repaired.
+
+- Latest pass: merge `feature/less-v5-alpha-readiness` into
+  `feature/scanner-first-parser-docs`.
+- Verdict: accepted as branch repair and history integration, not a measured
+  performance pass. The scanner-first experimental branch now carries the latest
+  alpha release/API scaffolding, parser proof files, binding/lookup commits,
+  and direct-field parser experiments instead of leaving completed work stranded
+  in the main checkout branch.
+- Architecture surface: the merge intentionally imports broad parser/core/API
+  surface so the branch is not split. This does not bless every surface as the
+  target architecture. Known follow-up surfaces include direct-field node value
+  cleanup, scanner-first AST shape cleanup, parser package shape review, and
+  binding/lookup consolidation.
+- Separation/duplication: the merge may temporarily preserve duplicate parser
+  proof paths and old/new node-field paths because losing completed commits was
+  worse than carrying them forward. Follow-up cleanup must delete duplicate
+  helpers, raw/progressive naming debt, and compatibility-style paths once tests
+  prove the smaller shape.
+- Cumulative node weight: not improved by this merge. It imports existing node
+  construction and materialization work so it can be reviewed in one branch.
+  The next parser/core slices must cut object creation instead of adding wrapper
+  objects or side maps.
+- New traversal: merge-carried traversal only. Review-flagged loops belong to
+  imported parser proof tests, binding lookup invalidation, selector/extend
+  matching, and existing node child iteration. No speed claim is made.
+- New node/materialization: merge-carried node construction only. The imported
+  parser proofs create existing AST nodes plus some known debt surfaces that
+  must be reshaped toward semantic fields and `childKeys`.
+- Render path: no new render strategy was chosen in conflict resolution. The
+  merge carries alpha render/eval changes forward for verification.
+- Helper/API surface: release/API scaffolding from alpha is kept. Parser and
+  core helper surfaces still need review against `packages/parser/docs`.
+- Metadata mutations: merge-carried source/location/adoption behavior only.
+  Offset-first scanner work remains the target for new parser paths.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [generator],
+  [node construction], [copy helper], [inherit/adopt/frozen],
+  [parent/source mutation], [generic defensive read], [side map/set],
+  [routine error control], and [materialized array/object] are all present in
+  the merge diff because this is a whole-branch integration, not a focused
+  cutting pass. Treat them as imported debt unless a subsequent focused slice
+  proves and cuts them.
+- Evidence: conflict markers were removed and `git diff --check` passed after
+  merge resolution. No performance claim is made.
 
 - Latest pass: scanner-first Less function-arg tightening and pattern params.
 - Verdict: accepted as a parse-coverage correction after review, not a

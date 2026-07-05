@@ -109,6 +109,11 @@ export type RuleContext = CssRuleContext & {
   atRulePreludeBareVariableAs?: 'index';
 };
 
+/**
+ * @deprecated LEGACY — Chevrotain-based Less parser engine (extends the deprecated
+ * CssRecursiveParser). Superseded by the functional macro grammar in ./grammar.ts.
+ * Kept only for benchmarking; TO BE DELETED once the functional parser fully lands.
+ */
 export class LessRecursiveParser extends CssRecursiveParser {
   declare T: TokenMap;
   looseMode: boolean;
@@ -244,7 +249,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
       }
       return super.processValueToken(token, ctx);
     } else if (tokenType === T['DefaultGuardFunc']) {
-      return new DefaultGuard(token.image, undefined, this.getLocationInfo(token), this.context);
+      return new DefaultGuard(token.image, undefined, this.getLocationInfo(token));
     } else if (
       tokenType.name === 'JavaScript'
       || (T['JavaScript'] && tokenMatcher(token, T['JavaScript']))

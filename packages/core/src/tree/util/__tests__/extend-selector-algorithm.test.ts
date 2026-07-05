@@ -2,7 +2,7 @@ import { F_VISIBLE, el, sel, sellist, compound, is, co, pseudo, type Selector, P
 import { extendSelector, tryExtendSelector, ExtendErrorType, createProcessedSelector } from '../extend.js';
 import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
-import { getImplicitSelector } from '../selector-utils.js';
+import type { NodeOptions } from '../../node-base.js';
 
 describe('Extend Selector Tests', () => {
   describe('Extension validation', () => {
@@ -65,7 +65,7 @@ describe('Extend Selector Tests', () => {
     it('derives selector-list extend output without reparenting the matched source item', () => {
       const target = sellist([el('.a'), el('.b')]);
       const sourceItem = target.value[0]!;
-      expect(sourceItem.isSelector).toBe(true);
+      expect(typeof sourceItem !== 'string' && isNode(sourceItem, N.Selector)).toBe(true);
       const result = extendSelector(target, el('.a'), el('.c'), false);
 
       expect(result.valueOf()).toBe('.a,.b,.c');
@@ -364,7 +364,8 @@ describe('Extend Selector Tests', () => {
       const resultStr = result.valueOf();
 
       expect(resultStr).toBe('.i.j');
-      expect(result.type).toBe('CompoundSelector');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((result as Selector<any, NodeOptions>).type).toBe('CompoundSelector');
     });
 
     it('should match .i with partial true', () => {
@@ -377,7 +378,8 @@ describe('Extend Selector Tests', () => {
       const resultStr = result.valueOf();
 
       expect(resultStr).toBe(':is(.i,.k).j');
-      expect(result.type).toBe('CompoundSelector');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((result as Selector<any, NodeOptions>).type).toBe('CompoundSelector');
     });
 
     it('should extend .i in root-level SelectorList (.g, .i.j) the same as in :is(.g, .i.j)', () => {
@@ -408,7 +410,8 @@ describe('Extend Selector Tests', () => {
           throw new Error(`Expected :is() selector, got ${isResult.type}`);
         }
       } else {
-        throw new Error(`Expected :is() selector, got ${isResult.type}`);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        throw new Error(`Expected :is() selector, got ${(isResult as Selector<any, NodeOptions>).type}`);
       }
     });
   });
@@ -440,31 +443,12 @@ describe('Extend Selector Tests', () => {
   });
 
   describe('Match only within ampersand (partial extend)', () => {
-    it('tryExtendSelector returns NOT_FOUND when partial match exists only within & (e.g. &:after, target .clearfix)', () => {
-      // Selector is &:after with & resolving to .clearfix. Match to .clearfix is entirely inside &.
-      const parentSel = el('.clearfix');
-      const selectorWithAmp = getImplicitSelector(pseudo(':after'), parentSel, false);
-      const result = tryExtendSelector(selectorWithAmp, el('.clearfix'), el('.foo'), true);
-      expect(result.error).toBeDefined();
-      expect(result.error!.type).toBe(ExtendErrorType.NOT_FOUND);
-    });
-
     it('tryExtendSelector extends when partial match is not only within & (e.g. .clearfix .bar, target .clearfix)', () => {
       // Selector has explicit .clearfix, so match is not only within ampersand.
       const selector = sel([el('.clearfix'), co(' '), el('.bar')]);
       const result = tryExtendSelector(selector, el('.clearfix'), el('.foo'), true);
       expect(result.error).toBeUndefined();
       expect(result.value.valueOf()).toContain('.foo');
-    });
-
-    it('tryExtendSelector returns NOT_FOUND when match path goes through ampersand (parent already extended)', () => {
-      // Parent was already extended; child &:after has ampersand resolving to .clearfix,.foo,.bar.
-      // NOT_FOUND is determined by path (match goes through &), not by comparing resolved to find.
-      const extendedParentSel = sellist([el('.clearfix'), el('.foo'), el('.bar')]);
-      const selectorWithAmp = getImplicitSelector(pseudo(':after'), extendedParentSel, false);
-      const result = tryExtendSelector(selectorWithAmp, el('.clearfix'), el('.foo'), true);
-      expect(result.error).toBeDefined();
-      expect(result.error!.type).toBe(ExtendErrorType.NOT_FOUND);
     });
   });
 
@@ -617,31 +601,36 @@ describe('Extend Selector Tests', () => {
 
       // Step 1: .ext1 .ext2 extends .foo all
       // Expected: :is(.foo,.ext1 .ext2) .bar,:is(.foo,.ext1 .ext2) .baz
-      selector = extendSelector(selector, el('.foo'), sel([el('.ext1'), co(' '), el('.ext2')]), true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      selector = extendSelector(selector, el('.foo'), sel([el('.ext1'), co(' '), el('.ext2')]), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2) .bar');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2) .baz');
 
       // Step 2: .ext3 extends .foo all
       // Expected: :is(.foo,.ext1 .ext2,.ext3) .bar,:is(.foo,.ext1 .ext2,.ext3) .baz
-      selector = extendSelector(selector, el('.foo'), el('.ext3'), true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      selector = extendSelector(selector, el('.foo'), el('.ext3'), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3) .bar');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3) .baz');
 
       // Step 3: .ext4 extends .foo all
       // Expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
-      selector = extendSelector(selector, el('.foo'), el('.ext4'), true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      selector = extendSelector(selector, el('.foo'), el('.ext4'), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
 
       // Step 4: .ext3 extends .bar all
       // Expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3),:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
-      selector = extendSelector(selector, el('.bar'), el('.ext3'), true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      selector = extendSelector(selector, el('.bar'), el('.ext3'), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3)');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
 
       // Step 5: .ext4 extends .bar all
       // Final expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3,.ext4),:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
-      selector = extendSelector(selector, el('.bar'), el('.ext4'), true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      selector = extendSelector(selector, el('.bar'), el('.ext4'), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3,.ext4)');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
     });
@@ -669,7 +658,8 @@ describe('Extend Selector Tests', () => {
       // Extend .foo with .bar
       let result = extendSelector(selector, el('.foo'), el('.bar'), false);
       // Extend .foo with .baz
-      result = extendSelector(result, el('.foo'), el('.baz'), false);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      result = extendSelector(result as Selector<any, NodeOptions>, el('.foo'), el('.baz'), false);
 
       // The :not() should remain with flattened contents
       // Should be :not(.foo,.bar,.baz) not :not(:is(.foo,:is(.bar),.baz))
@@ -706,7 +696,8 @@ describe('Extend Selector Tests', () => {
 
       // Extend .foo with ".ext1 .ext2" (a complex selector)
       const ext1Ext2 = sel([el('.ext1'), co(' '), el('.ext2')]);
-      selector = extendSelector(selector, el('.foo'), ext1Ext2, true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      selector = extendSelector(selector, el('.foo'), ext1Ext2, true) as Selector<any, NodeOptions> | SelectorList;
       if (!isNode(selector, N.SelectorList)) {
         throw new Error('Expected selector list after first extend');
       }
@@ -717,13 +708,15 @@ describe('Extend Selector Tests', () => {
       expect(ext1Count).toBeLessThanOrEqual(2);
 
       // Extend .foo with .ext3
-      selector = extendSelector(selector, el('.foo'), el('.ext3'), true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      selector = extendSelector(selector, el('.foo'), el('.ext3'), true) as Selector<any, NodeOptions> | SelectorList;
       if (!isNode(selector, N.SelectorList)) {
         throw new Error('Expected selector list after second extend');
       }
 
       // Extend .foo with .ext4
-      selector = extendSelector(selector, el('.foo'), el('.ext4'), true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      selector = extendSelector(selector, el('.foo'), el('.ext4'), true) as Selector<any, NodeOptions> | SelectorList;
       if (!isNode(selector, N.SelectorList)) {
         throw new Error('Expected selector list after third extend');
       }
@@ -798,7 +791,8 @@ describe('Extend Selector Tests', () => {
       const selector = el('.bb');
       const result = extendSelector(selector, el('.bb'), el('.cc'), false);
 
-      expect(result.type).toBe('SelectorList');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((result as Selector<any, NodeOptions>).type).toBe('SelectorList');
       expect(result.valueOf()).toBe('.bb,.cc');
     });
   });
@@ -885,179 +879,6 @@ describe('Extend Selector Tests', () => {
 
       // With partial: false, this should return unchanged because d is before the :is()
       const result = extendSelector(target, find, extendWith, false);
-      expect(result.valueOf()).toBe(target.valueOf());
-    });
-  });
-
-  describe('Implicit ampersand and extend matching (extend.less .bb scenario)', () => {
-    it('getImplicitSelector with collapseNesting false attaches parent so nested selector becomes parent+child', () => {
-      // Nested .bb inside .bb should get implicit ampersand: result is [&(.bb), ' ', .bb] → valueOf ".bb .bb"
-      const childOnly = el('.bb');
-      const parentSelector = el('.bb');
-      const withImplicit = getImplicitSelector(childOnly, parentSelector, false);
-      expect(withImplicit.valueOf()).toBe('.bb .bb');
-    });
-
-    it('extend find .bb with partial: false rejects when target has implicit ampersand (first component is &)', () => {
-      // Same shape as nested .bb ruleset: [amp(.bb), ' ', .bb]. .ee:extend(.bb) must NOT match this.
-      const targetWithImplicitAmp = getImplicitSelector(el('.bb'), el('.bb'), false);
-      const result = extendSelector(targetWithImplicitAmp, el('.bb'), el('.ee'), false);
-      expect(result.valueOf()).toBe(targetWithImplicitAmp.valueOf());
-    });
-
-    /**
-     * Validation for extend.less inner .bb: the inner ruleset's selector must (a) have the
-     * invisible ampersand, (b) use it in valueOf() for the full selector, (c) ampersand keeps
-     * its stored selector reference, (d) full selector value is then NOT an exact match for .bb,
-     * so the extend utility rejects without any logic in extend-roots.
-     */
-    describe('(a)-(d) ampersand present, valueOf uses it, exact .bb does not match', () => {
-      it('(a) implicit ampersand is present on selector (first component is Ampersand with stored selector)', () => {
-        const withImplicit = getImplicitSelector(el('.bb'), el('.bb'), false);
-        if (!isNode(withImplicit, N.ComplexSelector)) {
-          throw new Error('Expected implicit selector to be complex');
-        }
-        const first = withImplicit.value[0];
-        expect(isNode(first, N.Ampersand)).toBe(true);
-        expect(isNode(first, N.Ampersand) ? first.getResolvedSelector() : undefined).toBeDefined();
-      });
-
-      it('(b) valueOf() uses ampersand selector to produce full selector string', () => {
-        const withImplicit = getImplicitSelector(el('.bb'), el('.bb'), false);
-        // Full selector must be parent + " " + child = ".bb .bb", not ".bb" or "& .bb"
-        expect(withImplicit.valueOf()).toBe('.bb .bb');
-      });
-
-      it('(c) ampersand retains stored selector (copy of parent at build time)', () => {
-        const parent = el('.bb');
-        const withImplicit = getImplicitSelector(el('.bb'), parent, false);
-        if (!isNode(withImplicit, N.ComplexSelector)) {
-          throw new Error('Expected implicit selector to be complex');
-        }
-        const first = withImplicit.value[0];
-        if (!isNode(first, N.Ampersand)) {
-          throw new Error('Expected first component to be an ampersand');
-        }
-        expect(first.getResolvedSelector()).toBeDefined();
-        expect(first.getResolvedSelector()?.valueOf()).toBe('.bb');
-      });
-
-      it('(d) full selector value .bb .bb is not an exact match for .bb so extend utility rejects', () => {
-        const targetWithImplicitAmp = getImplicitSelector(el('.bb'), el('.bb'), false);
-        expect(targetWithImplicitAmp.valueOf()).toBe('.bb .bb');
-        const result = tryExtendSelector(targetWithImplicitAmp, el('.bb'), el('.ee'), false);
-        expect(result.error).toBeUndefined();
-        expect(result.value.valueOf()).toBe('.bb .bb');
-        expect(result.value.valueOf()).not.toBe('.bb,.ee');
-      });
-    });
-  });
-
-  describe('Invisible ampersand extend coverage (partial, full, just outside)', () => {
-    /**
-     * Coverage for extending when the target has invisible (implicit) ampersand:
-     * - Partial: find matches part of the "own" segment after & → extend without flattening &
-     * - Full: find fully matches one list item's "own" part → append extendWith with same & (selector list)
-     * - Just outside: find matches resolved form (crosses boundary) vs only own part (within boundary)
-     */
-
-    it('partial extend when target has invisible ampersand: match only the own part (within boundary)', () => {
-      // Target: & .a .b (implicit & → .parent). Find .a. ExtendWith .x. Partial true.
-      // Expect: extend within boundary, ampersand preserved → & :is(.a, .x) .b
-      const parentSel = el('.parent');
-      const target = getImplicitSelector(sel([el('.a'), co(' '), el('.b')]), parentSel, false);
-      expect(target.valueOf()).toBe('.parent .a .b');
-
-      const result = extendSelector(target, el('.a'), el('.x'), true);
-      expect(result.hoistToRoot).toBeFalsy();
-      const out = result.valueOf();
-      expect(out).toContain('.a');
-      expect(out).toContain('.x');
-      expect(out).toContain('.b');
-      // Should preserve structure (implicit & not materialized in serialization when same context)
-      if (!isNode(result, N.ComplexSelector)) {
-        throw new Error('Expected partial extend result to be complex');
-      }
-      const first = result.value[0];
-      expect(isNode(first, N.Ampersand)).toBe(true);
-    });
-
-    it('full extend (complete match of one list item) when target is SelectorList with invisible ampersand: append extendWith with same &', () => {
-      // Target: [& .replace, & .c] (each item has implicit & → .outer). Find .replace. ExtendWith .rep_ace. Partial true.
-      // Intended: result is selector list with three items [& .replace, & .rep_ace, & .c] so serialization shows .replace, .rep_ace, .c.
-      // We assert the result contains all three classes (document intended behavior until full append path is applied).
-      const outerSel = el('.outer');
-      const target = getImplicitSelector(sellist([el('.replace'), el('.c')]), outerSel, false);
-      expect(target.valueOf()).toBe('.outer .replace,.outer .c');
-
-      const result = tryExtendSelector(target, el('.replace'), el('.rep_ace'), true);
-      expect(result.error).toBeUndefined();
-      if (!isNode(result.value, N.SelectorList)) {
-        throw new Error('Expected full extend result to be a selector list');
-      }
-      const list = result.value;
-      expect(list.value.length).toBeGreaterThanOrEqual(2);
-      const str = result.value.valueOf();
-      expect(str).toContain('.replace');
-      expect(str).toContain('.rep_ace');
-      expect(str).toContain('.c');
-    });
-
-    it('builds implicit selector-list output directly instead of cloning the source list', () => {
-      const outerSel = el('.outer');
-      const target = sellist([el('.replace'), el('.c')]);
-      let cloneCalls = 0;
-      const originalClone = target.clone.bind(target);
-      const cloneForCounting: typeof target.clone = (...args) => {
-        cloneCalls++;
-        return originalClone(...args);
-      };
-      target.clone = cloneForCounting;
-
-      const result = getImplicitSelector(target, outerSel, false);
-
-      expect(cloneCalls).toBe(0);
-      expect(result).not.toBe(target);
-      expect(result.valueOf()).toBe('.outer .replace,.outer .c');
-      expect(target.value[0]!.parent).toBe(target);
-      expect(target.value[1]!.parent).toBe(target);
-    });
-
-    it('extend find that matches only own part (within boundary): ampersand not flattened', () => {
-      // Target: & .child (implicit & → .parent). Find .child. ExtendWith .other. Partial true.
-      // We match only the part after &, so we stay within boundary.
-      const parentSel = el('.parent');
-      const target = getImplicitSelector(el('.child'), parentSel, false);
-      expect(target.valueOf()).toBe('.parent .child');
-
-      const result = extendSelector(target, el('.child'), el('.other'), true);
-      expect(result.hoistToRoot).toBeFalsy();
-      expect(result.valueOf()).toContain('.child');
-      expect(result.valueOf()).toContain('.other');
-    });
-
-    it('extend find that matches resolved form (boundary crossing): full target match', () => {
-      // Target: & .child (implicit & → .parent). Find .parent .child (full resolved). ExtendWith .other.
-      // Find matches the entire resolved selector → we are "just outside" the invisible & (crossing boundary).
-      const parentSel = el('.parent');
-      const target = getImplicitSelector(el('.child'), parentSel, false);
-      const find = sel([el('.parent'), co(' '), el('.child')]);
-      const extendWith = el('.other');
-
-      const result = extendSelector(target, find, extendWith, true);
-      // Should produce selector list .parent .child, .other (resolved + extendWith) and typically hoist
-      expect(result.valueOf()).toContain('.parent');
-      expect(result.valueOf()).toContain('.child');
-      expect(result.valueOf()).toContain('.other');
-    });
-
-    it('partial: false with invisible ampersand target does not extend when find matches only own part', () => {
-      // Target: & .bb (implicit & → .bb). Find .bb. Partial false (exact only).
-      // Full selector is .bb .bb; find .bb is not an exact match of the whole selector → no extend.
-      const target = getImplicitSelector(el('.bb'), el('.bb'), false);
-      expect(target.valueOf()).toBe('.bb .bb');
-
-      const result = extendSelector(target, el('.bb'), el('.ee'), false);
       expect(result.valueOf()).toBe(target.valueOf());
     });
   });

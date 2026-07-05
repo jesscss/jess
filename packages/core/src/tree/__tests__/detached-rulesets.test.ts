@@ -22,10 +22,8 @@ describe('Detached Rulesets - Variable Lookups', () => {
   let context: Context;
 
   beforeAll(() => {
-    Node.prototype.fullRender = true;
   });
   afterAll(() => {
-    Node.prototype.fullRender = false;
   });
 
   beforeEach(() => {

@@ -95,7 +95,7 @@ describe('Interpolated', () => {
   it('renders resolved interpolated values through render(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -108,14 +108,13 @@ describe('Interpolated', () => {
     const rendered = interpolatedNode.render(context);
 
     expect(rendered).toBe('hello-world');
-    expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved interpolated output into flat buffers', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -139,14 +138,13 @@ describe('Interpolated', () => {
     expect(await interpolatedNode.render(context, buffer)).toBe('hello-world');
     expect(buffer.parts).toEqual(['hello-world']);
     expect(resolveCalls).toBe(0);
-    expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
   it('renders resolved interpolated output directly without public resolve', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -161,14 +159,13 @@ describe('Interpolated', () => {
     };
 
     expect(interpolatedNode.render(context)).toBe('hello-world');
-    expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
   });
 
   it('renders scalar replacement text without materializing a generic public result', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -191,7 +188,6 @@ describe('Interpolated', () => {
       });
 
       expect(await interpolatedNode.render(context)).toBe('hello-world');
-      expect(interpolatedNode.evaluated).toBe(false);
       expect(interpolatedNode.registrationPrepared).toBe(false);
     } finally {
       Object.defineProperty(Interpolated.prototype, 'createGeneric', descriptor);
@@ -201,7 +197,7 @@ describe('Interpolated', () => {
   it('resolves interpolated values without touching render state', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -214,7 +210,6 @@ describe('Interpolated', () => {
     const resolved = await interpolatedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('hello-world');
-    expect(interpolatedNode.evaluated).toBe(false);
     expect(interpolatedNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -222,7 +217,7 @@ describe('Interpolated', () => {
   it('materializes generic resolved text without public interpolated string transport', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -246,7 +241,6 @@ describe('Interpolated', () => {
       const resolved = await interpolatedNode.resolve(context);
 
       expect(resolved.valueOf()).toBe('hello-world');
-      expect(interpolatedNode.evaluated).toBe(false);
       expect(interpolatedNode.registrationPrepared).toBe(false);
     } finally {
       Object.defineProperty(Interpolated.prototype, 'toTrimmedString', descriptor);
@@ -256,7 +250,7 @@ describe('Interpolated', () => {
   it('keeps source interpolated child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -279,7 +273,7 @@ describe('Interpolated', () => {
   it('does not clone unchanged source replacement containers before resolving interpolated values', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);

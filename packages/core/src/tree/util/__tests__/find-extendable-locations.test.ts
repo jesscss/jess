@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { findExtendableLocations } from '../find-extendable-locations.js';
 import { applyExtensionAtLocation } from '../extend.js';
-import { el, pseudo, sellist, compound } from '../../../index.js';
+import { el, pseudo, sellist, compound, Node } from '../../../index.js';
 
 describe('ExtendLocation API Tests', () => {
   describe('findExtendableLocations', () => {
@@ -156,7 +156,8 @@ describe('ExtendLocation API Tests', () => {
       const extendedStr = extended.valueOf().replace(/\s+/g, '');
       expect(extendedStr).toBe(':where(.a,.b,.c)');
       expect(selector.arg).toBe(sourceList);
-      expect(sourceItems.map(item => item.parent)).toEqual(sourceItems.map(() => sourceList));
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect(sourceItems.map(item => (item as Node).parent)).toEqual(sourceItems.map(() => sourceList));
       expect(extendWith.parent).toBeUndefined();
     });
 
@@ -226,6 +227,14 @@ describe('ExtendLocation API Tests', () => {
       expect(extended.valueOf()).toContain(':where(');
       expect(extended.valueOf()).not.toContain(':is(');
       expect(extended.valueOf()).toBe(':where(.original,.extended)');
+    });
+
+    it('tolerates a string-normalized leaf target (no WeakMap key crash)', () => {
+      // The identity caches (WeakMap/Map) key on node identity; a string leaf is
+      // not an object and crashed `WeakMap.set`. String leaves bypass the cache.
+      const selector = el('.a');
+      const result = findExtendableLocations(selector, '.a' as never);
+      expect(result.hasMatches).toBe(true);
     });
   });
 });

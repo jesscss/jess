@@ -4,7 +4,7 @@ import {
   type ColorData
 } from '@jesscss/core';
 
-type ColorAlpha = Color['value']['alpha'];
+type ColorAlpha = Color['_alphaValue'];
 
 export function formatColorOutput(
   input: Color,
@@ -21,7 +21,9 @@ export function formatColorOutput(
     ...input.options,
     format,
     modernSyntax
-  }, input.location.length === 6 ? input.location : undefined).inherit(input);
+    // Source span is carried by `.inherit(input)` (provenance side-table);
+    // nodes have no public `.location` field to pass here.
+  }).inherit(input);
   color.node = undefined;
   return color;
 }

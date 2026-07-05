@@ -6,11 +6,7 @@ import {
   angleToDegrees,
   normalizeHue,
   alphaToNumber,
-  toNumber,
-  lengthToPx,
-  timeToMs,
-  frequencyToHz,
-  angleToRadians
+  toNumber
 } from '../src/conversions.js';
 
 describe('Conversion Plugins', () => {
@@ -132,43 +128,6 @@ describe('Conversion Plugins', () => {
     });
   });
 
-  describe('lengthToPx', () => {
-    it('should convert various length units to pixels', () => {
-      const converter = lengthToPx(16); // 16px base font size
-
-      expect((converter(new Dimension({ number: 1, unit: 'em' })) as Num).number).toBe(16);
-      expect((converter(new Dimension({ number: 1, unit: 'rem' })) as Num).number).toBe(16);
-      expect((converter(new Dimension({ number: 1, unit: 'in' })) as Num).number).toBe(96);
-      expect((converter(new Dimension({ number: 1, unit: 'cm' })) as Num).number).toBeCloseTo(37.8, 1);
-    });
-  });
-
-  describe('timeToMs', () => {
-    it('should convert time units to milliseconds', () => {
-      const converter = timeToMs();
-
-      expect((converter(new Dimension({ number: 1, unit: 's' })) as Num).number).toBe(1000);
-      expect((converter(new Dimension({ number: 500, unit: 'ms' })) as Num).number).toBe(500);
-    });
-  });
-
-  describe('frequencyToHz', () => {
-    it('should convert frequency units to hertz', () => {
-      const converter = frequencyToHz();
-
-      expect((converter(new Dimension({ number: 1, unit: 'khz' })) as Num).number).toBe(1000);
-      expect((converter(new Dimension({ number: 440, unit: 'hz' })) as Num).number).toBe(440);
-    });
-  });
-
-  describe('angleToRadians', () => {
-    it('should convert angle units to radians', () => {
-      const converter = angleToRadians();
-
-      expect((converter(new Dimension({ number: 180, unit: 'deg' })) as Num).number).toBe(Math.PI);
-      expect((converter(new Dimension({ number: 0.5, unit: 'turn' })) as Num).number).toBe(Math.PI);
-    });
-  });
 });
 
 describe('defineFunction with Conversion Plugins', () => {

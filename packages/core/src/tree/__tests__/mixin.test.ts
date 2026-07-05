@@ -1,4 +1,8 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, nil } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, nil, type AnyRole } from '../index.js';
+import type { Declaration } from '../declaration.js';
+import type { MixinOutputChildSegment } from '../util/mixin-output-slot.js';
+import type { Condition } from '../condition.js';
+import type { Ruleset } from '../ruleset.js';
 import { Context, TreeContext } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
 import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
@@ -96,10 +100,8 @@ async function expectRejects<T>(
 
 describe('Mixin', () => {
   afterAll(() => {
-    Node.prototype.fullRender = false;
   });
   beforeEach(() => {
-    Node.prototype.fullRender = true;
     context = new Context({
       /** This is the default Less behavior */
       leakyRules: true
@@ -109,10 +111,10 @@ describe('Mixin', () => {
 
   it('resolves mixin definitions without touching render state', async () => {
     const node = mixin({
-      name: any('.button'),
-      rules: rules([
+      name: '.button',
+      rules: [
         decl({ name: 'color', value: any('red') })
-      ])
+      ]
     });
 
     const resolved = await node.resolve(context);
@@ -122,26 +124,21 @@ describe('Mixin', () => {
         color: red;
       }
     `);
-    expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
   it('writes mixin syntax through direct child writers', () => {
-    const name = any('.button');
-    const params = list([vardecl({ name: any('tone'), value: nil() }, { paramVar: true })]);
+    const params = list([vardecl({ name: 'tone', value: nil() }, { paramVar: true })]);
     const guard = condition([ref({ key: 'enabled' }, { type: 'variable' })]);
     const node = mixin({
-      name,
+      name: '.button',
       params,
       guard,
-      rules: rules([
+      rules: [
         decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-      ])
+      ]
     });
-    name.toString = () => {
-      throw new Error('Mixin.writeSyntax should not stringify the name publicly');
-    };
     params.toString = () => {
       throw new Error('Mixin.writeSyntax should not stringify params publicly');
     };
@@ -168,8 +165,8 @@ describe('Mixin', () => {
       throw new Error('Mixin.writeSyntax should write braced rules directly');
     };
     const node = mixin({
-      name: any('.button'),
-      rules: body
+      name: '.button',
+      rules: body.rules
     });
 
     expect(node.toTrimmedString()).toBe('.button() {\n\n}');
@@ -179,8 +176,8 @@ describe('Mixin', () => {
     const bodyDecl = decl({ name: 'color', value: any('red') });
     const body = rules([bodyDecl]);
     const node = mixin({
-      name: any('.button'),
-      rules: body
+      name: '.button',
+      rules: body.rules
     });
 
     const prepared = await node.prepareRegistration(context);
@@ -223,18 +220,18 @@ describe('Mixin', () => {
     it('should call a simple mixin', async () => {
       // Create a mixin definition: .my-mixin() { color: red; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
+        name: '.my-mixin',
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-        ])
+        ]
       });
 
       // Create root rules containing both
@@ -252,23 +249,23 @@ describe('Mixin', () => {
 
     it('emits direct comment children for each mixin output placement', async () => {
       const mixinDef = mixin({
-        name: any('.commented'),
-        rules: rules([
+        name: '.commented',
+        rules: [
           comment('/**/'),
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
       const firstRuleset = ruleset({
         selector: el('.first'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
-        ])
+        ]
       });
       const secondRuleset = ruleset({
         selector: el('.second'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
-        ])
+        ]
       });
       const root = rules([mixinDef, firstRuleset, secondRuleset]);
       context.root = root;
@@ -288,19 +285,19 @@ describe('Mixin', () => {
 
     it('emits repeated direct declarations for each mixin output placement', async () => {
       const mixinDef = mixin({
-        name: any('.repeat'),
-        rules: rules([
+        name: '.repeat',
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.repeat' }, { type: 'mixin' }) }),
             call({ name: ref({ key: '.repeat' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -318,18 +315,21 @@ describe('Mixin', () => {
     it('keeps static direct mixin output placements source-backed without moving source children', async () => {
       const sourceValue = any('red');
       const sourceDecl = decl({ name: 'color', value: sourceValue });
-      const mixinBody = rules([sourceDecl]);
+      // The Mixin node IS the body container: it owns the source children directly.
       const mixinDef = mixin({
-        name: any('.static-direct'),
-        rules: mixinBody
+        name: '.static-direct',
+        rules: [sourceDecl]
       });
-      const callerRules = rules([]);
+      const mixinBody = mixinDef;
+      // The caller scope must be the Ruleset itself (it owns the body array); a
+      // separate rules([]) wrapper is discarded and never chains to root.
+      const callerRules = ruleset({
+        selector: el('.use'),
+        rules: []
+      });
       const root = rules([
         mixinDef,
-        ruleset({
-          selector: el('.use'),
-          rules: callerRules
-        })
+        callerRules
       ]);
       context.root = root;
       context.rulesContext = callerRules;
@@ -346,8 +346,10 @@ describe('Mixin', () => {
       if (!(firstResult instanceof RulesClass) || !(secondResult instanceof RulesClass)) {
         throw new Error('Expected Rules results');
       }
-      const firstDecl = firstResult.rules[0];
-      const secondDecl = secondResult.rules[0];
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const firstDecl = firstResult.rules[0] as Declaration | undefined;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const secondDecl = secondResult.rules[0] as Declaration | undefined;
       expect(firstDecl).toBeDefined();
       expect(secondDecl).toBeDefined();
       expect(firstDecl).toBe(sourceDecl);
@@ -362,8 +364,8 @@ describe('Mixin', () => {
       expect(sourceValue.parent).toBe(sourceDecl);
       expect(firstDecl?.type).toBe('Declaration');
       expect(secondDecl?.type).toBe('Declaration');
-      expect(firstDecl.value).toBe(sourceValue);
-      expect(secondDecl.value).toBe(sourceValue);
+      expect(firstDecl!.value).toBe(sourceValue);
+      expect(secondDecl!.value).toBe(sourceValue);
     });
 
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
@@ -387,14 +389,14 @@ describe('Mixin', () => {
         const root = rules([
           vardecl({ name: 'accent', value: any('red') }),
           mixin({
-            name: any('.commented'),
-            rules: mixinBody
+            name: '.commented',
+            rules: mixinBody.rules
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -413,17 +415,17 @@ describe('Mixin', () => {
       // Create a ruleset that can be used as a mixin: .my-mixin { color: red; }
       const mixinRuleset = ruleset({
         selector: el('.my-mixin'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) }) // Use 'mixin-ruleset' to find both Mixins and Rulesets
-        ])
+        ]
       });
 
       // Create root rules containing both
@@ -458,18 +460,20 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        // The caller scope is the `.test` Ruleset directly (it owns its body array);
+        // a separate rules([]) wrapper is discarded and never chains to root.
+        const callerRules = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           ruleset({
             selector: el('.my-mixin'),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          callerRules
         ]);
         context.root = root;
         context.rulesContext = callerRules;
@@ -486,26 +490,29 @@ describe('Mixin', () => {
     });
 
     it('keeps ruleset-as-mixin placement children owned while reusing reusable leaves', async () => {
+      // New model: the Ruleset IS its own body (no `_passedRulesWrapper`), so the
+      // callable source rules and the source children's parent are the Ruleset
+      // itself, not a separate `sourceBody` wrapper. The caller scope is likewise
+      // the `.test` ruleset directly (the passed wrapper is unwrapped + discarded).
       const sourceValue = any('red');
       const sourceDecl = decl({ name: 'color', value: sourceValue });
-      const sourceBody = rules([sourceDecl]);
       const sourceRuleset = ruleset({
         selector: el('.my-mixin'),
-        rules: sourceBody
+        rules: [sourceDecl]
       });
-      const callerRules = rules([]);
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: []
+      });
       const root = rules([
         sourceRuleset,
-        ruleset({
-          selector: el('.test'),
-          rules: callerRules
-        })
+        testRuleset
       ]);
       context.root = root;
-      context.rulesContext = callerRules;
+      context.rulesContext = testRuleset;
 
       const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
-      callerRules.adopt(mixinCall);
+      testRuleset.adopt(mixinCall);
       const result = await mixinCall.eval(context);
 
       expect(result).toBeInstanceOf(RulesClass);
@@ -516,10 +523,10 @@ describe('Mixin', () => {
       expect(outputDecl).toBe(sourceDecl);
       expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceBody);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceRuleset);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.outputRules).toBe(result);
-      expect(outputDecl?.parent).toBe(sourceBody);
-      expect(sourceDecl.parent).toBe(sourceBody);
+      expect(outputDecl?.parent).toBe(sourceRuleset);
+      expect(sourceDecl.parent).toBe(sourceRuleset);
       expect(sourceValue.parent).toBe(sourceDecl);
     });
 
@@ -527,25 +534,23 @@ describe('Mixin', () => {
       const sourceComment = comment('/* placement */');
       const sourceNested = ruleset({
         selector: el('.nested'),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
-      const sourceBody = rules([
-        sourceComment,
-        sourceNested
-      ]);
+      // The Ruleset IS its own body container (no separate `sourceBody` wrapper);
+      // it owns the source children and the caller scope is the `.test` ruleset.
       const sourceRuleset = ruleset({
         selector: el('.my-mixin'),
-        rules: sourceBody
+        rules: [sourceComment, sourceNested]
       });
-      const callerRules = rules([]);
+      const callerRules = ruleset({
+        selector: el('.test'),
+        rules: []
+      });
       const root = rules([
         sourceRuleset,
-        ruleset({
-          selector: el('.test'),
-          rules: callerRules
-        })
+        callerRules
       ]);
       context.root = root;
       context.rulesContext = callerRules;
@@ -558,41 +563,46 @@ describe('Mixin', () => {
       if (!(result instanceof RulesClass)) {
         throw new Error('Expected Rules result');
       }
-      expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.rules);
-      expect(result.rules.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.rules);
-      expect(sourceBody.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.rules);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceBody.rules);
-      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.output)).toEqual(result.rules);
+      expect(getMixinOutputSourceChildren(result)).toEqual(sourceRuleset.rules);
+      expect(result.rules.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceRuleset.rules);
+      expect(sourceRuleset.rules.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.rules);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.source)).toEqual(sourceRuleset.rules);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.output)).toEqual(result.rules);
       expect(result.rules.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
       expect(result.rules.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
-      expect(result.rules[0]).not.toBe(sourceComment);
+      // Copy-on-write output: the comment carries no per-eval state, so it is
+      // shared unchanged; the nested ruleset carries evaluated selector/scope
+      // state, so it is detached into a copy. Neither is reparented onto the
+      // output Rules — eval never reparents, so source children keep their
+      // source parent (matching the sibling Declaration case above).
+      expect(result.rules[0]).toBe(sourceComment);
       expect(result.rules[1]).not.toBe(sourceNested);
-      expect(sourceComment.parent).toBe(sourceBody);
-      expect(sourceNested.parent).toBe(sourceBody);
-      expect(result.rules.map(child => child.parent)).toEqual([result, result]);
+      expect(sourceComment.parent).toBe(sourceRuleset);
+      expect(sourceNested.parent).toBe(sourceRuleset);
+      expect(result.rules.map(child => child.parent)).toEqual([sourceRuleset, sourceRuleset]);
     });
 
     it('should call a mixin with parameters', async () => {
       // Create a mixin with a parameter: .my-mixin(@color) { color: @color; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('color', { role: 'property' }) // Parameter without default is Any with role: 'property' (like variable names)
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(blue); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       // Create root rules containing both
@@ -611,32 +621,32 @@ describe('Mixin', () => {
     it('should call a mixin with default parameter values', async () => {
       // Create a mixin with a default parameter: .my-mixin(@color: red) { color: @color; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           vardecl({ name: 'color', value: any('red') }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin without args: .test { .my-mixin(); }
       const testRuleset1 = ruleset({
         selector: el('.test1'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with args: .test2 { .my-mixin(blue); }
       const testRuleset2 = ruleset({
         selector: el('.test2'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset1, testRuleset2]);
@@ -656,34 +666,34 @@ describe('Mixin', () => {
 
     it('keeps nested callable buckets visible on live parameter scope frames', async () => {
       const mixinDef = mixin({
-        name: any('.outer'),
+        name: '.outer',
         params: list([
           vardecl({ name: 'value', value: any('blue') }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           mixin({
-            name: any('.inner'),
+            name: '.inner',
             params: list([
               vardecl({ name: 'tone', value: ref({ key: 'value' }, { type: 'variable' }) }, { paramVar: true })
             ]),
-            rules: rules([
+            rules: [
               mixin({
-                name: any('.leaf'),
-                rules: rules([
+                name: '.leaf',
+                rules: [
                   decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
-                ])
+                ]
               }),
               call({ name: ref({ key: '.leaf' }, { type: 'mixin' }) })
-            ])
+            ]
           }),
           call({ name: ref({ key: '.inner' }, { type: 'mixin' }) })
-        ])
+        ]
       });
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.outer' }, { type: 'mixin' }) })
-        ])
+        ]
       });
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
@@ -699,7 +709,7 @@ describe('Mixin', () => {
 
     it('evaluates default params against earlier parameter bindings', async () => {
       const mixinDef = mixin({
-        name: any('.button-variant'),
+        name: '.button-variant',
         params: list([
           any('bg', { role: 'property' }),
           vardecl({
@@ -710,20 +720,20 @@ describe('Mixin', () => {
             })
           }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: ref({ key: 'bg' }, { type: 'variable' }) }),
           decl({ name: 'border-color', value: ref({ key: 'border' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.btn-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.button-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, component]);
@@ -757,16 +767,16 @@ describe('Mixin', () => {
 
       // Build #hover(@content) { &:hover { @content(); } }
       const hoverMixin = mixin({
-        name: any('.hover'),
+        name: '.hover',
         params: list([any('content', { role: 'property' })]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: compound([amp(), el(':hover')]),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: 'content' }, { type: 'variable' }) })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       // Build #table-row-variant(@background) {
@@ -775,9 +785,9 @@ describe('Mixin', () => {
       // }
       // Simplified: use a literal value for @hover-background default
       const tableRowVariantMixin = mixin({
-        name: any('.table-row-variant'),
+        name: '.table-row-variant',
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           // @hover-background: @background (local body var, not a param)
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           // .hover({ background-color: @hover-background; })
@@ -790,17 +800,17 @@ describe('Mixin', () => {
               ])
             ])
           })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
@@ -821,28 +831,28 @@ describe('Mixin', () => {
       // mixin body level, but the call is inside .table-hover { #hover({...}); }.
 
       const hoverMixin = mixin({
-        name: any('.hover'),
+        name: '.hover',
         params: list([any('content', { role: 'property' })]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: compound([amp(), el(':hover')]),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: 'content' }, { type: 'variable' }) })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const tableRowVariantMixin = mixin({
-        name: any('.table-row-variant'),
+        name: '.table-row-variant',
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           // @hover-background: @background (local body var, at outer mixin level)
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           // .table-hover { .hover({ background-color: @hover-background; }); }
           ruleset({
             selector: el('.table-hover'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.hover' }, { type: 'mixin' }),
                 args: list([
@@ -851,19 +861,19 @@ describe('Mixin', () => {
                   ])
                 ])
               })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
@@ -878,9 +888,9 @@ describe('Mixin', () => {
 
     it('resolves local mixin body vars when a detached ruleset is stored in a variable and called directly', async () => {
       const tableRowVariantMixin = mixin({
-        name: any('.table-row-variant'),
+        name: '.table-row-variant',
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           vardecl({
             name: 'hover-content',
@@ -889,17 +899,17 @@ describe('Mixin', () => {
             ])
           }),
           call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([tableRowVariantMixin, component]);
@@ -927,7 +937,15 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        // New model: the Ruleset IS its own body (no `_passedRulesWrapper`), so use
+        // the ruleset itself as the caller scope — it is parented to root and its
+        // children resolve `content` up the chain. (Formerly a separate `callerRules`
+        // wrapper was passed as `rules:` and used as the live caller handle; that
+        // wrapper is now unwrapped + discarded, so it would be orphaned.)
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           vardecl({
             name: 'content',
@@ -935,16 +953,13 @@ describe('Mixin', () => {
               decl({ name: 'color', value: any('red') })
             ])
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          testRuleset
         ]);
         context.root = root;
-        context.rulesContext = callerRules;
+        context.rulesContext = testRuleset;
 
         const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
-        callerRules.adopt(detachedCall);
+        testRuleset.adopt(detachedCall);
         const result = await detachedCall.eval(context);
         const css = await result.render(context);
 
@@ -968,7 +983,8 @@ describe('Mixin', () => {
           deep === false
           && this.rules.some(node => (
             node.type === 'Declaration'
-            && node.name?.valueOf?.() === 'color'
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            && (node as Declaration).name?.valueOf?.() === 'color'
           ))
         ) {
           detachedRuleClones++;
@@ -977,7 +993,12 @@ describe('Mixin', () => {
       };
 
       try {
-        const callerRules = rules([]);
+        // New model: use the ruleset directly as the caller scope (see the
+        // deep-clone test above) — the passed `rules:` wrapper is unwrapped + gone.
+        const testRuleset = ruleset({
+          selector: el('.test'),
+          rules: []
+        });
         const root = rules([
           vardecl({
             name: 'content',
@@ -985,16 +1006,13 @@ describe('Mixin', () => {
               decl({ name: 'color', value: any('red') })
             ])
           }),
-          ruleset({
-            selector: el('.test'),
-            rules: callerRules
-          })
+          testRuleset
         ]);
         context.root = root;
-        context.rulesContext = callerRules;
+        context.rulesContext = testRuleset;
 
         const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
-        callerRules.adopt(detachedCall);
+        testRuleset.adopt(detachedCall);
         const result = await detachedCall.eval(context);
         const css = await result.render(context);
 
@@ -1007,9 +1025,9 @@ describe('Mixin', () => {
 
     it('resolves local mixin body vars when a detached ruleset variable is called inside a child ruleset', async () => {
       const tableRowVariantMixin = mixin({
-        name: any('.table-row-variant'),
+        name: '.table-row-variant',
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           vardecl({
             name: 'hover-content',
@@ -1019,21 +1037,21 @@ describe('Mixin', () => {
           }),
           ruleset({
             selector: el('.table-hover'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([tableRowVariantMixin, component]);
@@ -1048,9 +1066,9 @@ describe('Mixin', () => {
 
     it('prefers local mixin body vars over same-named globals when detached ruleset vars are called directly', async () => {
       const tableRowVariantMixin = mixin({
-        name: any('.table-row-variant'),
+        name: '.table-row-variant',
         params: list([any('background', { role: 'property' })]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
           vardecl({
             name: 'hover-content',
@@ -1059,17 +1077,17 @@ describe('Mixin', () => {
             ])
           }),
           call({ name: ref({ key: 'hover-content' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.table-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.table-row-variant' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([
@@ -1101,21 +1119,21 @@ describe('Mixin', () => {
 
       // Build an "imported" root — mixin lives here
       const importedMixinDef = mixin({
-        name: any('.responsive-mixin'),
+        name: '.responsive-mixin',
         params: list([
           vardecl({ name: 'size', value: any('14px') }, { paramVar: true }),
           vardecl({ name: 'weight', value: any('normal') }, { paramVar: true })
         ]),
-        rules: mixinBody
+        rules: mixinBody.rules
       });
       const importedRoot = rules([importedMixinDef]);
 
       // The main file calls the mixin inside a ruleset
       const component = ruleset({
         selector: el('.component'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.responsive-mixin' }, { type: 'mixin' }) })
-        ])
+        ]
       });
 
       // Wire the imported root into the main root via push so lookup can find the mixin.
@@ -1138,27 +1156,27 @@ describe('Mixin', () => {
       // where the mixin params should remain accessible throughout the body
 
       const mixinDef = mixin({
-        name: any('.button-variant'),
+        name: '.button-variant',
         params: list([
           any('background', { role: 'property' }),
           any('border', { role: 'property' }),
           vardecl({ name: 'hover-background', value: any('darken') }, { paramVar: true })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background-color', value: ref({ key: 'background' }, { type: 'variable' }) }),
           decl({ name: 'border-color', value: ref({ key: 'border' }, { type: 'variable' }) }),
           decl({ name: 'background-hover', value: ref({ key: 'hover-background' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const component = ruleset({
         selector: el('.btn-primary'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.button-variant' }, { type: 'mixin' }),
             args: list([any('blue'), any('darkblue')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, component]);
@@ -1177,28 +1195,28 @@ describe('Mixin', () => {
 
     it('leaks non-param vars from mixin output in leaky Less mode', async () => {
       const setHeight = mixin({
-        name: any('.setHeight'),
+        name: '.setHeight',
         params: list([
           any('h', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'height', value: any('1024px') })
-        ])
+        ]
       });
 
       const useHeight = mixin({
-        name: any('.useHeightInMixinCall'),
+        name: '.useHeightInMixinCall',
         params: list([
           any('h', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: el('.useHeightInMixinCall'),
-            rules: rules([
+            rules: [
               decl({ name: 'mixin-height', value: ref({ key: 'h' }, { type: 'variable' }) })
-            ])
+            ]
           })
-        ])
+        ]
       });
 
       const root = rules([
@@ -1211,9 +1229,9 @@ describe('Mixin', () => {
         }),
         ruleset({
           selector: el('.heightIsSet'),
-          rules: rules([
+          rules: [
             decl({ name: 'height', value: ref({ key: 'height' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         call({
           name: ref({ key: '.useHeightInMixinCall' }, { type: 'mixin' }),
@@ -1232,10 +1250,10 @@ describe('Mixin', () => {
 
     it('does not let earlier sibling declarations see later mixin output in leaky Less mode', async () => {
       const setMix = mixin({
-        name: any('.mixin'),
-        rules: rules([
+        name: '.mixin',
+        rules: [
           vardecl({ name: 'mix', value: any('#989') })
-        ])
+        ]
       });
 
       const root = rules([
@@ -1243,10 +1261,10 @@ describe('Mixin', () => {
         vardecl({ name: 'mix', value: any('blue') }),
         ruleset({
           selector: el('.tiny-scope'),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: ref({ key: 'mix' }, { type: 'variable' }) }),
             call({ name: ref({ key: '.mixin' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -1260,7 +1278,7 @@ describe('Mixin', () => {
 
     it('falls back to caller scope for unresolved body vars while keeping default param scope lexical', async () => {
       const mixinNoParam = mixin({
-        name: any('.mixinNoParam'),
+        name: '.mixinNoParam',
         params: list([
           vardecl({ name: 'parameter', value: ref({ key: 'parameterDefault' }, { type: 'variable' }) }, { paramVar: true })
         ]),
@@ -1269,12 +1287,12 @@ describe('Mixin', () => {
           '=',
           any('top level')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
           comment('/* source order */'),
           decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
@@ -1283,12 +1301,12 @@ describe('Mixin', () => {
         mixinNoParam,
         ruleset({
           selector: el('#allAreUsedHere'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'parameterDefault', value: any('inside') }),
             vardecl({ name: 'anotherVariable', value: any('inside') }),
             vardecl({ name: 'subScopeOnly', value: any('inside') }),
             call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -1302,7 +1320,7 @@ describe('Mixin', () => {
 
     it('keeps ordinary mixin output as a runtime wrapper without stamping source body parents', async () => {
       const mixinNoParam = mixin({
-        name: any('.mixinNoParam'),
+        name: '.mixinNoParam',
         params: list([
           vardecl({ name: 'parameter', value: ref({ key: 'parameterDefault' }, { type: 'variable' }) }, { paramVar: true })
         ]),
@@ -1311,28 +1329,32 @@ describe('Mixin', () => {
           '=',
           any('top level')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
           decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
-        ])
+        ]
       });
-      const mixinBody = mixinNoParam.rules;
+      // mixinNoParam.rules is Node[] but at runtime the mixin itself is the rules container
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const mixinBody = mixinNoParam as unknown as RulesClass;
 
-      const callerRules = rules([
-        vardecl({ name: 'parameterDefault', value: any('inside') }),
-        vardecl({ name: 'anotherVariable', value: any('inside') }),
-        vardecl({ name: 'subScopeOnly', value: any('inside') })
-      ]);
+      // The caller scope is the `#allAreUsedHere` Ruleset directly (it owns its body
+      // and chains to root); a detached rules([]) wrapper never resolves up to root.
+      const callerRules = ruleset({
+        selector: el('#allAreUsedHere'),
+        rules: [
+          vardecl({ name: 'parameterDefault', value: any('inside') }),
+          vardecl({ name: 'anotherVariable', value: any('inside') }),
+          vardecl({ name: 'subScopeOnly', value: any('inside') })
+        ]
+      });
 
       const root = rules([
         vardecl({ name: 'parameterDefault', value: any('top level') }),
         vardecl({ name: 'anotherVariable', value: any('top level') }),
         mixinNoParam,
-        ruleset({
-          selector: el('#allAreUsedHere'),
-          rules: callerRules
-        })
+        callerRules
       ]);
       context.root = root;
       context.rulesContext = callerRules;
@@ -1355,7 +1377,7 @@ describe('Mixin', () => {
       expect(canEnterRulesEntryForLookup({ node: result }, { type: 'Mixin', hasTarget: false })).toBe(true);
       expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinBody);
       expect(result.options.mixinOutputSlot?.outputRules).toBe(result);
-      expect(result.options.mixinOutputSlot?.childSegments.map(segment => ({
+      expect(result.options.mixinOutputSlot?.childSegments.map((segment: MixinOutputChildSegment) => ({
         kind: segment.kind,
         source: segment.source,
         output: segment.output,
@@ -1384,7 +1406,9 @@ describe('Mixin', () => {
       expect(result.rules.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
       expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
-      expect(mixinBody.parent).toBe(mixinNoParam);
+      // mixinNoParam was added to `root` via the rules([...]) factory, so its
+      // canonical parent is `root` (no constructor/eval reparenting).
+      expect(mixinBody.parent).toBe(root);
       const css = await result.render(context);
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
@@ -1410,7 +1434,12 @@ describe('Mixin', () => {
       expect(secondResult.rules.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
       expect(secondResult.rules.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
       expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      expect(secondResult.rules).toEqual(result.rules);
+      // The two outputs are independently-evaluated instances (asserted distinct
+      // above), so their nodes carry different per-eval BindingCell identities and
+      // ordinals. The stable invariant is that both map back to the same source
+      // children in the same order.
+      expect(secondResult.rules.map(child => getMixinOutputSourceChild(secondResult, child)))
+        .toEqual(result.rules.map(child => getMixinOutputSourceChild(result, child)));
     });
 
     it('keeps mixin-output entry traversal lookup-owned and type-specific', () => {
@@ -1462,8 +1491,8 @@ describe('Mixin', () => {
       expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
 
       const slotVisibility = output.options.rulesVisibility;
-      delete output.options.referenceMode;
-      delete output.options.rulesVisibility;
+      delete (output.options as Partial<typeof output.options>).referenceMode;
+      delete (output.options as Partial<typeof output.options>).rulesVisibility;
       expect(getMixinOutputRulesVisibility(output)).toBe(slotVisibility);
       expect(getMixinOutputReferenceMode(output)).toBe(false);
       expect(canEnterRulesEntryForLookup(entry, { type: 'Declaration', hasTarget: true })).toBe(true);
@@ -1502,7 +1531,8 @@ describe('Mixin', () => {
           deep === false
           && this.rules.some(node => (
             node.type === 'Declaration'
-            && node.name?.valueOf?.() === 'marker'
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            && (node as Declaration).name?.valueOf?.() === 'marker'
           ))
         ) {
           shallowMarkerBodyClones++;
@@ -1513,25 +1543,25 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.guarded'),
+            name: '.guarded',
             params: list([any('color', { role: 'property' })]),
             guard: condition([
               ref({ key: 'color' }, { type: 'variable' }),
               '=',
               any('red')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'marker', value: ref({ key: 'color' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.guarded' }, { type: 'mixin' }),
                 args: list([any('red')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1561,18 +1591,18 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.noop'),
+            name: '.noop',
             params: list([any('color', { role: 'property' })]),
-            rules: rules([])
+            rules: []
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.noop' }, { type: 'mixin' }),
                 args: list([any('red')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1603,17 +1633,17 @@ describe('Mixin', () => {
         const root = rules([
           vardecl({ name: 'borderColor', value: any('blue') }),
           mixin({
-            name: any('.paint'),
-            rules: rules([
+            name: '.paint',
+            rules: [
               decl({ name: 'color', value: any('red') }),
               decl({ name: 'border-color', value: ref({ key: 'borderColor' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.test'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.paint' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1644,20 +1674,20 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.use-color'),
+            name: '.use-color',
             params: list([any('color', { role: 'property' })]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.use-color' }, { type: 'mixin' }),
                 args: list([any('red')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1686,19 +1716,19 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.noop'),
+            name: '.noop',
             params: list([
               vardecl({ name: 'color', value: any('red') }, { paramVar: true })
             ]),
-            rules: rules([])
+            rules: []
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.noop' }, { type: 'mixin' })
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1714,26 +1744,26 @@ describe('Mixin', () => {
     it('should call a mixin with multiple parameters', async () => {
       // Create a mixin with multiple parameters: .my-mixin(@color, @size) { color: @color; font-size: @size; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('color', { role: 'property' }),
           any('size', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
           decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(blue, 16px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue'), any('16px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -1752,25 +1782,25 @@ describe('Mixin', () => {
     it('should call a mixin with @arguments', async () => {
       // Create a mixin that uses @arguments: .my-mixin(@a, @b) { margin: @arguments; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           any('b', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -1803,23 +1833,23 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.args'),
+            name: '.args',
             params: list([
               any('color', { role: 'property' }),
               any('size', { role: 'property' })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.args' }, { type: 'mixin' }),
                 args: list([any('red'), any('10px')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1850,23 +1880,23 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.resty'),
+            name: '.resty',
             params: list([
               any('first', { role: 'property' }),
               rest('rest')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.resty' }, { type: 'mixin' }),
                 args: list([any('0'), any('red'), any('10px')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1884,17 +1914,17 @@ describe('Mixin', () => {
       const param = vardecl({ name: 'space', value: defaultValue }, { paramVar: true });
       const root = rules([
         mixin({
-          name: any('.container-default'),
+          name: '.container-default',
           params: list([param]),
-          rules: rules([])
+          rules: []
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.container-default' }, { type: 'mixin' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -1921,20 +1951,20 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.container-param'),
+            name: '.container-param',
             params: list([any('space', { role: 'property' })]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.container-param' }, { type: 'mixin' }),
                 args: list([seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -1964,22 +1994,22 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.container-param'),
+            name: '.container-param',
             params: list([any('space', { role: 'property' })]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.container-param' }, { type: 'mixin' }),
                 args: list([
                   vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
                 ])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2008,21 +2038,21 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.container-default'),
+            name: '.container-default',
             params: list([
               vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.container-default' }, { type: 'mixin' })
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2051,23 +2081,23 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.resty'),
+            name: '.resty',
             params: list([
               any('first', { role: 'property' }),
               rest('rest')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.resty' }, { type: 'mixin' }),
                 args: list([any('0'), seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2103,22 +2133,22 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.args'),
+            name: '.args',
             params: list([
               any('space', { role: 'property' })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.args' }, { type: 'mixin' }),
                 args: list([seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2141,9 +2171,11 @@ describe('Mixin', () => {
           fullPath: '/virtual/test.less'
         }
       });
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key] = args;
         if (type === 'declaration' && typeof key === 'string' && ['color', 'size', 'rest', 'arguments'].includes(key)) {
           declarationHits.push(key);
@@ -2153,28 +2185,28 @@ describe('Mixin', () => {
 
       try {
         const mixinDef = mixin({
-          name: any('.my-mixin'),
+          name: '.my-mixin',
           params: list([
             any('color', { role: 'property' }),
             vardecl({ name: 'size', value: any('16px') }, { paramVar: true }),
             rest('rest')
           ]),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
             decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) }),
             decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) }),
             decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-          ])
+          ]
         });
 
         const testRuleset = ruleset({
           selector: el('.test'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
               args: list([any('blue'), any('1px'), any('2px'), any('3px')])
             })
-          ])
+          ]
         });
 
         const root = rules([mixinDef, testRuleset]);
@@ -2193,7 +2225,8 @@ describe('Mixin', () => {
         `);
         expect(declarationHits).toEqual([]);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -2205,9 +2238,11 @@ describe('Mixin', () => {
           fullPath: '/virtual/test.less'
         }
       });
-      const originalFind = RulesClass.prototype.find;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key] = args;
         if (type === 'declaration' && typeof key === 'string' && key === 'base-color') {
           declarationHits.push(key);
@@ -2218,12 +2253,12 @@ describe('Mixin', () => {
       try {
         // Lexical global: @base-color defined once at root, referenced inside mixin body
         const mixinDef = mixin({
-          name: any('.my-mixin'),
-          rules: rules([
+          name: '.my-mixin',
+          rules: [
             decl({ name: 'color', value: ref({ key: 'base-color' }, { type: 'variable' }) }),
             decl({ name: 'border-color', value: ref({ key: 'base-color' }, { type: 'variable' }) }),
             decl({ name: 'outline-color', value: ref({ key: 'base-color' }, { type: 'variable' }) })
-          ])
+          ]
         });
 
         const root = rules([
@@ -2231,9 +2266,9 @@ describe('Mixin', () => {
           mixinDef,
           ruleset({
             selector: el('.test'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -2251,7 +2286,8 @@ describe('Mixin', () => {
         // without touching broad declaration lookup at all.
         expect(declarationHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.find = originalFind;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).find = originalFind;
       }
     });
 
@@ -2279,16 +2315,16 @@ describe('Mixin', () => {
       // Last-definition-wins: 'brand' bucket has two entries; last wins
       const brandBucket = frame.declarationBucketsByName.get('brand')!;
       expect(brandBucket).toHaveLength(2);
-      expect(brandBucket[brandBucket.length - 1]!.cell.value.valueOf()).toBe('navy');
+      expect(brandBucket[brandBucket.length - 1]!.cell.value!.valueOf()).toBe('navy');
 
       // resolveFrameCell should return the last declaration in source order.
       const frameResult = resolveFrameCell('brand', frame);
       expect(frameResult).toBeDefined();
-      expect(frameResult!.cell.value.valueOf()).toBe('navy');
+      expect(frameResult!.cell.value!.valueOf()).toBe('navy');
 
       const sizeResult = resolveFrameCell('size', frame);
       expect(sizeResult).toBeDefined();
-      expect(sizeResult!.cell.value.valueOf()).toBe('16px');
+      expect(sizeResult!.cell.value!.valueOf()).toBe('16px');
 
       // A name not in the scope resolves to undefined
       expect(resolveFrameCell('unknown', frame)).toBeUndefined();
@@ -2300,23 +2336,23 @@ describe('Mixin', () => {
       });
 
       const mixinDef = mixin({
-        name: any('.fast-mixin'),
-        rules: rules([decl({ name: 'color', value: any('purple') })])
+        name: '.fast-mixin',
+        rules: [decl({ name: 'color', value: any('purple') })]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })]
         }),
         ruleset({
           selector: el('.b'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })]
         }),
         ruleset({
           selector: el('.c'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })]
         })
       ]);
       context.root = root;
@@ -2337,8 +2373,8 @@ describe('Mixin', () => {
 
     it('direct callable fast path: one-segment array lookup', () => {
       const mixinDef = mixin({
-        name: any('.array-mixin'),
-        rules: rules([decl({ name: 'color', value: any('purple') })])
+        name: '.array-mixin',
+        rules: [decl({ name: 'color', value: any('purple') })]
       });
       const root = rules([mixinDef]);
 
@@ -2348,8 +2384,8 @@ describe('Mixin', () => {
     it('direct callable fast path: empty array lookup misses', () => {
       const root = rules([
         mixin({
-          name: any('.array-mixin'),
-          rules: rules([decl({ name: 'color', value: any('purple') })])
+          name: '.array-mixin',
+          rules: [decl({ name: 'color', value: any('purple') })]
         })
       ]);
 
@@ -2361,9 +2397,11 @@ describe('Mixin', () => {
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-mixin') {
           fastPathHits.push(key);
@@ -2374,18 +2412,18 @@ describe('Mixin', () => {
       let root: RulesClass | undefined;
       try {
         const mixinDef = mixin({
-          name: any('.frame-mixin'),
-          rules: rules([decl({ name: 'color', value: any('rebeccapurple') })])
+          name: '.frame-mixin',
+          rules: [decl({ name: 'color', value: any('rebeccapurple') })]
         });
         root = rules([
           mixinDef,
           ruleset({
             selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })])
+            rules: [call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })]
           }),
           ruleset({
             selector: el('.b'),
-            rules: rules([call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })])
+            rules: [call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })]
           })
         ]);
         context.root = root;
@@ -2394,7 +2432,8 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-mixin', 'Mixin')).toEqual([mixinDef]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
 
       const css = await renderNodeToString(root!, context);
@@ -2410,14 +2449,14 @@ describe('Mixin', () => {
 
     it('ScopeFrame callable buckets: current frame hit does not prepare parent callable buckets', () => {
       const mixinDef = mixin({
-        name: any('.child-frame-hit'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.child-frame-hit',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const childRules = rules([mixinDef]);
       const root = rules([
         mixin({
-          name: any('.parent-other'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          name: '.parent-other',
+          rules: [decl({ name: 'color', value: any('blue') })]
         }),
         childRules
       ]);
@@ -2429,9 +2468,11 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: parent miss reaches fallback frame before direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.fallback-frame-hit') {
           fastPathHits.push(key);
@@ -2441,8 +2482,8 @@ describe('Mixin', () => {
 
       try {
         const fallbackMixin = mixin({
-          name: any('.fallback-frame-hit'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.fallback-frame-hit',
+          rules: [decl({ name: 'color', value: any('green') })]
         });
         const parentRules = rules([]);
         const fallbackRules = rules([fallbackMixin]);
@@ -2453,14 +2494,17 @@ describe('Mixin', () => {
         expect(childRules.findMixin('.fallback-frame-hit', 'Mixin')).toEqual([fallbackMixin]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: unprepared parent retry frame hit stays off direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.parent-retry-frame-hit') {
           fastPathHits.push(key);
@@ -2470,8 +2514,8 @@ describe('Mixin', () => {
 
       try {
         const parentMixin = mixin({
-          name: any('.parent-retry-frame-hit'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          name: '.parent-retry-frame-hit',
+          rules: [decl({ name: 'color', value: any('blue') })]
         });
         const parentRules = rules([parentMixin]);
         const childRules = rules([]);
@@ -2488,14 +2532,17 @@ describe('Mixin', () => {
         expect(childRules.findMixin('.parent-retry-frame-hit', 'Mixin')).toEqual([parentMixin]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: parent and fallback covered miss skips direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.fallback-frame-missing') {
           fastPathHits.push(key);
@@ -2506,14 +2553,14 @@ describe('Mixin', () => {
       try {
         const parentRules = rules([
           mixin({
-            name: any('.parent-other'),
-            rules: rules([decl({ name: 'color', value: any('blue') })])
+            name: '.parent-other',
+            rules: [decl({ name: 'color', value: any('blue') })]
           })
         ]);
         const fallbackRules = rules([
           mixin({
-            name: any('.fallback-other'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            name: '.fallback-other',
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         const childRules = rules([]);
@@ -2523,39 +2570,45 @@ describe('Mixin', () => {
         expect(childRules.findMixin('.fallback-frame-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: namespace descendant fallback-frame covered miss skips nested lookup', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const nestedLookups: string[] = [];
       const fastPathHits: string[] = [];
 
       try {
-        const namespaceRules = rules([]);
         const fallbackRules = rules([
           mixin({
-            name: any('.other-leaf'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            name: '.other-leaf',
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        const root = rules([
-          mixin({
-            name: any('#namespace'),
-            rules: namespaceRules
-          })
-        ]);
-        const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
+        // The `#namespace` mixin IS the namespace scope identity: it adopts the body
+        // array but owns its own scope frame, so the fallback frame (and the nested
+        // lookup spy) must target the mixin, not the throwaway body-builder rules.
+        const namespaceMixin = mixin({
+          name: '#namespace',
+          rules: []
+        });
+        const root = rules([namespaceMixin]);
+        const namespaceFrame = namespaceMixin.getScopeFrame(root.getScopeFrame());
         namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
-        RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-          if (this === namespaceRules) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+          if (this === namespaceMixin) {
             nestedLookups.push(String(args[0]));
           }
           return originalFindMixin.apply(this, args);
         };
-        RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
           const [key] = args;
           if (key === '.missing-leaf') {
             fastPathHits.push(key);
@@ -2567,39 +2620,45 @@ describe('Mixin', () => {
         expect(nestedLookups).toEqual([]);
         expect(fastPathHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: namespace descendant fallback-frame hit skips nested lookup', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const nestedLookups: string[] = [];
       const fastPathHits: string[] = [];
 
       try {
-        const namespaceRules = rules([]);
         const fallbackMixin = mixin({
-          name: any('.fallback-leaf'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.fallback-leaf',
+          rules: [decl({ name: 'color', value: any('green') })]
         });
         const fallbackRules = rules([fallbackMixin]);
-        const root = rules([
-          mixin({
-            name: any('#namespace'),
-            rules: namespaceRules
-          })
-        ]);
-        const namespaceFrame = namespaceRules.getScopeFrame(root.getScopeFrame());
+        // The `#namespace` mixin IS the namespace scope identity (see sibling test):
+        // attach the fallback frame + nested lookup spy to the mixin, not the body rules.
+        const namespaceMixin = mixin({
+          name: '#namespace',
+          rules: []
+        });
+        const root = rules([namespaceMixin]);
+        const namespaceFrame = namespaceMixin.getScopeFrame(root.getScopeFrame());
         namespaceFrame.fallbackFrame = fallbackRules.getScopeFrame();
-        RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-          if (this === namespaceRules) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+          if (this === namespaceMixin) {
             nestedLookups.push(String(args[0]));
           }
           return originalFindMixin.apply(this, args);
         };
-        RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
           const [key] = args;
           if (key === '.fallback-leaf') {
             fastPathHits.push(key);
@@ -2611,26 +2670,28 @@ describe('Mixin', () => {
         expect(nestedLookups).toEqual([]);
         expect(fastPathHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: searchParents false stops retry frames after current candidate', () => {
       const parentMixin = mixin({
-        name: any('.retry-local-only'),
-        rules: rules([decl({ name: 'color', value: any('blue') })])
+        name: '.retry-local-only',
+        rules: [decl({ name: 'color', value: any('blue') })]
       });
       const fallbackMixin = mixin({
-        name: any('.retry-local-only'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.retry-local-only',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const parentRules = rules([parentMixin]);
       const fallbackRules = rules([fallbackMixin]);
       const childRules = rules([
         ruleset({
           selector: compound([el('.retry-local-only'), el('.candidate')]),
-          rules: rules([decl({ name: 'color', value: any('red') })])
+          rules: [decl({ name: 'color', value: any('red') })]
         })
       ]);
       const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
@@ -2647,7 +2708,8 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: uncovered fallback reference-import miss skips empty direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
       const parentRules = rules([]);
       const fallbackRules = rules([
@@ -2659,7 +2721,8 @@ describe('Mixin', () => {
         })
       ]);
       const childRules = rules([]);
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.fallback-reference-missing') {
           fastPathHits.push(`${this === fallbackRules ? 'fallback' : 'other'}:${key}`);
@@ -2673,7 +2736,8 @@ describe('Mixin', () => {
         expect(childRules.findMixin('.fallback-reference-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
@@ -2682,9 +2746,11 @@ describe('Mixin', () => {
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-ruleset') {
           fastPathHits.push(key);
@@ -2696,13 +2762,13 @@ describe('Mixin', () => {
       try {
         const frameRuleset = ruleset({
           selector: el('.frame-ruleset'),
-          rules: rules([decl({ name: 'color', value: any('teal') })])
+          rules: [decl({ name: 'color', value: any('teal') })]
         });
         root = rules([
           frameRuleset,
           ruleset({
             selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.frame-ruleset' }, { type: 'mixin-ruleset' }) })])
+            rules: [call({ name: ref({ key: '.frame-ruleset' }, { type: 'mixin-ruleset' }) })]
           })
         ]);
         context.root = root;
@@ -2711,7 +2777,8 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-ruleset', undefined)).toEqual([frameRuleset]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
 
       const css = await renderNodeToString(root!, context);
@@ -2726,10 +2793,12 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when no child surfaces exist', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
       let rediscoveredChildSurface = false;
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-missing') {
           fastPathHits.push(key);
@@ -2740,8 +2809,8 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.other-frame-mixin'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            name: '.other-frame-mixin',
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         root.getScopeFrame();
@@ -2758,14 +2827,17 @@ describe('Mixin', () => {
         expect(fastPathHits).toHaveLength(0);
         expect(root.callableLookupCache?.get('.frame-missing')).toBeNull();
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: namespace miss skips Rules.findMixinsFast when frame miss is covered', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#missing-namespace') {
           fastPathHits.push(key);
@@ -2776,13 +2848,13 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('#other-namespace'),
-            rules: rules([
+            name: '#other-namespace',
+            rules: [
               mixin({
-                name: any('.leaf'),
-                rules: rules([decl({ name: 'color', value: any('green') })])
+                name: '.leaf',
+                rules: [decl({ name: 'color', value: any('green') })]
               })
-            ])
+            ]
           })
         ]);
         root.getScopeFrame();
@@ -2790,14 +2862,17 @@ describe('Mixin', () => {
         expect(root.findMixin(['#missing-namespace', '.leaf'], 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: ruleset namespace miss skips mixin ambiguity crawl when frame miss is covered', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#missing-ruleset-namespace') {
           fastPathHits.push(key);
@@ -2809,7 +2884,7 @@ describe('Mixin', () => {
         const root = rules([
           ruleset({
             selector: el('#other-ruleset-namespace'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         root.getScopeFrame();
@@ -2817,14 +2892,17 @@ describe('Mixin', () => {
         expect(root.findMixin(['#missing-ruleset-namespace', '.leaf'], undefined)).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: guarded namespace mixin start skips direct crawl when frame hit is covered', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#guarded-frame-namespace') {
           fastPathHits.push(key);
@@ -2834,13 +2912,14 @@ describe('Mixin', () => {
 
       try {
         const leaf = mixin({
-          name: any('.leaf'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.leaf',
+          rules: [decl({ name: 'color', value: any('green') })]
         });
         const namespace = mixin({
-          name: any('#guarded-frame-namespace'),
-          guard: bool(true),
-          rules: rules([leaf])
+          name: '#guarded-frame-namespace',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          guard: bool(true) as unknown as Condition,
+          rules: [leaf]
         });
         const root = rules([namespace]);
         root.getScopeFrame();
@@ -2848,14 +2927,17 @@ describe('Mixin', () => {
         expect(root.findMixin(['#guarded-frame-namespace', '.leaf'], undefined)).toEqual([leaf]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: recursive namespace miss skips child direct crawl when child frame miss is covered', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#missing-child-namespace') {
           fastPathHits.push(key);
@@ -2866,31 +2948,37 @@ describe('Mixin', () => {
       try {
         const childRules = rules([
           mixin({
-            name: any('#other-child-namespace'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            name: '#other-child-namespace',
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        const root = rules([
-          mixin({
-            name: any('#parent-namespace'),
-            rules: childRules
-          })
-        ]);
+        // New model (Mixin.sourceNode wrapper eliminated): the `rules([...])`
+        // passed as `rules:` is discarded — the parent Mixin owns the body
+        // directly, so the body scope frame is the Mixin's own, not the
+        // discarded `childRules` wrapper's.
+        const parentMixin = mixin({
+          name: '#parent-namespace',
+          rules: childRules.rules
+        });
+        const root = rules([parentMixin]);
         root.getScopeFrame();
-        childRules.getScopeFrame();
+        parentMixin.getScopeFrame();
 
         expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: recursive namespace miss skips child findMixin when first remainder miss is covered', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let childFindMixinCount = 0;
       let childRules: RulesClass;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === childRules) {
           childFindMixinCount++;
         }
@@ -2900,14 +2988,14 @@ describe('Mixin', () => {
       try {
         childRules = rules([
           mixin({
-            name: any('#other-child-namespace'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            name: '#other-child-namespace',
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         const root = rules([
           mixin({
-            name: any('#parent-namespace'),
-            rules: childRules
+            name: '#parent-namespace',
+            rules: childRules.rules
           })
         ]);
         root.getScopeFrame();
@@ -2916,15 +3004,18 @@ describe('Mixin', () => {
         expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], undefined)).toBeUndefined();
         expect(childFindMixinCount).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: callable namespace child-surface covered miss skips nested findMixin', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let namespaceRulesFindMixinCount = 0;
       let namespaceRules: RulesClass;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === namespaceRules) {
           namespaceRulesFindMixinCount++;
         }
@@ -2934,15 +3025,15 @@ describe('Mixin', () => {
       try {
         const childSurface = rules([
           mixin({
-            name: any('.other-child-mixin'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            name: '.other-child-mixin',
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         namespaceRules = rules([childSurface]);
         const root = rules([
           mixin({
-            name: any('#parent-namespace'),
-            rules: namespaceRules
+            name: '#parent-namespace',
+            rules: namespaceRules.rules
           })
         ]);
         root.getScopeFrame();
@@ -2952,25 +3043,30 @@ describe('Mixin', () => {
         expect(root.findMixin(['#parent-namespace', '.missing-child-mixin'], undefined)).toBeUndefined();
         expect(namespaceRulesFindMixinCount).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: callable namespace reference-import modeled miss skips nested findMixin', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const missingKey = '.missing-reference-child';
       let namespaceRulesFindMixinCount = 0;
       const broadFastHits: string[] = [];
       let namespaceRules: RulesClass;
       let root: RulesClass;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === namespaceRules) {
           namespaceRulesFindMixinCount++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === namespaceRules || this === root) && key === missingKey) {
           broadFastHits.push(this === namespaceRules ? 'namespace' : 'root');
@@ -2989,8 +3085,8 @@ describe('Mixin', () => {
       namespaceRules = rules([referenceChild]);
       root = rules([
         mixin({
-          name: any('#parent-namespace'),
-          rules: namespaceRules
+          name: '#parent-namespace',
+          rules: namespaceRules.rules
         })
       ]);
 
@@ -3007,30 +3103,36 @@ describe('Mixin', () => {
         expect(namespaceRulesFindMixinCount).toBe(0);
         expect(broadFastHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: callable namespace reference-import modeled hit skips nested findMixin', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
-        name: any('.reference-leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.reference-leaf',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([leaf], { referenceMode: true });
       let namespaceRules: RulesClass;
       let root: RulesClass;
       const broadFastHits: string[] = [];
       let namespaceRulesFindMixinCount = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === namespaceRules) {
           namespaceRulesFindMixinCount++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === namespaceRules || this === root) && key === '.reference-leaf') {
           broadFastHits.push(this === namespaceRules ? 'namespace' : 'root');
@@ -3042,8 +3144,8 @@ describe('Mixin', () => {
         namespaceRules = rules([referenceChild]);
         root = rules([
           mixin({
-            name: any('#parent-namespace'),
-            rules: namespaceRules
+            name: '#parent-namespace',
+            rules: namespaceRules.rules
           })
         ]);
         root.getScopeFrame();
@@ -3058,22 +3160,26 @@ describe('Mixin', () => {
         expect(namespaceRulesFindMixinCount).toBe(0);
         expect(broadFastHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: callable namespace reference-import offset path skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         mixin({
-          name: any('#imported'),
-          rules: rules([leaf])
+          name: '#imported',
+          rules: [leaf]
         })
       ], { referenceMode: true });
       let namespaceRules: RulesClass;
@@ -3081,13 +3187,15 @@ describe('Mixin', () => {
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === namespaceRules || this === root) && key === '#imported') {
           broadFastHits.push(this === namespaceRules ? 'namespace' : 'root');
@@ -3099,8 +3207,8 @@ describe('Mixin', () => {
         namespaceRules = rules([referenceChild]);
         root = rules([
           mixin({
-            name: any('#parent-namespace'),
-            rules: namespaceRules
+            name: '#parent-namespace',
+            rules: namespaceRules.rules
           })
         ]);
         root.getScopeFrame();
@@ -3116,15 +3224,19 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: recursive namespace hit reaches fallback frame before child direct crawl', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#fallback-child-namespace') {
           fastPathHits.push(key);
@@ -3134,23 +3246,23 @@ describe('Mixin', () => {
 
       try {
         const leaf = mixin({
-          name: any('.leaf'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.leaf',
+          rules: [decl({ name: 'color', value: any('green') })]
         });
         const fallbackChildNamespace = mixin({
-          name: any('#fallback-child-namespace'),
-          rules: rules([leaf])
+          name: '#fallback-child-namespace',
+          rules: [leaf]
         });
         const fallbackRules = rules([fallbackChildNamespace]);
-        const childRules = rules([]);
-        const root = rules([
-          mixin({
-            name: any('#parent-with-fallback-namespace'),
-            rules: childRules
-          })
-        ]);
+        // New model: the parent Mixin owns its (empty) body directly; the body scope
+        // frame is the Mixin's own, not the discarded `childRules` wrapper's.
+        const parentMixin = mixin({
+          name: '#parent-with-fallback-namespace',
+          rules: []
+        });
+        const root = rules([parentMixin]);
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        parentMixin.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
 
         expect(root.findMixin([
           '#parent-with-fallback-namespace',
@@ -3159,14 +3271,17 @@ describe('Mixin', () => {
         ], 'Mixin')).toEqual([leaf]);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: recursive namespace fallback covered miss skips direct bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#fallback-missing-namespace') {
           fastPathHits.push(key);
@@ -3177,19 +3292,20 @@ describe('Mixin', () => {
       try {
         const fallbackRules = rules([
           mixin({
-            name: any('#fallback-other-namespace'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            name: '#fallback-other-namespace',
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         const childRules = rules([]);
-        const root = rules([
-          mixin({
-            name: any('#parent-with-covered-fallback'),
-            rules: childRules
-          })
-        ]);
+        // New model: the parent Mixin owns its (empty) body directly; the body
+        // scope frame is the Mixin's own, not the discarded `childRules` wrapper's.
+        const parentMixin = mixin({
+          name: '#parent-with-covered-fallback',
+          rules: childRules.rules
+        });
+        const root = rules([parentMixin]);
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        parentMixin.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
 
         expect(root.findMixin([
           '#parent-with-covered-fallback',
@@ -3198,41 +3314,46 @@ describe('Mixin', () => {
         ], 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback namespace reference-import offset hit skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         mixin({
-          name: any('#imported'),
-          rules: rules([leaf])
+          name: '#imported',
+          rules: [leaf]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-import'),
-          rules: childRules
-        })
-      ]);
+      // New model: the parent Mixin owns its (empty) body directly; attach the fallback
+      // to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
+      const parentMixin = mixin({
+        name: '#parent-with-fallback-import',
+        rules: []
+      });
+      const root = rules([parentMixin]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3242,7 +3363,7 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        parentMixin.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3258,43 +3379,49 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback namespace reference-import offset miss skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const referenceChild = rules([
         mixin({
-          name: any('#imported'),
-          rules: rules([
+          name: '#imported',
+          rules: [
             mixin({
-              name: any('.other-leaf'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              name: '.other-leaf',
+              rules: [decl({ name: 'color', value: any('green') })]
             })
-          ])
+          ]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      const childRules = rules([]);
-      const root = rules([
-        mixin({
-          name: any('#parent-with-fallback-import'),
-          rules: childRules
-        })
-      ]);
+      // New model: the parent Mixin owns its (empty) body directly; attach the fallback
+      // to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
+      const parentMixin = mixin({
+        name: '#parent-with-fallback-import',
+        rules: []
+      });
+      const root = rules([parentMixin]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3304,7 +3431,7 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        parentMixin.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3320,42 +3447,48 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback ruleset namespace reference-import offset hit skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
-          rules: rules([leaf])
+          rules: [leaf]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
       const childRules = rules([]);
       const root = rules([
         mixin({
-          name: any('#parent-with-fallback-ruleset-import'),
-          rules: childRules
+          name: '#parent-with-fallback-ruleset-import',
+          rules: childRules.rules
         })
       ]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3365,7 +3498,9 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3381,43 +3516,49 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback ruleset namespace reference-import offset miss skips broad start crawl', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
-          rules: rules([
+          rules: [
             mixin({
-              name: any('.other-leaf'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              name: '.other-leaf',
+              rules: [decl({ name: 'color', value: any('green') })]
             })
-          ])
+          ]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
       const childRules = rules([]);
       const root = rules([
         mixin({
-          name: any('#parent-with-fallback-ruleset-import'),
-          rules: childRules
+          name: '#parent-with-fallback-ruleset-import',
+          rules: childRules.rules
         })
       ]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3427,7 +3568,9 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3443,50 +3586,56 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: fallback mixin namespace terminal filters fallback ruleset namespace prefixes', () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const mixinLeaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('mixin') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('mixin') })]
       });
       const rulesetLeaf = ruleset({
         selector: el('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        rules: [decl({ name: 'color', value: any('ruleset') })]
       });
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
-          rules: rules([rulesetLeaf])
+          rules: [rulesetLeaf]
         }),
         mixin({
-          name: any('#imported'),
-          rules: rules([mixinLeaf])
+          name: '#imported',
+          rules: [mixinLeaf]
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
       const childRules = rules([]);
       const root = rules([
         mixin({
-          name: any('#parent-with-fallback-ambiguous-import'),
-          rules: childRules
+          name: '#parent-with-fallback-ambiguous-import',
+          rules: childRules.rules
         })
       ]);
       const broadFastHits: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
         return originalFindMixin.apply(this, args);
       };
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if ((this === fallbackRules || this === root) && key === '#imported') {
           broadFastHits.push(this === fallbackRules ? 'fallback' : 'root');
@@ -3496,7 +3645,9 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
-        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+        // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
         referenceChild.getScopeFrame();
         fallbackRules.collectDirectChildRulesEntries();
         expect(fallbackRules.directChildRuleEntries?.[0]).toMatchObject({
@@ -3522,15 +3673,19 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.reference-import-missing') {
           fastPathHits.push(key);
@@ -3562,18 +3717,20 @@ describe('Mixin', () => {
         expect(root._scopeFrame?.mixinCallableMissCoverageKnown).toBe(true);
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: uncovered reference imports do not reopen covered sibling child surfaces', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const missingKey = '.mixed-reference-missing';
       const broadParentCrawls: string[] = [];
       const coveredChild = rules([
         mixin({
-          name: any('.covered-sibling'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.covered-sibling',
+          rules: [decl({ name: 'color', value: any('green') })]
         })
       ]);
       const referenceChild = rules([
@@ -3586,8 +3743,10 @@ describe('Mixin', () => {
       ]);
       const root = rules([coveredChild, referenceChild]);
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
-        const [key, options] = args;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: any[]) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const [key, options] = args as [string, { skipCurrentSurface?: boolean } | undefined];
         if (this === root && key === missingKey && options?.skipCurrentSurface === true) {
           broadParentCrawls.push(key);
         }
@@ -3602,13 +3761,16 @@ describe('Mixin', () => {
         expect(root.findMixin(missingKey, 'Mixin')).toBeUndefined();
         expect(broadParentCrawls).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import namespace start miss skips broad array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const namespaceKey = '#missing-imported-namespace';
       const rootBroadStarts: string[] = [];
       let nestedArrayFallbacks = 0;
@@ -3622,14 +3784,16 @@ describe('Mixin', () => {
       ]);
       const root = rules([referenceChild]);
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === namespaceKey) {
           rootBroadStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3649,36 +3813,42 @@ describe('Mixin', () => {
         expect(rootBroadStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import compound prefix hit skips generated array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const importedLeaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         ruleset({
           selector: compound([el('#imported'), el('.branch')]),
-          rules: rules([importedLeaf])
+          rules: [importedLeaf]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
       const broadFastStarts: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === '#imported') {
           broadFastStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3700,37 +3870,43 @@ describe('Mixin', () => {
         expect(broadFastStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import compound prefix miss skips generated array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const referenceChild = rules([
         ruleset({
           selector: compound([el('#imported'), el('.branch')]),
-          rules: rules([
+          rules: [
             mixin({
-              name: any('.other-leaf'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              name: '.other-leaf',
+              rules: [decl({ name: 'color', value: any('green') })]
             })
-          ])
+          ]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
       const broadFastStarts: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === '#imported') {
           broadFastStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3752,17 +3928,21 @@ describe('Mixin', () => {
         expect(broadFastStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import selector-list prefix hit skips generated array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const importedLeaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         ruleset({
@@ -3770,21 +3950,23 @@ describe('Mixin', () => {
             compound([el('#imported'), el('.branch')]),
             compound([el('#other'), el('.branch')])
           ]),
-          rules: rules([importedLeaf])
+          rules: [importedLeaf]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
       const broadFastStarts: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === '#imported') {
           broadFastStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3806,40 +3988,46 @@ describe('Mixin', () => {
         expect(broadFastStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: reference-import selector-list prefix miss skips generated array fallback', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const referenceChild = rules([
         ruleset({
           selector: sellist([
             compound([el('#imported'), el('.branch')]),
             compound([el('#other'), el('.branch')])
           ]),
-          rules: rules([
+          rules: [
             mixin({
-              name: any('.other-leaf'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              name: '.other-leaf',
+              rules: [decl({ name: 'color', value: any('green') })]
             })
-          ])
+          ]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
       const broadFastStarts: string[] = [];
       let nestedArrayFallbacks = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === '#imported') {
           broadFastStarts.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayFallbacks++;
         }
@@ -3861,21 +4049,17 @@ describe('Mixin', () => {
         expect(broadFastStarts).toEqual([]);
         expect(nestedArrayFallbacks).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ScopeFrame callable buckets: selector-list prefix hit and miss avoid recursive prefix crawl when frames cover rulesets', () => {
-      type PrefixProbeRules = RulesClass & {
-        findVisibleCallableRulesetPrefixMatches(
-          path: string[],
-          options?: { hasTarget?: boolean; local?: boolean; searchParents?: boolean }
-        ): unknown[];
-      };
       const importedLeaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const referenceChild = rules([
         ruleset({
@@ -3883,15 +4067,16 @@ describe('Mixin', () => {
             compound([el('#imported'), el('.branch')]),
             compound([el('#other'), el('.branch')])
           ]),
-          rules: rules([importedLeaf])
+          rules: [importedLeaf]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
-      const proto: PrefixProbeRules = Object.getPrototypeOf(root);
-      const originalPrefixSearch = proto.findVisibleCallableRulesetPrefixMatches;
+
+      const proto = Object.getPrototypeOf(root) as any;
+      const originalPrefixSearch = proto.findCallablePrefixMatches;
       let recursivePrefixCrawls = 0;
 
-      proto.findVisibleCallableRulesetPrefixMatches = function(path, options) {
+      proto.findCallablePrefixMatches = function(path: string[], options: unknown) {
         recursivePrefixCrawls++;
         return originalPrefixSearch.call(this, path, options);
       };
@@ -3908,27 +4093,29 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(recursivePrefixCrawls).toBe(0);
       } finally {
-        proto.findVisibleCallableRulesetPrefixMatches = originalPrefixSearch;
+        proto.findCallablePrefixMatches = originalPrefixSearch;
       }
     });
 
     it('ScopeFrame callable buckets: local namespace-start misses do not reopen broad direct crawl', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const localChild = rules([
         mixin({
-          name: any('#local'),
-          rules: rules([
+          name: '#local',
+          rules: [
             mixin({
-              name: any('.leaf'),
-              rules: rules([decl({ name: 'color', value: any('red') })])
+              name: '.leaf',
+              rules: [decl({ name: 'color', value: any('red') })]
             })
-          ])
+          ]
         })
       ], { local: true });
       const root = rules([localChild]);
       const broadFastStarts: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#local' || key === '.leaf')) {
           broadFastStarts.push(key);
@@ -3947,26 +4134,29 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(broadFastStarts).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: local namespace-start hits stay on narrow child frames', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const leaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('blue') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('blue') })]
       });
       const child = rules([
         mixin({
-          name: any('#visible'),
-          rules: rules([leaf])
+          name: '#visible',
+          rules: [leaf]
         })
       ]);
       const root = rules([child]);
       const broadFastStarts: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#visible' || key === '.leaf')) {
           broadFastStarts.push(key);
@@ -3985,39 +4175,42 @@ describe('Mixin', () => {
         })).toEqual([leaf]);
         expect(broadFastStarts).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: restricted namespace-start misses stay covered without target', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const source = rules([
         mixin({
-          name: any('#target'),
-          rules: rules([
+          name: '#target',
+          rules: [
             mixin({
-              name: any('.leaf'),
-              rules: rules([decl({ name: 'color', value: any('red') })])
+              name: '.leaf',
+              rules: [decl({ name: 'color', value: any('red') })]
             })
-          ])
+          ]
         })
       ]);
       const output = rules([
         mixin({
-          name: any('#target'),
-          rules: rules([
+          name: '#target',
+          rules: [
             mixin({
-              name: any('.leaf'),
-              rules: rules([decl({ name: 'color', value: any('red') })])
+              name: '.leaf',
+              rules: [decl({ name: 'color', value: any('red') })]
             })
-          ])
+          ]
         })
       ]);
       attachMixinOutputSlot(output, source, true);
       const root = rules([output]);
       const broadFastStarts: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#target' || key === '.leaf')) {
           broadFastStarts.push(key);
@@ -4035,37 +4228,40 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(broadFastStarts).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: targeted namespace-start hits stay on narrow child frames', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const sourceLeaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('source') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('source') })]
       });
       const outputLeaf = mixin({
-        name: any('.leaf'),
-        rules: rules([decl({ name: 'color', value: any('blue') })])
+        name: '.leaf',
+        rules: [decl({ name: 'color', value: any('blue') })]
       });
       const source = rules([
         mixin({
-          name: any('#target'),
-          rules: rules([sourceLeaf])
+          name: '#target',
+          rules: [sourceLeaf]
         })
       ]);
       const output = rules([
         mixin({
-          name: any('#target'),
-          rules: rules([outputLeaf])
+          name: '#target',
+          rules: [outputLeaf]
         })
       ]);
       attachMixinOutputSlot(output, source, true);
       const root = rules([output]);
       const broadFastStarts: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#target' || key === '.leaf')) {
           broadFastStarts.push(key);
@@ -4084,14 +4280,17 @@ describe('Mixin', () => {
         })).toEqual([outputLeaf]);
         expect(broadFastStarts).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child frames cover exact misses', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-child-missing') {
           fastPathHits.push(key);
@@ -4103,8 +4302,8 @@ describe('Mixin', () => {
         const root = rules([
           rules([
             mixin({
-              name: any('.child-frame-mixin'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              name: '.child-frame-mixin',
+              rules: [decl({ name: 'color', value: any('green') })]
             })
           ])
         ]);
@@ -4113,22 +4312,24 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-child-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: uncovered child miss respects searchParents false after narrow bridge', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const parentRetryHits: string[] = [];
       const missingKey = '.parent-only-after-child-miss';
       const parentMixin = mixin({
-        name: any(missingKey),
-        rules: rules([decl({ name: 'color', value: any('red') })])
+        name: missingKey,
+        rules: [decl({ name: 'color', value: any('red') })]
       });
       const childSurface = rules([
         mixin({
-          name: any('.child-other'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.child-other',
+          rules: [decl({ name: 'color', value: any('green') })]
         })
       ]);
       const childRules = rules([childSurface]);
@@ -4136,7 +4337,8 @@ describe('Mixin', () => {
       root.getScopeFrame();
       childRules.getScopeFrame(root._scopeFrame);
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && key === missingKey) {
           parentRetryHits.push(key);
@@ -4148,14 +4350,17 @@ describe('Mixin', () => {
         expect(childRules.findMixin(missingKey, 'Mixin', { searchParents: false })).toBeUndefined();
         expect(parentRetryHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child surfaces cannot contain exact callables', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.frame-child-declaration-missing') {
           fastPathHits.push(key);
@@ -4176,12 +4381,14 @@ describe('Mixin', () => {
         expect(root.findMixin('.frame-child-declaration-missing', 'Mixin')).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: prepared child entries stop recursive surface rediscovery', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const childRules = rules([
         decl({ name: 'color', value: any('green') })
       ]);
@@ -4191,7 +4398,8 @@ describe('Mixin', () => {
       root.getScopeFrame();
 
       const originalValue = childRules.rules;
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.prepared-child-missing') {
           return [];
@@ -4208,7 +4416,8 @@ describe('Mixin', () => {
       try {
         expect(root.findMixin('.prepared-child-missing', 'Mixin')).toBeUndefined();
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
         Object.defineProperty(childRules, 'rules', {
           configurable: true,
           writable: true,
@@ -4254,8 +4463,8 @@ describe('Mixin', () => {
 
       const childRules = rules([
         mixin({
-          name: any('.late-child-mixin'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.late-child-mixin',
+          rules: [decl({ name: 'color', value: any('green') })]
         })
       ]);
       root.push(childRules);
@@ -4310,8 +4519,8 @@ describe('Mixin', () => {
           label: 'mixin',
           child: rules([
             mixin({
-              name: any('.child-mixin'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              name: '.child-mixin',
+              rules: [decl({ name: 'color', value: any('green') })]
             })
           ])
         },
@@ -4320,7 +4529,7 @@ describe('Mixin', () => {
           child: rules([
             ruleset({
               selector: el('.child-ruleset'),
-              rules: rules([decl({ name: 'color', value: any('blue') })])
+              rules: [decl({ name: 'color', value: any('blue') })]
             })
           ])
         },
@@ -4328,12 +4537,12 @@ describe('Mixin', () => {
           label: 'mixed-callable',
           child: rules([
             mixin({
-              name: any('.mixed-mixin'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              name: '.mixed-mixin',
+              rules: [decl({ name: 'color', value: any('green') })]
             }),
             ruleset({
               selector: el('.mixed-ruleset'),
-              rules: rules([decl({ name: 'color', value: any('blue') })])
+              rules: [decl({ name: 'color', value: any('blue') })]
             })
           ])
         },
@@ -4380,9 +4589,11 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: terminal mixin-only miss skips Rules.findMixinsFast for ruleset-only child surfaces', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.ruleset-only-child-missing') {
           fastPathHits.push(key);
@@ -4395,7 +4606,7 @@ describe('Mixin', () => {
           rules([
             ruleset({
               selector: el('.ruleset-only-child'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
           ])
         ]);
@@ -4412,14 +4623,17 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: terminal mixin-only miss ignores ruleset-only candidates', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.ruleset-only-prefix') {
           fastPathHits.push(key);
@@ -4431,7 +4645,7 @@ describe('Mixin', () => {
         const root = rules([
           ruleset({
             selector: compound([el('.ruleset-only-prefix'), el('.leaf')]),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         root.getScopeFrame();
@@ -4445,14 +4659,17 @@ describe('Mixin', () => {
         })).toEqual({ kind: 'miss' });
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: simple misses stop on compound-prefix candidates', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.compound-prefix-only') {
           fastPathHits.push(key);
@@ -4464,7 +4681,7 @@ describe('Mixin', () => {
         const root = rules([
           ruleset({
             selector: compound([el('.compound-prefix-only'), el('.leaf')]),
-            rules: rules([decl({ name: 'color', value: any('green') })])
+            rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
         root.getScopeFrame();
@@ -4479,42 +4696,48 @@ describe('Mixin', () => {
         });
         expect(fastPathHits).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('ScopeFrame callable buckets: terminal mixin-only child misses still climb to parent frames', () => {
       const parentMixin = mixin({
-        name: any('.parent-terminal-mixin'),
+        name: '.parent-terminal-mixin',
         params: list([any('color', { role: 'property' })]),
-        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+        rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
       });
-      const childRules = rules([
-        ruleset({
-          selector: el('.ruleset-only-child'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
-        })
-      ]);
+      // New model: the `.caller` Ruleset IS its own body (no `_passedRulesWrapper`),
+      // so query the ruleset directly — its frame climbs to root where the mixin is.
+      const callerRuleset = ruleset({
+        selector: el('.caller'),
+        rules: [
+          ruleset({
+            selector: el('.ruleset-only-child'),
+            rules: [decl({ name: 'color', value: any('green') })]
+          })
+        ]
+      });
       const root = rules([
         parentMixin,
-        ruleset({
-          selector: el('.caller'),
-          rules: childRules
-        })
+        callerRuleset
       ]);
       root.getScopeFrame();
-      childRules.getScopeFrame();
+      callerRuleset.getScopeFrame();
 
-      expect(childRules.findMixin('.parent-terminal-mixin', 'Mixin', {
+      expect(callerRuleset.findMixin('.parent-terminal-mixin', 'Mixin', {
         terminalMixinOnly: true
       })).toEqual([parentMixin]);
     });
 
     it('direct mixin-only miss skips ruleset-only child surfaces without a frame', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const childBridgeKeys: string[] = [];
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
-        const [key, options] = args;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: any[]) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const [key, options] = args as [string, { searchParents?: boolean } | undefined];
         if (key === '.ruleset-only-direct-missing' && options?.searchParents === false) {
           childBridgeKeys.push(key);
         }
@@ -4526,7 +4749,7 @@ describe('Mixin', () => {
           rules([
             ruleset({
               selector: el('.ruleset-only-direct-child'),
-              rules: rules([decl({ name: 'color', value: any('green') })])
+              rules: [decl({ name: 'color', value: any('green') })]
             })
           ])
         ]);
@@ -4536,7 +4759,8 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(childBridgeKeys).toHaveLength(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
@@ -4568,22 +4792,24 @@ describe('Mixin', () => {
     });
 
     it('ruleset path misses skip mixin-only child surfaces without a frame', async () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const childRules = rules([
         mixin({
-          name: any('.only-mixin-child'),
-          rules: rules([decl({ name: 'color', value: any('blue') })])
+          name: '.only-mixin-child',
+          rules: [decl({ name: 'color', value: any('blue') })]
         })
       ]);
       const root = rules([
         ruleset({
           selector: el('.mixin-only-surface'),
-          rules: childRules
+          rules: childRules.rules
         })
       ]);
 
       await root.eval(context);
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.warmup-missing-ruleset-path' || key === '.missing-ruleset-path') {
           return [];
@@ -4604,7 +4830,8 @@ describe('Mixin', () => {
         });
         expect(root.findMixin(['.missing-ruleset-path', '.leaf'], undefined)).toBeUndefined();
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
         if (descriptor) {
           Object.defineProperty(childRules, 'rules', descriptor);
         }
@@ -4615,12 +4842,12 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.button'),
-              rules: rules([decl({ name: 'color', value: any('red') })])
+              rules: [decl({ name: 'color', value: any('red') })]
             })
-          ])
+          ]
         })
       ]);
 
@@ -4628,19 +4855,20 @@ describe('Mixin', () => {
 
       expect('_indexRules' in RulesClass.prototype).toBe(false);
       expect(found).toHaveLength(1);
-      expect(found?.[0]?.type).toBe('Ruleset');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((found?.[0] as Ruleset | undefined)?.type).toBe('Ruleset');
     });
 
     it('compound-prefix ruleset lookup uses callable buckets without legacy rule indexing', () => {
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
-              name: any('.colors'),
-              rules: rules([decl({ name: 'primary', value: any('red') })])
+              name: '.colors',
+              rules: [decl({ name: 'primary', value: any('red') })]
             })
-          ])
+          ]
         })
       ]);
 
@@ -4648,28 +4876,31 @@ describe('Mixin', () => {
 
       expect('_indexRules' in RulesClass.prototype).toBe(false);
       expect(found).toHaveLength(1);
-      expect(found?.[0]?.type).toBe('Mixin');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((found?.[0] as Mixin | undefined)?.type).toBe('Mixin');
     });
 
     it('mixin namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
       const leaf = mixin({
-        name: any('.colors'),
-        rules: rules([decl({ name: 'primary', value: any('red') })])
+        name: '.colors',
+        rules: [decl({ name: 'primary', value: any('red') })]
       });
       const root = rules([
         mixin({
-          name: any('#theme'),
-          rules: rules([
+          name: '#theme',
+          rules: [
             mixin({
-              name: any('.dark'),
-              rules: rules([leaf])
+              name: '.dark',
+              rules: [leaf]
             })
-          ])
+          ]
         })
       ]);
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const nestedArrayPathCalls: unknown[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayPathCalls.push(args[0]);
         }
@@ -4680,29 +4911,32 @@ describe('Mixin', () => {
         expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
         expect(nestedArrayPathCalls).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('ruleset namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
       const leaf = mixin({
-        name: any('.colors'),
-        rules: rules([decl({ name: 'primary', value: any('red') })])
+        name: '.colors',
+        rules: [decl({ name: 'primary', value: any('red') })]
       });
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.dark'),
-              rules: rules([leaf])
+              rules: [leaf]
             })
-          ])
+          ]
         })
       ]);
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const nestedArrayPathCalls: unknown[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayPathCalls.push(args[0]);
         }
@@ -4713,24 +4947,27 @@ describe('Mixin', () => {
         expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
         expect(nestedArrayPathCalls).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('compound-prefix ruleset lookup reuses path offsets instead of materializing remainder arrays', () => {
       const leaf = mixin({
-        name: any('.colors'),
-        rules: rules([decl({ name: 'primary', value: any('red') })])
+        name: '.colors',
+        rules: [decl({ name: 'primary', value: any('red') })]
       });
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([leaf])
+          rules: [leaf]
         })
       ]);
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let nestedArrayPathCalls = 0;
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayPathCalls++;
         }
@@ -4743,7 +4980,8 @@ describe('Mixin', () => {
         })).toEqual([leaf]);
         expect(nestedArrayPathCalls).toBe(0);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
@@ -4751,50 +4989,52 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.dark'),
-              rules: rules([
+              rules: [
                 mixin({
-                  name: any('.other'),
-                  rules: rules([decl({ name: 'color', value: any('red') })])
+                  name: '.other',
+                  rules: [decl({ name: 'color', value: any('red') })]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#compound'), el('.prefix')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.inner'),
-              rules: rules([
+              rules: [
                 mixin({
-                  name: any('.other'),
-                  rules: rules([decl({ name: 'color', value: any('blue') })])
+                  name: '.other',
+                  rules: [decl({ name: 'color', value: any('blue') })]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         mixin({
-          name: any('#mixin-ns'),
-          rules: rules([
+          name: '#mixin-ns',
+          rules: [
             mixin({
-              name: any('.dark'),
-              rules: rules([
+              name: '.dark',
+              rules: [
                 mixin({
-                  name: any('.other'),
-                  rules: rules([decl({ name: 'color', value: any('green') })])
+                  name: '.other',
+                  rules: [decl({ name: 'color', value: any('green') })]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const nestedArrayPathCalls: unknown[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this !== root && Array.isArray(args[0])) {
           nestedArrayPathCalls.push(args[0]);
         }
@@ -4813,14 +5053,15 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(nestedArrayPathCalls).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('callable lookup does not build a scope frame just to try the frame shortcut', () => {
       const mixinDef = mixin({
-        name: any('.lazy-frame-mixin'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.lazy-frame-mixin',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
       const root = rules([mixinDef]);
 
@@ -4835,23 +5076,23 @@ describe('Mixin', () => {
       });
 
       const mixinDef = mixin({
-        name: any('.fast-mixin'),
-        rules: rules([decl({ name: 'color', value: any('green') })])
+        name: '.fast-mixin',
+        rules: [decl({ name: 'color', value: any('green') })]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })]
         }),
         ruleset({
           selector: el('.b'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })]
         }),
         ruleset({
           selector: el('.c'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })]
         })
       ]);
       context.root = root;
@@ -4878,15 +5119,15 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('.fast-ruleset'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          rules: [decl({ name: 'color', value: any('green') })]
         }),
         ruleset({
           selector: el('.a'),
-          rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })]
         }),
         ruleset({
           selector: el('.b'),
-          rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+          rules: [call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })]
         })
       ]);
       context.root = root;
@@ -4915,14 +5156,14 @@ describe('Mixin', () => {
           source: '.' + INTERPOLATION_PLACEHOLDER,
           replacements: [any('fast-mixin')]
         }, { role: 'name' }),
-        rules: rules([decl({ name: 'color', value: any('orange') })])
+        rules: [decl({ name: 'color', value: any('orange') })]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+          rules: [call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })]
         })
       ]);
       context.root = root;
@@ -4947,17 +5188,17 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: interpolatedSelector(dynamicClass),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -4980,17 +5221,17 @@ describe('Mixin', () => {
 
       const root = rules([
         mixin({
-          name: any('.other-mixin'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.other-mixin',
+          rules: [decl({ name: 'color', value: any('green') })]
         }),
         ruleset({
           selector: el('.a'),
-          rules: rules([
+          rules: [
             decl({
               name: 'content',
               value: ref({ key: '.missing-mixin' }, { type: 'mixin', fallbackValue: true })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -5010,17 +5251,17 @@ describe('Mixin', () => {
 
       const root = rules([
         mixin({
-          name: any('.other-mixin'),
-          rules: rules([decl({ name: 'color', value: any('green') })])
+          name: '.other-mixin',
+          rules: [decl({ name: 'color', value: any('green') })]
         }),
         ruleset({
           selector: el('.a'),
-          rules: rules([
+          rules: [
             decl({
               name: 'content',
               value: ref({ key: '.missing-ruleset-mixin' }, { type: 'mixin-ruleset', fallbackValue: true })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -5040,7 +5281,7 @@ describe('Mixin', () => {
             source: '.' + INTERPOLATION_PLACEHOLDER,
             replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
           }, { role: 'name' }),
-          rules: rules([decl({ name: 'color', value: any('orange') })])
+          rules: [decl({ name: 'color', value: any('orange') })]
         })
       ]);
 
@@ -5051,28 +5292,28 @@ describe('Mixin', () => {
     it('namespace fast path: unresolved dynamic namespace segments miss directly', () => {
       const root = rules([
         mixin({
-          name: any('#theme'),
-          rules: rules([
+          name: '#theme',
+          rules: [
             mixin({
               name: interpolated({
                 source: INTERPOLATION_PLACEHOLDER,
                 replacements: [ref({ key: 'segment' }, { type: 'variable' })]
               }, { role: 'name' }),
-              rules: rules([
+              rules: [
                 mixin({
-                  name: any('.navbar'),
-                  rules: rules([
+                  name: '.navbar',
+                  rules: [
                     mixin({
-                      name: any('.colors'),
-                      rules: rules([
+                      name: '.colors',
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -5085,43 +5326,44 @@ describe('Mixin', () => {
     it('namespace fast path: type=mixin ignores compound-prefix ruleset ambiguity', () => {
       const root = rules([
         mixin({
-          name: any('#theme'),
-          rules: rules([
+          name: '#theme',
+          rules: [
             mixin({
-              name: any('.dark'),
-              rules: rules([
+              name: '.dark',
+              rules: [
                 mixin({
-                  name: any('.navbar'),
-                  rules: rules([
+                  name: '.navbar',
+                  rules: [
                     mixin({
-                      name: any('.colors'),
-                      rules: rules([
+                      name: '.colors',
+                      rules: [
                         decl({ name: 'primary', value: any('cyan') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             mixin({
-              name: any('.colors'),
-              rules: rules([
+              name: '.colors',
+              rules: [
                 decl({ name: 'primary', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
       const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
         context
       });
       expect(found).toHaveLength(1);
-      expect(found?.[0]?.type).toBe('Mixin');
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      expect((found?.[0] as Mixin | undefined)?.type).toBe('Mixin');
       const mixinHit = found?.[0];
       expect(mixinHit instanceof Mixin ? mixinHit.name?.valueOf() : undefined).toBe('.colors');
     });
@@ -5130,24 +5372,24 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.dark'),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: el('.navbar'),
-                  rules: rules([
+                  rules: [
                     mixin({
-                      name: any('.colors'),
-                      rules: rules([
+                      name: '.colors',
+                      rules: [
                         decl({ name: 'primary', value: any('red') })
-                      ])
+                      ]
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         })
       ]);
 
@@ -5158,7 +5400,7 @@ describe('Mixin', () => {
     });
 
     it('namespace fast path: ruleset namespace path preserves callable namespace unions', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         @namespaceGuard: 1;
@@ -5192,33 +5434,39 @@ describe('Mixin', () => {
         }
       `).tree;
 
-      context.root = tree;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree = tree as unknown as RulesClass;
+      context.root = typedTree;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const directCrawlHits: string[] = [];
       let nestedArrayPathCalls = 0;
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '#guarded' || key === '#deeper' || key === '.mixin') {
           directCrawlHits.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-        if (this !== tree && Array.isArray(args[0])) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== typedTree && Array.isArray(args[0])) {
           nestedArrayPathCalls++;
         }
         return originalFindMixin.apply(this, args);
       };
 
       try {
-        const found = tree.findMixin(['#guarded', '#deeper', '.mixin'], undefined, {
+        const found = typedTree.findMixin(['#guarded', '#deeper', '.mixin'], undefined, {
           context
         });
 
         expect(found).toHaveLength(3);
 
-        const css = await renderNodeToString(tree, context, { context });
+        const css = await renderNodeToString(typedTree, context, { context });
 
         expect(css).toContain('#guarded-caller {');
         expect(css).toContain('guarded: namespace;');
@@ -5227,13 +5475,15 @@ describe('Mixin', () => {
         expect(directCrawlHits).toEqual([]);
         expect(nestedArrayPathCalls).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('namespace fast path: real Less stable namespaces avoid direct-crawl and array fallback', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         #theme {
@@ -5280,11 +5530,16 @@ describe('Mixin', () => {
           .parameterized(blue);
         }
       `).tree;
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree2 = tree as unknown as RulesClass;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const directCrawlHits: string[] = [];
       let nestedArrayPathCalls = 0;
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (
           key === '#theme'
@@ -5300,16 +5555,17 @@ describe('Mixin', () => {
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-        if (this !== tree && Array.isArray(args[0])) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== typedTree2 && Array.isArray(args[0])) {
           nestedArrayPathCalls++;
         }
         return originalFindMixin.apply(this, args);
       };
 
       try {
-        context.root = tree;
-        const css = await renderNodeToString(tree, context, { context });
+        context.root = typedTree2;
+        const css = await renderNodeToString(typedTree2, context, { context });
 
         expect(css).toContain('.a {');
         expect(css).toContain('color: cyan;');
@@ -5322,16 +5578,21 @@ describe('Mixin', () => {
         expect(directCrawlHits).toEqual([]);
         expect(nestedArrayPathCalls).toBe(0);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('mixin-ruleset calls with args mark terminal lookup mixin-only', async () => {
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const terminalHints: boolean[] = [];
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
-        const [key, , options] = args;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: any[]) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        const [key, , options] = args as [string, unknown, { terminalMixinOnly?: boolean } | undefined];
         if (key === '.parameterized') {
           terminalHints.push(options?.terminalMixinOnly === true);
         }
@@ -5342,21 +5603,21 @@ describe('Mixin', () => {
         const root = rules([
           ruleset({
             selector: el('.parameterized'),
-            rules: rules([decl({ name: 'color', value: any('ruleset') })])
+            rules: [decl({ name: 'color', value: any('ruleset') })]
           }),
           mixin({
-            name: any('.parameterized'),
+            name: '.parameterized',
             params: list([any('color', { role: 'property' })]),
-            rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+            rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
           }),
           ruleset({
             selector: el('.a'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
                 args: list([any('red')])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5372,12 +5633,13 @@ describe('Mixin', () => {
         `);
         expect(terminalHints).toContain(true);
       } finally {
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('mixin-ruleset calls with args still use rulesets as namespace containers', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         #theme {
@@ -5393,9 +5655,11 @@ describe('Mixin', () => {
           #theme > .button(red);
         }
       `).tree;
-      context.root = tree;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree3 = tree as unknown as RulesClass;
+      context.root = typedTree3;
 
-      const css = await renderNodeToString(tree, context, { context });
+      const css = await renderNodeToString(typedTree3, context, { context });
       expect(css).toBeString(`
         #theme {
           .button {
@@ -5409,7 +5673,7 @@ describe('Mixin', () => {
     });
 
     it('mixin-ruleset calls with args keep only the recursive namespace terminal mixin-only', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         #theme {
@@ -5427,9 +5691,11 @@ describe('Mixin', () => {
           #theme > .dark > .button(red);
         }
       `).tree;
-      context.root = tree;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree4 = tree as unknown as RulesClass;
+      context.root = typedTree4;
 
-      const css = await renderNodeToString(tree, context, { context });
+      const css = await renderNodeToString(typedTree4, context, { context });
       expect(css).toBeString(`
         #theme {
           .dark {
@@ -5446,21 +5712,21 @@ describe('Mixin', () => {
 
     it('mixin-ruleset calls with args exclude only the namespaced terminal ruleset', () => {
       const terminalMixin = mixin({
-        name: any('.button'),
+        name: '.button',
         params: list([any('color', { role: 'property' })]),
-        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+        rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
       });
       const terminalRuleset = ruleset({
         selector: el('.button'),
-        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        rules: [decl({ name: 'color', value: any('ruleset') })]
       });
       const root = rules([
         ruleset({
           selector: el('#theme'),
-          rules: rules([
+          rules: [
             terminalRuleset,
             terminalMixin
-          ])
+          ]
         })
       ]);
       root.getScopeFrame();
@@ -5474,25 +5740,29 @@ describe('Mixin', () => {
     });
 
     it('mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
-      const originalFindMixin = RulesClass.prototype.findMixin;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const root = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.button')]),
-          rules: rules([decl({ name: 'color', value: any('ruleset') })])
+          rules: [decl({ name: 'color', value: any('ruleset') })]
         })
       ]);
       const broadFastHits: string[] = [];
       let arrayPathCalls = 0;
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#theme' || key === '.dark' || key === '.button')) {
           broadFastHits.push(key);
         }
         return originalFindMixinsFast.apply(this, args);
       };
-      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         if (this === root && Array.isArray(args[0])) {
           arrayPathCalls++;
         }
@@ -5508,35 +5778,39 @@ describe('Mixin', () => {
         expect(broadFastHits).toEqual([]);
         expect(arrayPathCalls).toBe(1);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
-        RulesClass.prototype.findMixin = originalFindMixin;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('mixin-ruleset calls with args keep imported ruleset namespaces but exclude imported terminal rulesets', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const terminalMixin = mixin({
-        name: any('.button'),
+        name: '.button',
         params: list([any('color', { role: 'property' })]),
-        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+        rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
       });
       const terminalRuleset = ruleset({
         selector: el('.button'),
-        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        rules: [decl({ name: 'color', value: any('ruleset') })]
       });
       const referenceChild = rules([
         ruleset({
           selector: el('#imported'),
-          rules: rules([
+          rules: [
             terminalRuleset,
             terminalMixin
-          ])
+          ]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
       const broadFastHits: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#imported' || key === '.button')) {
           broadFastHits.push(key);
@@ -5564,22 +5838,25 @@ describe('Mixin', () => {
         })).toEqual([terminalMixin]);
         expect(broadFastHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('mixin-ruleset calls with args reject imported exact ruleset terminals after namespace resolution', () => {
-      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const referenceChild = rules([
         ruleset({
           selector: compound([el('#imported'), el('.dark'), el('.button')]),
-          rules: rules([decl({ name: 'color', value: any('ruleset') })])
+          rules: [decl({ name: 'color', value: any('ruleset') })]
         })
       ], { referenceMode: true });
       const root = rules([referenceChild]);
       const broadFastHits: string[] = [];
 
-      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (this === root && (key === '#imported' || key === '.button')) {
           broadFastHits.push(key);
@@ -5600,7 +5877,8 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(broadFastHits).toEqual([]);
       } finally {
-        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
@@ -5613,23 +5891,23 @@ describe('Mixin', () => {
       // If either were missing from the frame, the reference lookup would fail or
       // fall through to the slower declaration/callable lookup path.
       const mixinDef = mixin({
-        name: any('.parameterized'),
+        name: '.parameterized',
         params: list([any('color', { role: 'property' })]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
           // @arguments is automatically bound in liveSlotsByName.
           decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({
+          rules: [call({
             name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
             args: list([any('red')])
-          })])
+          })]
         })
       ]);
       context.root = root;
@@ -5653,8 +5931,8 @@ describe('Mixin', () => {
       const root = rules([
         vardecl({ name: 'color', value: any('red') }),
         mixin({
-          name: any('.paint'),
-          rules: rules([
+          name: '.paint',
+          rules: [
             decl({ name: 'current-before', value: ref({ key: 'color' }, { type: 'variable' }) }),
             decl({
               name: 'snapshot-before',
@@ -5666,13 +5944,13 @@ describe('Mixin', () => {
               name: 'snapshot-after',
               value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.paint' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -5693,17 +5971,17 @@ describe('Mixin', () => {
       const root = rules([
         vardecl({ name: 'color', value: any('red') }),
         mixin({
-          name: any('.set-color'),
-          rules: rules([
+          name: '.set-color',
+          rules: [
             vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.set-color' }, { type: 'mixin' }) }),
             decl({ name: 'after-call', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         decl({ name: 'after-root', value: ref({ key: 'color' }, { type: 'variable' }) })
       ]);
@@ -5723,24 +6001,24 @@ describe('Mixin', () => {
       const root = rules([
         vardecl({ name: 'color', value: any('red') }),
         mixin({
-          name: any('.set-color'),
+          name: '.set-color',
           params: list([any('next', { role: 'property' })]),
-          rules: rules([
+          rules: [
             vardecl({
               name: 'color',
               value: ref({ key: 'next' }, { type: 'variable' })
             }, { setDefined: true })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.set-color' }, { type: 'mixin' }),
               args: list([any('blue')])
             }),
             decl({ name: 'after-call', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         decl({ name: 'after-root', value: ref({ key: 'color' }, { type: 'variable' }) })
       ]);
@@ -5772,22 +6050,22 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.unused'),
+            name: '.unused',
             params: list([
               any('space', { role: 'property' })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.unused' }, { type: 'mixin' }),
                 args: list([seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5817,23 +6095,23 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.unused-rest'),
+            name: '.unused-rest',
             params: list([
               any('first', { role: 'property' }),
               rest('rest')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.unused-rest' }, { type: 'mixin' }),
                 args: list([any('0'), seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5866,22 +6144,22 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.unused-arguments'),
+            name: '.unused-arguments',
             params: list([
               any('space', { role: 'property' })
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('blue') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({
                 name: ref({ key: '.unused-arguments' }, { type: 'mixin' }),
                 args: list([seq([any('red'), any('10px')])])
               })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -5901,19 +6179,19 @@ describe('Mixin', () => {
       });
       const root = rules([
         mixin({
-          name: any('.named'),
+          name: '.named',
           params: list([
             vardecl({ name: 'a', value: any('1px') }, { paramVar: true }),
             vardecl({ name: 'b', value: any('50%') }, { paramVar: true })
           ]),
-          rules: rules([
+          rules: [
             decl({ name: 'height', value: ref({ key: 'b' }, { type: 'variable' }) }),
             decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'var', value: any('20%') }),
             call({
               name: ref({ key: '.named' }, { type: 'mixin' }),
@@ -5921,7 +6199,7 @@ describe('Mixin', () => {
                 vardecl({ name: 'b', value: ref({ key: 'var' }, { type: 'variable' }) }, { paramVar: true })
               ])
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -5938,22 +6216,22 @@ describe('Mixin', () => {
       });
 
       const mixinDef = mixin({
-        name: any('.colored'),
+        name: '.colored',
         params: list([any('color', { role: 'property' })]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
           decl({ name: 'border-color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.a'),
-          rules: rules([call({
+          rules: [call({
             name: ref({ key: '.colored' }, { type: 'mixin-ruleset' }),
             args: list([any('red')])
-          })])
+          })]
         })
       ]);
       context.root = root;
@@ -5970,7 +6248,7 @@ describe('Mixin', () => {
     it('should call a mixin with a guard condition', async () => {
       // Create a mixin with a guard: .my-mixin(@color) when (@color = red) { color: @color; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('color', { role: 'property' })
         ]),
@@ -5979,31 +6257,31 @@ describe('Mixin', () => {
           '=',
           any('red')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with matching condition: .test1 { .my-mixin(red); }
       const testRuleset1 = ruleset({
         selector: el('.test1'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('red')])
           })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with non-matching condition: .test2 { .my-mixin(blue); }
       const testRuleset2 = ruleset({
         selector: el('.test2'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset1, testRuleset2]);
@@ -6021,17 +6299,17 @@ describe('Mixin', () => {
     it('fails explicitly when a string-backed mixin guard reaches evaluation before hydration', async () => {
       const root = rules([
         mixin({
-          name: any('.guarded'),
+          name: '.guarded',
           guard: '(@enabled)',
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6055,17 +6333,18 @@ describe('Mixin', () => {
       try {
         const root = rules([
           mixin({
-            name: any('.guarded'),
-            guard: bool(true),
-            rules: rules([
+            name: '.guarded',
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            guard: bool(true) as unknown as Condition,
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -6081,24 +6360,25 @@ describe('Mixin', () => {
     it('restores caller rulesContext when static guard evaluation throws', async () => {
       context = new Context({ leakyRules: false });
       const savedRulesContext = rules([]);
-      const guard = bool(true);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const guard = bool(true) as unknown as Condition;
       guard.eval = (evalContext: Context) => {
         expect(evalContext.rulesContext).not.toBe(savedRulesContext);
         throw new Error('guard eval failed');
       };
       const root = rules([
         mixin({
-          name: any('.guarded'),
+          name: '.guarded',
           guard,
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6117,18 +6397,18 @@ describe('Mixin', () => {
       ]);
       const root = rules([
         mixin({
-          name: any('.guarded'),
+          name: '.guarded',
           guard,
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.use'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6136,7 +6416,6 @@ describe('Mixin', () => {
       const css = await renderNodeToString(root, context);
 
       expect(css).toContain('color: red;');
-      expect(guard.evaluated).toBe(false);
       expect(guard.registrationPrepared).toBe(false);
       expect(guard.frozen).toBe(false);
     });
@@ -6158,22 +6437,22 @@ describe('Mixin', () => {
         context = new Context({ leakyRules: false });
         const root = rules([
           mixin({
-            name: any('.guarded'),
+            name: '.guarded',
             guard: condition([
               expr(ref({ key: 'mode' }, { type: 'variable' })),
               '=',
               any('dark')
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.use'),
-            rules: rules([
+            rules: [
               vardecl({ name: 'mode', value: any('dark') }),
               call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -6189,7 +6468,7 @@ describe('Mixin', () => {
     it('evaluates dynamic mixin guards against caller scope while params still resolve from live slots', async () => {
       context = new Context({ leakyRules: false });
       const mixinDef = mixin({
-        name: any('.theme-mixin'),
+        name: '.theme-mixin',
         params: list([
           any('color', { role: 'property' })
         ]),
@@ -6206,32 +6485,32 @@ describe('Mixin', () => {
             any('red')
           ])
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({
               name: ref({ key: '.theme-mixin' }, { type: 'mixin' }),
               args: list([any('red')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             call({
               name: ref({ key: '.theme-mixin' }, { type: 'mixin' }),
               args: list([any('red')])
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6246,32 +6525,32 @@ describe('Mixin', () => {
     it('evaluates no-param mixin guards against caller scope', async () => {
       context = new Context({ leakyRules: false });
       const mixinDef = mixin({
-        name: any('.scope-guarded'),
+        name: '.scope-guarded',
         guard: condition([
           expr(ref({ key: 'mode' }, { type: 'variable' })),
           '=',
           any('dark')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.scope-guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             call({ name: ref({ key: '.scope-guarded' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6286,25 +6565,25 @@ describe('Mixin', () => {
     it('does not let non-leaky no-param mixin bodies read caller scope after guard selection', async () => {
       context = new Context({ leakyRules: false });
       const mixinDef = mixin({
-        name: any('.scope-guarded-body'),
+        name: '.scope-guarded-body',
         guard: condition([
           expr(ref({ key: 'mode' }, { type: 'variable' })),
           '=',
           any('dark')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'mode' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.scope-guarded-body' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6319,33 +6598,33 @@ describe('Mixin', () => {
     it('keeps no-param guard lookup isolated from mixin body vars with the same name', async () => {
       context = new Context({ leakyRules: false });
       const mixinDef = mixin({
-        name: any('.scope-guarded-body-shadow'),
+        name: '.scope-guarded-body-shadow',
         guard: condition([
           expr(ref({ key: 'mode' }, { type: 'variable' })),
           '=',
           any('dark')
         ]),
-        rules: rules([
+        rules: [
           vardecl({ name: 'mode', value: any('light') }),
           decl({ name: 'color', value: any('black') })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.scope-guarded-body-shadow' }, { type: 'mixin' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             call({ name: ref({ key: '.scope-guarded-body-shadow' }, { type: 'mixin' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6360,7 +6639,7 @@ describe('Mixin', () => {
     it('evaluates default guards against caller scope without leaking param bindings into sibling output', async () => {
       context = new Context({ leakyRules: false });
       const darkDefault = mixin({
-        name: any('.guarded-default'),
+        name: '.guarded-default',
         params: list([
           any('color', { role: 'property' })
         ]),
@@ -6373,13 +6652,13 @@ describe('Mixin', () => {
           'and',
           defaultguard()
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const lightDefault = mixin({
-        name: any('.guarded-default'),
+        name: '.guarded-default',
         params: list([
           any('color', { role: 'property' })
         ]),
@@ -6392,9 +6671,9 @@ describe('Mixin', () => {
           'and',
           defaultguard()
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
@@ -6402,7 +6681,7 @@ describe('Mixin', () => {
         lightDefault,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             vardecl({ name: 'color', value: any('outer-dark') }),
             call({
@@ -6410,11 +6689,11 @@ describe('Mixin', () => {
               args: list([any('red')])
             }),
             decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             vardecl({ name: 'color', value: any('outer-light') }),
             call({
@@ -6422,7 +6701,7 @@ describe('Mixin', () => {
               args: list([any('blue')])
             }),
             decl({ name: 'value', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6456,7 +6735,7 @@ describe('Mixin', () => {
         context = new Context({ leakyRules: false });
         const root = rules([
           mixin({
-            name: any('.guarded-default'),
+            name: '.guarded-default',
             guard: condition([
               condition([
                 expr(ref({ key: 'mode' }, { type: 'variable' })),
@@ -6466,16 +6745,16 @@ describe('Mixin', () => {
               'and',
               defaultguard()
             ]),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: any('red') })
-            ])
+            ]
           }),
           ruleset({
             selector: el('.dark'),
-            rules: rules([
+            rules: [
               vardecl({ name: 'mode', value: any('dark') }),
               call({ name: ref({ key: '.guarded-default' }, { type: 'mixin' }) })
-            ])
+            ]
           })
         ]);
         context.root = root;
@@ -6491,7 +6770,7 @@ describe('Mixin', () => {
     it('evaluates no-param default guards against caller scope', async () => {
       context = new Context({ leakyRules: false });
       const darkDefault = mixin({
-        name: any('.scope-default'),
+        name: '.scope-default',
         guard: condition([
           condition([
             expr(ref({ key: 'mode' }, { type: 'variable' })),
@@ -6501,13 +6780,13 @@ describe('Mixin', () => {
           'and',
           defaultguard()
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') })
-        ])
+        ]
       });
 
       const lightDefault = mixin({
-        name: any('.scope-default'),
+        name: '.scope-default',
         guard: condition([
           condition([
             expr(ref({ key: 'mode' }, { type: 'variable' })),
@@ -6517,9 +6796,9 @@ describe('Mixin', () => {
           'and',
           defaultguard()
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'background', value: any('white') })
-        ])
+        ]
       });
 
       const root = rules([
@@ -6527,19 +6806,19 @@ describe('Mixin', () => {
         lightDefault,
         ruleset({
           selector: el('.dark'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('dark') }),
             call({ name: ref({ key: '.scope-default' }, { type: 'mixin' }) }),
             decl({ name: 'value', value: ref({ key: 'mode' }, { type: 'variable' }) })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.light'),
-          rules: rules([
+          rules: [
             vardecl({ name: 'mode', value: any('light') }),
             call({ name: ref({ key: '.scope-default' }, { type: 'mixin' }) }),
             decl({ name: 'value', value: ref({ key: 'mode' }, { type: 'variable' }) })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6556,7 +6835,7 @@ describe('Mixin', () => {
 
     it('evaluates rest-parameter guard checks against live slot bindings', async () => {
       const mixinDef = mixin({
-        name: any('.rest-guard'),
+        name: '.rest-guard',
         params: list([
           any('first', { role: 'property' }),
           rest('rest')
@@ -6566,30 +6845,30 @@ describe('Mixin', () => {
           '=',
           seq([any('2px'), any('3px')])
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       const root = rules([
         mixinDef,
         ruleset({
           selector: el('.match'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.rest-guard' }, { type: 'mixin' }),
               args: list([any('1px'), any('2px'), any('3px')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.miss'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.rest-guard' }, { type: 'mixin' }),
               args: list([any('1px'), any('4px'), any('5px')])
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -6606,38 +6885,38 @@ describe('Mixin', () => {
     it('should call a mixin that calls another mixin', async () => {
       // Create a base mixin: .base-mixin(@color) { color: @color; }
       const baseMixin = mixin({
-        name: any('.base-mixin'),
+        name: '.base-mixin',
         params: list([
           any('color', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a mixin that calls the base mixin: .wrapper-mixin(@color) { .base-mixin(@color); }
       const wrapperMixin = mixin({
-        name: any('.wrapper-mixin'),
+        name: '.wrapper-mixin',
         params: list([
           any('color', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.base-mixin' }, { type: 'mixin' }),
             args: list([ref({ key: 'color' }, { type: 'variable' })])
           })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the wrapper mixin: .test { .wrapper-mixin(blue); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.wrapper-mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([baseMixin, wrapperMixin, testRuleset]);
@@ -6655,44 +6934,44 @@ describe('Mixin', () => {
     it('should call a mixin with pattern matching by value', async () => {
       // Create mixins with pattern matching: .mixin(red) and .mixin(blue)
       const redMixin = mixin({
-        name: any('.mixin'),
+        name: '.mixin',
         params: list([
           any('red') // Pattern match - must be exactly 'red'
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       const blueMixin = mixin({
-        name: any('.mixin'),
+        name: '.mixin',
         params: list([
           any('blue') // Pattern match - must be exactly 'blue'
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('blue') })
-        ])
+        ]
       });
 
       // Create rulesets that call the mixin with different values
       const testRuleset1 = ruleset({
         selector: el('.test1'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.mixin' }, { type: 'mixin' }),
             args: list([any('red')])
           })
-        ])
+        ]
       });
 
       const testRuleset2 = ruleset({
         selector: el('.test2'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.mixin' }, { type: 'mixin' }),
             args: list([any('blue')])
           })
-        ])
+        ]
       });
 
       const root = rules([redMixin, blueMixin, testRuleset1, testRuleset2]);
@@ -6713,25 +6992,25 @@ describe('Mixin', () => {
     it('should call a mixin with rest parameters', async () => {
       // Create a mixin with a rest parameter: .my-mixin(@a, @rest...) { margin: @rest; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           rest('rest') // Rest parameter collects remaining arguments
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with multiple args: .test { .my-mixin(10px, 20px, 30px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -6750,25 +7029,25 @@ describe('Mixin', () => {
       // Create a mixin with an unnamed rest parameter: .my-mixin(@a, ...) { margin: @rest; }
       // The name should be auto-generated as "rest"
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           rest(undefined) // Unnamed rest parameter - should auto-generate "rest"
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with multiple args: .test { .my-mixin(10px, 20px, 30px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -6791,28 +7070,28 @@ describe('Mixin', () => {
       const node = rules([
         ruleset({
           selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([el('.sol'), co(' '), el('.la')]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([el('.si')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'color', value: any('cyan') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.mutli-selector-parents'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: compound([el('.do'), el('.re'), el('.mi'), el('.fa'), el('.sol'), el('.la'), el('.si')]) }, { type: 'mixin-ruleset' }) })
-          ])
+          ]
         })
       ]);
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
       const css = await renderNodeToString(node, context, { context });
       expect(css).toBeString(`
         .do .re .mi .fa .sol .la .si {
@@ -6825,7 +7104,6 @@ describe('Mixin', () => {
     });
 
     it('should call a mixin or ruleset with different nesting patterns', async () => {
-      Node.prototype.fullRender = false;
       // #theme() {
       //   .dark() {
       //     .navbar() {
@@ -6842,33 +7120,33 @@ describe('Mixin', () => {
       // }
       const node = rules([
         mixin({
-          name: any('#theme'),
-          rules: rules([
+          name: '#theme',
+          rules: [
             mixin({
-              name: any('.dark'),
-              rules: rules([
+              name: '.dark',
+              rules: [
                 mixin({
-                  name: any('.navbar'),
-                  rules: rules([
+                  name: '.navbar',
+                  rules: [
                     vardecl({ name: 'color', value: any('cyan') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-          rules: rules([
+          rules: [
             vardecl({ name: 'color', value: any('blue') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.rule'),
-          rules: rules([
+          rules: [
             call({ name: ref({ key: ['#theme', '.dark', '.navbar'] }, { type: 'mixin-ruleset' }) }),
             decl({ name: 'background-color', value: ref({ key: 'color' }, { type: 'variable' }) })
-          ])
+          ]
         })
       ]);
       const css = await renderNodeToString(node, context);
@@ -6887,17 +7165,17 @@ describe('Mixin', () => {
       const node = rules([
         ruleset({
           selector: interpolatedSelector(dynamicClass),
-          rules: rules([
+          rules: [
             decl({ name: 'color', value: any('red') })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.out'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -6915,8 +7193,7 @@ describe('Mixin', () => {
     });
 
     it('keeps pseudo selector args isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -6927,9 +7204,9 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit'),
+          name: '.emit',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: compound([
                 pseudo({
@@ -6937,29 +7214,29 @@ describe('Mixin', () => {
                   arg: interpolatedSelector(dynamicPseudoArg)
                 })
               ]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -6980,9 +7257,9 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit-op'),
+          name: '.emit-op',
           params: list([any('scale', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: 'width',
               value: op([
@@ -6991,40 +7268,39 @@ describe('Mixin', () => {
                 ref({ key: 'scale' }, { type: 'variable' })
               ])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-op' }, { type: 'mixin' }),
               args: list([dimension([2, 'em'])])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-op' }, { type: 'mixin' }),
               args: list([dimension([3, 'em'])])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
 
       const css = await renderNodeToString(node, context);
 
-      expect(css).toContain('.one {\n  width: calc(20 * 1px * 1em);');
-      expect(css).toContain('.two {\n  width: calc(30 * 1px * 1em);');
-      expect(css).not.toContain('.two {\n  width: calc(20 * 1px * 1em);');
-      expect(css).not.toContain('.one {\n  width: calc(30 * 1px * 1em);');
+      expect(css).toContain('.one {\n  width: calc(10px * 2em);');
+      expect(css).toContain('.two {\n  width: calc(10px * 3em);');
+      expect(css).not.toContain('.two {\n  width: calc(10px * 2em);');
+      expect(css).not.toContain('.one {\n  width: calc(10px * 3em);');
     });
 
     it('keeps interpolated selector replacements isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7035,34 +7311,34 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit-interpolated'),
+          name: '.emit-interpolated',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: interpolatedSelector(dynamicClass),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-interpolated' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-interpolated' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7076,8 +7352,7 @@ describe('Mixin', () => {
     });
 
     it('keeps compound selector components isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7088,37 +7363,37 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit-compound'),
+          name: '.emit-compound',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: compound([
                 el('.base'),
                 interpolatedSelector(dynamicClass)
               ]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-compound' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-compound' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7132,8 +7407,7 @@ describe('Mixin', () => {
     });
 
     it('keeps complex selector components isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7144,38 +7418,38 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit-complex'),
+          name: '.emit-complex',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([
                 el('.base'),
                 co(' '),
                 interpolatedSelector(dynamicClass)
               ]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-complex' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-complex' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7189,8 +7463,7 @@ describe('Mixin', () => {
     });
 
     it('keeps selector-list items isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7201,9 +7474,9 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit-list'),
+          name: '.emit-list',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sellist([
                 pseudo({
@@ -7214,29 +7487,29 @@ describe('Mixin', () => {
                   ])
                 })
               ]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-list' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-list' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7252,8 +7525,7 @@ describe('Mixin', () => {
     });
 
     it('keeps paren values isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7264,32 +7536,32 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit-paren'),
+          name: '.emit-paren',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: 'value',
               value: paren(dynamicValue)
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-paren' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-paren' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7303,39 +7575,39 @@ describe('Mixin', () => {
     });
 
     it('keeps quoted values isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
       const node = rules([
         mixin({
-          name: any('.emit-quoted'),
+          name: '.emit-quoted',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: 'value',
+              // @ts-expect-error – Reference is not in Quoted's allowed content types but works at runtime
               value: quoted(ref({ key: 'name' }, { type: 'variable' }))
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-quoted' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-quoted' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7349,39 +7621,38 @@ describe('Mixin', () => {
     });
 
     it('keeps sequence values isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
       const node = rules([
         mixin({
-          name: any('.emit-sequence'),
+          name: '.emit-sequence',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
               name: 'value',
               value: seq([ref({ key: 'name' }, { type: 'variable' }), any('tail')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-sequence' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-sequence' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7395,39 +7666,38 @@ describe('Mixin', () => {
     });
 
     it('keeps declaration values isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
       const node = rules([
         mixin({
-          name: any('.emit-decl-value'),
+          name: '.emit-decl-value',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
-              name: any('value'),
+              name: 'value',
               value: ref({ key: 'name' }, { type: 'variable' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-decl-value' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-decl-value' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7441,8 +7711,7 @@ describe('Mixin', () => {
     });
 
     it('keeps interpolated declaration names isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7453,32 +7722,33 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit-decl-name'),
+          name: '.emit-decl-name',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             decl({
+              // @ts-expect-error – Interpolated<AnyRole> is not in DeclarationValue.name type but is valid at runtime
               name: dynamicName,
               value: any('ok')
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-decl-name' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-decl-name' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7498,27 +7768,30 @@ describe('Mixin', () => {
       });
       const params = list([any('value', { role: 'property' })]);
       const body = rules([
-        decl({ name: any('value'), value: any('ok') })
+        decl({ name: 'value', value: any('ok') })
       ]);
       const node = mixin({
         name: dynamicMixinName,
         params,
-        rules: body
+        rules: body.rules
       });
 
       const prepared = await node.prepareRegistration(context);
 
       expect(prepared).not.toBe(node);
       expect(prepared.sourceNode).toBe(prepared);
-      expect(prepared.name.valueOf()).toBe('.inner-foo');
+      expect(prepared.name!.valueOf()).toBe('.inner-foo');
       expect(dynamicMixinName.parent).toBe(node);
       expect(params.parent).toBe(node);
-      expect(body.parent).toBe(node);
+      // New model (Mixin.sourceNode wrapper eliminated): the `rules([...])` wrapper
+      // passed as `rules:` is DISCARDED — the Mixin stores/owns its body CHILDREN
+      // directly (factory `parentChildren` over childKeys 'rules'), so the child is
+      // parented to the Mixin. The wrapper object itself is no longer in the tree.
+      expect(node.rules[0]!.parent).toBe(node);
     });
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
@@ -7529,40 +7802,40 @@ describe('Mixin', () => {
 
       const node = rules([
         mixin({
-          name: any('.emit-nested-mixin'),
+          name: '.emit-nested-mixin',
           params: list([any('name', { role: 'property' })]),
-          rules: rules([
+          rules: [
             mixin({
               name: dynamicMixinName,
-              rules: rules([
+              rules: [
                 decl({
-                  name: any('value'),
+                  name: 'value',
                   value: ref({ key: 'name' }, { type: 'variable' })
                 })
-              ])
+              ]
             }),
             call({
               name: ref({ key: dynamicMixinName }, { type: 'mixin' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-nested-mixin' }, { type: 'mixin' }),
               args: list([any('foo')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-nested-mixin' }, { type: 'mixin' }),
               args: list([any('bar')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7575,38 +7848,37 @@ describe('Mixin', () => {
     });
 
     it('keeps ampersand append selectors isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
       const node = rules([
         mixin({
-          name: any('.emit-amp-append'),
-          rules: rules([
+          name: '.emit-amp-append',
+          rules: [
             ruleset({
               selector: sel([amp('-suffix')]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-amp-append' }, { type: 'mixin' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-amp-append' }, { type: 'mixin' })
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7620,38 +7892,37 @@ describe('Mixin', () => {
     });
 
     it('keeps bare ampersand selectors isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: true,
+      context = new Context({ output: { collapseNesting: true },
         leakyRules: true
       });
 
       const node = rules([
         mixin({
-          name: any('.emit-amp-self'),
-          rules: rules([
+          name: '.emit-amp-self',
+          rules: [
             ruleset({
               selector: sel([amp()]),
-              rules: rules([
+              rules: [
                 decl({ name: 'color', value: any('red') })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-amp-self' }, { type: 'mixin' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-amp-self' }, { type: 'mixin' })
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7665,45 +7936,44 @@ describe('Mixin', () => {
     });
 
     it('keeps at-rule preludes isolated across repeated mixin calls', async () => {
-      context = new Context({
-        collapseNesting: false,
+      context = new Context({ output: { collapseNesting: false },
         leakyRules: true
       });
 
       const node = rules([
         mixin({
-          name: any('.emit-media'),
+          name: '.emit-media',
           params: list([any('mode', { role: 'property' })]),
-          rules: rules([
+          rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: ref({ key: 'mode' }, { type: 'variable' }),
-              rules: rules([
+              rules: [
                 decl({
                   name: 'value',
                   value: ref({ key: 'mode' }, { type: 'variable' })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.one'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-media' }, { type: 'mixin' }),
               args: list([any('screen')])
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.two'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.emit-media' }, { type: 'mixin' }),
               args: list([any('print')])
             })
-          ])
+          ]
         })
       ]);
       context.root = node;
@@ -7720,33 +7990,33 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: sel([el('.b'), co(' '), el('.bb')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([
                 compound([amp(), el('.foo-xxx')]),
                 co(' '),
                 compound([el('.yyy-foo'), el('#foo')])
               ]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([amp(), co(' '), compound([el('.foo'), el('.bbb')])]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'b', value: any('1') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-b'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -7771,78 +8041,78 @@ describe('Mixin', () => {
       const root = rules([
         ruleset({
           selector: sel([el('.b'), co(' '), el('.bb')]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([
                 compound([amp(), el('.foo-xxx')]),
                 co(' '),
                 compound([el('.yyy-foo'), el('#foo')])
               ]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([amp(), co(' '), compound([el('.foo'), el('.bbb')])]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'b', value: any('1') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('#foo-foo'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([co('>'), el('.bar')]),
-              rules: rules([
+              rules: [
                 ruleset({
                   selector: sel([el('.baz')]),
-                  rules: rules([
+                  rules: [
                     decl({ name: 'c', value: any('c') })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-b'),
-          rules: rules([
+          rules: [
             call({
               name: ref({
                 key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
               }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-c'),
-          rules: rules([
+          rules: [
             ruleset({
               selector: sel([amp('-1')]),
-              rules: rules([
+              rules: [
                 call({
                   name: ref({ key: '#foo-foo' }, { type: 'mixin-ruleset' })
                 })
-              ])
+              ]
             }),
             ruleset({
               selector: sel([amp('-2')]),
-              rules: rules([
+              rules: [
                 call({
                   name: ref({ key: ['#foo-foo', '.bar'] }, { type: 'mixin-ruleset' })
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-c-3'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: ['#foo-foo', '.bar', '.baz'] }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -7876,25 +8146,25 @@ describe('Mixin', () => {
     it('should match a mixin with rest parameter and assign empty rest when no extra args provided', async () => {
       // Create a mixin with a rest parameter: .my-mixin(@a, @rest...) { padding: @rest; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with only the required arg: .test { .my-mixin(10px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px')]) // Only one arg, rest should be empty
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7912,25 +8182,25 @@ describe('Mixin', () => {
     it('should match a mixin with rest parameter and assign single value to rest', async () => {
       // Create a mixin with a rest parameter: .my-mixin(@a, @rest...) { margin: @rest; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with two args: .test { .my-mixin(10px, 20px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px')]) // Rest should contain 20px
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7948,25 +8218,25 @@ describe('Mixin', () => {
     it('should match a mixin with rest parameter and assign multiple values to rest', async () => {
       // Create a mixin with a rest parameter: .my-mixin(@a, @rest...) { padding: @rest; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with many args: .test { .my-mixin(10px, 20px, 30px, 40px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px'), any('40px')]) // Rest should contain 20px, 30px, 40px
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -7983,24 +8253,24 @@ describe('Mixin', () => {
 
     it('expands rest call arguments across positional params', async () => {
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           any('b', { role: 'property' }),
           any('c', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'padding', value: seq([
             ref({ key: 'a' }, { type: 'variable' }),
             ref({ key: 'b' }, { type: 'variable' }),
             ref({ key: 'c' }, { type: 'variable' })
           ]) })
-        ])
+        ]
       });
 
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([
@@ -8008,7 +8278,7 @@ describe('Mixin', () => {
               rest(seq([any('20px'), any('30px')]))
             ])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -8026,26 +8296,26 @@ describe('Mixin', () => {
     it('should match a mixin with rest parameter when multiple required params before rest', async () => {
       // Create a mixin with multiple params before rest: .my-mixin(@a, @b, @rest...) { margin: @rest; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           any('b', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px, 30px, 40px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px'), any('40px')]) // Rest should contain 30px, 40px
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -8063,26 +8333,26 @@ describe('Mixin', () => {
     it('should use rest variable in multiple declarations within mixin', async () => {
       // Create a mixin that uses rest in multiple places: .my-mixin(@a, @rest...) { margin: @rest; padding: @rest; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) }),
           decl({ name: 'padding', value: ref({ key: 'rest' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin: .test { .my-mixin(10px, 20px, 30px); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px')])
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -8101,48 +8371,48 @@ describe('Mixin', () => {
     it('should match mixin with rest parameter over mixin without rest when both exist', async () => {
       // Create a mixin without rest: .my-mixin(@a, @b) { color: red; }
       const mixinWithoutRest = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           any('b', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       // Create a mixin with rest: .my-mixin(@a, @rest...) { color: blue; }
       const mixinWithRest = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('a', { role: 'property' }),
           rest('rest')
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('blue') })
-        ])
+        ]
       });
 
       // Create a ruleset that calls with exact 2 args: .test1 { .my-mixin(10px, 20px); }
       const testRuleset1 = ruleset({
         selector: el('.test1'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px')]) // Matches mixinWithoutRest exactly
           })
-        ])
+        ]
       });
 
       // Create a ruleset that calls with 3 args: .test2 { .my-mixin(10px, 20px, 30px); }
       const testRuleset2 = ruleset({
         selector: el('.test2'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('10px'), any('20px'), any('30px')]) // Should match mixinWithRest
           })
-        ])
+        ]
       });
 
       const root = rules([mixinWithoutRest, mixinWithRest, testRuleset1, testRuleset2]);
@@ -8166,21 +8436,21 @@ describe('Mixin', () => {
     it('should fail when calling a mixin with too few arguments (missing required parameter)', async () => {
       // Create a mixin with a required parameter: .my-mixin(@color) { color: @color; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('color', { role: 'property' }) // Required parameter without default
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin without args: .test { .my-mixin(); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({ name: ref({ key: '.my-mixin' }, { type: 'mixin' }) })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -8192,26 +8462,26 @@ describe('Mixin', () => {
     it('should fail when calling a mixin with too few arguments (multiple required parameters)', async () => {
       // Create a mixin with multiple required parameters: .my-mixin(@color, @size) { color: @color; font-size: @size; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
+        name: '.my-mixin',
         params: list([
           any('color', { role: 'property' }),
           any('size', { role: 'property' })
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
           decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with only one arg: .test { .my-mixin(red); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('red')]) // Only one argument, but two are required
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -8223,21 +8493,21 @@ describe('Mixin', () => {
     it('should fail when calling a mixin with no parameters but providing arguments', async () => {
       // Create a mixin with no parameters: .my-mixin() { color: red; }
       const mixinDef = mixin({
-        name: any('.my-mixin'),
-        rules: rules([
+        name: '.my-mixin',
+        rules: [
           decl({ name: 'color', value: any('red') })
-        ])
+        ]
       });
 
       // Create a ruleset that calls the mixin with args: .test { .my-mixin(blue); }
       const testRuleset = ruleset({
         selector: el('.test'),
-        rules: rules([
+        rules: [
           call({
             name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
             args: list([any('blue')]) // One argument, but mixin has no parameters
           })
-        ])
+        ]
       });
 
       const root = rules([mixinDef, testRuleset]);
@@ -8250,35 +8520,35 @@ describe('Mixin', () => {
       const root = rules([
         vardecl({ name: 'gender_', value: any('"Outer"') }),
         mixin({
-          name: any('.Person'),
+          name: '.Person',
           params: list([
             any('name', { role: 'property' }),
             any('gender_', { role: 'property' })
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: el('.person'),
-              rules: rules([
+              rules: [
                 vardecl({
                   name: 'gender',
                   value: ref({ key: 'gender_' }, { type: 'variable' })
                 }),
                 mixin({
-                  name: any('.sayGender'),
-                  rules: rules([
+                  name: '.sayGender',
+                  rules: [
                     decl({
                       name: 'gender',
                       value: ref({ key: 'gender' }, { type: 'variable' })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.test'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.Person' }, { type: 'mixin' }),
               args: list([any('person'), any('"Male"')])
@@ -8286,7 +8556,7 @@ describe('Mixin', () => {
             call({
               name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -8302,38 +8572,38 @@ describe('Mixin', () => {
       const root = rules([
         vardecl({ name: 'gender_', value: any('"Outer"') }),
         mixin({
-          name: any('.Person'),
+          name: '.Person',
           params: list([
             any('name', { role: 'property' }),
             any('gender_', { role: 'property' })
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: interpolatedSelector(interpolated({
                 source: '.' + INTERPOLATION_PLACEHOLDER,
                 replacements: [ref({ key: 'name' }, { type: 'variable' })]
               })),
-              rules: rules([
+              rules: [
                 vardecl({
                   name: 'gender',
                   value: ref({ key: 'gender_' }, { type: 'variable' })
                 }),
                 mixin({
-                  name: any('.sayGender'),
-                  rules: rules([
+                  name: '.sayGender',
+                  rules: [
                     decl({
                       name: 'gender',
                       value: ref({ key: 'gender' }, { type: 'variable' })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('.test'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.Person' }, { type: 'mixin' }),
               args: list([any('person'), any('"Male"')])
@@ -8341,7 +8611,7 @@ describe('Mixin', () => {
             call({
               name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
@@ -8357,38 +8627,38 @@ describe('Mixin', () => {
       const root = rules([
         vardecl({ name: 'gender_', value: any('"Outer"') }),
         mixin({
-          name: any('.Person'),
+          name: '.Person',
           params: list([
             any('name', { role: 'property' }),
             any('gender_', { role: 'property' })
           ]),
-          rules: rules([
+          rules: [
             ruleset({
               selector: interpolatedSelector(interpolated({
                 source: '.' + INTERPOLATION_PLACEHOLDER,
                 replacements: [ref({ key: 'name' }, { type: 'variable' })]
               })),
-              rules: rules([
+              rules: [
                 vardecl({
                   name: 'gender',
                   value: ref({ key: 'gender_' }, { type: 'variable' })
                 }),
                 mixin({
-                  name: any('.sayGender'),
-                  rules: rules([
+                  name: '.sayGender',
+                  rules: [
                     decl({
                       name: 'gender',
                       value: ref({ key: 'gender' }, { type: 'variable' })
                     })
-                  ])
+                  ]
                 })
-              ])
+              ]
             })
-          ])
+          ]
         }),
         ruleset({
           selector: el('mi-test-d'),
-          rules: rules([
+          rules: [
             call({
               name: ref({ key: '.Person' }, { type: 'mixin' }),
               args: list([any('person'), any('"Male"')])
@@ -8396,11 +8666,11 @@ describe('Mixin', () => {
             call({
               name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
             })
-          ])
+          ]
         })
       ]);
       context.root = root;
-      context.opts.collapseNesting = true;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
 
       const css = await renderNodeToString(root, context, { context });
 
@@ -8409,7 +8679,7 @@ describe('Mixin', () => {
     });
 
     it('keeps sibling collapsed rulesets closed before a later interpolated mixin-ruleset call', async () => {
-      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const { Parser } = await import('../../../../less-parser/src/index.js');
       const parser = new Parser();
       const tree = parser.parse(`
         @a1: foo;
@@ -8460,10 +8730,12 @@ describe('Mixin', () => {
           .person.sayGender();
         }
       `).tree;
-      context.root = tree;
-      context.opts.collapseNesting = true;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const typedTree5 = tree as unknown as RulesClass;
+      context.root = typedTree5;
+      context.opts.output = { ...context.opts.output, collapseNesting: true };
 
-      const css = await renderNodeToString(tree, context, { context });
+      const css = await renderNodeToString(typedTree5, context, { context });
 
       expect(css).toBeString(`
         .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
@@ -8494,11 +8766,11 @@ describe('Mixin', () => {
   describe('serialization', () => {
     it('should serialize a mixin', () => {
       const rule = mixin({
-        name: any('myMixin'),
-        rules: rules([
+        name: 'myMixin',
+        rules: [
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
-        ])
+        ]
       });
       expect(rule.toTrimmedString()).toBeString(`
         myMixin() {
@@ -8510,15 +8782,15 @@ describe('Mixin', () => {
 
     it('should serialize a mixin with args', () => {
       const rule = mixin({
-        name: any('my-mixin'),
+        name: 'my-mixin',
         params: list([
           vardecl({ name: 'a', value: any('black') }, { paramVar: true }),
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
         ], { sep: ';' }),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
-        ])
+        ]
       });
       expect(rule.toTrimmedString()).toBeString(`
         my-mixin($a: black; $b: white) {
@@ -8530,16 +8802,16 @@ describe('Mixin', () => {
 
     it('should serialize a guard', () => {
       const rule = mixin({
-        name: any('my-mixin'),
+        name: 'my-mixin',
         params: list([
           vardecl({ name: 'a', value: any('black') }, { paramVar: true }),
           vardecl({ name: 'b', value: any('white') }, { paramVar: true })
         ], { sep: ';' }),
         guard: condition([expr(ref({ key: 'a' })), '=', expr(ref({ key: 'b' }))]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: any('black') }),
           decl({ name: 'background-color', value: any('white') })
-        ])
+        ]
       });
       expect(rule.toTrimmedString()).toBeString(`
         my-mixin($a: black; $b: white) when ($($a) = $($b)) {

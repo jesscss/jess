@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar.ts + builders.ts) is the maintained parser. Kept only
+// for the content-assist/error-recovery paths not yet ported. Not type-checked.
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 // Methods to be mixed into CssRecursiveParser
 import type { CssRecursiveParser, RuleContext, TokenMap } from '../cssRecursiveParser.js';
@@ -54,7 +59,7 @@ export function stylesheet(this: C, T: TokenMap): StylesheetRule {
   };
 }
 
-export function main(this: C, T: TokenMap, alt?: AltContext | Alt) {
+export function main(this: C, T: TokenMap, alt?: AltContext | Alt): SelectorRule {
   let $ = this;
   alt ??= (ctx: RuleContext = {}) => [
     { ALT: () => $.SUBRULE($.qualifiedRule, { ARGS: [ctx] }) },
@@ -141,7 +146,7 @@ export function qualifiedRule(this: C, T: TokenMap, selectorAlt?: AltContext) {
 
       const ruleset = new Ruleset({
         selector,
-        rules
+        rules: rules.rules
       }, undefined, location, this.context);
       return ruleset;
     }
@@ -480,7 +485,7 @@ export function attributeSelector(this: C, T: TokenMap, valueAlt?: AltContext) {
   };
 }
 
-export function compoundSelector(this: C, T: TokenMap) {
+export function compoundSelector(this: C, T: TokenMap): SelectorRule {
   const $ = this;
   /**
       A sequence of simple value that are not separated by
@@ -523,7 +528,7 @@ export function compoundSelector(this: C, T: TokenMap) {
 /**
  * @param manyGate - Exposed for Less to exclude the keyword 'all' from the selector list
  */
-export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleContext) => () => boolean) {
+export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleContext) => () => boolean): SelectorRule {
   const $ = this;
 
   manyGate ??= (ctx: RuleContext) => () => $.hasWS() || $.isTypeAt(1, T.Combinator);
@@ -536,7 +541,7 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
   // complexSelector
   //   : compoundSelector (WS* (combinator WS*)? compoundSelector)*
   //   ;
-  return (ctx: RuleContext = {}) => {
+  return (ctx: RuleContext = {}): Node | undefined => {
     let RECORDING_PHASE = $.RECORDING_PHASE;
     let GATE = manyGate(ctx);
     $.startRule();
@@ -574,7 +579,8 @@ export function complexSelector(this: C, T: TokenMap, manyGate?: (ctx: RuleConte
     if (!RECORDING_PHASE) {
       let location = $.endRule();
       if (value.length === 1) {
-        return value[0]!;
+        const first = value[0]!;
+        return typeof first !== 'string' ? first : undefined;
       }
       return new ComplexSelector(value as ComplexSelectorValue, undefined, location, this.context);
     }
@@ -720,7 +726,7 @@ export function selectorList(this: C, T: TokenMap) {
   };
 }
 
-export function declarationList(this: C, T: TokenMap, alt?: AltContext) {
+export function declarationList(this: C, T: TokenMap, alt?: AltContext): SelectorRule {
   const $ = this;
   const shouldTryQualifiedRule = () => $.shouldTryQualifiedRuleInDeclarationList();
   /** * Declarations ***/

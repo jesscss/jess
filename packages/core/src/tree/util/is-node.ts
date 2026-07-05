@@ -1,5 +1,6 @@
 import type { NToNode } from '../tree.js';
 import { Node } from '../node.js';
+import type { N } from '../node-type.js';
 
 /**
  * Fast bitmask-based node type check.
@@ -16,10 +17,10 @@ import { Node } from '../node.js';
 
 export function isNode(value: unknown): value is Node;
 
-export function isNode<M extends keyof NToNode>(
+export function isNode<M extends N>(
   value: unknown,
   mask: M
-): value is NToNode[M];
+): value is M extends keyof NToNode ? NToNode[M] : Node;
 
 export function isNode(value: unknown, mask: number): boolean;
 

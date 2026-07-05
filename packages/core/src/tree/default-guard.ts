@@ -1,5 +1,6 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
+import { type LocationInfo, type NodeOptions } from './node-base.js';
 import { Bool, createPublicBool } from './bool.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import {
@@ -15,6 +16,12 @@ export interface DefaultGuard extends Node<string> {
 
 export class DefaultGuard extends Node<string> {
   static override childKeys = null;
+
+  constructor(value: string, options?: NodeOptions, location?: LocationInfo) {
+    super(value, options, location);
+    // Each node owns its field values (invariant 7): the base stores nothing.
+    this.value = value;
+  }
 
   override toTrimmedString(options?: PrintOptions) {
     getPrintOptions(options).writer.add('default', this);

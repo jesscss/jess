@@ -1,24 +1,16 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import {
-  rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
+  rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   compound, type SimpleSelector, type Selector, amp, co
 } from '../index.js';
 import { Context } from '../../context.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { IToken } from 'chevrotain';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 
-const token = (image: string, tokenTypeName = 'WS'): IToken => ({
-  image,
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length,
-  tokenType: { name: tokenTypeName } as IToken['tokenType']
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -48,15 +40,15 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
             selector: sel([el('.child')]),
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: spaced([el('blue')]) })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -76,16 +68,16 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
             selector: sel([el('.child')]),
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: spaced([el('blue')]) })
-            ])
+            ]
           }),
           decl({ name: 'border', value: spaced([el('1px'), el('solid'), el('black')]) })
-        ])
+        ]
       })
     ]);
 
@@ -108,15 +100,15 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.same')]),
-        rules: rules([
+        rules: [
           decl({ name: 'case', value: spaced([el('2')]) })
-        ])
+        ]
       }),
       ruleset({
         selector: sel([el('.same')]),
-        rules: rules([
+        rules: [
           decl({ name: 'case', value: spaced([el('3')]) })
-        ])
+        ]
       })
     ]);
 
@@ -133,22 +125,22 @@ describe('CSS Nesting Collapse', () => {
   });
 
   it('does not coalesce adjacent identical headers across printable trivia', async () => {
-    const boundaryTrivia = [token('\n'), token('/* keep */', 'BlockComment'), token('\n')];
+    const boundaryTrivia = run('\n/* keep */\n');
     const first = ruleset({
       selector: sel([el('.same')]),
-      rules: rules([
+      rules: [
         decl({ name: 'case', value: spaced([el('2')]) })
-      ])
-    }, undefined, [0, 1, 1, 20, 1, 21]);
+      ]
+    }, undefined, { start: 0, end: 20 });
     const second = ruleset({
       selector: sel([el('.same')]),
-      rules: rules([
+      rules: [
         decl({ name: 'case', value: spaced([el('3')]) })
-      ])
-    }, undefined, [34, 2, 1, 54, 2, 21]);
+      ]
+    }, undefined, { start: 34, end: 54 });
     const trivia = createTriviaMap({
-      before: new Map([[second.location[0], boundaryTrivia]]),
-      after: new Map([[first.location[3], boundaryTrivia]])
+      before: new Map([[sourceSpanOf(second)?.start, boundaryTrivia]]),
+      after: new Map([[sourceSpanOf(first)?.end, boundaryTrivia]])
     });
     const node = rules([first, second]);
 
@@ -169,21 +161,21 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
             selector: sel([el('.child')]),
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: spaced([el('blue')]) }),
               ruleset({
                 selector: sel([el('.grandchild')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'border', value: spaced([el('1px solid black')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -206,15 +198,15 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent'), el('.container')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
             selector: sel([el('.child'), el('.item')]),
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: spaced([el('blue')]) })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -237,15 +229,15 @@ describe('CSS Nesting Collapse', () => {
           sel([el('.parent')]),
           sel([el('.container')])
         ]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
             selector: sel([el('.child')]),
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: spaced([el('blue')]) })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -266,15 +258,15 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
             selector: sel([amp(), co(' '), el('.child')]), // & .child
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: spaced([el('blue')]) })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -294,15 +286,15 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
             selector: sel([amp('-modifier'), co(' '), el('.child')]), // &-modifier .child
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: spaced([el('blue')]) })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -322,15 +314,15 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           ruleset({
             selector: compound([amp('-modifier'), el('.child')]), // &-modifier.child
-            rules: rules([
+            rules: [
               decl({ name: 'background', value: spaced([el('blue')]) })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -350,19 +342,19 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('#foo-foo')]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sel([co('>'), el('.bar')]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('.baz')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'c', value: spaced([el('c')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -379,35 +371,35 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('mi-test-c')]),
-        rules: rules([
+        rules: [
           ruleset({
             selector: sel([amp('-1')]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([co('>'), el('.bar')]),
-                rules: rules([
+                rules: [
                   ruleset({
                     selector: sel([el('.baz')]),
-                    rules: rules([
+                    rules: [
                       decl({ name: 'c', value: spaced([el('c')]) })
-                    ])
+                    ]
                   })
-                ])
+                ]
               })
-            ])
+            ]
           }),
           ruleset({
             selector: sel([amp('-2')]),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('.baz')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'c', value: spaced([el('c')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -428,21 +420,21 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('.child')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'background', value: spaced([el('blue')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -470,15 +462,15 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: parentSelector,
-        rules: rules([
+        rules: [
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
-            rules: rules([
+            rules: [
               decl({ name: 'color', value: spaced([el('red')]) })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -503,12 +495,12 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
-          atrule({
-            name: any('@property'),
+        rules: [
+          atrulestatement({
+            name: '@property',
             prelude: any('--brand-color')
           })
-        ])
+        ]
       })
     ]);
 
@@ -528,13 +520,13 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           rules([
             decl({ name: 'color', value: spaced([el('red')]) })
           ], {
             referenceMode: true
           })
-        ])
+        ]
       })
     ]);
 
@@ -544,25 +536,132 @@ describe('CSS Nesting Collapse', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('preserves leading block trivia on terminal reference rule wrappers', async () => {
+    const referenceRules = rules([
+      decl({ name: 'color', value: spaced([el('red')]) })
+    ], {
+      referenceMode: true
+    }, { start: 10, end: 20 });
+    const trivia = createTriviaMap({
+      before: new Map([[10, run('/* keep */')]])
+    });
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: [referenceRules]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true, trivia });
+
+    expect(css).toBeString(`
+      .parent {
+        /* keep */
+      }`
+    );
+  });
+
+  it('keeps sibling nested rulesets separate when one body is a plain Rules wrapper', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('show-all-content')]),
+        rules: [
+          rules([
+            ruleset({
+              selector: sel([el('.fix')]),
+              rules: [
+                decl({ name: 'fix', value: any('fix') })
+              ]
+            }),
+            ruleset({
+              selector: sel([el('.something')]),
+              rules: [
+                rules([
+                  decl({ name: 'inside', value: any('something') })
+                ])
+              ]
+            })
+          ])
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      show-all-content .fix {
+        fix: fix;
+      }
+      show-all-content .something {
+        inside: something;
+      }`
+    );
+  });
+
+  it('keeps sibling nested rulesets separate after a reference-mode child wrapper', async () => {
+    const node = rules([
+      ruleset({
+        selector: sel([el('show-all-content')]),
+        rules: [
+          rules([
+            ruleset({
+              selector: sel([el('.fix')]),
+              rules: [
+                decl({ name: 'fix', value: any('fix') })
+              ]
+            }),
+            ruleset({
+              selector: sel([el('.something')]),
+              rules: [
+                rules([
+                  ruleset({
+                    selector: sel([el('should')]),
+                    rules: [
+                      decl({ name: 'be', value: any('invisible') })
+                    ]
+                  })
+                ], {
+                  referenceMode: true
+                }),
+                decl({ name: 'inside', value: any('something') })
+              ]
+            })
+          ])
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      show-all-content .fix {
+        fix: fix;
+      }
+      show-all-content .something {
+        inside: something;
+      }`
+    );
+  });
+
   it('should bubble @supports rules to root level', async () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@supports'),
+            name: '@supports',
             prelude: any('(display: grid)'),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('.child')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'display', value: spaced([el('grid')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -584,28 +683,28 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
-            rules: rules([
+            rules: [
               decl({ name: 'font-size', value: spaced([el('14px')]) }),
               atrule({
-                name: any('@media'),
+                name: '@media',
                 prelude: any('(max-width: 480px)'),
-                rules: rules([
+                rules: [
                   ruleset({
                     selector: sel([el('.child')]),
-                    rules: rules([
+                    rules: [
                       decl({ name: 'background', value: spaced([el('blue')]) })
-                    ])
+                    ]
                   })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -632,28 +731,28 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
-            rules: rules([
+            rules: [
               decl({ name: 'font-size', value: spaced([el('14px')]) }),
               ruleset({
                 selector: sel([el('.child')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'background', value: spaced([el('blue')]) }),
                   ruleset({
                     selector: sel([el('.grandchild')]),
-                    rules: rules([
+                    rules: [
                       decl({ name: 'border', value: spaced([el('1px solid')]) })
-                    ])
+                    ]
                   })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -681,33 +780,33 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.parent')]),
-        rules: rules([
+        rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('.mobile-child')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'display', value: spaced([el('block')]) })
-                ])
+                ]
               })
-            ])
+            ]
           }),
           atrule({
-            name: any('@supports'),
+            name: '@supports',
             prelude: any('(display: flex)'),
-            rules: rules([
+            rules: [
               ruleset({
                 selector: sel([el('.flex-child')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'display', value: spaced([el('flex')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -734,34 +833,34 @@ describe('CSS Nesting Collapse', () => {
     const node = rules([
       ruleset({
         selector: sel([el('.container')]),
-        rules: rules([
+        rules: [
           decl({ name: 'padding', value: spaced([el('20px')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
-            rules: rules([
+            rules: [
               decl({ name: 'padding', value: spaced([el('10px')]) }),
               atrule({
-                name: any('@supports'),
+                name: '@supports',
                 prelude: any('(display: grid)'),
-                rules: rules([
+                rules: [
                   ruleset({
                     selector: sel([el('.grid-item')]),
-                    rules: rules([
+                    rules: [
                       decl({ name: 'grid-column', value: spaced([el('span 2')]) })
-                    ])
+                    ]
                   })
-                ])
+                ]
               }),
               ruleset({
                 selector: sel([el('.mobile-item')]),
-                rules: rules([
+                rules: [
                   decl({ name: 'margin', value: spaced([el('5px')]) })
-                ])
+                ]
               })
-            ])
+            ]
           })
-        ])
+        ]
       })
     ]);
 
@@ -782,6 +881,87 @@ describe('CSS Nesting Collapse', () => {
         }
         .container .mobile-item {
           margin: 5px;
+        }
+      }`
+    );
+  });
+
+  // Regression: string-normalized selectors (strings-not-nodes model) through an
+  // at-rule bubble. `getHoistedParent`/`renderHoistedParentHeader` used to call
+  // `parent.selector.writeSyntax` unconditionally — a string selector has no such
+  // method, throwing `parent.selector.writeSyntax is not a function`.
+  it('hoists a string-selector parent through a bubbled at-rule', async () => {
+    const node = rules([
+      ruleset({
+        selector: '.wrapper',
+        rules: [
+          atrule({
+            name: '@media',
+            prelude: '(max-width: 600px)',
+            rules: [
+              ruleset({
+                selector: '.mobile-only',
+                rules: [
+                  decl({ name: 'display', value: any('block') })
+                ]
+              })
+            ]
+          })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      @media (max-width: 600px) {
+        .wrapper .mobile-only {
+          display: block;
+        }
+      }`
+    );
+  });
+
+  // Regression: a nested string selector under an at-rule must keep its own header.
+  // `writeHeaderSelector` returned an empty comparable header for a string selector
+  // in the `withoutComments` (comparable) path, so `.child` coalesced into the
+  // `.container` frame instead of emitting `.container .child`.
+  it('keeps a nested string selector as its own frame under an at-rule', async () => {
+    const node = rules([
+      ruleset({
+        selector: '.container',
+        rules: [
+          atrule({
+            name: '@media',
+            prelude: 'screen',
+            rules: [
+              ruleset({
+                selector: sel([amp()]),
+                rules: [
+                  decl({ name: 'color', value: any('red') })
+                ]
+              }),
+              ruleset({
+                selector: '.child',
+                rules: [
+                  decl({ name: 'color', value: any('blue') })
+                ]
+              })
+            ]
+          })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      @media screen {
+        .container {
+          color: red;
+        }
+        .container .child {
+          color: blue;
         }
       }`
     );

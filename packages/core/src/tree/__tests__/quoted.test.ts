@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { quoted, ref, rules, vardecl, any, Rules as RulesClass, color, interpolated, list, Quoted } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
-import { createTriviaMap } from '../util/trivia.js';
-import type { IToken } from 'chevrotain';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
@@ -66,7 +65,7 @@ describe('quoted', () => {
   it('renders a resolved quoted value through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('message'),
+        name: 'message',
         value: any('hello')
       })
     ]);
@@ -83,14 +82,13 @@ describe('quoted', () => {
 
     expect(rendered).toBe('"hello"');
     expect(quotedResolveCalls).toBe(0);
-    expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved quoted render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('message'),
+        name: 'message',
         value: any('hello')
       })
     ]);
@@ -108,14 +106,13 @@ describe('quoted', () => {
     expect(await quotedNode.render(context, buffer)).toBe('"hello"');
     expect(buffer.parts).toEqual(['"hello"']);
     expect(quotedResolveCalls).toBe(0);
-    expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.registrationPrepared).toBe(false);
   });
 
   it('renders resolved quoted values without materializing a replacement quote', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -141,12 +138,8 @@ describe('quoted', () => {
   });
 
   it('does not emit source trivia from resolved quoted value children', () => {
-    const whitespace: IToken[] = [{
-      image: ' ',
-      tokenType: { name: 'WS' } as IToken['tokenType']
-    }];
     const trivia = createTriviaMap({
-      before: new Map([[10, whitespace]]),
+      before: new Map([[10, makeTrivia(' ', 0, 1)]]),
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
@@ -154,7 +147,7 @@ describe('quoted', () => {
       node: 'red',
       rgb: [255, 0, 0],
       alpha: 1
-    }, undefined, [10, 1, 11, 12, 1, 13], treeContext);
+    }, undefined, { start: 10, end: 12 }, treeContext);
 
     expect(quoted(value).toTrimmedString({ trivia })).toBe('"red"');
   });
@@ -169,7 +162,7 @@ describe('quoted', () => {
   it('resolves quoted values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('message'),
+        name: 'message',
         value: any('hello')
       })
     ]);
@@ -179,7 +172,6 @@ describe('quoted', () => {
     const resolved = await quotedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('"hello"');
-    expect(quotedNode.evaluated).toBe(false);
     expect(quotedNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -187,7 +179,7 @@ describe('quoted', () => {
   it('keeps source quoted interpolated containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('message'),
+        name: 'message',
         value: any('hello')
       })
     ]);

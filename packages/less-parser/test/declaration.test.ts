@@ -1,8 +1,16 @@
 import { Parser } from '../src/index.js';
-import { Context, isNode, N } from '@jesscss/core';
+import { Context, isNode, N, type Declaration, type Node } from '@jesscss/core';
 
 const parser = new Parser();
 const parse = parser.parse;
+
+function asDeclaration(n: Node | undefined): Declaration {
+  if (!isNode(n, N.Declaration)) {
+    throw new Error('Expected a declaration');
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return n as unknown as Declaration;
+}
 
 describe('declaration', () => {
   it('should parse simple declaration', () => {
@@ -28,19 +36,50 @@ describe('declaration', () => {
   it('should parse custom property declaration with generic function value', () => {
     const { errors, tree } = parse('--custom: rgba(0, 30, 0, 238)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.type).toBe('Sequence');
-    expect(tree?.value.value?.[0]?.type).toBe('Call');
+    const value: any = asDeclaration(tree).value;
+    expect(value.type).toBe('Call');
+    expect(value.name).toBeDefined();
   });
 
   it('should parse custom property declaration with if() as a structured call value', () => {
     const { errors, tree } = parse('--custom: if(not(true), 5)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.type).toBe('Sequence');
-    expect(tree?.value.value?.[0]?.type).toBe('Call');
+    const value: any = asDeclaration(tree).value;
+    expect(value.type).toBe('Call');
+    expect(value.name).toBeDefined();
+  });
+
+  it('should parse custom property declaration with an interpolated name', () => {
+    const { errors, tree } = parse('--@{key}: @value', 'declaration');
+    expect(errors.length).toBe(0);
+    const name: any = asDeclaration(tree).name;
+    expect(name.type).toBe('Interpolated');
+  });
+
+  it('opportunistically structures a curly-brace custom-property value as a declaration body', async () => {
+    const { errors, tree } = parse('@a: red; a { --foo: { color: @a; } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('--foo:{color: red}');
+  });
+
+  it('tolerantly falls back to opaque text for a non-CSS-shaped curly custom-property value', () => {
+    const { errors, tree } = parse('a { --foo: { 1, 2, 3 }; }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    expect(String(tree)).toContain('{ 1, 2, 3 }');
+  });
+
+  it('should parse each() with an interpolated custom-property declaration in its body', () => {
+    const { errors } = parse(`:root {
+      each(@vars, {
+        --@{key}: @value;
+      });
+    }`, 'Stylesheet');
+    expect(errors.length).toBe(0);
   });
 
   it('preserves same-line block comments ahead of evaluated declarations during stylesheet serialization', async () => {
-    const { errors, tree } = parse('@tone: "content"; #x { /* lost comment */ content: @tone; }', 'stylesheet');
+    const { errors, tree } = parse('@tone: "content"; #x { /* lost comment */ content: @tone; }', 'Stylesheet');
     expect(errors.length).toBe(0);
     expect(tree).toBeDefined();
 
@@ -49,7 +88,7 @@ describe('declaration', () => {
   });
 
   it('preserves block comments attached to invisible evaluated variables during stylesheet serialization', async () => {
-    const { errors, tree } = parse('/* keep me */ @tone: red; .x { color: blue; }', 'stylesheet');
+    const { errors, tree } = parse('/* keep me */ @tone: red; .x { color: blue; }', 'Stylesheet');
     expect(errors.length).toBe(0);
     expect(tree).toBeDefined();
 
@@ -60,25 +99,22 @@ describe('declaration', () => {
   it('should parse legacy IE filter declarations as structured interpolated values', () => {
     const { errors, tree } = parse('filter: progid:DXImageTransform.Microsoft.Alpha(opacity=@fat)', 'declaration');
     expect(errors.length).toBe(0);
-    expect(tree?.value.type).toBe('Interpolated');
+    const value: any = asDeclaration(tree).value;
+    expect(value.type).toBe('Interpolated');
   });
 
   it('normalizes Less property merge "+:" to the list-merge assign form', () => {
     const { errors, tree } = parse('src+: url(foo)', 'declaration');
     expect(errors.length).toBe(0);
-    if (!tree || !isNode(tree, N.Declaration)) {
-      throw new Error('Expected declaration node');
-    }
-    expect(tree.options.assign).toBe('+,:');
+    const decl: any = asDeclaration(tree);
+    expect(decl.options.assign).toBe('+,:');
   });
 
   it('normalizes Less property merge "+_:" to the sequence-merge assign form', () => {
     const { errors, tree } = parse('src+_: format("woff")', 'declaration');
     expect(errors.length).toBe(0);
-    if (!tree || !isNode(tree, N.Declaration)) {
-      throw new Error('Expected declaration node');
-    }
-    expect(tree.options.assign).toBe('+_:');
+    const decl: any = asDeclaration(tree);
+    expect(decl.options.assign).toBe('+_:');
   });
 });
 

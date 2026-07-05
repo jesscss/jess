@@ -19,7 +19,7 @@ describe('callable binding helpers', () => {
 
     const args = createArgumentsBindingValue([value]);
 
-    expect(args.items).toEqual([value]);
+    expect(args.value).toEqual([value]);
   });
 
   it('flattens rest sequences before creating @arguments bindings', () => {

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { IToken } from 'chevrotain';
 import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass, Url } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import { createTriviaMap } from '../util/trivia.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -25,16 +24,8 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
   context.rulesContext = evald;
 }
 
-const token = (image: string): IToken => ({
-  image,
-  tokenType: { name: 'WS' } as IToken['tokenType'],
-  startOffset: 0,
-  endOffset: image.length - 1,
-  startLine: 1,
-  endLine: 1,
-  startColumn: 1,
-  endColumn: image.length
-});
+// A trivia run is now a source range; build one whose text is exactly `text`.
+const run = (text: string) => makeTrivia(text, 0, text.length);
 
 describe('url', () => {
   let context: Context;
@@ -51,14 +42,14 @@ describe('url', () => {
     const value = quoted('image.png');
     const node = url(value);
 
-    expect(node.node).toBe(value);
-    expect(Url.childKeys).toEqual(['node']);
+    expect(node.value).toBe(value);
+    expect(Url.childKeys).toEqual(['value']);
   });
 
   it('renders a resolved url value through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -75,14 +66,13 @@ describe('url', () => {
 
     expect(rendered).toBe('url("image.png")');
     expect(urlResolveCalls).toBe(0);
-    expect(urlNode.evaluated).toBe(false);
     expect(urlNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved url render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -100,14 +90,13 @@ describe('url', () => {
     expect(await urlNode.render(context, buffer)).toBe('url("image.png")');
     expect(buffer.parts).toEqual(['url("image.png")']);
     expect(urlResolveCalls).toBe(0);
-    expect(urlNode.evaluated).toBe(false);
     expect(urlNode.registrationPrepared).toBe(false);
   });
 
   it('renders resolved url values without materializing a replacement url', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -134,12 +123,12 @@ describe('url', () => {
 
   it('does not render pure source whitespace inside url syntax', () => {
     const trivia = createTriviaMap({
-      before: new Map([[4, [token(' ')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[4, run(' ')]]),
+      after: new Map()
     });
     const treeContext = new TreeContext({ trivia });
-    const value = quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
-    const node = url(value, undefined, [0, 1, 1, 15, 1, 16], treeContext);
+    const value = quoted('image.png', undefined, { start: 4, end: 14 }, treeContext);
+    const node = url(value, undefined, { start: 0, end: 15 }, treeContext);
 
     expect(node.render(context)).toBe('url("image.png")');
   });
@@ -168,7 +157,7 @@ describe('url', () => {
   it('resolves url values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -178,7 +167,6 @@ describe('url', () => {
     const resolved = await urlNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('url("image.png")');
-    expect(urlNode.evaluated).toBe(false);
     expect(urlNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -196,10 +184,24 @@ describe('url', () => {
     expect(resolved.toTrimmedString()).toBe('url("image.png")');
   });
 
+  it('serializes an unquoted string url value verbatim', () => {
+    expect(url('image.png').toTrimmedString()).toBe('url(image.png)');
+    expect(url('image.png').render(context)).toBe('url(image.png)');
+  });
+
+  it('serializes a protocol-relative unquoted url without mangling the //', () => {
+    expect(url('//z').toTrimmedString()).toBe('url(//z)');
+    expect(url('//z').render(context)).toBe('url(//z)');
+  });
+
+  it('keeps a quoted url quoted through render', () => {
+    expect(url(quoted('http://x/y', undefined)).render(context)).toBe('url("http://x/y")');
+  });
+
   it('keeps source url values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);

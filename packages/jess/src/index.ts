@@ -27,6 +27,7 @@ import {
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
+import scssPlugin from '@jesscss/plugin-scss';
 import { outputDiagnostics } from './diagnostics.js';
 
 export type ConfigOptions = StylesConfig & {
@@ -359,7 +360,10 @@ const resolvePackageImportEntry = (specifier: string, fromDir?: string): string 
     && '.' in packageJson.exports
     ? packageJson.exports['.']
     : undefined;
-  const exportImport = typeof rootExport === 'object' ? rootExport.import : undefined;
+  const rawImport = rootExport !== null && typeof rootExport === 'object' && 'import' in rootExport
+    ? (rootExport as Record<string, unknown>).import
+    : undefined;
+  const exportImport = typeof rawImport === 'string' ? rawImport : undefined;
   const entry = moduleEntry ?? exportImport;
   if (!entry) {
     return undefined;
@@ -406,6 +410,7 @@ export class Compiler {
   private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginProxyCache = new Map<PluginFactoryCacheKey, LazyPluginInterface>();
   private lessPluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
+  private scssPluginInstance: PluginInterface | undefined;
 
   constructor(
     opts: ConfigOptions = {
@@ -545,6 +550,22 @@ export class Compiler {
       this.lessPluginInstanceCache.set(key, plugin);
     }
     return plugin;
+  }
+
+  /**
+   * The default SCSS plugin. Registered on every render so `.scss` sources parse
+   * out of the box (extension routing sends only `.scss` here; `.less`/default
+   * still route to the Less plugin). Its own defaults — `unitMode: 'preserve'`,
+   * `equalityMode: 'strict'`, nesting preserved — are the SCSS-correct semantics;
+   * `allowExtendSelectors` is picked up per-parse from the compiler options.
+   * A consumer-configured `scss` plugin in `compile.plugins` overrides this one
+   * (same `name` key in `buildPlugins`).
+   */
+  private getOrCreateScssPlugin(): PluginInterface {
+    if (!this.scssPluginInstance) {
+      this.scssPluginInstance = scssPlugin();
+    }
+    return this.scssPluginInstance;
   }
 
   private getConfiguredPluginFactory(specifier: string): Promise<PluginFactoryRecord> {
@@ -734,6 +755,8 @@ export class Compiler {
     const pluginMap = new Map<string, PluginInterface>();
     const coreLessPlugin = this.getOrCreateLessPlugin(resolved.lessOptions);
     pluginMap.set(coreLessPlugin.name, coreLessPlugin);
+    const coreScssPlugin = this.getOrCreateScssPlugin();
+    pluginMap.set(coreScssPlugin.name, coreScssPlugin);
     const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
 
     const configuredPlugins = resolved.effectiveConfig.compile?.plugins;
@@ -798,11 +821,12 @@ export class Compiler {
       contextOptions.disableScriptModules
       || contextOptions.disablePluginRule
     );
-    contextOptions.collapseNesting = resolved.printOptions.collapseNesting;
+    const cfgOutput = typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
+      ? resolved.effectiveConfig.output
+      : null;
     contextOptions.output = {
-      ...(typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
-        ? resolved.effectiveConfig.output
-        : {}),
+      compress: cfgOutput?.compress,
+      sourceMap: typeof cfgOutput?.sourceMap === 'boolean' ? cfgOutput.sourceMap : Boolean(cfgOutput?.sourceMap),
       collapseNesting: resolved.printOptions.collapseNesting
     };
 
@@ -852,7 +876,7 @@ export class Compiler {
   private async visitBeforeEvalNode(node: any, visitor: any): Promise<any> {
     let result = node;
 
-    if ((node.type === 'AtRule' || node.type === 'Directive') && typeof visitor.atRule === 'function') {
+    if ((node.type === 'AtRule' || node.type === 'AtRuleStatement' || node.type === 'Directive') && typeof visitor.atRule === 'function') {
       const atRuleResult = await visitor.atRule(node, undefined);
       if (atRuleResult && typeof atRuleResult !== 'symbol') {
         result = atRuleResult;
@@ -883,8 +907,14 @@ export class Compiler {
       }
     }
 
-    for (const child of result.children?.() ?? []) {
-      await this.visitBeforeEvalNode(child, visitor);
+    // Iterate shallow semantic children (via childKeys). `walk(false)` yields the
+    // immediate child nodes; this method recurses to descend. Core renamed the old
+    // `children()` iterator to `walk()` (`.children` is now the Parséman structural
+    // array), so use `walk` here.
+    if (typeof result.walk === 'function') {
+      for (const child of result.walk(false)) {
+        await this.visitBeforeEvalNode(child, visitor);
+      }
     }
     return result;
   }
@@ -1077,7 +1107,7 @@ export class Compiler {
 
   private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
     const printOptions: PrintOptions = {
-      collapseNesting: context.opts.collapseNesting,
+      collapseNesting: context.opts.output?.collapseNesting,
       context
     };
 
@@ -1444,9 +1474,15 @@ export class Compiler {
         // ignore cleanup failures
       }
     }
+    try {
+      void this.scssPluginInstance?.dispose?.();
+    } catch {
+      // ignore cleanup failures
+    }
     this.jsPluginProxyCache.clear();
     this.jsPluginFactoryCache.clear();
     this.lessPluginInstanceCache.clear();
+    this.scssPluginInstance = undefined;
     this.configuredPluginFactoryCache.clear();
   }
 }

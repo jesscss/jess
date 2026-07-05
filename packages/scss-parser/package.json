@@ -10,28 +10,22 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
-    },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "source": "./src/*.ts",
-      "import": "./lib/*.js",
-      "require": "./lib/*.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "scripts": {
     "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
-    "dev": "tsdown --tsconfig tsconfig.build.json --watch",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && ../../node_modules/.bin/tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",
     "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts test/sass-spec.smoke.test.ts",
@@ -41,10 +35,11 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
-    "@jesscss/parser": "workspace:*",
+    "@jesscss/less-parser": "workspace:*",
     "chevrotain": "^12.0.0"
   },
   "devDependencies": {
+    "parseman": "^0.14.0",
     "sass-spec": "github:sass/sass-spec"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

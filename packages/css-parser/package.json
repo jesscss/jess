@@ -11,7 +11,6 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
@@ -25,10 +24,10 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
-    "bench": "tsx test/bench.ts",
-    "bench:save": "tsx test/bench.ts --save",
+    "bench": "node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts",
+    "bench:save": "node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --save",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -36,7 +35,6 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/parser": "workspace:*",
     "chevrotain": "^12.0.0",
     "color-name": "~2.0.0",
     "lodash-es": "~4.17.21",
@@ -44,6 +42,7 @@
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
+    "parseman": "^0.14.0",
     "@types/color-name": "^1.1.1",
     "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0",

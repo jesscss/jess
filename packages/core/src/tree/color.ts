@@ -1,4 +1,4 @@
-import { Node, F_STATIC, F_VISIBLE, defineType, type NodeOptions } from './node.js';
+import { Node, F_STATIC, defineType, type NodeOptions } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -7,6 +7,7 @@ import round from 'lodash-es/round.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizePublicOperationResult } from './util/operation-result.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
+import { namedColor } from './util/color-names.js';
 type ColorValues = [number, number, number, number] | number[];
 type ChannelTuple = [number, string];
 type ChannelValue = number | ChannelTuple;
@@ -122,6 +123,15 @@ export class Color extends Node<ColorData, ColorOptions> {
       if (!colorData.rgb && !colorData.hsl && !colorData.node) {
         throw new TypeError('Color constructor requires rgb, hsl, or node property');
       }
+      // Resolve a bare color-keyword node (e.g. `yellow`, `transparent`) to
+      // channels up front so `rgb`/`alpha` are correct before any operation.
+      if (colorData.node && typeof colorData.node === 'string'
+        && !colorData.node.startsWith('#') && !colorData.rgb && !colorData.hsl) {
+        const named = namedColor(colorData.node);
+        if (named) {
+          colorData = { ...colorData, rgb: named.rgb, alpha: colorData.alpha ?? named.alpha };
+        }
+      }
       if (colorData.format !== undefined && colorOptions.format === undefined) {
         colorOptions = { ...colorOptions, format: colorData.format };
       }
@@ -149,6 +159,29 @@ export class Color extends Node<ColorData, ColorOptions> {
     this.addFlag(F_STATIC);
   }
 
+  // A Color's state lives on the channel fields (`_rgbChannels` / `_hslChannels`
+  // / `_alphaValue`) and `node`, not on `value` — a Color built from `rgba(...)`
+  // has `node === undefined` and channels only. The base `clone()` rebuilds from
+  // `childKeys = ['node']` alone, producing `new Color({ node: undefined })`
+  // which throws "requires rgb, hsl, or node". Own the clone so the channels
+  // round-trip. (Invariant 7.)
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const node = cloneFn && this.node instanceof Node ? cloneFn(this.node) : this.node;
+    const colorData: ColorData = {
+      node,
+      rgb: this._rgbChannels ? [...this._rgbChannels] : undefined,
+      hsl: this._hslChannels ? [...this._hslChannels] : undefined,
+      alpha: this._alphaValue
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const newNode = new Color(
+      colorData,
+      this._options ? { ...this._options } : undefined
+    ) as this;
+    newNode.inherit(this);
+    return newNode;
+  }
+
   private normalizeChannelValue(value: unknown): ChannelValue {
     if (typeof value === 'number') {
       return value;
@@ -156,6 +189,10 @@ export class Color extends Node<ColorData, ColorOptions> {
     if (isNode(value, N.Dimension)) {
       const { number, unit } = value;
       return unit ? [number, unit] : number;
+    }
+    if (isNode(value) && value.type === 'Num') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return (value as unknown as { number: number }).number;
     }
     if (isChannelTuple(value)) {
       return value;
@@ -323,24 +360,26 @@ export class Color extends Node<ColorData, ColorOptions> {
       return rgb;
     }
 
-    // If value has a node that's a string, parse it as hex
+    // If value has a node that's a string, resolve it: a CSS color keyword
+    // (e.g. `yellow`, `transparent`) via the named-color table, else as hex.
     if (this.node && typeof this.node === 'string') {
-	      const { rgb, alpha } = parseHexString(this.node);
-	      this._rgbChannels = rgb;
-	      this._alphaValue = alpha;
-	      // Clear HSL - parsed RGB might not match existing HSL
-	      this._hslChannels = undefined;
-	      return rgb;
+      const named = this.node.startsWith('#') ? undefined : namedColor(this.node);
+      const { rgb, alpha } = named ?? parseHexString(this.node);
+      this._rgbChannels = rgb;
+      this._alphaValue = alpha;
+      // Clear HSL - parsed RGB might not match existing HSL
+      this._hslChannels = undefined;
+      return rgb;
     }
 
     throw new TypeError('Cannot convert color value to rgb');
   }
 
-	  set rgb(rgb: [number, number, number] | RGBChannels) {
-	    this._rgbChannels = rgb;
-	    // Clear HSL since new RGB might not match the old HSL
-	    this._hslChannels = undefined;
-	  }
+  set rgb(rgb: [number, number, number] | RGBChannels) {
+    this._rgbChannels = rgb;
+    // Clear HSL since new RGB might not match the old HSL
+    this._hslChannels = undefined;
+  }
 
   /**
    * Get HSL values, converting from RGB if needed.
@@ -405,18 +444,18 @@ export class Color extends Node<ColorData, ColorOptions> {
       h! /= 6;
     }
 
-	    const hsl: [number, number, number] = [h! * 360, s, l];
-	    this._hslChannels = hsl;
-	    // Clear RGB - computed HSL might not match existing RGB
-	    this._rgbChannels = undefined;
-	    return hsl;
-	  }
+    const hsl: [number, number, number] = [h! * 360, s, l];
+    this._hslChannels = hsl;
+    // Clear RGB - computed HSL might not match existing RGB
+    this._rgbChannels = undefined;
+    return hsl;
+  }
 
-	  set hsl(hsl: [number, number, number] | HSLChannels) {
-	    this._hslChannels = hsl;
-	    // Clear RGB since new HSL might not match the old RGB
-	    this._rgbChannels = undefined;
-	  }
+  set hsl(hsl: [number, number, number] | HSLChannels) {
+    this._hslChannels = hsl;
+    // Clear RGB since new HSL might not match the old RGB
+    this._rgbChannels = undefined;
+  }
 
   /**
    * Get alpha value.
@@ -436,9 +475,9 @@ export class Color extends Node<ColorData, ColorOptions> {
     return this.alphaToNumber(alpha);
   }
 
-	  set alpha(alpha: AlphaValue) {
-	    this._alphaValue = alpha;
-	  }
+  set alpha(alpha: AlphaValue) {
+    this._alphaValue = alpha;
+  }
 
   /**
    * Get RGBA values for backward compatibility.
@@ -448,13 +487,13 @@ export class Color extends Node<ColorData, ColorOptions> {
     return [...this.rgb, this.alpha];
   }
 
-	  set rgba(rgba: ColorValues) {
-	    const [r, g, b, a] = rgbaValues(rgba);
-	    this._rgbChannels = [r, g, b];
-	    this._alphaValue = a;
-	    // Clear HSL since new RGB might not match the old HSL
-	    this._hslChannels = undefined;
-	  }
+  set rgba(rgba: ColorValues) {
+    const [r, g, b, a] = rgbaValues(rgba);
+    this._rgbChannels = [r, g, b];
+    this._alphaValue = a;
+    // Clear HSL since new RGB might not match the old HSL
+    this._hslChannels = undefined;
+  }
 
   /**
    * Get HSLA values for backward compatibility.
@@ -464,13 +503,13 @@ export class Color extends Node<ColorData, ColorOptions> {
     return [...this.hsl, this.alpha];
   }
 
-	  set hsla(hsla: [number, number, number, number]) {
-	    const [h, s, l, a] = hsla;
-	    this._hslChannels = [h, s, l];
-	    this._alphaValue = a;
-	    // Clear RGB since new HSL might not match the old RGB
-	    this._rgbChannels = undefined;
-	  }
+  set hsla(hsla: [number, number, number, number]) {
+    const [h, s, l, a] = hsla;
+    this._hslChannels = [h, s, l];
+    this._alphaValue = a;
+    // Clear RGB since new HSL might not match the old RGB
+    this._rgbChannels = undefined;
+  }
 
   toHSL(): [number, number, number] {
     return this.hsl;
@@ -490,8 +529,8 @@ export class Color extends Node<ColorData, ColorOptions> {
     return out;
   }
 
-  override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
+  override toTrimmedString(rawOptions?: PrintOptions) {
+    const options = getPrintOptions(rawOptions);
     const scalar = this.serializeScalarSyntax(Boolean(options.compress));
     if (scalar !== undefined) {
       options.writer.add(scalar, this);
@@ -522,9 +561,6 @@ export class Color extends Node<ColorData, ColorOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
-      return '';
-    }
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     const scalar = this.serializeScalarSyntax(Boolean(printOptions?.compress));
     if (scalar === undefined) {
@@ -596,10 +632,12 @@ export class Color extends Node<ColorData, ColorOptions> {
   override operate(b: Node, op: Operator, context?: Context | undefined): Color {
     let aRGB = this._rgb;
     let newColorValues: [number, number, number];
-	    let newAlpha = this._alpha;
+    let newAlpha = this._alpha;
 
-	    if (isNode(b, N.Dimension)) {
-	      const { number: bVal, unit: bUnit } = b;
+    if (isNode(b, N.Dimension) || b.type === 'Num') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const bVal = isNode(b, N.Dimension) ? b.number : (b as unknown as { number: number }).number;
+      const bUnit = isNode(b, N.Dimension) ? b.unit : '';
       const unitMode = context?.opts?.unitMode ?? 'preserve';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (bUnit && isStrictLikeMode) {

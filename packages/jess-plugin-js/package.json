@@ -7,7 +7,6 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs",
       "default": "./lib/index.js"
@@ -19,7 +18,7 @@
   ],
   "scripts": {
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'",

@@ -13,6 +13,7 @@ import { createSassListResult, getSassListInfo } from './util.js';
 const setNth = defineFunction(
   'set-nth',
   function(list: Node, n: Dimension, value: Node): Node {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const index = toNumber()(n) as number;
     const info = getSassListInfo(list);
     // Sass uses 1-based indexing

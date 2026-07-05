@@ -1,4 +1,5 @@
-import { Dimension, Context, Bool } from '@jesscss/core';
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+import { Dimension, Context, Bool, RuntimeFunction } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 import unitless from '../sass/unitless.js';
 import compatible from '../sass/compatible.js';
@@ -44,7 +45,7 @@ describe('Sass math utility functions', () => {
     it('returns true for compatible units (same unit)', () => {
       const number1 = new Dimension({ number: 10, unit: 'px' });
       const number2 = new Dimension({ number: 20, unit: 'px' });
-      const result = compatible.call(context, number1, number2);
+      const result = (compatible as RuntimeFunction).call(context, number1, number2);
       expect(result).toBeInstanceOf(Bool);
       expect((result as Bool).value).toBe(true);
     });
@@ -52,7 +53,7 @@ describe('Sass math utility functions', () => {
     it('returns true for compatible units (both unitless)', () => {
       const number1 = new Dimension({ number: 10 });
       const number2 = new Dimension({ number: 20 });
-      const result = compatible.call(context, number1, number2);
+      const result = (compatible as RuntimeFunction).call(context, number1, number2);
       expect(result).toBeInstanceOf(Bool);
       expect((result as Bool).value).toBe(true);
     });
@@ -61,7 +62,7 @@ describe('Sass math utility functions', () => {
       const number1 = new Dimension({ number: 10, unit: 'px' });
       const number2 = new Dimension({ number: 1, unit: 'in' });
       // In loose mode, these should be compatible
-      const result = compatible.call(context, number1, number2);
+      const result = (compatible as RuntimeFunction).call(context, number1, number2);
       expect(result).toBeInstanceOf(Bool);
       // Note: This depends on unit conversion logic
     });
@@ -69,7 +70,7 @@ describe('Sass math utility functions', () => {
     it('returns false for incompatible units (different unit types)', () => {
       const number1 = new Dimension({ number: 10, unit: 'px' });
       const number2 = new Dimension({ number: 20, unit: 's' });
-      const result = compatible.call(context, number1, number2);
+      const result = (compatible as RuntimeFunction).call(context, number1, number2);
       expect(result).toBeInstanceOf(Bool);
       expect((result as Bool).value).toBe(false);
     });
@@ -77,7 +78,7 @@ describe('Sass math utility functions', () => {
     it('works with object parameters', () => {
       const number1 = new Dimension({ number: 10, unit: 'px' });
       const number2 = new Dimension({ number: 20, unit: 'px' });
-      const result = compatible.call(context, { number1, number2 });
+      const result = (compatible as RuntimeFunction).call(context, { number1, number2 });
       expect(result).toBeInstanceOf(Bool);
       expect((result as Bool).value).toBe(true);
     });

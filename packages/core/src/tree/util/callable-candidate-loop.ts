@@ -35,8 +35,7 @@ type ExecuteCallableCandidateLoopOptions = {
   debugCaller: () => string;
   specialCaseCallSiteRules?: Node;
   ordinaryCallSiteRules: Rules;
-  createOwnedRules: (sourceRules: Rules) => Rules;
-  createUnlockedRules: (sourceRules: Rules) => Rules;
+  createCallableRules: (sourceRules: Rules) => Rules;
   getRootSourceRules: (rules: Rules) => Rules;
   createOuterRules: (rules: Rules, options?: Rules['options']) => Rules;
 };
@@ -55,8 +54,7 @@ export async function executeCallableCandidateLoop({
   debugCaller,
   specialCaseCallSiteRules,
   ordinaryCallSiteRules,
-  createOwnedRules,
-  createUnlockedRules,
+  createCallableRules,
   getRootSourceRules,
   createOuterRules
 }: ExecuteCallableCandidateLoopOptions): Promise<void> {
@@ -80,8 +78,7 @@ export async function executeCallableCandidateLoop({
       candidateName,
       candidateParams,
       candidateGuard,
-      createOwnedRules,
-      createUnlockedRules,
+      createCallableRules,
       getRootSourceRules
     });
     if (specialCaseResult.handled) {
@@ -102,8 +99,7 @@ export async function executeCallableCandidateLoop({
       callSiteRules: ordinaryCallSiteRules,
       leakyRules: context.leakyRules === true,
       resolvedBindingInfo: resolvedParamBindings.get(candidate),
-      createOwnedRules,
-      createUnlockedRules,
+      createCallableRules,
       getRootSourceRules
     });
     const { sourceRules } = candidateState;

@@ -23,15 +23,15 @@ describe('Expression', () => {
     const rule = expr(child);
 
     expect(rule.toTrimmedString()).toBe('$(foo)');
-    expect(rule.node).toBe(child);
     expect(rule.value).toBe(child);
-    expect(Expression.childKeys).toEqual(['node']);
+    expect(rule.value).toBe(child);
+    expect(Expression.childKeys).toEqual(['value']);
   });
 
   it('renders resolved expression values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -51,14 +51,13 @@ describe('Expression', () => {
 
     expect(rendered).toBe('foo');
     expect(resolveCalls).toBe(0);
-    expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved expression render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -70,7 +69,7 @@ describe('Expression', () => {
     let expressionResolveCalls = 0;
     renderedNode.resolve = (renderContext: Context) => {
       expressionResolveCalls++;
-      return renderedNode.node.resolve(renderContext);
+      return renderedNode.value.resolve(renderContext);
     };
     let childResolveCalls = 0;
     const originalChildResolve = expressionChild.resolve;
@@ -87,14 +86,13 @@ describe('Expression', () => {
     expect(buffer.parts).toEqual(['foo']);
     expect(expressionResolveCalls).toBe(0);
     expect(childResolveCalls).toBe(0);
-    expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.registrationPrepared).toBe(false);
   });
 
   it('renders list children directly without evaluating the expression wrapper', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -110,7 +108,6 @@ describe('Expression', () => {
     const renderedNode = expr(expressionChild);
 
     expect(renderedNode.render(context)).toBe('one, foo');
-    expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.registrationPrepared).toBe(false);
   });
 
@@ -135,7 +132,7 @@ describe('Expression', () => {
   it('resolves expression values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -145,7 +142,6 @@ describe('Expression', () => {
     const resolved = await nodeToResolve.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('foo');
-    expect(nodeToResolve.evaluated).toBe(false);
     expect(nodeToResolve.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
@@ -153,7 +149,7 @@ describe('Expression', () => {
   it('keeps source expression child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);

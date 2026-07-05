@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar-rules.ts + builders.ts) is the maintained parser.
+// Not type-checked.
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
@@ -7,9 +12,9 @@ import {
   type LocationInfo,
   Node,
   Any,
+  AtRuleStatement,
   Condition,
   type ConditionOperator,
-  AtRule,
   DefaultGuard,
   Paren,
   List,
@@ -30,6 +35,7 @@ import { getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
+type ProductionRule = (...args: any[]) => any;
 
 function isScriptUsePath(path: string): boolean {
   const filePart = path.replace(/[?#].*$/u, '');
@@ -183,7 +189,7 @@ export function guardDefault(this: P, T: TokenMap) {
       return;
     }
     ctx.hasDefault = true;
-    return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard), $.context);
+    return new DefaultGuard(guard.image, undefined, $.getLocationInfo(guard));
   };
 }
 
@@ -195,7 +201,7 @@ export function guardDefault(this: P, T: TokenMap) {
  *  of evaluation order ambiguity.
  *  However, Less allows it.
  */
-export function guardAnd(this: P, T: TokenMap) {
+export function guardAnd(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let left: Node;
@@ -248,7 +254,7 @@ export function guardAnd(this: P, T: TokenMap) {
             const location = Array.isArray(right!.location) && right!.location.length === 6
               ? right!.location as LocationInfo
               : undefined;
-            right = new DefaultGuard('default()', undefined, location, $.context);
+            right = new DefaultGuard('default()', undefined, location);
           }
           if (not) {
             let [,,, endOffset, endLine, endColumn] = right.location!;
@@ -298,7 +304,7 @@ export function guardInParens(this: P, T: TokenMap) {
       const location = Array.isArray(node.location) && node.location.length === 6
         ? node.location as LocationInfo
         : undefined;
-      node = new DefaultGuard('default()', undefined, location, $.context);
+      node = new DefaultGuard('default()', undefined, location);
     }
     node = node;
     return new Paren(node, undefined, $.endRule(), $.context);
@@ -358,7 +364,7 @@ export function comparison(this: P, T: TokenMap) {
       const location = Array.isArray(right.location) && right.location.length === 6
         ? right.location as LocationInfo
         : undefined;
-      right = new DefaultGuard('default()', undefined, location, $.context);
+      right = new DefaultGuard('default()', undefined, location);
     }
     left = new Condition(
       [left, normalizeComparisonOperator(op.image), right],
@@ -451,7 +457,7 @@ export function layerName(this: P, T: TokenMap) {
  * CSS: Ident | String
  * Less: valueReference | Ident | String
  */
-export function keyframesName(this: P, T: TokenMap) {
+export function keyframesName(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const preludeCtx: RuleContext = { ...ctx, atRulePreludeBareVariableAs: 'index' };
@@ -474,7 +480,7 @@ export function keyframesName(this: P, T: TokenMap) {
  * One of the rare rules that returns a token, because
  * other rules will transform it differently.
  */
-export function mixinName(this: P, T: TokenMap) {
+export function mixinName(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     /** e.g. .mixin, #mixin */
@@ -584,7 +590,7 @@ export function mixinReference(this: P, T: TokenMap) {
   };
 }
 
-export function mixinArgs(this: P, T: TokenMap) {
+export function mixinArgs(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     let args: List | undefined;
@@ -665,15 +671,14 @@ export function lookupOrCall(this: P, T: TokenMap) {
                 tokenStr = '$' + tokenStr;
               }
             }
-            let result = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), $.context);
+            let rawResult = getInterpolatedOrString(tokenStr, $.getLocationInfo(keyToken), $.context);
+            let result: typeof rawResult | Quoted = rawResult;
             if (type === 'index') {
-              result = typeof result === 'string'
-                ? new Quoted(result, { quote: '\'' }, $.getLocationInfo(keyToken), $.context)
-                : new Quoted(result, { quote: '\'' }, $.getLocationInfo(keyToken), $.context);
+              result = new Quoted(rawResult, { quote: '\'' }, $.getLocationInfo(keyToken), $.context);
             }
 
             const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
-            const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
+            const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset';
             if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
               const existingKey = target.key;
               let mergedKeys: string[];
@@ -698,7 +703,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
           /** Reference targets will technically precede the reference, so we need to update the location to the target start location */
           if (target) {
             let [targetStartOffset, targetStartLine, targetStartColumn] = target.location!;
-            ref.location[0] = targetStartOffset;
+            ref.location.start = targetStartOffset;
             ref.location[1] = targetStartLine;
             ref.location[2] = targetStartColumn;
           }
@@ -724,7 +729,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
  * This rule is recursive to allow chevrotain-allstar (hopefully) to lookahead
  * and find semi-colon separators vs. commas.
  */
-export function mixinArgList(this: P, T: TokenMap) {
+export function mixinArgList(this: P, T: TokenMap): ProductionRule {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     $.startRule();
@@ -742,7 +747,8 @@ export function mixinArgList(this: P, T: TokenMap) {
         const [head, ...rest] = commaNodes;
         let hasDeclarations = false;
         if (head instanceof VarDeclaration) {
-          const nodes = [head.value, ...rest];
+          const headValue = head.value instanceof Node ? head.value : undefined;
+          const nodes = headValue ? [headValue, ...rest] : [...rest];
           hasDeclarations = rest.some(n => n instanceof VarDeclaration);
           const value = new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
           semiNodes.push(new VarDeclaration({
@@ -867,7 +873,7 @@ export function mixinArg(this: P, T: TokenMap) {
         return;
       }
       return new VarDeclaration({
-        name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+        name: name.image.slice(1),
         value
       }, { paramVar: true }, location, $.context);
     }
@@ -881,7 +887,7 @@ export function mixinArg(this: P, T: TokenMap) {
       const location = $.endRule();
       if (ctx.isDefinition) {
         return new VarDeclaration({
-          name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+          name: name.image.slice(1),
           value: new Nil(undefined, undefined, location, $.context)
         }, { paramVar: true }, location, $.context);
       }
@@ -991,9 +997,9 @@ export function useAtRule(this: P, T: TokenMap) {
         new Any(namespace, { role: namespace === '*' ? 'operator' : 'ident' }, undefined, $.context)
       );
     }
-    return new AtRule(
+    return new AtRuleStatement(
       {
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+        name: name.image,
         prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)
       },
       undefined,

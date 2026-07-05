@@ -13,6 +13,7 @@ import {
   selcap,
   sellist,
   type Rules as RulesClass,
+  type Selector,
   vardecl
 } from '../index.js';
 import { isNode } from '../util/is-node.js';
@@ -21,7 +22,7 @@ import { N } from '../node-type.js';
 async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
   const evald = await node.eval(context);
   if (!isNode(evald, N.Rules)) {
-    throw new Error(`Expected Rules root, received ${evald.type}`);
+    throw new Error(`Expected Rules root`);
   }
   context.root = evald;
   context.rulesContext = evald;
@@ -37,13 +38,14 @@ describe('Selector render contract', () => {
   it('keeps selector capture source serializers canonical while render(context) resolves its payload', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: el('.foo')
       })
     ]);
     await setEvaluatedRoot(context, node);
 
-    const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }) as unknown as Selector);
 
     expect(selector.toString()).toBe('*[$capture-selector]');
     expect(selector.toTrimmedString()).toBe('*[$capture-selector]');
@@ -53,26 +55,26 @@ describe('Selector render contract', () => {
   it('renders selector captures directly without public resolve', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: el('.foo')
       })
     ]);
     await setEvaluatedRoot(context, node);
 
-    const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }) as unknown as Selector);
     selector.resolve = () => {
       throw new Error('SelectorCapture direct render should resolve its payload natively');
     };
 
     expect(selector.render(context)).toBe('.foo');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
   });
 
   it('keeps pseudo-selector source serializers canonical while render(context) resolves selector-list arguments', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -91,7 +93,7 @@ describe('Selector render contract', () => {
   it('renders selector nodes directly without public resolve', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -106,14 +108,13 @@ describe('Selector render contract', () => {
     };
 
     expect(selector.render(context)).toBe(':is(.foo, .bar)');
-    expect(selector.evaluated).toBe(false);
     expect(selector.registrationPrepared).toBe(false);
   });
 
   it('keeps complex selector source serializers canonical while render(context) resolves nested selector values', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);

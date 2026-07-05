@@ -11,9 +11,9 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRend
  * lists / sequences, so this is mostly for serialization.
  */
 export class Rest extends Node<Node | string | undefined> {
-  static override childKeys = ['node'] as const;
+  static override childKeys = ['value'] as const;
 
-  readonly node: Node | string | undefined;
+  readonly value: Node | string | undefined;
 
   constructor(
     value?: Node | string,
@@ -22,12 +22,13 @@ export class Rest extends Node<Node | string | undefined> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
-    this.node = value;
   }
 
   get name(): string {
-    const value = this.node;
+    const value = this.value;
     if (value) {
       if (isNode(value)) {
         if (value instanceof Any) {
@@ -44,7 +45,7 @@ export class Rest extends Node<Node | string | undefined> {
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     w.add('...$');
-    const value = this.node;
+    const value = this.value;
     if (value) {
       if (isNode(value)) {
         value.writeSyntax(options);
@@ -54,9 +55,9 @@ export class Rest extends Node<Node | string | undefined> {
     }
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const value = this.node;
+  override toTrimmedString(rawOptions?: PrintOptions): string {
+    const options = getPrintOptions(rawOptions);
+    const value = this.value;
     if (!value || !isNode(value)) {
       const out = value ? `...$$${value}` : '...$';
       options.writer.add(out, this);
@@ -78,7 +79,7 @@ export class Rest extends Node<Node | string | undefined> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
-    const value = this.node;
+    const value = this.value;
     if (value && isNode(value) && !(value instanceof Any)) {
       return this.renderSource(context, bufferOrOptions, options);
     }
@@ -94,7 +95,7 @@ export class Rest extends Node<Node | string | undefined> {
     if (buffer) {
       return writeRenderText(buffer, out);
     }
-    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    const prepared = prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
     if (value instanceof Any) {
       prepared.writer.add('...$');
       prepared.writer.add(value.value, value);

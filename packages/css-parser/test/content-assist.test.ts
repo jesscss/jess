@@ -1,4 +1,4 @@
-import { CssParser } from '../src/index.js';
+import { CssParserChevrotain as CssParser } from '../src/index.js';
 
 describe('Chevrotain syntactic content assist', () => {
   it('suggest() does not throw for an incomplete declaration', () => {
@@ -8,4 +8,3 @@ describe('Chevrotain syntactic content assist', () => {
     expect(Array.isArray(out)).toBe(true);
   });
 });
-

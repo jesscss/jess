@@ -2,11 +2,10 @@ import { describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync } from 'fs';
-import { createRequire } from 'module';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
-import { getTestCases } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -51,8 +50,7 @@ const lessHarnessFunctionsPlugin = {
   }
 };
 
-const require = createRequire(import.meta.url);
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
@@ -156,6 +154,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],
   ['tests-config/namespacing/namespacing-functions.less', 'detached ruleset callable lookup result differs from Less'],
   ['tests-config/namespacing/namespacing-media.less', 'namespace lookup inside media query expression differs from Less'],
+  ['tests-unit/urls/urls.less', 'blocked upstream of url/data-uri by unimplemented import-path interpolation (@import "@{file_to_import}" via mixin arg) and svg-gradient; data-uri()/url serialization themselves work (fns data-uri.test.ts + core url.test.ts)'],
   ['tests-config/process-imports/google.less', 'processImports=false should leave remote CSS imports out of rendered CSS'],
   ['tests-config/rewrite-urls-all/rewrite-urls-all.less', 'rewriteUrls=all URL rebasing is not implemented'],
   ['tests-config/rewrite-urls-local/rewrite-urls-local.less', 'rewriteUrls=local URL rebasing is not implemented'],
