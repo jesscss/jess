@@ -2777,7 +2777,7 @@ describe('reference', () => {
       }
     });
 
-    it('flattens merged declaration references that still need normalization without recopying copied leaves', async () => {
+    it('flattens nested merged declaration values at eval and reuses the normalized result on resolve', async () => {
       const sourceValue = list([list([any('red')]), any('foo')]);
       const node = rules([
         decl({
@@ -2815,8 +2815,11 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
         expect(valueCopyCount).toBe(0);
+        // Declaration eval flattens the nested list into a fresh normalized list.
         expect(latestCopiedList).toBeDefined();
-        expect(finalizedList).toBeDefined();
+        // That result is already flat + static, so the public resolve REUSES it
+        // (invariants 2/3) rather than re-normalizing and inheriting onto the ref.
+        expect(finalizedList).toBeUndefined();
       } finally {
         Any.prototype.cloneForPlacement = originalCopy;
         List.prototype.inherit = originalInherit;

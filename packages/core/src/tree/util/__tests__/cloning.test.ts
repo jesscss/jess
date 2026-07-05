@@ -65,7 +65,7 @@ describe('placement cloning', () => {
     }
   });
 
-  it('clones direct object-valued node children', () => {
+  it('shares node children under a copied object-valued field', () => {
     const node = attr({
       name: 'data',
       op: '=',
@@ -73,8 +73,13 @@ describe('placement cloning', () => {
     });
     const cloned = node.clone();
 
+    // Shallow clone: a fresh surface with a copied `{name, op, value, mod}`
+    // field object, but the object's node child (the Quoted) is SHARED, not
+    // deep-cloned (LIVE_BINDING_ARCHITECTURE invariants 2 and 3). Only
+    // cloneForPlacement({ detachChildren }) clones-to-detach node-owning kids.
     expect(cloned).not.toBe(node);
-    expect(cloned.value.value).not.toBe(node.value.value);
+    expect(cloned.value).not.toBe(node.value);
+    expect(cloned.value.value).toBe(node.value.value);
     expect(cloned.toString()).toBe('[data="foo"]');
   });
 });

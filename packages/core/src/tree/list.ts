@@ -1,6 +1,6 @@
 import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { type Context } from '../context.js';
-import { defineType, F_MAY_ASYNC, F_STATIC, Node, type NodeLocation } from './node.js';
+import { defineType, F_CHILD_DERIVED, F_MAY_ASYNC, F_STATIC, Node, type NodeLocation } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
@@ -269,10 +269,19 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   private withResolvedValue(value: Node[]): List<Node> {
-    return new List<Node>(
+    const derived = new List<Node>(
       value,
       this._options ? { ...this._options } : undefined
     ).inherit(this);
+    // Eval-replacement: the new list SHARES the resolved children (no reparent),
+    // but its child-derived flags must reflect THOSE children, not the source's.
+    // `inherit` copied the source's stale flags (e.g. F_MAY_ASYNC/F_NON_STATIC
+    // from unevaluated children); recompute by crawling the resolved values.
+    derived.flags &= ~F_CHILD_DERIVED;
+    for (let i = 0; i < value.length; i++) {
+      derived.propagateFlagsFrom(value[i]!);
+    }
+    return derived;
   }
 
   private deriveAdditionList(): List<Node> {
