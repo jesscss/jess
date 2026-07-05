@@ -215,35 +215,25 @@ the render list?* (merge decided) — no overloaded mutable flag.
      leading comments then `removeFlag(F_VISIBLE)`'d them + restored — a mutate/restore dance. Replaced
      with a `hoistedLeadingComments` Set threaded into `_emitRulesBody`; `emitNode` excludes them
      directly. Output-neutral (stable 60, zero delta). 2 of 4 rules.ts stomps gone.
-   - [ ] **3b — declaration-override last-wins** (rules.ts:5795/5797): the merge engine
-     `removeFlag(F_VISIBLE)`s the superseded declaration (and, in one branch, its whole ownerRules) so
-     the body loop skips it. **Concrete plan** (verified lifecycle): `_coalesceMergedDeclarations` is the
-     LAST eval step in `_finishSourceOrderEvaluation`, run on the exact tree that then renders — so use a
-     dedicated **suppression-set channel**, not the by-type flag:
-       1. coalesce populates `rules._mergeSuppressed: Set<Node>` (add the superseded decl / container)
-          instead of `removeFlag(F_VISIBLE)`;
-       2. root render seeds `options.suppressedNodes = this._mergeSuppressed` (add to `FinalPrintOptions`);
-          options already thread through every nested `_emitRulesBody`, so it reaches descendant owners;
-       3. `emitNode` excludes: `exclude?.has(n) || options.suppressedNodes?.has(n) || !n.visible`.
-     Risk: the container-suppression branch (5795, same decl object under two owners) — exclude the
-     container via the same set (emitNode handles containers). Gate hard for output-neutrality; the
-     superseded fragment's value is already composed into the survivor, so nothing else should read it
-     post-coalesce (all lookups ran during eval, before coalesce). [HOT: rules.ts — solo, careful.]
-     **Deeper findings (traced this session — implement carefully):**
-     - `options` IS the shared `context.printState` (getPrintOptions returns it by reference, threads
-       into nested container renders at rules.ts:3988 `n.render(context, getPrintOptions(options))`), and
-       `suppressedNodes` is NOT a RestorablePrintStateKey so save/restore won't touch it — so a set on it
-       reaches every descendant `emitNode`. BUT: seed it exactly ONCE at the outermost render and CLEAR on
-       exit, else (a) a nested Rules without the field would null it mid-render, (b) a stale set leaks to
-       the next render (shared printState). Seed point is NOT `_emitRulesBody` (runs for nested too).
-     - The coalesced tree is `evalForRender(...).output`, NOT source `this` — `_mergeSuppressed` lives on
-       the OUTPUT. Seed from `value.output._mergeSuppressed` inside `renderRulesStateToString` /
-       `writeRulesStateRenderOutput` (the outermost render-state entries), clear in their finally.
-     - F_VISIBLE had GLOBAL reach; `suppressedNodes` is render-only. Before merging, check the other
-       consumers that read the now-still-visible superseded nodes: `flatRules(true)` (rules.ts:4167) and
-       `hasVisibleRules()`. If a container's ONLY content is superseded fragments, old code skipped it
-       (all invisible) but new code renders-then-excludes — watch for empty-container boundary/newline
-       deltas in the gate.
+   - [DEFERRED] **3b — declaration-override last-wins** (rules.ts:5795/5797): **attempted the
+     render-only suppression-set channel this session; ABANDONED — proven architecturally insufficient by
+     the gate (+6 regressions), reverted clean (no commit).** The finding that blocks it:
+     **`removeFlag(F_VISIBLE)` here is load-bearing beyond render** — it hides the superseded declaration
+     from (a) **variable lookup** (`reference > resolve merged property lookups via quoted index inside a
+     nested child scope` regressed — a lookup found the superseded occurrence) and (b) **re-coalesce
+     idempotency** (`declaration > does not re-merge sequence assignments during post-eval coalescing`
+     + 4 merge-chain tests regressed — coalesce re-read `.visible` on the still-visible node and
+     double-processed). A **render-only** `options.suppressedNodes` channel structurally cannot cover
+     lookup or coalesce, so it regresses both. **Physical removal** (true "drop the node") would cover all
+     three consumers, but the container-suppression branch (5795: the SAME decl object registered under two
+     ownerRules → suppress the earlier whole container) is unsafe to splice from the live tree.
+     **Correct end-state requires untangling merge-suppression's cross-cutting lookup + coalesce dependence
+     first** — i.e. make variable lookup + re-coalesce stop consulting `F_VISIBLE` on merge-superseded
+     nodes (give merge-suppression its own persistent, non-`F_VISIBLE` marker honored by lookup/coalesce/
+     render alike, OR restructure coalesce to physically drop survivors' losers safely). That's a
+     merge-engine rework, NOT a mechanism swap — deferred as its own project. The 2 stomps at 5795/5797
+     stay until then; D1-3a already removed the other 2 (render-only ones, which had no lookup/coalesce
+     dependence — that's why 3a was clean and 3b is not).
 4. **Leave reference-mode as the sole runtime filter.**
 Guardrail throughout: stable core set must not move; string selectors emit. (baseline now 60, was 85.)
 
