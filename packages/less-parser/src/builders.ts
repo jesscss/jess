@@ -143,7 +143,7 @@ export class LessGrammar extends CssParser {
       case 'DetachedRuleset':     return this._buildDetachedRuleset(children, loc) as unknown as JessNode;
       case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
-      case 'Negative':            return new Negative(nodeChildren(children)[0]!, undefined, loc) as unknown as JessNode;
+      case 'Negative':            return new Negative(this._negativeOperand(children), undefined, loc) as unknown as JessNode;
       case 'OperationTop':        return this._buildOperation(children, loc, this.mathMode === 'always') as unknown as JessNode;
       case 'EscapedValue':        return this._buildEscapedValue(children, loc);
       case 'InterpValue':         return this._buildInterpValue(raw, loc);
@@ -156,6 +156,22 @@ export class LessGrammar extends CssParser {
   }
 
   // -- Private Less AST builders ---------------------------------------------
+
+  /**
+   * The operand of a `Negative` (`-value`). The grammar emits the leading `-`
+   * as a leaf followed by the operand, which may itself be a node or a bare
+   * string terminal (e.g. `-@color` → `var(--color)`'s inner `-color-accent`).
+   * Prefer a node child; otherwise take the operand leaf's text so `Negative`
+   * coerces it to the canonical node form rather than receiving `undefined`.
+   */
+  private _negativeOperand(children: ReadonlyArray<Child>): JessNode | string {
+    const node = nodeChildren(children)[0];
+    if (node) {
+      return node;
+    }
+    const operand = children.find((c): c is CSTLeaf => c._tag === 'leaf' && c.value !== '-');
+    return operand?.value ?? '';
+  }
 
   private _buildVarDeclaration(children: ReadonlyArray<JessNode | CSTLeaf | CSTError>, rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const items = spannedComponents(rawChildren);
@@ -1830,8 +1846,13 @@ export class LessGrammar extends CssParser {
     if (namespace) {
       styleImportOptions.namespace = namespace;
     }
+    // A Less `@import (reference) url(https://…)` with an UNQUOTED url() has no
+    // Quoted path; StyleImport accepts a Url path directly, so fall back to the
+    // parsed Url node rather than leaving `path` undefined (it later derefs
+    // `this.path.eval`).
+    const path = pathNode ?? (urlNode as unknown as JessNode | undefined);
     return new StyleImport(
-      { path: pathNode as any },
+      { path: path as any },
       styleImportOptions as any,
       loc
     ) as unknown as JessNode;

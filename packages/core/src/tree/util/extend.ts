@@ -457,8 +457,16 @@ export function applyExtendsToSelector(
   return selector;
 }
 
-function selectorListItemForExtend(item: SelectorList['value'][number]): Selector {
-  return typeof item === 'string' ? new ComplexSelector([item]) : item;
+function selectorListItemForExtend(item: SelectorList['value'][number] | Selector[]): Selector {
+  if (typeof item === 'string') {
+    return new ComplexSelector([item]);
+  }
+  // A resolved selector list can arrive as a raw array of alternatives; wrap it
+  // in a SelectorList node so placement/copy stays node-only.
+  if (isArray(item)) {
+    return new SelectorList(item as SelectorList['value']);
+  }
+  return item;
 }
 
 /**

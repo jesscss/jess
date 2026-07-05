@@ -51,7 +51,13 @@ export async function evaluateCallableSpecialCaseCandidate({
     // the candidate itself is the source rules for the callable surface.
     const sourceRules = getRootSourceRules(candidate);
     let rules = createCallableRules(sourceRules);
-    const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
+    // A detached ruleset called from a variable has no tree parent (neither the
+    // caller nor the candidate is parented); the call-site Rules is its natural
+    // placement parent — same fallback the non-Ruleset branch below uses.
+    const callParent = (caller?.parent as Node | undefined) ?? candidate.parent ?? callSiteRules;
+    if (!callParent) {
+      throw new TypeError('Callable special-case setup requires a caller, candidate, or call-site parent');
+    }
     let needsCallerPlacementDuringEval = false;
     for (let i = 0; i < sourceRules.rules.length; i++) {
       if (isNode(sourceRules.rules[i], N.Ruleset | N.AtRule)) {

@@ -4,6 +4,7 @@ import {
   Dimension,
   List,
   Negative,
+  Node,
   Operation,
   Paren,
   Url,
@@ -79,6 +80,27 @@ describe('string-normalized eval', () => {
     const node = new Negative([num(5)] as never);
     expect(node.value).toBeInstanceOf(Dimension);
     expect(node.render(context)).toBe('-5');
+  });
+
+  it('Negative normalizes a bare string operand to a node', () => {
+    // negative.ts: the less parser can deliver `-color-accent` (from
+    // `var(--color-accent)`) as a bare string operand. A string value crashed
+    // eval at `this.value.hasFlag`. Coerce so `-` prepends and renders `--…`.
+    const node = new Negative('-color-accent' as never);
+    expect(node.value).toBeInstanceOf(Node);
+    expect(node.render(context)).toBe('--color-accent');
+  });
+
+  it('List serializes a raw space-group array item via writeSyntax (no eval)', () => {
+    // list.ts: the static-serialize path (`Paren` → `List.writeSyntax`) crashed
+    // with `item.writeSyntax is not a function` when a value item was a raw
+    // space-group array. The List ctor now normalizes items to nodes so the
+    // unevaluated serialize path is node-only too.
+    const node = new Paren(
+      new List([[dimension({ number: 40, unit: '%' }), keyword('relative')]] as never)
+    );
+    // No crash: the array item is normalized to a space Sequence and written.
+    expect(node.toString()).toBe('(40% relative)');
   });
 
   it('Operation recasts a numeric-text Keyword operand so math applies', () => {

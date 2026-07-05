@@ -17,7 +17,7 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { evaluateNodeArrayMaybe, evaluateNodeArraySync } from './util/evaluate-node-array.js';
+import { coerceValueNode, evaluateNodeArrayMaybe, evaluateNodeArraySync, type NodeArrayItem } from './util/evaluate-node-array.js';
 
 function emitListItem<T extends Node>(
   item: T,
@@ -40,8 +40,14 @@ function emitListItemSyntax<T extends Node>(
 ): void {
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
+  // The unevaluated serialize path can meet a raw space-group array or bare
+  // string terminal (parser value shapes); normalize to a node so writeSyntax
+  // stays node-only. Eval-time coercion covers the render path; this covers the
+  // static-serialize path (`Paren` → `List.writeSyntax`) without perturbing the
+  // stored value (which round-trips preserved passthroughs).
+  const node = item instanceof Node ? item : coerceValueNode(item as unknown as NodeArrayItem);
   try {
-    item.writeSyntax(options);
+    node.writeSyntax(options);
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
@@ -260,11 +266,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   readonly value: T[];
   readonly sep: ListOptions['sep'];
 
-  constructor(value: T[], options?: ListOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
-    super(value, options, location);
+  constructor(value: NodeArrayItem[], options?: ListOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
+    super(value as T[], options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
-    this.value = value;
-    this.value = value;
+    this.value = value as T[];
     this.sep = options?.sep;
   }
 

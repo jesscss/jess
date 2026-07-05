@@ -401,9 +401,15 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return Ruleset._wrapIs(selector);
   }
 
-  private static _ownForCompose(component: ComplexSelectorComponent): ComplexSelectorComponent {
+  private static _ownForCompose(component: ComplexSelectorComponent): ComplexSelectorComponent[] {
     if (typeof component === 'string') {
-      return component;
+      return [component];
+    }
+    // A nested-rule child that leads with a combinator (`> a b > c`) can arrive
+    // as a ComplexSelector component nested inside its parent ComplexSelector.
+    // Flatten it into the parent's component stream so compose stays flat.
+    if (isNode(component, N.ComplexSelector)) {
+      return component.value.flatMap(inner => Ruleset._ownForCompose(inner));
     }
     const owned = copyOwnedWithReusableLeaves(component);
     if (
@@ -412,7 +418,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       || isCombinator(owned)
       || isNode(owned, N.Ampersand)
     ) {
-      return owned;
+      return [owned];
     }
     throw new TypeError('Expected selector component copy');
   }
@@ -427,14 +433,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   private static _prependParent(parent: Selector, child: Selector): Selector {
     const library = child.keySetLibrary ?? parent.keySetLibrary;
     const leading: ComplexSelectorComponent[] = isNode(parent, N.ComplexSelector)
-      ? parent.value.map(component => Ruleset._ownForCompose(component))
+      ? parent.value.flatMap(component => Ruleset._ownForCompose(component))
       : isNode(parent, N.SelectorList)
         ? [Ruleset._wrapIs(parent)]
-        : [Ruleset._ownForCompose(Ruleset._toComplexComponent(parent))];
+        : Ruleset._ownForCompose(Ruleset._toComplexComponent(parent));
 
     const trailing: ComplexSelectorComponent[] = isNode(child, N.ComplexSelector)
-      ? child.value.map(component => Ruleset._ownForCompose(component))
-      : [Ruleset._ownForCompose(Ruleset._toComplexComponent(child))];
+      ? child.value.flatMap(component => Ruleset._ownForCompose(component))
+      : Ruleset._ownForCompose(Ruleset._toComplexComponent(child));
 
     const childStartsWithCombinator = trailing.length > 0 && isCombinator(trailing[0]!);
     const merged = childStartsWithCombinator

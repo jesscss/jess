@@ -36,6 +36,21 @@ describe('importAtRule', () => {
     expect(errors.length).toBe(0);
     expect(tree.toString()).toBe('@import "test.css" screen, print;\n');
   });
+
+  it('gives a Less (reference) url() import an unquoted Url path (not undefined)', () => {
+    // A `@import (reference) url(https://…)` with an UNQUOTED url() has no
+    // Quoted path; StyleImport.path fell back to undefined and derefed
+    // `this.path.eval` at eval. The parsed Url node must become the path.
+    const { errors, tree } = parse(
+      '@import (reference) url(https://cdn.example.com/a.less);',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const imp = (tree as any).rules.find((n: any) => isNode(n, N.StyleImport));
+    expect(imp).toBeDefined();
+    expect(imp.path).toBeDefined();
+    expect(isNode(imp.path)).toBe(true);
+  });
 });
 
 describe('innerAtRule', () => {
