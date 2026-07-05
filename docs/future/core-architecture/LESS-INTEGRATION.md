@@ -67,10 +67,15 @@ Split: ~70% hard crashes (empty CSS), ~11% scope 'not defined', ~19% output diff
   comments/whitespace, data-uri inlining. Low leverage tail; some may be stale expectations.
 
 ## Pre-work
-- [ ] **Build-health pass** — every Less-path package builds against the current core API. Known:
-  `jess-plugin-less-compat` has stale-AST tsc errors (`.location` removed, `Any`→`string|Interpolated`,
-  `SelectorLike` mismatches, `Cannot find name 'out'`). It IS in the all-less path (`lessCompatPlugin`).
-  Fix to current core API; **remove proxying** where possible. Disjoint from core clusters → parallel.
+- [x] **Build-health pass** — DONE (merge b06132614). `jess-plugin-less-compat` now builds tsc-clean
+  against current core API: `.location`→`sourceSpanOf(n)?.start`; the `.location`-as-`currentFileInfo`
+  proxy removed (fileInfo defaults to `{}`); `Any` name-wrapper → `string|Interpolated` direct assign;
+  `SelectorLike` widened + array branch; and a real **`from-less.ts 'out'` ReferenceError** (copy-paste
+  bug: returned undefined `out` instead of `decl` for Declaration/Rule plugin nodes). Load-bearing
+  less.js adapters (`less-adapter.ts` Element/Selector shape for 3rd-party plugins) kept. all-less
+  unchanged (58/35) — compat build was infra, not a fixture-failure source. **Follow-up:** the compat
+  package's own `vitest.config.ts` lacks the root's `source` condition, so its integration tests need
+  built libs — test-harness gap to fix.
 
 ## Log
-_(append merges here)_
+- **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
