@@ -5410,7 +5410,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         // the SAME source frame via the node parent chain. Without a shared frame the
         // output would lazily build its own, and the inline-import fallback link would
         // never reach the consumer's lookup.
-        output.scopeFrame = rules.getScopeFrame();
+        const sharedFrame = rules.getScopeFrame();
+        output.scopeFrame = sharedFrame;
+        // Re-point the shared frame's node back-pointer to the output. The
+        // child-surface crawl (collectDirectChildRulesEntries / findMixin's
+        // namespace descent) reads `frame.rulesNode.rules` to reach evaluated
+        // callable children — mixin-call OUTPUT rulesets spliced into `output`
+        // during this eval. The canonical `rules.rules` never gains those output
+        // children (invariant: canonical is immutable), so a frame still pointing
+        // at the canonical makes an evaluated namespace member (`.person` produced
+        // by a mixin call, incl. post-interpolation names) invisible to a later
+        // sibling `.person.sayGender` lookup. The frame IS this scope's identity;
+        // after COW-derive the output supersedes the canonical for the rest of the
+        // eval (context.rulesContext/root follow it below), so its lookup surface
+        // must be the output's rules. No new frame, no clone.
+        sharedFrame.rulesNode = output;
         if (context.rulesContext === rules) {
           context.rulesContext = output;
         }
