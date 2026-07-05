@@ -387,6 +387,9 @@ importers:
       '@jesscss/plugin-node-modules':
         specifier: workspace:*
         version: link:../jess-plugin-node-modules
+      '@jesscss/plugin-scss':
+        specifier: workspace:*
+        version: link:../jess-plugin-scss
       linecraft:
         specifier: 0.2.6
         version: 0.2.6
@@ -7326,7 +7329,7 @@ packages:
       '@vitest/spy': 4.1.0
       estree-walker: 3.0.3
       magic-string: 0.30.21
-      vite: 6.4.1(@types/node@22.19.7)(less@4.6.3)
+      vite: 6.4.1(@types/node@20.19.30)(less@4.6.3)
     dev: true
 
   /@vitest/mocker@4.1.2(vite@6.4.1):

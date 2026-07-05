@@ -27,6 +27,7 @@ import {
 } from 'styles-config';
 import type { PluginInterface } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
+import scssPlugin from '@jesscss/plugin-scss';
 import { outputDiagnostics } from './diagnostics.js';
 
 export type ConfigOptions = StylesConfig & {
@@ -409,6 +410,7 @@ export class Compiler {
   private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginProxyCache = new Map<PluginFactoryCacheKey, LazyPluginInterface>();
   private lessPluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
+  private scssPluginInstance: PluginInterface | undefined;
 
   constructor(
     opts: ConfigOptions = {
@@ -548,6 +550,22 @@ export class Compiler {
       this.lessPluginInstanceCache.set(key, plugin);
     }
     return plugin;
+  }
+
+  /**
+   * The default SCSS plugin. Registered on every render so `.scss` sources parse
+   * out of the box (extension routing sends only `.scss` here; `.less`/default
+   * still route to the Less plugin). Its own defaults — `unitMode: 'preserve'`,
+   * `equalityMode: 'strict'`, nesting preserved — are the SCSS-correct semantics;
+   * `allowExtendSelectors` is picked up per-parse from the compiler options.
+   * A consumer-configured `scss` plugin in `compile.plugins` overrides this one
+   * (same `name` key in `buildPlugins`).
+   */
+  private getOrCreateScssPlugin(): PluginInterface {
+    if (!this.scssPluginInstance) {
+      this.scssPluginInstance = scssPlugin();
+    }
+    return this.scssPluginInstance;
   }
 
   private getConfiguredPluginFactory(specifier: string): Promise<PluginFactoryRecord> {
@@ -737,6 +755,8 @@ export class Compiler {
     const pluginMap = new Map<string, PluginInterface>();
     const coreLessPlugin = this.getOrCreateLessPlugin(resolved.lessOptions);
     pluginMap.set(coreLessPlugin.name, coreLessPlugin);
+    const coreScssPlugin = this.getOrCreateScssPlugin();
+    pluginMap.set(coreScssPlugin.name, coreScssPlugin);
     const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
 
     const configuredPlugins = resolved.effectiveConfig.compile?.plugins;
@@ -1454,9 +1474,15 @@ export class Compiler {
         // ignore cleanup failures
       }
     }
+    try {
+      void this.scssPluginInstance?.dispose?.();
+    } catch {
+      // ignore cleanup failures
+    }
     this.jsPluginProxyCache.clear();
     this.jsPluginFactoryCache.clear();
     this.lessPluginInstanceCache.clear();
+    this.scssPluginInstance = undefined;
     this.configuredPluginFactoryCache.clear();
   }
 }
