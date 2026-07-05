@@ -257,13 +257,15 @@ serialization/collapse state; no new visibility/eval-free flag.
   `_hasExtends` gate); delete `isPlainStaticRuleLeaf`/`.every()`. Static+extend-free subtrees skip
   registration-prep + eval → straight to serialize.
 - [ ] **C3 — extend gathered-in-walk + buffered apply at walk-end.** → T3. Static subtrees register targets
-  via a cheap construction-time signal, not eval. Overlaps live less/drive at-rule work — gate hardest.
+  via a cheap construction-time signal, not eval. Overlaps at-rule work landing on feature/parseman — gate hardest.
 - [ ] **C4 (north star) — fold eval INTO the render walk as lazy pull.** Eliminate the eager evaluated tree
   so DYNAMIC content is also single-traversal; registration → construction-time index. Largest scope, last.
 
 ### Orchestration (perf work is branch-managed, not in-place on feature/parseman)
-- **`perf/walk-collapse` (worktree jess-perf-walk) is the sole integration branch.** Parallel teams
-  (less/drive) are not blockers — divergence is the integrator's merge to resolve (rebase forward).
+- **`perf/walk-collapse` (worktree jess-perf-walk) is the sole integration branch.** Integrate ONLY from
+  `feature/parseman` (the shared trunk); other agents' work (e.g. less-integration) reaches you when THEY
+  merge to feature/parseman — never rebase directly onto another agent's branch. Trunk divergence is the
+  integrator's merge to resolve (rebase forward).
 - Per stage: scope a precise spec → spawn an agent in its own worktree
   (`git worktree add ../jess-perf-<stage> -b perf/<stage> perf/walk-collapse`) with the setup block +
   spec → agent works to the gate, commits, reports before/after bench + failure set → integrator merges
