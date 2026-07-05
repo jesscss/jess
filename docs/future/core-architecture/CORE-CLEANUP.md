@@ -17,7 +17,7 @@ change is real only if the stable set moves.
 
 ## Driver terminal status (this pass)
 
-**Stable failures: 85 → 49, zero regressions.** After the mechanical harvest reached 60, the
+**Stable failures: 85 → 45, zero regressions.** After the mechanical harvest reached 60, the
 "monolithic" E2/E3 cluster is being **chipped by scoped sub-agents in an isolated worktree** — and
 keeps dissolving into specific bugs, not the feared monolith:
 - **E2-a** (825dc3ec0, 60→59): property lookup now consults ancestor import fallback frames.
@@ -57,7 +57,7 @@ scope-identity (~16+), the D1-3b-blocked merge-chain/lookup coupling, and eval/c
 downstream of them. Driving below 60 requires the deferred **monolithic scope-identity rework**, not
 more mechanical units. That is the documented irreducible minimum for the safe drive-to-green loop.
 
-Baseline snapshots below may cite older counts (85 mid-migration); the current stable set is **60**.
+Baseline snapshots below may cite older counts (85 mid-migration); the current stable set is **45**.
 
 ---
 
