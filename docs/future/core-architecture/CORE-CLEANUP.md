@@ -56,37 +56,46 @@ keeps dissolving into specific bugs, not the feared monolith:
   - **Group C (1): implicit-`&` over-materialization** (`extend.ts:280`) — needs target-scope-relative
     source selection (absolute `fullSel` load-bearing for the cross-scope `.issue-2586` case). Scope-ancestor
     comparison, not a dedupe.
-### Live work-list — the 40 remaining stable failures, each mapped to an owning unit
-**IN FLIGHT (3 agents, disjoint files):**
-- `cleanup/decl-ref` → reference (3), declaration copy-boundary (~2), cloning (1) — the no-copy/reuse boundary.
-- `cleanup/config-property` → import-style with-config property path (4).
-- `cleanup/extend-bc` → extend-roots string-backed (1, Group B), extend-eval attribute (1, Group C — dir corrected).
+### Live work-list — the 21 remaining stable failures (all DEFERRED-with-rationale; floor reached)
+The mechanical/tractable harvest is COMPLETE (85→21, ~22 verified slices, every merge zero-regression).
+Later merged units beyond the list above: decl-trivia, E-lookup(E1), D1-2, extend-cluster Group A (COW),
+extend-bc (B+C), extend-less-fixtures (5, symlink-unmasked), decl-ref copy-boundary (source-free + reference
+eval-derived-flag + cloning), config property-path (3/4), mixin (at-rule prelude + stale tests), namespace
+string-selector registration, crawl-gate (1/3). The remaining 21 all require design/architecture calls:
 
-**QUEUED (next waves, dispatch after in-flight merges to avoid rules.ts collision):**
-- **mixin scope (14)** — namespace-lookup / scope failures (`No matching mixins`, param-var lazy lookup,
-  mixin-ruleset namespace containers). Same config-surface/namespace-crawl family; the biggest remaining.
-- **import-style namespace-cold (3)** — `findMixinsFastForUncoveredCallable` / `hasReferenceImportChildSurface`
-  broad-crawl gating (distinct subsystem, verified separate from config-surface).
-- **import-style wrapper-identity + misc (≈4)** — D-family (declaration-lookup-version on derived surface;
-  compose finalRules `sourceNode`≠itself) + forward-only-downstream + multiple-imports placement.
-- **mixin-recursion (2)** — recursive-mixin serialization + nested-mixin-from-outside scope.
+**A · The `wrapper-is-scope-identity` / eval-state MONOLITH (~16) — DEFERRED, one coupled rework.**
+Multiple independent agents converged on the same root: **evaluated / mixin-output / derived-output frames
+are not linked into the caller's lookup chain**, and the eval-state signal that gated it was removed by
+commit `1cd5cb2bc §2.7` ("drop evaluated reads") — it changed `entryRules._scopeFrame ?? (entryRules.evaluated
+? getScopeFrame() : undefined)` to an unconditional `?? getScopeFrame()` at `rules.ts:3235`. That one change
+explains:
+  - mixin interpolated-namespace (`.@{name}`→`.person` post-eval, buckets key on static names) — the output
+    ruleset registers `.person` on a COW-derived output tree the caller's `findMixin` never walks;
+  - leaky-Less var-leak from evaluated mixin-call output (root-level forward leak);
+  - import-style `uncalled cold` vs `evaluated-descendant` pair (both regressed by §2.7 — a frame is built for
+    a never-evaluated body);
+  - wrapper-identity D-family (declaration-lookup-version on derived surface; compose finalRules `sourceNode`);
+  - mixin-recursion (2) rides on interpolated-namespace.
+**OWNER DECISION REQUIRED** (flagged, not auto-attempted): was dropping the `evaluated` eval-state signal
+(§2.7) correct — needing a *different* signal consistent with the thin/live-binding model — or a regression
+to restore? Everything below ~21 hinges on this. Precise entry point: re-introduce an eval-state signal on
+`Rules` (set by the eval wrapper even for lazy mixin defs) + restore the gate at `rules.ts:3235`, AND link the
+mixin-output frame as a fallback/child of the caller scope so post-interpolation names resolve. See
+[[parseman-wrapper-is-scope-identity]].
 
-**DONE this wave (extend-bc, 44→42):** Group B (materialize string-backed extendWith → `.base, .child`) +
-Group C (test-only: `extend all` doubling is CORRECT, stale "no-duplicate-prefix" expectation fixed).
+**B · Separately DEFERRED (distinct rationale each):**
+- declaration merge-chain (1) → D1-3b (coalesce `removeFlag(F_VISIBLE)` load-bearing for lookup+re-coalesce;
+  merge-engine rework, see D.1 stage 3b). [[fvisible-coalesce-suppression-load-bearing]]
+- call detached-collection→Rules (1) → callable-collection node-identity design decision (return the collection
+  surface vs normalize to Rules).
+- config with-var-survival (1) → live-binding-across-eval: a `with` VarDeclaration is a transient pre-eval frame
+  binding that doesn't survive eval as a resolvable decl; parent same-named decl wins. Needs the config binding
+  to persist onto the post-eval surface with module precedence.
+- extend Group B/C — **DONE** (merged: B appends `.base,.child`; C's doubling is Less-correct per the committed
+  `extend-selector.css`, stale test fixed).
 
-**NEW cluster surfaced — extend-less-fixtures (5), was MASKED by a broken symlink** (`@less/test-data`
-resolved to `worktrees/less.js` not `oss/less.js`; fixed with an absolute symlink — add to worktree
-bootstrap). Honest baseline is **44→42**, not 40. The 5 (in flight, cleanup/extend-fixtures): `3b :is-hover`,
-`4 selector-parity (ext/attributes/footer/issue-2586)`, `5c/5d exact-not-match-nested`, `5e &&-exact-doubles`.
-These are Less.js extend-parity — apply the extend model (target + `&`=replaceWith; `all`=substring-replace,
-`exact`=whole-match; compare 4.x semantically). Some may be stale expectations, some real bugs.
-
-**DEFERRED (written rationale above/here):**
-- declaration merge-chain (1) → D1-3b (coalesce removeFlag load-bearing; merge-engine rework).
-- call detached-collection→Rules (1) → callable-collection node-identity design decision.
-
-**The floor:** once the queued waves land, the irreducible core is the wrapper-is-scope-identity D-family +
-D1-3b, both deferred with rationale. Every one of the 40 is now IN-FLIGHT, QUEUED-with-plan, or DEFERRED-with-rationale.
+Every one of the 21 is now DEFERRED-with-written-rationale; **21 is the documented irreducible minimum for the
+mechanical loop.** Below it = the Monolith-A scope-identity/eval-state rework (owner design call) + the B items.
 
 ---
 _Earlier snapshot (mechanical harvest to 60):_ Every open tracker item is CLOSED or
