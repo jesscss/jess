@@ -17,7 +17,7 @@ change is real only if the stable set moves.
 
 ## Driver terminal status (this pass)
 
-**Stable failures: 85 → 28, zero regressions.** After the mechanical harvest reached 60, the
+**Stable failures: 85 → 21, zero regressions.** After the mechanical harvest reached 60, the
 "monolithic" E2/E3 cluster is being **chipped by scoped sub-agents in an isolated worktree** — and
 keeps dissolving into specific bugs, not the feared monolith:
 - **E2-a** (825dc3ec0, 60→59): property lookup now consults ancestor import fallback frames.
