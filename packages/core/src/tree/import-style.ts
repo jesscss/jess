@@ -17,7 +17,7 @@ import { Any } from './any.js';
 import { declarationNameKey } from './declaration.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
-import { buildScopeFrame, copyScopeFrameLiveBindingSlots, type BindingCell } from './scope-frame.js';
+import { setScopeFrameLiveBinding, type BindingCell } from './scope-frame.js';
 import {
   isRenderBuffer,
   type RenderBuffer
@@ -776,8 +776,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
-    const liveSlots = copyScopeFrameLiveBindingSlots(targetRules._scopeFrame);
-    let didAdd = false;
+    // Build the target frame through the normal getter so it carries the
+    // assignment-binding chain (prepareScopeFrameAssignmentBindings surfaces any
+    // additive child rulesets' public property decls) and inline-import fallbacks,
+    // then overlay the config vars as live slots on that prepared frame. Injecting
+    // in place keeps `configuredProp`/`setConfiguredProp`-style non-variable decls
+    // resolvable via the same assignment chain variables use — no bare frame rebuild
+    // that would drop them.
+    const frame = targetRules.scopeFrame;
     for (const node of variableNodes) {
       if (!isNode(node, N.VarDeclaration)) {
         continue;
@@ -786,33 +792,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (!name) {
         continue;
       }
-      liveSlots.set(name, {
+      setScopeFrameLiveBinding(frame, name, {
         value: node.value instanceof Node ? node.value : undefined,
         sourceNode: node,
         readonly: node.options?.readonly
       } satisfies BindingCell);
-      didAdd = true;
     }
-    if (!didAdd) {
-      return;
-    }
-    const existingFallbackFrame = targetRules._scopeFrame?.fallbackFrame;
-    targetRules.scopeFrame = buildScopeFrame(
-      undefined,
-      targetRules,
-      targetRules._scopeFrame?.parent,
-      liveSlots,
-      targetRules._scopeFrame?.pendingDeclarationNames,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      targetRules._scopeFrame?.hasReferenceImports ?? targetRules._hasReferenceImports
-    );
-    targetRules.scopeFrame.fallbackFrame = existingFallbackFrame;
   }
 
   private toImportPathNode(node: Node): Quoted | Url {
@@ -1153,7 +1138,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // Reuse cached evaluated rules tree.
           rules = evaldRules;
           // Default: de-dupe output for compose re-imports unless explicitly multiple.
-          if (!importOptions!.multiple) {
+          // A configured (`with`/`set`) compose is a distinct instance whose child
+          // surface is re-derived and re-emitted below, so it is never a dedup re-import.
+          if (!importOptions!.multiple && !withValues) {
             importOptions!.reference = true;
           }
         }
