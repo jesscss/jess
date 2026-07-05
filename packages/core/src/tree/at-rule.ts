@@ -1654,6 +1654,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
       ...createAtRuleBodyEvalRecordState(context, {
+        // The evalFrame is the shared source node; writing the evaluated prelude
+        // back onto it would poison later evaluations of the same node (e.g. a
+        // mixin called twice with different args). The evaluated prelude is
+        // carried on the record and applied to the fresh output copy instead.
+        writeEvaluatedPrelude: false,
         output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined
       })
     };
