@@ -2591,48 +2591,53 @@ function isRulesLikeReferenceValue(node: Node): boolean {
 function createRulesLikeReferenceSurface(directValue: MixinEntry): MixinEntry;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue;
 function createRulesLikeReferenceSurface(directValue: MixinEntry | Node): MixinEntry | PreservedRulesLikeValue {
-  const descriptors = Object.getOwnPropertyDescriptors(directValue);
-  const optionsDescriptor = descriptors._options;
-  if (
-    optionsDescriptor
-    && 'value' in optionsDescriptor
-    && optionsDescriptor.value
-    && typeof optionsDescriptor.value === 'object'
-  ) {
-    optionsDescriptor.value = { ...optionsDescriptor.value };
-  }
-  Reflect.deleteProperty(descriptors, 'sourceNode');
-  Reflect.deleteProperty(descriptors, 'parent');
-  Reflect.deleteProperty(descriptors, 'index');
+  // Fast fixed-shape surface. The surface must (a) stay the SAME class as the
+  // source (callers check `instanceof Rules`/`Mixin` and `.type`), (b) SHARE the
+  // source's child nodes WITHOUT re-parenting them (children keep pointing at the
+  // canonical source — the reference suite asserts `child.parent === source` and
+  // that neither `clone()` nor `inherit()` runs), and (c) carry independent
+  // `sourceNode`, `parent`, `index`. Running the node constructor is out (it
+  // adopts/re-parents structural children); `clone()`/`derive()` are out (they
+  // call `inherit`). So we allocate a bare same-prototype object and copy every
+  // own field of the source in the source's own declaration order — this
+  // reproduces the source's monomorphic hidden class exactly (no per-instance
+  // descriptor attach, no varying shape) — then override the 3 surface fields.
+  // This replaces the old `Object.getOwnPropertyDescriptors` +
+  // `defineProperties`x2 + `Reflect.deleteProperty`x3 reflective build (the #1
+  // dynamic-eval allocation) with a flat field copy on a fixed shape.
+  const directNode = isNode(directValue) ? directValue : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const preservedValue = Object.create(
     Object.getPrototypeOf(directValue)
-  );
+  ) as PreservedRulesLikeValue;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const source = directValue as unknown as Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const target = preservedValue as unknown as Record<string, unknown>;
+  const keys = Object.keys(source);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]!;
+    target[key] = source[key];
+  }
   if (!(preservedValue instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
-  Object.defineProperties(preservedValue, descriptors);
-  const directNode = isNode(directValue) ? directValue : undefined;
-  const sourceNode = directNode?.sourceNode instanceof Node ? directNode.sourceNode : directNode;
-  Object.defineProperties(preservedValue, {
-    sourceNode: {
-      value: directValue,
-      writable: true,
-      enumerable: false,
-      configurable: false
-    },
-    parent: {
-      value: (directNode?.parent) ?? sourceNode?.parent,
-      writable: true,
-      enumerable: false,
-      configurable: true
-    },
-    index: {
-      value: directValue.index ?? sourceNode?.index,
-      writable: true,
-      enumerable: true,
-      configurable: true
-    }
-  });
+  // Own `_options` so surface-local option edits never leak into the source. The
+  // field-copy above already shared the source's `_options` reference; replace it
+  // in place with a shallow clone (fixed shape — same key, object→object).
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const surfaceOptions = preservedValue as unknown as { _options: unknown };
+  const options = surfaceOptions._options;
+  if (options && typeof options === 'object') {
+    surfaceOptions._options = { ...options };
+  }
+  const sourceNode: Node | undefined = directNode?.sourceNode instanceof Node
+    ? directNode.sourceNode
+    : directNode;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  preservedValue.sourceNode = directValue as Node;
+  preservedValue.parent = (directNode?.parent) ?? sourceNode?.parent;
+  preservedValue.index = directValue.index ?? sourceNode?.index;
   return preservedValue;
 }
 
