@@ -227,27 +227,57 @@ reading a hoisted nested at-rule's captured `AtRule.frames` to recover its sever
 That flag only existed to name "`F_STATIC` but eval still holds collapse state." Remove the state from
 eval and `F_STATIC` alone is the eval-free signal; the scan collapses to a bare flag read.
 
-**Principle: walk count scales with CONTENT, not a fixed pipeline.** static+extend-free → parse→serialize
-(1 walk); +references adds eval; +extends adds the apply pass. The signals already exist (`F_STATIC`, root
-`_hasExtends` at `rules.ts:948`) — they're undercut by collapse-state-in-eval and the redundant scan.
+**North star: the FEWEST tree traversals for byte-identical output.** Not "1/2/3 walks by feature" —
+that's just the 4-pass pipeline reworded. End state = ONE driving traversal (the render/serialize walk):
+- **eval** is PULLED lazily by the render walk (memoized) when it hits a dynamic value — not a pre-pass.
+- **registration** is a CONSTRUCTION-TIME name index on each `Rules` node — not a runtime pass.
+- **extend** (the only non-local op) is gathered DURING the render walk; because a later `:extend` can
+  rewrite an earlier target, composed selectors are BUFFERED and extend is applied at walk-end as an
+  O(#extends) pass over that buffered set — one accepted concession, still not a second tree traversal.
+Net: one traversal + O(#extends) apply; work ∝ the dependency DAG, not passes×nodes. Static+extend-free
+is the trivial floor: the walk emits directly, pulling nothing. Signals already exist (`F_STATIC`, root
+`_hasExtends` at `rules.ts:948`); they're undercut by collapse-state-in-eval and the redundant scan.
 
-### Staged plan (each gated zero-regression + re-baselined: build core, run collapse+extend suites twice, byte-diff benchmark)
-- [ ] **C0 — dead-walk removal (safe, no eval semantics).**
-  - Verify `Ruleset.frames` (1902) unread → delete the write + the two clone-copies.
-  - Reorder `processExtends`: bail on `!context.extends.length` BEFORE the `preExtendSelectors` snapshot loop.
-- [ ] **C1 — collapse state out of eval.** Recover the hoisted-at-rule header from serialize-walk structure
-  (the walk already carries `composedSelectorStack`) instead of eval-captured `AtRule.frames`; move
-  `hoistToRoot` to a serialize-time decision. End: eval owns zero collapse state.
-- [ ] **C2 — trust the flag.** Replace the `canRenderStaticRulesDirectly` scan with `F_STATIC` (+ root
-  `_hasExtends` gate); delete `isPlainStaticRuleLeaf` / the `.every()`. Static+extend-free subtrees skip
+**Measurable targets.** T1: a fully static, extend-free sheet renders with ZERO eval pass
+(`canRenderStaticRulesDirectly` → bare `F_STATIC`; delete `isPlainStaticRuleLeaf`/`.every()`; no evalNode
+on static subtrees). T2: eval-phase time for a collapse render ≈ eval-phase time for the same tree nested
+(the measured ~2.6x gap — 931 vs 357ms, 4500-ruleset synth — is ENTIRELY serialize-side; partly legit
+since flattening costs more, so target is "gap is all serialize," not "gap shrinks"). T3: extend gathered
+in-walk + applied at walk-end over buffered selectors; no separate discovery traversal. T4: eval owns zero
+serialization/collapse state; no new visibility/eval-free flag.
+
+### Staged plan (each gated: build core, stable set unchanged, output byte-identical, A/B the collapse bench)
+- [x] **C0 — dead-walk removal (DONE, 844046cbd, zero regression).** Deleted the dead `Ruleset.frames`
+  write (confirmed no serialize reader; `getHoistedParent` is AtRule-only). Reordered `processExtends` to
+  bail on `!context.extends.length` BEFORE the snapshot loop. Dead-weight, not a hotspot (A/B within noise).
+- [ ] **C1 — collapse state out of eval.** → T2, T4. Recover the hoisted-at-rule header from serialize-walk
+  structure (the walk already carries `composedSelectorStack`) instead of eval-captured `AtRule.frames`;
+  move `hoistToRoot` to a serialize-time decision. PREREQ: CPU-profile the gap (eval vs serialize) first.
+- [ ] **C2 — trust the flag.** → T1. Replace the `canRenderStaticRulesDirectly` scan with `F_STATIC` (+ root
+  `_hasExtends` gate); delete `isPlainStaticRuleLeaf`/`.every()`. Static+extend-free subtrees skip
   registration-prep + eval → straight to serialize.
-- [ ] **C3 — extend as a single pre-serialize pass (the restructure).** Make extend a distinct phase between
-  eval and serialize, consuming a registry fed by (a) eval for DYNAMIC subtrees and (b) cheap selector-only
-  registration for STATIC subtrees (no eval). Lets static-but-extend-relevant subtrees skip eval while still
-  contributing extend targets. **Highest risk** (extend scoping; semantic overlap with the parallel less
-  repros) — gate hardest, do last.
+- [ ] **C3 — extend gathered-in-walk + buffered apply at walk-end.** → T3. Static subtrees register targets
+  via a cheap construction-time signal, not eval. Overlaps live less/drive at-rule work — gate hardest.
+- [ ] **C4 (north star) — fold eval INTO the render walk as lazy pull.** Eliminate the eager evaluated tree
+  so DYNAMIC content is also single-traversal; registration → construction-time index. Largest scope, last.
 
-Guardrail: stable core set stays green; output byte-identical; A/B every stage against the benchmark.
+### Orchestration (perf work is branch-managed, not in-place on feature/parseman)
+- **`perf/walk-collapse` (worktree jess-perf-walk) is the sole integration branch.** Parallel teams
+  (less/drive) are not blockers — divergence is the integrator's merge to resolve (rebase forward).
+- Per stage: scope a precise spec → spawn an agent in its own worktree
+  (`git worktree add ../jess-perf-<stage> -b perf/<stage> perf/walk-collapse`) with the setup block +
+  spec → agent works to the gate, commits, reports before/after bench + failure set → integrator merges
+  into `perf/walk-collapse`, re-runs the full gate, keeps only if green, updates this checkbox + bench #.
+- **Agent setup block:** `pnpm install` (~10s; NOT `pnpm -r build`). Correctness gate (no build; vitest on
+  src): `cd packages/core && pnpm test` — baseline = EXACTLY 2 pre-existing fails (mixin.test.ts namespace
+  fast-path x2 ~5476/5578; extend-less-fixtures collection ~47:39); clean = that set + byte-identical.
+  Timing (optional): build `@jesscss/core styles-config @jesscss/fns jess` only (NOT `-r`: jess-plugin is
+  pre-broken TS5096). jess default output is NESTED (collapseNesting opt-in); benchmark.less does NOT
+  render on jess yet — never gate on it.
+
+**Status:** `perf/walk-collapse` = C0 (844046cbd) → merge feature/parseman (c2f6aea01, gate green) →
+ruleset.ts lint debt fixed (1636a6e6b). Next: commit the collapse bench harness into the branch, profile
+the collapse gap, lock the C1 spec, fan out C1.
 
 **Still-deferred perf backlog (unchanged, no failing-test signal):**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
