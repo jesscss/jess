@@ -2960,7 +2960,13 @@ function finalizeDeclarationReferenceResult(
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
-  const declarationValue = declaration.value;
+  // A Less value can be a flat parser segment array (`ice cream` →
+  // `[Keyword, Keyword]`) rather than a Node. Coalesce it to its structured
+  // node (a space `Sequence`) via `valueNode()` so an accessor result renders
+  // `ice cream`, not the array's comma-joined `String(...)` form.
+  const declarationValue = isNode(declaration.value)
+    ? declaration.value
+    : declaration.valueNode();
   let isMergedAssign = false;
   let hasImportant = false;
   if (isNode(declaration, N.Declaration)) {
@@ -2998,6 +3004,23 @@ function finalizeDeclarationReferenceResult(
       referencePopped = true;
     }
   };
+  // An accessor into a mixin-CALL output (`.mixin(1px)[@return]`) finds a
+  // declaration whose value still carries free references to the mixin's PARAMS
+  // (`@return: @val + 1px`). Those params live in the output Rules' OWN retained
+  // scope frame, not in the caller's rulesContext. Evaluate the value with the
+  // declaration's owning Rules active so `@val` resolves up that captured param
+  // frame. Only re-point when the owner carries its own frame (a called mixin
+  // output) — a plain lexical declaration keeps the ambient rulesContext.
+  const declOwner = declaration.parent;
+  const useDeclOwnerScope = isNode(declOwner, N.Rules)
+    && declOwner._scopeFrame !== undefined
+    && declOwner !== context.rulesContext;
+  const savedRulesContext = context.rulesContext;
+  const restoreRulesContext = () => {
+    if (useDeclOwnerScope) {
+      context.rulesContext = savedRulesContext;
+    }
+  };
   try {
     if (hasImportant) {
       const importantNode = declaration.important instanceof Any ? declaration.important : undefined;
@@ -3008,8 +3031,13 @@ function finalizeDeclarationReferenceResult(
       context.popReference();
       return new Any(String(declarationValue), { role: referenceNode.role });
     }
+    if (useDeclOwnerScope) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      context.rulesContext = declOwner as Rules;
+    }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
     const finalize = (evaluatedNode: Node): Node => {
+      restoreRulesContext();
       if (!isMergedAssign) {
         popReference();
         return evaluatedNode;
@@ -3027,6 +3055,7 @@ function finalizeDeclarationReferenceResult(
       return Promise.resolve(evaluated)
         .then(finalize)
         .catch((error) => {
+          restoreRulesContext();
           popReference();
           if (importantPushed) {
             context.popImportantSource();
@@ -3042,6 +3071,7 @@ function finalizeDeclarationReferenceResult(
     context.searchScope.delete(declaration);
     return finalized;
   } catch (error) {
+    restoreRulesContext();
     popReference();
     if (importantPushed) {
       context.popImportantSource();

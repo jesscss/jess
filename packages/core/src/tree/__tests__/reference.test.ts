@@ -7003,4 +7003,66 @@ describe('reference', () => {
       expect(result).toBeUndefined();
     });
   });
+
+  describe('mixin call-then-accessor lookup', () => {
+    async function renderLess(src: string): Promise<string> {
+      const { Parser } = await import('../../../../less-parser/src/index.js');
+      const parser = new Parser();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const tree = parser.parse(src).tree as unknown as RulesClass;
+      const localContext = new Context({ leakyRules: true });
+      localContext.depth = 2;
+      localContext.root = tree;
+      return renderNodeToString(tree, localContext, { context: localContext });
+    }
+
+    // A mixin CALL followed by an accessor (`.mixin(1px)[@return]`): the accessed
+    // declaration's value still holds free references to the mixin's PARAMS
+    // (`@return: @val + 1px`). Those params live in the output Rules' own retained
+    // scope frame, so the accessor must evaluate the value against that frame.
+    it('resolves a param-bound value through a call-then-accessor', async () => {
+      const css = await renderLess(`
+        #library {
+          .add-one(@val) {
+            @return: @val + 1px;
+          }
+        }
+        .bar {
+          height: #library.add-one(1px)[@return];
+        }
+      `);
+      expect(css).toContain('height: 2px;');
+    });
+
+    // A top-level mixin call with multiple comma-separated args AND a trailing
+    // accessor (`.add(10px, 10px)[]`) must parse as TWO args, not a single
+    // comma-list arg — otherwise arity fails with "No matching mixins".
+    it('splits comma args on a mixin call carrying a trailing accessor', async () => {
+      const css = await renderLess(`
+        .add(@a, @b) {
+          @r: @a + @b;
+        }
+        .foo {
+          width: .add(10px, 10px)[];
+        }
+      `);
+      expect(css).toContain('width: 20px;');
+    });
+
+    // A flat parser segment-array value (`ice cream`) reached through an accessor
+    // must coalesce to its structured space `Sequence`, not the array's
+    // comma-joined `String(...)` form (`ice,cream`).
+    it('coalesces a flat space-separated value through an accessor', async () => {
+      const css = await renderLess(`
+        .foods() {
+          @dessert: ice cream;
+        }
+        @key: dessert;
+        .lunch {
+          treat: .foods[@@key];
+        }
+      `);
+      expect(css).toContain('treat: ice cream;');
+    });
+  });
 });
