@@ -354,3 +354,21 @@ past the throw gates incl. plugin.ts:1011 local-path) is DEFERRED. Rationale: it
 files — a security-sensitive sandbox the maintainer will design/scope as its own piece, not fold into the fixture drive.
 Bootstrap render status is thus CLOSED at "parse ✓ / scope ✓ / gated on @plugin JS (deferred)". When the sandbox
 lands, resume chasing bootstrap's post-@plugin eval blockers (JS-plugin functions invoked during eval).
+
+#### @plugin JS runtime — packaging + enable-gate design (for when the sandbox is built)
+Current state (verified 2026-07-05): `jess` is ALREADY correct — `@jesscss/plugin-js` is an OPTIONAL peer
+(`peerDependencies` + `peerDependenciesMeta.optional=true`) plus a `devDependency` (for tests), and is NOT in
+`dependencies`. So the old "installed as top-level runtime dep" bug is not currently present in `jess`.
+Gaps to close when building the sandbox:
+1. **`jess-plugin-less-compat` under-declares it (phantom dep).** The `@plugin` handler lives in
+   `jess-plugin-less-compat/src/plugin.ts` and reaches plugin-js via `require()` (~line 101 "try require() directly",
+   fallback ~1040), but that package lists plugin-js in NO dep section — it only resolves via the monorepo symlink and
+   would `MODULE_NOT_FOUND` for a real consumer. Fix: mirror `jess`'s shape on compat (optional peer + dev).
+2. **Decouple the enable-gate from module RESOLUTION (the real improvement).** Today the gate = "did require/deno-load
+   succeed"; in the workspace that ALWAYS succeeds (symlink), so the absent-path throw (`LESS_PLUGIN_JS_RUNTIME_MESSAGE`)
+   is untestable and can silently regress. Gate instead on whether the JS runtime was EXPLICITLY PROVIDED (injected via
+   plugin options / the plugin list / config); use require/dynamic-import only to FETCH it once opted in. Then both
+   paths are deterministic regardless of node_modules: provided → executes; not provided → throws gate (testable).
+3. **Guard test:** assert plugin-js is absent from `dependencies` and present in `peerDependenciesMeta` as optional on
+   BOTH `jess` and `jess-plugin-less-compat`; add a `pnpm publish --dry-run` closure check so it never enters the
+   shipped runtime tree. (`bootstrap-less-port` is already correctly a devDep of `jess`.)
