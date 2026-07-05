@@ -250,6 +250,13 @@ are medium-risk on HOT files and must be gated individually.
   - AtRule: `_nameSlotEnd`→`_nameEnd`, `_preludeStartOffset`→`_preludeStart`, `renderSerializedAtRule`→
     `serializeAtRule`, `renderBodyRecord`→`renderRecord`.
   [HOT: rules.ts/ruleset.ts/at-rule.ts — rename-only, but sequence so it doesn't collide with 3b.]
+**Dead-code claims VERIFIED FALSE** (re-checked all callers incl. internal + tests): the audit's
+"dead" list is entirely live — `getRenderFrames`/`getRenderRules` are called by **serialize-helper.ts**
+(render path) + ruleset.ts + 19 tests; `unwrapGeneratedReferenceIs`/`simplifyGeneratedIsSelector`/
+`expandGeneratedIsForReferenceCompose`/`filterExtendedTopLevelSelectorItems` all have internal (and in
+one case test) callers. **Nothing on the audit's dead list is safely deletable** — do NOT delete them.
+F-consolidate is therefore rename + genuine-refactor only, no free deletions.
+
 - [ ] **F-consolidate** (medium risk, verify dead-ness first):
   - Rules CLUSTER-2: unify `collectPublicVariableAssignmentBindingsInto` / `collectPublicChildVariable…` /
     `prepareScopeFrameAssignmentBindings` into one parameterized visitor (~60 lines) — IF truly redundant.
