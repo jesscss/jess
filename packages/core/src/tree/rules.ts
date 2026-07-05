@@ -168,6 +168,21 @@ function importInlinesMembersToParent(rules: Rules): boolean {
     || rules.options.inlinesMembersToParent === true;
 }
 
+// A callable's per-call surface adopted under a mixin-output namespace member
+// (e.g. `.sayGender` bound under the output `.person` for `.person.sayGender()`)
+// resolves free vars up that DEFINITION member, not the call site. The member is
+// a RETAINED per-call output frame: its scope-frame parent carries the call's
+// live param slots (hasLiveBindings). Distinct from the placement scope, so the
+// §4 placement re-point must leave the definition parent intact.
+function isRetainedOutputDefinitionParent(
+  parent: Node | undefined,
+  enclosingScope: Rules | undefined
+): boolean {
+  return isNode(parent, N.Rules)
+    && parent !== enclosingScope
+    && (parent as Rules).getScopeFrame().parent?.hasLiveBindings === true;
+}
+
 function keysStartWith(keys: readonly string[], path: readonly string[], pathStart = 0): boolean {
   if (keys.length > path.length - pathStart) {
     return false;
@@ -6162,6 +6177,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // nodeType bits) and would silently stop re-pointing mixin-body surfaces.
       && enclosingScope?.sourceNode instanceof Rules
       && enclosingScope.sourceNode !== enclosingScope
+      // EXCEPT a callable adopted under a RETAINED mixin-output namespace member:
+      // `.person.sayGender()` binds `.sayGender`'s per-call surface under the output
+      // `.person`, whose frame chains to the call's retained param slot
+      // (`gender_="Male"`, hasLiveBindings). That definition parent — not the call
+      // SITE (enclosingScope) — is where `.sayGender`'s body resolves `@gender`. The
+      // placement re-point would clobber it with the caller, where `@gender` is
+      // undefined. Same retained-frame signal c1ded0b6c uses for value resolution
+      // (ownerFrame.parent.hasLiveBindings); here it gates the lexical-parent choice.
+      && !isRetainedOutputDefinitionParent(rules.parent, enclosingScope)
     ) {
       // A child evaluated under a thin surface resolves its free vars up the
       // PLACEMENT scope, not its static canonical parent. Re-point its
