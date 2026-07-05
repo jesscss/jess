@@ -71,11 +71,19 @@ keeps dissolving into specific bugs, not the feared monolith:
   compose finalRules `sourceNode`≠itself) + forward-only-downstream + multiple-imports placement.
 - **mixin-recursion (2)** — recursive-mixin serialization + nested-mixin-from-outside scope.
 
+**DONE this wave (extend-bc, 44→42):** Group B (materialize string-backed extendWith → `.base, .child`) +
+Group C (test-only: `extend all` doubling is CORRECT, stale "no-duplicate-prefix" expectation fixed).
+
+**NEW cluster surfaced — extend-less-fixtures (5), was MASKED by a broken symlink** (`@less/test-data`
+resolved to `worktrees/less.js` not `oss/less.js`; fixed with an absolute symlink — add to worktree
+bootstrap). Honest baseline is **44→42**, not 40. The 5 (in flight, cleanup/extend-fixtures): `3b :is-hover`,
+`4 selector-parity (ext/attributes/footer/issue-2586)`, `5c/5d exact-not-match-nested`, `5e &&-exact-doubles`.
+These are Less.js extend-parity — apply the extend model (target + `&`=replaceWith; `all`=substring-replace,
+`exact`=whole-match; compare 4.x semantically). Some may be stale expectations, some real bugs.
+
 **DEFERRED (written rationale above/here):**
 - declaration merge-chain (1) → D1-3b (coalesce removeFlag load-bearing; merge-engine rework).
 - call detached-collection→Rules (1) → callable-collection node-identity design decision.
-- extend-less-fixtures (1) → ENVIRONMENTAL (`@jesscss/css-parser` entry resolve in a fresh worktree; a
-  build/link artifact, not a core logic failure — passes in a fully-built tree).
 
 **The floor:** once the queued waves land, the irreducible core is the wrapper-is-scope-identity D-family +
 D1-3b, both deferred with rationale. Every one of the 40 is now IN-FLIGHT, QUEUED-with-plan, or DEFERRED-with-rationale.
