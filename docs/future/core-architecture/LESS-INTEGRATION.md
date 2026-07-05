@@ -232,3 +232,17 @@ ADAPTER PERF/CLARITY (owner flagged 'no Proxy wrappers'): less-adapter.ts is NOT
 LAZY + IDENTITY (owner req): getters MUST stay lazy — `new FooAdapter(node)` converts nothing; a child is adapted only when its getter is READ (a plugin/visitor that ignores children pays ~0). Back it with a shared `WeakMap<jessNode, adapter>` for memoization + STABLE IDENTITY (`node.selectors[0]===node.selectors[0]` must hold; plugins do identity checks). Slim must not make conversion eager. Even selector-flatten fires only on `.selectors` read.
 Top files: nodes/index.ts (377, collapse), transform/type-map.ts (the diff map), transform/less-adapter.ts
 (keep — proxy engine), nodes/selector.ts (212, essential floor), transform/from-less.ts (197, essential).
+
+## PAUSED: parser changes — another session owns parsing (owner directive)
+Do NOT make less-parser/css-parser/grammar/builders changes; a separate agent is fixing incorrect parsing.
+- **bootstrap milestone PAUSED**: it's parse-blocked (`_variables.less:93` detached-ruleset raw-block, then
+  chain). Stopped the bootstrap-render agent + discarded its parser commit (849966b13) and incomplete eval WIP.
+  Resume bootstrap AFTER the parsing agent's fixes land (on feature/parseman or via dev).
+- **DEFERRED to the parsing agent** (all parser-owned): value-spacing/selector-arg cluster; color-fixture
+  `red(rgb())` call-lexing (color-keyword+`(` not a Call); the guard-accessor LHS grammar in namespacing-7;
+  bootstrap's detached-ruleset raw-block. Do NOT dispatch agents into these.
+- **Still fair game (non-parser / core-eval)**: extend location-matcher (extend-nest, running); the
+  scope/import-chain guard-var resolution (bootstrap surfaced `enable-rounded`/`g` — a mixin-body nested-guard
+  free-var through the import chain; likely also gates namespacing/import all-less fixtures) — do as a vetted
+  core cluster; `@import "@{...}"` interpolation IF it's eval-time (interpolate path before file-manager resolve)
+  and not grammar.
