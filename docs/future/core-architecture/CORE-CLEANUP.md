@@ -233,7 +233,7 @@ is fattest×hottest — it inherits the fat `Rules` base, so slimming `Rules` sl
 1. **`Rules`: 11 eager booleans → one `rulesFlags` int** (12000× × 11) — the dominant lever. `has*ChildSurface`
    (rules.ts:905-911) + `_bodyEvaluated`(934)/`_hasExtends`(948)/`_hasReferenceImports`(954)/
    `_registrationPrepared`(956). A Rules-only int (NOT base `flags` — that'd widen the read for leaf nodes);
-   `resetDerivedState`→`rulesFlags=0`; getters keep names → DX-neutral. **IN PROGRESS (perf/slim-rules-flags).**
+   `resetDerivedState`→`rulesFlags=0`; getters keep names → DX-neutral. **DONE — merged c40fea6; own-key 42->32 (x12k Rulesets).**
 2. **Drop dead `Selector.isSelector=true`** (12000×, selector.ts:82) — always true, redundant with `instanceof`.
    Cleanest effort:payoff. **DONE — merged f3a3c02; byte-identical; own-key 12->11.**
 3. **`Node.frozen` → base `flags` bit** (~39k×, node-base.ts:562) — flags has headroom (14/31 used). Getter keeps
