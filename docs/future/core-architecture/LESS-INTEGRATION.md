@@ -233,7 +233,10 @@ LAZY + IDENTITY (owner req): getters MUST stay lazy — `new FooAdapter(node)` c
 Top files: nodes/index.ts (377, collapse), transform/type-map.ts (the diff map), transform/less-adapter.ts
 (keep — proxy engine), nodes/selector.ts (212, essential floor), transform/from-less.ts (197, essential).
 
-## PAUSED: parser changes — another session owns parsing (owner directive)
+## UN-PAUSED (owner lifted): finish minimally-scoped work only, NO new scope
+Parser changes OK again. FINISH the already-scoped drive (all-less green + bootstrap→css + M3/M4). Do NOT start
+the recorded follow-up refactors (compat-slim, AST-diff alignment, grammar-level backtick) — those are NEW scope, parked.
+Prior pause note (historical):
 Do NOT make less-parser/css-parser/grammar/builders changes; a separate agent is fixing incorrect parsing.
 - **bootstrap milestone PAUSED**: it's parse-blocked (`_variables.less:93` detached-ruleset raw-block, then
   chain). Stopped the bootstrap-render agent + discarded its parser commit (849966b13) and incomplete eval WIP.
