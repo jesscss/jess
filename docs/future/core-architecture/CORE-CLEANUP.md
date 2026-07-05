@@ -131,13 +131,14 @@ isn't resolving bindings that should exist. **NOT one root cause** — three fam
     [E2-a] / namespace-walk / single-key callable). Merged as a principled latent-lookup-bug fix + E3
     prerequisite; it is metric-neutral because the target test `reference-imported selector-list rulesets
     remain callable as mixins` now fails DOWNSTREAM on E3 selector-rebasing, not lookup.
-  - [ ] **E2-b-render / E3-rebasing — selector-list mixin application** (`.z` target test, now lookup-green).
-    After `.z` resolves, its `color:red` rebases to `.b` correctly, but nested content does NOT: `.c`
-    renders `.z .c` (keeps imported parent instead of rebasing to call site), and the selector-list leaks
-    into `:is(.only-with-visible, .z):hover` (not clipped to the matched key, `&` not rebased). The prior
-    agent reproduced it with a LOCAL (non-imported) copy — so it's **application-side selector rebasing of
-    a selector-list ruleset applied as a mixin**, independent of imports. Concrete + describable → attempt
-    as a slice. **NEXT (in flight).**
+  - [x] **E3-rebasing — selector-list mixin application** (merged cleanup/e-refimport-rebase, commit
+    8689c52cb, 59→58). **Was NOT monolithic** — a cache-key bug. `composedSelectorCache` (print.ts) was
+    keyed on `Ruleset` node identity ALONE; a mixin body shares the same canonical `.c`/`&` nodes as the
+    ruleset's own placement, so the value composed first under the DEFINING header (`.z .c`) was cached and
+    reused at the call site instead of recomposing against the call-site frame (`.b`). Fix: key the cache by
+    `(ruleset, composed-parent)` — `WeakMap<Ruleset, Map<parentKey, Selector>>`. Header-clipping to the
+    matched key + `&`-rebasing fall out for free (nested content composes against the call-site frame). No
+    node mutation, F_VISIBLE untouched. Fixed `reference-imported selector-list rulesets remain callable`.
   - [DEFERRED] **E3 — lazy/cold namespace-mixin-body ref-imports** (`uncalled … stay cold`, `evaluated
     namespace mixin bodies expose … descendants`) — genuine eval-ordering/coldness behavior, closest to
     the true monolithic rework.
