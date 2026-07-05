@@ -1,5 +1,13 @@
 # Static Eval Optimizations
 
+> **SUPERSEDED (see `core-architecture/CORE-CLEANUP.md` → Focus C).** The `F_EVAL_FREE` /
+> second-flag proposal below is NOT the plan. It only existed to name "`F_STATIC` but eval
+> still holds collapse state" — a half-migration artifact, not a real second capability. The
+> fix is to remove collapse state from eval (hoisted-at-rule header recovery becomes
+> serialize-walk structural; `hoistToRoot` becomes a serialize-time decision), after which
+> `F_STATIC` alone is the eval-free signal and no new flag is needed. Kept below for the
+> forensic record of what the cases are.
+
 ## Goal
 
 Make fully static stylesheets cheap to compile without introducing correctness

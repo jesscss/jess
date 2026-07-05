@@ -193,18 +193,65 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
   is the same "resolve through the frame the binding actually lives on" problem; fix it as
   part of the scope-identity rework, not before it (it would just re-encode the workaround).
 
-## Focus C — Performance — **DEFERRED (out of the correctness drive)**
+## Focus C — Performance: collapse the walk count (ACTIVE — the perf drive)
 
-**Deferral rationale:** all three are performance levers with **zero failing-test signal** —
-they do not move the stable failure set toward 0, which is the driver goal's target. They are
-a separate perf backlog (measurements in archived PERFORMANCE-HANDOFF) to be picked up after
-the correctness baseline is at its irreducible minimum, or on an explicit perf pass. Not part
-of the drive-to-green loop.
+Suite is green, so this is now the live drive. **Finding (traced this pass):** the render
+pipeline runs ~4 structural passes *regardless of content*, and two of them exist only because
+eval still holds serialization/collapse state it was supposed to hand off.
 
-- [defer] `Reference` lookup + callable output-body placement — remaining hot path (perf only).
-- [defer] Copy / materialization boundary — owned-public-resolve still copies (perf only).
-- [defer] `F_STATIC` eval-free static-tree lever (`static-eval-optimizations.md`) — the next
-  big perf win, design-stage; explicitly deferred.
+**Walk inventory (root render, hot path):**
+1. Parse → tree.
+2. **Registration-prep** (`rules.ts:4755`) — pre-eval structural walk; registers decl names /
+   ordered identities / extend roots / import frames. Exists for **forward references** only.
+3. **Eval** (`evalNode`) — value walk; *also* registers rulesets into the extend registry
+   (`ruleset.ts:1856`), gathers `context.extends`, captures collapse frames (`ruleset.ts:1902`).
+4. **processExtends** (`rules.ts:6280`, once/outermost) — snapshots `preExtendSelectors` over
+   **every** registered ruleset, then applies gathered extends. Short-circuits on
+   `!instructions.length` — but AFTER the snapshot walk (`extend-roots.ts:643`).
+5. **Serialize** (`_emitRenderRulesBody`) — output walk; builds `composedSelectorStack`, composes
+   collapse selectors.
+Plus the `canRenderStaticRulesDirectly` per-container scan re-deriving what `F_STATIC` already asserts.
+
+**Root cause — a half-migration.** collapseNesting selector *composition* IS serialization-time
+(`composedSelectorStack` in serialize-helper/print; old eval collapse at `selector-complex.ts:503`
+is dead-commented). But its **state** stayed in eval:
+- `ruleset.ts:1902` `if (collapseNesting) this.frames = [...context.frames]` — per-ruleset frame-array
+  alloc, every render. No serialize/render **read** of `Ruleset.frames` found (`getHoistedParent` is
+  AtRule-only) → suspected write-only dead state, propagated by two clone-copies (`ruleset.ts:293`,
+  `node-base.ts:1149`). VERIFY then delete.
+- `ruleset.ts:1966` `if (collapseNesting) this.hoistToRoot = true` — hoist **decision** mutated at eval time.
+The one **real** eval→serialize collapse dependency is `getHoistedParent` (`serialize-helper.ts:396`)
+reading a hoisted nested at-rule's captured `AtRule.frames` to recover its severed selector header.
+
+**`F_EVAL_FREE` is NOT needed** — this supersedes `static-eval-optimizations.md`'s second-flag proposal.
+That flag only existed to name "`F_STATIC` but eval still holds collapse state." Remove the state from
+eval and `F_STATIC` alone is the eval-free signal; the scan collapses to a bare flag read.
+
+**Principle: walk count scales with CONTENT, not a fixed pipeline.** static+extend-free → parse→serialize
+(1 walk); +references adds eval; +extends adds the apply pass. The signals already exist (`F_STATIC`, root
+`_hasExtends` at `rules.ts:948`) — they're undercut by collapse-state-in-eval and the redundant scan.
+
+### Staged plan (each gated zero-regression + re-baselined: build core, run collapse+extend suites twice, byte-diff benchmark)
+- [ ] **C0 — dead-walk removal (safe, no eval semantics).**
+  - Verify `Ruleset.frames` (1902) unread → delete the write + the two clone-copies.
+  - Reorder `processExtends`: bail on `!context.extends.length` BEFORE the `preExtendSelectors` snapshot loop.
+- [ ] **C1 — collapse state out of eval.** Recover the hoisted-at-rule header from serialize-walk structure
+  (the walk already carries `composedSelectorStack`) instead of eval-captured `AtRule.frames`; move
+  `hoistToRoot` to a serialize-time decision. End: eval owns zero collapse state.
+- [ ] **C2 — trust the flag.** Replace the `canRenderStaticRulesDirectly` scan with `F_STATIC` (+ root
+  `_hasExtends` gate); delete `isPlainStaticRuleLeaf` / the `.every()`. Static+extend-free subtrees skip
+  registration-prep + eval → straight to serialize.
+- [ ] **C3 — extend as a single pre-serialize pass (the restructure).** Make extend a distinct phase between
+  eval and serialize, consuming a registry fed by (a) eval for DYNAMIC subtrees and (b) cheap selector-only
+  registration for STATIC subtrees (no eval). Lets static-but-extend-relevant subtrees skip eval while still
+  contributing extend targets. **Highest risk** (extend scoping; semantic overlap with the parallel less
+  repros) — gate hardest, do last.
+
+Guardrail: stable core set stays green; output byte-identical; A/B every stage against the benchmark.
+
+**Still-deferred perf backlog (unchanged, no failing-test signal):**
+- [defer] `Reference` lookup + callable output-body placement — remaining hot path.
+- [defer] Copy / materialization boundary — owned-public-resolve still copies.
 
 <!-- The former "Focus D (task #9)" duplicate block was removed: all its items (on-string
 crashes, toBeString, stale materialization tests) are superseded and marked DONE in the
