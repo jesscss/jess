@@ -61,38 +61,31 @@ const RESULT_NAME = 'Jess Less parser';
 function collectTestLess(): { name: string; less: string }[] {
   const files: { name: string; less: string }[] = [];
 
-  const testDataCandidates: string[] = [];
+  let testDataRoot: string;
   try {
-    testDataCandidates.push(path.dirname(require.resolve('@less/test-data')));
+    testDataRoot = path.dirname(require.resolve('@less/test-data'));
   } catch {
-    // @less/test-data not installed as a package — fall through to path candidates.
+    testDataRoot = path.resolve(thisDir, '../../../node_modules/@less/test-data');
   }
-  testDataCandidates.push(
-    path.resolve(thisDir, '../../../node_modules/@less/test-data'),
-    path.resolve(process.env.HOME || '~', 'git/oss/less.js/packages/test-data')
-  );
 
-  const testDataRoot = testDataCandidates.find(
-    root => fs.existsSync(path.join(root, 'tests-unit'))
-  );
-
-  if (testDataRoot) {
+  if (testDataRoot && fs.existsSync(testDataRoot)) {
     const unitDir = path.join(testDataRoot, 'tests-unit');
-    const root = testDataRoot;
-    function walk(dir: string): void {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          walk(full);
-        } else if (entry.name.endsWith('.less')) {
-          const rel = path.relative(root, full);
-          if (!INVALID_LESS.has(rel) && !rel.includes('-REMOVED')) {
-            files.push({ name: rel, less: fs.readFileSync(full, 'utf-8') });
+    if (fs.existsSync(unitDir)) {
+      function walk(dir: string): void {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+          } else if (entry.name.endsWith('.less')) {
+            const rel = path.relative(testDataRoot, full);
+            if (!INVALID_LESS.has(rel) && !rel.includes('-REMOVED')) {
+              files.push({ name: rel, less: fs.readFileSync(full, 'utf-8') });
+            }
           }
         }
       }
+      walk(unitDir);
     }
-    walk(unitDir);
   }
 
   if (files.length === 0) {
