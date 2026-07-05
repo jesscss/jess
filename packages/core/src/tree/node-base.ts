@@ -278,6 +278,8 @@ export const F_HOIST_VALUE = 0b10000000000000;
 // F_HAS_SPAN lives in util/provenance.ts (the side table owns the span concern);
 // re-exported here so the flag bit stays discoverable alongside the others.
 export { F_HAS_SPAN };
+// Bit 15 — F_HAS_SPAN is bit 14; this is the next free bit.
+export const F_FROZEN = 0b1000000000000000;
 
 /**
  * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
@@ -564,9 +566,22 @@ export abstract class Node<
 
   /**
    * If true, prevents re-parenting of this node.
-   * This is used to maintain source lookup chains.
+   * This is used to maintain source lookup chains. Backed by the `F_FROZEN`
+   * flag bit rather than a per-instance boolean field, so every node saves one
+   * own property (~39k instances). Plain boolean semantics — read/assign as
+   * before.
    */
-  frozen = false;
+  get frozen(): boolean {
+    return (this.flags & F_FROZEN) !== 0;
+  }
+
+  set frozen(value: boolean) {
+    if (value) {
+      this.flags |= F_FROZEN;
+    } else {
+      this.flags &= ~F_FROZEN;
+    }
+  }
 
   /**
    * The parent node of this node. Usually, this
