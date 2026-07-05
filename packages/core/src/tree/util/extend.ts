@@ -193,12 +193,32 @@ function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType)
     throw new TypeError('Expected complex selector value, got extend error');
   }
   const items = isArray(value) ? value : [value];
+  const normalized: ComplexSelectorComponent[] = [];
   for (const item of items) {
     if (!isComplexComponent(item)) {
+      // A SelectorList occupying a complex/compound COMPONENT slot is semantically
+      // `:is(list)` — an upstream partial component-replace can leave the bare list
+      // here. Normalize it to a generated `:is()` so the tree stays valid rather
+      // than throwing. (Whole-selector list output is handled at the SelectorList
+      // level and never reaches the per-component path.)
+      if (isNode(item, N.SelectorList)) {
+        const wrapped = createValidatedIsWrapperWithErrors(
+          item.value.filter((s): s is Selector => typeof s !== 'string'),
+          item,
+          undefined,
+          undefined
+        );
+        if (typeof wrapped === 'string') {
+          throw new TypeError('Expected complex selector component');
+        }
+        normalized.push(wrapped);
+        continue;
+      }
       throw new TypeError('Expected complex selector component');
     }
+    normalized.push(item);
   }
-  return items;
+  return normalized;
 }
 
 /**
@@ -455,6 +475,19 @@ export function applyExtendsToSelector(
   }
 
   return selector;
+}
+
+/**
+ * Read a flag off a complex-selector combinator that may be a string or a node.
+ * String combinators are authored, literal source combinators (`' '`, `'>'`, …)
+ * — they carry no invisible/implicit flags, so they read as VISIBLE and as
+ * carrying no other flag. Only node combinators track visibility flags.
+ */
+function combinatorHasFlag(combinator: ComplexSelectorComponent, flag: number): boolean {
+  if (typeof combinator === 'string') {
+    return flag === F_VISIBLE;
+  }
+  return combinator.hasFlag(flag);
 }
 
 function selectorListItemForExtend(item: SelectorList['value'][number] | Selector[]): Selector {
@@ -921,14 +954,14 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
               && isNode(first, N.Ampersand)
               && (first.hasFlag(F_IMPLICIT_AMPERSAND) || first.generated)
               && !first.hasFlag(F_VISIBLE)
-              && !maybeCombinator.hasFlag(F_VISIBLE))
+              && !combinatorHasFlag(maybeCombinator, F_VISIBLE))
             // ...or the prefix is a generated `:is(...)` wrapper that came from implicit nesting
             // materialization (e.g. when the parent selector is itself a selector list).
             || (!!first
               && isNode(first, N.PseudoSelector)
               && first.name === ':is'
               && first.generated === true
-              && !maybeCombinator.hasFlag(F_VISIBLE))
+              && !combinatorHasFlag(maybeCombinator, F_VISIBLE))
             // ...or we already resolved the invisible ampersand to a concrete selector in `result`,
             // but the original value indicate this came from implicit `& ` nesting.
             || (!!originalFirst
@@ -937,7 +970,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
               && !originalFirst.hasFlag(F_VISIBLE)
               && !!originalSecond
               && isCombinator(originalSecond)
-              && !originalSecond.hasFlag(F_VISIBLE));
+              && !combinatorHasFlag(originalSecond, F_VISIBLE));
 
           // Only flatten when we know this is the implicit `& ` nesting case.
           // Do NOT flatten other combinators (e.g. `.ext6 > :is(...)`) — Less expects
@@ -967,13 +1000,13 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
             && !originalFirst.hasFlag(F_VISIBLE)
             && !!originalSecond
             && isCombinator(originalSecond)
-            && !originalSecond.hasFlag(F_VISIBLE);
+            && !combinatorHasFlag(originalSecond, F_VISIBLE);
           const dropImplicitPrefixViaGeneratedIs =
             !!first
             && isNode(first, N.PseudoSelector)
             && first.name === ':is'
             && first.generated === true
-            && !maybeCombinator.hasFlag(F_VISIBLE);
+            && !combinatorHasFlag(maybeCombinator, F_VISIBLE);
           const outputPrefix = (dropImplicitPrefix || dropImplicitPrefixViaGeneratedIs) ? [] : prefix;
 
           for (const inner of argList) {
@@ -993,7 +1026,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
                 innerSel = ComplexSelector.create(innerParts.slice(dropCount)).inherit(innerSel);
               }
             }
-            const omitCombinator = outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
+            const omitCombinator = outputPrefix.length === 0 && !combinatorHasFlag(maybeCombinator, F_VISIBLE);
             if (outputPrefix.length === 0 && omitCombinator) {
               // Prefix/combinator dropped but not implicit (e.g. first was :is()): emit inner as-is.
               push(copySelectorForExtend(innerSel).inherit(el));

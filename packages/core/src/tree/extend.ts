@@ -290,7 +290,10 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
     }
     if (!authoredSelector && !usedParentListComposition) {
       if (fullSel && !(fullSel instanceof Nil) && typeof fullSel !== 'string') {
-        resolvedSel = fullSel;
+        // `rs.selector` may be a raw `SelectorListItem[]` surface (array). The
+        // extend record's extendWith must be a Selector node so both the walk and
+        // location apply paths can clone/place it uniformly — materialize arrays.
+        resolvedSel = Array.isArray(fullSel) ? asExtendSelectorNode(fullSel) : fullSel;
         // A nested extend-only ruleset (e.g. `.submit { &:hover:extend(...) {} }`)
         // carries its authored `&:hover` frame selector with the leading `&` still
         // unresolved. Compose it against the parent frame so the extendWith is the
