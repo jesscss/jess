@@ -985,6 +985,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       referenceMode: isReferenceMode,
       readonly
     };
+    // A boundary wrapper IS the import boundary: its members belong to itself, so
+    // the boundary is tracked on this surface's own options — not inherited from
+    // upstream source provenance. Re-point sourceNode to self so boundary checks
+    // (and declaration ownership) read from this wrapper, not the imported tree.
+    if (hasImportBoundary) {
+      out.sourceNode = out;
+    }
     importPlacementOptionsStates.set(out, {
       referenceMode: isReferenceMode,
       rulesVisibility: out.options.rulesVisibility
