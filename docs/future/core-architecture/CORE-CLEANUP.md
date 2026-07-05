@@ -852,6 +852,22 @@ F-consolidate is therefore rename + genuine-refactor only, no free deletions.
 `trivia-offset-inference-model.md`, and the `packages/core/src/tree/util/**/EXTEND_*`
 set.
 
+### Friendly recursion detection (roadmap — belongs with less-integration/trunk, NOT the perf branch)
+Owner-requested: integrate Less-4.x-style friendly errors for runaway loops/recursion. **Current jess state
+(scoped):** `$while` caps at `MAX_WHILE_ITERATIONS=10000` (control.ts:36, friendly throw); `$for`/`$each` are
+bounded by range/list; mixin recursion has machinery — `context.callStack` (call.ts:758), the
+`inStack`/guarded-recursion candidate filter, and `CallMap` (recursion-helper.ts, SAME-args self-call
+detection → the caught `'Recursive mixin call'` at callable-candidate-output.ts:40). **GAP:** no call-STACK
+DEPTH cap, so DIFFERENT-args unbounded recursion (`.m(@n){ .m(@n-1) }`, no base case) hits a raw JS stack
+overflow (`RangeError`) instead of a friendly message. **Less-4.x ref:** `mixin-call.js:161-180` marks a
+candidate `isRecursive` by frame-stack membership (`mixin === context.frames[f].originalRuleset`) — recursion
+detection via the frame stack, which jess's callStack/inStack already mirrors. **Work:** (a) a call-depth
+safety cap → friendly "recursion limit exceeded" instead of RangeError; (b) polish the existing
+`'Recursive mixin call'` + `$while` messages; (c) make Less's recursion-error tests pass. **WHY IT'S NOT the
+perf branch:** eval-semantics that OVERLAPS the active less-integration work + Less's own test suite drives it
+(the less-integration team will hit these tests getting Less green). Do it on the trunk/less-integration side
+(dev / feature/less-v5-alpha-readiness), not perf/walk-collapse.
+
 ## Archived sources
 
 Moved to `docs/archive/` (history preserved; open items lifted above):
