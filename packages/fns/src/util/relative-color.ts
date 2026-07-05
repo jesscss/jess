@@ -8,14 +8,17 @@ import {
   Call,
   Dimension,
   Operation,
-  type LocationInfo
+  type LocationInfo,
+  sourceSpanOf
 } from '@jesscss/core';
 
 type RGBChannelValues = { r: number; g: number; b: number; alpha: number };
 type HSLChannelValues = { h: number; s: number; l: number; alpha: number };
 
+// Source spans live in the provenance side-table, not on the node — read them
+// via `sourceSpanOf`. (Nodes have no `.location` field.)
 function nodeLocation(node: Node): LocationInfo | undefined {
-  return node.location.length === 6 ? node.location : undefined;
+  return sourceSpanOf(node);
 }
 
 function unwrapCalcChannelExpression(node: Node): Node {
