@@ -628,4 +628,35 @@ describe('Color Node', () => {
       }).toThrow('Cannot operate on List');
     });
   });
+
+  describe('clone round-trip', () => {
+    // Repro: a Color derived from `rgba(...)` has `node === undefined` and its
+    // channels on `_rgbChannels`. The base clone rebuilt from `childKeys=['node']`
+    // → `new Color({ node: undefined })`, which threw "requires rgb, hsl, or node".
+    // Declaration-merge clones such Colors (cloneForPlacement → clone).
+    it('clones a channels-only rgba Color without losing channels', () => {
+      const color = new Color({ rgb: [0, 0, 0], alpha: 0.12 }, { format: ColorFormat.RGB });
+      expect(color.node).toBeUndefined();
+
+      const cloned = color.clone();
+      expect(cloned).toBeInstanceOf(Color);
+      expect(cloned.rgb).toEqual([0, 0, 0]);
+      expect(cloned.alpha).toBe(0.12);
+      expect(cloned.toTrimmedString()).toBe(color.toTrimmedString());
+    });
+
+    it('placement-clones a channels-only Color (declaration-merge path)', () => {
+      const color = new Color({ rgb: [10, 20, 30], alpha: 0.5 }, { format: ColorFormat.RGB });
+      const cloned = color.cloneForPlacement();
+      expect(cloned).toBeInstanceOf(Color);
+      expect(cloned.toTrimmedString()).toBe(color.toTrimmedString());
+    });
+
+    it('clones a hex-string Color preserving its node text', () => {
+      const color = new Color('#ff0000');
+      const cloned = color.clone();
+      expect(cloned.node).toBe('#ff0000');
+      expect(cloned.rgb).toEqual([255, 0, 0]);
+    });
+  });
 });
