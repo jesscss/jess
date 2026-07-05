@@ -99,7 +99,7 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
   serialization/visitors; plus `@import "x.css"` → `url("x.css")` serialize diff. Core-reproducible.
 - [ ] **D — color math → `#NaNNaNNaN` (3-5 tests).** Channel values arriving as strings → NaN.
   May collapse into A. Recheck after A.
-- [ ] **F — @plugin security sandbox (6 tests, `security-script-runtime`).** Deno/plugin-js lazy-load +
+- [x] **F — DONE (merge e5355747b). @plugin security sandbox 6/6 green.** Deno/plugin-js lazy-load +
   sandbox gating. Integration-only (spawns subprocesses) — NOT a core repro. Parallelizable, isolated.
 - [ ] **G — output-format diffs (~8 one-offs).** spacing, `!important` placement, nesting collapse,
   comments/whitespace, data-uri inlining. Low leverage tail; some may be stale expectations.
