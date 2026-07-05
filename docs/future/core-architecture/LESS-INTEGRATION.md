@@ -188,3 +188,14 @@ refs — trim the deprecated-@plugin + auto-load fat); less-compat-structures.ts
 `less`/`tree` mock — keep only the actually-called surface); types/type-map/utils ~650L. Do this AFTER
 bootstrap renders + security suite green — those become the coverage gate (don't cut a load-bearing path).
 Don't promise a literal 90%; target the actually-exercised less.js API surface. No behavior change — pure slim.
+
+### Slim METHOD: AST-diff, not just a tighter converter
+The 1852L of node-conversion boilerplate is a SYMPTOM of Less-AST vs Jess-AST divergence. Deepest cut =
+shrink the divergence. Steps: (1) enumerate the shape diffs (transform/type-map.ts already encodes much of
+the correspondence — it's the diff map); (2) classify each divergence — ESSENTIAL (Jess is deliberately
+different & better: string-normalized terminals not Operator/BasicSelector wrappers, canonical `value`,
+provenance in side-table — KEEP Jess, convert at boundary) vs INCIDENTAL (arbitrary field name/nesting —
+ALIGN Jess's AST to less.js so that conversion code vanishes); (3) table-driven converter handles only the
+ESSENTIAL set. HARD CAVEAT (owner): only change Jess's AST where the result stays sane — do NOT regress the
+opinionated string-normalized/canonical-value model Jess deliberately moved to. Default = keep Jess + convert;
+align only the truly-incidental. Sequence after bootstrap renders (exercised surface known).
