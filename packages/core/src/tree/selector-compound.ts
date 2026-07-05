@@ -1,4 +1,4 @@
-import { spanStartOf, sourceSpanOf, valueSpansOf } from './util/provenance.js';
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   defineType,
@@ -8,12 +8,13 @@ import {
   type NodeOptions
 } from './node.js';
 import type { Context } from '../context.js';
+import type { Trivia } from '../types/index.js';
 import { createPublicNil, Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
-import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import { consumeTrivia, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
 
 /**
@@ -29,18 +30,15 @@ function emitCompoundPart(
   part: CompoundSelectorComponent,
   options: ReturnType<typeof getPrintOptions>,
   emitLeadingTrivia: boolean,
-  stringPartStart?: number
+  spanComments: readonly Trivia[],
+  cursor: { i: number }
 ): void {
   if (typeof part === 'string') {
-    // String parts carry no own location; their source offset (for trivia
-    // lookup between adjacent simple selectors, e.g. comments) comes from the
-    // owning CompoundSelector's valueSpans, passed in as stringPartStart.
-    if (emitLeadingTrivia && options.trivia && typeof stringPartStart === 'number' && stringPartStart >= 0) {
-      emitTriviaTokens(
-        consumeTrivia(options.trivia, stringPartStart, 'before', options),
-        options,
-        { skipLeadingWhitespace: true }
-      );
+    // String parts carry no own location; a comment authored before this part
+    // (between adjacent simple selectors) round-trips via the owning
+    // CompoundSelector's in-span comment runs.
+    if (emitLeadingTrivia && options.trivia && cursor.i < spanComments.length) {
+      cursor.i = emitNextSpanComment(spanComments, cursor.i, options);
     }
     options.writer.add(part);
     return;
@@ -162,12 +160,18 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
     const value = this.value;
-    const spans = valueSpansOf(this);  // {start,end} per component
+    // Simple-selector parts carry no own source span; a comment authored between
+    // two of them (e.g. `.a/*c*/.b`) still round-trips via the in-span comment
+    // runs. Compound parts are adjacent (no whitespace between them), so only
+    // comments are relevant here.
+    const spanComments = printOptions.trivia
+      ? commentRunsWithinSpan(printOptions.trivia, spanStartOf(this), spanEndOf(this))
+      : [];
+    const cursor = { i: 0 };
     const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
       printOptions.ampersandFirst = (i === 0);
-      const stringPartStart = spans ? spans[i]?.start : undefined;
-      emitCompoundPart(value[i]!, printOptions, i > 0, stringPartStart);
+      emitCompoundPart(value[i]!, printOptions, i > 0, spanComments, cursor);
     }
     restorePrintState(printOptions, saved);
   }

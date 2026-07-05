@@ -1,5 +1,5 @@
 import { parseCssFn } from '../src/functional-parser.js';
-import { N, isNode, serializeTypes, type Trivia, fieldSpansOf, valueSpansOf, sourceSpanOf } from '@jesscss/core';
+import { N, isNode, serializeTypes, type Trivia, sourceSpanOf } from '@jesscss/core';
 
 const cssParser = { parse: (input: string) => parseCssFn(input) };
 
@@ -8,24 +8,9 @@ const triviaText = (t: Trivia | undefined): string | undefined =>
   t ? t.src.slice(t.start, t.end) : undefined;
 
 // Simple selectors, combinators, names, and plain values are plain strings (not
-// nodes), so source provenance lives in the parent node's fieldSpans (by childKeys
-// index) and valueSpans (by array-segment index) — `{start,end}` slot spans.
-function childIndex(node: any, key: string): number {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return ((node.constructor.childKeys ?? []) as readonly string[]).indexOf(key);
-}
-function fieldStart(node: any, key: string): number {
-  return fieldSpansOf(node)?.[childIndex(node, key)]?.start ?? -1;
-}
-function fieldEnd(node: any, key: string): number {
-  return fieldSpansOf(node)?.[childIndex(node, key)]?.end ?? -1;
-}
-function valueStart(node: any, index: number): number {
-  return valueSpansOf(node)?.[index]?.start ?? -1;
-}
-function valueEnd(node: any, index: number): number {
-  return valueSpansOf(node)?.[index]?.end ?? -1;
-}
+// nodes) that carry no own span. Per-sub-component span arrays are no longer
+// stored on nodes; the parser still records comment runs in the trivia map, so
+// these tests look them up by their known literal source offsets.
 function selectorListMembers(selector: unknown): unknown[] {
   if (Array.isArray(selector)) {
     return selector;
@@ -103,8 +88,10 @@ describe('serializeTypes coverage', () => {
     // The descendant combinator is a plain ' ' string between the two compounds.
     const combinator = selector.value[1];
     expect(combinator).toBe(' ');
-    // The trivia preceding the second compound is recovered via valueSpans.
-    expect(triviaText(trivia.lookup(valueStart(selector, 2), 'before'))).toBe(' /* gap */ ');
+    // Per-component spans are no longer stored; the comment authored in the
+    // combinator gap round-trips via the selector's node-span comment scan (the
+    // run carries its own spacing verbatim).
+    expect(selector.toString({ trivia })).toBe('a /* gap */ b');
   });
 
   test('attribute selector with modifier flag', () => {
@@ -367,8 +354,11 @@ describe('serializeTypes coverage', () => {
     expect(selectorMemberValueOf(first)).toBe('#a');
     expect(selectorMemberValueOf(second)).toBe('.b');
     expect(selectorMemberValueOf(third)).toBe('.c');
-    expect(triviaText(trivia.lookup(valueStart(ruleset, 1), 'before'))).toBe('\n/*x*//*y*/\n');
-    expect(triviaText(trivia.lookup(valueStart(ruleset, 2), 'before'))).toBe('/*z*/');
+    // Per-member spans are no longer stored, but the parser still records the
+    // comment runs in the trivia map. `.b` begins after the first comment run
+    // (source offset 15), `.c` after the second (offset 23).
+    expect(triviaText(trivia.lookup(15, 'before'))).toBe('\n/*x*//*y*/\n');
+    expect(triviaText(trivia.lookup(23, 'before'))).toBe('/*z*/');
   });
 
   test('selector list comments before separators stay in trivia after selector members', () => {
@@ -381,13 +371,16 @@ describe('serializeTypes coverage', () => {
 
     expect(selectorMemberValueOf(first)).toBe('#comments');
     expect(selectorMemberValueOf(second)).toBe('.comments');
-    const firstEnd = valueEnd(ruleset, 0);
-    const secondStart = valueStart(ruleset, 1);
+    // Per-member spans are no longer stored, but the parser still records the
+    // comment run after the first member. `#comments` ends at source offset 9;
+    // the comment run keyed there, and the same run keyed `before` the `,`.
+    const firstEnd = 9;
     expect(triviaText(trivia.lookup(firstEnd, 'after'))).toBe(' /* boo *//* boo again*/');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > firstEnd && offset < secondStart)
+        .filter(([offset]) => offset > firstEnd)
         .map(([, t]) => triviaText(t))
+        .filter((t): t is string => t !== undefined && t.includes('/*'))
     ).toEqual([' /* boo *//* boo again*/']);
   });
 
@@ -402,11 +395,11 @@ describe('serializeTypes coverage', () => {
       throw new Error('Expected nested rule to be a ruleset');
     }
 
-    // The nested selector is a bare string; its source offset comes from the
-    // ruleset's packed selector fieldSpan. The leading trivia (' /*x*/ ') is
-    // preserved in the trivia map before that offset.
-    const selStart = fieldStart(nested, 'selector');
-    expect(triviaText(trivia.lookup(selStart, 'before'))).toBe(' /*x*/ ');
+    // The nested selector `b` is a bare string at source offset 10 (per-slot
+    // spans are no longer stored). The parser still records its leading trivia
+    // run (' /*x*/ ') keyed `before` that offset.
+    void nested;
+    expect(triviaText(trivia.lookup(10, 'before'))).toBe(' /*x*/ ');
   });
 
   test('collapse nesting emits nested selector comments from trivia', () => {
@@ -443,7 +436,9 @@ describe('serializeTypes coverage', () => {
     const value = declaration.value;
 
     expect(value.valueOf()).toBe('yes');
-    const valueEndOff = fieldEnd(declaration, 'value');
+    // Per-slot spans are no longer stored; the value `yes` ends at source offset
+    // 10 and the parser still keys its trailing comment run there.
+    const valueEndOff = 10;
     expect(triviaText(trivia.lookup(valueEndOff, 'after'))).toBe(' /* comment */');
     expect(
       [...trivia.entries('before')]
@@ -465,7 +460,9 @@ describe('serializeTypes coverage', () => {
     const { name } = declaration;
 
     expect(name.valueOf()).toBe('color');
-    const nameEndOff = fieldEnd(declaration, 'name');
+    // Per-slot spans are no longer stored; the name `color` ends at source
+    // offset 9 and the parser still keys its trailing comment run there.
+    const nameEndOff = 9;
     expect(triviaText(trivia.lookup(nameEndOff, 'after'))).toBe('/* survive */ /* me too */');
     expect(
       [...trivia.entries('before')]

@@ -1,4 +1,4 @@
-import { setSourceSpan, setFieldSpans } from '../util/provenance.js';
+import { setSourceSpan } from '../util/provenance.js';
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   vardecl, ref, mixin, call, list, op,
@@ -1681,15 +1681,16 @@ describe('AtRule', () => {
     // Source layout ("|" = offset):
     //   @-webkit-keyframes /* Safari */ hover /* and Chrome */ {
     //   0                18            32    37                55
-    // The name is a bare STRING with no span of its own, so its source span is
-    // carried on the AtRule's fieldSpans (name = slot 0 → [0,18]); the prelude
-    // node carries [32,37]. Name-boundary trivia is resolved from those offsets.
+    // The name is a bare STRING with no span of its own; its end offset is the
+    // AtRule's own span start plus the name length (0 + 18 = 18). The prelude
+    // node carries [32,37]. A comment authored in the [nameEnd, preludeStart) gap
+    // round-trips via the node-span comment scan; whitespace there is normalized.
     const src = '@-webkit-keyframes /* Safari */ hover /* and Chrome */ { }';
     const name = '@-webkit-keyframes';
     const prelude = any('hover', { role: 'keyword' });
     setSourceSpan(prelude, { start: 32, end: 37 });
-    // Runs carry their REAL source spans — the offset model validates that a
-    // between-offsets run actually sits in the [nameEnd, preludeStart) gap.
+    // Runs carry their REAL source spans — the scan validates that a comment run
+    // actually sits in the [nameEnd, preludeStart) gap.
     const interstitial = makeTrivia(src, 18, 32); // " /* Safari */ "
     const trailing = makeTrivia(src, 37, 55); // " /* and Chrome */ "
     const trivia = createTriviaMap({
@@ -1714,8 +1715,8 @@ describe('AtRule', () => {
         })
       ]
     });
-    // The name's source span lives on the AtRule's fieldSpans (name slot [0,18]).
-    setFieldSpans(node, [{ start: 0, end: 18 }]);
+    // The AtRule's own span starts at 0, so the bare-string name ends at 0+18=18.
+    setSourceSpan(node, { start: 0, end: 57 });
 
     expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
   });

@@ -1,4 +1,4 @@
-import { setSourceSpan, setFieldSpans, sourceSpanOf } from '../util/provenance.js';
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER, Interpolated } from '../interpolated.js';
@@ -920,12 +920,17 @@ describe('Declaration', () => {
   });
 
   it('serializes comment trivia between declaration names and separators', () => {
-    // "color/* survive */ /* me too */: grey" — the name is a bare STRING; its
-    // source span comes from the declaration's fieldSpans (name slot [0,5]).
+    // "color/* survive */ /* me too */: grey" — the name is a bare STRING with no
+    // own span. The comment between the name and the `:` round-trips via the
+    // declaration's node-level span (per-slot fieldSpans are no longer stored):
+    // any comment run inside [decl.start, value.start) is emitted. Authored
+    // whitespace in that gap is normalized away — only the comments survive.
     const src = 'color/* survive */ /* me too */: grey';
     const name = 'color';
-    const node = decl({ name, value: any('grey') });
-    setFieldSpans(node, [{ start: 0, end: 5 }]); // name slot [0,5], end = 5
+    const value = any('grey');
+    setSourceSpan(value, { start: 33, end: 37 }); // "grey"
+    const node = decl({ name, value });
+    setSourceSpan(node, { start: 0, end: 37 });
     const shared = makeTrivia(src, 5, 31); // "/* survive */ /* me too */"
     const trivia = createTriviaMap({
       before: new Map([[31, shared]]),
@@ -1635,7 +1640,6 @@ describe('Declaration', () => {
     setSourceSpan(value, { start: 8, end: 12 });
     const node = decl({ name, value });
     setSourceSpan(node, { start: 0, end: 12 });
-    setFieldSpans(node, [{ start: 0, end: 5 }]); // name slot [0,5] (bare string carries no own span)
     const trivia = createTriviaMap({
       before: new Map([[sourceSpanOf(value)?.start, run('\n')]])
     }) satisfies TriviaMap;
