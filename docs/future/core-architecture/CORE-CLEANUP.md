@@ -211,16 +211,55 @@ the render list?* (merge decided) — no overloaded mutable flag.
      **per-instance dynamic** visibility (line `//` comments, false-guard at-rules, paramVar) — not
      by-type. These need the reference-mode/per-instance mechanism, not a type no-op.
 3. **Dedup/override → list-exclusion** in the `rules.ts` merge engine (largest legibility win).
+   - [x] **3a — leading-comment hoist** (commit 64ad7ae76): the root `writeStylesheet` path hoisted
+     leading comments then `removeFlag(F_VISIBLE)`'d them + restored — a mutate/restore dance. Replaced
+     with a `hoistedLeadingComments` Set threaded into `_emitRulesBody`; `emitNode` excludes them
+     directly. Output-neutral (stable 60, zero delta). 2 of 4 rules.ts stomps gone.
+   - [ ] **3b — declaration-override last-wins** (rules.ts:5795/5797): the merge engine
+     `removeFlag(F_VISIBLE)`s the superseded declaration (and its ownerRules) so the body loop skips
+     it. Convert to list-exclusion: the merge/coalesce pass should build a render-list that omits the
+     superseded occurrence, instead of flag-hiding it. Deeper — touches `mergedAnchorByName` accounting.
+     [HOT: rules.ts — sequence solo.]
 4. **Leave reference-mode as the sole runtime filter.**
-Guardrail throughout: stable 85-failure core set must not move; string selectors emit.
+Guardrail throughout: stable core set must not move; string selectors emit. (baseline now 60, was 85.)
 
 ## Focus F — node method/field sprawl (NEW; requested)
 
 Past LLM passes accreted many narrow methods/fields on `Ruleset` / `Rules` / `AtRule`
 (e.g. `needsVisibleSelectorClone`). Audit method + field surface of these three,
 collapse near-duplicates, and (per the concise-naming rule) shorten burmese-python
-identifiers. Feed candidates here as found. (Copy/surface/frame helper sprawl was
-tracked in the archived SURFACE_PRIMITIVES_AUDIT; fold survivors here.)
+identifiers. (Copy/surface/frame helper sprawl was tracked in the archived
+SURFACE_PRIMITIVES_AUDIT; fold survivors here.)
+
+**Audit done (cleanup/serial-f, read-only).** Candidates below. ⚠️ **Caveat:** the audit
+conflated "0 *external* call sites" with "dead" — a `private` method with internal callers
+is NOT dead, it's private. Re-verify true dead-ness (0 callers *including* internal) before
+deleting anything. The safe, high-value win is the **rename pass**; structural consolidations
+are medium-risk on HOT files and must be gated individually.
+
+- [ ] **F-rename** (safest, no semantics) — shorten burmese-python identifiers per concise-naming.
+  Vetted candidates (verify no collision, apply across all call sites):
+  - Ruleset: `_ownComplexComponentForCompose`→`_ownForCompose`, `filterExtendedTopLevelSelectorItems`→
+    `filterExtendedItems`, `unwrapGeneratedReferenceIs`→`unwrapGeneratedIs`,
+    `expandGeneratedIsForReferenceCompose`→`expandGeneratedIs`.
+  - Rules (~13): `addDirectCallableSelectorEntries`→`addCallableSelectors`, `collectCallableEntriesForKeyFrom`→
+    `collectCallablesFor`, `findVisibleExactCallableRulesetPath`→`findCallableRulesetPath`,
+    `frameChainHasExactMixinNamespace`→`hasMixinNamespace`, `findCompoundPrefixCallableRulesetPathFast`→
+    `findCompoundPrefixPath`, `childMixinNamespaceUncertaintyIsLimitedToPrefixes`→`uncertaintyLimitedToPrefixes`,
+    et al. (full list in audit output).
+  - AtRule: `_nameSlotEnd`→`_nameEnd`, `_preludeStartOffset`→`_preludeStart`, `renderSerializedAtRule`→
+    `serializeAtRule`, `renderBodyRecord`→`renderRecord`.
+  [HOT: rules.ts/ruleset.ts/at-rule.ts — rename-only, but sequence so it doesn't collide with 3b.]
+- [ ] **F-consolidate** (medium risk, verify dead-ness first):
+  - Rules CLUSTER-2: unify `collectPublicVariableAssignmentBindingsInto` / `collectPublicChildVariable…` /
+    `prepareScopeFrameAssignmentBindings` into one parameterized visitor (~60 lines) — IF truly redundant.
+  - Rules CLUSTER-3: `hasUncoveredVariableAssignmentSurface` + `hasUncoveredChildVariableAssignmentSurface`
+    (~20 lines).
+  - AtRule inline-extractors: `createBodyEvalRecord`/`evalBodyPreludeState` into `evalBodyResult`;
+    `renderBodyRecord` into `renderEvaluatedValue`. `getRenderFrames`/`getRenderRules` — verify 0 callers
+    (incl. plugins) before deleting.
+  - Ruleset `_substitute*` ampersand cluster (~400 lines, extend-critical) — HIGHEST risk, defer last;
+    only after the extend pipeline is otherwise green.
 
 ---
 
