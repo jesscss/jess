@@ -307,14 +307,12 @@ Design (do NOT implement now — parser-scope, coordinate with the mixin-args gr
 - True long-term fix for THIS fixture: Jess grows a first-class map type so the port needn't fake maps. Out of scope.
 
 ### Less 4.x compat mode — self-describing dialect (refined design)
-Compat mode is the DEFAULT when parsing `.less`, and AUTO-DISABLES (→ Jess-strict) when the file uses any
-Jess-native construct: `@-import` / dashed Less at-rules, `@use`, or `@compose`. The file's own vocabulary declares
-its dialect. TWO SEPARATE diagnostic axes — the trigger flips only the first:
+Compat mode is the DEFAULT when parsing `.less`. Dialect is decided PER-FILE by that file's OWN vocabulary (NOT per-compile): a file AUTO-DISABLES compat (→ Jess-strict) when IT uses a Jess-native construct (`@-import` / dashed Less at-rules, `@use`, or `@compose`). An `@import`ed pure-Less-4 partial stays compat even if the importing file adopted `@use` — strictness follows AUTHORSHIP, not the dependency graph. (Payoff: bootstrap's `_variables.less` gross `@escaped-characters` stays a warning → bootstrap compiles, regardless of what the entry file uses.) The one exception is global `strict: true` (below), which forces ALL files strict. TWO SEPARATE diagnostic axes — the trigger flips only the first:
 - **strict-violation** (gross/malformed, e.g. `{ <: %3c }`): warning in compat, ERROR once compat auto-disables.
 - **deprecation** (works now, removed in a future version, e.g. plain `@import`, inline `` `js` ``): STRONG warning in
   BOTH modes, never fatal — a mid-migration file legitimately mixes `@use` with leftover `@import`; erroring on the
   `@import` would punish correct adoption. (== the "warn, sometimes strongly" behavior.)
-- Trigger is WHOLE-FILE, so severity resolves POST-parse: collect diagnostics as `{category, span}` during parse,
+- Trigger is whole-file (that file), so severity resolves POST-parse per file: collect diagnostics as `{category, span}` during parse,
   pick the severity map once after knowing whether any dialect-trigger fired (a `@use` on line 300 makes a
   strict-violation on line 5 an error). No two-pass parse — just deferred severity assignment.
 - Three ways into strict, all collapsing to the SAME severity map (predictable): (1) AUTO — file uses
