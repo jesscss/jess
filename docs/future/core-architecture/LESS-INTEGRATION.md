@@ -18,12 +18,16 @@ not band-aided in the plugin/integration layer.
    say so explicitly and test at the integration layer — but that's the exception.
 
 ## Test setup
-- **Tests resolve to SOURCE** now (`vitest.config.ts` `source` condition) — edit `core/src`, rerun,
-  no rebuild. Run: `cd packages/jess && TEST=true npx vitest run [file] [-t name]`.
-- Core repros: `cd packages/core && npx vitest run <file> -t <name>`.
-- **Caveat:** a few all-less fixtures load a package via NATIVE Node (`.cjs` Less config →
-  `import.less`, `import-remote.less`) and can't load `.ts`; validate that narrow set against
-  built `lib`. Not real rendering bugs.
+- **Vitest resolves workspace packages to `src` via exact-match ALIAS** (`vitest.config.ts`
+  `workspaceSrcAliases()`), NOT a `"source"` export condition (that leaked to the non-TS config
+  loader → `Cannot find module core/src/tree/index.js`, broke all-less `.cjs` fixtures). So: edit
+  `core/src`, rerun ANY test → current source, no rebuild. Every OTHER loader (styles-config config
+  loader, native require) resolves to built **lib**. Fixed in 50f311a61.
+- **Build lib once for the config-loader path**: `pnpm --filter "jess..." build`. Core edits still
+  hot-reload via the alias; only rebuild if you change what the config loader itself imports.
+- Run: `cd packages/jess && TEST=true npx vitest run test/less/all-less.test.ts`. Core repros:
+  `cd packages/core && npx vitest run <file> -t <name>`.
+- **all-less gate baseline (jess-parseman = single gate worktree): 46 passed / 47 failed / 93.**
 
 ## Gate / merge rules (same discipline as CORE-CLEANUP)
 - One cluster per branch `less/<slug>` + worktree off `feature/parseman`.
