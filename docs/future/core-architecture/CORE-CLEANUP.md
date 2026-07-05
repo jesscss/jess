@@ -297,6 +297,23 @@ free. Raw-bitwise would cost DX across hundreds of sites for ~0 gain. Revisit ON
 - Benches: `packages/core/perf/collapse-bench.mjs` (static) + `dynamic-bench.mjs` (mixin/refs).
 **Integrated now: collapse ~277ms, nested ~199ms, dynamic ~127ms** (from 1006 / 400 / ~170 → **3.6x / 2.0x / 1.3x**). W2 = structural; provenance = alloc+parse; ref-nuke/FASTV8/W1 = alloc/compliance.
 
+### RE-PROFILE (current state — the core-render hotspots are CRUSHED; PARSE is now #1)
+Fresh CPU+heap profile of the integrated branch (`perf/reprofile`, `REPROFILE.md`). What moved: serialize
+`refreshPositions` **51%→1.3%** (W2); GC **14-17%→~9%** (provenance+SLIM); eval `createRulesLikeReferenceSurface`
++ `ensureProv` (old #1/#2, 921/711ms) **GONE from the top 18**; PROV `set`/WeakMap **0 heap frames**. New ranking
+(both shapes): **PARSE ~42% · eval ~18-22% · GC ~9% · serialize 2-7%**. New #1 = the Parséman selector-reify
+chain (`_r_InterpolatedSelector` less-parser/grammar.ts:249, `_r_value` css-parser/grammar.ts:152,
+`_r_ComplexSelector`/`_r_CompoundSelector`/`_r_LessAmpersand`) + `buildNode` (CST→AST) + node ctors.
+**STRATEGIC INFLECTION:** the core eval/serialize/allocation drive has largely achieved its goal. What's left:
+- **Parse (#1, ~42%)** — a DIFFERENT subsystem (parser packages, `parser-parse-speed-plan.md`), owned by the
+  parser/less-integration teams, and **benchmark-INFLATED** (these benches re-parse every render; real-world is
+  parse-once/render-many). **MEASURE a parse-once/render-many split before investing** — even discounted it's the
+  biggest bucket, but the honest real-world share is much smaller. Cross-package: coordinate, don't reach in.
+- **Residual GC (~9%)** — mostly parse alloc + one hot `clone @ index.js:1539` (9.4% render-path heap) +
+  render-buffer `add` array growth. Small standalone looks.
+- **eval long tail** — `isNode` (already bitmask-fast; target call-count) + `_assignDocumentOrderDepthFirst`
+  (index.js:12064, 1.3%) + `inherit`. Small focused wins; the diffuse "other" ~22% has no single ≥1.5% hotspot.
+
 Suite is green, so this is now the live drive. **Finding (traced this pass):** the render
 pipeline runs ~4 structural passes *regardless of content*, and two of them exist only because
 eval still holds serialization/collapse state it was supposed to hand off.
@@ -502,13 +519,19 @@ per class) instead of branching per-reference on `options.type`/flags? Separate 
   (trivial in Less/scss — syntax disambiguates); shared lookup engine must factor into helpers so the split
   doesn't duplicate resolution; a few refs ambiguous until eval (rare). Irreducible: outcome-polymorphism
   stays; a per-node resolved-kind cache hits the same scope-variance caveat as memoization (scope-key or corrupt).
-- **APPROVED (owner):** split `Reference` into distinct node classes — **`DeclarationReference`,
-  `VariableReference`, `PropertyReference`, `MixinReference`** (etc.) — with SHARED util functions for the
-  common lookup/walk engine (dedup is fine via helpers, not inheritance gymnastics). Axis-1 syntactic split
-  (parser classifies at construction → monomorphic `evalNode` per class, fixed shape) + Axis-2 value-class-
-  dispatched surface (`resolvedValue.createReferenceSurface()`). Leave the pure outcome-poly alone. **Reuse
-  the `perf/ref-nuke` worktree**: after the surface-nuke lands, continue that agent into the specialization
-  (it already has reference.ts context).
+- **TESTED → NO WIN → REVERTED.** Built the full 7-kind split (`VariableReference`/`DeclarationReference`/
+  `PropertyReference`/`IndexReference`/`MixinReference`/`MixinRulesetReference`/`FunctionReference`) via a
+  `createReference` factory routing on `options.type` — CORE-ONLY (no grammar changes; subclasses keep
+  `type==='Reference'` + `N.Reference` bit so all checks pass), byte-identical, all tests green. **But measured
+  PERF-NEUTRAL** (152.8 vs 153.0ms dynamic, same-dir A/B) — reference DISPATCH isn't the hotspot (the bench is
+  GC + provenance dominated; V8 already handles the polymorphic Reference eval fine). Also: NO field slimmed —
+  all 7 kinds share the same 5 fields. Per "perf is the driver," REVERTED (net diff = base). Backup:
+  `perf/ref-specialization-regressed-backup`. **Lesson: this was a hypothesis measurement disproved** — only
+  re-land if a reference-dispatch-heavy workload ever proves it hot. The eval engine is already free-functions
+  threading `lookupType`, so the split bought only monomorphic dispatch, which wasn't the bottleneck.
+- **⚠ BENCHMARKING HAZARD (found here):** A/B across DIFFERENT worktree directories gave a ~25ms bias on
+  BYTE-IDENTICAL bundles (filesystem/path effects). ALWAYS A/B in the SAME directory (toggle via
+  `git revert`/`cherry-pick` + rebuild in place), never base-worktree-vs-feature-worktree.
 
 **Still-deferred perf backlog:**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
