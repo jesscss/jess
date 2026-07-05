@@ -3,6 +3,7 @@ import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList, SelectorListItem } from '../selector-list.js';
 import { ComplexSelector, ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
+import { BasicSelector } from '../selector-basic.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
@@ -19,6 +20,66 @@ function shareKeySetLibrary(a: Selector, b: Selector): boolean {
 
 export function selectorListItemForMatch(item: SelectorList['value'][number]): Selector {
   return typeof item === 'string' ? new ComplexSelector([item]) : item;
+}
+
+/**
+ * Materialize string-backed selector leaves inside a ComplexSelector/CompoundSelector
+ * to `BasicSelector` nodes. The location matcher's structural comparison operates on
+ * selector NODES; a raw string leaf (`'.foo'` in `ComplexSelector(['.foo', ' ', '.bar'])`,
+ * as the parser emits) is neither a combinator nor a node, so the matcher mis-handles
+ * it — falling through to a spurious whole-selector match. Combinator strings (`' '`,
+ * `'>'`, …) are left as-is. Read-only fast path when there is nothing to materialize.
+ */
+function materializeStringLeaves(selector: Selector): Selector {
+  if (isNode(selector, N.ComplexSelector) || isNode(selector, N.CompoundSelector)) {
+    const value = selector.value;
+    let changed = false;
+    const mapped = value.map((comp): ComplexSelectorComponent => {
+      if (typeof comp === 'string') {
+        if (isCombinator(comp)) {
+          return comp;
+        }
+        changed = true;
+        return new BasicSelector(comp);
+      }
+      const inner = materializeStringLeaves(comp);
+      if (inner !== comp) {
+        changed = true;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return inner as ComplexSelectorComponent;
+    });
+    if (!changed) {
+      return selector;
+    }
+    const rebuilt = isNode(selector, N.ComplexSelector)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      ? new ComplexSelector(mapped as ComplexSelector['value']).inherit(selector)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : new CompoundSelector(mapped as CompoundSelector['value']).inherit(selector);
+    rebuilt.keySetLibrary = selector.keySetLibrary;
+    return rebuilt;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    let changed = false;
+    const items = selector.value.map((item): SelectorListItem => {
+      if (typeof item === 'string') {
+        return item;
+      }
+      const inner = materializeStringLeaves(item);
+      if (inner !== item) {
+        changed = true;
+      }
+      return inner;
+    });
+    if (!changed) {
+      return selector;
+    }
+    const rebuilt = new SelectorList(items).inherit(selector);
+    rebuilt.keySetLibrary = selector.keySetLibrary;
+    return rebuilt;
+  }
+  return selector;
 }
 
 function normalizedSelectorListItemValueForMatch(item: SelectorList['value'][number]): string {
@@ -716,9 +777,15 @@ const EMPTY_LOCATIONS: ExtendLocation[] = [];
  * @returns ExtendSearchResult with all found locations and performance optimizations
  */
 export function findExtendableLocations(
-  target: Selector,
-  find: Selector
+  targetRaw: Selector,
+  findRaw: Selector
 ): ExtendSearchResult {
+  // The structural matcher compares selector NODES; parser-delivered string leaves
+  // (`'.foo'` in a `ComplexSelector`) are neither nodes nor combinators and cause
+  // mis-matches. Materialize them to `BasicSelector` nodes up front so search runs
+  // on a uniform node shape.
+  const target = materializeStringLeaves(targetRaw);
+  const find = materializeStringLeaves(findRaw);
   // Identity caches key on node identity; a string-normalized leaf selector is
   // not an object (invalid WeakMap/Map key). Such leaves are cheap and
   // value-comparable, so skip the cache for them rather than key on a string.
@@ -2071,11 +2138,13 @@ export interface SelectorComparisonResult {
 }
 
 export function selectorCompare(
-  a: Selector,
-  b: Selector,
+  aRaw: Selector,
+  bRaw: Selector,
   forwardSearch?: ExtendSearchResult,
   backwardSearch?: ExtendSearchResult
 ): SelectorComparisonResult {
+  const a = materializeStringLeaves(aRaw);
+  const b = materializeStringLeaves(bRaw);
   const normalizedA = normalizeSelectorForExtend(a);
   const normalizedB = normalizeSelectorForExtend(b);
   if (isNode(normalizedA, N.SelectorList) && isNode(normalizedB, N.SelectorList)) {

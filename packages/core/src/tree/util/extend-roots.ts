@@ -636,6 +636,15 @@ function isInstructionVisibleForRoot(
 }
 
 export function processExtends(context: Context): void {
+  // Ruleset registration only happens during a root's registration prep, which
+  // runs on its FIRST eval. A re-eval of an already-prepared root (render's
+  // evalForRender path) registers nothing, so the per-root set is empty. Without
+  // registered rulesets there is nothing to search or extend; bail before the
+  // warning pass would fire spurious "extend target not found" diagnostics and
+  // before any selector state is touched.
+  if (rulesetsByRoot.size === 0) {
+    return;
+  }
   try {
     // Snapshot eval'd value before any extend modifications.
     // This ensures getEffectiveSelector composes with original value,

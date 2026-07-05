@@ -645,10 +645,24 @@ function walkComplexSelector(
   const value = complex.value;
   let anyChanged = false;
   const newComponents = [...value];
+  const singleSimple = spec.positions.length === 1 && spec.positions[0]!.length === 1;
 
   for (let i = 0; i < value.length; i++) {
     const comp = value[i]!;
-    if (isCombinator(comp) || typeof comp === 'string') {
+    if (isCombinator(comp)) {
+      continue;
+    }
+    if (typeof comp === 'string') {
+      // String-backed position leaf (`'.foo'` in `.foo .bar`): a fragment match at
+      // a complex position is PARTIAL. Full mode leaves it (whole-complex match is
+      // handled by isWholeNodeMatch); partial wraps the matched leaf in :is().
+      if (partial && singleSimple && positionSimpleMatches(spec.positions[0]![0]!, comp)) {
+        const wrapped = wrapInIs(spec.original, extendWith);
+        if (wrapped.valueOf() !== comp) {
+          newComponents[i] = wrapped;
+          anyChanged = true;
+        }
+      }
       continue;
     }
 
