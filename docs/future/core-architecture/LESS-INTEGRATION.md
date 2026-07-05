@@ -87,6 +87,17 @@ Split: ~70% hard crashes (empty CSS), ~11% scope 'not defined', ~19% output diff
   built libs — test-harness gap to fix.
 
 ## Design / cleanup follow-ups (after correctness clusters)
+- [ ] **context settings single-source** (design — think before doing; owner is weighing it).
+  `TreeContext` (per-file: file, plugin, mathMode/unitMode/equalityMode/leakyRules/bubbleRootAtRules)
+  and the eval `Context` (one per compile: scopes/roots/errors + `_mathMode`/`_leakyRules`/... override
+  fields via `_X ?? treeContext.X ?? default` getters) genuinely differ in LIFETIME (1 Context : N
+  TreeContexts) — per-file settings are load-bearing (`@import … with {}`, modules with own mathMode),
+  so **do NOT merge the objects**. But the bubbling settings are declared+copied in both (TreeContextOptions
+  extends ContextOptions; plugin createTreeContext + Context both source them) → adding a setting touches
+  ~4 places. FIX: keep both objects; single-source the settings into one `TreeSettings` bag owned by
+  TreeContext; Context resolves via `this.treeContext` + ONE global-override slot (opts), not N `_X`
+  shadow fields. Keep hot-path `mathMode` a direct property read; resolve any global override once at
+  `context.treeContext = …` entry, not per read. Balance perf vs maintainability.
 - [ ] **context-trim** — base `Node` ctor takes no context (good), but ~8 types carry their own
   `_treeContext` field: `Rules` + `import-style` (legit — doc/import roots ESTABLISH context) and
   `function`, `dimension`, `any`, `expression`, `block`, `at-rule-statement` (OVERKILL — they can read
