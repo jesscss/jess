@@ -324,9 +324,29 @@ Triage verdict:
   2.4–4% serialize); keep as correctness-hygiene, not a headline perf win. eval's 22% (dynamic) is spread
   across surface-creation + provenance, NOT the collapse frame juggling C1 targets.
 
+### Provenance side-table — cross-cutting allocator (NEW item, characterized)
+Heap profile: native `set` = **58.9%** of sampled allocation. Source: `ensureProv` (`provenance.ts:46`)
+does `PROV.set(node, {})` per source-spanned node (WeakMap entry + `{}` object), and every `sourceSpanOf`/
+`spanStartOf`/`spanEndOf` is a `WeakMap.get`. This is the `501abdb8c` migration (node fields → WeakMap
+side-table) — it freed the node `.state` name for Parséman but moved provenance into per-node WeakMap
+churn + get-indirection on every span read. Options (for a dedicated stage, not now): lazy-alloc prov only
+for nodes that truly carry spans (many are `isSourceFree`/`F_HAS_SPAN=0` already — verify the alloc is
+actually gated on that), or a denser span store (parallel typed arrays keyed by node id) instead of `{}`
+per node. Cross-cutting + risky — own stage, measure first.
+
+### Remaining tracker perf items — triage verdicts (explore-all pass)
+- **Focus A — Ruleset source-direct render eligibility:** minor; render fast-path *eligibility* refinement,
+  not on the measured hot list. Keep deferred.
+- **Focus B — loops COPY per iteration (`$for`/`$each`/`$while`):** UNMEASURED here — needs a `.jess` loop
+  harness, blocked by the pre-broken `jess-plugin` (TS5096); `.less` can't express jess loops. Reasoned real
+  (body clone/iteration = allocation) but input-dependent. Flag: fix jess-plugin build to measure.
+- **Focus D.1 — `F_VISIBLE` per-node reads:** cheap (bitmask `&`); `fullRender` prototype-read already
+  deleted. Not a headline; hygiene only.
+
 **Still-deferred perf backlog:**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
 - [PROMOTED ↑] Copy / materialization boundary — `createRulesLikeReferenceSurface`; confirmed #1 dynamic-eval alloc.
+- [NEW] Provenance side-table WeakMap churn — see above; the heap `set` 58.9%.
 
 <!-- The former "Focus D (task #9)" duplicate block was removed: all its items (on-string
 crashes, toBeString, stale materialization tests) are superseded and marked DONE in the
