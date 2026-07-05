@@ -380,12 +380,12 @@ const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCal
 
 const stringifyDetached = (node: Node, options: PrintOptions): string => {
   const printOptions = getPrintOptions(options);
-  const writer = new OutputWriter();
-  node.writeSyntax({
-    ...printOptions,
-    writer
-  });
-  return writer.toString();
+  const writer = printOptions.writer;
+  const mark = writer.mark();
+  node.writeSyntax(printOptions);
+  const frag = writer.getSince(mark);
+  writer.restore(mark);
+  return frag;
 };
 
 const isHorizontalWhitespace = (code: number): boolean => (
