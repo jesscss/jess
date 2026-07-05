@@ -3485,6 +3485,66 @@ function emitReferenceSyntaxKey(
   w.add(String(key));
 }
 
+/**
+ * The invariant part of the reference resolution pipeline — everything the
+ * lookup + finalize tail needs that doesn't change between the per-stage
+ * suspension points. Built once per {@link evaluateReferenceNode} call so the
+ * sync/async tail helpers can thread through without re-listing every stage.
+ */
+type ReferenceLookupTail = {
+  referenceNode: Reference;
+  target: ReferenceValue['target'];
+  lookupType: LookupType;
+  fallbackValue: ReferenceOptions['fallbackValue'];
+  originalFilter: ReferenceOptions['filter'] | undefined;
+  context: Context;
+  renderTextOnly: boolean;
+};
+
+/** Tail stages: look up the resolved target, then finalize (sync or async). */
+function lookupAndFinalizeReference(
+  tail: ReferenceLookupTail,
+  resolvedTarget: unknown,
+  valueKey: NormalizedLookupKey
+): MaybePromise<Node> {
+  const { referenceNode, target, lookupType, fallbackValue, originalFilter, context, renderTextOnly } = tail;
+  const lookup = lookupResolvedReference({
+    referenceNode,
+    resolvedTarget,
+    lookupType,
+    valueKey,
+    target,
+    originalFilter,
+    context
+  });
+  if (isThenable(lookup)) {
+    return Promise.resolve(lookup).then(({ returnVal, valueKey }) =>
+      finalizeReferenceLookupResult(referenceNode, returnVal, valueKey, lookupType, fallbackValue, context, renderTextOnly)
+    );
+  }
+  return finalizeReferenceLookupResult(referenceNode, lookup.returnVal, lookup.valueKey, lookupType, fallbackValue, context, renderTextOnly);
+}
+
+/** Tail stages: resolve the target value, then look up + finalize (sync or async). */
+function resolveValueAndFinalizeReference(
+  tail: ReferenceLookupTail,
+  resolvedTarget: unknown,
+  valueKey: NormalizedLookupKey
+): MaybePromise<Node> {
+  const resolvedValue = resolveReferenceTargetValue({
+    referenceNode: tail.referenceNode,
+    resolvedTarget,
+    valueKey,
+    context: tail.context
+  });
+  if (isThenable(resolvedValue)) {
+    return Promise.resolve(resolvedValue).then(([nextTarget, nextKey]) =>
+      lookupAndFinalizeReference(tail, nextTarget, nextKey)
+    );
+  }
+  return lookupAndFinalizeReference(tail, resolvedValue[0], resolvedValue[1]);
+}
+
 function evaluateReferenceNode(args: {
   referenceNode: Reference;
   target: ReferenceValue['target'];
@@ -3507,6 +3567,15 @@ function evaluateReferenceNode(args: {
   } = args;
   const renderTextOnly = textOnly === true;
   context.pushReference();
+  const tail: ReferenceLookupTail = {
+    referenceNode,
+    target,
+    lookupType,
+    fallbackValue,
+    originalFilter,
+    context,
+    renderTextOnly
+  };
   const initialHandleLookup = tryReadInitialSourceStaticRulesLookupHandle({
     referenceNode,
     lookupType,
@@ -3516,11 +3585,10 @@ function evaluateReferenceNode(args: {
     context
   });
   if (initialHandleLookup !== undefined) {
-    const { returnVal, valueKey } = initialHandleLookup;
     return finalizeReferenceLookupResult(
       referenceNode,
-      returnVal,
-      valueKey,
+      initialHandleLookup.returnVal,
+      initialHandleLookup.valueKey,
       lookupType,
       fallbackValue,
       context,
@@ -3531,125 +3599,14 @@ function evaluateReferenceNode(args: {
   if (isThenable(initialTarget)) {
     return Promise.resolve(initialTarget)
       .then(resolved => evaluateReferenceKey(key, resolved, context))
-      .then(([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
-        referenceNode,
-        resolvedTarget,
-        valueKey,
-        context
-      }))
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        return finalizeReferenceLookupResult(
-          referenceNode,
-          returnVal,
-          valueKey,
-          lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
-      });
+      .then(([resolvedTarget, valueKey]) => resolveValueAndFinalizeReference(tail, resolvedTarget, valueKey));
   }
   const evaluatedKey = evaluateReferenceKey(key, initialTarget, context);
   if (isThenable(evaluatedKey)) {
     return Promise.resolve(evaluatedKey)
-      .then(([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
-        referenceNode,
-        resolvedTarget,
-        valueKey,
-        context
-      }))
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        return finalizeReferenceLookupResult(
-          referenceNode,
-          returnVal,
-          valueKey,
-          lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
-      });
+      .then(([resolvedTarget, valueKey]) => resolveValueAndFinalizeReference(tail, resolvedTarget, valueKey));
   }
-  const resolvedValue = resolveReferenceTargetValue({
-    referenceNode,
-    resolvedTarget: evaluatedKey[0],
-    valueKey: evaluatedKey[1],
-    context
-  });
-  if (isThenable(resolvedValue)) {
-    return Promise.resolve(resolvedValue)
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        return finalizeReferenceLookupResult(
-          referenceNode,
-          returnVal,
-          valueKey,
-          lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
-      });
-  }
-  const lookup = lookupResolvedReference({
-    referenceNode,
-    resolvedTarget: resolvedValue[0],
-    lookupType,
-    valueKey: resolvedValue[1],
-    target,
-    originalFilter,
-    context
-  });
-  if (isThenable(lookup)) {
-    return Promise.resolve(lookup)
-      .then(({ returnVal, valueKey }) => {
-        return finalizeReferenceLookupResult(
-          referenceNode,
-          returnVal,
-          valueKey,
-          lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
-      });
-  }
-
-  return finalizeReferenceLookupResult(
-    referenceNode,
-    lookup.returnVal,
-    lookup.valueKey,
-    lookupType,
-    fallbackValue,
-    context,
-    renderTextOnly
-  );
+  return resolveValueAndFinalizeReference(tail, evaluatedKey[0], evaluatedKey[1]);
 }
 
 // AUDIT: We have got to drastically trim this file.
