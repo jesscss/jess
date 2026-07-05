@@ -3372,7 +3372,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         if (frameHit.kind === 'miss' || frameHit.kind === 'uncovered') {
           let retryFrame = callableFrame.parent;
-          let fallbackFrame = callableFrame.fallbackFrame;
+          // Reference/inline imports link their evaluated member surface as the
+          // enclosing scope's own fallback frame (linkInlineImportFallbackFrames).
+          // The retry walk visits each ancestor's primary frame but must also
+          // consult the fallback chain hanging off any frame it passes — an
+          // imported callable is otherwise invisible once the primary chain
+          // exhausts. Queue fallback heads in encounter order (parent-chain first),
+          // then drain them, so primaries always win.
+          const fallbackQueue: ScopeFrame[] = [];
+          let queuedFallback: ScopeFrame | undefined = callableFrame.fallbackFrame;
+          while (queuedFallback) {
+            fallbackQueue.push(queuedFallback);
+            queuedFallback = queuedFallback.fallbackFrame;
+          }
+          let drainingFallbacks = false;
           while (retryFrame) {
             let retryHit = lookupScopeFrameCallable(retryFrame, keys, {
               includeRulesets,
@@ -3412,10 +3425,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                 }
               }
             }
+            if (!drainingFallbacks && retryFrame.fallbackFrame) {
+              let head: ScopeFrame | undefined = retryFrame.fallbackFrame;
+              while (head) {
+                fallbackQueue.push(head);
+                head = head.fallbackFrame;
+              }
+            }
             retryFrame = retryFrame.parent;
-            if (!retryFrame && fallbackFrame) {
-              retryFrame = fallbackFrame;
-              fallbackFrame = fallbackFrame.fallbackFrame;
+            if (!retryFrame && fallbackQueue.length > 0) {
+              retryFrame = fallbackQueue.shift();
+              drainingFallbacks = true;
             }
           }
           if (frameHit.kind === 'miss') {
