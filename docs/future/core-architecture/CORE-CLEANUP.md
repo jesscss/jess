@@ -299,6 +299,24 @@ helper families that accreted — see archived SURFACE_PRIMITIVES_AUDIT), and (2
 `cstState`/`cstChildren` above: exported accessors with zero callers, unused fields, dead branches). Read-only
 AUDIT first → ranked target list, then gated removal stages. Ties into SLIM (fewer fields) + FAST-V8 + DRY.
 
+**AUDIT DONE (f0a6131b3, read-only sweep of `packages/core/src/tree`, 127 non-test files). Vein largely exhausted:**
+- **Dead code: NONE.** Scanned all 618 exported symbols (0 with zero cross-monorepo refs — barrels re-export
+  everything) AND all ~1002 file-local declarations (383 private methods + 592 module fns + 27 arrow fns; 0 with
+  ≤1 in-file occurrence). Confirms Focus F's "nothing deletable" — the earlier `raw`/`cstState`/`cstChildren`
+  harvests already cleared the tree. Don't re-run a dead-export hunt; it's clean.
+- **Duplicate blocks: 601 six-line windows, ~all non-actionable** — unavoidable boilerplate (node constructor
+  signatures, import groups), multi-line CALL-SITE argument lists (already calling shared fns — arg alignment,
+  not extractable), or hot-path loop skeletons (selector-list/compound string-item iteration; reference `.then`
+  chains) where extraction to a callback adds the megamorphic indirection the FAST-V8 rule forbids.
+- **The `rulesMayContain*Surface` family (7 fns, rules.ts:485-600):** NOT safely mergeable — differs on 3 axes
+  (fast-path pre-check / `childCallableRulesOf` vs `childRulesOf` / per-node predicate) and is HOT (registration
+  path; `rulesMayContainReferenceImports` = 0.8% self-time). A predicate-callback merge trades legibility for
+  hot-path indirection — matches the deferred Focus-F CLUSTER verdict. Left as-is.
+- **Landed (only safe win):** `rulesMayContainReferenceImports` fast-path was character-identical to the whole
+  body of `rulesHasCarriedReferenceImportSurface` → call the helper (hoisted, V8-inlined, zero-change).
+**Verdict: the tree is DRY/dead-clean; remaining consolidations are the deferred hot-file legibility polish, not
+mechanical wins. Don't reopen without a specific gated target.**
+
 ### Micro-opt considered — inline `hasFlag`/`addFlag`/`removeFlag` to raw bitwise: REJECTED (verify-only)
 Converting `hasFlag(F_X)` → raw `(this.flags & F_X) !== 0` at call sites is NOT worth it: these are tiny
 MONOMORPHIC methods on `Node.prototype`, which V8 inlines to the bitwise op already. `hasFlag` has NEVER
