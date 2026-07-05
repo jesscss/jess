@@ -347,3 +347,10 @@ throws `Feature not supported. Install @jesscss/plugin-js to enable Less @plugin
 bootstrap-less-port ships 10+ local JS @plugins (index/map-keys/color-yiq/escape-svg/…). The in-repo
 `packages/jess-plugin-js` runtime is NOT in the probe's plugin list. NEXT: wire @jesscss/plugin-js into the compat
 @plugin path (milestone 4), then chase the next blocker (JS-plugin functions invoked during eval).
+
+### DEFERRED (user decision 2026-07-05): @plugin JS runtime — bootstrap milestone-4 stop
+`@plugin "plugins/*.js"` execution (wiring `packages/jess-plugin-js` worker runtime into the compat @plugin handler,
+past the throw gates incl. plugin.ts:1011 local-path) is DEFERRED. Rationale: it executes arbitrary JS from @plugin
+files — a security-sensitive sandbox the maintainer will design/scope as its own piece, not fold into the fixture drive.
+Bootstrap render status is thus CLOSED at "parse ✓ / scope ✓ / gated on @plugin JS (deferred)". When the sandbox
+lands, resume chasing bootstrap's post-@plugin eval blockers (JS-plugin functions invoked during eval).
