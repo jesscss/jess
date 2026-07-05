@@ -179,3 +179,12 @@ and the tokenizer already enforces this (parseLessFn parses a comment-backtick f
 the pre-scan entirely and detect inline JS IN THE GRAMMAR/TOKENIZER — a backtick token reaching the grammar
 is code-position by definition → error with the friendly "inline JS not supported" message. Do this once
 the parser is free of the bootstrap-driver.
+
+## Follow-up: slim jess-plugin-less-compat (~6200L → aim 50-70% cut)
+The compat plugin is bloated. Breakdown: node-conversion boilerplate (transform/* + nodes/*) = 1852L
+(per-node bidirectional Jess↔less.js converters — collapse into a data-driven type-map + one generic
+converter: the biggest prize); plugin.ts = 1277L (@plugin lifecycle/registry/gating, ~59 deprecated/@plugin
+refs — trim the deprecated-@plugin + auto-load fat); less-compat-structures.ts = 550L (hand-rolled less.js
+`less`/`tree` mock — keep only the actually-called surface); types/type-map/utils ~650L. Do this AFTER
+bootstrap renders + security suite green — those become the coverage gate (don't cut a load-bearing path).
+Don't promise a literal 90%; target the actually-exercised less.js API surface. No behavior change — pure slim.
