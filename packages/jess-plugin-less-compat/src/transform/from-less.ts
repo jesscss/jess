@@ -87,8 +87,8 @@ export function fromLessNode(
         name: prop,
         value: new Any(valueStr)
       });
-      cache.set(lessNode, out);
-      return out;
+      cache.set(lessNode, decl);
+      return decl;
     }
 
     if (lessNode.type === 'DetachedRuleset') {
