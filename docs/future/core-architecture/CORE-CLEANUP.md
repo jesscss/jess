@@ -15,6 +15,34 @@ Branch: `feature/parseman`. Author/verify convention: build core, run the core s
 diff the **stable** failure set (run twice; flaky ±) against the prior baseline — a
 change is real only if the stable set moves.
 
+## OPEN-ITEM RECONCILIATION (post-drive — read this before trusting any checkbox below)
+
+The tracker was run as a **failure-count-driven drive-to-green**, and its two deferral rules —
+"no failing-test signal → defer" and "coupled to the scope-identity monolith → defer" — generated most
+of the `[DEFERRED]` markers as an ARTIFACT of that loop, not a considered "not worth doing." The suite is
+now **GREEN (core 2730/0)** and the monolith **dissolved**, so many deferrals are stale or mislabeled.
+Authoritative status (supersedes the inline markers further down):
+
+- **DONE — stale checkboxes below (treat as `[x]`):** W1 single-writer (§ line ~497); copy/materialization
+  `createRulesLikeReferenceSurface` (the `[promote]`/`[SPEC'D]` perf items — landed as **ref-nuke**, 8×);
+  provenance side-table WeakMap (the `[NEW]` item — landed as **provenance-inline**, WeakMap gone). See LANDED LOG.
+- **CLOSED — deferred "on the monolith" but the monolith dissolved + their tests now PASS at 2730/0:** E2/E3
+  scope-identity (config-surface / wrapper-is-scope-identity), `direct-rules-lookup` R3, eval-output/collapse
+  diffs. These were correctness-blocked-on-a-phantom; verified green (`stay cold`, `with values` child-surface,
+  `quoted index in nested scope` all pass). Any residue is latent ARCHITECTURAL debt with **no failing test to
+  force it** — reopen only with a perf or maintainability rationale, not as "deferred correctness."
+- **CLOSED — measured, not worth it:** Focus B loops copy-per-iteration (measured 0.97×).
+- **ACTIVE BACKLOG (the real remaining work — NOT "deferred," just parked while driving to green):**
+  **C2** (trust `F_STATIC`, static+extend-free subtrees skip eval → the top live perf lever) → **C1** (collapse
+  state out of eval, its prereq) → C3/C4 (walk-fold north star); plus the **F_VISIBLE-cost** removal (3b
+  merge-engine rework — real, but no failing-test trigger, so scope on perf/legibility).
+- **GENUINELY DEFERRED (correctly):** F-consolidate (hot-file churn, zero correctness value); F_VISIBLE-1b
+  `renderNodeFull` (no consumer until language conversion lands).
+
+**Rule going forward:** "deferred" must name a REASON that still holds (a real blocker, a missing consumer, or
+measured not-worth-it) — not "no failing test." A green suite means the correctness drive is over; what's left
+is perf/architecture/cleanliness, which is the ACTIVE backlog, not a deferral.
+
 ## Driver terminal status (this pass)
 
 **Stable failures: 85 → 0. Suite FULLY GREEN (2678 passed, 0 failed), zero regressions across ~36 gated merges.**
@@ -446,33 +474,34 @@ serialization/collapse state; no new visibility/eval-free flag.
 - [ ] **C4 (north star) — fold eval INTO the render walk as lazy pull.** Eliminate the eager evaluated tree
   so DYNAMIC content is also single-traversal; registration → construction-time index. Largest scope, last.
 
-### Orchestration (perf work is branch-managed, not in-place on feature/parseman)
-- **`perf/walk-collapse` (worktree jess-perf-walk) is the sole integration branch.** Integrate ONLY from the
-  shared trunk; other agents' work (less-integration) reaches you when THEY merge to trunk — never rebase
-  directly onto another agent's branch. Trunk divergence is the integrator's merge to resolve (rebase forward).
-  - **⚠ TRUNK IS MIGRATING (coordinate):** the shared trunk is moving `feature/parseman` → `dev` (jess-dev
-    worktree) → `feature/less-v5-alpha-readiness` (the `~/git/oss/jess` main checkout) as another agent drives
-    all Less tests to green. So the latest fixes will land on `dev`, then `feature/less-v5-alpha-readiness`.
-    **Merge source follows the trunk:** keep merging `feature/parseman` until it's absorbed into `dev`, then
-    merge from `dev` / `feature/less-v5-alpha-readiness`. And eventually **`perf/walk-collapse` itself lands
-    into wherever the trunk settles** (team decides) — it's a large pile of perf wins to integrate forward.
-- Per stage: scope a precise spec → spawn an agent in its own worktree
-  (`git worktree add ../jess-perf-<stage> -b perf/<stage> perf/walk-collapse`) with the setup block +
-  spec → agent works to the gate, commits, reports before/after bench + failure set → integrator merges
-  into `perf/walk-collapse`, re-runs the full gate, keeps only if green, updates this checkbox + bench #.
+### Orchestration (branch from `dev`, merge back to `dev`)
+- **`dev` IS the integration trunk now.** The trunk migration completed: `feature/parseman` was absorbed into
+  `dev`, and the perf pile (`perf/walk-collapse`) landed forward into `dev`. `perf/walk-collapse` is retired —
+  do NOT start new work on it. All core-cleanup/perf work branches FROM `dev` and merges BACK TO `dev`.
+- **Per stage:** scope a precise spec → spawn an agent in its own worktree off the CURRENT `dev` tip
+  (`git worktree add ../jess-<stage> -b work/<stage> dev`) with the setup block + spec → agent works to the
+  gate, commits, reports before/after bench + failure set → **orchestrator merges the branch back into `dev`**,
+  re-runs the full gate, keeps only if green, updates this checkbox + bench #, then pushes `dev`.
+- **`dev` is a HOT shared branch** (the less-integration drive commits to it continuously). Before merging a
+  stage back: `git fetch`, confirm the merge touches disjoint files from what's in-flight (or resolve), merge
+  with `--no-ff`, gate green, then push. Never force-push `dev`. If `dev`'s working worktree (currently
+  `jess-parseman`) is mid-task, coordinate the merge to a safe point — don't move a live worktree's HEAD from
+  under it. Serialize only the MERGES (avoid concurrent edits to the same file across stage branches).
 - **Fan out WIDE** across disjoint files — try many ideas concurrently. **Reuse worktrees:** when an agent
   finishes an idea, have it COMMIT then hand it the NEXT idea in the SAME worktree (SendMessage — keeps
   file/build context) instead of spawning fresh. Agents coordinate through the orchestrator: report → gate →
-  merge → next idea. Serialize only the MERGES (avoid concurrent edits to the same file across branches).
+  merge → next idea.
 - **Agent setup block:** `pnpm install` (~10s; NOT `pnpm -r build`). Correctness gate (no build; vitest on
-  src): `cd packages/core && pnpm test` — baseline = GREEN (0 fails, ~2697 passed; feature/parseman fixed the old 2 mixin fails). A ~2ms sibling-collapsed timing flake may appear — re-run; clean = that set + byte-identical.
+  src): `cd packages/core && pnpm test` — baseline = GREEN (**core 2730/0** on `dev`). A ~2ms sibling-collapsed
+  timing flake may appear — re-run; clean = that set + byte-identical.
   Timing (optional): build `@jesscss/core styles-config @jesscss/fns jess` only (NOT `-r`: jess-plugin is
   pre-broken TS5096). jess default output is NESTED (collapseNesting opt-in); benchmark.less does NOT
-  render on jess yet — never gate on it.
+  render on jess yet — never gate on it. Benches: `packages/core/perf/{collapse,dynamic}-bench.mjs`
+  (build core+jess first). Enable per-stage timings with `JESS_PROFILE=1` (parse/eval/render split).
 
-**Status:** `perf/walk-collapse` = C0 (844046cbd) → merge feature/parseman (c2f6aea01, gate green) →
-ruleset.ts lint debt fixed (1636a6e6b) → orchestrated goal (84319c476, 46674b2ad). Bench harness at
-`packages/core/perf/collapse-bench.mjs`.
+**Status:** The `perf/walk-collapse` drive is COMPLETE and landed forward into `dev` (the trunk). C0 done;
+C1–C4 are the ACTIVE backlog (see reconciliation) — branch them off `dev` per the orchestration model above.
+Bench harness at `packages/core/perf/collapse-bench.mjs`.
 
 ### PROFILE PIVOT (measured — the walk plan targets the wrong 2.7%)
 CPU profile of a 4500-ruleset collapse render (`packages/core/perf/collapse-bench.mjs collapse`, self-time):
@@ -494,7 +523,8 @@ the goal's axes (fewest allocations / least redundant work):
    is NOT the lever — probed flipping the default to false → no speedup + 26 regressions (top-level render
    writer is already !tracksSources for no-sourcemap renders; the cost is the from-0 loop in BOTH branches).
 
-- [ ] **W1 — single-writer serialization** (root cause 1). Highest allocation win. → fewest object creations.
+- [x] **W1 — single-writer serialization** (root cause 1) — **DONE** (LANDED LOG: 6/18 fragment sites → shared
+      writer, −25.7% OutputWriter allocations; other 12 sites intentionally separate). Highest allocation win.
 - [x] **W2 — incremental `refreshPositions(from)`** — DONE + merged (b629d5af4, gate clean, byte-identical).
       `refreshPositions(from=0)` recomputes only `[from..end]`, seeded from position[from-1] (mirrors
       `restore()`); trims pass `mark`; the flat-buffer seed at line 431 stays full (from=0). **HUGE win, on the
