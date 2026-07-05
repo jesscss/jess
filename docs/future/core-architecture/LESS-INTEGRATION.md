@@ -268,3 +268,23 @@ These remaining all-less failures are PARSER root causes (core eval verified cor
 ## Non-parser bug to fix now: `!important` dropped on Collection declarations
 `declaration.ts:1024` — the `if (!isNode(value, N.Collection))` guard skips writing `important` for any
 multi-value (Collection) declaration. Hits namespacing-3, property-targeted. Serialize bug, NOT scope/parser/extend.
+
+## 2026-07-05 — merged batch (bootstrap2 + extend-nest + important-collection); baseline held 61/93, core 2730/0
+Banked (no fixture flipped green yet — each now blocked behind a deeper eval bug):
+- **bootstrap PARSES FULLY** — `_variables.less:93` special-char detached-ruleset keys now capture as raw `Quoted`
+  (`detachedBlock` = choice(structured, raw-balanced-scan)). Reaches eval; blocked on nested-import scope loss.
+- **extend `:is()` corruption fixed** — spurious unconditional `'append'` extend-location per `:is()` gated on a real
+  match (`foundWithinIs`). `extend.less` `:is()`-distribution section now matches. Root-shape-#2 (nested `&:extend`
+  against a STRING parent selector) DEFERRED — needs composition in `processExtends`/`extend-roots.ts`, not
+  `registerExtendRecord` (composing there empties the render). Architecture item.
+- **Collection `!important` serialize fixed** — dropped the `N.Collection` guard (braced maps never carry important).
+
+### Next frontier — two disjoint CORE-EVAL bugs (both reproduce-in-core; NO parser changes)
+1. **Nested-import root-scope loss (bootstrap RENDER blocker).** A top-level `@import` whose imported file itself
+   `@import`s (2-level) drops variables from EARLIER top-level imports out of root scope. Repro (staged under the
+   nested-import worktree `.repro/`): `main2.less` imports `_vars`(defines @blue) then `_nested`(which imports
+   `_nested_inner`) → `@blue is not defined`. `main3.less` (flat one-level) is the passing control. Fix in
+   scope-frame/import eval, NOT the loader. Owner: `less/nested-import`.
+2. **Eval strips `!important`.** `color: red !important` renders `color: red` — the flag is dropped during
+   EVALUATION (before serialize), affecting even plain scalars. Blocks property-targeted, namespacing-3 (which also
+   have parser gaps). Fix in declaration eval. Owner: `less/eval-important`.
