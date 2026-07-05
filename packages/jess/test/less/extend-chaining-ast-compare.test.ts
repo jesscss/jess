@@ -21,9 +21,9 @@
  */
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { createRequire } from 'module';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { resolveLessTestDataRoot } from '../test-utils.js';
 import {
   serializeTypes,
   rules,
@@ -41,8 +41,7 @@ import {
   N
 } from '@jesscss/core';
 
-const require = createRequire(import.meta.url);
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 const extendChainingLess = path.join(testData, 'tests-unit/extend-chaining/extend-chaining.less');
 
 const serializeOpts = { showValues: true, maxStringLength: 120 };

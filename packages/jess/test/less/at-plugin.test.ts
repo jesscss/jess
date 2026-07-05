@@ -10,9 +10,8 @@ import nodeModulesPlugin from '@jesscss/plugin-node-modules';
 import * as path from 'path';
 import * as fs from 'fs';
 import { tmpdir } from 'os';
-import { createRequire } from 'module';
 import { readFileSync } from 'fs';
-import { getTestCases } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot } from '../test-utils.js';
 
 describe.todo('@plugin directive support', () => {
   it('should process @plugin directive and load plugin from registry', async () => {
@@ -250,8 +249,7 @@ describe.todo('@plugin directive support', () => {
 
   // Test actual Less.js test files that use @plugin
   describe.todo('Less.js @plugin test files', () => {
-    const require = createRequire(import.meta.url);
-    const testData = path.dirname(require.resolve('@less/test-data'));
+    const testData = resolveLessTestDataRoot();
 
     // Create node-modules plugin for npm package resolution
     const nodeModulesPluginInstance = nodeModulesPlugin();

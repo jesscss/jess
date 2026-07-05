@@ -2,11 +2,10 @@ import { describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync } from 'fs';
-import { createRequire } from 'module';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
-import { getTestCases } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -51,8 +50,7 @@ const lessHarnessFunctionsPlugin = {
   }
 };
 
-const require = createRequire(import.meta.url);
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
