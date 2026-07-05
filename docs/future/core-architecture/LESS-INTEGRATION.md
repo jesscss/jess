@@ -249,3 +249,22 @@ Do NOT make less-parser/css-parser/grammar/builders changes; a separate agent is
   free-var through the import chain; likely also gates namespacing/import all-less fixtures) — do as a vetted
   core cluster; `@import "@{...}"` interpolation IF it's eval-time (interpolate path before file-manager resolve)
   and not grammar.
+
+## Parser-gap inventory (from scope-eval triage a90c44d) — highest-leverage first
+These remaining all-less failures are PARSER root causes (core eval verified correct). For the parser agent:
+1. **Mixin-call-argument grammar (HIGHEST leverage)** — structured args collapse to bare `Keyword`/joined
+   `Reference` text: `.m(4)`→`Keyword("4")` not `Num` (so guards `when(@r>0/<…/<=…)` fail — Keyword.compare
+   returns undefined); `.generic(@sl @cl)`→one joined `Reference("sl @cl")`; `.wrapper(.output())`→arg
+   `Keyword(".output()")`; `(@a * 2)`→`(@a,*,2)`. Gates mixins-guards, mixins-advanced, mixins-nested,
+   namespacing-6. Builders: less-parser `grammar.ts`/`builders.ts` `callArgSeq`/`functionCallArgs`/`_convertArgsForCall`.
+2. **Accessor Reference outside declaration-value position** — `@bp[mobile]` in `@media` prelude, `#ns.options[val1]`
+   in an `Operation` parse as verbatim `Keyword`/drop the ns head. Body-position accessors work (eval fine).
+   namespacing-3/media/operations.
+3. **Quoted-string interpolation not decomposed** — `"@{a} px"`/`~'@{a}/@{b}'` parse as flat `Quoted` with no
+   interpolation parts. media.less, namespacing-3.
+4. **Bare-boolean guard keyword lost** — `when(true)`→`Paren>Keyword("")`. mixins-guards.
+5. Known: `counter(page)`→`$??`, value-spacing `"A""B""C"`, namespacing-7 guard-accessor-LHS.
+
+## Non-parser bug to fix now: `!important` dropped on Collection declarations
+`declaration.ts:1024` — the `if (!isNode(value, N.Collection))` guard skips writing `important` for any
+multi-value (Collection) declaration. Hits namespacing-3, property-targeted. Serialize bug, NOT scope/parser/extend.
