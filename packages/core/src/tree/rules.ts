@@ -5375,8 +5375,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         output = rules.derive() as Rules;
         // The output resolves scope identically to the canonical (share its
         // prepared scope frame), and becomes the current rules context so later
-        // siblings + registration during this same eval stay consistent.
-        output.scopeFrame = rules._scopeFrame;
+        // siblings + registration during this same eval stay consistent. Build the
+        // source frame first if it isn't cached yet: registerNode links an inlining
+        // import's fallback frame onto `_scopeFrame` at splice time, and later
+        // siblings (e.g. a consumer referencing an imported property) resolve through
+        // the SAME source frame via the node parent chain. Without a shared frame the
+        // output would lazily build its own, and the inline-import fallback link would
+        // never reach the consumer's lookup.
+        output.scopeFrame = rules.getScopeFrame();
         if (context.rulesContext === rules) {
           context.rulesContext = output;
         }
