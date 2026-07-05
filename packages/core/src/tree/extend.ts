@@ -180,7 +180,13 @@ export class Extend extends Node<ExtendValue> {
       return undefined;
     }
 
-    const maybeSel = selector.eval(context);
+    // The parser may deliver the extend selector as a bare string or raw
+    // component array (strings-not-nodes model); materialize to a Selector node
+    // before evaluating.
+    const selectorNode = typeof selector === 'string' || Array.isArray(selector)
+      ? asExtendSelectorNode(selector)
+      : selector;
+    const maybeSel = selectorNode.eval(context);
     const register = (sel: Selector | Nil): void => {
       if (sel instanceof Nil) {
         return;
