@@ -146,6 +146,23 @@ isn't resolving bindings that should exist. **NOT one root cause** — three fam
     (config lives on a *derived* surface not on the callable's definition/lexical chain); the
     **"wrapper is scope identity" scope rework** (see LIVE_BINDING_ARCHITECTURE.md). Its own project.
 
+  **import-style.test.ts full triage (cleanup/import-style-triage, no fix landed — all monolithic).**
+  The 14 remaining import-style failures map to the deferred reworks (each traced to file:line, verified):
+  - **A · with-config (5)** — all throw `'X' is not defined` at reference.ts:2311; config binding not on the
+    callable/closure definition chain. = the monolithic config-surface rework.
+  - **B · namespace cold/lazy crawl (3)** — broad-crawl suppression fires before the namespace body is
+    evaluated (`findMixin` returns a stale hit / null / 0 broadFastHits). Eval-ordering, deferred.
+  - **C · placement-ownership of shared static children (2)** — a source-free static `Declaration` returns
+    `this` from `materializeValueState` (changed:false), so first-use plain-import placement keeps the shared
+    canonical node. ATTEMPTED (cloneForPlacement) → **+2 regressions** (reference-import guards read caller
+    scope via placement child identity), reverted clean. Needs frame-scoped ownership, not a placement-seam
+    walk — entangled with reference-guard scope. Smallest next step noted in agent report.
+  - **D · eval-surface cache / wrapper-identity (2)** — declaration-lookup-version bump runs on a derived
+    output surface (copy-on-write); compose finalRules wrapper `sourceNode` ≠ itself. = wrapper-is-scope-
+    identity monolith ([[parseman-wrapper-is-scope-identity]]).
+  - **E · forward-only downstream visibility (1)** — forwarder links forwarded members into its LOCAL frame;
+    should expose downstream-only. Scope-frame linkage change.
+
 ## Focus D — strings-not-nodes render (progress: 85 → 67 stable, zero regressions)
 
 **The selector-serialization (Theme A) cluster is GREEN.** The render path no longer
