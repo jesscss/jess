@@ -314,6 +314,10 @@ chain (`_r_InterpolatedSelector` less-parser/grammar.ts:249, `_r_value` css-pars
 - **eval long tail** — `isNode` (already bitmask-fast; target call-count) + `_assignDocumentOrderDepthFirst`
   (index.js:12064, 1.3%) + `inherit`. Small focused wins; the diffuse "other" ~22% has no single ≥1.5% hotspot.
 
+**DIRECTION (owner):** keep driving CORE cleanup (the small measured residuals: hot clone, render-buffer add,
+document-order; plus the in-flight span-array drop + DRY). PARSE stays out of core — instead an agent MEASURES
+parser hotspots and writes evidence-backed IDEAS into the parseman repo (`/Users/matthew/git/oss/parser-thing/notes/PERF_IDEAS.md`), for the parser owners. No parser code changes from here.
+
 Suite is green, so this is now the live drive. **Finding (traced this pass):** the render
 pipeline runs ~4 structural passes *regardless of content*, and two of them exist only because
 eval still holds serialization/collapse state it was supposed to hand off.
