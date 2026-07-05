@@ -28,8 +28,7 @@ import {
   sourceSpanOf,
   spanStartOf,
   isSourceFree,
-  F_HAS_SPAN,
-  type SourceSpan
+  F_HAS_SPAN
 } from './util/provenance.js';
 
 const { isArray } = Array;
@@ -413,16 +412,16 @@ export abstract class Node<
    */
   static childKeys: readonly string[] | null = null;
 
-  // Source spans / CST provenance are INLINE fixed-shape node fields, read and
-  // written via the free functions in `util/provenance.ts` (`sourceSpanOf`,
-  // `setSourceSpan`, `fieldSpansOf`, …). Declared here initialized to `undefined`
-  // so the hidden class stays monomorphic; the parser sets them once at
-  // construction (via the constructor `location` arg + the field setters). The
-  // one hot check is the `F_HAS_SPAN` flag. NEVER attach these dynamically.
+  // Node-level source span — INLINE fixed-shape fields, read and written via the
+  // free functions in `util/provenance.ts` (`sourceSpanOf`, `setSourceSpan`).
+  // Declared here initialized to `undefined` so the hidden class stays
+  // monomorphic; the parser sets them once at construction (via the constructor
+  // `location` arg). The one hot check is the `F_HAS_SPAN` flag. Per-sub-component
+  // span arrays are intentionally NOT stored — authored inter-component
+  // whitespace is normalized; comments round-trip via a node-span comment scan.
+  // NEVER attach these dynamically.
   _spanStart: number | undefined = undefined;
   _spanEnd: number | undefined = undefined;
-  _fieldSpans: (SourceSpan | undefined)[] | undefined = undefined;
-  _valueSpans: (SourceSpan | undefined)[] | undefined = undefined;
 
   _sourceRoot: Rules | undefined;
   get sourceRoot(): Rules | undefined {

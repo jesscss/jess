@@ -1,4 +1,4 @@
-import { spanStartOf, sourceSpanOf, valueSpansOf } from './util/provenance.js';
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import { type Combinator } from './combinator.js';
 import { type Ampersand } from './ampersand.js';
 import {
@@ -19,7 +19,7 @@ import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
-import { consumeTriviaBetween, consumeTriviaBetweenOffsets, emitTriviaTokens } from './util/trivia.js';
+import { consumeTriviaBetween, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
@@ -148,6 +148,14 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let length = value.length;
     let isFirstSelector = true;
     const saved = savePrintState(options, ['ampersandFirst']);
+    // String components carry no own source span, so authored inter-component
+    // whitespace is dropped (normalized). COMMENTS that fall inside this
+    // selector's span still round-trip: pull them, in source order, and place
+    // one at each descendant-combinator gap between string components.
+    const spanComments = options.trivia
+      ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
+      : [];
+    let spanCommentCursor = 0;
     const emitComponent = (component: ComplexSelectorComponent) => {
       if (typeof component === 'string') {
         w.add(component);
@@ -182,23 +190,20 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         } else {
           const prev = value[i - 1];
           const next = value[i + 1];
-          const spans = valueSpansOf(this);
           let tokens: ReturnType<typeof consumeTriviaBetween>;
           if (options.trivia && prev instanceof Node && next instanceof Node) {
             tokens = consumeTriviaBetween(options.trivia, prev, next, options);
-          } else if (options.trivia && spans) {
-            // String components: recover surrounding offsets from valueSpans
-            // (prev component end, next component start).
-            tokens = consumeTriviaBetweenOffsets(
-              options.trivia, spans[i - 1]?.end, spans[i + 1]?.start, options
-            );
           }
           if (typeof component === 'string') {
-            // String descendant combinator: the captured trivia already carries
-            // the exact whitespace/comments; emit it verbatim, or a single space
-            // when no trivia was recorded.
-            if (tokens) {
-              emitTriviaTokens(tokens, options);
+            // String descendant combinator: whitespace is normalized to a single
+            // space, but a comment authored in this gap round-trips verbatim (its
+            // run carries its own surrounding spacing). Take the next in-span
+            // comment run; if none, emit a single space.
+            const commentRun = spanCommentCursor < spanComments.length
+              ? spanComments[spanCommentCursor]
+              : undefined;
+            if (commentRun) {
+              spanCommentCursor = emitNextSpanComment(spanComments, spanCommentCursor, options);
             } else {
               w.add(' ', this);
             }

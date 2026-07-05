@@ -27,10 +27,6 @@ type ProvenanceFields = {
   _spanStart: number | undefined;
   /** Source end offset. */
   _spanEnd: number | undefined;
-  /** Per-slot source spans for string-normalized DIRECT children, by `childKeys` order. */
-  _fieldSpans: (SourceSpan | undefined)[] | undefined;
-  /** Per-segment source spans for array-`value` children (e.g. selector-list items). */
-  _valueSpans: (SourceSpan | undefined)[] | undefined;
 };
 
 /** Node has source provenance (a span). The one hot flag; kept on `node.flags`. */
@@ -92,20 +88,29 @@ export function copySourceSpan(dst: object & Flagged, src: object): void {
   setSourceSpan(dst, sourceSpanOf(src));
 }
 
-/** Per-slot field spans, or `undefined`. */
-export function fieldSpansOf(node: object): (SourceSpan | undefined)[] | undefined {
-  return fieldsOf(node)._fieldSpans;
+// Per-sub-component span arrays (`_fieldSpans`/`_valueSpans`) were removed from
+// the Node shape: the eval tree keeps only node-level `_spanStart`/`_spanEnd`,
+// and authored sub-component whitespace is normalized (comments still round-trip
+// via a node-span comment scan — see `commentRunsWithinSpan`). The accessors are
+// retained as no-op reads/writes so the css-parser builders that still call them
+// keep compiling; the getters always return `undefined`, the setters do nothing.
+
+/** Removed: per-slot field spans are no longer stored. Always `undefined`. */
+export function fieldSpansOf(_node: object): (SourceSpan | undefined)[] | undefined {
+  return undefined;
 }
 
-export function setFieldSpans(node: object, spans: (SourceSpan | undefined)[] | undefined): void {
-  fieldsOf(node)._fieldSpans = spans;
+/** No-op: per-slot field spans are no longer stored on the node. */
+export function setFieldSpans(_node: object, _spans: (SourceSpan | undefined)[] | undefined): void {
+  // intentionally empty
 }
 
-/** Per-segment value spans, or `undefined`. */
-export function valueSpansOf(node: object): (SourceSpan | undefined)[] | undefined {
-  return fieldsOf(node)._valueSpans;
+/** Removed: per-segment value spans are no longer stored. Always `undefined`. */
+export function valueSpansOf(_node: object): (SourceSpan | undefined)[] | undefined {
+  return undefined;
 }
 
-export function setValueSpans(node: object, spans: (SourceSpan | undefined)[] | undefined): void {
-  fieldsOf(node)._valueSpans = spans;
+/** No-op: per-segment value spans are no longer stored on the node. */
+export function setValueSpans(_node: object, _spans: (SourceSpan | undefined)[] | undefined): void {
+  // intentionally empty
 }
