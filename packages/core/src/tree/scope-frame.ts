@@ -72,9 +72,14 @@ export interface BindingEntry {
 
 export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
   const declValue = decl.value;
+  // A parser may deliver a multi-part value as a flat segment array (or a bare
+  // string) rather than a single Node — e.g. Less `@sizes: small 1, large 2`.
+  // Coalesce it to its structured node lazily on first read so the cell always
+  // materializes a value instead of staying value-less.
   return {
     cell: {
       value: declValue instanceof Node ? declValue : undefined,
+      prepareValue: declValue instanceof Node ? undefined : () => decl.valueNode(),
       sourceNode: decl,
       readonly: decl.options?.readonly
     },

@@ -1834,4 +1834,37 @@ describe('Control Nodes', () => {
       }
     `);
   });
+
+  it('materializes a binding cell for a var-declaration whose value is a flat segment array', async () => {
+    // Regression for the Less each() cluster. The Less parser assembles a
+    // multi-part variable value (`@sizes: small 1, large 2`) as a FLAT segment
+    // array — [Keyword(small), Num(1), Keyword(','), Keyword(large), Num(2)] —
+    // not a single List Node. Referencing that variable (here as an each()/$for
+    // iterable) must still resolve: the binding cell must materialize the array
+    // into a Node instead of leaving the cell value-less (which threw
+    // "Binding cell has no value").
+    const context = new Context();
+    const sizes = vardecl({
+      name: 'sizes',
+      value: [new Any('small'), num(1), new Any(','), new Any('large'), num(2)]
+    });
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([
+      sizes,
+      makeLoop(
+        makePattern(['value', 'key']),
+        ref({ key: 'sizes' }, { type: 'variable' }),
+        loopRules
+      )
+    ]);
+    context.root = root;
+
+    const css = await renderNodeToString(root, context);
+
+    // Two comma-separated iterations, each a space-list value.
+    expect(css).toContain('item: small 1');
+    expect(css).toContain('item: large 2');
+  });
 });

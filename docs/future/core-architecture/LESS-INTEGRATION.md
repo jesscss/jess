@@ -81,10 +81,19 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
   Core-repro: construct a Rules with vs without a file-bearing treeContext, assert `_getPath` base =
   file.path when present, cwd otherwise. Clears path-resolution(3) + import/charset/namespacing
   fixtures. (url-rebasing subset stays failing — unimplemented.)
-- [ ] **C — scope/binding unresolved (~10 tests).** `Binding cell has no value` (`scope-frame.ts:53`
-  via `reference.ts`), `'X' is not defined` (height/sub/primary), `No matching mixins`. Live-binding
-  materialization timing. Likely 2-3 sub-bugs. Core-reproducible. Relates to [[mixin-output-frame-linking]],
-  [[feedback-setdefined-cell-not-node]].
+- [~] **C — scope/binding unresolved (~10 tests). PARTIAL — sub-bug #1 done (commit 70888504e).**
+  Sub-bug #1 (`Binding cell has no value`, `scope-frame.ts:53`): the Less parser assembles a multi-part
+  var value (`@sizes: small 1, large 2`) as a FLAT segment array, not a List Node;
+  `createVarDeclarationBindingEntry` dropped non-Node values to `undefined` so the cell was value-less.
+  FIX: `Declaration.valueNode()` coalesces `Node|string|segment[]` → structured comma-List of
+  space-Sequences; the cell carries a lazy `prepareValue`. Core repro in control.test.ts. Cleared the
+  functions.test.ts each() nested-rules tests (2) + `functions-harness.less`; 0 regressions. REMAINING
+  sub-bugs (open): #2 `'X' is not defined` — Less namespace/property ACCESSOR lookup (`#ns1[foo]`,
+  `@defaults[@nested][@color]`, `#ns1.vars[$sub]`): namespacing-1/2/4/media, namespace-targeted; #3
+  `No matching mixins` (namespacing-functions `.add`, mixins-interpolated). Also `scope.less` blocks on
+  an UNRELATED `Cannot read properties of undefined (reading 'adopt')` (present at baseline, not the
+  `'height'` leak). These are distinct root causes (accessor resolution / leaky mixin-output), not the
+  binding-cell timing bug. Relates to [[mixin-output-frame-linking]], [[feedback-setdefined-cell-not-node]].
 - [ ] **E — compiler lifecycle / root output (~7 tests).** compiler-reuse(6)+public-api(1):
   `undefined.valueOf`, visitor hooks returning undefined, evaluated root not retained for
   serialization/visitors; plus `@import "x.css"` → `url("x.css")` serialize diff. Core-reproducible.
@@ -128,3 +137,4 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
 - **Cluster A partial** (b53590d9d): writeSelectorLike + string-selector header + less-parser prelude-dup; at-rule-bubbling 6/6, jess +7.
 - **Cluster B** (merged): safeParse attaches file-bearing TreeContext to root Rules (1 line, _treeContext public field); path-resolution 3/3, all-less +6 in-worktree, 0 new. jess-parseman all-less baseline now 41/93 (single gate ref).
+- **Cluster C partial** (70888504e, `less/cluster-c`, not merged): sub-bug #1 binding-cell materialization — `Declaration.valueNode()` coalesces flat parser segment-array var values; `createVarDeclarationBindingEntry` lazy `prepareValue`. functions.test.ts each() nested-rules (2) green, all-less +1 (`functions-harness.less`), full less suite 64→67 pass. Core suite unchanged (2 known ns-fastpath + pre-existing `sibling collapsed` mixin test + `extend-less-fixtures` module artifact; 0 new). Sub-bugs #2 (namespace accessor lookup) / #3 (`No matching mixins`) still open.
