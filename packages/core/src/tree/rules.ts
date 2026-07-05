@@ -183,13 +183,19 @@ function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): vo
   }
   const chain = frame.fallbackFrame;
   let tail: ScopeFrame = importFrame;
+  // Walk to the tail of importFrame's own fallback chain. The `seen` guard makes
+  // this loop total even if a prior link left a cycle in the chain (which would
+  // otherwise never hit the `=== chain/frame` stops) — we simply stop rather
+  // than append into a cycle.
+  const seen = new Set<ScopeFrame>([importFrame]);
   while (
     tail.fallbackFrame !== undefined
     && tail.fallbackFrame !== chain
     && tail.fallbackFrame !== frame
-    && tail.fallbackFrame !== importFrame
+    && !seen.has(tail.fallbackFrame)
   ) {
     tail = tail.fallbackFrame;
+    seen.add(tail);
   }
   if (tail.fallbackFrame === undefined) {
     tail.fallbackFrame = chain;

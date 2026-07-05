@@ -648,6 +648,13 @@ export function lookupScopeFrameVariable(
     if (!fallbackFrame) {
       return { kind: 'miss' };
     }
+    // If the next fallback head was already searched, the fallback chain has
+    // cycled — every remaining frame is visited, so the symbol is not here.
+    // Terminate (the inner `break` above only stops a single parent walk; this
+    // guard is what keeps a cyclic chain from spinning forever).
+    if (visitedFallbackFrames?.has(fallbackFrame)) {
+      return { kind: 'miss' };
+    }
 
     f = fallbackFrame;
     visitedFallbackFrames ??= new Set();
