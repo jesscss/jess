@@ -260,7 +260,11 @@ right fix depends on **how granular span tracking needs to be**, and the consume
     only authored fidelity that matters is COMMENTS. The `TriviaMap` already tracks `hasComment` per run by
     offset (`types/index.ts:22`), so the `valueSpansOf`/`fieldSpansOf` readers collapse to one **"is there a
     comment in this node's `[spanStart,spanEnd]`?"** range check against the TriviaMap — PRESERVES comment
-    fidelity while dropping the arrays (strictly better than losing fidelity). **Plan:** delete the 2 fields +
+    fidelity while dropping the arrays (strictly better than losing fidelity). **The trivia source is PARSÉMAN's**
+    — the grammar's `trivia()` combinator (`css-parser/grammar.ts:25` `rw = trivia(ws|comment)`) logs offsets →
+    `buildLazyTriviaMap(triviaLog, src)` (`builders.ts:253`) → `opts.trivia` (lazy whole-doc `TriviaMap`).
+    `valueSpans`/`fieldSpans` were DUPLICATING position data the parser already holds; the comment-range check
+    queries `opts.trivia` (via `sourceRoot._treeContext.opts.trivia`), not per-node arrays. **Plan:** delete the 2 fields +
     accessors; replace core readers (selector-complex/compound/pseudo, declaration, at-rule) with the node-range
     comment check; make parser WRITERS (`css-parser` set*) no-op stubs FIRST (cross-package — parser owners
     remove the calls later; don't reach into the parser). Gate: normal render byte-identical; round-trip keeps
