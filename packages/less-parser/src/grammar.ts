@@ -551,17 +551,20 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // reinterprets a lone `@name` as a param.
   const argRest = node('Rest', parser({ trivia: rw }, choice(sequence(lessVar, literal('...')), literal('...'))));
   const argNamedSeq = node('NamedArg', parser({ trivia: rw }, sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueSequence))));
-  const argNamedList = node('NamedArg', parser({ trivia: rw }, sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueList))));
   const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, g.valueSequence);
-  const callArgList = choice(argRest, argNamedList, g.AnonymousMixinDefinition, DetachedRuleset, g.valueList);
-  const functionCallArgs = parser({ trivia: rw }, sequence(optional(sequence(sepBy(callArgSeq, literal(',')), many(sequence(literal(';'), optional(callArgList))))), literal(')')));
-  // Mixin args differ from function args in ONE way: after a `;`, commas keep
-  // splitting args (`sepBy(callArgSeq, ',')`) instead of folding into a value list.
-  // This is what lets `.m(@a: 1; @b: 2, @c: 3)` be recognized as the illegal
-  // `,`/`;` mix (two named params in a `;`-group) rather than one list-valued param.
-  // The assembled value is otherwise identical (`_assembleArgs` folds the comma run).
-  const MixinArgs = node('MixinArgs', parser({ trivia: rw },
-    sequence(literal('('), optional(sequence(sepBy(callArgSeq, literal(',')), many(sequence(literal(';'), optional(sepBy(callArgSeq, literal(','))))))), literal(')'))));
+  // Function-call args and mixin-call args are now IDENTICAL — one `argsInner`. After
+  // a semicolon, commas keep splitting args (`sepBy(callArgSeq, ',')`), so both `.m(…)`
+  // and `foo(…)` catch the one illegal case: mixing the comma and semicolon ARG
+  // separators — i.e. two named params in a single semicolon-group (`@a: 1, @b: 2`) —
+  // rather than mis-parsing it as one list-valued param. (This is only about the comma
+  // vs semicolon argument separators; a `/` inside a value — `16px/1.5`, `1fr / 2fr` —
+  // is a value-internal separator and is never involved.) Value assembly is identical
+  // (`_assembleArgs` folds a comma run into a List). Named args + spreads flow through
+  // FUNCTION calls too — a `.jess` extension; validity is a dialect concern
+  // (Less-4-compat flags them; the runtime rejects a target that declares no names).
+  const argsInner = optional(sequence(sepBy(callArgSeq, literal(',')), many(sequence(literal(';'), optional(sepBy(callArgSeq, literal(',')))))));
+  const functionCallArgs = parser({ trivia: rw }, sequence(argsInner, literal(')')));
+  const MixinArgs = node('MixinArgs', parser({ trivia: rw }, sequence(literal('('), argsInner, literal(')'))));
   // `calc(…)` follows the CSS math grammar, whose only operators are `+ - * /` — a
   // bare `%` operand (e.g. `calc(1 %)`) is a syntax error (Chevrotain: mathProduct
   // has no `%` alt, so the trailing `%` fails the closing `)`). We model calc as a

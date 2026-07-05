@@ -944,6 +944,9 @@ export class LessGrammar extends CssParser {
       name: unknown; args: unknown; _options?: Record<string, unknown>;
     };
     const key = typeof call.name === 'string' ? call.name : '';
+    // Function calls share the mixin args grammar, so they get the same `,`/`;`
+    // mix rejection (e.g. `foo(@a: 1; @b: 2, @c: 3)`).
+    this._checkMixedArgDelimiters(call.args as unknown as JessNode, 'function', loc);
     const nameRef = new Reference(key, { type: 'function', fallbackValue: true } as any, loc);
     const next = new Call({ name: nameRef as any, args: call.args as any }, { silentFail: true } as any, loc);
     return next as unknown as JessNode;
@@ -1139,22 +1142,29 @@ export class LessGrammar extends CssParser {
   private _buildMixinArgs(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const inner = this._betweenParens(spannedComponents(raw));
     const args = this._assembleArgs(inner, loc);
-    // Less forbids mixing `,` and `;` param separators: once `;` separates args,
-    // `,` is a value-list separator, so a `;`-group may not hold 2+ named params
-    // (`@a: 1, @b: 2`). `_assembleArgs` renders such a group as a List of ≥2
-    // VarDeclarations — detect and reject.
-    const list = args as unknown as { options?: { sep?: string }; value?: JessNode[] };
-    if (list.options?.sep === ';' && Array.isArray(list.value)) {
-      for (const el of list.value) {
-        const group = el as unknown as { type?: string; value?: JessNode[] };
-        if (group?.type === 'List' && Array.isArray(group.value)
-          && group.value.filter(n => (n as { type?: string })?.type === 'VarDeclaration').length >= 2) {
-          this._error('Cannot mix ; and , as delimiter types in mixin arguments', loc.start);
-          break;
-        }
+    this._checkMixedArgDelimiters(args as unknown as JessNode, 'mixin', loc);
+    return args;
+  }
+
+  /** Less forbids mixing the COMMA and SEMICOLON argument separators: once a
+   * semicolon separates args, a comma is a value-list separator, so a semicolon-group
+   * may not hold 2+ named params (`@a: 1, @b: 2`). `_assembleArgs` renders such a group
+   * as a List of ≥2 VarDeclarations. (This is purely about the `,` vs `;` argument
+   * separators — a `/` inside a value is unrelated and never checked.) Applies to BOTH
+   * mixin and function calls (args are unified). */
+  private _checkMixedArgDelimiters(args: JessNode | undefined, kind: 'mixin' | 'function', loc: LocationInfo): void {
+    const list = args as unknown as { type?: string; options?: { sep?: string }; value?: JessNode[] };
+    if (list?.type !== 'List' || list.options?.sep !== ';' || !Array.isArray(list.value)) {
+      return;
+    }
+    for (const el of list.value) {
+      const group = el as unknown as { type?: string; value?: JessNode[] };
+      if (group?.type === 'List' && Array.isArray(group.value)
+        && group.value.filter(n => (n as { type?: string })?.type === 'VarDeclaration').length >= 2) {
+        this._error(`Cannot mix ; and , as delimiter types in ${kind} arguments`, loc.start);
+        break;
       }
     }
-    return args;
   }
 
   /**

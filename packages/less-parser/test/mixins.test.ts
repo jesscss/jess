@@ -4,6 +4,20 @@ import { Parser } from '../src/index.js';
 const parser = new Parser();
 const parse = parser.parse;
 
+describe('function/mixin argument unification', () => {
+  it('function calls accept spreads and named args (a .jess extension)', () => {
+    for (const src of ['.a { x: foo(@args...); }', '.a { x: foo(@k: 1, red); }', '.a { x: foo(a; b, c); }']) {
+      expect(parse(src).errors.length).toBe(0);
+    }
+  });
+
+  it('function calls reject the illegal ,/; mix, same as mixin calls', () => {
+    const { errors } = parse('.a { x: foo(@a: 1; @b: 2, @c: 3); }');
+    expect(errors.length).toBe(1);
+    expect(String(errors[0]!.message ?? errors[0])).toContain('Cannot mix ; and ,');
+  });
+});
+
 function namedNode(n: Node | string | undefined): { name: { rawKey?: { type: string; toString(): string } } } {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return n as unknown as { name: { rawKey?: { type: string; toString(): string } } };
