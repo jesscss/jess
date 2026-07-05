@@ -6,7 +6,8 @@ import {
   SelectorList,
   Combinator,
   Ampersand,
-  Node
+  Node,
+  type SelectorLike
 } from '@jesscss/core';
 import { createLessAdapter } from '../transform/less-adapter.js';
 import { toLessNode } from '../transform/to-less.js';
@@ -23,7 +24,7 @@ import type {
  * the combinator attached to the following selector component.
  */
 function flattenSelectorToElements(
-  selector: string | Selector | SelectorList,
+  selector: SelectorLike,
   cache?: WeakMap<Node, unknown>
 ): LessNode[] {
   const elements: LessNode[] = [];
@@ -31,6 +32,12 @@ function flattenSelectorToElements(
   if (typeof selector === 'string') {
     elements.push(createElementAdapter(selector, createLessCombinator(''), cache));
     return elements;
+  }
+
+  // An array IS a selector list (strings-not-nodes model). Flatten the first item.
+  if (Array.isArray(selector)) {
+    const first = selector[0];
+    return first !== undefined ? flattenSelectorToElements(first, cache) : [];
   }
 
   if (selector instanceof SelectorList) {
@@ -156,11 +163,11 @@ function createElementAdapter(
 }
 
 export function transformSelectorToLess(
-  sel: string | Selector | SelectorList,
+  sel: SelectorLike,
   cache?: WeakMap<Node, unknown>
 ): LessNode {
   const elements = flattenSelectorToElements(sel, cache);
-  if (typeof sel === 'string') {
+  if (typeof sel === 'string' || Array.isArray(sel)) {
     return {
       type: 'Selector',
       typeIndex: undefined,
