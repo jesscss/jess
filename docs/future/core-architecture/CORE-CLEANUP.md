@@ -17,7 +17,7 @@ change is real only if the stable set moves.
 
 ## Driver terminal status (this pass)
 
-**Stable failures: 85 → 53, zero regressions.** After the mechanical harvest reached 60, the
+**Stable failures: 85 → 49, zero regressions.** After the mechanical harvest reached 60, the
 "monolithic" E2/E3 cluster is being **chipped by scoped sub-agents in an isolated worktree** — and
 keeps dissolving into specific bugs, not the feared monolith:
 - **E2-a** (825dc3ec0, 60→59): property lookup now consults ancestor import fallback frames.
@@ -28,6 +28,10 @@ keeps dissolving into specific bugs, not the feared monolith:
 - **provenance-migration stale tests** (any.test inline + control-surface, 58→53): the `501abdb8c`
   side-table migration mechanically rewrote `.location` (array) → `sourceSpanOf` (`{start,end}|undefined`)
   without fixing `.toHaveLength(0)`/`[...span]` probes. 5 tests cleared; vein now swept clean.
+- **nesting-collapse** (1780adabf, 53→49): genuine source bug — `getHoistedParent` (serialize-helper.ts)
+  only recovered the enclosing parent from eval-captured `AtRule.frames`, `undefined` for directly-built
+  trees, so bare decls in a hoisted `@media` lost their selector header. Fix: render-pass-scoped
+  `WeakMap<AtRule, frames>` fallback capturing the live frame stack at container entry. 4 tests.
 Remaining genuine monolith (import-style fully triaged, all traced to file:line): config-surface
 `with`-bindings not on the callable/closure definition chain, wrapper-is-scope-identity, namespace
 cold/lazy eval-ordering. Still tractable ground in nesting-collapse/mixin/call/extend before that floor.
