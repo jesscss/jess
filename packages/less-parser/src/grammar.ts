@@ -99,7 +99,19 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const important = sequence(literal('!'), literal('important'));
 
   // ── Less variable declaration / reference ───────────────────────────────────
-  const detachedBlock = sequence(literal('{'), g.declarationList, literal('}'));
+  // A detached ruleset assigned to a variable: `@name: { … }`. The structured branch
+  // parses the body as a declaration list (→ Mixin). If that fails — e.g. bootstrap's
+  // `@escaped-characters: { <: %3c; … }`, whose keys (`<`, `>`, `(`, `)`) are not valid
+  // property names — the raw fallback captures the balanced `{ … }` verbatim. Historical
+  // Less treats such a block as a raw string (only re-parsed on interpolation); the
+  // builder then produces a `Quoted` so `@plugin` functions (e.g. escape-svg) read it as
+  // a string. The fallback is a plain balanced scan (no node wrapper); the builder
+  // distinguishes it by the absence of structured child nodes.
+  const rawDetachedBlock = sequence(literal('{'), noTrivia(scanTo(literal('}'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] })), literal('}'));
+  const detachedBlock = choice(
+    sequence(literal('{'), g.declarationList, literal('}')),
+    rawDetachedBlock
+  );
   // Var-decl colon. Spaces around it are fine (`@x : y` is a declaration). It is
   // NOT a declaration only in the pseudo pattern `<space>:<word>` — the colon has a
   // space before AND clings to the following ident (e.g. `@page :first { … }` is an
