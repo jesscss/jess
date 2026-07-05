@@ -20,7 +20,7 @@ import {
   consumeTriviaBetweenOffsets,
   emitTriviaTokens
 } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf, copyNodesForOwnership } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
 import { canRenderStaticRuleArrayDirectly } from './util/static-rules.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
@@ -720,15 +720,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   ownRules(rules: Node[]): Node[] {
-    const owned = new Array<Node>(rules.length);
-    for (let i = 0; i < rules.length; i++) {
-      const copied = copyWithReusableLeavesPreservingComments(rules[i]!);
-      if (!(copied instanceof Node)) {
-        throw new TypeError('Expected at-rule rule copy to remain a node');
-      }
-      owned[i] = copied;
-    }
-    return owned;
+    return copyNodesForOwnership(rules, copyWithReusableLeavesPreservingComments);
   }
 
   private applyDerivedMetadata(node: AtRule): AtRule {

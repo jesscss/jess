@@ -40,7 +40,7 @@ import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, 
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
-import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership } from './util/cloning.js';
 import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 
@@ -186,15 +186,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private ownRules(value: RulesetValue['rules']): Node[] {
-    const owned = new Array<Node>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      const copied = copyOwnedWithReusableLeaves(value[i]!);
-      if (!(copied instanceof Node)) {
-        throw new TypeError('Expected ruleset rule copy to remain a node');
-      }
-      owned[i] = copied;
-    }
-    return owned;
+    return copyNodesForOwnership(value, copyOwnedWithReusableLeaves);
   }
 
   /**
@@ -1707,7 +1699,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
   override prepareRegistration(context: Context): MaybePromise<this> {
     if (!this.registrationPrepared) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return this._prepareRulesetRegistration(context) as MaybePromise<this>;
     }
     return this;
@@ -2006,12 +1997,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.guard = undefined;
         return undefined;
       };
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
       return (isThenable(guardResult)
         ? guardResult.then(result => evalBodyAfterGuard(finishGuard(result)))
         : evalBodyAfterGuard(finishGuard(guardResult))) as MaybePromise<Rules>;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
     return evalBodyAfterGuard(undefined) as MaybePromise<Rules>;
   }
 }
