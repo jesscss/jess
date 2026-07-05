@@ -18,6 +18,26 @@ import {
   writeRenderText
 } from './util/render-buffer.js';
 
+/** Logical query keywords that take a space before a parenthesized group. */
+const QUERY_KEYWORDS = new Set(['not', 'and', 'or', 'only']);
+
+/**
+ * A `Paren` term attaches to the preceding identifier as a function-call form
+ * (`url-prefix()`, `regexp("x")`) with no separating space — unless that
+ * identifier is a logical query keyword (`not`/`and`/`or`/`only`), which takes
+ * a space before its parenthesized group (`not (min-width: 5px)`).
+ */
+function queryTermAttachesToPrev(prev: Node, node: Node): boolean {
+  if (!(node instanceof Paren)) {
+    return false;
+  }
+  if (!(prev instanceof Keyword || prev instanceof Any || prev instanceof Anonymous)) {
+    return false;
+  }
+  const text = `${prev.valueOf()}`.trim().toLowerCase();
+  return text !== '' && !QUERY_KEYWORDS.has(text);
+}
+
 function getKnownQueryConditionSourceText(node: Node | string): string | undefined {
   if (typeof node === 'string') {
     return node;
@@ -39,15 +59,19 @@ function getKnownQueryConditionSourceText(node: Node | string): string | undefin
   }
   if (node.constructor === QueryCondition) {
     const qc = node as QueryCondition;
-    const parts = new Array(qc.value.length);
+    let out = '';
     for (let i = 0; i < qc.value.length; i++) {
-      const text = getKnownQueryConditionSourceText(qc.value[i]!);
+      const term = qc.value[i]!;
+      const text = getKnownQueryConditionSourceText(term);
       if (text === undefined) {
         return undefined;
       }
-      parts[i] = text;
+      if (i > 0 && !queryTermAttachesToPrev(qc.value[i - 1]!, term)) {
+        out += ' ';
+      }
+      out += text;
     }
-    return parts.join(' ');
+    return out;
   }
   if (node.constructor === Paren) {
     const paren = node as Paren;
@@ -200,6 +224,10 @@ export class QueryCondition extends Sequence {
     );
   }
 
+  private attachesToPrevTerm(prev: Node | undefined, node: Node): boolean {
+    return prev !== undefined && queryTermAttachesToPrev(prev, node);
+  }
+
   private writeQueryConditionSyntax(value: Node[], options: FinalPrintOptions): void {
     const w = options.writer;
     const length = value.length;
@@ -209,7 +237,7 @@ export class QueryCondition extends Sequence {
     }
 
     for (let i = 0; i < length; i++) {
-      if (i > 0) {
+      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!)) {
         w.add(' ');
       }
       const saved = options.suppressBoundaryTrivia;
@@ -239,7 +267,7 @@ export class QueryCondition extends Sequence {
 
     let out = '';
     for (let i = 0; i < length; i++) {
-      if (i > 0) {
+      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!)) {
         w.add(' ');
         out += ' ';
       }
@@ -338,7 +366,7 @@ export class QueryCondition extends Sequence {
     const w = options.writer;
     const length = value.length;
     for (let i = start; i < length; i++) {
-      if (i > 0) {
+      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!)) {
         w.add(' ');
         out += ' ';
       }
