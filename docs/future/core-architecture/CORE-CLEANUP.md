@@ -195,6 +195,26 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
 
 ## Focus C — Performance: collapse the walk count (ACTIVE — the perf drive)
 
+### ⛔ STANDING PERF RULE — FAST V8 OBJECTS ONLY (hard-coded, non-negotiable)
+Hot-path objects MUST be **fixed-shape / monomorphic** so V8 keeps them in fast mode (stable hidden class +
+inline caches). **BANNED on hot paths:** `Object.getOwnPropertyDescriptors`/`defineProperties`/`defineProperty`,
+`Reflect.deleteProperty` / `delete obj.x`, `Object.assign` into a varying-shape object, `Object.create(proto)`
++ dynamic property attach, `setPrototypeOf`/`__proto__` mutation. These push objects into dictionary mode and
+kill property-access ICs. Build objects with a **constructor or a literal that sets ALL fields up front, in a
+fixed order** (add `= undefined` fields rather than attaching later). Precedent is already IN this codebase:
+`node-base.ts:533/577/696` note the old per-instance `Object.defineProperties` was **~38x slower** and was
+replaced with constructor-set fields — reference.ts never got the memo.
+**Inventory of current violations (fix on the perf drive):**
+- **`reference.ts:2594-2616` (`createRulesLikeReferenceSurface`) — HOT, per mixin-ruleset reference.** The
+  `getOwnPropertyDescriptors` → `Reflect.deleteProperty`×3 → `defineProperties`×2 dance. **NUKE IT** — replace
+  with a proper fixed-shape surface (a small class with declared fields, or the node's own clone constructor
+  + 3 field sets). This IS the #1 dynamic-eval alloc (~921ms). Follow the node-base 38x pattern.
+- `render-buffer.ts:290/297` — `Object.getOwnPropertyDescriptor(node,'render')` on the render path; verify
+  frequency, replace with a direct property/flag check.
+- `define-function.ts:338/628/759/775` — `defineProperties`/`assign` at FUNCTION-REGISTRATION time (cold, once
+  per definition); lower priority but convert for consistency.
+- `logger.ts:13` — cold, ignore.
+
 Suite is green, so this is now the live drive. **Finding (traced this pass):** the render
 pipeline runs ~4 structural passes *regardless of content*, and two of them exist only because
 eval still holds serialization/collapse state it was supposed to hand off.
@@ -333,9 +353,12 @@ clone/inherit does another (`node-base.ts:1384`). Every `sourceSpanOf`/`spanStar
 mis-stored in a side-table instead of on the node.** This is the `501abdb8c` regression: provenance was
 moved off the node (to free the old `.state` name for Parséman) into a WeakMap; the churn + get-indirection
 is the cost. **FIX = put spans back INLINE on the node** (a dedicated field the parser sets at construction;
-`.flags`/Parséman naming is already resolved, so the original name-collision reason is gone). Eliminate the
-`PROV` WeakMap entirely — do not "lazy-alloc" or "denser-store" it; it shouldn't exist. Cross-cutting
-(node-base + provenance.ts + all `*Of` readers) — own stage, gate byte-identical + baseline.
+`.flags`/Parséman naming is already resolved, so the original name-collision reason is gone). The parser sets
+the field ONCE at construction (parser-level, where it belongs); clone/inherit then copies it as part of the
+node's **fixed shape** — a monomorphic field copy, NOT the current eval-time `setSourceSpan` WeakMap write
+(`node-base.ts:1384`). Eliminate the `PROV` WeakMap entirely — do not "lazy-alloc" or "denser-store" it; it
+shouldn't exist. No WeakMap, no eval churn, fast V8 object. Cross-cutting (node-base + provenance.ts + all
+`*Of` readers) — own stage, gate byte-identical + baseline.
 
 ### Remaining tracker perf items — triage verdicts (explore-all pass)
 - **Focus A — Ruleset source-direct render eligibility:** minor; render fast-path *eligibility* refinement,
@@ -354,8 +377,10 @@ is the cost. **FIX = put spans back INLINE on the node** (a dedicated field the 
 `Object.getOwnPropertyDescriptors` + `Object.defineProperties` + a shallow `_options` clone** — ~20-30
 descriptor objects PER call, once per mixin-ruleset reference resolve (call sites 2792/2810/2833/2988/3118).
 ~921ms / ~8% of dynamic eval self-time.
-- **Lowest-risk fix: cheaper CONSTRUCTION** — replace the reflective descriptor copy with a direct field
-  assignment or a prototype-delegating thin wrapper. Same objects/semantics, far cheaper per call. Do FIRST.
+- **MANDATORY (per the FAST V8 OBJECTS rule above): nuke the reflective descriptor dance.** Replace the
+  `getOwnPropertyDescriptors`/`Reflect.deleteProperty`/`defineProperties` with a fixed-shape surface — a small
+  class with declared fields, or the node's own clone-constructor + the 3 explicit field sets (sourceNode,
+  parent, index). Follow the `node-base.ts` 38x precedent. This is THE fix, not an option; do it FIRST.
 - **Memoization (agent's FIX A) — CAUTION, do NOT key on `(input, referenceNode)` alone.** The surface's
   `parent` is the *reference-SITE scope*, which differs when the same reference node resolves in different
   scopes (recursion / a mixin called from multiple sites). Keying without the resolution scope returns a
