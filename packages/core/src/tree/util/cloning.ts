@@ -1,5 +1,6 @@
 import { spanStartOf } from './provenance.js';
 import { F_HAS_NODE_CHILD, F_NON_STATIC, Node } from '../node-base.js';
+import { Selector } from '../selector.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 
@@ -50,6 +51,17 @@ function copyForPlacement(
   }
   if (!options.owned && canReuseLeaf(node)) {
     return reuseLeaf(node);
+  }
+  // Copy-on-write: a Selector's ownership clone adopts (reparents) its child
+  // selectors. If it shared them, adopt would reparent the SOURCE children and
+  // corrupt the shared source tree, so detach non-reusable child selectors into
+  // owned copies. Scalar leaves are still reused (no needless clones).
+  if (node instanceof Selector) {
+    return node.cloneForPlacement({
+      reuseLeaves: true,
+      detachChildren: true,
+      ...(options.preserveComments ? { stripComments: false } : {})
+    });
   }
   return node.cloneForPlacement(options.preserveComments ? { stripComments: false } : undefined);
 }

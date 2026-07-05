@@ -72,6 +72,12 @@ export type PlacementCloneOptions = {
    * Reuse source-free scalar leaves instead of allocating identical copies.
    */
   reuseLeaves?: boolean;
+  /**
+   * Copy-on-write: shallow-clone (detach) non-reusable child nodes instead of
+   * sharing them, so this placement can be reparented without mutating the
+   * shared source tree.
+   */
+  detachChildren?: boolean;
 };
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
@@ -847,6 +853,20 @@ export abstract class Node<
   }
 
   /**
+   * True when this node structurally owns at least one child Node, read from the
+   * value directly (not the F_HAS_NODE_CHILD flag, which can be stale before
+   * adopt runs). Used by copy-on-write placement to detach containers that would
+   * otherwise masquerade as reusable leaves.
+   */
+  hasNodeChild(): boolean {
+    let found = false;
+    this._visitEntries(() => {
+      found = true;
+    });
+    return found;
+  }
+
+  /**
    * Visit each child Node entry described by childKeys, calling `cb` for each.
    */
   private _visitEntries(
@@ -1159,9 +1179,17 @@ export abstract class Node<
     // in a deep-cloned sub-tree. We only map direct child nodes to apply
     // placement policy at this level (strip comments, reuse inert leaves); we do
     // NOT recurse into a deep copy.
+    const detachChildren = options?.detachChildren === true;
     const clone = this.clone((n) => {
       if (stripComments && n.type === 'Comment') {
         return n.nil().inherit(n);
+      }
+      // Copy-on-write detach: a child that itself owns child nodes will be
+      // reparented into this new placement, so it must clone-to-detach (its
+      // source parent stays intact). A container can still look like a reusable
+      // leaf when its F_HAS_NODE_CHILD flag is stale, so test the value directly.
+      if (detachChildren && n.hasNodeChild()) {
+        return n.cloneForPlacement({ reuseLeaves, detachChildren });
       }
       return reuseLeaves && n.canReuseAsLeaf() ? n.reuseAsLeaf() : n;
     });
