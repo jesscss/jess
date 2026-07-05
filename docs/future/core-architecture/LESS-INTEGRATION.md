@@ -375,3 +375,14 @@ Gaps to close when building the sandbox:
 3. **Guard test:** assert plugin-js is absent from `dependencies` and present in `peerDependenciesMeta` as optional on
    BOTH `jess` and `jess-plugin-less-compat`; add a `pnpm publish --dry-run` closure check so it never enters the
    shipped runtime tree. (`bootstrap-less-port` is already correctly a devDep of `jess`.)
+
+## 2026-07-05 (resumed on integrate/final) — merges + parser-tail diagnosis
+- **eval-important MERGED** (core 2732/0, all-less 63/93 held): 6 `x instanceof Any ? x : undefined` narrowings
+  across Declaration eval-state + registration/render dropped the string-normalized `important` flag. Now passed
+  through. `property-targeted` serializes `!important` (still fails on separate `background: $color` accessor).
+- **hasFlag throw = PARSER (mixins-guards/advanced/nested, 3 fixtures).** `callable-binding.ts:6`
+  `value.hasFlag(F_STATIC)` throws because a lone bare keyword as a mixin PARAM DEFAULT (`.default(@a: inherit)`) or
+  NAMED-ARG (`.m(@a: A)`) is emitted as a raw STRING, not a Keyword node. Source: `css-parser/builders.ts:784`
+  `_assembleValue` single-segment path skips the `_valueKeyword` wrapping the list branch applies. Core binding
+  correctly assumes param/arg values are Nodes. Fix (targeted): wrap the lone bare-string in a Keyword, scoped to the
+  mixin/arg builders so plain declaration bare-string values stay strings. NOTE: css-parser is shared css/less/scss/jess.
