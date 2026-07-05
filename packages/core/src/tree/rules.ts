@@ -572,11 +572,7 @@ function rulesMayContainExtends(rules: Rules): boolean {
 }
 
 function rulesMayContainReferenceImports(rules: Rules): boolean {
-  if (
-    rules.options.referenceMode === true
-    || rules._hasReferenceImports
-    || rules.hasReferenceImportChildSurface
-  ) {
+  if (rulesHasCarriedReferenceImportSurface(rules)) {
     return true;
   }
   const value = rules.rules;
