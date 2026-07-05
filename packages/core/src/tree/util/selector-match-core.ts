@@ -1900,6 +1900,7 @@ function searchWithinPseudoSelector(
     if (isNode(argSelector, N.SelectorList)) {
       // Check if target matches any alternative in the :is() selector list
       currentPath.push('arg');
+      const locsBefore = locations.length;
       for (let altIndex = 0; altIndex < argSelector.value.length; altIndex++) {
         const alternative = selectorListItemForMatch(argSelector.value[altIndex]!);
         currentPath.push(altIndex);
@@ -1918,9 +1919,15 @@ function searchWithinPseudoSelector(
       }
       currentPath.pop();
 
-      // Additional optimization: Check if target could be added as new alternative
-      // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
-      const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(selectorListItemForMatch(alt), target));
+      // Additional optimization: Check if the find (`target`) could be added as a new
+      // alternative — extending `:is(.a, .b)` with `.c` to become `:is(.a, .b, .c)`.
+      // This is only valid when the find actually OCCURS within this `:is()` (matched an
+      // existing alternative, above). An unconditional append would spuriously "match"
+      // any find against any `:is()` (e.g. a multi-position find `.ext8 .ext9` against
+      // `:is(.foo, …)` where it never appears), corrupting the selector.
+      const foundWithinIs = locations.length > locsBefore;
+      const canExtendAsList = foundWithinIs
+        && !argSelector.value.some(alt => isStructurallyEqual(selectorListItemForMatch(alt), target));
       if (canExtendAsList) {
         currentPath.push('arg');
         locations.push(withMatchScope({
