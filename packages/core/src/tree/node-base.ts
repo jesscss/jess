@@ -279,6 +279,16 @@ export const F_HOIST_VALUE = 0b10000000000000;
 export { F_HAS_SPAN };
 // Bit 15 — F_HAS_SPAN is bit 14; this is the next free bit.
 export const F_FROZEN = 0b1000000000000000;
+/**
+ * A declaration occurrence superseded by a later merge (`+:`/`&,:`/`&_:`) in the
+ * same cascade scope. This is DISTINCT from `F_VISIBLE` (which means "this node
+ * type is CSS output"): merge suppression is a runtime dedup/override signal that
+ * render, the merge re-coalesce idempotency check, and lookup all honor, while
+ * `F_VISIBLE` stays a purely by-type property. Set on the superseded anchor by
+ * `_coalesceMergedDeclarations`; a merge-suppressed node is treated as hidden by
+ * `visible`. Bit 16.
+ */
+export const F_MERGE_SUPPRESSED = 0b10000000000000000;
 
 /**
  * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
@@ -474,9 +484,15 @@ export abstract class Node<
     }
   }
 
-  /** Runtime tracking: has eval been run on this node? */
+  /**
+   * Whether this node renders as CSS output. True iff its type is visible
+   * (`F_VISIBLE`) AND it has not been superseded by a later declaration merge
+   * (`F_MERGE_SUPPRESSED`). Keeping merge suppression in its own bit lets
+   * `F_VISIBLE` stay a purely by-type property that eval/clone can preserve,
+   * while render + merge re-coalesce idempotency read the combined signal here.
+   */
   get visible() {
-    return this.hasFlag(F_VISIBLE);
+    return (this.flags & (F_VISIBLE | F_MERGE_SUPPRESSED)) === F_VISIBLE;
   }
 
   /**
