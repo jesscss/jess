@@ -280,7 +280,7 @@ right fix depends on **how granular span tracking needs to be**, and the consume
     `//` (line, no-collapse) from `/* */` (block, inline-safe) or any FUTURE erasable-but-meaningful trivia
     kind, and would silently mislabel non-comment trivia as a comment. Fine for OUR comment-in-range use; but
     the honest primitive is `hasNonWhitespace`, and finer needs should classify via the run's exposed
-    `src`+`[start,end]` (or add a `kind`/segments). Not urgent — a design note for when trivia broadens.
+    `src`+`[start,end]` (or add a `kind`/segments). **DON'T OVERFIT PARSEMAN (owner): we don't know what trivia consumers will want to skip/preserve** — keep the trivia primitive GENERAL (position + raw range, let consumers classify) rather than baking in 'comment'. A design note for the parser/Trivia owners.
   - **Span storage (V8, answered):** keep `_spanStart`/`_spanEnd` as TWO inline number fields (SMIs → 0 alloc,
     inline in the hidden-class slot) — NOT a `{start,end}` object (1 heap alloc per spanned node, reintroduces
     the WeakMap cost) and NOT a packed single number (two offsets exceed V8's 31-bit SMI range → boxes to a
@@ -396,10 +396,15 @@ serialization/collapse state; no new visibility/eval-free flag.
   so DYNAMIC content is also single-traversal; registration → construction-time index. Largest scope, last.
 
 ### Orchestration (perf work is branch-managed, not in-place on feature/parseman)
-- **`perf/walk-collapse` (worktree jess-perf-walk) is the sole integration branch.** Integrate ONLY from
-  `feature/parseman` (the shared trunk); other agents' work (e.g. less-integration) reaches you when THEY
-  merge to feature/parseman — never rebase directly onto another agent's branch. Trunk divergence is the
-  integrator's merge to resolve (rebase forward).
+- **`perf/walk-collapse` (worktree jess-perf-walk) is the sole integration branch.** Integrate ONLY from the
+  shared trunk; other agents' work (less-integration) reaches you when THEY merge to trunk — never rebase
+  directly onto another agent's branch. Trunk divergence is the integrator's merge to resolve (rebase forward).
+  - **⚠ TRUNK IS MIGRATING (coordinate):** the shared trunk is moving `feature/parseman` → `dev` (jess-dev
+    worktree) → `feature/less-v5-alpha-readiness` (the `~/git/oss/jess` main checkout) as another agent drives
+    all Less tests to green. So the latest fixes will land on `dev`, then `feature/less-v5-alpha-readiness`.
+    **Merge source follows the trunk:** keep merging `feature/parseman` until it's absorbed into `dev`, then
+    merge from `dev` / `feature/less-v5-alpha-readiness`. And eventually **`perf/walk-collapse` itself lands
+    into wherever the trunk settles** (team decides) — it's a large pile of perf wins to integrate forward.
 - Per stage: scope a precise spec → spawn an agent in its own worktree
   (`git worktree add ../jess-perf-<stage> -b perf/<stage> perf/walk-collapse`) with the setup block +
   spec → agent works to the gate, commits, reports before/after bench + failure set → integrator merges
