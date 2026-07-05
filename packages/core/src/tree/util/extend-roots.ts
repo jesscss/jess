@@ -196,6 +196,15 @@ function asExtendSelectorNode(value: SelectorLike): Selector {
       value.map(item => selectorListItemForRootExtend(item))
     );
   }
+  // Materialize any string-backed components of a legacy SelectorList node.
+  // Factory/parser-delivered lists may carry raw strings (e.g. `sellist(['.child'])`);
+  // those strings are dropped by the node-only placement copy downstream, leaving an
+  // empty appended slot. Turning them into nodes up front keeps the selector intact.
+  if (isNode(value, N.SelectorList) && value.value.some(item => typeof item === 'string')) {
+    return SelectorList.create(
+      value.value.map(item => selectorListItemForRootExtend(item))
+    ).inherit(value);
+  }
   return value;
 }
 

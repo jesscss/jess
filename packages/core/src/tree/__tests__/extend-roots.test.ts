@@ -114,7 +114,8 @@ describe('Extend Roots Registry', () => {
 
       const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
-        .base {
+        .base,
+        .child {
           color: red;
         }
       `);
