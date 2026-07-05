@@ -32,9 +32,24 @@ keeps dissolving into specific bugs, not the feared monolith:
   only recovered the enclosing parent from eval-captured `AtRule.frames`, `undefined` for directly-built
   trees, so bare decls in a hoisted `@media` lost their selector header. Fix: render-pass-scoped
   `WeakMap<AtRule, frames>` fallback capturing the live frame stack at container entry. 4 tests.
-Remaining genuine monolith (import-style fully triaged, all traced to file:line): config-surface
-`with`-bindings not on the callable/closure definition chain, wrapper-is-scope-identity, namespace
-cold/lazy eval-ordering. Still tractable ground in nesting-collapse/mixin/call/extend before that floor.
+- **call arg-surface** (68e28e0aa, 49→45): 4 stale tests updated to the live-binding shared-node model.
+- **extend cluster (6) — DEFERRED, all 6, with a CONTRADICTION needing an owner ruling** (cleanup/extend-cluster,
+  0 commits, clean):
+  - **Group A (4): committed-invariant contradiction on `ownCollapsedSourceChild`.** The extend
+    `sourceLeafClones===0` tests (5099574fd, May 9) require collapse to REUSE the source leaf; the newer
+    `selector-complex.test.ts:262`/`selector-compound.test.ts:240` "canonical survivor" tests (1291c8639,
+    May 27) require it to COPY (`resolved !== sourceChild`) — because `inherit(owner)` mutates the shared
+    source in place. Same code path, opposite requirements. A reuse-fix greens all 4 extend tests but
+    re-breaks the 2 newer ones. **NEEDS OWNER RULING: reuse (invariants 2/3/6, no-clone) vs copy-on-collapse.**
+  - **Group B (1): string-backed extend target** (`extend-roots.test.ts:116`) — `.child` string component
+    dropped by `typeof item!=='string'` filter → spurious empty list item; expected `.base`-only output is
+    ambiguous (materialize-noop vs append). Needs a semantics decision.
+  - **Group C (1): implicit-`&` over-materialization** (`extend.ts:280`) — needs target-scope-relative
+    source selection (absolute `fullSel` load-bearing for the cross-scope `.issue-2586` case). Scope-ancestor
+    comparison, not a dedupe.
+Remaining genuine monolith (import-style fully triaged): config-surface `with`-bindings not on the
+callable/closure definition chain, wrapper-is-scope-identity, namespace cold/lazy eval-ordering.
+Smaller tractable pockets before the floor: declaration (3), reference (3), mixin-recursion (2), cloning (1).
 
 ---
 _Earlier snapshot (mechanical harvest to 60):_ Every open tracker item is CLOSED or
