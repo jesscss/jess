@@ -228,6 +228,22 @@ or be **dropped**? **DX may change** — getter names, method surface, even publ
 node class as a metric; slim the fat ones. Shared behavior across lean types goes in **util functions**, not a
 fat base class.
 
+**SLIM targets (audit → `packages/core/perf/SLIM_NODES_AUDIT.md`; heap census ~39k nodes/7.1MB; Ruleset 12000×
+is fattest×hottest — it inherits the fat `Rules` base, so slimming `Rules` slims all 12000 Rulesets):**
+1. **`Rules`: 11 eager booleans → one `rulesFlags` int** (12000× × 11) — the dominant lever. `has*ChildSurface`
+   (rules.ts:905-911) + `_bodyEvaluated`(934)/`_hasExtends`(948)/`_hasReferenceImports`(954)/
+   `_registrationPrepared`(956). A Rules-only int (NOT base `flags` — that'd widen the read for leaf nodes);
+   `resetDerivedState`→`rulesFlags=0`; getters keep names → DX-neutral. **Do AFTER W1 merges (shares rules.ts).**
+2. **Drop dead `Selector.isSelector=true`** (12000×, selector.ts:82) — always true, redundant with `instanceof`.
+   Cleanest effort:payoff. **IN PROGRESS (reused audit worktree).**
+3. **`Node.frozen` → base `flags` bit** (~39k×, node-base.ts:562) — flags has headroom (14/31 used). Getter keeps
+   name. **Do AFTER provenance merges (shares node-base.ts).**
+4. PseudoSelector rare fields (3000×: `omitWrapperForSingleSelectorList`→flag; `generatedPseudoPlacementOverride`→subtype).
+5. (low-confidence) Rules `lookupVersion` counters (rules.ts:919-923) — lazy-alloc only if multi-kind lookup runs;
+   MEASURE first, don't downgrade the lookup fast path for slot count.
+Note: the audit calls provenance "already slim, no WeakMap" — IMPRECISE; the `PROV` WeakMap exists (F_HAS_SPAN
+only gates whether to consult it), and provenance-inline is killing it.
+
 ### LANDED LOG (integration branch `perf/walk-collapse` — bench after each merge)
 - **W2** incremental `refreshPositions` — collapse **1006→~290ms (~3.5x)**, nested **400→~225ms (~1.8x)**. HEADLINE (found only by profiling; walk-plan would've missed it).
 - **ref-nuke** `createRulesLikeReferenceSurface` reflective→same-prototype field-copy — that fn **164→21.5ms (~8x)**; dynamic end-to-end ~170→~157ms (modest, GC-absorbed); byte-identical. FAST-V8 compliance; kills dictionary-mode surface objects. (Contract: surface must NOT clone/inherit/reparent — field-copy is the only valid shape; tests lock it.)
