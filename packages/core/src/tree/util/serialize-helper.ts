@@ -373,6 +373,17 @@ export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
 
+/**
+ * Frame-stack snapshots for at-rules rendered from a directly-built tree (no eval).
+ * Eval stores frames on the node; direct render captures the live frame stack at
+ * container entry so a hoisted at-rule can still find its parent selector.
+ */
+const directRenderFrames = new WeakMap<AtRule, (Ruleset | AtRule)[]>();
+
+function directRenderFramesOf(atRule: AtRule): (Ruleset | AtRule)[] | undefined {
+  return directRenderFrames.get(atRule);
+}
+
 function getHoistedParent(
   node: AtRule | Ruleset,
   options: FinalPrintOptions
@@ -393,7 +404,9 @@ function getHoistedParent(
   if (!atRule.isNestable() || atRule.isRootOnly() || !hoisted) {
     return undefined;
   }
-  const renderFrames = runtimeFrames ?? atRule.getRenderFrames();
+  // Eval populates `frames`; a directly-rendered tree does not, so fall back to
+  // the frame stack snapshot captured when this at-rule's container was entered.
+  const renderFrames = runtimeFrames ?? atRule.getRenderFrames() ?? directRenderFramesOf(atRule);
   let frame: Ruleset | undefined;
   let parentSelector: Selector | undefined;
   const frameCount = renderFrames?.length ?? 0;
@@ -459,6 +472,20 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
   if (isNode(node, N.Ruleset) && (node as Ruleset).selector instanceof Nil) {
     return '';
+  }
+  // Capture the live frame stack for a directly-rendered nestable at-rule that
+  // carries no eval-populated frames, so a hoisted parent selector can still be
+  // recovered from the enclosing rulesets when it wraps bare declarations.
+  if (
+    options.collapseNesting
+    && isNode(node, N.AtRule)
+    && (node as AtRule).isNestable()
+    && (node as AtRule).getRenderFrames() === undefined
+    && options.atRuleFrameNode !== node
+    && !directRenderFrames.has(node as AtRule)
+    && inFrames.length > 0
+  ) {
+    directRenderFrames.set(node as AtRule, [...inFrames]);
   }
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
   // getHeaderString normally handles this, but cached frame headers skip it.
@@ -1035,6 +1062,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     runResult = runWithCurrentComposedStack();
   }
   restorePrintState(options, saved);
+  if (isNode(node, N.AtRule)) {
+    // Scope the captured frame snapshot to this render pass so a reused node
+    // instance recaptures against its current parent context next time.
+    directRenderFrames.delete(node as AtRule);
+  }
   return runResult;
 }
 
