@@ -3378,6 +3378,20 @@ describe('reference', () => {
       expect(found?.value.valueOf()).toBe('red');
     });
 
+    it('property lookup ignores a same-named VarDeclaration (Less #ns[foo] vs @foo)', async () => {
+      // Mirrors `#ns { foo: bar; @foo: baz; }` accessed as `#ns[foo]` — the
+      // index/property lane must return the property `foo`, never the variable.
+      const node = rules([
+        decl({ name: 'foo', value: any('bar') }),
+        vardecl({ name: 'foo', value: any('baz') })
+      ]);
+
+      await node.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(node, 'foo')?.node.value.valueOf()).toBe('bar');
+      expect(findVariableDeclarationOccurrence(node, 'foo')?.node.value.valueOf()).toBe('baz');
+    });
+
     it('direct property lookup records merge-chain occurrence slots', async () => {
       const directLookupNode = rules([
         decl({

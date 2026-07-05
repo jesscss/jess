@@ -744,6 +744,12 @@ export class LessGrammar extends CssParser {
       } else if (typeof innerVal === 'object'
         && (innerVal as any).type === 'Reference' && typeof (innerVal as any).key === 'string') {
         rawText = '@' + (innerVal as any).key;
+      } else if (this._isKeywordLike(innerVal)
+        && typeof (innerVal as any).value === 'string') {
+        // A bare/ident/`$prop` accessor key parsed as a Keyword leaf (e.g.
+        // `#ns[foo]`, `#ns.vars[$sub]`) — recover its text so the `$`/`@`/bare
+        // key logic below applies uniformly with the string path.
+        rawText = (innerVal as any).value.trim();
       }
     }
     if (rawText === undefined || rawText === '') {
@@ -841,9 +847,17 @@ export class LessGrammar extends CssParser {
       const item = comps[i];
       if (isSquareParen(item)) {
         const innerKey = this._decodeAccessorKey(item as JessNode, loc);
+        // A bare-string key (`@var`) or an `@@name` indirection Reference is a
+        // variable lookup; a Quoted/number key is a property (`index`) lookup —
+        // mirror _applyReferenceAccessor's key→type logic (the var-decl accessor
+        // path does the same).
+        const keyIsVar = typeof innerKey === 'string'
+          || (innerKey != null && typeof innerKey === 'object'
+            && (innerKey as any).type === 'Reference');
+        const accType: 'variable' | 'index' = keyIsVar ? 'variable' : 'index';
         base = new Reference(
           { target: base as any, key: innerKey as any } as unknown as ReferenceValue,
-          { type: 'variable' as const }, loc
+          { type: accType }, loc
         ) as unknown as JessNode;
         i++;
       } else if (isRoundParen(item)) {
