@@ -702,6 +702,20 @@ export class Context {
   }
 
   /**
+   * Read a file's raw bytes, resolving the path through the same plugin file
+   * manager the import subsystem uses (`_getPath`: expand → resolve → locate,
+   * honoring search paths). Used by file-reading functions like `data-uri()`
+   * and `image-size()` so they never touch raw `fs` for path resolution.
+   *
+   * A `#fragment` or `?query` suffix is stripped before resolution.
+   */
+  async readBinary(importPath: string): Promise<Buffer> {
+    const cleanPath = importPath.split(/[?#]/)[0]!;
+    const { resolvedPath } = await this._getPath(cleanPath);
+    return readFile(resolvedPath);
+  }
+
+  /**
    * Parse a string content directly using the appropriate plugin
    */
   async parseString(content: string, options: {

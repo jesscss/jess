@@ -7,7 +7,7 @@ const imageHeight = defineFunction(
   'image-height',
   async function(this: any, filePathNode: Node) {
     const rawPath = await serializeNodeValue(filePathNode, this.context);
-    const { contents } = readAsset(this.context, rawPath);
+    const { contents } = await readAsset(this.context, rawPath);
     const size = getImageDimensions(contents);
     return new Dimension({ number: size.height, unit: 'px' });
   },

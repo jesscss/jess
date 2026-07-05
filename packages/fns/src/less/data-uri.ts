@@ -37,7 +37,7 @@ const dataUri = defineFunction(
     }
 
     try {
-      const { contents } = readAsset(this.context, filePath);
+      const { contents } = await readAsset(this.context, filePath);
       const encoded = useBase64
         ? contents.toString('base64')
         : encodeURIComponent(contents.toString('utf8'));
