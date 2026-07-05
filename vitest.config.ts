@@ -11,10 +11,17 @@ export default defineConfig({
     circleDependency()
   ],
   resolve: {
-    // Use built output (import/main) so workspace packages pick up built lib/ after pnpm build.
-    // Run tests from each package directory (e.g. cd packages/jess && pnpm test) after building
-    // dependencies (e.g. pnpm --filter @jesscss/core build) so tests run against built code.
-    mainFields: ['import', 'module', 'exports', 'main']
+    // Resolve workspace packages to their "source" export (src/*.ts) so tests run
+    // against current source — no lib rebuild between edits, and no stale-lib phantom
+    // failures. Vitest transforms the TS on the fly. Every @jesscss/* + styles-config
+    // package exposes a "source" condition in its exports map.
+    conditions: ['source', 'import', 'module', 'node', 'default'],
+    mainFields: ['module', 'import', 'exports', 'main']
+  },
+  ssr: {
+    resolve: {
+      conditions: ['source', 'import', 'module', 'node', 'default']
+    }
   },
   test: {
     /**
