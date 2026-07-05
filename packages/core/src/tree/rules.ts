@@ -6380,6 +6380,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (rules !== context.root) {
       return;
     }
+    // The document-order map is read only during extend application
+    // (documentOrderOf in extend.ts). With no extends anywhere in the tree
+    // (root._hasExtends aggregates nested + mixin-body extends via
+    // rulesMayContainExtends), the map is never consulted — skip the whole walk.
+    if (!rules._hasExtends) {
+      return;
+    }
     const map = new WeakMap<Ruleset, number>();
     context.documentOrderByRuleset = map;
     this._assignDocumentOrderDepthFirst(rules, map, { value: 0 });
