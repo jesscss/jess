@@ -27,7 +27,7 @@ not band-aided in the plugin/integration layer.
   hot-reload via the alias; only rebuild if you change what the config loader itself imports.
 - Run: `cd packages/jess && TEST=true npx vitest run test/less/all-less.test.ts`. Core repros:
   `cd packages/core && npx vitest run <file> -t <name>`.
-- **all-less gate baseline (jess-parseman = single gate worktree): 51 passed / 42 failed / 93. Core: 0.**
+- **all-less gate baseline (jess-parseman = single gate worktree): 52 passed / 41 failed / 93. Core: 0.**
 
 ## Gate / merge rules (same discipline as CORE-CLEANUP)
 - One cluster per branch `less/<slug>` + worktree off `feature/parseman`.
@@ -90,7 +90,7 @@ Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH f
 - [ ] ~~E-old~~ (superseded): compiler-reuse(6)+public-api(1):
   `undefined.valueOf`, visitor hooks returning undefined, evaluated root not retained for
   serialization/visitors; plus `@import "x.css"` → `url("x.css")` serialize diff. Core-reproducible.
-- [ ] **D — color math → `#NaNNaNNaN` (3-5 tests).** Channel values arriving as strings → NaN.
+- [x] **D — DONE (merge c65dc2782). named-color resolution** via slim color-names.ts (reuses color-name pkg, no dup table, no node growth); #NaN eliminated, all-less +1, functions 18/0. Separate: Color-clone merge bug + strict-unit 10px. Orig: Channel values arriving as strings → NaN.
   May collapse into A. Recheck after A.
 - [x] **F — DONE (merge e5355747b). @plugin security sandbox 6/6 green.** Deno/plugin-js lazy-load +
   sandbox gating. Integration-only (spawns subprocesses) — NOT a core repro. Parallelizable, isolated.
