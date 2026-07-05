@@ -237,7 +237,7 @@ is fattest×hottest — it inherits the fat `Rules` base, so slimming `Rules` sl
 2. **Drop dead `Selector.isSelector=true`** (12000×, selector.ts:82) — always true, redundant with `instanceof`.
    Cleanest effort:payoff. **DONE — merged f3a3c02; byte-identical; own-key 12->11.**
 3. **`Node.frozen` → base `flags` bit** (~39k×, node-base.ts:562) — flags has headroom (14/31 used). Getter keeps
-   name. **IN PROGRESS (perf/slim-frozen).**
+   name. **DONE — merged afcffa0e; own-key 42->41 (x39k nodes).**
 4. PseudoSelector rare fields (3000×: `omitWrapperForSingleSelectorList`→flag; `generatedPseudoPlacementOverride`→subtype).
 5. (low-confidence) Rules `lookupVersion` counters (rules.ts:919-923) — lazy-alloc only if multi-kind lookup runs;
    MEASURE first, don't downgrade the lookup fast path for slot count.
