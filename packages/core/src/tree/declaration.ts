@@ -892,6 +892,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         return;
       }
     }
+    // Two adjacent value nodes (neither a verbatim string fragment) are
+    // space-separated by construction — the boundary whitespace lives in
+    // neither term, so emit it here regardless of the surrounding chars
+    // (e.g. `"A" "B"`, `"x" counter(page)`, `1px 2px`).
+    if (prev instanceof Node && node instanceof Node) {
+      if (w.lastChar() !== ' ') {
+        w.queueSpacer(' ');
+      }
+      return;
+    }
     // Merge guard: a space only when the previous output ends identifier-like
     // and the next term would begin identifier-like, keeping tokens distinct.
     if (isIdentifierChar(w.lastChar())) {
@@ -1823,7 +1833,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         important: node.important instanceof Any ? node.important : undefined,
         changed: false
       };
-      const setVal = (newValue: Node) => {
+      const setVal = (newValue: DeclarationValue['value']) => {
         if (state.value !== newValue) {
           state.value = newValue;
           state.changed = true;
@@ -1871,6 +1881,69 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         return state;
       }
       const { name, value: value } = node;
+      if (Array.isArray(value)) {
+        // A flat value array mixes verbatim string fragments (kept as-is) with
+        // typed value nodes that must be evaluated so e.g. a fallback function
+        // Call prints its CSS form rather than its `$name?(...)` source sigil.
+        const finalize = (evaluated: Array<Node | string>, changed: boolean) => {
+          if (changed) {
+            setVal(evaluated);
+          }
+          const importantState = finalizeContextualImportantPublicState(context, state.important);
+          if (importantState.important && importantState.important !== state.important) {
+            setImportant(importantState.important);
+          }
+          return state;
+        };
+        const out: Array<Node | string> = new Array(value.length);
+        let changed = false;
+        for (let i = 0; i < value.length; i++) {
+          const item = value[i]!;
+          if (typeof item === 'string') {
+            out[i] = item;
+            continue;
+          }
+          const evald = item.eval(context);
+          if (isThenable(evald)) {
+            return (async () => {
+              let resolved = await evald;
+              if (!(resolved instanceof Node)) {
+                resolved = item;
+              } else if (resolved !== item) {
+                resolved.inherit(item);
+                changed = true;
+              }
+              out[i] = resolved;
+              for (let j = i + 1; j < value.length; j++) {
+                const next = value[j]!;
+                if (typeof next === 'string') {
+                  out[j] = next;
+                  continue;
+                }
+                let nextEvald = await next.eval(context);
+                if (!(nextEvald instanceof Node)) {
+                  nextEvald = next;
+                } else if (nextEvald !== next) {
+                  nextEvald.inherit(next);
+                  changed = true;
+                }
+                out[j] = nextEvald;
+              }
+              return finalize(out, changed);
+            })();
+          }
+          if (!(evald instanceof Node)) {
+            out[i] = item;
+            continue;
+          }
+          if (evald !== item) {
+            evald.inherit(item);
+            changed = true;
+          }
+          out[i] = evald;
+        }
+        return finalize(out, changed);
+      }
       if (value instanceof Node) {
         const isCustomProperty = declarationNameKey(name).startsWith('--');
         if (isCustomProperty) {
