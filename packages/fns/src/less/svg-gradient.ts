@@ -110,13 +110,11 @@ const svgGradient = defineFunction(
       }
       if (normalized instanceof Sequence) {
         const items = await Promise.all(normalized.value.map(item => normalizeNode(item)));
-        const loc = normalized.location.length ? normalized.location as import('@jesscss/core').LocationInfo : undefined;
-        return new Sequence(items, normalized.options, loc).inherit(normalized);
+        return new Sequence(items, normalized.options).inherit(normalized);
       }
       if (normalized instanceof List) {
         const items = await Promise.all(normalized.value.map(item => normalizeNode(item)));
-        const loc = normalized.location.length ? normalized.location as import('@jesscss/core').LocationInfo : undefined;
-        return new List(items, normalized.options, loc).inherit(normalized);
+        return new List(items, normalized.options).inherit(normalized);
       }
       return normalized;
     };
