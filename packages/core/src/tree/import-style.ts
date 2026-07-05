@@ -980,8 +980,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       importBoundary: hasImportBoundary,
       // A plain `@import` or a wildcard `@compose (namespace: *)` dumps its members
       // into the enclosing scope (linked as a fallback frame there). A named/plain
-      // compose keeps its members behind its namespace.
-      inlinesMembersToParent: this.options.type === 'import' || this.options.namespace === '*',
+      // compose keeps its members behind its namespace. A `@forward` re-exports
+      // downstream but is NOT visible in the forwarder's OWN local scope, so it
+      // never inlines its members here (see the forward comment above).
+      inlinesMembersToParent: !isForward
+        && (this.options.type === 'import' || this.options.namespace === '*'),
       referenceMode: isReferenceMode,
       readonly
     };

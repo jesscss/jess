@@ -61,6 +61,7 @@ describe('Style import construction', () => {
 function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
   return findVariableDeclarationOccurrence(n, key, {
+    context,
     ...opts,
     searchParents: true
   })?.node;
