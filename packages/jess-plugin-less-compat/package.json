@@ -11,19 +11,16 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./transform": {
       "types": "./lib/transform/index.d.ts",
-      "source": "./src/transform/index.ts",
       "import": "./lib/transform/index.js",
       "require": "./lib/transform/index.cjs"
     },
     "./less-compat-structures": {
       "types": "./lib/less-compat-structures.d.ts",
-      "source": "./src/less-compat-structures.ts",
       "import": "./lib/less-compat-structures.js",
       "require": "./lib/less-compat-structures.cjs"
     },

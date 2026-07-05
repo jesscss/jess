@@ -8,13 +8,11 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./server": {
       "types": "./lib/server.d.ts",
-      "source": "./src/server.ts",
       "import": "./lib/server.js",
       "require": "./lib/server.cjs"
     },
