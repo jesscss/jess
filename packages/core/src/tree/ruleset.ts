@@ -7,6 +7,7 @@ import { Bool } from './bool.js';
 import { Condition } from './condition.js';
 import { attachSelectorBitLibrary, Selector, type SelectorLike } from './selector.js';
 import { isNode } from './util/is-node.js';
+import { isNonClassicImportBoundary } from './util/lookup-utils.js';
 import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
@@ -1827,6 +1828,23 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Ruleset intentionally checks Rules' private prep marker; public registrationPrepared is already true for derived ruleset prep surfaces.
     if (!(node as unknown as { _registrationPrepared?: boolean })._registrationPrepared) {
       const rulesetNode: Ruleset = node;
+      // Prep-time lexical parent: a nested ruleset's canonical `.parent` is unset
+      // during registration, so an interpolated selector (e.g. `.@{a1}-xxx`) that
+      // reads a lexically-earlier enclosing var has no scope chain to resolve it
+      // (`_prepareRulesetSelectorIdentity` evals the selector here). Link this
+      // ruleset's scope-frame parent to the enclosing scope so the free-var lookup
+      // reaches it — but ONLY across ordinary nesting. If the enclosing scope is an
+      // import/compose boundary its own frame already blocks the outer file, and a
+      // NON-inlining boundary (compose) must not expose its members to a nested
+      // ruleset either, so do not link across it. Eval re-points this parent up the
+      // dynamic placement chain (_evalPreparedRules); this only seeds prep-time.
+      const enclosing = isNode(context.rulesContext, N.Rules) ? context.rulesContext : undefined;
+      if (enclosing && enclosing !== node && !isNonClassicImportBoundary(enclosing)) {
+        const frame = node.getScopeFrame();
+        if (frame.parent === undefined) {
+          frame.parent = enclosing.getScopeFrame();
+        }
+      }
       const rulesetFrameCount = context.rulesetFrames.length;
       context.rulesetFrames.push(rulesetNode);
       if (extendRoot) {
