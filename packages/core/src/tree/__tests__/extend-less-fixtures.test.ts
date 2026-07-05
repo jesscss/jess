@@ -44,7 +44,10 @@ import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer
 // false so we expect nested output where source .less is nested (Less test-data style)
 const collapseNesting = false;
 const require = createRequire(import.meta.url);
-const testData = path.dirname(require.resolve('@less/test-data'));
+// `LESS_TEST_DATA_ROOT` is set by the root vitest config (resolved once at config
+// load); fall back to the workspace symlink otherwise. The env path survives the
+// relative-symlink breakage that `pnpm install` reintroduces in git worktrees.
+const testData = process.env.LESS_TEST_DATA_ROOT ?? path.dirname(require.resolve('@less/test-data'));
 
 describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   /**
