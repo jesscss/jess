@@ -94,7 +94,8 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
   an UNRELATED `Cannot read properties of undefined (reading 'adopt')` (present at baseline, not the
   `'height'` leak). These are distinct root causes (accessor resolution / leaky mixin-output), not the
   binding-cell timing bug. Relates to [[mixin-output-frame-linking]], [[feedback-setdefined-cell-not-node]].
-- [ ] **E — compiler lifecycle / root output (~7 tests).** compiler-reuse(6)+public-api(1):
+- [x] **E — DONE (merge 47d36981d). compiler-reuse+public-api 15/15.** Rules.evaluated getter + _finishEval stamp; @import url() serialize (Url.value Node in css-parser _buildUrl + less-parser url prelude); 3 stale-API test fixes.
+- [ ] ~~E-old~~ (superseded): compiler-reuse(6)+public-api(1):
   `undefined.valueOf`, visitor hooks returning undefined, evaluated root not retained for
   serialization/visitors; plus `@import "x.css"` → `url("x.css")` serialize diff. Core-reproducible.
 - [ ] **D — color math → `#NaNNaNNaN` (3-5 tests).** Channel values arriving as strings → NaN.
