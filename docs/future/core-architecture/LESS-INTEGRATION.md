@@ -227,5 +227,6 @@ OWNER RULINGS NEEDED (do NOT guess):
    simplify its converter — sequence with core-cleanup, not the slim.
 
 ADAPTER PERF/CLARITY (owner flagged 'no Proxy wrappers'): less-adapter.ts is NOT a JS Proxy, but `createLessAdapter` (called per-node) does per-INSTANCE `Object.defineProperty` in a loop (ctor lines 114-124) → N getters + N closures on EVERY adapted node, megamorphic hidden classes, opaque. FIX = the table-driven converter done right: build ONE adapter class per less.js type from the `{lessType,fields}` table with getters on the PROTOTYPE (defineProperty once per type), `new FooAdapter(node)` per node. Monomorphic, typed, debuggable. Registry-collapse and Proxy-removal are the SAME refactor.
+LAZY + IDENTITY (owner req): getters MUST stay lazy — `new FooAdapter(node)` converts nothing; a child is adapted only when its getter is READ (a plugin/visitor that ignores children pays ~0). Back it with a shared `WeakMap<jessNode, adapter>` for memoization + STABLE IDENTITY (`node.selectors[0]===node.selectors[0]` must hold; plugins do identity checks). Slim must not make conversion eager. Even selector-flatten fires only on `.selectors` read.
 Top files: nodes/index.ts (377, collapse), transform/type-map.ts (the diff map), transform/less-adapter.ts
 (keep — proxy engine), nodes/selector.ts (212, essential floor), transform/from-less.ts (197, essential).
