@@ -63,6 +63,35 @@ export function parseLessFn(
   return runFunctionalParse(input, g[rule], host, { trivia: g.rw });
 }
 
+/**
+ * Index of the first backtick in CODE position (i.e. real inline JS), or -1.
+ * Skips `//` line comments, `/* … *​/` block comments, and quoted strings so a
+ * backtick inside a comment/string (common in Less doc comments) is not
+ * mistaken for inline JavaScript.
+ */
+function firstInlineJsBacktick(text: string): number {
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '`') return i;
+    if (c === '/' && text[i + 1] === '/') {
+      const nl = text.indexOf('\n', i + 2);
+      if (nl === -1) return -1;
+      i = nl;
+    } else if (c === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end === -1) return -1;
+      i = end + 1;
+    } else if (c === '"' || c === "'") {
+      i++;
+      while (i < text.length && text[i] !== c) {
+        if (text[i] === '\\') i++;
+        i++;
+      }
+    }
+  }
+  return -1;
+}
+
 /** Functional Less parser — call .parse(text) to get a Jess AST. */
 export class LessParser {
   private readonly _mathMode: MathMode;
@@ -75,7 +104,9 @@ export class LessParser {
   parse = (text: string, rule = 'Stylesheet'): LessFnParseResult => {
     // Inline JavaScript (backticks) was removed in v5 — report it as a normal
     // parse error at the backtick, NOT by throwing (a parser must not throw).
-    const backtick = text.indexOf('`');
+    // Only a backtick in CODE position is inline JS: skip backticks inside line/
+    // block comments and quoted strings (e.g. markdown links in doc comments).
+    const backtick = firstInlineJsBacktick(text);
     if (backtick !== -1) {
       return {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
