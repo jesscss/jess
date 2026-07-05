@@ -98,13 +98,13 @@ describe('Any and Keyword', () => {
     const context = new Context();
     const node = any('var(--tone)', { role: 'customprop' });
     const originalLocation = { start: 4, end: 15 } as const;
-    setSourceSpan(node, [...originalLocation]);
+    setSourceSpan(node, originalLocation);
     node.resolve = () => {
       throw new Error('Any.render should not resolve static custom property fragments');
     };
 
     expect(node.render(context)).toBe('var(--tone)');
-    expect(sourceSpanOf(node)).toEqual([...originalLocation]);
+    expect(sourceSpanOf(node)).toEqual(originalLocation);
     expect(node.sourceNode ?? node).toBe(node);
   });
 
