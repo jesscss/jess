@@ -1127,8 +1127,12 @@ export class LessGrammar extends CssParser {
     const name = String(nameItem?.comp ?? '').slice(1);
     const valueItems = colonIdx >= 0 ? items.slice(colonIdx + 1) : [];
     const { value } = this._assembleValue(valueItems, loc);
+    // A param/arg VarDeclaration value is always a Node in the callable-binding
+    // path (it calls `value.hasFlag(...)`). `_assembleValue` leaves a lone bare
+    // keyword (`@a: inherit`) as a raw string, so wrap it in a Keyword here.
+    const paramValue = typeof value === 'string' ? this._valueKeyword(value, loc) : value;
     return new VarDeclaration(
-      { name: name as any, value: value as any } as any,
+      { name: name as any, value: paramValue as any } as any,
       {} as VarDeclarationOptions,
       loc
     ) as unknown as JessNode;
