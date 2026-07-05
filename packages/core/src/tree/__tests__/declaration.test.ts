@@ -1,5 +1,5 @@
 import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
+import { decl, spaced, coll, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER, Interpolated } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -98,6 +98,17 @@ describe('Declaration', () => {
     expect(rule.toTrimmedString({ writer })).toBe('color: red !important');
     expect(writer.toString()).toBe('color: red !important');
     expect(writer.captures).toBe(0);
+  });
+
+  it('keeps the important flag on a Collection-valued declaration', () => {
+    const value = coll([decl({ name: 'a', value: any('b') })]);
+    const rule = decl({
+      name: 'x',
+      value,
+      important: any('!important', { role: 'flag' })
+    });
+
+    expect(rule.toTrimmedString()).toMatch(/ !important$/);
   });
 
   it('writes non-custom declaration children without public string transport', () => {

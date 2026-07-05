@@ -1034,30 +1034,28 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         this.writeDeclarationFieldValueSyntax(value, options);
         w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       }
-      if (!(value instanceof Node) || !isNode(value, N.Collection)) {
-        if (important || importantText) {
-          w.add(' ');
-          if (important) {
-            if (important === true) {
-              w.add('!important', this);
-            } else if (typeof important === 'string') {
-              w.add(important, this);
-            } else if (typeof important === 'boolean') {
-              // False is accepted as an API convenience for no important flag.
-            } else {
-              const importantText = maybeTrimmedScalarText(important);
-              if (importantText !== undefined) {
-                w.add(importantText, important);
-              } else {
-                const importantMark = w.mark();
-                important.writeSyntax(options);
-                w.trimStartSince(importantMark);
-                w.trimEndSince(importantMark);
-              }
-            }
+      if (important || importantText) {
+        w.add(' ');
+        if (important) {
+          if (important === true) {
+            w.add('!important', this);
+          } else if (typeof important === 'string') {
+            w.add(important, this);
+          } else if (typeof important === 'boolean') {
+            // False is accepted as an API convenience for no important flag.
           } else {
-            w.add(importantText!, value);
+            const importantText = maybeTrimmedScalarText(important);
+            if (importantText !== undefined) {
+              w.add(importantText, important);
+            } else {
+              const importantMark = w.mark();
+              important.writeSyntax(options);
+              w.trimStartSince(importantMark);
+              w.trimEndSince(importantMark);
+            }
           }
+        } else {
+          w.add(importantText!, value);
         }
       }
     }
