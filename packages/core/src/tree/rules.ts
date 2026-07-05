@@ -52,6 +52,7 @@ import {
   buildScopeFrame,
   copyScopeFrameLiveBindingSlots,
   createVarDeclarationBindingEntry,
+  injectFrameLeakBinding,
   lookupScopeFrameCallable,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
@@ -4596,6 +4597,33 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   /**
+   * Leaky Less mode: register a mixin CALL's evaluated output declarations into
+   * this caller frame at the call's source index, so a LATER sibling's variable
+   * lookup resolves them while an earlier sibling (start-gated) still does not.
+   * The output declarations otherwise only live on the output child Rules, which
+   * the `full` scope-frame lookup does not consult.
+   */
+  injectLeakyMixinOutputBindings(output: Rules, callIndex: number): void {
+    const frame = this._scopeFrame;
+    const vars = output.varsByName;
+    if (!frame || !vars) {
+      return;
+    }
+    if (!isPublicRulesEntry({ node: output }, 'VarDeclaration')) {
+      return;
+    }
+    for (const [name, entries] of vars) {
+      const current = entries[entries.length - 1];
+      if (!current) {
+        continue;
+      }
+      const decl = current.sourceNode;
+      decl.index = callIndex;
+      injectFrameLeakBinding(frame, name, { cell: current.cell, sourceNode: decl });
+    }
+  }
+
+  /**
    * Overwrite the runtime binding cell for an existing variable owned by this
    * scope, as resolved by the setDefined occurrence crawl. Prefers a built
    * frame's modeled cell (which also covers imported assignment targets);
@@ -5453,6 +5481,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             rulesVisibility: result.options.rulesVisibility,
             readonly: result.options.readonly
           }, context);
+          if (context.leakyRules && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
+            out.injectLeakyMixinOutputBindings(result, idx);
+          }
           if (result.hoistToRoot) {
             rulesToHoist = true;
           }

@@ -38,6 +38,13 @@ export interface BindingCell {
   rulesContext?: object;
   readonly?: boolean;
   live?: boolean;
+  /**
+   * Leaky Less mode: a mixin-call output declaration injected into the caller
+   * frame. Unlike ordinary current bindings, a leak binding is source-order
+   * gated at read time (a reader before the emitting call must not see it), so
+   * the lookup only accepts it when the reader's `leakStart` is past the call.
+   */
+  leak?: boolean;
 }
 
 export function getBindingCellValue(cell: BindingCell): Node {
@@ -386,6 +393,49 @@ export function setScopeFrameDeclarationBinding(
   setCurrentBindingCell(frame, name, entry.cell);
 }
 
+/**
+ * Leaky Less mode: a mixin CALL's evaluated output declarations are visible to
+ * LATER siblings in the caller scope. The output declarations live on the output
+ * child Rules, not in the caller frame's binding buckets, so a later sibling's
+ * `full` scope-frame lookup misses them. Register them here at the call's source
+ * index so a later sibling resolves them while an earlier sibling (start-gated,
+ * same frame) still does not — the bucket's source-order index gate enforces
+ * that ordering.
+ */
+export function injectFrameLeakBinding(
+  frame: ScopeFrame,
+  name: string,
+  entry: BindingEntry
+): void {
+  entry.cell.leak = true;
+  let bucket = frame.declarationBucketsByName.get(name);
+  if (!bucket) {
+    frame.declarationBucketsByName.set(name, bucket = []);
+  }
+  bucket.push(entry);
+  setCurrentBindingCell(frame, name, entry.cell);
+}
+
+/**
+ * A leak binding is visible only to readers positioned after the emitting call.
+ * `leakStart` is the reader's own source index; the binding's source node carries
+ * the call index. Non-leak cells are never gated here.
+ */
+function leakBindingVisible(
+  cell: BindingCell,
+  sourceNode: Node | undefined,
+  leakStart: number | undefined
+): boolean {
+  if (!cell.leak) {
+    return true;
+  }
+  if (leakStart === undefined) {
+    return true;
+  }
+  const callIndex = sourceNode?.index;
+  return callIndex !== undefined && callIndex < leakStart;
+}
+
 function pendingDeclarationMayAffectName(
   pendingDeclarationNames: VarDeclaration[],
   name: string
@@ -431,6 +481,7 @@ export function lookupScopeFrameVariable(
   name: string,
   options?: {
     start?: number;
+    leakStart?: number;
     filter?: (node: Node) => boolean;
     blockedSource?: (node: Node) => boolean;
     includeLive?: boolean;
@@ -443,6 +494,7 @@ export function lookupScopeFrameVariable(
 ): ScopeFrameVariableLookupResult {
   let f = frame;
   let start = options?.start;
+  let leakStart = options?.leakStart;
   const searchParents = options?.searchParents !== false;
   const includeFallbackFrames = options?.includeFallbackFrames !== false;
   let fallbackFrame = includeFallbackFrames ? frame?.fallbackFrame : undefined;
@@ -475,6 +527,7 @@ export function lookupScopeFrameVariable(
           && options?.includeDeclarations !== false
           && f.declarationsCovered
           && currentCell.sourceNode
+          && leakBindingVisible(currentCell, currentCell.sourceNode, leakStart)
         ) {
           if (
             !options?.blockedSource?.(currentCell.sourceNode)
@@ -546,6 +599,9 @@ export function lookupScopeFrameVariable(
           ) {
             continue;
           }
+          if (!leakBindingVisible(entry.cell, entry.sourceNode, leakStart)) {
+            continue;
+          }
           if (!options?.filter || options.filter(entry.sourceNode)) {
             return {
               kind: 'declaration',
@@ -565,6 +621,14 @@ export function lookupScopeFrameVariable(
         fallbackFrame ??= f.fallbackFrame;
       }
       start = undefined;
+      // A leak binding on the parent frame is source-order gated against where
+      // THIS frame's subtree is anchored in the parent, not the reader's inner
+      // index — a descendant reader is structurally after a parent-level call
+      // iff its enclosing block sits after that call.
+      if (leakStart !== undefined) {
+        const rulesNode = f.rulesNode as { index?: number } | undefined;
+        leakStart = rulesNode?.index;
+      }
       f = f.parent;
     }
 
