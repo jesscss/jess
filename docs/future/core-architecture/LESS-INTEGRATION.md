@@ -132,3 +132,25 @@ Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH f
 - **Cluster A partial** (b53590d9d): writeSelectorLike + string-selector header + less-parser prelude-dup; at-rule-bubbling 6/6, jess +7.
 - **Cluster B** (merged): safeParse attaches file-bearing TreeContext to root Rules (1 line, _treeContext public field); path-resolution 3/3, all-less +6 in-worktree, 0 new. jess-parseman all-less baseline now 41/93 (single gate ref).
 - **Cluster C partial** (70888504e, `less/cluster-c`, not merged): sub-bug #1 binding-cell materialization — `Declaration.valueNode()` coalesces flat parser segment-array var values; `createVarDeclarationBindingEntry` lazy `prepareValue`. functions.test.ts each() nested-rules (2) green, all-less +1 (`functions-harness.less`), full less suite 64→67 pass. Core suite unchanged (2 known ns-fastpath + pre-existing `sibling collapsed` mixin test + `extend-less-fixtures` module artifact; 0 new). Sub-bugs #2 (namespace accessor lookup) / #3 (`No matching mixins`) still open.
+
+## Milestone tail (from recon a08cf88)
+**M3 — feature/parseman → dev:** CLEAN FAST-FORWARD. `dev` (tip f36e8c392) is 709 commits behind and
+fully contained in parseman (`merge-base --is-ancestor dev feature/parseman` = true; 0 commits parseman
+lacks). Just FF-merge. Local `dev` is ahead of `origin/dev` (3e871385a) — reconcile the remote separately.
+
+**M4 — re-point v5 integration + bootstrap.less:**
+- less.js (`/oss/less.js`, @less/root 5.0.0-alpha.2) consumes Jess via `link:` deps in
+  `packages/less/package.json:159-165`: `@jesscss/core`, `@jesscss/plugin-less`,
+  `@jesscss/plugin-less-compat`, `jess` → `../../../../oss/jess/packages/*`. That target (`oss/jess`,
+  branch `feature/less-v5-alpha-readiness`, tip 5fa885e6b) is **652 commits behind parseman**.
+- RE-POINT options: (a) checkout `feature/parseman` in the `oss/jess` worktree, OR (b) repoint the 4
+  `link:` paths at `/worktrees/jess-parseman/packages/*`. Then `pnpm install` in less.js + rebuild Jess libs.
+- Carry v5-only commit `e868dffd1` (less-compat 4.x custom-fn/tree bridge) onto parseman if not superseded.
+- **bootstrap.less** = Bootstrap 4.6 via `bootstrap-less-port@2.5.1` (jess devDep); flat 38 `@import`s / 90
+  files. NOT a parse problem — blocked on **cluster C (scope/accessor + mixin-lookup, `'X' is not defined`:
+  `_buttons/_tables/_badge/_list-group/_grid/_custom-forms/_utilities`) + cluster G (format/whitespace,
+  e.g. `2px solidwhite`)**. Tracked by `bootstrap-perfile.test.ts` (describe.todo).
+- **Timing gate ready**: `packages/jess/test/less/bootstrap-oom.test.ts` (describe.todo) renders
+  bootstrap.less with `performance.now()` + heapUsed, fail-fast <10s/<500MB. Promote todo→real once C/G
+  clear (after `pnpm --filter "jess..." build`; config-loader/CLI paths use built lib). CLI one-shot:
+  `node packages/jess/bin/cli.mjs <bootstrap.less> -o /tmp`.
