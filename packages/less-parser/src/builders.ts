@@ -1460,16 +1460,49 @@ export class LessGrammar extends CssParser {
     return false;
   }
 
+  /**
+   * A guarded ruleset (`sel when …`) is parsed by the shared CSS builder, which
+   * has no `when` concept, so the Guard CST child folds into the body as the
+   * first rule — always a Paren/Condition/DefaultGuard. Lift it into the
+   * ruleset's `guard` field (rebuilt through the canonical Ruleset ctor so the
+   * guard is adopted) so it gates output instead of rendering as a `{ true }`
+   * body. Non-guarded rulesets never begin their body with one of these node
+   * types, so the leading-node check is unambiguous.
+   */
+  private _liftRulesetGuard(base: Ruleset, loc: LocationInfo): Ruleset {
+    const rules = (base as unknown as { rules?: unknown }).rules;
+    if (!Array.isArray(rules) || rules.length === 0) {
+      return base;
+    }
+    const first = rules[0] as { type?: string } | undefined;
+    if (first?.type !== 'Paren' && first?.type !== 'Condition' && first?.type !== 'DefaultGuard') {
+      return base;
+    }
+    return new Ruleset(
+      {
+        selector: (base as unknown as { selector: any }).selector,
+        rules: rules.slice(1) as any,
+        guard: first as any
+      },
+      undefined, loc
+    ) as unknown as Ruleset;
+  }
+
   protected override _buildRuleset(
     children: ReadonlyArray<Child>,
     rawChildren: ReadonlyArray<{ _tag: string }>,
     loc: LocationInfo
   ) {
-    const base = super._buildRuleset(children, rawChildren, loc);
+    let base = super._buildRuleset(children, rawChildren, loc);
     const selector = base.selector;
     if (!selector) {
       return base;
     }
+    // The shared CSS builder has no notion of `when` guards, so the Guard CST
+    // child lands as the first body rule. A guarded ruleset (`sel when …`)
+    // always emits its guard as a leading Paren/Condition/DefaultGuard; lift it
+    // into the ruleset's `guard` field so it gates output instead of rendering.
+    base = this._liftRulesetGuard(base, loc);
     if (typeof selector === 'string') {
       return base;
     }
@@ -1477,6 +1510,13 @@ export class LessGrammar extends CssParser {
       this._error(':extend() is not allowed inside a pseudo-class selector', loc.start);
     }
     const baseRules = Array.isArray(base.rules) ? base.rules as JessNode[] : [];
+    const baseGuard = (base as unknown as { guard?: unknown }).guard;
+    const withGuard = (rs: Ruleset): Ruleset => {
+      if (baseGuard !== undefined) {
+        (rs as unknown as { guard?: unknown }).guard = baseGuard;
+      }
+      return rs;
+    };
 
     const extendKey = (e: JessNode): string => {
       const ext = e as unknown as { target?: { valueOf?(): unknown }; flag?: unknown };
@@ -1491,10 +1531,10 @@ export class LessGrammar extends CssParser {
       if (extractedExtends.length === 0) {
         return base;
       }
-      return new Ruleset(
+      return withGuard(new Ruleset(
         { selector: cleanedSelector as any, rules: [...extractedExtends, ...baseRules] },
         undefined, loc
-      ) as unknown as Ruleset;
+      )) as unknown as Ruleset;
     }
 
     // Selector list: extract extends per selector, then decide structure.
@@ -1524,10 +1564,10 @@ export class LessGrammar extends CssParser {
       const combinedSel = cleanedItems.length === 1
         ? cleanedItems[0]!
         : this._makeSelectorList(cleanedItems as any, loc);
-      return new Ruleset(
+      return withGuard(new Ruleset(
         { selector: combinedSel as any, rules: [...uniqueExtends, ...baseRules] },
         undefined, loc
-      ) as unknown as Ruleset;
+      )) as unknown as Ruleset;
     }
 
     // Different extends per selector → Rules wrapper with per-selector Extend nodes.
@@ -1554,10 +1594,10 @@ export class LessGrammar extends CssParser {
       ? cleanedItems[0]!
       : this._makeSelectorList(cleanedItems as any, loc);
 
-    wrapperRules.push(new Ruleset(
+    wrapperRules.push(withGuard(new Ruleset(
       { selector: combinedSel as any, rules: baseRules },
       undefined, loc
-    ) as unknown as JessNode);
+    )) as unknown as JessNode);
 
     return new Rules(wrapperRules as any, undefined, loc) as unknown as Ruleset;
   }
