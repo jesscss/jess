@@ -241,13 +241,27 @@ is fattest×hottest — it inherits the fat `Rules` base, so slimming `Rules` sl
 4. PseudoSelector rare fields (3000×: `omitWrapperForSingleSelectorList`→flag; `generatedPseudoPlacementOverride`→subtype).
 5. (low-confidence) Rules `lookupVersion` counters (rules.ts:919-923) — lazy-alloc only if multi-kind lookup runs;
    MEASURE first, don't downgrade the lookup fast path for slot count.
-### Provenance fields — FOLLOW-UP: only 2 of the 6 belong on base Node (SLIM violation to fix)
-provenance-inline (LANDED, killed the WeakMap) took the easy path — moved ALL 6 fields onto `Node` base:
-`_spanStart`/`_spanEnd` (span — ~universal, **KEEP on base**), `_fieldSpans` (read ONLY by `declaration.ts` +
-`at-rule.ts` → **move to those subtypes**), `_valueSpans` (read ONLY by the selector family → **move to
-Selector subtypes**), `_cstState`/`_cstChildren` (**DEAD** — zero readers/writers/callers of
-`cstStateOf`/`cstChildrenOf` anywhere → **DELETE fields + accessors**). Net: base Node should carry 2
-provenance fields, not 6 (saves 4 slots × 39k nodes). Follow-up stage — **AFTER SLIM #3** (shares node-base.ts).
+### Provenance fields — FOLLOW-UP: span granularity is a DESIGN DECISION (not a simple subtype move)
+provenance-inline (LANDED, killed the WeakMap) took the easy path — all 6 fields onto `Node` base. But the
+right fix depends on **how granular span tracking needs to be**, and the consumer evidence is decisive:
+- `_spanStart`/`_spanEnd` (node-level) — used by BOTH sourcemaps (`sourceSegmentFor`, print.ts:197 uses ONLY
+  `spanStart`) and trivia. **KEEP on base** (cheap, universal).
+- `_cstState`/`_cstChildren` — **DEAD** (0 readers/writers/callers of `cstStateOf`/`cstChildrenOf` anywhere) →
+  **DELETE fields + accessors.** They're the vestige of a CST-side edit representation that doesn't exist yet.
+- `_fieldSpans`/`_valueSpans` (SUB-NODE granularity) — consumed by **exactly one thing: authored-trivia
+  round-trip serialization** (selector-*/at-rule/declaration read them to emit whitespace BETWEEN sub-components
+  and look up the `TriviaMap` by offset). Sourcemaps DON'T use them; plain CSS render DOESN'T use them; no edit
+  mode exists. YET the parsers set them **unconditionally on every parse** (css-parser `setValueSpans`).
+  - **NOT "selector-only" by design** — List / any array-valued node would need them too *if* we want sub-node
+    round-trip fidelity for those. The current selector-only readership is incomplete usage, not intent.
+  - **DESIGN DECISION (owner):** how granular do we need spans? Options: (a) node-level only — drop
+    `fieldSpans`/`valueSpans` entirely, accept coarser round-trip (edit/round-trip uses the CST or reparse);
+    (b) sub-node, but **gated on trivia/round-trip mode** — common render (plain CSS + node-level sourcemap)
+    carries only span start/end; granular spans populated ONLY when round-trip requested (SLIM the common shape
+    + stop the unconditional parse-time writes); (c) keep eager (status quo — rejected, it fattens every node +
+    every parse for a rare mode). **Recommendation: (b), or (a) if Parseman edit-mode works on the CST** (which
+    the dead cstState/cstChildren suggest was the intent). Needs the owner's granularity ruling before coding.
+Follow-up stage — **AFTER SLIM #3** (shares node-base.ts); the cstState/cstChildren DELETE is unconditional.
 
 ### DRY + dead-code sweep (NEW standing task — requested)
 Systematic pass for (1) **repeated code → shared slim util functions/structures** (esp. the copy/surface/selector
