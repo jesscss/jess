@@ -306,7 +306,21 @@ free. Raw-bitwise would cost DX across hundreds of sites for ~0 gain. Revisit ON
 - **provenance-inline** killed the `PROV` WeakMap → 6 inline `= undefined` span fields on `Node`. **Heap alloc 40.5→23.6MB (~42% less; the `set` 59% hotspot GONE); dynamic parse 54.8→46.3ms (~15%).** byte-identical (133 fixtures). The provenance smell is fully resolved (parser-set inline fields, no side-table).
 - **W1 single-writer** 6/18 fragment sites → shared writer + `restore`; **−25.7% OutputWriter allocations (~10,800 fewer)**; byte-identical. The other 12 sites are INTENTIONALLY separate — `CountingWriter` tests enforce keeping fragments off the caller writer (architectural contract, not laziness) — so "one writer per serialization" is partial-by-design.
 - Benches: `packages/core/perf/collapse-bench.mjs` (static) + `dynamic-bench.mjs` (mixin/refs).
-**Integrated now: collapse ~277ms, nested ~199ms, dynamic ~127ms** (from 1006 / 400 / ~170 → **3.6x / 2.0x / 1.3x**). W2 = structural; provenance = alloc+parse; ref-nuke/FASTV8/W1 = alloc/compliance.
+- **span-array drop** — `_fieldSpans`/`_valueSpans` deleted; readers → node-span comment scan against Parséman's
+  `opts.trivia` (comments round-trip verbatim, sub-node whitespace normalizes); base `Node` down to
+  `_spanStart`/`_spanEnd` only (6 provenance fields → **2**). byte-identical normal render; own-key 29→27.
+- **core-residuals** — `canReuseLeaf` field-read→flag (FAST-V8); other residuals deferred (complexity > sub-1%).
+**Integrated now: collapse ~215ms, nested ~180ms, dynamic ~130ms** (from 1006 / 400 / ~170 → **4.7x / 2.2x / 1.3x**).
+
+### ✅ CORE-RENDER DRIVE COMPLETE (at its floor)
+Every core-render hotspot is crushed (re-profile-confirmed): serialize 51%→1.3%, GC 14-17%→~9%, the eval-alloc
+#1/#2 gone, node shapes slimmed (Rules 42→32, base Node 6→2 prov fields, every node −3 to −5 slots), static
+bench **1006→215ms (4.7x)**. Suite GREEN (core 2697/0). The ONLY remaining hotspot ≥3% is PARSE (~42%), a
+different subsystem — evidence-backed ideas handed to the parser owners in `parser-thing/notes/PERF_IDEAS.md`.
+Residuals are long-tail (agent found one clean micro-opt, deferred the rest). **`perf/walk-collapse` now needs
+to land forward into the trunk** (feature/parseman → dev → feature/less-v5-alpha-readiness) — team's call.
+(Note: the branch inherits the trunk's in-flight less-parser failures via the feature/parseman merge — 5 tests,
+all structural/less-integration WIP, verified NOT caused by any perf change; they resolve upstream.)
 
 ### RE-PROFILE (current state — the core-render hotspots are CRUSHED; PARSE is now #1)
 Fresh CPU+heap profile of the integrated branch (`perf/reprofile`, `REPROFILE.md`). What moved: serialize
