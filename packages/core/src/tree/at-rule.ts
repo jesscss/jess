@@ -692,7 +692,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   /** Source start offset of the prelude: the prelude node's span, else `fieldSpans` slot 1. */
-  private _preludeStartOffset(): number | undefined {
+  private _preludeStart(): number | undefined {
     const p = this.prelude;
     if (p !== undefined && typeof p !== 'string' && spanStartOf(p) !== undefined) {
       return spanStartOf(p);
@@ -983,7 +983,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     );
   }
 
-  private renderSerializedAtRule(
+  private serializeAtRule(
     node: AtRule,
     context: Context,
     bufferOrOptions?: RenderBuffer | PrintOptions,
@@ -1037,7 +1037,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     }
   }
 
-  private renderBodyRecord(
+  private renderRecord(
     record: AtRuleBodyEvalRecord,
     context: Context,
     bufferOrOptions?: RenderBuffer | PrintOptions,
@@ -1053,7 +1053,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const runtimeFrames = record.output?.frames !== this.frames
       ? record.output?.frames
       : undefined;
-    return this.renderSerializedAtRule(
+    return this.serializeAtRule(
       this,
       context,
       bufferOrOptions,
@@ -1075,7 +1075,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       return '';
     }
     if (node instanceof AtRule) {
-      return this.renderSerializedAtRule(
+      return this.serializeAtRule(
         node,
         context,
         bufferOrOptions,
@@ -1087,7 +1087,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       );
     }
     if (isAtRuleBodyEvalRecordResult(node)) {
-      return this.renderBodyRecord(node, context, bufferOrOptions, options);
+      return this.renderRecord(node, context, bufferOrOptions, options);
     }
     return isRenderBuffer(bufferOrOptions)
       ? node.render(context, bufferOrOptions, options)
@@ -1523,7 +1523,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         // prelude. Otherwise collapse the boundary to a single space.
         const interstitial = renderAtRuleBetweenOffsetsTrivia(
           this._nameSlotEnd(),
-          this._preludeStartOffset(),
+          this._preludeStart(),
           options
         );
         if (interstitial) {

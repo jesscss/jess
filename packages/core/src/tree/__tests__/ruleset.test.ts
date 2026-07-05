@@ -1259,7 +1259,7 @@ describe('Rule', () => {
     isWrapper.generated = true;
     const selector = sel([isWrapper]);
 
-    const expanded = Ruleset.expandGeneratedIsForReferenceCompose(selector);
+    const expanded = Ruleset.expandGeneratedIs(selector);
 
     expect(expanded?.valueOf()).toBe('.added');
   });

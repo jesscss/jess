@@ -399,7 +399,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return Ruleset._wrapIs(selector);
   }
 
-  private static _ownComplexComponentForCompose(component: ComplexSelectorComponent): ComplexSelectorComponent {
+  private static _ownForCompose(component: ComplexSelectorComponent): ComplexSelectorComponent {
     if (typeof component === 'string') {
       return component;
     }
@@ -425,14 +425,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   private static _prependParent(parent: Selector, child: Selector): Selector {
     const library = child.keySetLibrary ?? parent.keySetLibrary;
     const leading: ComplexSelectorComponent[] = isNode(parent, N.ComplexSelector)
-      ? parent.value.map(component => Ruleset._ownComplexComponentForCompose(component))
+      ? parent.value.map(component => Ruleset._ownForCompose(component))
       : isNode(parent, N.SelectorList)
         ? [Ruleset._wrapIs(parent)]
-        : [Ruleset._ownComplexComponentForCompose(Ruleset._toComplexComponent(parent))];
+        : [Ruleset._ownForCompose(Ruleset._toComplexComponent(parent))];
 
     const trailing: ComplexSelectorComponent[] = isNode(child, N.ComplexSelector)
-      ? child.value.map(component => Ruleset._ownComplexComponentForCompose(component))
-      : [Ruleset._ownComplexComponentForCompose(Ruleset._toComplexComponent(child))];
+      ? child.value.map(component => Ruleset._ownForCompose(component))
+      : [Ruleset._ownForCompose(Ruleset._toComplexComponent(child))];
 
     const childStartsWithCombinator = trailing.length > 0 && isCombinator(trailing[0]!);
     const merged = childStartsWithCombinator
@@ -1040,7 +1040,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return sel.hasFlag(F_EXTENDED);
   }
 
-  private static filterExtendedTopLevelSelectorItems(sel: Selector): Selector | Nil {
+  private static filterExtendedItems(sel: Selector): Selector | Nil {
     if (!isNode(sel, N.SelectorList)) {
       const simplified = Ruleset.simplifyGeneratedIsSelector(sel);
       return (
@@ -1049,7 +1049,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         || Ruleset.hasExtendedTopLevelSelector(sel)
       )
         ? (() => {
-            const unwrapped = simplified ?? Ruleset.unwrapGeneratedReferenceIs(sel);
+            const unwrapped = simplified ?? Ruleset.unwrapGeneratedIs(sel);
             // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             return typeof unwrapped === 'string' ? unwrapped as unknown as Selector : unwrapped;
           })()
@@ -1070,7 +1070,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         }
         seen.add(key);
         kept.push(copySelectorForRulesetMetadata(
-          Ruleset.simplifyGeneratedIsSelector(item) ?? Ruleset.unwrapGeneratedReferenceIs(item)
+          Ruleset.simplifyGeneratedIsSelector(item) ?? Ruleset.unwrapGeneratedIs(item)
         ));
       }
     }
@@ -1088,7 +1088,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         }
         seen.add(key);
         kept.push(copySelectorForRulesetMetadata(
-          Ruleset.simplifyGeneratedIsSelector(item) ?? Ruleset.unwrapGeneratedReferenceIs(item)
+          Ruleset.simplifyGeneratedIsSelector(item) ?? Ruleset.unwrapGeneratedIs(item)
         ));
       }
     }
@@ -1103,7 +1103,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return SelectorList.create(kept).inherit(sel);
   }
 
-  private static unwrapGeneratedReferenceIs(sel: Selector | string, includeUntouchedSiblings = false): Selector | string {
+  private static unwrapGeneratedIs(sel: Selector | string, includeUntouchedSiblings = false): Selector | string {
     // A bare-string selector has no generated reference-:is() wrapper to unwrap.
     if (typeof sel === 'string') {
       return sel;
@@ -1121,7 +1121,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         if (!keepItem) {
           continue;
         }
-        const unwrapped = Ruleset.unwrapGeneratedReferenceIs(item, includeUntouchedSiblings);
+        const unwrapped = Ruleset.unwrapGeneratedIs(item, includeUntouchedSiblings);
         const key = unwrapped.valueOf();
         if (seen.has(key)) {
           continue;
@@ -1154,7 +1154,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         if (!keepItem) {
           continue;
         }
-        const unwrapped = Ruleset.unwrapGeneratedReferenceIs(item, includeUntouchedSiblings);
+        const unwrapped = Ruleset.unwrapGeneratedIs(item, includeUntouchedSiblings);
         const key = unwrapped.valueOf();
         if (seen.has(key)) {
           continue;
@@ -1236,7 +1236,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       seen.add(key);
       kept.push(
         Ruleset.simplifyGeneratedIsSelector(item)
-        ?? Ruleset.unwrapGeneratedReferenceIs(item, includeUntouchedSiblings)
+        ?? Ruleset.unwrapGeneratedIs(item, includeUntouchedSiblings)
       );
     }
     if (kept.length === 0 || kept.length === parent.value.length) {
@@ -1250,13 +1250,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return SelectorList.create(kept).inherit(parent);
   }
 
-  static expandGeneratedIsForReferenceCompose(selector: Selector): Selector | undefined {
+  static expandGeneratedIs(selector: Selector): Selector | undefined {
     if (isNode(selector, N.SelectorList)) {
       const expanded: Selector[] = [];
       let changed = false;
       const seen = new Set<string>();
       for (const item of selector.value) {
-        const next = Ruleset.expandGeneratedIsForReferenceCompose(selectorListItemForMatch(item)) ?? item;
+        const next = Ruleset.expandGeneratedIs(selectorListItemForMatch(item)) ?? item;
         const items = isNode(next, N.SelectorList) ? next.value : [next];
         changed ||= next !== item;
         for (const expandedItem of items) {
@@ -1370,7 +1370,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       if (!(selector.arg instanceof Selector)) {
         return undefined;
       }
-      const unwrapped = Ruleset.unwrapGeneratedReferenceIs(selector.arg);
+      const unwrapped = Ruleset.unwrapGeneratedIs(selector.arg);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return typeof unwrapped === 'string' ? unwrapped as unknown as Selector : unwrapped;
     }
@@ -1394,7 +1394,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           && component.name === ':is'
           && component.arg instanceof Selector
         ) {
-          const unwrapped = Ruleset.unwrapGeneratedReferenceIs(component.arg);
+          const unwrapped = Ruleset.unwrapGeneratedIs(component.arg);
           if (isNode(unwrapped, N.CompoundSelector)) {
             components.push(...unwrapped.value);
           } else if (typeof unwrapped !== 'string') {
@@ -1427,7 +1427,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           && part.name === ':is'
           && part.arg instanceof Selector
         ) {
-          const unwrapped = Ruleset.unwrapGeneratedReferenceIs(part.arg);
+          const unwrapped = Ruleset.unwrapGeneratedIs(part.arg);
           if (isNode(unwrapped, N.ComplexSelector)) {
             parts.push(...unwrapped.value);
           } else if (typeof unwrapped !== 'string') {
@@ -1520,7 +1520,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           )
         : composeInput;
       if (options.referenceMode === true && options.referenceRenderEnabled === true) {
-        cached = Ruleset.expandGeneratedIsForReferenceCompose(cached) ?? cached;
+        cached = Ruleset.expandGeneratedIs(cached) ?? cached;
         cached = Ruleset.simplifyGeneratedIsSelector(cached) ?? cached;
       }
       if (composeParent) {
@@ -1579,7 +1579,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       && canReferenceFilter
       && !(renderSelector instanceof Nil)
     )
-      ? (simplifiedGeneratedIs ?? Ruleset.filterExtendedTopLevelSelectorItems(renderSelector))
+      ? (simplifiedGeneratedIs ?? Ruleset.filterExtendedItems(renderSelector))
       : undefined;
     if (options.collapseNesting && !(renderSelector instanceof Nil)) {
       renderSelector = this.composeHeaderSelector(options, renderSelector, referenceFilteredLocal);
