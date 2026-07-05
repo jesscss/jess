@@ -73,6 +73,14 @@ export class Operation extends Node<OperationValue> {
     return isNode(node, N.List) && (node as Node & { options?: { sep?: string } }).options?.sep === '/';
   }
 
+  // A Paren operand that survives eval (e.g. `(25vh - 20px)`, incompatible
+  // units under calc/preserve) is not a single operable terminal — its inner
+  // expression stays parenthesized on output. Treat it like a nested Operation:
+  // preserve the operation rather than trying to operate on the Paren.
+  private static isUnoperable(node: Node): boolean {
+    return isNode(node, N.Operation) || isNode(node, N.Paren);
+  }
+
   private withOperands(left: Node, right: Node): Operation {
     const finalLeft = left === this.left ? left.cloneForPlacement({ reuseLeaves: false }) : left;
     const finalRight = right === this.right ? right.cloneForPlacement({ reuseLeaves: false }) : right;
@@ -196,7 +204,7 @@ export class Operation extends Node<OperationValue> {
         return renderOperands();
       }
       if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
+        if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           return renderOperands();
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -311,9 +319,10 @@ export class Operation extends Node<OperationValue> {
         return n.withOperands(l, r);
       }
       if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
+        if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
-          // operation intentionally remains unevaluated under current math mode.
+          // operation intentionally remains unevaluated under current math mode,
+          // or a surviving Paren operand like `(25vh - 20px)`.
           if (l === left && r === right) {
             return n;
           }

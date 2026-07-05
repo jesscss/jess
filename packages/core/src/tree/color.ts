@@ -159,6 +159,29 @@ export class Color extends Node<ColorData, ColorOptions> {
     this.addFlag(F_STATIC);
   }
 
+  // A Color's state lives on the channel fields (`_rgbChannels` / `_hslChannels`
+  // / `_alphaValue`) and `node`, not on `value` — a Color built from `rgba(...)`
+  // has `node === undefined` and channels only. The base `clone()` rebuilds from
+  // `childKeys = ['node']` alone, producing `new Color({ node: undefined })`
+  // which throws "requires rgb, hsl, or node". Own the clone so the channels
+  // round-trip. (Invariant 7.)
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const node = cloneFn && this.node instanceof Node ? cloneFn(this.node) : this.node;
+    const colorData: ColorData = {
+      node,
+      rgb: this._rgbChannels ? [...this._rgbChannels] : undefined,
+      hsl: this._hslChannels ? [...this._hslChannels] : undefined,
+      alpha: this._alphaValue
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const newNode = new Color(
+      colorData,
+      this._options ? { ...this._options } : undefined
+    ) as this;
+    newNode.inherit(this);
+    return newNode;
+  }
+
   private normalizeChannelValue(value: unknown): ChannelValue {
     if (typeof value === 'number') {
       return value;

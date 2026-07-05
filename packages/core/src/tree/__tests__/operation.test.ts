@@ -549,4 +549,22 @@ describe('Operation', () => {
     expect(css).toContain('root: calc(100% - 30px);');
     expect(css).toContain('height: calc(50% + (25vh - 20px));');
   });
+
+  // Repro: `calc(50% + (@var - 20px))` where `@var` is a preserved slash-list
+  // (`50vh / 2`). Under the default `parens-division` mode the inner subtraction
+  // doesn't collapse, so the Paren survives eval. The outer `+` must preserve it,
+  // not throw "Cannot operate on Paren".
+  it('preserves a surviving Paren operand instead of operating on it', () => {
+    // `(50vh / 2 - 20px)` — the `-` has a preserved slash-list operand, so the
+    // inner Operation stays unevaluated and the Paren is not reduced to a value.
+    const slashList = list([dimension([50, 'vh']), num(2)], { sep: '/' });
+    const inner = op([slashList, '-', dimension([20, 'px'])]);
+    const operation = op([dimension([50, '%']), '+', paren(inner)]);
+
+    const context = new Context();
+
+    const resolved = operation.resolve(context);
+    expect(resolved).toBeInstanceOf(Operation);
+    expect((resolved as Operation).toTrimmedString()).toBe('50% + (50vh / 2 - 20px)');
+  });
 });
