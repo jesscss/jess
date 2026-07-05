@@ -39,3 +39,24 @@ describe('SelectorAnalysis free helpers resolve the context service', () => {
     });
   }
 });
+
+// A resolved ampersand parent can hand `compute` a bare string leaf or a raw
+// component array (an unwrapped selector list). Neither is a node, so the leaf
+// fallthrough (`selector.hasFlag`) and the WeakMap cache key both crashed.
+describe('SelectorAnalysis.compute tolerates non-node inputs', () => {
+  it('interns a bare string leaf as its own key (no hasFlag crash)', () => {
+    const context = new Context();
+    const analysis = selectorAnalysisFor(context.selectorBits);
+    const sets = analysis.compute('.foo' as never);
+    const expected = analysis.keySet(el('.foo'));
+    expect(sets.keySet.equals(expected)).toBe(true);
+  });
+
+  it('unions a raw component array as a selector list (no WeakMap key crash)', () => {
+    const context = new Context();
+    const analysis = selectorAnalysisFor(context.selectorBits);
+    const arraySets = analysis.compute(['.me', '.mf'] as never);
+    const listSets = analysis.compute(sellist(['.me', '.mf']));
+    expect(arraySets.keySet.equals(listSets.keySet)).toBe(true);
+  });
+});

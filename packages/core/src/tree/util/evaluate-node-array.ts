@@ -65,9 +65,13 @@ export function coerceNodeArray(value: NodeArrayItem[]): Node[] {
   let out: Node[] | undefined;
   for (let i = 0; i < value.length; i++) {
     const item = value[i]!;
-    if (item instanceof Node) {
+    // Only the parser's raw value shapes — string terminals and space-group
+    // arrays — need coercion. A Node passes through; anything else is already a
+    // resolved value (List is also used as a generic argument container) and
+    // must not be run through value coercion.
+    if (typeof item !== 'string' && !Array.isArray(item)) {
       if (out) {
-        out[i] = item;
+        out[i] = item as Node;
       }
       continue;
     }

@@ -719,16 +719,22 @@ export function findExtendableLocations(
   target: Selector,
   find: Selector
 ): ExtendSearchResult {
+  // Identity caches key on node identity; a string-normalized leaf selector is
+  // not an object (invalid WeakMap/Map key). Such leaves are cheap and
+  // value-comparable, so skip the cache for them rather than key on a string.
+  const cacheable = typeof target === 'object' && typeof find === 'object';
   // Check general search result cache first
-  let targetCache = SEARCH_RESULT_CACHE.get(target);
-  if (targetCache) {
-    const cached = targetCache.get(find);
-    if (cached) {
-      return cached;
+  let targetCache = cacheable ? SEARCH_RESULT_CACHE.get(target) : undefined;
+  if (cacheable) {
+    if (targetCache) {
+      const cached = targetCache.get(find);
+      if (cached) {
+        return cached;
+      }
+    } else {
+      targetCache = new Map<Selector, ExtendSearchResult>();
+      SEARCH_RESULT_CACHE.set(target, targetCache);
     }
-  } else {
-    targetCache = new Map<Selector, ExtendSearchResult>();
-    SEARCH_RESULT_CACHE.set(target, targetCache);
   }
 
   const locations: ExtendLocation[] = [];
@@ -741,7 +747,7 @@ export function findExtendableLocations(
     const cached = EXACT_MATCH_CACHE.get(target);
     if (cached) {
       const result = { locations: cached, hasMatches: cached.length > 0, hasWholeMatch: true, metrics };
-      targetCache.set(find, result);
+      targetCache?.set(find, result);
       return result;
     }
 
@@ -751,9 +757,9 @@ export function findExtendableLocations(
       matchedNode: target,
       extensionType: 'replace'
     });
-    EXACT_MATCH_CACHE.set(target, [exactLocation]);
+    if (cacheable) EXACT_MATCH_CACHE.set(target, [exactLocation]);
     const result = { locations: [exactLocation], hasMatches: true, hasWholeMatch: true, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
@@ -763,7 +769,7 @@ export function findExtendableLocations(
   if (canFastReject && isDisjoint(keySetOf(target), keySetOf(find))) {
     metrics.fastRejections++;
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
@@ -771,7 +777,7 @@ export function findExtendableLocations(
   if (canFastReject && !isSubsetOf(requiredKeySetOf(find), keySetOf(target))) {
     metrics.fastRejections++;
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
@@ -783,12 +789,12 @@ export function findExtendableLocations(
       const listItem = find.value[i]!;
       const result = findExtendableLocations(target, selectorListItemForMatch(listItem));
       if (result.hasMatches) {
-        targetCache.set(find, result);
+        targetCache?.set(find, result);
         return result;
       }
     }
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
@@ -797,7 +803,7 @@ export function findExtendableLocations(
     metrics.fastPathHits++;
     const hasWholeMatch = fastPathResult.some(loc => loc.path.length === 0 && loc.matchedNode === target);
     const result = { locations: fastPathResult, hasMatches: true, hasWholeMatch, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
@@ -812,7 +818,7 @@ export function findExtendableLocations(
     hasWholeMatch,
     metrics
   };
-  targetCache.set(find, result);
+  targetCache?.set(find, result);
   return result;
 }
 

@@ -68,7 +68,27 @@ export class SelectorAnalysis {
     return this.compute(selector).requiredKeySet;
   }
 
-  compute(selector: Selector): SelectorKeySets {
+  compute(selector: Component | Component[]): SelectorKeySets {
+    // A string leaf (string-normalized selector terminal) interns as its own key;
+    // it is not a node, so it can neither be a WeakMap cache key nor answer
+    // `hasFlag`. Handle it up front — same as `componentKeySets`.
+    if (typeof selector === 'string') {
+      const bits = this.library.getBitset([selector]);
+      return { keySet: bits, visibleKeySet: bits, requiredKeySet: bits };
+    }
+    // A resolved ampersand parent can arrive as a raw component array (an
+    // unwrapped selector list); treat it as an OR of its alternatives.
+    if (Array.isArray(selector)) {
+      const library = this.library;
+      let keySet = library.getBitset();
+      let visibleKeySet = library.getBitset();
+      for (const item of selector) {
+        const c = this.componentKeySets(item);
+        keySet = keySet.or(c.keySet);
+        visibleKeySet = visibleKeySet.or(c.visibleKeySet);
+      }
+      return { keySet, visibleKeySet, requiredKeySet: library.getBitset() };
+    }
     // Structural selectors are immutable per identity, so their key-sets memoize
     // safely. An Ampersand is the exception: its key-set tracks the runtime parent
     // in its container, which can change, so it must recompute every time.
