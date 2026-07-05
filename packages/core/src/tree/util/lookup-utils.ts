@@ -57,14 +57,14 @@ export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): st
     if (!node || isNode(node, N.Nil)) {
       return;
     }
+    if (isCombinator(node)) {
+      return;
+    }
     if (isStringCompoundSelectorComponent(node)) {
       addKey(node);
       return;
     }
     if (!foundBasic && isNode(node, N.Ampersand)) {
-      return;
-    }
-    if (isCombinator(node)) {
       return;
     }
     if (isNode(node, N.BasicSelector)) {
