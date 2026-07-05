@@ -288,3 +288,20 @@ Banked (no fixture flipped green yet — each now blocked behind a deeper eval b
 2. **Eval strips `!important`.** `color: red !important` renders `color: red` — the flag is dropped during
    EVALUATION (before serialize), affecting even plain scalars. Blocks property-targeted, namespacing-3 (which also
    have parser gaps). Fix in declaration eval. Owner: `less/eval-important`.
+
+## PARKED DESIGN — permissive-parse severity as a policy layer (recoverable "gross" constructs)
+Motivated by bootstrap's `@escaped-characters: { <: %3c; (: %28; }` (SCSS map faked as a detached ruleset with
+invalid char keys). Even Less.js can't parse it as a ruleset — the `escape-svg` plugin comment says Less "treats
+[it] as a string instead of a ruleset" and string-splits it. So raw-`Quoted` recovery (bootstrap2's fix) IS the
+Less-4-compatible output; what's missing is a DIAGNOSTIC.
+
+Design (do NOT implement now — parser-scope, coordinate with the mixin-args grammar agent):
+- KEEP the invariant "recover ⟹ warning" (no third 'recoverable error' severity).
+- When a braced `{…}` body fails declaration-parsing, recover to raw `Quoted` AND attach a warning tagged
+  `strict-violation` (carry the "gross" as data, with span + message).
+- The DRIVER decides fatality by mode, not the parser:
+  - Less-4-compat mode (default): `strict-violation` stays a warning → nothing Less 4.x accepts ever breaks.
+  - Jess-strict/lint mode: driver elevates `strict-violation` → fatal error (guardrail for new Jess code).
+- Decision rule for warning-vs-error is TESTABLE against the less.js corpus: "does Less 4.x accept it?" yes → warning
+  in compat; Less-4-also-rejects → plain error (no category, no compat tension).
+- True long-term fix for THIS fixture: Jess grows a first-class map type so the port needn't fake maps. Out of scope.
