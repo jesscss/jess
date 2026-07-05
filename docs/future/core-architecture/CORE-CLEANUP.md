@@ -215,6 +215,19 @@ replaced with constructor-set fields — reference.ts never got the memo.
   per definition); lower priority but convert for consistency.
 - `logger.ts:13` — cold, ignore.
 
+### ⛔ STANDING PERF RULE — SLIM NODES (minimize node shape; performance is the driver)
+Every field on a node is paid per-instance: memory + construction cost + a slot on the hidden class + a bigger
+object to GC. Keep node shapes **AS LEAN AS POSSIBLE.** Prefer **type specialization** — distinct lean node
+classes each carrying ONLY the fields it needs (e.g. the approved `DeclarationReference`/`VariableReference`/
+`PropertyReference`/`MixinReference` split) — over one fat `Node` with dozens of optional/`undefined` fields.
+Rare/optional data belongs on the specialized subclass that needs it, **NOT a side-table (WeakMap)** — the
+provenance regression proved side-tables are strictly worse (alloc + indirection). When adding a field, first
+ask: can it be a **flag bit** (boolean → `F_*`), be **derived** (computed, not stored), live on a **subtype**,
+or be **dropped**? **DX may change** — getter names, method surface, even public API — as long as the new DX is
+**sane** (need not match or beat the old; just not bad). **Performance is the driver.** Track field-count per
+node class as a metric; slim the fat ones. Shared behavior across lean types goes in **util functions**, not a
+fat base class.
+
 Suite is green, so this is now the live drive. **Finding (traced this pass):** the render
 pipeline runs ~4 structural passes *regardless of content*, and two of them exist only because
 eval still holds serialization/collapse state it was supposed to hand off.
@@ -370,11 +383,17 @@ shouldn't exist. No WeakMap, no eval churn, fast V8 object. Cross-cutting (node-
 ### Remaining tracker perf items — triage verdicts (explore-all pass)
 - **Focus A — Ruleset source-direct render eligibility:** minor; render fast-path *eligibility* refinement,
   not on the measured hot list. Keep deferred.
-- **Focus B — loops COPY per iteration (`@for`/`@each`/`@while`):** UNMEASURED but NOT blocked (correction —
-  the earlier "`.less` can't / jess-plugin blocked" claim was wrong). `.scss` expresses these; scss-parser
-  builds the loop nodes and core evaluates them, so the loop-copy cost IS reachable. The CLI just doesn't
-  register `.scss` by default (needs Compiler plugin wiring, same as `.jess`). Reasoned real (per-iteration
-  body clone = allocation). TODO: wire scss render + profile a loop-heavy `.scss` sheet to size it.
+- **Focus B — loops COPY per iteration — MEASURED, CLOSED (not worth a refactor).** `@each` over a list var
+  (4000 rulesets, identical output): loop wall-time ≈ flat (0.97x — loop parses the body once, so it's even
+  marginally faster). Per-iteration body copy + frame setup (`createForIterationSurface` +
+  `copyOwnedWithReusableLeaves` + extra `clone`/`inherit` + `resolveEntries`) = **~1–1.5% of CPU** total; the
+  copy already uses reusable leaves (not naive deep clone). Verdict: NOT worth a zero-copy loop refactor at
+  current priorities — the real loop-render cost was serialization (`refreshPositions`), already fixed by W2.
+  scss-render path (for reruns): `compiler.renderString(src, { extension: '.scss', config: { compile: {
+  plugins: [scssPluginInstance] } } })`. **Bugs found in passing (out of perf scope, flag separately):**
+  (1) `jess-plugin-scss/src/index.ts:87` passes `'stylesheet'` but the grammar root is `'Stylesheet'` →
+  scss plugin can't parse anything as-is; (2) range `@for` (`range.ts:87` evalNode stub + no `Range` case in
+  `control.ts:335 resolveEntries`) doesn't iterate; `@each` over an inline comma list mis-routes.
 - **Focus D.1 — `F_VISIBLE` per-node reads:** cheap (bitmask `&`); `fullRender` prototype-read already
   deleted. Not a headline; hygiene only.
 
