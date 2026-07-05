@@ -50,19 +50,23 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
 - [ ] **Loops still COPY per iteration** — `$for`/`$each`/`$while` clone the body each
   pass instead of re-pointing a covered frame (see `control.ts` TODO). The last
   structural single-frame gap.
-- [ ] **`direct-rules-lookup` fallback (R3)** — confined to `$while` and
-  dynamic/interpolated/explicit-target names; goal is to stop rediscovering binding
-  facts the frame already knows.
+- [defer] **`direct-rules-lookup` fallback (R3)** — confined to `$while` and
+  dynamic/interpolated/explicit-target names. **Deferred: downstream of Focus E2/E3** — it
+  is the same "resolve through the frame the binding actually lives on" problem; fix it as
+  part of the scope-identity rework, not before it (it would just re-encode the workaround).
 
-## Focus C — Performance
+## Focus C — Performance — **DEFERRED (out of the correctness drive)**
 
-Evidence-logged levers (archived PERFORMANCE-HANDOFF has the measurements):
+**Deferral rationale:** all three are performance levers with **zero failing-test signal** —
+they do not move the stable failure set toward 0, which is the driver goal's target. They are
+a separate perf backlog (measurements in archived PERFORMANCE-HANDOFF) to be picked up after
+the correctness baseline is at its irreducible minimum, or on an explicit perf pass. Not part
+of the drive-to-green loop.
 
-- [ ] `Reference` lookup + callable output-body placement — the remaining hot path.
-- [ ] Copy / materialization boundary — the owned-public-resolve path still copies in
-  places (item-14 line in the archived log).
-- [ ] `F_STATIC` eval-free static-tree lever (design in `static-eval-optimizations.md`)
-  — deferred next big win.
+- [defer] `Reference` lookup + callable output-body placement — remaining hot path (perf only).
+- [defer] Copy / materialization boundary — owned-public-resolve still copies (perf only).
+- [defer] `F_STATIC` eval-free static-tree lever (`static-eval-optimizations.md`) — the next
+  big perf win, design-stage; explicitly deferred.
 
 ## Focus D — strings-not-nodes render migration (NEW; == task #9)
 
