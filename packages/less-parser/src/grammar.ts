@@ -589,6 +589,10 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // `CalcCall` (calc(…)) and the plain value-position `Paren` come from the shared
   // `parenRules` fragment (spread below); they defer to g.calcBody / g.parenBody here.
   const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), functionCallArgs)));
+  // A bare value paren `( … )`. Defined locally (not inherited from CSS) so the `(`→body
+  // trivia uses Less `rw`, which skips `//` line comments — CSS `rw` does not, so a `//`
+  // right after `(` (e.g. `(@a * // c\n @b)`) would otherwise not be consumed as trivia.
+  const Paren = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.parenBody)));
   // Mixin-argument paren: `(` immediately preceded (lookbehind, no trivia) by a
   // selector / accessor char — the args of a `.name(…)` / `#ns.x(…)` reference.
   // Parsed permissively; the Declaration builder reassembles the selector +
@@ -674,7 +678,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, EscapedValue, NamedColor, Dimension, Url,
-    parenBody, permissiveParenBody, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, SquareParen, anyValue, EachFor,
+    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };
