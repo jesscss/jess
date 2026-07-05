@@ -386,3 +386,14 @@ Gaps to close when building the sandbox:
   `_assembleValue` single-segment path skips the `_valueKeyword` wrapping the list branch applies. Core binding
   correctly assumes param/arg values are Nodes. Fix (targeted): wrap the lone bare-string in a Keyword, scoped to the
   mixin/arg builders so plain declaration bare-string values stay strings. NOTE: css-parser is shared css/less/scss/jess.
+
+## 2026-07-05 — board 67/93 (was 63); at-rule serialize merged
+- **at-rule-serialize MERGED** (core 2737/0): flipped **at-rules, at-rules-bubbling, at-rules-declarations, calc** green.
+  Killed the `$??` sigil leak — it was a CORE bug (flat-array decl values never evaluated → Call serialized its
+  `$name?(...)` Jess source form), NOT a parser `$`-sigil gap. Also fixed query-condition paren attach (`url-prefix()`).
+- Parser clearance GRANTED (user): targeted parser fixes are now mine, gated against css/scss too.
+- **IN FLIGHT:** `less/keyword-value` (parser) — bare-keyword param-default/named-arg → Keyword node (mixins-guards/advanced/nested).
+- **NEXT — color-fns (basic/rgba/comprehensive/modern):** `$??` now gone; remaining = (a) `red()`/color fns not
+  evaluating (`red(rgb(100%,0,0))` should → `255`), (b) a spurious space `red (rgb…)` — the at-rule "always space
+  adjacent value nodes" rule likely OVER-spaces a function-name+paren-args boundary; needs refinement so a Call/
+  fn-name+Paren doesn't get spaced while genuine space-lists still do.
