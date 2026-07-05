@@ -169,3 +169,13 @@ after bootstrap.less compiles; they're the path from all-less 56/93 → 93/93:
 - **accessor/scope remnants**: namespacing-3/6/7 (guard-accessor LHS grammar, bare-`when(true)` Bool keyword), property-targeted, deep chained mixin-call-accessor.
 - **sourcemaps**: source-map annotation + artifact output (own harness).
 - **parser gaps** (also surfaced by bootstrap): unicode-range `U+0???`, `$??()` interpolation placeholders, multiline value newline-preservation (parser folds whitespace into spanless string terms).
+
+## Follow-up: proper inline-JS backtick detection (replace the pre-scan)
+The current `firstInlineJsBacktick` pre-scan in `less-parser/src/functional-parser.ts` (commit 8aad9deb2)
+is a FRAGILE STOPGAP: it hand-rolls comment/quote opacity and gets precedence wrong — e.g. `//` inside a
+`url(http://…)` or an unquoted URL is mistaken for a line comment; Less escaped strings `~"…"` aren't
+modeled. Correct model: comments/quotes are OPAQUE — once opened, everything is that token until closed,
+and the tokenizer already enforces this (parseLessFn parses a comment-backtick fine). PROPER FIX: remove
+the pre-scan entirely and detect inline JS IN THE GRAMMAR/TOKENIZER — a backtick token reaching the grammar
+is code-position by definition → error with the friendly "inline JS not supported" message. Do this once
+the parser is free of the bootstrap-driver.
