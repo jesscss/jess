@@ -8,7 +8,7 @@ import { Interpolated } from './interpolated.js';
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf, copyNodesForOwnership } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 import { renderInvisibleEffect, type RenderBuffer } from './util/render-buffer.js';
 
@@ -141,15 +141,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   }
 
   private ownRules(value: Node[]): Node[] {
-    const owned = new Array<Node>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      const copied = copyWithReusableLeaves(value[i]!);
-      if (!(copied instanceof Node)) {
-        throw new TypeError('Expected mixin rule copy to remain a node');
-      }
-      owned[i] = copied;
-    }
-    return owned;
+    return copyNodesForOwnership(value, copyWithReusableLeaves);
   }
 
   private ownParams(value: List<Node> | undefined): List<Node> | undefined {
@@ -290,7 +282,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     if (this.registrationPrepared) {
       return this;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
     return this._prepareMixinRegistration(context) as MaybePromise<this>;
   }
 

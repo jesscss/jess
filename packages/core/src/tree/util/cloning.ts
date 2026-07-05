@@ -77,3 +77,28 @@ export function copyWithReusableLeavesPreservingComments(node: Node): Node {
 export function copyOwnedWithReusableLeaves(node: Node): Node {
   return copyForPlacement(node, { owned: true });
 }
+
+/**
+ * Copy a Node array using a specified copy function, validating that each
+ * copy remains a Node. Used by Ruleset, Mixin, and AtRule to consolidate
+ * their identical ownRules() implementations.
+ *
+ * @param nodes - Array of nodes to copy
+ * @param copyFn - Copy function (e.g., copyOwnedWithReusableLeaves, copyWithReusableLeaves)
+ * @returns Array of copied nodes
+ * @throws TypeError if a copy doesn't remain a Node
+ */
+export function copyNodesForOwnership(
+  nodes: readonly Node[],
+  copyFn: (n: Node) => Node
+): Node[] {
+  const owned = new Array<Node>(nodes.length);
+  for (let i = 0; i < nodes.length; i++) {
+    const copied = copyFn(nodes[i]!);
+    if (!(copied instanceof Node)) {
+      throw new TypeError('Expected node copy to remain a node');
+    }
+    owned[i] = copied;
+  }
+  return owned;
+}
