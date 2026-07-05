@@ -188,10 +188,19 @@ function collectKeyRemainder(keys: readonly string[], start: number): string[] {
   return remainder;
 }
 
-function splitStaticCallablePathKey(key: string): string[] | undefined {
-  let firstStart = -1;
-  let firstEnd = -1;
-  let out: string[] | undefined;
+// Combinators are string leaves between selector segments; a compound namespace
+// key like `#theme>.button` (or `#theme .button`) concatenates them without
+// spaces, so each segment slice must drop any trailing combinator characters.
+function isCombinatorCharCode(char: number): boolean {
+  // ' ' | '>' | '+' | '~' | '|'
+  return char === 32 || char === 62 || char === 43 || char === 126 || char === 124;
+}
+
+// Split a `#`/`.`-delimited selector string into its ordered segment keys,
+// dropping trailing combinator characters from each segment (`#theme>.button`
+// → ['#theme', '.button']). Returns [] for strings with no class/id segment.
+function splitSelectorStringKeys(key: string): string[] {
+  const out: string[] = [];
   for (let i = 0; i < key.length; i++) {
     const char = key.charCodeAt(i);
     if (char !== 35 && char !== 46) {
@@ -206,21 +215,22 @@ function splitStaticCallablePathKey(key: string): string[] | undefined {
       }
       i++;
     }
-    if (i === start + 1) {
-      i--;
-      continue;
+    let end = i;
+    while (end > start + 1 && isCombinatorCharCode(key.charCodeAt(end - 1))) {
+      end--;
     }
-    if (firstStart < 0) {
-      firstStart = start;
-      firstEnd = i;
-      i--;
-      continue;
-    }
-    out ??= [key.slice(firstStart, firstEnd)];
-    out.push(key.slice(start, i));
     i--;
+    if (end === start + 1) {
+      continue;
+    }
+    out.push(key.slice(start, end));
   }
   return out;
+}
+
+function splitStaticCallablePathKey(key: string): string[] | undefined {
+  const keys = splitSelectorStringKeys(key);
+  return keys.length > 1 ? keys : undefined;
 }
 
 function isSelectorLikeNode(node: unknown): node is Selector {
@@ -1625,7 +1635,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         continue;
       }
       let selector = node.selector;
-      if (!selector || isNode(selector, N.Nil) || typeof selector === 'string') {
+      if (typeof selector === 'string') {
+        // Parsed simple selectors (`#theme`, `.button`) are stored as plain
+        // strings, not Selector nodes, but they are valid callable namespaces —
+        // register them under their split ordered keys just like node selectors.
+        this.addCallableSelectors(lookupKey, node, splitSelectorStringKeys(selector), bucket);
+        continue;
+      }
+      if (!selector || isNode(selector, N.Nil)) {
         continue;
       }
       const ownSelector = isSelectorLikeNode(node.options.ownSelector)
