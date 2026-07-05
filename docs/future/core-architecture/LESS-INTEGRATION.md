@@ -27,7 +27,7 @@ not band-aided in the plugin/integration layer.
   hot-reload via the alias; only rebuild if you change what the config loader itself imports.
 - Run: `cd packages/jess && TEST=true npx vitest run test/less/all-less.test.ts`. Core repros:
   `cd packages/core && npx vitest run <file> -t <name>`.
-- **all-less gate baseline (jess-parseman = single gate worktree): 60 passed / 33 failed / 93. Core: 0.**
+- **all-less gate baseline (jess-parseman = single gate worktree): 61 passed / 32 failed / 93. Core: 0.**
 
 ## Gate / merge rules (same discipline as CORE-CLEANUP)
 - One cluster per branch `less/<slug>` + worktree off `feature/parseman`.
@@ -128,6 +128,7 @@ Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH f
 
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
+- **url-datauri** (f7a2e70fc): data-uri reads via new Context.readBinary (file manager, replaces raw-fs violation); url serialization verified+repro'd; urls.less xfail (blocked on @import interpolation). all-less→61.
 - **extend** (df4a9e653): string-leaf handling across extend engine (walk :is() wrap, materializeStringLeaves, combinatorHasFlag, extendWith flatten, double-eval guard); extend-chaining+extend-media green, all-less→60. Remaining extend-nest/extend-selector/extend need a location-matcher rework (nested :is() distribution, nested &:extend parent composition).
 - **calc** (2681b7560): dimension.ts no longer fabricates compound units (throw→Operation preserves operands); calc-via-Reference reduction; F_MAY_ASYNC; cast.ts ESM. all-less→58, cleared nesting.
 - **color-fns** (cbeb40b01): fns color utils no longer read nonexistent node.location (sourceSpanOf/.inherit); color output correct, +4 tsc errors gone. Color all-less fixtures still blocked by: parser `red(rgb())` call-lexing (color-keyword+`(` not a Call), calc-on-relative-color-keyword, custom-property `--x:val` whitespace.
