@@ -1578,7 +1578,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     bucket.push({ value, match });
   }
 
-  private addDirectCallableSelectorEntries(
+  private addCallableSelectors(
     lookupKey: string,
     ruleset: Ruleset,
     keys: string[],
@@ -1606,7 +1606,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this.addCallableEntry(lookupKey, key, ruleset, match ?? [], bucket);
   }
 
-  private collectCallableEntriesForKeyFrom(
+  private collectCallablesFor(
     rules: Rules,
     lookupKey: string,
     bucket: CallableLookupEntry[]
@@ -1649,7 +1649,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (isNode(selector, N.SelectorList)) {
         for (const item of selector.value) {
           if (typeof item !== 'string') {
-            this.addDirectCallableSelectorEntries(
+            this.addCallableSelectors(
               lookupKey,
               node,
               getOrderedSelectorKeys(item),
@@ -1671,11 +1671,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && keys.length > parentKeys.length
           && keysStartWith(keys, parentKeys)
         ) {
-          this.addDirectCallableSelectorEntries(lookupKey, node, keys, bucket, parentKeys.length);
+          this.addCallableSelectors(lookupKey, node, keys, bucket, parentKeys.length);
           continue;
         }
       }
-      this.addDirectCallableSelectorEntries(lookupKey, node, keys, bucket);
+      this.addCallableSelectors(lookupKey, node, keys, bucket);
     }
   }
 
@@ -1689,10 +1689,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
 
     const bucket: CallableLookupEntry[] = [];
-    this.collectCallableEntriesForKeyFrom(this, lookupKey, bucket);
+    this.collectCallablesFor(this, lookupKey, bucket);
     const sourceRules = sourceRulesOf(this);
     if (bucket.length === 0 && sourceRules !== this) {
-      this.collectCallableEntriesForKeyFrom(sourceRules, lookupKey, bucket);
+      this.collectCallablesFor(sourceRules, lookupKey, bucket);
     }
     (this.callableLookupCache ??= new Map()).set(
       lookupKey,
@@ -2010,7 +2010,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     });
   }
 
-  private findVisibleExactCallableRulesetPath(
+  private findCallableRulesetPath(
     path: string[],
     options?: CallableFindOptions,
     pathStart = 0
@@ -2102,7 +2102,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return results;
   }
 
-  private findVisibleCallableRulesetPrefixMatches(
+  private findCallablePrefixMatches(
     path: string[],
     options?: CallableFindOptions,
     pathStart = 0
@@ -2403,7 +2403,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return false;
   }
 
-  private prepareCallableLookupFrameChain(
+  private prepareCallableFrameChain(
     frame: ScopeFrame,
     segment: string,
     includeRulesets: boolean,
@@ -2421,7 +2421,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
-  private frameChainHasExactMixinNamespace(
+  private hasMixinNamespace(
     frame: ScopeFrame,
     segment: string,
     searchParents: boolean
@@ -2439,7 +2439,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return false;
   }
 
-  private collectCallableRulesetPrefixMatchesFromFrame(
+  private collectRulesetPrefixes(
     frame: ScopeFrame,
     path: string[],
     results: CallableRulesetPrefixMatch[],
@@ -2541,10 +2541,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       const childFrame = entry.node.getScopeFrame();
       entry.node.prepareCallableLookupFrame(childFrame, segment, true);
-      this.collectCallableRulesetPrefixMatchesFromFrame(childFrame, path, results, pathStart);
+      this.collectRulesetPrefixes(childFrame, path, results, pathStart);
       if (
         (!childFrame.callableMissCoverageKnown || !childFrame.callableMissesCovered)
-        && !this.prefixOwnsChildRules(scope, entry.node, segment, results)
+        && !this.prefixOwnsChildren(scope, entry.node, segment, results)
       ) {
         covered = false;
       }
@@ -2594,7 +2594,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return covered;
   }
 
-  private collectVisibleCallableRulesetPrefixMatchesFromFrames(
+  private collectVisiblePrefixes(
     frame: ScopeFrame,
     path: string[],
     searchParents: boolean,
@@ -2620,7 +2620,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       first = false;
       scope.prepareCallableLookupFrame(cursor, segment, true);
-      this.collectCallableRulesetPrefixMatchesFromFrame(cursor, path, results, pathStart);
+      this.collectRulesetPrefixes(cursor, path, results, pathStart);
       if (!this.collectChildCallableRulesetPrefixMatchesFromFrames(scope, path, options, results, pathStart)) {
         covered = false;
       }
@@ -2670,7 +2670,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return covered;
   }
 
-  private prefixOwnsChildRules(
+  private prefixOwnsChildren(
     scope: Rules,
     entryRules: Rules,
     segment: string,
@@ -2699,7 +2699,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return false;
   }
 
-  private childMixinNamespaceUncertaintyIsLimitedToPrefixes(
+  private uncertaintyLimitedToPrefixes(
     scope: Rules,
     segment: string,
     prefixMatches: CallableRulesetPrefixMatch[],
@@ -2725,14 +2725,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (options.local && entry.node.options?.local) {
         continue;
       }
-      if (!this.prefixOwnsChildRules(scope, entry.node, segment, prefixMatches)) {
+      if (!this.prefixOwnsChildren(scope, entry.node, segment, prefixMatches)) {
         return false;
       }
     }
     return true;
   }
 
-  private visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
+  private visibleUncertaintyLimitedToPrefixes(
     scope: Rules,
     segment: string,
     prefixMatches: CallableRulesetPrefixMatch[],
@@ -2748,7 +2748,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           break;
         }
         first = false;
-        if (!this.childMixinNamespaceUncertaintyIsLimitedToPrefixes(
+        if (!this.uncertaintyLimitedToPrefixes(
           visibleScope,
           segment,
           prefixMatches,
@@ -2797,7 +2797,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ? scope.getScopeFrame()
         : undefined;
       if (scopeFrame) {
-        this.collectVisibleCallableRulesetPrefixMatchesFromFrames(
+        this.collectVisiblePrefixes(
           scopeFrame,
           path,
           searchParents,
@@ -2805,7 +2805,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           prefixMatches,
           offset
         );
-        this.prepareCallableLookupFrameChain(scopeFrame, segment, false, searchParents);
+        this.prepareCallableFrameChain(scopeFrame, segment, false, searchParents);
         const frameHit = lookupScopeFrameCallable(scopeFrame, segment, {
           includeRulesets: false,
           searchParents
@@ -2832,13 +2832,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
               mixinNamespaceCovered = true;
             }
           }
-          if (!mixinNamespaceCovered && this.frameChainHasExactMixinNamespace(scopeFrame, segment, searchParents)) {
+          if (!mixinNamespaceCovered && this.hasMixinNamespace(scopeFrame, segment, searchParents)) {
             hasMixinNamespace = true;
             mixinNamespaceCovered = true;
           } else if (
             !mixinNamespaceCovered
             && prefixMatches.length > 0
-            && this.visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
+            && this.visibleUncertaintyLimitedToPrefixes(
               scope,
               segment,
               prefixMatches,
@@ -2885,7 +2885,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           let fallbackFrame = scopeFrame.fallbackFrame;
           while (fallbackFrame) {
             if (isNode(fallbackFrame.rulesNode, N.Rules)) {
-              const fallbackPrefixMatches = fallbackFrame.rulesNode.findVisibleCallableRulesetPrefixMatches(path, {
+              const fallbackPrefixMatches = fallbackFrame.rulesNode.findCallablePrefixMatches(path, {
                 hasTarget: options.hasTarget,
                 local: options.local,
                 searchParents: false
@@ -2900,7 +2900,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       }
       if (prefixMatches.length === 0 && !scopeFrame) {
-        prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path, {
+        prefixMatches = scope.findCallablePrefixMatches(path, {
           hasTarget: options.hasTarget,
           local: options.local,
           searchParents
@@ -2988,7 +2988,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           }
         }
         if (!scopeFrame) {
-          const exactPathMatches = scope.findVisibleExactCallableRulesetPath(path, {
+          const exactPathMatches = scope.findCallableRulesetPath(path, {
             hasTarget: options.hasTarget,
             local: options.local,
             searchParents
@@ -3071,7 +3071,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
               }
             }
             if (resolved === undefined && !options.terminalMixinOnly) {
-              const simpleCallableRulesets = ruleset.findVisibleExactCallableRulesetPath(path, {
+              const simpleCallableRulesets = ruleset.findCallableRulesetPath(path, {
                 hasTarget: options.hasTarget,
                 local: options.local,
                 searchParents: false
@@ -3117,7 +3117,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return result === DEFINITE_MISS ? [] : result;
   }
 
-  private findCompoundPrefixCallableRulesetPathFast(
+  private findCompoundPrefixPath(
     keys: string[],
     options: CallableFindOptions = {}
   ): CallableRulesetPathResult | undefined {
@@ -3125,7 +3125,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return undefined;
     }
 
-    const prefixMatches = this.findVisibleCallableRulesetPrefixMatches(keys, {
+    const prefixMatches = this.findCallablePrefixMatches(keys, {
       hasTarget: options.hasTarget,
       local: options.local
     });
@@ -3185,7 +3185,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return { entries: [], owned: true };
   }
 
-  private findCallableDescendantsWithinMixinNamespaces(
+  private findCallableDescendants(
     namespaceMixins: MixinEntry[],
     keys: string[],
     options: CallableFindOptions = {}
@@ -3519,14 +3519,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         if (!namespaceMixins || namespaceMixins.length === 0) {
           if (!namespaceMixinMissCovered && options.terminalMixinOnly !== true) {
-            const namespaceRulesets = this.findVisibleExactCallableRulesetPath([keys[0]!], {
+            const namespaceRulesets = this.findCallableRulesetPath([keys[0]!], {
               hasTarget: options.hasTarget,
               local: options.local
             });
             if (namespaceRulesets.length !== 0) {
               return undefined;
             }
-            const exactRulesetPath = this.findVisibleExactCallableRulesetPath(keys, {
+            const exactRulesetPath = this.findCallableRulesetPath(keys, {
               hasTarget: options.hasTarget,
               local: options.local
             });
@@ -3536,8 +3536,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           }
           return undefined;
         }
-        compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
-        mixinNamespaceFast = this.findCallableDescendantsWithinMixinNamespaces(
+        compoundPrefixFast = this.findCompoundPrefixPath(keys, options);
+        mixinNamespaceFast = this.findCallableDescendants(
           namespaceMixins,
           keys,
           options

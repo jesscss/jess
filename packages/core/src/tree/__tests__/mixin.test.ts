@@ -4061,10 +4061,10 @@ describe('Mixin', () => {
       const root = rules([referenceChild]);
 
       const proto = Object.getPrototypeOf(root) as any;
-      const originalPrefixSearch = proto.findVisibleCallableRulesetPrefixMatches;
+      const originalPrefixSearch = proto.findCallablePrefixMatches;
       let recursivePrefixCrawls = 0;
 
-      proto.findVisibleCallableRulesetPrefixMatches = function(path: string[], options: unknown) {
+      proto.findCallablePrefixMatches = function(path: string[], options: unknown) {
         recursivePrefixCrawls++;
         return originalPrefixSearch.call(this, path, options);
       };
@@ -4081,7 +4081,7 @@ describe('Mixin', () => {
         })).toBeUndefined();
         expect(recursivePrefixCrawls).toBe(0);
       } finally {
-        proto.findVisibleCallableRulesetPrefixMatches = originalPrefixSearch;
+        proto.findCallablePrefixMatches = originalPrefixSearch;
       }
     });
 
