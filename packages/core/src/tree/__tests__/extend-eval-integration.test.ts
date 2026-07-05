@@ -444,26 +444,21 @@ describe('extend integration (eval -> toString)', () => {
     );
     const isRulesetWithRules = (node: unknown): node is Ruleset => (
       node instanceof Ruleset
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      && Array.isArray((node.rules as unknown as Rules).rules)
+      && Array.isArray(node.rules)
     );
 
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
     const outerBb = evaldRules.rules.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        && (node.rules as unknown as Rules).rules.some((rule: Node) => isDeclarationNamed(rule, 'background'))
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        && (node.rules as unknown as Rules).rules.some((rule: Node) => rule instanceof Ruleset)
+        && node.rules.some((rule: Node) => isDeclarationNamed(rule, 'background'))
+        && node.rules.some((rule: Node) => rule instanceof Ruleset)
     );
     expect(outerBb).toBeTruthy();
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const inner = (outerBb?.rules as unknown as Rules)?.rules.find(
+    const inner = outerBb?.rules.find(
       (node: Node): node is Ruleset =>
         isRulesetWithRules(node)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        && (node.rules as unknown as Rules).rules.some((rule: Node) => isDeclarationNamed(rule, 'color'))
+        && node.rules.some((rule: Node) => isDeclarationNamed(rule, 'color'))
     );
     expect(inner).toBeTruthy();
     const innerSelectorStr = inner?.selector?.valueOf() ?? '';
