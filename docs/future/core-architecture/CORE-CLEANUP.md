@@ -85,10 +85,24 @@ failures (~44 of 85).
 
 ## Focus E — scope / mixin lookup misses (== task #17 tail)
 
-~27 of the 85 failures: `'x' is not defined` / `No matching mixins found`, funneling
-through `getReferenceNotFoundError` / `finalizeFallbackReferenceResult`. Single-frame
-lookup isn't resolving bindings that should exist. Deeper than Focus D (scope-frame
-resolution, not mechanical).
+`'x' is not defined` / `No matching mixins found`, funneling through
+`getReferenceNotFoundError` / `finalizeFallbackReferenceResult`. Single-frame lookup
+isn't resolving bindings that should exist. **NOT one root cause** — three families:
+
+- [x] **E1 — call-frame fallback to call-site scope for imported configs** (merged
+  cleanup/e-lookup, commit 04c285797). Imported mixin body/guard frames wiped their
+  fallback to `undefined` for non-leaky calls, dropping the call-site link where `with`-
+  config vars live. Fix (callable-scope-frame.ts): body + prebound param-guard frames now
+  chain the distinct call-site `parentFrame` when `fallbackScopeFrame` is absent. Cleared 2
+  import-style tests. Baseline 66 → **64**.
+- [ ] **E2/E3 — configured/reference import surface not on the callable resolution chain**
+  (DIAGNOSED, DEFERRED — the bulk of the cluster, ~16+ tests). Detached-ruleset closures,
+  child-surface `with` reads, lazy nested mixin-ruleset re-eval, and reference-import members
+  (`fromRefProp`, `.z`) resolve through a chain that never contains the configured import
+  surface (config lives as live-slots on a *derived* surface). Correct fix = make the
+  configured surface's frame the one on the callable's definition/lexical chain — this is the
+  **monolithic "wrapper is scope identity" scope rework** (see LIVE_BINDING_ARCHITECTURE.md);
+  too big/risky for a single safe wave. Its own multi-step project, not a mechanical unit.
 
 ## Focus D — strings-not-nodes render (progress: 85 → 67 stable, zero regressions)
 
