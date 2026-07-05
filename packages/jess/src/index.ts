@@ -856,7 +856,7 @@ export class Compiler {
   private async visitBeforeEvalNode(node: any, visitor: any): Promise<any> {
     let result = node;
 
-    if ((node.type === 'AtRule' || node.type === 'Directive') && typeof visitor.atRule === 'function') {
+    if ((node.type === 'AtRule' || node.type === 'AtRuleStatement' || node.type === 'Directive') && typeof visitor.atRule === 'function') {
       const atRuleResult = await visitor.atRule(node, undefined);
       if (atRuleResult && typeof atRuleResult !== 'symbol') {
         result = atRuleResult;
@@ -887,8 +887,14 @@ export class Compiler {
       }
     }
 
-    for (const child of result.children?.() ?? []) {
-      await this.visitBeforeEvalNode(child, visitor);
+    // Iterate shallow semantic children (via childKeys). `walk(false)` yields the
+    // immediate child nodes; this method recurses to descend. Core renamed the old
+    // `children()` iterator to `walk()` (`.children` is now the Parséman structural
+    // array), so use `walk` here.
+    if (typeof result.walk === 'function') {
+      for (const child of result.walk(false)) {
+        await this.visitBeforeEvalNode(child, visitor);
+      }
     }
     return result;
   }
