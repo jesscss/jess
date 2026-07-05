@@ -39,15 +39,31 @@ not band-aided in the plugin/integration layer.
 Jess suite (source mode): **~86 failed / ~69 passed** (2 are native-load artifacts). all-less = 55/93.
 Split: ~70% hard crashes (empty CSS), ~11% scope 'not defined', ~19% output diffs.
 
+## Core gate baseline (IMPORTANT)
+Core is NOT at 0 on feature/parseman — **2 KNOWN pre-existing failures**, treat as the gate baseline
+(merge a cluster only if it adds NO failures beyond these 2):
+- `mixin.test.ts › namespace fast path: real Less stable namespaces avoid direct-crawl and array fallback`
+- `mixin.test.ts › namespace fast path: ruleset namespace path preserves callable namespace unions`
+Both are **perf-guard** tests (spy on `findMixinsFast`/`findMixin` to assert the fast path is taken;
+they fail because it falls back to a slow direct-crawl — rendering is unaffected). Test file + all
+lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a non-source change
+(dependency/parser-output). Tracked as cluster **NS-FASTPATH** below. Not correctness-blocking.
+
 ## Clusters (from triage) — leverage-ranked
 
-- [ ] **A — node-vs-string eval/serialize (~24 tests, HIGHEST leverage).** String-normalization
-  migration fallout: node methods invoked on now-string values. `.writeSyntax is not a function`
-  (`serialize-helper.ts:1086` → `ampersand.ts:450/467`) powers **all 6** at-rule-bubbling tests +
-  3 all-less at-rules fixtures; `.eval`/`.hasFlag` on strings (~10); `Expected node array item to
-  evaluate to a node` (merge/each); `Expected selector component copy` (`ruleset.ts:417`);
-  `Cannot operate on Keyword/Paren` (mixins/calc). **Core-reproducible, easily.** Relates to
-  [[feedback-string-normalized-nodes]]. → START HERE.
+- [~] **A — node-vs-string eval/serialize (~24 tests, HIGHEST leverage). PARTIAL — merge b53590d9d.**
+  DONE (3 root causes, 3 core repros): `writeSyntax is not a function` → `writeSelectorLike` helper for
+  hoisted `SelectorLike` parents (serialize-helper.ts, was mistyped `Selector`); nested string selector
+  lost under comparable-header (ruleset.ts `writeHeaderSelector` returned empty when `withoutComments`);
+  at-rule prelude duped into body (less-parser builders.ts — restrict body to node children past the
+  brace). **at-rule-bubbling 6/6 GREEN**, jess +7, zero regressions. REMAINING A sub-issues (still open,
+  fold into a follow-up A2): `.eval`/`.hasFlag` on strings (~10 fixtures), `Expected node array item to
+  evaluate to a node` (merge/each), `Cannot operate on Keyword/Paren` (mixins/calc). [[feedback-string-normalized-nodes]]
+- [ ] **NS-FASTPATH — namespace fast-path perf-guard regression (2 core tests, perf not correctness).**
+  `mixin.test.ts` namespace fast-path ×2 fall back to direct-crawl for stable namespaces (#theme/#panel).
+  Test + lookup source unchanged since 918834a88 → non-source trigger (parser-output structure or a dep).
+  Fix the fast-path (scope-frame/lookup-utils/callable-scope-frame) or update the guard to the current
+  parser output. Disjoint from B (plugin/context). Core cluster → sequence with other core clusters.
 - [ ] **B — import base dir = CWD not importer dirname (~19 tests).** CONFIRMED root cause: the
   functional Less parser is context-free and `LessPlugin.safeParse` (jess-plugin-less/src/index.ts)
   never attaches its file-bearing `TreeContext` (createTreeContext → file.path=dirname) to the parsed
@@ -106,3 +122,4 @@ Split: ~70% hard crashes (empty CSS), ~11% scope 'not defined', ~19% output diff
 
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
+- **Cluster A partial** (b53590d9d): writeSelectorLike + string-selector header + less-parser prelude-dup; at-rule-bubbling 6/6, jess +7.
