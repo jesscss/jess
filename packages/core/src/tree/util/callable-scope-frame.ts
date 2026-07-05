@@ -11,6 +11,7 @@ type WireCallableScopeFramesOptions = {
   liveSlots?: Map<string, BindingCell>;
   usesPreboundParamGuardOuterRules?: boolean;
   leakyRules?: boolean;
+  definedInImportedSurface?: boolean;
 };
 
 export function wireCallableScopeFrames({
@@ -21,7 +22,8 @@ export function wireCallableScopeFrames({
   parentFrame,
   liveSlots,
   usesPreboundParamGuardOuterRules = false,
-  leakyRules = false
+  leakyRules = false,
+  definedInImportedSurface = false
 }: WireCallableScopeFramesOptions): void {
   if (liveSlots) {
     // R2 SINGLE-FRAME: the per-call surface frame carries BOTH the body's
@@ -72,5 +74,22 @@ export function wireCallableScopeFrames({
 
   if (leakyRules && parentFrame) {
     assignMixinOutputFallbackFrame(rules, parentFrame);
+    return;
+  }
+
+  // No live slots, but a param-less body DEFINED INSIDE AN IMPORTED SURFACE must
+  // still reach config vars applied at the import/call site: an imported `with`/
+  // `set` binding lives on the call-site chain, not the definition chain, and the
+  // configured surface is not on this body's lexical parent chain. Wire the body-
+  // surface frame's fallback to the call site so the config resolves (and any
+  // detached-ruleset closure the body defines inherits it). Gated on
+  // `definedInImportedSurface` so ordinary same-tree param-less mixins do NOT gain
+  // caller-scope visibility (a non-leaky no-param body must not read caller vars).
+  const fallback = fallbackScopeFrame
+    ?? (parentFrame && parentFrame !== lexicalScopeFrame ? parentFrame : undefined);
+  if (fallback && definedInImportedSurface) {
+    rules.scopeFrame = undefined;
+    const frame = rules.getScopeFrame(lexicalScopeFrame);
+    frame.fallbackFrame = fallback;
   }
 }

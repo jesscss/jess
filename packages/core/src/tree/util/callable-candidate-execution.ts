@@ -60,7 +60,8 @@ export async function executeCallableCandidate({
     signatureKey,
     parentFrame,
     lexicalScopeFrame,
-    fallbackScopeFrame
+    fallbackScopeFrame,
+    definedInImportedSurface
   } = candidateState;
 
   let outerRules: Rules | undefined;
@@ -108,6 +109,19 @@ export async function executeCallableCandidate({
       rules,
       parentFrame,
       leakyRules: true
+    });
+  } else if (definedInImportedSurface) {
+    // Param-less callable defined inside an imported/composed surface: no live
+    // slots, but the body (and any detached-ruleset closure it defines) must
+    // still reach config vars applied at the import/call site — an imported
+    // `with`/`set` binding lives on the call-site chain, not the definition
+    // chain. Wire the body-surface frame's fallback so those vars resolve.
+    wireCallableScopeFrames({
+      rules,
+      lexicalScopeFrame,
+      fallbackScopeFrame,
+      parentFrame,
+      definedInImportedSurface
     });
   }
 

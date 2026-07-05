@@ -16,6 +16,7 @@ export type PreparedCallableCandidateState = {
   definitionFrame?: ScopeFrame;
   lexicalScopeFrame?: ScopeFrame;
   fallbackScopeFrame?: ScopeFrame;
+  definedInImportedSurface: boolean;
 };
 
 type PrepareCallableCandidateStateOptions = {
@@ -59,6 +60,13 @@ export function prepareCallableCandidateState({
     ? definitionParent.getScopeFrame()
     : undefined;
   const lexicalScopeFrame = definitionFrame ?? parentFrame;
+  // A callable defined inside an imported/composed surface (import boundary that
+  // inlines its members) may read config vars applied at the import site; those
+  // live on the call-site chain, not the definition chain. Signals the param-less
+  // body wiring to link the call-site fallback so the config resolves.
+  const definedInImportedSurface = isNode(definitionParent, N.Rules)
+    && definitionParent.options.importBoundary === true
+    && definitionParent.options.inlinesMembersToParent === true;
   const fallbackScopeFrame = (
     (leakyRules || parentFrame?.hasLiveBindings === true)
     && parentFrame
@@ -76,6 +84,7 @@ export function prepareCallableCandidateState({
     parentFrame,
     definitionFrame,
     lexicalScopeFrame,
-    fallbackScopeFrame
+    fallbackScopeFrame,
+    definedInImportedSurface
   };
 }
