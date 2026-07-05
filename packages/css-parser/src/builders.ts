@@ -957,10 +957,17 @@ export class CssParser {
     if (innerNode) {
       return new Url(innerNode as Node, undefined, loc);
     }
+    // Leaf-only path (e.g. the Less grammar tokenizes the inner as string leaves):
+    // Url.value is a Node, so wrap a bare/quoted string leaf in the matching node
+    // instead of storing a raw string (which never writes into the render buffer).
     const inner = ls
       .filter(l => !/^url\($/i.test(l.value) && l.value !== ')')
       .map(l => l.value).join('').trim();
-    return new Url(inner as unknown as Node, undefined, loc);
+    const quote = inner[0];
+    const innerValue = (quote === '"' || quote === '\'') && inner.at(-1) === quote
+      ? new Quoted(inner.slice(1, -1), { quote }, loc)
+      : new Any(inner, {}, loc);
+    return new Url(innerValue as unknown as Node, undefined, loc);
   }
 
   protected _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
