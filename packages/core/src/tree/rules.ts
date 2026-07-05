@@ -3290,7 +3290,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && keys.length === 2
           && (firstRemainderHit.reason === 'child-surface' || firstRemainderHit.reason === 'reference-import')
         ) {
-          const uncovered = entryRules.findMixinsFastForUncoveredCallable(
+          // Crawl the frame's evaluated surface, not the canonical entry: a
+          // namespace-mixin body evaluated for its reference imports splices the
+          // import wrapper into the derived OUTPUT (frame.rulesNode), leaving the
+          // canonical `[StyleImport]` untouched (invariant: canonical immutable).
+          // The import-wrapper child surface lives only on the output.
+          const uncoveredSurface = isNode(childFrame.rulesNode, N.Rules)
+            ? childFrame.rulesNode
+            : entryRules;
+          const uncovered = uncoveredSurface.findMixinsFastForUncoveredCallable(
             firstRemainder,
             firstRemainderHit.reason,
             firstRemainderIncludesRulesets,
@@ -5412,7 +5420,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
-  private _evaluateSourceOrder(rules: Rules, context: Context): MaybePromise<{ output: Rules; rulesToHoist: boolean }> {
+  private _evaluateSourceOrder(
+    rules: Rules,
+    context: Context,
+    importsOnly = false
+  ): MaybePromise<{ output: Rules; rulesToHoist: boolean }> {
     let rulesToHoist = false;
     const pendingImports: Array<[number, Node]> = [];
     // §2.7: never mutate the canonical node. Source children are read from
@@ -5569,10 +5581,28 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return drained;
     };
 
-    const evaluateImports = evaluateLane(isStyleImportRegistrationNode, true);
+    // A reference-import-only pass (namespace-mixin body eval, §Mixin.evalNode)
+    // resolves ONLY the reference/dedupe StyleImport children into callable
+    // surfaces — it must not run the call/normal body lanes (that is a full
+    // body eval, reserved for a real call). Plain (non-reference) imports also
+    // stay cold: they contribute render output, not callable descendants.
+    const isReferenceImportNode = (rule: Node): boolean => {
+      if (!isStyleImportRegistrationNode(rule)) {
+        return false;
+      }
+      const importOptions = 'importOptions' in rule.options ? rule.options.importOptions : undefined;
+      return importOptions?.reference === true || importOptions?._dedupe === true;
+    };
+    const evaluateImports = evaluateLane(
+      importsOnly ? isReferenceImportNode : isStyleImportRegistrationNode,
+      true
+    );
     const evaluateBody = (): MaybePromise<{ output: Rules; rulesToHoist: boolean }> => {
       const importDrain = drainPendingImports(false);
       const afterImports = () => {
+        if (importsOnly) {
+          return { output, rulesToHoist };
+        }
         const calls = evaluateLane(rule => isNode(rule, N.Call), false);
         const afterCalls = () => {
           const normal = evaluateLane((rule) => {
@@ -6000,10 +6030,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * After registration prep: ensure root on extend stack, then evaluate
    * children in source order.
    */
-  private _evalAfterRegistrationPrep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+  private _evalAfterRegistrationPrep(
+    rules: Rules,
+    context: Context,
+    importsOnly = false
+  ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._ensureRootExtendStack(rules, context);
     this._assignRootDocumentOrder(rules, context);
-    const evaluated = this._evaluateSourceOrder(rules, context);
+    const evaluated = this._evaluateSourceOrder(rules, context, importsOnly);
     if (isThenable(evaluated)) {
       return (evaluated as Promise<{ output: Rules; rulesToHoist: boolean }>).then(({ output, rulesToHoist }) =>
         this._finishSourceOrderEvaluation(output, rulesToHoist)
@@ -6074,7 +6108,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._assignDocumentOrderDepthFirst(rules, map, { value: 0 });
   }
 
-  private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+  private _prepareForEval(
+    context: Context,
+    importsOnly = false
+  ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     // The DYNAMIC enclosing scope, captured before we overwrite rulesContext.
     // A derived eval surface's lexical parent is where it is being PLACED, not
     // its static canonical parent — see _evalPreparedRules.
@@ -6085,16 +6122,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const rulesAfterPrep = this._prepareRegistrationForEval(context);
     if (isThenable(rulesAfterPrep)) {
       return (rulesAfterPrep as Promise<Rules>).then(rules =>
-        this._evalPreparedRules(rules, context, enclosingScope)
+        this._evalPreparedRules(rules, context, enclosingScope, importsOnly)
       );
     }
-    return this._evalPreparedRules(rulesAfterPrep as Rules, context, enclosingScope);
+    return this._evalPreparedRules(rulesAfterPrep as Rules, context, enclosingScope, importsOnly);
   }
 
   private _evalPreparedRules(
     rules: Rules,
     context: Context,
-    enclosingScope?: Rules
+    enclosingScope?: Rules,
+    importsOnly = false
   ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     // Fix the parent WALK, don't clone around it. `getScopeFrame` bakes the
     // static canonical `this.parent` as a frame's lexical parent. But a shared
@@ -6150,7 +6188,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (context.rulesEvalStack.length === 1) {
       context.root = rules;
     }
-    return this._evalAfterRegistrationPrep(rules, context);
+    return this._evalAfterRegistrationPrep(rules, context, importsOnly);
   }
 
   private _prepareRegistrationForEval(context: Context): MaybePromise<Rules> {
@@ -6246,6 +6284,43 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       throw error;
     }
     const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules => this._finishEval(rules, context, saved);
+    if (isThenable(result)) {
+      return result.then(
+        finish,
+        (error) => {
+          this._restoreEvalAfterError(context, saved);
+          throw error;
+        }
+      );
+    }
+    return finish(result);
+  }
+
+  /**
+   * Evaluate ONLY this body's reference/dedupe StyleImport children into
+   * callable surfaces, preparing body registration first. Used by a namespace
+   * mixin body (`Mixin.evalNode`), whose lazy self-return never walks the body:
+   * a `reference:true` import inside it would otherwise stay unevaluated, so its
+   * imported mixins never become reachable callable descendants. This runs the
+   * shared eval pipeline's import lane only — no call/normal body lanes — so the
+   * body is not fully evaluated (that is reserved for a real call). No-op when
+   * the body carries no reference imports.
+   */
+  resolveBodyReferenceImports(context: Context): MaybePromise<Rules> {
+    if (!rulesMayContainReferenceImports(this)) {
+      return this;
+    }
+    const saved = this._snapshotContext(context);
+    context.rulesEvalStack.push(sourceRulesOf(this));
+    let result: MaybePromise<{ rules: Rules; rulesToHoist: boolean }>;
+    try {
+      result = this._prepareForEval(context, true);
+    } catch (error) {
+      this._restoreEvalAfterError(context, saved);
+      throw error;
+    }
+    const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules =>
+      this._finishEval(rules, context, saved);
     if (isThenable(result)) {
       return result.then(
         finish,

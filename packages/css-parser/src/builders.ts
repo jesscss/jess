@@ -807,11 +807,39 @@ export class CssParser {
     if (seg.length === 1) {
       return seg[0]!.comp;
     }
-    const grouped = this._groupSlashes(seg.map(s => s.comp), loc);
+    // Adjacent value tokens in a space-separated segment (`with default`,
+    // `solid red`) drop their separating whitespace when collected. The render
+    // path concatenates segment components verbatim, so re-thread the actual
+    // inter-token source text between string components to preserve spacing.
+    // Node components already own their trivia; only bare-string neighbours need
+    // the gap. `decl()`-built values pass contiguous segments (no source spans)
+    // and are left untouched.
+    const spaced = this._interleaveSegmentGaps(seg);
+    const grouped = this._groupSlashes(spaced, loc);
     if (grouped.length === 1) {
       return grouped[0]!;
     }
     return grouped as unknown as Component;
+  }
+
+  private _interleaveSegmentGaps(seg: Spanned[]): Component[] {
+    const out: Component[] = [seg[0]!.comp];
+    for (let i = 1; i < seg.length; i++) {
+      const prev = seg[i - 1]!;
+      const cur = seg[i]!;
+      // Node components render their own leading trivia; only bare-string tokens
+      // (`with` / `default`, keywords the parser kept as raw strings) lose the
+      // separating whitespace and need it re-threaded from the source.
+      if (typeof cur.comp !== 'string') {
+        out.push(cur.comp);
+        continue;
+      }
+      const gap = cur.span.start > prev.span.end
+        ? this._source.slice(prev.span.end, cur.span.start)
+        : '';
+      out.push(gap ? `${gap}${cur.comp}` : cur.comp);
+    }
+    return out;
   }
 
   protected _groupSlashes(comps: Component[], loc: LocationInfo): Component[] {
