@@ -119,6 +119,19 @@ describe('Rules', () => {
     expect((node.constructor as typeof Node).childKeys).toEqual(['rules']);
   });
 
+  it('marks the evaluated root output as evaluated for render/serialize callers', async () => {
+    const node = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+
+    expect(node.evaluated).toBe(false);
+
+    const evald = await node.eval(context);
+
+    expect(evald.evaluated).toBe(true);
+  });
+
   it.skip('assigns position linearly for nested rules', async () => {
     let node = rules([
       vardecl({ name: 'one', value: any('one') }),

@@ -27,7 +27,7 @@ not band-aided in the plugin/integration layer.
   hot-reload via the alias; only rebuild if you change what the config loader itself imports.
 - Run: `cd packages/jess && TEST=true npx vitest run test/less/all-less.test.ts`. Core repros:
   `cd packages/core && npx vitest run <file> -t <name>`.
-- **all-less gate baseline (jess-parseman = single gate worktree): 46 passed / 47 failed / 93.**
+- **all-less gate baseline (jess-parseman = single gate worktree): 54 passed / 39 failed / 93. Core: 0.**
 
 ## Gate / merge rules (same discipline as CORE-CLEANUP)
 - One cluster per branch `less/<slug>` + worktree off `feature/parseman`.
@@ -44,14 +44,7 @@ Jess suite (source mode): **~86 failed / ~69 passed** (2 are native-load artifac
 Split: ~70% hard crashes (empty CSS), ~11% scope 'not defined', ~19% output diffs.
 
 ## Core gate baseline (IMPORTANT)
-Core is NOT at 0 on feature/parseman — **2 KNOWN pre-existing failures**, treat as the gate baseline
-(merge a cluster only if it adds NO failures beyond these 2):
-- `mixin.test.ts › namespace fast path: real Less stable namespaces avoid direct-crawl and array fallback`
-- `mixin.test.ts › namespace fast path: ruleset namespace path preserves callable namespace unions`
-Both are **perf-guard** tests (spy on `findMixinsFast`/`findMixin` to assert the fast path is taken;
-they fail because it falls back to a slow direct-crawl — rendering is unaffected). Test file + all
-lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a non-source change
-(dependency/parser-output). Tracked as cluster **NS-FASTPATH** below. Not correctness-blocking.
+Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH fixed the 2 perf-guard tests. Gate baseline = 0.
 
 ## Clusters (from triage) — leverage-ranked
 
@@ -60,10 +53,9 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
   hoisted `SelectorLike` parents (serialize-helper.ts, was mistyped `Selector`); nested string selector
   lost under comparable-header (ruleset.ts `writeHeaderSelector` returned empty when `withoutComments`);
   at-rule prelude duped into body (less-parser builders.ts — restrict body to node children past the
-  brace). **at-rule-bubbling 6/6 GREEN**, jess +7, zero regressions. REMAINING A sub-issues (still open,
-  fold into a follow-up A2): `.eval`/`.hasFlag` on strings (~10 fixtures), `Expected node array item to
+  brace). **at-rule-bubbling 6/6 GREEN**, jess +7, zero regressions. A2 DONE (merge, all-less +3): Url.value string|Node, evaluate-node-array coercion, Operation string operands+recastNumericOperand, Paren/Negative ctor normalize, call arg coercion, extend string selector. Original remaining: `.eval`/`.hasFlag` on strings (~10 fixtures), `Expected node array item to
   evaluate to a node` (merge/each), `Cannot operate on Keyword/Paren` (mixins/calc). [[feedback-string-normalized-nodes]]
-- [ ] **NS-FASTPATH — namespace fast-path perf-guard regression (2 core tests, perf not correctness).**
+- [x] **NS-FASTPATH — DONE (merge, core 2→0).** fast path handles string-normalized parser output (staticNamespaceExcludesKey, prefixOwnsChildren >=1, findMixinPath direct dispatch). Original text:**
   `mixin.test.ts` namespace fast-path ×2 fall back to direct-crawl for stable namespaces (#theme/#panel).
   Test + lookup source unchanged since 918834a88 → non-source trigger (parser-output structure or a dep).
   Fix the fast-path (scope-frame/lookup-utils/callable-scope-frame) or update the guard to the current
@@ -81,16 +73,26 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
   Core-repro: construct a Rules with vs without a file-bearing treeContext, assert `_getPath` base =
   file.path when present, cwd otherwise. Clears path-resolution(3) + import/charset/namespacing
   fixtures. (url-rebasing subset stays failing — unimplemented.)
-- [ ] **C — scope/binding unresolved (~10 tests).** `Binding cell has no value` (`scope-frame.ts:53`
-  via `reference.ts`), `'X' is not defined` (height/sub/primary), `No matching mixins`. Live-binding
-  materialization timing. Likely 2-3 sub-bugs. Core-reproducible. Relates to [[mixin-output-frame-linking]],
-  [[feedback-setdefined-cell-not-node]].
-- [ ] **E — compiler lifecycle / root output (~7 tests).** compiler-reuse(6)+public-api(1):
+- [~] **C — scope/binding unresolved (~10 tests). PARTIAL — sub-bug #1 done (commit 70888504e).**
+  Sub-bug #1 (`Binding cell has no value`, `scope-frame.ts:53`): the Less parser assembles a multi-part
+  var value (`@sizes: small 1, large 2`) as a FLAT segment array, not a List Node;
+  `createVarDeclarationBindingEntry` dropped non-Node values to `undefined` so the cell was value-less.
+  FIX: `Declaration.valueNode()` coalesces `Node|string|segment[]` → structured comma-List of
+  space-Sequences; the cell carries a lazy `prepareValue`. Core repro in control.test.ts. Cleared the
+  functions.test.ts each() nested-rules tests (2) + `functions-harness.less`; 0 regressions. REMAINING
+  sub-bugs (open): #2 `'X' is not defined` — Less namespace/property ACCESSOR lookup (`#ns1[foo]`,
+  `@defaults[@nested][@color]`, `#ns1.vars[$sub]`): namespacing-1/2/4/media, namespace-targeted; #3
+  `No matching mixins` (namespacing-functions `.add`, mixins-interpolated). Also `scope.less` blocks on
+  an UNRELATED `Cannot read properties of undefined (reading 'adopt')` (present at baseline, not the
+  `'height'` leak). These are distinct root causes (accessor resolution / leaky mixin-output), not the
+  binding-cell timing bug. Relates to [[mixin-output-frame-linking]], [[feedback-setdefined-cell-not-node]].
+- [x] **E — DONE (merge 47d36981d). compiler-reuse+public-api 15/15.** Rules.evaluated getter + _finishEval stamp; @import url() serialize (Url.value Node in css-parser _buildUrl + less-parser url prelude); 3 stale-API test fixes.
+- [ ] ~~E-old~~ (superseded): compiler-reuse(6)+public-api(1):
   `undefined.valueOf`, visitor hooks returning undefined, evaluated root not retained for
   serialization/visitors; plus `@import "x.css"` → `url("x.css")` serialize diff. Core-reproducible.
-- [ ] **D — color math → `#NaNNaNNaN` (3-5 tests).** Channel values arriving as strings → NaN.
+- [x] **D — DONE (merge c65dc2782). named-color resolution** via slim color-names.ts (reuses color-name pkg, no dup table, no node growth); #NaN eliminated, all-less +1, functions 18/0. Separate: Color-clone merge bug + strict-unit 10px. Orig: Channel values arriving as strings → NaN.
   May collapse into A. Recheck after A.
-- [ ] **F — @plugin security sandbox (6 tests, `security-script-runtime`).** Deno/plugin-js lazy-load +
+- [x] **F — DONE (merge e5355747b). @plugin security sandbox 6/6 green.** Deno/plugin-js lazy-load +
   sandbox gating. Integration-only (spawns subprocesses) — NOT a core repro. Parallelizable, isolated.
 - [ ] **G — output-format diffs (~8 one-offs).** spacing, `!important` placement, nesting collapse,
   comments/whitespace, data-uri inlining. Low leverage tail; some may be stale expectations.
@@ -126,5 +128,7 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
 
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
+- **D-color** (c65dc2782): named-color table; **C-lookup** (38b269453): accessor key typing + property lane excludes VarDecl; all-less→54.
 - **Cluster A partial** (b53590d9d): writeSelectorLike + string-selector header + less-parser prelude-dup; at-rule-bubbling 6/6, jess +7.
 - **Cluster B** (merged): safeParse attaches file-bearing TreeContext to root Rules (1 line, _treeContext public field); path-resolution 3/3, all-less +6 in-worktree, 0 new. jess-parseman all-less baseline now 41/93 (single gate ref).
+- **Cluster C partial** (70888504e, `less/cluster-c`, not merged): sub-bug #1 binding-cell materialization — `Declaration.valueNode()` coalesces flat parser segment-array var values; `createVarDeclarationBindingEntry` lazy `prepareValue`. functions.test.ts each() nested-rules (2) green, all-less +1 (`functions-harness.less`), full less suite 64→67 pass. Core suite unchanged (2 known ns-fastpath + pre-existing `sibling collapsed` mixin test + `extend-less-fixtures` module artifact; 0 new). Sub-bugs #2 (namespace accessor lookup) / #3 (`No matching mixins`) still open.

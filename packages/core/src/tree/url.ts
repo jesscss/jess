@@ -11,13 +11,13 @@ import { prepareRenderPrintState } from './util/print.js';
 /**
  * e.g. url('foo.png')
  */
-export class Url extends Node<Node> {
+export class Url extends Node<string | Node> {
   static override childKeys = ['value'] as const;
 
-  readonly value: Node;
+  readonly value: string | Node;
 
   constructor(
-    value: Node,
+    value: string | Node,
     options?: NodeOptions,
     location?: NodeLocation,
     treeContext?: Context['treeContext']
@@ -28,7 +28,7 @@ export class Url extends Node<Node> {
     this._treeContext = treeContext;
   }
 
-  private withValue(value: Node): Url {
+  private withValue(value: string | Node): Url {
     return new Url(
       value,
       this._options ? { ...this._options } : undefined,
@@ -37,11 +37,16 @@ export class Url extends Node<Node> {
     ).inherit(this);
   }
 
-  private renderUrlSyntax(value = this.value, options?: PrintOptions): string {
+  private renderUrlSyntax(value: string | Node = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     w.add('url(');
+    if (typeof value === 'string') {
+      w.add(value, this);
+      w.add(')');
+      return w.getSince(mark);
+    }
     if (options.context) {
       const valueMark = w.mark();
       value.toString(options);
@@ -65,6 +70,9 @@ export class Url extends Node<Node> {
    */
   override valueOf(): string {
     const value = this.value;
+    if (typeof value === 'string') {
+      return value;
+    }
     if (isNode(value, N.Quoted)) {
       const quotedValue = value.value;
       if (isNode(quotedValue)) {
@@ -88,7 +96,9 @@ export class Url extends Node<Node> {
       ? prepareBufferPrintState(context, options)
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       : prepareRenderPrintState(context, bufferOrOptions as import('./util/print.js').PrintOptions | undefined);
-    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
+    const value = this.hasFlag(F_STATIC) || typeof this.value === 'string'
+      ? this.value
+      : this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderUrlSyntax(resolved, prepared);
@@ -97,7 +107,7 @@ export class Url extends Node<Node> {
           : out;
       });
     }
-    const out = this.renderUrlSyntax(value as Node, prepared);
+    const out = this.renderUrlSyntax(value as string | Node, prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -108,7 +118,7 @@ export class Url extends Node<Node> {
   }
 
   private evaluateValue(context: Context): MaybePromise<Node> {
-    if (this.hasFlag(F_STATIC)) {
+    if (this.hasFlag(F_STATIC) || typeof this.value === 'string') {
       return this;
     }
     const value = this.value.eval(context);

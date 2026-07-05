@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import { resolve, dirname } from 'path';
 import { readdirSync, readFileSync, existsSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import circleDependency from 'vite-plugin-circular-dependency';
 import parseman from 'parseman/plugin';
@@ -33,6 +34,23 @@ function workspaceSrcAliases() {
   return alias;
 }
 
+/**
+ * Resolve the Less.js `@less/test-data` corpus once at config load. The workspace
+ * symlink is relative and resolves wrong in git worktrees (→ `worktrees/less.js`)
+ * and `pnpm install` reintroduces it broken; a sibling `less.js` checkout beside
+ * the main repo (git common dir) is the reliable anchor. Returns undefined if none.
+ */
+function lessTestDataRoot(): string | undefined {
+  const env = process.env.LESS_TEST_DATA_ROOT;
+  if (env && existsSync(resolve(env, 'tests-unit'))) return env;
+  const candidates = [resolve(root, '../less.js/packages/test-data')];
+  try {
+    const gitDir = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: root, encoding: 'utf8' }).trim();
+    candidates.push(resolve(dirname(resolve(root, gitDir)), '../less.js/packages/test-data'));
+  } catch { /* not a git checkout */ }
+  return candidates.find(c => existsSync(resolve(c, 'tests-unit')));
+}
+
 export default defineConfig({
   plugins: [
     // Compiles grammars that import parseman `with { type: 'macro' }` at build
@@ -55,7 +73,11 @@ export default defineConfig({
     watch: false,
     // Set TEST environment variable for packages that depend on it
     env: {
-      TEST: 'true'
+      TEST: 'true',
+      // Resolve @less/test-data ONCE here (plain Node, reliable) so tests don't
+      // depend on the relative workspace symlink that `pnpm install` reintroduces
+      // broken in git worktrees. Empty string if not found (tests fall back).
+      ...(lessTestDataRoot() ? { LESS_TEST_DATA_ROOT: lessTestDataRoot()! } : {})
     },
     // Ensure environment variables are passed to test processes
     environment: 'node',

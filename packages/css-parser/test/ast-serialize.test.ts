@@ -270,10 +270,25 @@ describe('serializeTypes coverage', () => {
   test('url function is modeled as Call with UrlValue/Quoted inner', () => {
     const { tree } = cssParser.parse('a{ background:url(foo) }');
     const out = serializeTypes(tree);
+    // Url.value is a Node: a bare inner leaf normalizes to Any (a quoted inner to
+    // Quoted). Storing a raw string here silently drops it from the render buffer.
     expect(out).toContainString(`
       (Url
-        value: 'foo'
+        value:
+          (Any 'foo')
       )
+    `);
+  });
+
+  test('quoted url inner is modeled as a Quoted node, not a raw string', () => {
+    const { tree } = cssParser.parse('a{ background:url("foo.css") }');
+    const out = serializeTypes(tree);
+    // A raw string here renders as empty `url()` because a string never writes
+    // into the render buffer (see less @import url(...) serialization).
+    expect(out).toContainString(`
+      (Url
+        value:
+          (Quoted
     `);
   });
 

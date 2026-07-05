@@ -38,6 +38,7 @@ import {
   Nil,
   Rest,
   Quoted,
+  Url,
   AtRuleStatement,
   AtRule,
   QueryCondition,
@@ -743,6 +744,12 @@ export class LessGrammar extends CssParser {
       } else if (typeof innerVal === 'object'
         && (innerVal as any).type === 'Reference' && typeof (innerVal as any).key === 'string') {
         rawText = '@' + (innerVal as any).key;
+      } else if (this._isKeywordLike(innerVal)
+        && typeof (innerVal as any).value === 'string') {
+        // A bare/ident/`$prop` accessor key parsed as a Keyword leaf (e.g.
+        // `#ns[foo]`, `#ns.vars[$sub]`) — recover its text so the `$`/`@`/bare
+        // key logic below applies uniformly with the string path.
+        rawText = (innerVal as any).value.trim();
       }
     }
     if (rawText === undefined || rawText === '') {
@@ -840,9 +847,17 @@ export class LessGrammar extends CssParser {
       const item = comps[i];
       if (isSquareParen(item)) {
         const innerKey = this._decodeAccessorKey(item as JessNode, loc);
+        // A bare-string key (`@var`) or an `@@name` indirection Reference is a
+        // variable lookup; a Quoted/number key is a property (`index`) lookup —
+        // mirror _applyReferenceAccessor's key→type logic (the var-decl accessor
+        // path does the same).
+        const keyIsVar = typeof innerKey === 'string'
+          || (innerKey != null && typeof innerKey === 'object'
+            && (innerKey as any).type === 'Reference');
+        const accType: 'variable' | 'index' = keyIsVar ? 'variable' : 'index';
         base = new Reference(
           { target: base as any, key: innerKey as any } as unknown as ReferenceValue,
-          { type: 'variable' as const }, loc
+          { type: accType }, loc
         ) as unknown as JessNode;
         i++;
       } else if (isRoundParen(item)) {
@@ -1725,6 +1740,11 @@ export class LessGrammar extends CssParser {
     const optMatch = /^\s*\(([^)]+)\)/.exec(preludeText.replace(/^@import\s*/, ''));
     const opts: string[] = optMatch ? optMatch[1]!.split(',').map(s => s.trim()) : [];
     const builtNodes = nodeChildren(children);
+    // `@import url("x.css")` parses the path as a Url node, `@import "x.css"` as a
+    // Quoted. The url() wrapper is part of the serialized path — keep it as the
+    // prelude for CSS imports (and strip the whole `url(...)`, not just its inner
+    // quotes, when extracting a trailing media query).
+    const urlNode = builtNodes.find(n => n.type === 'Url') as unknown as Url | undefined;
     const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
     let pathNode: Quoted | undefined;
     if (quotedNode) {
@@ -1746,10 +1766,13 @@ export class LessGrammar extends CssParser {
     }
     let mediaNode: Node | undefined;
     {
-      // Remove @name, (options), quoted path, and 'as namespace' to find media query
+      // Remove @name, (options), the path (url(...) or quoted), and 'as namespace'
+      // to find a trailing media query.
       let rest = preludeText.replace(/^@-?[_a-zA-Z][-_a-zA-Z0-9]*\s*/, '');
       rest = rest.replace(/^\([^)]*\)\s*/, '');
-      rest = rest.replace(/(['"])[^'"]*\1\s*/, '');
+      rest = urlNode
+        ? rest.replace(/url\(\s*(['"])[^'"]*\1\s*\)\s*/i, '')
+        : rest.replace(/(['"])[^'"]*\1\s*/, '');
       rest = rest.replace(/\bas\s+[^\s;(]+\s*/g, '');
       rest = rest.replace(/;\s*$/, '').trim();
       if (rest) {
@@ -1761,8 +1784,9 @@ export class LessGrammar extends CssParser {
     const isCssImport = pathStr ? LessGrammar._isCssUrl(pathStr, opts) : false;
     if (isCssImport || opts.includes('css')) {
       const preludeItems: JessNode[] = [];
-      if (pathNode) {
-        preludeItems.push(pathNode as unknown as JessNode);
+      const pathPrelude = (urlNode ?? pathNode) as unknown as JessNode | undefined;
+      if (pathPrelude) {
+        preludeItems.push(pathPrelude);
       }
       // A plain (non-Less) import can carry a trailing media-query tail, same as
       // the StyleImport `postlude` option below — don't drop it here.

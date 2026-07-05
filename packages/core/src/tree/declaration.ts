@@ -670,6 +670,37 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return spaced(nodes);
   }
 
+  /**
+   * The declaration value as a single Node. Most values already are a Node; a
+   * bare string becomes a Keyword and a flat parser segment array is coalesced
+   * into its structured form — a comma `List` of space `Sequence`s — matching
+   * the authored `a b, c d` shape. Used where the value must be evaluated as a
+   * node (variable binding, iteration source), not just serialized as text.
+   */
+  valueNode(): Node {
+    const value = this.value;
+    if (value instanceof Node) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      return keyword(value);
+    }
+    const groups: Node[][] = [[]];
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]!;
+      const node = typeof item === 'string' ? keyword(item) : item;
+      if (`${node.valueOf()}` === ',') {
+        groups.push([]);
+        continue;
+      }
+      groups[groups.length - 1]!.push(node);
+    }
+    const items = groups.map(group => (
+      group.length === 1 ? group[0]! : spaced(group)
+    ));
+    return items.length === 1 ? items[0]! : new List(items, { sep: ',' }).parentChildren();
+  }
+
   private ownRenderAssignmentInput(node: Node): Node {
     return node.canReuseAsLeaf() || canReuseSourceFreeAssignmentInput(node)
       ? node.reuseAsLeaf()
