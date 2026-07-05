@@ -909,6 +909,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
   /**
+   * Set once this Rules' body has been evaluated (even a lazy mixin body, when it
+   * IS evaluated). Narrow §2.7 eval-state signal — the replacement for the deleted
+   * general `evaluated` flag, mirroring `Call._evaluatedCallOutput`. Purely gates
+   * lazy child-frame construction in callable-descendant lookup: an uncalled body
+   * must stay cold (broad crawl), an evaluated body may expose its frame.
+   */
+  _bodyEvaluated = false;
+  /**
    * Closure environment for a detached ruleset: the per-call eval surface where
    * this detached ruleset was WRITTEN (captured at arg-binding). A detached
    * ruleset is a lexical closure — when later invoked (`@content()`), its free
@@ -3232,7 +3240,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const firstRemainder = keys[1]!;
       const firstRemainderIncludesRulesets = keys.length === 2 && options.terminalMixinOnly !== true;
       const entryRules = entry;
-      const childFrame = entryRules._scopeFrame ?? entryRules.getScopeFrame();
+      const childFrame = entryRules._scopeFrame ?? (entryRules._bodyEvaluated ? entryRules.getScopeFrame() : undefined);
       let nested: MixinEntry[] | undefined;
       if (childFrame && !options.hasTarget && !options.local) {
         entryRules.prepareCallableLookupFrame(childFrame, firstRemainder, firstRemainderIncludesRulesets);
@@ -6178,6 +6186,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   override evalNode(context: Context): MaybePromise<Rules> {
+    // Narrow §2.7 eval-state signal: this Rules body has now been evaluated.
+    // Marked on the canonical node (`this`) — what callable-descendant lookup
+    // reads via `entry` — so a never-evaluated body stays cold. Mixin.evalNode
+    // returns self without reaching here, so it stamps this flag itself.
+    this._bodyEvaluated = true;
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(sourceRulesOf(this));
     let result: MaybePromise<{ rules: Rules; rulesToHoist: boolean }>;

@@ -371,6 +371,11 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
   override evalNode() {
+    // A mixin definition is a lazy template — evalNode returns self without
+    // walking the body. But callers that DO evaluate a mixin body rely on the
+    // narrow §2.7 eval-state signal to distinguish evaluated from cold. Rules.evalNode
+    // is bypassed here, so stamp it directly. See rules.ts callable-descendant gate.
+    this._bodyEvaluated = true;
     return this;
   }
 
