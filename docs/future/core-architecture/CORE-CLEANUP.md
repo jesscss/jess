@@ -17,11 +17,36 @@ change is real only if the stable set moves.
 
 ## Driver terminal status (this pass)
 
-**Stable failures: 85 → 4, zero regressions across ~32 gated merges.** The feared "monolith" fully
-dissolved — every supposed monolithic cluster (E2/E3 scope-identity, mixin/namespace, import-style)
-decomposed into specific bugs or stale tests. The scope-identity/eval-model "one big design call"
-turned out to be ~10 distinct facets, all fixed except one bigger rework (see the 4-remaining floor
-below). Highlights of the 20→4 tail: retained per-call output frame (mixin-call output carries its
+**Stable failures: 85 → 0. Suite FULLY GREEN (2678 passed, 0 failed), zero regressions across ~36 gated merges.**
+The feared "monolith" fully dissolved — every supposed monolithic cluster (E2/E3 scope-identity,
+mixin/namespace, import-style) decomposed into specific bugs or stale tests. The scope-identity/eval-model
+"one big design call" turned out to be ~10 distinct facets, all fixed. **The "4 irreducible-minimum"
+floor below was NOT irreducible** — all four fell to targeted fixes (see "Final four — CLOSED" block):
+
+- **sibling-collapsed** (cleanup/sibling-collapsed, 4→3): four coupled fixes — descendant-boundary
+  combinator callable-key (`lookup-utils.getOrderedSelectorKeys` skips string combinators), boundary-aware
+  prep-time lexical parent for interpolated selector identity (gated on compose/import boundaries),
+  retained-output definition-parent gate over the §4 placement re-point (`isRetainedOutputDefinitionParent`,
+  same `hasLiveBindings` signal as the retained per-call frame), and two pre-existing nested-`&`
+  serialization bugs (bubble `F_AMPERSAND` to the eval-rebuilt compound + preserve string combinators in
+  `_substituteAmpInComplex`).
+- **call detached-collection** (cleanup/call-collection, 3→2): `call.ts` split the `Rules|Collection`
+  callable branch — a `Collection` short-circuits BEFORE the callable path and returns the reused surface
+  (thin, 0-clone, 0-evalCall) instead of normalizing to `Rules`. Node identity preserved; renders from the
+  shared surface. The "design decision" resolved to the thin model, not a coin-flip.
+- **config with-var-survival** (cleanup/config-var, 2→1): the `with { }` config lives on the import
+  placement frame; link the imported body's DEFINITION (lexical) frame's `fallbackFrame` to that placement
+  config (`findInlinedImportPlacementFrame`), so lexical parents out-rank the caller's same-named decl at
+  closure read-time. A no-param non-leaky imported body no longer wires a caller fallback. No clones.
+- **declaration merge-chain** (cleanup/decl-merge, 1→0): TWO defects in `Rules._coalesceMergedDeclarations`
+  — (1) the walk recursed into sibling `Ruleset`s because `Ruleset` carries the `N.Rules` bit, collapsing
+  three independent cascade scopes into one global merge chain; scoped the walk to inline `Rules` only
+  (skip `Ruleset`/`AtRule`). (2) a mixin-ruleset call shares the callee's declaration node by identity, so
+  stripping `F_VISIBLE` off the superseded placement copy also hid the callee's canonical decl; COW the
+  placement copy (`deriveWithParts({ value })`, parts stay shared) before the strip. Mutation-layer detach,
+  NOT the render-only exclusion that regressed +6. [[fvisible-coalesce-suppression-load-bearing]]
+
+Highlights of the earlier 20→4 tail: retained per-call output frame (mixin-call output carries its
 params for value-eval), leaky-mode forward propagation (mixin output decls inject into the caller frame
 at the call index), namespace-path reroot (structural-parent compose gated to active frames +
 per-call-site hoisted-header tracking), guarded-recursion candidate filter (gate `inStack` on
@@ -65,8 +90,13 @@ exclusion, inline-source root pinning, first-use scalar placement-ownership, gua
   - **Group C (1): implicit-`&` over-materialization** (`extend.ts:280`) — needs target-scope-relative
     source selection (absolute `fullSel` load-bearing for the cross-scope `.issue-2586` case). Scope-ancestor
     comparison, not a dedupe.
-### Live work-list — the 4 remaining stable failures (all DEFERRED-with-rationale; TRUE floor)
-The mechanical/tractable harvest is COMPLETE (85→4, ~32 verified merges, every one zero-regression). The
+### Final four — CLOSED (were "DEFERRED; TRUE floor" — all four fixed, 4→0)
+All four below were tagged the irreducible minimum for the mechanical loop; each fell to a targeted
+single-unit fix, gated zero-regression, and merged. Suite is now fully green. Fix summaries are in the
+Driver terminal status block above; the original characterizations are kept here for the forensic record.
+
+### Live work-list — (historical) the 4 remaining stable failures (all now CLOSED)
+The mechanical/tractable harvest is COMPLETE (85→0, ~36 verified merges, every one zero-regression). The
 "Monolith-A" scope-identity narrative was WRONG: it decomposed into ~10 distinct facets, all now fixed —
 retained per-call output frame (mixin value-eval), leaky forward-propagation (source-order-gated), namespace
 reroot (2 render roots), guarded-recursion, string-selector namespace registration, `resolveBodyReferenceImports`,
@@ -91,9 +121,10 @@ reroot (2 render roots), guarded-recursion, string-selector namespace registrati
    frame binding that doesn't survive eval as a resolvable decl; the parent same-named decl wins. Needs the config
    binding to persist onto the post-eval surface with module precedence.
 
-**4 is the documented irreducible minimum for the mechanical loop.** #1 is a bigger scope-boundary+`&`-callable
-rework; #2–#4 are design decisions (merge-engine / node-identity / live-binding-across-eval). All four are
-DEFERRED-with-written-rationale; none is a mechanical slice.
+**~~4 is the documented irreducible minimum~~ — ALL FOUR CLOSED.** #1 was the scope-boundary+`&`-callable
+rework (4 coupled fixes); #2–#4 were the "design decisions" that each resolved cleanly in favour of the
+thin/live-binding model (merge-engine COW + walk-scoping / keep-Collection-surface / lexical-config-precedence).
+None turned out to need an owner ruling. Suite green. See "Final four — CLOSED" and the Driver terminal status.
 
 ---
 _Earlier snapshot (mechanical harvest to 60):_ Every open tracker item is CLOSED or
@@ -348,9 +379,17 @@ the render list?* (merge decided) — no overloaded mutable flag.
      leading comments then `removeFlag(F_VISIBLE)`'d them + restored — a mutate/restore dance. Replaced
      with a `hoistedLeadingComments` Set threaded into `_emitRulesBody`; `emitNode` excludes them
      directly. Output-neutral (stable 60, zero delta). 2 of 4 rules.ts stomps gone.
-   - [DEFERRED] **3b — declaration-override last-wins** (rules.ts:5795/5797): **attempted the
-     render-only suppression-set channel this session; ABANDONED — proven architecturally insufficient by
-     the gate (+6 regressions), reverted clean (no commit).** The finding that blocks it:
+   - [PARTIALLY CLOSED] **3b — declaration-override last-wins** (rules.ts:5795/5797). **The failing
+     merge-chain TEST is now GREEN** (cleanup/decl-merge, commit 1656b2e78): the real root cause was NOT
+     the render-only vs physical-removal dilemma below — it was (1) the coalesce walk recursing into sibling
+     `Ruleset`s (they carry the `N.Rules` bit) and (2) a shared mixin-output declaration node whose
+     `F_VISIBLE` strip leaked to the callee's canonical decl. Fix: scope the walk to inline `Rules`; COW the
+     shared placement copy before the strip (mutation-layer detach). **The broader 3b legibility project —
+     excising the two `removeFlag` stomps at 5795/5797 in favour of a persistent non-`F_VISIBLE` merge marker
+     — remains DEFERRED** (no failing-test signal now; it's a cleanliness rework). The historical block below
+     records why the earlier render-only-suppression approach failed:
+     **~~attempted the render-only suppression-set channel this session; ABANDONED — proven architecturally
+     insufficient by the gate (+6 regressions), reverted clean.~~** The finding that blocked THAT approach:
      **`removeFlag(F_VISIBLE)` here is load-bearing beyond render** — it hides the superseded declaration
      from (a) **variable lookup** (`reference > resolve merged property lookups via quoted index inside a
      nested child scope` regressed — a lookup found the superseded occurrence) and (b) **re-coalesce
