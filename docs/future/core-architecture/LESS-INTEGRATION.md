@@ -157,3 +157,15 @@ lacks). Just FF-merge. Local `dev` is ahead of `origin/dev` (3e871385a) — reco
   bootstrap.less with `performance.now()` + heapUsed, fail-fast <10s/<500MB. Promote todo→real once C/G
   clear (after `pnpm --filter "jess..." build`; config-loader/CLI paths use built lib). CLI one-shot:
   `node packages/jess/bin/cli.mjs <bootstrap.less> -o /tmp`.
+
+## Feature-implementation queue (post-bootstrap — all-less 93/93 IS a goal)
+These remaining all-less failures are missing FEATURES to build (agents), not permanent xfails. Sequence
+after bootstrap.less compiles; they're the path from all-less 56/93 → 93/93:
+- **url/data-uri** (~57+15 occ): `url()` handling, `data-uri()` inlining, url-rebasing (rewrite-urls/rootpath).
+- **calc reduction** (~38 occ): full `calc(...)` collapse (single-arg reduce, nested, unit-aware). calc.less/css-grid/css-3.
+- **import subsystem tail** (~20 occ): import-inline, import-interpolation, import-remote.
+- **color-functions**: channel fns (`red()/green()/blue()/mix()/...`) beyond named-color resolution. basic/comprehensive/modern/rgba.
+- **extend diffs**: extend-chaining/media/nest/selector/extend output alignment.
+- **accessor/scope remnants**: namespacing-3/6/7 (guard-accessor LHS grammar, bare-`when(true)` Bool keyword), property-targeted, deep chained mixin-call-accessor.
+- **sourcemaps**: source-map annotation + artifact output (own harness).
+- **parser gaps** (also surfaced by bootstrap): unicode-range `U+0???`, `$??()` interpolation placeholders, multiline value newline-preservation (parser folds whitespace into spanless string terms).
