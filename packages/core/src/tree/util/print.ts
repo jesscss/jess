@@ -29,8 +29,14 @@ export type PrintOptions = {
   referenceFilterTargets?: boolean;
   /** Stack of composed selectors for collapseNesting on-demand composition and & resolution. */
   composedSelectorStack?: Selector[];
-  /** Session-local composed selector cache keyed by rendered ruleset. */
-  composedSelectorCache?: WeakMap<Ruleset, Selector>;
+  /**
+   * Session-local composed selector cache keyed by rendered ruleset, then by the
+   * composed parent selector under which it was rendered. A shared canonical
+   * node (e.g. a mixin body's nested ruleset) is rendered under multiple parents
+   * — its own defining header and each call-site header — so the composed value
+   * must not be shared across parent contexts.
+   */
+  composedSelectorCache?: WeakMap<Ruleset, Map<string, Selector>>;
   /** Render-local override for one at-rule header prelude during direct render. */
   atRuleHeaderNode?: AtRule;
   atRuleHeaderPrelude?: AtRulePrelude;
@@ -359,17 +365,46 @@ export function withScratchEmittedTrivia<T>(options: PrintOptions, fn: () => T):
 
 export function getCachedComposedSelector(
   options: FinalPrintOptions,
-  ruleset: Ruleset
+  ruleset: Ruleset,
+  parentKey = ''
 ): Selector | undefined {
-  return options.composedSelectorCache?.get(ruleset);
+  return options.composedSelectorCache?.get(ruleset)?.get(parentKey);
+}
+
+/** True if `this` ruleset has produced a composed selector equal to `text` under any parent context. */
+export function cachedComposedMatches(
+  options: FinalPrintOptions,
+  ruleset: Ruleset,
+  text: string
+): boolean {
+  const byParent = options.composedSelectorCache?.get(ruleset);
+  if (!byParent) {
+    return false;
+  }
+  for (const composed of byParent.values()) {
+    if (composed.valueOf() === text) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function setCachedComposedSelector(
   options: FinalPrintOptions,
   ruleset: Ruleset,
-  selector: Selector
+  selector: Selector,
+  parentKey = ''
 ): void {
-  options.composedSelectorCache?.set(ruleset, selector);
+  const cache = options.composedSelectorCache;
+  if (!cache) {
+    return;
+  }
+  let byParent = cache.get(ruleset);
+  if (!byParent) {
+    byParent = new Map();
+    cache.set(ruleset, byParent);
+  }
+  byParent.set(parentKey, selector);
 }
 
 export class OutputWriter implements OutputWriter {
