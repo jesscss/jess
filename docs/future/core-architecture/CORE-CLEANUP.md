@@ -29,16 +29,17 @@ writeSyntax` in code; the old row tracker's checkboxes were stale.
   to `override writeSyntax`. Inherited-by-parent (correct): Num←Dimension, CustomDeclaration←
   Declaration, Stylesheet←Rules, Keyword←Any, RelativeSelector←ComplexSelector. JsArray/JsObject
   emit '' by design.
-- [~] `Node` base single-path — **mostly**: the generic `writeSyntax(options)` hook (node-base:1537,
-  `@internal`, defaults to `toTrimmedString`) IS the effective single entry (all ~100 dispatch
-  sites call `.writeSyntax()`). But 5 **residual toTrimmedString-primary** types remain, serializing
-  via a `renderXSyntax` helper called from `toTrimmedString`: **Block, Quoted, Url, AttributeSelector,
-  PseudoSelector**. They serialize correctly today (idiom residue, not a gap). Fully closing A-node =
-  a new small unit:
-    - [ ] **A-flip** — flip those 5 to writeSyntax-primary (move `renderXSyntax` body into `writeSyntax`,
-      make `toTrimmedString` the thin wrapper); fix the stale base doc comment (node-base:1437-38 still
-      points overriders at `toTrimmedString`) + the `Selector`-base inverted default (selector.ts:159).
-      [touches node-base.ts + selector.ts — HOT-adjacent, sequence it.]
+- [x] `Node` base single-path — **DONE by design** (re-examined). The generic `writeSyntax(options)`
+  hook (node-base:1537, `@internal`) **bridges to `toTrimmedString` by default** — that bridge is
+  deliberate, so a type may override *either* `writeSyntax` (direct-writer path, 43 types) *or*
+  `toTrimmedString` (source-form path, 5 types) and get the other for free. The 5 so-called "residuals"
+  (Block/Quoted/Url/AttributeSelector/PseudoSelector) each override `toTrimmedString` and route through
+  a `renderXSyntax(value, options)` helper that is **shared with `render()`** — `render` serializes the
+  *evaluated* value, `toTrimmedString` the *source* value, so the `value` parameter is load-bearing, not
+  residue. Flipping them to `writeSyntax`-primary would be pure cosmetic churn on HOT files (node-base +
+  selector) for zero functional change — **rejected as make-work.** The doc comment at node-base:1437-38
+  is about `toString`-vs-`toTrimmedString` (it correctly says override `toTrimmedString`) and is NOT stale.
+  ~~A-flip~~ — dropped, no action needed.
 - [ ] `Ruleset`: source-direct eligibility + bare-ampersand selector-list header path
   (interacts with Focus D string-selector work). [HOT: ruleset.ts]
 
