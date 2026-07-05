@@ -1,4 +1,4 @@
-import { spanStartOf } from './provenance.js';
+import { isSourceFree } from './provenance.js';
 import { F_HAS_NODE_CHILD, F_NON_STATIC, Node } from '../node-base.js';
 import { Selector } from '../selector.js';
 import { N } from '../node-type.js';
@@ -10,7 +10,7 @@ import { isNode } from './is-node.js';
  * their children for a particular placement.
  */
 export function canReuseLeaf(node: Node): boolean {
-  return spanStartOf(node) === undefined
+  return isSourceFree(node)
     && !node.hasFlag(F_NON_STATIC)
     && !node.hasFlag(F_HAS_NODE_CHILD);
 }
