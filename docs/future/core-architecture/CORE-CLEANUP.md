@@ -248,8 +248,10 @@ only gates whether to consult it), and provenance-inline is killing it.
 - **W2** incremental `refreshPositions` — collapse **1006→~290ms (~3.5x)**, nested **400→~225ms (~1.8x)**. HEADLINE (found only by profiling; walk-plan would've missed it).
 - **ref-nuke** `createRulesLikeReferenceSurface` reflective→same-prototype field-copy — that fn **164→21.5ms (~8x)**; dynamic end-to-end ~170→~157ms (modest, GC-absorbed); byte-identical. FAST-V8 compliance; kills dictionary-mode surface objects. (Contract: surface must NOT clone/inherit/reparent — field-copy is the only valid shape; tests lock it.)
 - **FAST-V8 sweep** `render-buffer` descriptor-check→`hasOwnProperty` walk (oracle-proven equivalent) + `define-function:338` fixed-shape; byte-identical. Hygiene. (`Object.assign` record-merge sites kept — genuine dynamic user keys.)
+- **provenance-inline** killed the `PROV` WeakMap → 6 inline `= undefined` span fields on `Node`. **Heap alloc 40.5→23.6MB (~42% less; the `set` 59% hotspot GONE); dynamic parse 54.8→46.3ms (~15%).** byte-identical (133 fixtures). The provenance smell is fully resolved (parser-set inline fields, no side-table).
+- **W1 single-writer** 6/18 fragment sites → shared writer + `restore`; **−25.7% OutputWriter allocations (~10,800 fewer)**; byte-identical. The other 12 sites are INTENTIONALLY separate — `CountingWriter` tests enforce keeping fragments off the caller writer (architectural contract, not laziness) — so "one writer per serialization" is partial-by-design.
 - Benches: `packages/core/perf/collapse-bench.mjs` (static) + `dynamic-bench.mjs` (mixin/refs).
-Integrated now: static collapse ~290ms (min ~260, noisy), nested ~225ms, dynamic ~157ms. W2 = the structural win; ref-nuke/FAST-V8 = compliance/alloc.
+**Integrated now: collapse ~277ms, nested ~199ms, dynamic ~127ms** (from 1006 / 400 / ~170 → **3.6x / 2.0x / 1.3x**). W2 = structural; provenance = alloc+parse; ref-nuke/FASTV8/W1 = alloc/compliance.
 
 Suite is green, so this is now the live drive. **Finding (traced this pass):** the render
 pipeline runs ~4 structural passes *regardless of content*, and two of them exist only because
