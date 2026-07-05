@@ -200,3 +200,28 @@ ALIGN Jess's AST to less.js so that conversion code vanishes); (3) table-driven 
 ESSENTIAL set. HARD CAVEAT (owner): only change Jess's AST where the result stays sane — do NOT regress the
 opinionated string-normalized/canonical-value model Jess deliberately moved to. Default = keep Jess + convert;
 align only the truly-incidental. Sequence after bootstrap renders (exercised surface known).
+
+### AST-diff findings (analysis a6cecd6) — the slim is ~35-40% of AST boilerplate, NOT 90%
+The 1852 boilerplate lines are a PROXY facade (LessAdapterBase lazily exposes less.js field names as getters
+over live Jess nodes) — not deep copies. ~20 of 25 node converters are already trivial. Realistic cut:
+- (b) **collapse nodes/index.ts registry (377L, 25 near-identical type-guard blocks) → one data-driven
+  `Map<type,{lessType,fields}>` dispatch** = the biggest prize (~250L) + fold trivial passthrough converters
+  (Keyword/Paren/Negative/Comment) (~100L).
+- (a) **field-name renames via a DATA rename-table** (~150L) — Operation `operator`, AtRule `prelude`,
+  Mixin `guard`, AttributeSelector `name/attributeValue`, Dimension `number`, Color `_alpha`, Declaration
+  `options.assign` → less.js names.
+- Total removable ≈ **500L (~27% of 1852)**; realistic AST target ~1852→1100-1200 (**35-40%**). The 6200→50-70%
+  goal needs ALSO slimming plugin.ts (deprecated-@plugin fat) + less-compat-structures mock (non-AST).
+ESSENTIAL FLOOR (irreducible, keep hand-written): selector flatten (~180L: hierarchical ComplexSelector +
+string Combinators → flat Element[]), from-less.ts reverse path (~150L), Reference 3-way type-dispatch
+(Variable/Property/VariableCall) + `@`-prefix (~40L), span-derived `index` getters (~15L), Quoted/Color value
+stringification (~25L), the adapter/type-map engine (~350L, keep).
+OWNER RULINGS NEEDED (do NOT guess):
+1. **Do NOT rename core Jess fields** to less.js's terser names (`operator`→`op`, `prelude`→`value`,
+   `guard`→`condition`, `number`→`value`) — Jess's are deliberately more explicit/better. Encode the mapping
+   in a DATA rename-table, NOT by regressing core. (My earlier "align Jess's AST" framing was too loose.)
+2. Ruleset `selector` (singular SelectorList node) vs less.js `selectors[]` — align or keep? (probably keep — Jess's SelectorList-as-node.)
+3. Color `childKeys=['node']` is a known canonical-`value` VIOLATION; fixing it in CORE-CLEANUP would also
+   simplify its converter — sequence with core-cleanup, not the slim.
+Top files: nodes/index.ts (377, collapse), transform/type-map.ts (the diff map), transform/less-adapter.ts
+(keep — proxy engine), nodes/selector.ts (212, essential floor), transform/from-less.ts (197, essential).
