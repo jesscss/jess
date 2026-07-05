@@ -241,8 +241,25 @@ is fattest×hottest — it inherits the fat `Rules` base, so slimming `Rules` sl
 4. PseudoSelector rare fields (3000×: `omitWrapperForSingleSelectorList`→flag; `generatedPseudoPlacementOverride`→subtype).
 5. (low-confidence) Rules `lookupVersion` counters (rules.ts:919-923) — lazy-alloc only if multi-kind lookup runs;
    MEASURE first, don't downgrade the lookup fast path for slot count.
-Note: the audit calls provenance "already slim, no WeakMap" — IMPRECISE; the `PROV` WeakMap exists (F_HAS_SPAN
-only gates whether to consult it), and provenance-inline is killing it.
+### Provenance fields — FOLLOW-UP: only 2 of the 6 belong on base Node (SLIM violation to fix)
+provenance-inline (LANDED, killed the WeakMap) took the easy path — moved ALL 6 fields onto `Node` base:
+`_spanStart`/`_spanEnd` (span — ~universal, **KEEP on base**), `_fieldSpans` (read ONLY by `declaration.ts` +
+`at-rule.ts` → **move to those subtypes**), `_valueSpans` (read ONLY by the selector family → **move to
+Selector subtypes**), `_cstState`/`_cstChildren` (**DEAD** — zero readers/writers/callers of
+`cstStateOf`/`cstChildrenOf` anywhere → **DELETE fields + accessors**). Net: base Node should carry 2
+provenance fields, not 6 (saves 4 slots × 39k nodes). Follow-up stage — **AFTER SLIM #3** (shares node-base.ts).
+
+### DRY + dead-code sweep (NEW standing task — requested)
+Systematic pass for (1) **repeated code → shared slim util functions/structures** (esp. the copy/surface/selector
+helper families that accreted — see archived SURFACE_PRIMITIVES_AUDIT), and (2) **dead-code removal** (like
+`cstState`/`cstChildren` above: exported accessors with zero callers, unused fields, dead branches). Read-only
+AUDIT first → ranked target list, then gated removal stages. Ties into SLIM (fewer fields) + FAST-V8 + DRY.
+
+### Micro-opt considered — inline `hasFlag`/`addFlag`/`removeFlag` to raw bitwise: REJECTED (verify-only)
+Converting `hasFlag(F_X)` → raw `(this.flags & F_X) !== 0` at call sites is NOT worth it: these are tiny
+MONOMORPHIC methods on `Node.prototype`, which V8 inlines to the bitwise op already. `hasFlag` has NEVER
+appeared in any CPU profile (refreshPositions/ensureProv/surface/etc. dominated) — strong evidence it's already
+free. Raw-bitwise would cost DX across hundreds of sites for ~0 gain. Revisit ONLY if a profile shows it hot.
 
 ### LANDED LOG (integration branch `perf/walk-collapse` — bench after each merge)
 - **W2** incremental `refreshPositions` — collapse **1006→~290ms (~3.5x)**, nested **400→~225ms (~1.8x)**. HEADLINE (found only by profiling; walk-plan would've missed it).
