@@ -216,10 +216,19 @@ the render list?* (merge decided) — no overloaded mutable flag.
      with a `hoistedLeadingComments` Set threaded into `_emitRulesBody`; `emitNode` excludes them
      directly. Output-neutral (stable 60, zero delta). 2 of 4 rules.ts stomps gone.
    - [ ] **3b — declaration-override last-wins** (rules.ts:5795/5797): the merge engine
-     `removeFlag(F_VISIBLE)`s the superseded declaration (and its ownerRules) so the body loop skips
-     it. Convert to list-exclusion: the merge/coalesce pass should build a render-list that omits the
-     superseded occurrence, instead of flag-hiding it. Deeper — touches `mergedAnchorByName` accounting.
-     [HOT: rules.ts — sequence solo.]
+     `removeFlag(F_VISIBLE)`s the superseded declaration (and, in one branch, its whole ownerRules) so
+     the body loop skips it. **Concrete plan** (verified lifecycle): `_coalesceMergedDeclarations` is the
+     LAST eval step in `_finishSourceOrderEvaluation`, run on the exact tree that then renders — so use a
+     dedicated **suppression-set channel**, not the by-type flag:
+       1. coalesce populates `rules._mergeSuppressed: Set<Node>` (add the superseded decl / container)
+          instead of `removeFlag(F_VISIBLE)`;
+       2. root render seeds `options.suppressedNodes = this._mergeSuppressed` (add to `FinalPrintOptions`);
+          options already thread through every nested `_emitRulesBody`, so it reaches descendant owners;
+       3. `emitNode` excludes: `exclude?.has(n) || options.suppressedNodes?.has(n) || !n.visible`.
+     Risk: the container-suppression branch (5795, same decl object under two owners) — exclude the
+     container via the same set (emitNode handles containers). Gate hard for output-neutrality; the
+     superseded fragment's value is already composed into the survivor, so nothing else should read it
+     post-coalesce (all lookups ran during eval, before coalesce). [HOT: rules.ts — solo, careful.]
 4. **Leave reference-mode as the sole runtime filter.**
 Guardrail throughout: stable core set must not move; string selectors emit. (baseline now 60, was 85.)
 
