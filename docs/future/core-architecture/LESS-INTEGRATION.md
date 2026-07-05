@@ -128,6 +128,7 @@ Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH f
 
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
+- **tail-undefined** (51ad1b565): 7 root causes, all Cannot-read-undefined/selector-is-not-a-function crashes eliminated (crashes→diffs); core 2703/0.
 - **D-color** (c65dc2782): named-color table; **C-lookup** (38b269453): accessor key typing + property lane excludes VarDecl; all-less→54.
 - **Cluster A partial** (b53590d9d): writeSelectorLike + string-selector header + less-parser prelude-dup; at-rule-bubbling 6/6, jess +7.
 - **Cluster B** (merged): safeParse attaches file-bearing TreeContext to root Rules (1 line, _treeContext public field); path-resolution 3/3, all-less +6 in-worktree, 0 new. jess-parseman all-less baseline now 41/93 (single gate ref).
