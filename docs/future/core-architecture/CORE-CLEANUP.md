@@ -316,6 +316,12 @@ free. Raw-bitwise would cost DX across hundreds of sites for ~0 gain. Revisit ON
   `opts.trivia` (comments round-trip verbatim, sub-node whitespace normalizes); base `Node` down to
   `_spanStart`/`_spanEnd` only (6 provenance fields → **2**). byte-identical normal render; own-key 29→27.
 - **core-residuals** — `canReuseLeaf` field-read→flag (FAST-V8); other residuals deferred (complexity > sub-1%).
+- **doc-order gate** (cfdf829e6, post-trunk-sync) — `_assignRootDocumentOrder` now gated on root `_hasExtends`;
+  extend-free sheets (the common case) skip the full-tree walk + `WeakMap<Ruleset,number>` alloc entirely. Map is
+  read only by extend application (`documentOrderOf`, extend.ts); `_hasExtends` aggregates nested + mixin-body
+  extends transitively (`childRulesOf` descends into `Mixin` bodies), so the gate is conservatively safe. Profile:
+  `_assignDocumentOrderDepthFirst` eliminated from the extend-free collapse profile; wall-clock within noise
+  (GC-absorbed alloc). Core 2730/0, all extend tests green (byte-identical).
 **Integrated now: collapse ~215ms, nested ~180ms, dynamic ~130ms** (from 1006 / 400 / ~170 → **4.7x / 2.2x / 1.3x**).
 
 ### ✅ CORE-RENDER DRIVE COMPLETE (at its floor)
