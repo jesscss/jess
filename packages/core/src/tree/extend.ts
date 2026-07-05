@@ -3,6 +3,7 @@ import {
   defineType,
   Node,
   F_VISIBLE,
+  F_AMPERSAND,
   F_NON_STATIC,
   F_IMPLICIT_AMPERSAND,
   F_MAY_ASYNC,
@@ -30,6 +31,7 @@ import { isNode } from './util/is-node.js';
 import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { copySelectorForPlacement } from './util/selector-utils.js';
+import { asExtendSelectorNode } from './util/extend-roots.js';
 import {
   renderInvisibleEffect,
   type RenderBuffer
@@ -148,8 +150,12 @@ export class Extend extends Node<ExtendValue> {
 
   /** @internal Run the invisible extend registration effect without public render/eval materialization. */
   runEffect(context: Context): MaybePromise<void> {
-    let { selector, target, flag } = this;
+    let { selector, flag } = this;
     const { selectorBits } = context;
+    // The parser delivers simple targets as bare strings (e.g. `.button`) per the
+    // strings-not-nodes model; materialize to a Selector node so the record stays
+    // node-shaped for the matching engine and the bit-library attach below.
+    const target = asExtendSelectorNode(this.target);
     attachSelectorBitLibrary(target, selectorBits);
 
     const currentFrame = context.rulesetFrames.at(-1);
@@ -279,6 +285,28 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
     if (!authoredSelector && !usedParentListComposition) {
       if (fullSel && !(fullSel instanceof Nil) && typeof fullSel !== 'string') {
         resolvedSel = fullSel;
+        // A nested extend-only ruleset (e.g. `.submit { &:hover:extend(...) {} }`)
+        // carries its authored `&:hover` frame selector with the leading `&` still
+        // unresolved. Compose it against the parent frame so the extendWith is the
+        // real replacement (`.submit:hover`), not a live `&:hover` that would later
+        // resolve against the extend target.
+        const parentFrame = context.rulesetFrames.at(-2);
+        const parentSel = parentFrame && isNode(parentFrame, N.Ruleset) ? parentFrame.selector : undefined;
+        if (
+          !Array.isArray(fullSel)
+          && fullSel.hasFlag(F_AMPERSAND)
+          && parentSel
+          && !(parentSel instanceof Nil)
+        ) {
+          const composeSelector = (rs.constructor as { composeSelector(child: SelectorLike, parent: SelectorLike): SelectorLike }).composeSelector;
+          const composed = composeSelector(
+            copySelectorForExtendRecord(fullSel, selectorBits),
+            typeof parentSel === 'string' ? parentSel : copySelectorForExtendRecord(parentSel, selectorBits)
+          );
+          // composeSelector goes textual when the parent is a string surface, so the
+          // result may be a bare string — materialize it back to a Selector node.
+          resolvedSel = attachSelectorBitLibrary(asExtendSelectorNode(composed), selectorBits);
+        }
       } else {
         // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
         // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).

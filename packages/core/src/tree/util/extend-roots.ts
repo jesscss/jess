@@ -102,11 +102,9 @@ function setOwnSelectorOption(ruleset: Ruleset, selector: Selector): void {
 }
 
 function hasExplicitExtendSelector(node: Node | undefined): boolean {
-  const value: unknown = node && 'value' in node ? node.value : undefined;
-  return !!value
-    && typeof value === 'object'
-    && 'selector' in value
-    && !!value.selector;
+  // Extend stores its authored replaceWith override on the `selector` field (its
+  // base `value` is undefined per invariant 7), so read the field directly.
+  return !!node && 'selector' in node && !!(node as { selector?: unknown }).selector;
 }
 
 /**
@@ -183,7 +181,7 @@ function getLocalSelector(ruleset: Ruleset): SelectorLike | undefined {
   return sel ? collapseWrappedSelector(sel) : sel;
 }
 
-function asExtendSelectorNode(value: SelectorLike): Selector {
+export function asExtendSelectorNode(value: SelectorLike): Selector {
   if (typeof value === 'string') {
     return new BasicSelector(value);
   }
@@ -269,12 +267,26 @@ function composeExtendWithRelativeToTarget(
   }
   // Walk up from extending ruleset, collecting local value, until we
   // reach a ruleset that is also an ancestor of the target (or root).
-  const targetAncestors = targetRuleset
-    ? new Set<Ruleset>([targetRuleset, ...getRulesetAncestors(targetRuleset)])
-    : new Set<Ruleset>();
+  // Copy-on-write eval clones target and extender into separate frame surfaces,
+  // so the SAME source `.attributes` is a different Ruleset instance on each
+  // chain — instance identity would never match. Compare by pre-extend local
+  // selector text, which is stable across those surface copies.
+  const targetAncestorKeys = new Set<string>();
+  if (targetRuleset) {
+    for (const anc of [targetRuleset, ...getRulesetAncestors(targetRuleset)]) {
+      const local = getLocalSelectorPreExtend(anc);
+      if (local) {
+        targetAncestorKeys.add(selectorSurfaceValueOf(local));
+      }
+    }
+  }
+  const isTargetAncestor = (rs: Ruleset): boolean => {
+    const local = getLocalSelectorPreExtend(rs);
+    return !!local && targetAncestorKeys.has(selectorSurfaceValueOf(local));
+  };
   const pathLocals: Selector[] = [asExtendSelectorNode(extendingLocal)];
   let current: Ruleset | undefined = getParentRuleset(extendingRuleset);
-  while (current && !targetAncestors.has(current)) {
+  while (current && !isTargetAncestor(current)) {
     const local = getLocalSelectorPreExtend(current);
     if (local) {
       pathLocals.unshift(asExtendSelectorNode(local));
