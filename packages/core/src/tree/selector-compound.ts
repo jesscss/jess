@@ -3,6 +3,7 @@ import {
   Node,
   defineType,
   F_MAY_ASYNC,
+  F_AMPERSAND,
   type NodeLocation,
   type NodeOptions
 } from './node.js';
@@ -99,11 +100,21 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   ): this {
     const ownedValue = new Array<CompoundSelectorComponent>(value.length);
     let hoistToRoot = false;
+    let hasAmpersand = false;
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
       ownedValue[i] = this.isSourceSelector(item, sourceValue) ? this.ownSelector(item) : item;
       if (typeof item !== 'string' && item.hoistToRoot) {
         hoistToRoot = true;
+      }
+      // Bubble F_AMPERSAND from a resolved `&` component: a compound like
+      // `&.foo-xxx` whose `&` resolved (via its container) to the parent still
+      // CONTAINS the `&` node. composeSelector keys on this flag to substitute `&`
+      // (once) rather than prepend the parent again — without it, a nested `&`
+      // selector re-composes and duplicates the ancestor. The eval-time rebuild
+      // here missed the bubble that `adopt` performs (node-base F_AMPERSAND).
+      if (typeof item !== 'string' && item.hasFlag(F_AMPERSAND)) {
+        hasAmpersand = true;
       }
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
@@ -115,6 +126,9 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
     ).inherit(this) as this;
     if (hoistToRoot) {
       node.hoistToRoot = true;
+    }
+    if (hasAmpersand) {
+      node.addFlag(F_AMPERSAND);
     }
     return node.inherit(this);
   }

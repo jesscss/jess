@@ -5,6 +5,7 @@ import {
   Node,
   defineType,
   F_MAY_ASYNC,
+  F_AMPERSAND,
   type NodeLocation,
   type NodeOptions
 } from './node.js';
@@ -85,11 +86,19 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   ): ComplexSelector {
     const ownedValue = new Array<ComplexSelectorComponent>(value.length);
     let hoistToRoot = false;
+    let hasAmpersand = false;
     for (let i = 0; i < value.length; i++) {
       const component = value[i]!;
       ownedValue[i] = this.isSourceComponent(component, sourceValue) ? this.ownComponent(component) : component;
       if (typeof component !== 'string' && component.hoistToRoot) {
         hoistToRoot = true;
+      }
+      // Bubble F_AMPERSAND from a resolved `&` component (see selector-compound
+      // withComponents): composeSelector keys on the flag to substitute `&` once
+      // instead of re-prepending the parent, so a nested `& ...` complex selector
+      // does not duplicate the ancestor.
+      if (typeof component !== 'string' && component.hasFlag(F_AMPERSAND)) {
+        hasAmpersand = true;
       }
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
@@ -98,6 +107,9 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       : new ComplexSelector(ownedValue, this._options ? { ...this._options } : undefined, sourceSpanOf(this));
     if (hoistToRoot) {
       node.hoistToRoot = true;
+    }
+    if (hasAmpersand) {
+      node.addFlag(F_AMPERSAND);
     }
     return node.inherit(this);
   }
