@@ -336,3 +336,14 @@ Genuinely-disjoint CORE-SERIALIZE (parse-clean, wrong output) → dispatchable:
   space vs `url-prefix()`; `@page`/`@font-face` off. → agent `less/at-rule-serialize`.
 - **whitespace** (multi-line value collapse) + **rulesets** (deep-combinator nesting) HELD — whitespace may be
   parser-trivia; rulesets is HOT selector-flatten (overlap risk). Verify after parser agent lands.
+
+## 2026-07-05 — bootstrap render check (milestone 4): parse ✓ scope ✓, blocks at @plugin JS runtime
+Tested feature/parseman @ 7c02c7021 (incl. nested-import scope fix 6282a386c + import-cycle 7c02c7021) with the
+`bootstrap-oom.test.ts` probe (Compiler + lessPlugin() + lessCompatPlugin(), src-aliased). The nested-import scope
+blocker is CLEARED — bootstrap parses fully and clears scope.
+NEW first blocker: `_functions.less:5` `@plugin "plugins/index.js"` (via bootstrap's first `@import "_functions"`)
+throws `Feature not supported. Install @jesscss/plugin-js to enable Less @plugin script execution` at
+`jess-plugin-less-compat/src/plugin.ts:1008` (the `if(!loadedWithDeno) throw` branch). Fails fast ~16ms, no OOM.
+bootstrap-less-port ships 10+ local JS @plugins (index/map-keys/color-yiq/escape-svg/…). The in-repo
+`packages/jess-plugin-js` runtime is NOT in the probe's plugin list. NEXT: wire @jesscss/plugin-js into the compat
+@plugin path (milestone 4), then chase the next blocker (JS-plugin functions invoked during eval).
