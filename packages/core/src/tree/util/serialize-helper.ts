@@ -380,6 +380,15 @@ export function indent(depth: number): string {
  */
 const directRenderFrames = new WeakMap<AtRule, (Ruleset | AtRule)[]>();
 
+// The comparable header a frame emitted the LAST time it was written directly.
+// A hoisted (flat) ruleset shared across call sites keeps a single canonical
+// frame identity, so `currentFrame === priorFrame` can't tell two emissions of
+// the same body apart (e.g. `#foo-foo.bar()` from `mi-test-c-1` vs `mi-test-c-2`
+// both emit the shared `.baz`). Recomputing the prior header against the current
+// context yields the current call site's selector, hiding the boundary. Comparing
+// against the header ACTUALLY emitted last keeps the blocks separate.
+const lastEmittedComparableHeader = new WeakMap<AtRule | Ruleset, string>();
+
 function directRenderFramesOf(atRule: AtRule): (Ruleset | AtRule)[] | undefined {
   return directRenderFrames.get(atRule);
 }
@@ -676,7 +685,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             break;
           }
           options.depth = i;
-          const [currentHeader, priorComparableHeader] = withScratchEmittedTrivia(options, () => [
+          const [currentHeader, recomputedPriorHeader] = withScratchEmittedTrivia(options, () => [
             (
               hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
             )
@@ -688,6 +697,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               ? renderHoistedParentComparableHeader(hoistedParent, options)
               : priorFrame.getComparableHeaderString(options)
           ]);
+          // For a frame shared across call sites (same object, different emission),
+          // the recompute reflects the CURRENT site. Prefer the header the prior
+          // frame actually emitted last so distinct call-site blocks stay closed.
+          const priorComparableHeader = (
+            currentFrame === priorFrame
+              ? lastEmittedComparableHeader.get(priorFrame) ?? recomputedPriorHeader
+              : recomputedPriorHeader
+          );
           const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
             && isNode(priorFrame, N.Ruleset)
             && (
@@ -744,6 +761,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             lastRenderedFrames.pop();
             continue;
           }
+          // Record the header this frame just emitted, so a later render of the
+          // SAME (shared, hoisted) frame at a different call site compares against
+          // what was actually written rather than a fresh recompute.
+          lastEmittedComparableHeader.set(
+            f,
+            withScratchEmittedTrivia(options, () => f.getComparableHeaderString(options))
+          );
           if (s !== DIRECT_RULESET_HEADER) {
             w.add(s!);
           }
