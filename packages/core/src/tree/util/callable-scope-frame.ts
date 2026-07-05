@@ -78,18 +78,15 @@ export function wireCallableScopeFrames({
   }
 
   // No live slots, but a param-less body DEFINED INSIDE AN IMPORTED SURFACE must
-  // still reach config vars applied at the import/call site: an imported `with`/
-  // `set` binding lives on the call-site chain, not the definition chain, and the
-  // configured surface is not on this body's lexical parent chain. Wire the body-
-  // surface frame's fallback to the call site so the config resolves (and any
-  // detached-ruleset closure the body defines inherits it). Gated on
-  // `definedInImportedSurface` so ordinary same-tree param-less mixins do NOT gain
-  // caller-scope visibility (a non-leaky no-param body must not read caller vars).
-  const fallback = fallbackScopeFrame
-    ?? (parentFrame && parentFrame !== lexicalScopeFrame ? parentFrame : undefined);
-  if (fallback && definedInImportedSurface) {
+  // still reach the import's `with`/`set` config. The config is linked onto the
+  // definition (lexical) chain by prepareCallableCandidateState (the definition
+  // frame's fallback = the import placement), so building this body frame over the
+  // lexicalScopeFrame is enough to reach it. A caller fallback is intentionally NOT
+  // wired: a non-leaky no-param imported body must not read caller-scope vars, and
+  // doing so would let a same-named caller decl shadow the config. Gated on
+  // `definedInImportedSurface` so ordinary same-tree param-less mixins are untouched.
+  if (definedInImportedSurface && lexicalScopeFrame) {
     rules.scopeFrame = undefined;
-    const frame = rules.getScopeFrame(lexicalScopeFrame);
-    frame.fallbackFrame = fallback;
+    rules.getScopeFrame(lexicalScopeFrame);
   }
 }
