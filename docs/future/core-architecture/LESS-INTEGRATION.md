@@ -426,3 +426,20 @@ future sub-agent worktrees branch from it. dev remains the canonical fix line; a
   - **css-escapes**: SEPARATE eval bug — parses clean, then `eval/invalid-statement` "Value node is not valid as a
     statement" at the leading `// CSS escapes tests` comment (leading line-comment trivia surfacing as a value stmt).
 - IN FLIGHT: `less/color-fns` (off dev 0ca270832) — red()/channel eval + `red (` spacing.
+
+## 2026-07-05 (alpha) — fresh triage of 25 failures → cluster roadmap (board 68/93)
+IN FLIGHT: color-fns (basic/rgba/comprehensive/modern — red()/channel eval + spacing); accessor-lookup
+(namespacing-operations `#ns.opt[val1]` + property-targeted `$color` — reference eval).
+Remaining clusters to dispatch (disjoint batches; HOT reference/scope-frame ones SEQUENCE):
+- **serialize/whitespace (css-grid, whitespace, modern)** — multi-line value newline collapse + color-calc spacing;
+  do AFTER color-fns merges (shares declaration serialize/emitValueTermSeparator).
+- **namespace resolution (namespacing-3, namespacing-7)** — config/lookup failure (empty/lost output); reference/scope-frame, sequence after accessor-lookup.
+- **at-rule/media prelude (media, css-3)** — media vars/math unevaluated + `@-x-document url-prefix (` spacing
+  (at-rule prefix variant beyond the url-prefix() fix); media ties to compat deprecation of `@var`-in-prelude.
+- **guards (mixins-guards)** — guards eval now (hasFlag fixed) but don't FILTER mixin application.
+- **nested-mixin (mixins-nested)** — nested param arithmetic halved (60 vs 120).
+- **css-escapes** — hex/char escapes in selectors dropped (`\62\6c\6f\63`, `ng\:cloak`) — parser escape handling.
+- **functions** — list length=1 + paren-escape `$list-1` literal — list operators + paren-escape parse.
+- **imports (import-inline, import-interpolation)** — @import not inlined + var-interpolated import path.
+- **rulesets** — ruleset `.selector` not combined into `:is()` via call.
+DEFER: extend/extend-nest/extend-selector (root-shape-#2); import-remote (remote HTTPS — CONFIRM expected-fail).
