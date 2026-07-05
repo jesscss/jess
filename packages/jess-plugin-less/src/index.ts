@@ -189,6 +189,15 @@ export class LessPlugin extends AbstractPlugin {
       const parseResult = this.parser.parse(source);
       tree = parseResult.tree;
 
+      // The functional Less parser is context-free: it never receives the
+      // file-bearing TreeContext, so the root Rules has no `_treeContext` and
+      // import base-dir resolution falls back to `process.cwd()`. Attach the
+      // context (built above) to the root so relative `@import` paths resolve
+      // against the importing file's directory (`context.ts` `currentDirectory`).
+      if (tree) {
+        tree._treeContext = context;
+      }
+
       // Convert parser deprecation warnings to diagnostics
       if ('warnings' in parseResult && parseResult.warnings) {
         for (const warning of parseResult.warnings) {

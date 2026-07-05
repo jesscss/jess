@@ -1,7 +1,37 @@
 import { defineConfig } from 'vitest/config';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { readdirSync, readFileSync, existsSync } from 'fs';
+import { fileURLToPath } from 'url';
 import circleDependency from 'vite-plugin-circular-dependency';
 import parseman from 'parseman/plugin';
+
+const root = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Resolve workspace packages to their `src/index.ts` FOR VITEST ONLY, via
+ * exact-match aliases. Vitest is TS-aware (rewrites `.js`→`.ts`), so tests run
+ * against current source with no lib rebuild and no stale-lib phantom failures.
+ *
+ * We deliberately do NOT use a `"source"` export condition for this: that
+ * condition leaks to every resolver, including non-TS-aware loaders (the
+ * `styles-config` config loader, native `require`), which then choke on core's
+ * `.js` import specifiers (`Cannot find module core/src/tree/index.js`). An
+ * alias is vitest-scoped, so those loaders keep resolving to built `lib`.
+ * Exact-match (`^name$`) so only bare imports alias; subpaths fall through.
+ */
+function workspaceSrcAliases() {
+  const alias: { find: RegExp; replacement: string }[] = [];
+  for (const d of readdirSync(resolve(root, 'packages'))) {
+    const pj = resolve(root, 'packages', d, 'package.json');
+    const src = resolve(root, 'packages', d, 'src/index.ts');
+    if (!existsSync(pj) || !existsSync(src)) continue;
+    let name: string | undefined;
+    try { name = JSON.parse(readFileSync(pj, 'utf8')).name; } catch { continue; }
+    if (!name) continue;
+    alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
+  }
+  return alias;
+}
 
 export default defineConfig({
   plugins: [
@@ -11,17 +41,8 @@ export default defineConfig({
     circleDependency()
   ],
   resolve: {
-    // Resolve workspace packages to their "source" export (src/*.ts) so tests run
-    // against current source — no lib rebuild between edits, and no stale-lib phantom
-    // failures. Vitest transforms the TS on the fly. Every @jesscss/* + styles-config
-    // package exposes a "source" condition in its exports map.
-    conditions: ['source', 'import', 'module', 'node', 'default'],
+    alias: workspaceSrcAliases(),
     mainFields: ['module', 'import', 'exports', 'main']
-  },
-  ssr: {
-    resolve: {
-      conditions: ['source', 'import', 'module', 'node', 'default']
-    }
   },
   test: {
     /**
