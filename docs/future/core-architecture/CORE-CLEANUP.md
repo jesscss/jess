@@ -56,7 +56,7 @@ keeps dissolving into specific bugs, not the feared monolith:
   - **Group C (1): implicit-`&` over-materialization** (`extend.ts:280`) — needs target-scope-relative
     source selection (absolute `fullSel` load-bearing for the cross-scope `.issue-2586` case). Scope-ancestor
     comparison, not a dedupe.
-### Live work-list — the 21 remaining stable failures (all DEFERRED-with-rationale; floor reached)
+### Live work-list — the 20 remaining stable failures (all DEFERRED-with-rationale; floor reached)
 The mechanical/tractable harvest is COMPLETE (85→21, ~22 verified slices, every merge zero-regression).
 Later merged units beyond the list above: decl-trivia, E-lookup(E1), D1-2, extend-cluster Group A (COW),
 extend-bc (B+C), extend-less-fixtures (5, symlink-unmasked), decl-ref copy-boundary (source-free + reference
@@ -72,8 +72,10 @@ explains:
   - mixin interpolated-namespace (`.@{name}`→`.person` post-eval, buckets key on static names) — the output
     ruleset registers `.person` on a COW-derived output tree the caller's `findMixin` never walks;
   - leaky-Less var-leak from evaluated mixin-call output (root-level forward leak);
-  - import-style `uncalled cold` vs `evaluated-descendant` pair (both regressed by §2.7 — a frame is built for
-    a never-evaluated body);
+  - import-style `evaluated-descendant` (the `uncalled cold` half is now FIXED via the narrow `_bodyEvaluated`
+    signal, merged 735fa4f62, 21→20; but the evaluated half needs `Mixin.eval()` to actually resolve its
+    reference-import member surface into a linked per-body frame — pure frame-linking rework, no narrow signal
+    can expose a surface that lazy-mixin eval never builds);
   - wrapper-identity D-family (declaration-lookup-version on derived surface; compose finalRules `sourceNode`);
   - mixin-recursion (2) rides on interpolated-namespace.
 **OWNER DECISION REQUIRED** (flagged, not auto-attempted): was dropping the `evaluated` eval-state signal
