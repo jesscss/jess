@@ -122,6 +122,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
+    // Inherit may_async (and other child-derived flags) from the wrapped value
+    // so a paren around an async child (e.g. `(min(...))`) is itself scheduled
+    // on the async path.
+    if (node instanceof Node) {
+      this.propagateFlagsFrom(node);
+    }
   }
 
   override toTrimmedString(options?: PrintOptions): string {

@@ -134,12 +134,8 @@ export class Dimension extends Node<DimensionValue> {
       let outUnit = aUnit ?? bUnit;
       /** One or both doesn't have a unit, so just calculate the number */
       if ((isStrictMode || isPreserveMode) && bUnit && op === '/') {
-        if (isPreserveMode) {
-          return finalizeOperationMetadataResult(this, new Dimension({
-            number: calculate(aVal, op, bVal),
-            unit: `1/${bUnit}`
-          }));
-        }
+        // A unitless numerator over a united denominator (`10 / 2s`) has no
+        // single-unit result; preserve the operation (Operation wraps in calc).
         throw new TypeError('Cannot divide a number by a unit');
       }
       return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }));
@@ -152,12 +148,8 @@ export class Dimension extends Node<DimensionValue> {
       }
       if (isStrictMode || isPreserveMode) {
         if (op === '*') {
-          if (isPreserveMode) {
-            return finalizeOperationMetadataResult(this, new Dimension({
-              number: calculate(aVal, op, bVal),
-              unit: `${aUnit}*${bUnit}`
-            }));
-          }
+          // Two united operands multiplied has no single-unit result; preserve
+          // the operation (Operation wraps it in `calc()`).
           throw new TypeError('Cannot multiply two units together');
         } else {
           /** Cancel units during division */
@@ -172,17 +164,11 @@ export class Dimension extends Node<DimensionValue> {
 
     if (aGroup === undefined || bGroup === undefined || aGroup !== bGroup) {
       if (isStrictMode || isPreserveMode) {
-        if (isPreserveMode) {
-          return finalizeOperationMetadataResult(this, new Dimension({
-            number: calculate(aVal, op, bVal),
-            unit: (
-              op === '+' || op === '-'
-                ? `${aUnit}±${bUnit}`
-                : `${aUnit}${op}${bUnit}`
-            )
-          }));
-        }
-        /** Units don't match, and can't be converted */
+        /**
+         * Units don't match and can't be converted. Preserve/strict mode keeps
+         * the arithmetic un-collapsed: the caller (Operation) catches this and
+         * preserves the operation as `calc(l op r)` with the original operands.
+         */
         throw new TypeError('Incompatible units. Change the units or use the unit function');
       }
       /** Just coerce to the left-hand unit */
@@ -199,11 +185,10 @@ export class Dimension extends Node<DimensionValue> {
       throw new TypeError('Incompatible units. Change the units or use the unit function');
     }
 
-    if (isPreserveMode && (op === '*' || op === '/')) {
-      return finalizeOperationMetadataResult(this, new Dimension({
-        number: calculate(aVal, op, bVal),
-        unit: `${aUnit}${op}${bUnit}`
-      }));
+    if ((isPreserveMode || isStrictMode) && (op === '*' || op === '/')) {
+      // Multiplying/dividing two dimensions doesn't collapse to a single unit;
+      // preserve the operation as authored (Operation wraps it in `calc()`).
+      throw new TypeError('Cannot multiply or divide two units together');
     }
 
     bVal = bVal / (atomicUnit / targetUnit);
@@ -320,61 +305,9 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   private serializeSyntax(): string {
-    let { number, unit = '' } = this;
-
-    // Check if unit is compound (contains '/', '*', or '±')
-    const isCompoundUnit = unit && (unit.includes('/') || unit.includes('*') || unit.includes('±'));
-
-    if (isCompoundUnit) {
-      // Output as calc() for compound units
-      // Parse the compound unit to reconstruct a valid calc() expression
-      const numberStr = `${round(number, 8)}`.toLowerCase();
-      let out = 'calc(';
-
-      // Parse compound unit to create calc expression
-      if (unit.includes('/')) {
-        // Division: "px/s" or "1/s" → calc(number * 1px / 1s) or calc(number / 1s)
-        const parts = unit.split('/');
-        const numerator = parts[0] || '1';
-        const denominator = parts[1] || '1';
-        if (numerator === '1') {
-          // Special case: "1/s" means number / unit → calc(number / 1s)
-          out += `${numberStr} / 1${denominator}`;
-        } else {
-          // General case: "px/s" → calc(number * 1px / 1s)
-          out += `${numberStr} * 1${numerator} / 1${denominator}`;
-        }
-      } else if (unit.includes('*')) {
-        // Multiplication: "px*em" → calc(number * 1px * 1em)
-        // Example: 10px * 2em → 20 with unit "px*em" → calc(20 * 1px * 1em)
-        const parts = unit.split('*');
-        let units = `1${parts[0] ?? ''}`;
-        for (let i = 1; i < parts.length; i++) {
-          units += ` * 1${parts[i] ?? ''}`;
-        }
-        out += `${numberStr} * ${units}`;
-      } else if (unit.includes('±')) {
-        // Addition/subtraction: "px±em" → calc(1px ± 1em)
-        // Note: We don't have the original values, so this is approximate
-        // The actual operation would be calc(aVal * 1px ± bVal * 1em)
-        const parts = unit.split('±');
-        const unit1 = parts[0] || '';
-        const unit2 = parts[1] || '';
-        // Output as calc(1unit1 + 1unit2) - approximation since we don't have original values
-        out += `1${unit1} + 1${unit2}`;
-      } else {
-        // Fallback - shouldn't happen
-        out += `${numberStr} * 1${unit}`;
-      }
-      return `${out})`;
-    }
-
-    // Normal unit output
+    const { number, unit } = this;
     const numberStr = `${round(number, 8)}`.toLowerCase();
-    if (unit) {
-      return `${numberStr}${unit}`;
-    }
-    return numberStr;
+    return unit ? `${numberStr}${unit}` : numberStr;
   }
 
   override resolve(_context: Context): this {

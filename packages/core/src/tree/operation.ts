@@ -114,8 +114,16 @@ export class Operation extends Node<OperationValue> {
     this.operator = value[1];
     this.right = value[2];
     this._treeContext = treeContext;
-    // Operations are always non-static, but can inherit may_async from children
+    // Operations are always non-static, but inherit may_async from their
+    // operands so an operation wrapping an async child (e.g. a nested `calc()`
+    // Call) is itself scheduled on the async path.
     this.addFlags(F_VISIBLE, F_NON_STATIC);
+    if (this.left instanceof Node) {
+      this.propagateFlagsFrom(this.left);
+    }
+    if (this.right instanceof Node) {
+      this.propagateFlagsFrom(this.right);
+    }
   }
 
   // Operation's value is a positional `[left, op, right]` tuple, so the base's

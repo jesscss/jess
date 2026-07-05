@@ -1,5 +1,5 @@
 import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
-import { color, dimension, num } from '../index.js';
+import { color, dimension, num, op } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { type Operator } from '../util/calculate.js';
@@ -74,8 +74,8 @@ describe('Dimension', () => {
       const writer = new CountingWriter();
 
       expect(dimension([10, 'px']).toTrimmedString({ writer })).toBe('10px');
-      expect(dimension([20, 'px*em']).toTrimmedString({ writer })).toBe('calc(20 * 1px * 1em)');
-      expect(writer.toString()).toBe('10pxcalc(20 * 1px * 1em)');
+      expect(dimension([20, 'em']).toTrimmedString({ writer })).toBe('20em');
+      expect(writer.toString()).toBe('10px20em');
       expect(writer.reads).toBe(0);
     });
 
@@ -111,8 +111,8 @@ describe('Dimension', () => {
       expect(writer.toString()).toBe('10px');
       expect(writer.marks).toBe(0);
       expect(writer.reads).toBe(0);
-      expect(dimension([20, 'px*em']).render(context, buffer, { writer })).toBe('calc(20 * 1px * 1em)');
-      expect(buffer.parts).toEqual(['calc(20 * 1px * 1em)']);
+      expect(dimension([20, 'em']).render(context, buffer, { writer })).toBe('20em');
+      expect(buffer.parts).toEqual(['20em']);
       expect(writer.marks).toBe(0);
       expect(writer.reads).toBe(0);
     });
@@ -142,11 +142,11 @@ describe('Dimension', () => {
     });
 
     it('defaults arithmetic to preserve mode', async () => {
-      let left = dimension([10, 'px']);
-      let right = dimension([20, 'rem']);
-
-      await expect(renderOperate(left, right, '-')).resolves.toBe('calc(1px + 1rem)');
-      expect(left.operate(right, '-').render(context)).toBe('calc(1px + 1rem)');
+      // Incompatible units under preserve mode keep the operation intact: the
+      // Operation node catches operate()'s TypeError and renders `calc(l - r)`
+      // with the original operands (no fabricated fused unit).
+      const operation = op([dimension([10, 'px']), '-', dimension([20, 'rem'])]);
+      expect(await operation.render(context)).toBe('calc(10px - 20rem)');
     });
 
     it('should use left-hand units in non-strict mode', async () => {
@@ -291,45 +291,25 @@ describe('Dimension', () => {
     beforeEach(() => {
       context.opts.unitMode = 'preserve';
     });
-    it('should create calc() when adding incompatible units', async () => {
+    // In preserve mode, `operate()` does NOT fuse operands into a fabricated
+    // compound-unit Dimension. It throws TypeError so the caller (Operation)
+    // preserves the arithmetic un-collapsed as `calc(l op r)` with the original
+    // operands. These assert the throw contract; calc preservation itself is
+    // covered by the Operation tests and the all-less calc fixture.
+    it('throws when adding incompatible units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'rem']);
-      const result = left.operate(right, '+', context);
-      const output = await result.render(context);
-      // Uncomment to see actual output:
-      // console.log('10px + 2rem =', output);
-      expect(output).toContain('calc');
-      expect(output).toContain('px');
-      expect(output).toContain('rem');
+      expect(() => left.operate(right, '+', context)).toThrow(TypeError);
     });
-
-    it('keeps preserve-mode compound dimension results as public node surfaces', async () => {
-      const left = dimension([10, 'px']);
-      const right = dimension([2, 'rem']);
-      setSourceSpan(left, { start: 20, end: 24 });
-
-      const result = left.operate(right, '+', context);
-
-      expect(result).not.toBe(left);
-      expect(sourceSpanOf(result)).toEqual(sourceSpanOf(left));
-      expect(result.sourceNode).toBe(result);
-      expect(await result.render(context)).toContain('calc');
-    });
-    it('should create calc() when dividing a number by a unit', async () => {
+    it('throws when dividing a number by a unit', () => {
       let left = num(10);
       let right = dimension([2, 'px']);
-      const result = left.operate(right, '/', context);
-      const output = await result.render(context);
-      expect(output).toContain('calc');
-      expect(output).toContain('px');
+      expect(() => left.operate(right, '/', context)).toThrow(TypeError);
     });
-    it('should create calc() when multiplying double units', async () => {
+    it('throws when multiplying double units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      const result = left.operate(right, '*', context);
-      const output = await result.render(context);
-      expect(output).toContain('calc');
-      expect(output).toContain('px');
+      expect(() => left.operate(right, '*', context)).toThrow(TypeError);
     });
     it('should throw on divide by zero (preserve mode still throws)', () => {
       let left = dimension([10, 'px']);
@@ -341,46 +321,30 @@ describe('Dimension', () => {
       let right = dimension([2, 'px']);
       await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
     });
-    it('should create calc() when dividing incompatible units', async () => {
+    it('throws when dividing incompatible units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 's']);
-      const result = left.operate(right, '/', context);
-      const output = await result.render(context);
-      expect(output).toContain('calc');
-      expect(output).toContain('px');
-      expect(output).toContain('s');
+      expect(() => left.operate(right, '/', context)).toThrow(TypeError);
     });
-    it('should create calc() when multiplying incompatible units', async () => {
+    it('throws when multiplying incompatible units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'em']);
-      const result = left.operate(right, '*', context);
-      const output = await result.render(context);
-      expect(output).toContain('calc');
-      expect(output).toContain('px');
-      expect(output).toContain('em');
+      expect(() => left.operate(right, '*', context)).toThrow(TypeError);
     });
     it('should throw when comparing incompatible units (same as strict)', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'rem']);
       expect(() => left.compare(right, context)).toThrow('Incompatible units');
     });
-    it('should create calc() for compatible units multiplication', async () => {
+    it('throws for compatible-units multiplication (no single-unit result)', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'cm']);
-      const result = left.operate(right, '*', context);
-      const output = await result.render(context);
-      expect(output).toContain('calc');
-      expect(output).toContain('px');
-      expect(output).toContain('cm');
+      expect(() => left.operate(right, '*', context)).toThrow(TypeError);
     });
-    it('should create calc() for compatible units division (different units)', async () => {
+    it('throws for compatible-units division of different units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'cm']);
-      const result = left.operate(right, '/', context);
-      const output = await result.render(context);
-      expect(output).toContain('calc');
-      expect(output).toContain('px');
-      expect(output).toContain('cm');
+      expect(() => left.operate(right, '/', context)).toThrow(TypeError);
     });
   });
   // it('should serialize to a module', () => {
