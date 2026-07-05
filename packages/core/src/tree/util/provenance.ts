@@ -1,35 +1,40 @@
 /**
- * Source / Parséman-CST provenance side-table — the ONLY home for a node's
- * source spans and CST metadata.
+ * Source / Parséman-CST provenance — a node's source spans and CST metadata.
  *
- * Jess `Node`s carry NO provenance fields, getters, setters, or methods. Every
- * bit of it lives in this `WeakMap<Node, Provenance>` and is reached through the
- * free functions below. eval creates millions of source-free nodes that must not
- * pay for provenance; the one hot check (`isSourceFree`, used by `canReuseAsLeaf`)
- * is the `F_HAS_SPAN` flag bit, everything else is a cold side-table read.
- *
- * DO NOT add a node accessor "for convenience" — it context-poisons the whole
- * codebase back toward node-stored provenance. See the `provenance-side-table-only`
- * project memory.
+ * The data lives in INLINE fixed-shape fields on the `Node` base class
+ * (`_spanStart`, `_spanEnd`, `_fieldSpans`, `_valueSpans`, `_cstState`,
+ * `_cstChildren`), declared there initialized to `undefined` so the hidden
+ * class stays monomorphic. This module owns the free-function surface that
+ * reads/writes those fields; callers NEVER touch the fields directly. eval
+ * creates millions of source-free nodes that must not pay for provenance; the
+ * one hot check (`isSourceFree`, used by `canReuseAsLeaf`) is the `F_HAS_SPAN`
+ * flag bit, everything else is a cold field read.
  */
 
 /** A source span — `{start, end}` offsets. The only source-position shape. */
 export type SourceSpan = { start: number; end: number };
 
-/** All parse-time provenance for one node. Every field is optional. */
-export type Provenance = {
+/**
+ * The inline provenance fields on the `Node` base class. Every field is
+ * optional and defaults to `undefined`. The concrete storage is declared on the
+ * class body in `node-base.ts` (fixed-shape/monomorphic); this shape is only the
+ * accessor contract for the free functions below.
+ */
+type ProvenanceFields = {
+  /** Runtime flags bitmask (carries `F_HAS_SPAN`). */
+  flags: number;
   /** Source start offset. */
-  spanStart?: number;
+  _spanStart: number | undefined;
   /** Source end offset. */
-  spanEnd?: number;
+  _spanEnd: number | undefined;
   /** Per-slot source spans for string-normalized DIRECT children, by `childKeys` order. */
-  fieldSpans?: (SourceSpan | undefined)[];
+  _fieldSpans: (SourceSpan | undefined)[] | undefined;
   /** Per-segment source spans for array-`value` children (e.g. selector-list items). */
-  valueSpans?: (SourceSpan | undefined)[];
+  _valueSpans: (SourceSpan | undefined)[] | undefined;
   /** Parséman parse-context snapshot (incremental re-parse re-entry key). */
-  cstState?: unknown;
+  _cstState: unknown;
   /** Parséman structural children (CST leaves/nodes/errors in parse order). */
-  cstChildren?: ReadonlyArray<{ _tag: string }>;
+  _cstChildren: ReadonlyArray<{ _tag: string }> | undefined;
 };
 
 /** Node has source provenance (a span). The one hot flag; kept on `node.flags`. */
@@ -37,19 +42,14 @@ export const F_HAS_SPAN = 0b100000000000000;
 
 type Flagged = { flags: number };
 
-const PROV = new WeakMap<object, Provenance>();
-
-function provOf(node: object): Provenance | undefined {
-  return PROV.get(node);
-}
-
-function ensureProv(node: object): Provenance {
-  let p = PROV.get(node);
-  if (!p) {
-    p = {};
-    PROV.set(node, p);
-  }
-  return p;
+/**
+ * View a node through its inline provenance fields. Every `Node` structurally
+ * carries these (declared on the base class), so the single narrowing assertion
+ * is sound; centralizing it keeps the per-accessor bodies plain field reads.
+ */
+function fieldsOf(node: object): ProvenanceFields {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return node as ProvenanceFields;
 }
 
 /** True if the node has no source span (the hot `canReuseAsLeaf` check — flag read). */
@@ -59,34 +59,35 @@ export function isSourceFree(node: Flagged): boolean {
 
 /** The node's source span, or `undefined` when source-free. */
 export function sourceSpanOf(node: object): SourceSpan | undefined {
-  const p = PROV.get(node);
-  return p?.spanStart === undefined ? undefined : { start: p.spanStart, end: p.spanEnd ?? p.spanStart };
+  const p = fieldsOf(node);
+  const start = p._spanStart;
+  if (start === undefined) {
+    return undefined;
+  }
+  return { start, end: p._spanEnd ?? start };
 }
 
 /** Source start offset, or `undefined`. */
 export function spanStartOf(node: object): number | undefined {
-  return PROV.get(node)?.spanStart;
+  return fieldsOf(node)._spanStart;
 }
 
 /** Source end offset, or `undefined`. */
 export function spanEndOf(node: object): number | undefined {
-  return PROV.get(node)?.spanEnd;
+  return fieldsOf(node)._spanEnd;
 }
 
 /** Set (or clear, with `undefined`) the node's source span; maintains `F_HAS_SPAN`. */
 export function setSourceSpan(node: object & Flagged, span: SourceSpan | undefined): void {
+  const p = fieldsOf(node);
   if (span !== undefined) {
-    const p = ensureProv(node);
-    p.spanStart = span.start;
-    p.spanEnd = span.end;
+    p._spanStart = span.start;
+    p._spanEnd = span.end;
     node.flags |= F_HAS_SPAN;
   } else {
     node.flags &= ~F_HAS_SPAN;
-    const p = PROV.get(node);
-    if (p) {
-      p.spanStart = undefined;
-      p.spanEnd = undefined;
-    }
+    p._spanStart = undefined;
+    p._spanEnd = undefined;
   }
 }
 
@@ -97,57 +98,38 @@ export function copySourceSpan(dst: object & Flagged, src: object): void {
 
 /** Per-slot field spans, or `undefined`. */
 export function fieldSpansOf(node: object): (SourceSpan | undefined)[] | undefined {
-  return PROV.get(node)?.fieldSpans;
+  return fieldsOf(node)._fieldSpans;
 }
 
 export function setFieldSpans(node: object, spans: (SourceSpan | undefined)[] | undefined): void {
-  if (spans === undefined && !PROV.has(node)) {
-    return;
-  }
-  ensureProv(node).fieldSpans = spans;
+  fieldsOf(node)._fieldSpans = spans;
 }
 
 /** Per-segment value spans, or `undefined`. */
 export function valueSpansOf(node: object): (SourceSpan | undefined)[] | undefined {
-  return PROV.get(node)?.valueSpans;
+  return fieldsOf(node)._valueSpans;
 }
 
 export function setValueSpans(node: object, spans: (SourceSpan | undefined)[] | undefined): void {
-  if (spans === undefined && !PROV.has(node)) {
-    return;
-  }
-  ensureProv(node).valueSpans = spans;
+  fieldsOf(node)._valueSpans = spans;
 }
 
 /** Parséman CST re-parse state. */
 export function cstStateOf(node: object): unknown {
-  return PROV.get(node)?.cstState;
+  return fieldsOf(node)._cstState;
 }
 
 export function setCstState(node: object, state: unknown): void {
-  if (state === undefined && !PROV.has(node)) {
-    return;
-  }
-  ensureProv(node).cstState = state;
+  fieldsOf(node)._cstState = state;
 }
 
 const EMPTY_CST_CHILDREN: ReadonlyArray<{ _tag: string }> = [];
 
 /** Parséman CST structural children (empty for eval-created nodes). */
 export function cstChildrenOf(node: object): ReadonlyArray<{ _tag: string }> {
-  return PROV.get(node)?.cstChildren ?? EMPTY_CST_CHILDREN;
+  return fieldsOf(node)._cstChildren ?? EMPTY_CST_CHILDREN;
 }
 
 export function setCstChildren(node: object, children: ReadonlyArray<{ _tag: string }>): void {
-  if (children.length === 0 && !PROV.has(node)) {
-    return;
-  }
-  ensureProv(node).cstChildren = children;
+  fieldsOf(node)._cstChildren = children;
 }
-
-/** Whether a node has any provenance record. */
-export function hasProvenance(node: object): boolean {
-  return PROV.has(node);
-}
-
-export { provOf as provenanceOf, ensureProv as ensureProvenance };
