@@ -48,10 +48,19 @@ Split: ~70% hard crashes (empty CSS), ~11% scope 'not defined', ~19% output diff
   evaluate to a node` (merge/each); `Expected selector component copy` (`ruleset.ts:417`);
   `Cannot operate on Keyword/Paren` (mixins/calc). **Core-reproducible, easily.** Relates to
   [[feedback-string-normalized-nodes]]. → START HERE.
-- [ ] **B — import base dir = CWD not importer dirname (~19 tests).** One resolver bug: relative
-  `@import` resolved against `process.cwd()`/root, not the importing file's directory. Clears all 3
-  path-resolution tests + import/charset/namespacing-import fixtures. Core-reproducible with a mock
-  file manager (see path-resolution.test.ts). (url-rebasing subset stays failing — unimplemented.)
+- [ ] **B — import base dir = CWD not importer dirname (~19 tests).** CONFIRMED root cause: the
+  functional Less parser is context-free and `LessPlugin.safeParse` (jess-plugin-less/src/index.ts)
+  never attaches its file-bearing `TreeContext` (createTreeContext → file.path=dirname) to the parsed
+  root `Rules`. So `rules._treeContext` is undefined → `rules.ts:5410` never sets `context.treeContext`
+  with `file` → `context.ts:490` `currentDirectory` falls back to `process.cwd()` → throw at
+  `context.ts:574 File not found (from: <cwd>)`. FIX: safeParse attaches context to the root Rules
+  (post-parse; Rules ctor takes `treeContext?` 4th param, stored rules.ts:3820, but the parser doesn't
+  pass it). The OLD Chevrotain `parse(src,'stylesheet',{context})` passed it to the parser which
+  attached it — the functional migration dropped that. **Mostly a PLUGIN fix**; may need a tiny core
+  setter if `_treeContext` isn't externally assignable (check for rules.ts conflict with Cluster A).
+  Core-repro: construct a Rules with vs without a file-bearing treeContext, assert `_getPath` base =
+  file.path when present, cwd otherwise. Clears path-resolution(3) + import/charset/namespacing
+  fixtures. (url-rebasing subset stays failing — unimplemented.)
 - [ ] **C — scope/binding unresolved (~10 tests).** `Binding cell has no value` (`scope-frame.ts:53`
   via `reference.ts`), `'X' is not defined` (height/sub/primary), `No matching mixins`. Live-binding
   materialization timing. Likely 2-3 sub-bugs. Core-reproducible. Relates to [[mixin-output-frame-linking]],
@@ -76,6 +85,13 @@ Split: ~70% hard crashes (empty CSS), ~11% scope 'not defined', ~19% output diff
   unchanged (58/35) — compat build was infra, not a fixture-failure source. **Follow-up:** the compat
   package's own `vitest.config.ts` lacks the root's `source` condition, so its integration tests need
   built libs — test-harness gap to fix.
+
+## Design / cleanup follow-ups (after correctness clusters)
+- [ ] **context-trim** — base `Node` ctor takes no context (good), but ~8 types carry their own
+  `_treeContext` field: `Rules` + `import-style` (legit — doc/import roots ESTABLISH context) and
+  `function`, `dimension`, `any`, `expression`, `block`, `at-rule-statement` (OVERKILL — they can read
+  the eval-time `context`/`sourceRoot._treeContext`). Drop `_treeContext` from those 6 + their parser
+  build sites. HOT-file refactor → sequence after B/C/E. Pairs with B (both treeContext plumbing).
 
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
