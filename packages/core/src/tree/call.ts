@@ -1776,7 +1776,15 @@ export class Call extends Node<CallValue, CallOptions> {
       const argNodes = await this.evalArgNodes(context, args) ?? list([]);
       const result = await n.evalCall(context, argNodes);
       return result;
-    } else if ((isNode(n, N.Rules) || isNode(n, N.Collection)) && n instanceof Rules) {
+    } else if (isNode(n, N.Collection)) {
+      // A no-arg call of a detached collection returns the collection surface
+      // itself (thin: no clone, no callable eval). Its declarations render from
+      // the shared surface. Args are meaningless on a collection.
+      if (args && args.value.length > 0) {
+        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
+      }
+      return this.markCallOutput(n);
+    } else if (isNode(n, N.Rules) && n instanceof Rules) {
       const rulesNode = n;
       // PreserveRulesLike variable calls intentionally evaluate from the
       // detached ruleset's lexical parent. Removing this lets non-leaky calls
