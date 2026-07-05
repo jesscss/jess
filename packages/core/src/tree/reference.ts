@@ -2833,12 +2833,40 @@ function finalizeScopeFrameVariableBindingResult(
     }
     return evald;
   };
+  // A variable found in a mixin-output namespace member (e.g. `@gender: @gender_`
+  // inside `.person`, reached via `.person.sayGender`) must resolve its OWN free
+  // references up the DEFINITION scope's retained frame — the output `.person`
+  // whose frame chain retains the call's param live-slots (`gender_="Male"`) — not
+  // the reading context (`.sayGender`'s output, which chains to the outer `.test`
+  // where the same name resolves to a different value). The retained-frame signal
+  // is intrinsic: the binding's owner frame carries live param bindings, and the
+  // definition scope (`bindingRulesContext`) is a distinct scope from the reader.
+  // Unlike a broad owner-frame re-point (which breaks detached-ruleset closures
+  // that intentionally resolve against a CAPTURED scope), this routes through
+  // `bindingRulesContext` — the SAME captured-definition scope those closures
+  // already use — so both cases resolve up their correct retained frame.
+  // The owner frame is where the variable was FOUND. When it retains per-call
+  // param live-slots in its parent chain (a mixin-output namespace member such as
+  // `.person`, whose frame chains to the call's `gender_="Male"` slot), the value's
+  // free refs must resolve up THAT retained frame — its rulesNode carries the live
+  // frame, whereas the cell/handle `bindingRulesContext` node may have lost its
+  // `_scopeFrame` by value-eval time and re-derive up the clobbered `.parent`.
+  const ownerFrameRetainsParams = isNode(bindingSource, N.VarDeclaration)
+    && !bindingSource.options?.paramVar
+    && binding.ownerFrame.parent?.hasLiveBindings === true
+    && isNode(binding.ownerFrame.rulesNode, N.Rules)
+    && binding.ownerFrame.rulesNode._scopeFrame === binding.ownerFrame
+    && binding.ownerFrame.rulesNode !== context.rulesContext;
+  const ownerDefinitionRules = ownerFrameRetainsParams
+    ? binding.ownerFrame.rulesNode
+    : undefined;
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
     bindingSource.options?.paramVar
     || (
       context.leakyRules !== true
       && isNode(bindingValue, N.Rules | N.Collection)
     )
+    || ownerFrameRetainsParams
   );
 
   let evalFlags = REF_EVAL_REUSE_SOURCE_FREE;
@@ -2855,7 +2883,9 @@ function finalizeScopeFrameVariableBindingResult(
   const evaluatedBinding = evaluateBindingHandleValue(
     bindingValue,
     bindingSource,
-    bindingRulesContext,
+    // Prefer the retained owner-frame rulesNode (carrying the live per-call params)
+    // over the cell/handle context, which may have lost its frame by value-eval time.
+    ownerDefinitionRules ?? bindingRulesContext,
     context,
     evalFlags,
     shouldUseDefinitionRulesContext
