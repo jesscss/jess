@@ -13,10 +13,7 @@ export interface SelectorCapture extends Node<Selector> {
 }
 
 const isSelectorNode = (value: unknown): value is Selector => (
-  value !== null
-  && typeof value === 'object'
-  && 'isSelector' in value
-  && value.isSelector === true
+  value instanceof Selector
 );
 
 /**

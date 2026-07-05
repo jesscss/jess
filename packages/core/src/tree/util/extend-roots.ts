@@ -31,10 +31,7 @@ type RootExtendInstruction = ExtendInstruction & {
 };
 
 function isSelectorValue(value: unknown): value is Selector {
-  return !!value
-    && typeof value === 'object'
-    && 'isSelector' in value
-    && value.isSelector === true;
+  return isNode(value, N.Selector);
 }
 
 function isRulesValue(value: unknown): value is Rules {

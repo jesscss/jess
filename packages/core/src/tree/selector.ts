@@ -79,8 +79,6 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     this.value = value;
   }
 
-  isSelector = true;
-
   protected _valueOf: string | undefined;
 
   keySetLibrary: BitSetLibrary<string> | undefined;

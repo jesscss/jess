@@ -70,9 +70,7 @@ function copySelectorsForPlacement(value: Selector[]): Selector[] {
 }
 
 function isSelectorNode(value: unknown): value is Selector {
-  return !!value
-    && typeof value === 'object'
-    && (value as { isSelector?: unknown }).isSelector === true;
+  return isNode(value, N.Selector);
 }
 
 function expectSelector(value: unknown): Selector {
