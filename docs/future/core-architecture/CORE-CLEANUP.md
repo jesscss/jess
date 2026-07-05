@@ -280,7 +280,13 @@ right fix depends on **how granular span tracking needs to be**, and the consume
     `//` (line, no-collapse) from `/* */` (block, inline-safe) or any FUTURE erasable-but-meaningful trivia
     kind, and would silently mislabel non-comment trivia as a comment. Fine for OUR comment-in-range use; but
     the honest primitive is `hasNonWhitespace`, and finer needs should classify via the run's exposed
-    `src`+`[start,end]` (or add a `kind`/segments). **DON'T OVERFIT PARSEMAN (owner): we don't know what trivia consumers will want to skip/preserve** — keep the trivia primitive GENERAL (position + raw range, let consumers classify) rather than baking in 'comment'. A design note for the parser/Trivia owners.
+    `src`+`[start,end]` (or add a `kind`/segments). **⚠ CORRECTION (I earlier mis-attributed this to Parséman —
+    it is a JESS-CORE issue).** Parséman ALREADY does the right thing: its `_triviaLog` carries labeled trivia
+    KINDS (position + kind, no boolean). The over-fit is entirely jess-side: the parser packages'
+    `buildLazyTriviaMap` DISCARDS Parséman's kinds, reduces to `(start,end)` offset pairs, and re-derives the
+    lossy `hasComment` via core's `makeTrivia`. **Fix belongs in jess core** — rename to `hasNonWhitespace`, or
+    (better) stop discarding Parséman's kinds in `buildLazyTriviaMap` and carry them through. Parséman needs
+    NOTHING. (Being fixed in jess core by another agent — rename + honest doc, core green.)
   - **Span storage (V8, answered):** keep `_spanStart`/`_spanEnd` as TWO inline number fields (SMIs → 0 alloc,
     inline in the hidden-class slot) — NOT a `{start,end}` object (1 heap alloc per spanned node, reintroduces
     the WeakMap cost) and NOT a packed single number (two offsets exceed V8's 31-bit SMI range → boxes to a
