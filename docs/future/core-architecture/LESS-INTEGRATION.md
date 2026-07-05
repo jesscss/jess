@@ -397,3 +397,11 @@ Gaps to close when building the sandbox:
   evaluating (`red(rgb(100%,0,0))` should → `255`), (b) a spurious space `red (rgb…)` — the at-rule "always space
   adjacent value nodes" rule likely OVER-spaces a function-name+paren-args boundary; needs refinement so a Call/
   fn-name+Paren doesn't get spaced while genuine space-lists still do.
+
+## 2026-07-05 — board 68/93; dev now holds the work (FF from feature/parseman)
+- dev fast-forwarded to hold all session work; this worktree switched to `dev`; future merges land on dev. origin/dev
+  is 6+ behind (not pushed — maintainer's mainline).
+- **keyword-value MERGED**: `_buildNamedArg` (less-parser) wraps bare-keyword param-default/named-arg in a Keyword
+  node (scoped, no shared `_assembleValue` touch). css/scss/less-parser suites clean. Flipped **mixins-advanced**.
+  mixins-guards/mixins-nested have DEEPER failures beyond this (further along now — hasFlag throw gone).
+- IN FLIGHT: `less/color-fns` (core: red()/channel eval + `red (` over-spacing).
