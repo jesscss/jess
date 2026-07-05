@@ -287,16 +287,27 @@ export function renderNodeToString(
 }
 
 function hasNativeBufferRender(node: object): node is NativeRenderOutput {
-  const ownDescriptor = Object.getOwnPropertyDescriptor(node, 'render');
-  if (typeof ownDescriptor?.value === 'function' && ownDescriptor.value.length >= 2) {
-    return true;
+  // Own instance render: a plain adapter object writing directly into a buffer
+  // declares at least (context, buffer). Read the own value directly instead of
+  // materializing a property descriptor.
+  if (Object.prototype.hasOwnProperty.call(node, 'render')) {
+    const ownRender = (node as { render?: unknown }).render;
+    if (typeof ownRender === 'function' && ownRender.length >= 2) {
+      return true;
+    }
   }
 
+  // Inherited render: locate the first prototype that owns the method so its
+  // arity is read from the defining class, then apply the native buffer-render
+  // gate (context, buffer, options). Matches the first-owning-proto semantics of
+  // the previous descriptor walk without any property-descriptor allocation.
   let proto = getObjectPrototype(node);
   while (proto) {
-    const descriptor = Object.getOwnPropertyDescriptor(proto, 'render');
-    if (typeof descriptor?.value === 'function') {
-      return descriptor.value.length >= 3;
+    if (Object.prototype.hasOwnProperty.call(proto, 'render')) {
+      const protoRender = (proto as { render?: unknown }).render;
+      if (typeof protoRender === 'function') {
+        return protoRender.length >= 3;
+      }
     }
     proto = getObjectPrototype(proto);
   }
