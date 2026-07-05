@@ -51,6 +51,19 @@ function isExtendedFn(value: unknown): value is ExtendedFn {
   return typeof value === 'function';
 }
 
+/**
+ * A `calc()` argument that collapses to a bare Dimension (through any
+ * redundant Parens) reduces to that Dimension — the wrapper is dropped.
+ * A preserved Operation/Paren/calc-fallback returns undefined (keep `calc`).
+ */
+function unwrapToDimension(node: Node): Dimension | undefined {
+  let n = node;
+  while (n instanceof Paren && n.value) {
+    n = n.value;
+  }
+  return n instanceof Dimension ? n : undefined;
+}
+
 function isTriviaMap(value: unknown): value is NonNullable<PrintOptions['trivia']> {
   if (!value || typeof value !== 'object') {
     return false;
@@ -1898,22 +1911,26 @@ export class Call extends Node<CallValue, CallOptions> {
         }
       });
     } else {
-      if (n === 'calc') {
+      // The name resolves to a value (e.g. a Reference → Any 'calc'), so detect
+      // calc by its rendered text rather than string identity.
+      const isCalc = getRenderedCallNameText(n) === 'calc';
+      if (isCalc) {
         context.calcFrames++;
       }
       const evaluatedArgs = await this.evalArgNodes(context, args, {
         ownResults: !(this._options?.silentFail && typeof this.name !== 'string')
       })
         .finally(() => {
-          if (n === 'calc') {
+          if (isCalc) {
             context.calcFrames--;
           }
         });
       if (
-        n === 'calc' && evaluatedArgs
+        isCalc && evaluatedArgs && evaluatedArgs.value.length === 1
       ) {
-        if (isNode(evaluatedArgs.value[0], N.Dimension)) {
-          return evaluatedArgs.value[0]!;
+        const dim = unwrapToDimension(evaluatedArgs.value[0]!);
+        if (dim) {
+          return dim;
         } else if (context.calcFrames !== 0) {
           return new Paren(evaluatedArgs.value[0]!);
         }

@@ -7293,10 +7293,10 @@ describe('Mixin', () => {
 
       const css = await renderNodeToString(node, context);
 
-      expect(css).toContain('.one {\n  width: calc(20 * 1px * 1em);');
-      expect(css).toContain('.two {\n  width: calc(30 * 1px * 1em);');
-      expect(css).not.toContain('.two {\n  width: calc(20 * 1px * 1em);');
-      expect(css).not.toContain('.one {\n  width: calc(30 * 1px * 1em);');
+      expect(css).toContain('.one {\n  width: calc(10px * 2em);');
+      expect(css).toContain('.two {\n  width: calc(10px * 3em);');
+      expect(css).not.toContain('.two {\n  width: calc(10px * 2em);');
+      expect(css).not.toContain('.one {\n  width: calc(10px * 3em);');
     });
 
     it('keeps interpolated selector replacements isolated across repeated mixin calls', async () => {

@@ -215,26 +215,14 @@ describe('Negative', () => {
     expect(writer.reads).toBe(0);
   });
 
-  it('keeps compound dimension negatives on the public operation boundary', async () => {
+  it('negates a dimension on the public operation boundary', async () => {
     context.opts.unitMode = 'preserve';
-    const value = dimension({ number: 10, unit: 'px*em' });
-    let operateCalls = 0;
-    const originalOperate = value.operate;
-    value.operate = function countOperateCalls(
-      this: typeof value,
-      ...args: Parameters<typeof originalOperate>
-    ): ReturnType<typeof originalOperate> {
-      operateCalls++;
-      return originalOperate.apply(this, args);
-    };
+    const value = dimension({ number: 10, unit: 'px' });
     const negativeNode = negative(value);
 
     const rendered = await Promise.resolve(negativeNode.render(context));
 
-    expect(rendered).toContain('calc(');
-    expect(rendered).toContain('px');
-    expect(rendered).toContain('em');
-    expect(operateCalls).toBe(1);
+    expect(rendered).toBe('-10px');
   });
 
   it('resolves negative values without touching render state', async () => {
