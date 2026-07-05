@@ -334,20 +334,18 @@ export function defineFunction<
     return fn(...positionalArgs);
   } as DefinedFunction<T, F>;
 
-  /** Attach runtime metadata directly; keep the callable as a real function. */
-  Object.defineProperties(result, {
-    name: {
-      value: name,
-      configurable: true
-    },
-    options: {
-      value: options,
-      configurable: true
-    },
-    _internal: {
-      value: fn,
-      configurable: true
-    }
+  /**
+   * Attach runtime metadata directly; keep the callable as a real function.
+   * `options` and `_internal` are plain fixed-shape assignments. Only `name`
+   * needs a descriptor: a function's own `name` slot is non-writable, so plain
+   * assignment cannot override the inferred "result" name.
+   */
+  const runtime = result as RuntimeFunction;
+  runtime.options = options;
+  runtime._internal = fn;
+  Object.defineProperty(result, 'name', {
+    value: name,
+    configurable: true
   });
 
   return result;
