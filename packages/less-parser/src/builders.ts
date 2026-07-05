@@ -190,6 +190,27 @@ export class LessGrammar extends CssParser {
     if (afterColon?.comp === '{') {
       // Detached ruleset: @var: { ... }
       const ruleNodes = nodeChildren(children);
+      const openBrace = items[colonIdx + 1]!;
+      const closeBrace = items[items.length - 1]!.comp === '}'
+        ? items[items.length - 1]!
+        : undefined;
+      // Raw-string detached ruleset (grammar's rawDetachedBlock fallback): the body
+      // had no structurable declarations but is non-empty (special-char keys like
+      // bootstrap's `@escaped-characters: { <: %3c; … }`). Historical Less keeps such
+      // a block as a raw `Quoted` string (braces included); @plugin functions such as
+      // escape-svg read it via `.value`.
+      if (ruleNodes.length === 0 && closeBrace) {
+        const bodyText = this._source.slice(openBrace.span.end, closeBrace.span.start);
+        if (bodyText.trim() !== '') {
+          const rawBlock = this._source.slice(openBrace.span.start, closeBrace.span.end);
+          const nameNode = name || undefined;
+          return new VarDeclaration(
+            { name: (nameNode ?? name) as any, value: new Quoted(rawBlock, {}, loc) as any } as any,
+            {} as VarDeclarationOptions,
+            loc
+          );
+        }
+      }
       const mixin = new Mixin({ rules: ruleNodes }, {}, loc);
       const nameNode = name || undefined;
       return new VarDeclaration(
