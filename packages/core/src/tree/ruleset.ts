@@ -1564,7 +1564,24 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    let renderSelector: Selector | Nil = withoutComments ? this.ownSelector(selector) as Selector | Nil : selector;
+    let renderSelector: Selector | Nil | SelectorListItem[] = withoutComments ? this.ownSelector(selector) as Selector | Nil : selector;
+    // An array is a selector-list surface (a valid parser/extend selector form); it
+    // carries no node flags, so skip the node-only reference-filter/compose logic and
+    // emit it directly below (mirroring the string surface branch above).
+    if (Array.isArray(renderSelector)) {
+      const position = options.writer.position();
+      const savedTrivia = options.trivia;
+      if (withoutComments) {
+        options.trivia = createTriviaMap();
+      }
+      try {
+        emitSelectorListLike(renderSelector, options);
+        options.writer.trimEndSince(position);
+      } finally {
+        options.trivia = savedTrivia;
+      }
+      return options.writer.position() !== position;
+    }
     const canReferenceFilter = !(renderSelector instanceof Nil)
       && (
         Ruleset.hasExtendedTopLevelSelector(renderSelector)

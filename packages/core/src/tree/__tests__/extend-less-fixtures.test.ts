@@ -482,7 +482,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 }`.trim());
   });
 
-  it('3b. parsed-source extend-nest hover extend keeps :is(...):hover shape', async () => {
+  it('3b. parsed-source extend-nest hover extend distributes to .button:hover, .submit:hover', async () => {
     const source = `
 .button {
   color: black;
@@ -497,15 +497,22 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 `;
     const context = new Context({ output: { collapseNesting: true }, leakyRules: true });
     const parser = new Parser();
-    const { tree } = parser.parse(source, 'stylesheet', { context });
+    const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
+    // TARGET of the hover extend is `.button:hover` (a whole selector, not a matched
+    // set), so `.submit:hover` (what `&:hover` represents in .submit's context) is added
+    // as a comma sibling — no `:is()` grouping. Matches Less 4.x exactly and the flat
+    // AST-built equivalent (test 3): `.button:hover, .submit:hover`. The earlier
+    // `:is(.button, .submit):hover` expectation was wrong (that shape only arises when
+    // the PARENT `.button` is the matched set, which is a different extend).
     expect(css.trim()).toBeString(`
 .button,
 .submit {
   color: black;
 }
-:is(.button, .submit):hover {
+.button:hover,
+.submit:hover {
   color: inherit;
 }
 `.trim());
@@ -882,7 +889,7 @@ div:is(.ext5, .ext7),
 `;
     const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
-    const { tree } = parser.parse(source, 'stylesheet', { context });
+    const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css.trim()).toBeString(`
@@ -911,7 +918,7 @@ div:is(.ext5, .ext7),
     const source = readFileSync(path.join(testData, 'tests-unit/extend/extend.less'), 'utf8');
     const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
-    const { tree } = parser.parse(source, 'stylesheet', { context });
+    const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css).toContain(`
@@ -939,7 +946,7 @@ div:is(.ext5, .ext7),
 `;
     const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
     const parser = new Parser();
-    const { tree } = parser.parse(source, 'stylesheet', { context });
+    const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
     expect(css.trim()).toBeString(`
