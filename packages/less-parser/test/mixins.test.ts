@@ -52,7 +52,10 @@ describe('mixinArgList', () => {
     expect(out).toContainString('(Reference [role=name]');
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('key: \'.mixin\'');
-    expect(out).toContainString('(List\n          sep: \',\'');
+    // Comma args serialize as a plain List (default separator) — identical to
+    // function-call args; only semicolon args carry an explicit `sep: ';'`.
+    expect(out).toContainString('args:');
+    expect(out).toContainString('(List');
     expect(out).toContainString('value:');
     expect(out).toContainString('(Keyword [role=keyword]');
     expect(out).toContainString('\'a\'');
@@ -100,6 +103,19 @@ describe('mixinArg', () => {
     // @ts-expect-error -- the bound parse() collapses its overloads, hiding the optional third (rule-options) argument this start rule accepts at runtime.
     const { errors } = parser.parse('(@rest...)', 'MixinArgs', { isDefinition: true });
     expect(errors.length).toBe(0);
+  });
+
+  it('parses an arithmetic mixin-call argument as an Operation, not a raw Reference', () => {
+    // Regression: mixin-call args were captured as opaque text, so a `@`-leading
+    // chunk became a single Reference whose key was the raw expression string.
+    const { errors, tree } = parse('.m(0, @a * 2 + @b)', 'MixinOrQualifiedRule');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    // The expression must be a real Operation over References to @a and @b …
+    expect(out).toContainString('(Operation');
+    // … and must NOT collapse into a single Reference whose key is the raw text.
+    expect(out).not.toContainString('\'a * 2 + @b\'');
+    expect(out).not.toContainString('\'a * 2\'');
   });
 });
 
