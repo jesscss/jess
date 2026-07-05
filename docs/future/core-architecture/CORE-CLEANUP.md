@@ -290,6 +290,10 @@ serialization/collapse state; no new visibility/eval-free flag.
   (`git worktree add ../jess-perf-<stage> -b perf/<stage> perf/walk-collapse`) with the setup block +
   spec → agent works to the gate, commits, reports before/after bench + failure set → integrator merges
   into `perf/walk-collapse`, re-runs the full gate, keeps only if green, updates this checkbox + bench #.
+- **Fan out WIDE** across disjoint files — try many ideas concurrently. **Reuse worktrees:** when an agent
+  finishes an idea, have it COMMIT then hand it the NEXT idea in the SAME worktree (SendMessage — keeps
+  file/build context) instead of spawning fresh. Agents coordinate through the orchestrator: report → gate →
+  merge → next idea. Serialize only the MERGES (avoid concurrent edits to the same file across branches).
 - **Agent setup block:** `pnpm install` (~10s; NOT `pnpm -r build`). Correctness gate (no build; vitest on
   src): `cd packages/core && pnpm test` — baseline = EXACTLY 2 pre-existing fails (mixin.test.ts namespace
   fast-path x2 ~5476/5578; extend-less-fixtures collection ~47:39); clean = that set + byte-identical.
@@ -411,8 +415,13 @@ per class) instead of branching per-reference on `options.type`/flags? Separate 
   (trivial in Less/scss — syntax disambiguates); shared lookup engine must factor into helpers so the split
   doesn't duplicate resolution; a few refs ambiguous until eval (rare). Irreducible: outcome-polymorphism
   stays; a per-node resolved-kind cache hits the same scope-variance caveat as memoization (scope-key or corrupt).
-- **Verdict:** worth pursuing the Axis-1 syntactic split + Axis-2 value-class-dispatched surface; leave the
-  pure outcome-poly alone. Pairs with the copy/materialization nuke — do them together on the reference stage.
+- **APPROVED (owner):** split `Reference` into distinct node classes — **`DeclarationReference`,
+  `VariableReference`, `PropertyReference`, `MixinReference`** (etc.) — with SHARED util functions for the
+  common lookup/walk engine (dedup is fine via helpers, not inheritance gymnastics). Axis-1 syntactic split
+  (parser classifies at construction → monomorphic `evalNode` per class, fixed shape) + Axis-2 value-class-
+  dispatched surface (`resolvedValue.createReferenceSurface()`). Leave the pure outcome-poly alone. **Reuse
+  the `perf/ref-nuke` worktree**: after the surface-nuke lands, continue that agent into the specialization
+  (it already has reference.ts context).
 
 **Still-deferred perf backlog:**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
