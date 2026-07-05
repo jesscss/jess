@@ -278,8 +278,33 @@ serialization/collapse state; no new visibility/eval-free flag.
   render on jess yet — never gate on it.
 
 **Status:** `perf/walk-collapse` = C0 (844046cbd) → merge feature/parseman (c2f6aea01, gate green) →
-ruleset.ts lint debt fixed (1636a6e6b). Next: commit the collapse bench harness into the branch, profile
-the collapse gap, lock the C1 spec, fan out C1.
+ruleset.ts lint debt fixed (1636a6e6b) → orchestrated goal (84319c476, 46674b2ad). Bench harness at
+`packages/core/perf/collapse-bench.mjs`.
+
+### PROFILE PIVOT (measured — the walk plan targets the wrong 2.7%)
+CPU profile of a 4500-ruleset collapse render (`packages/core/perf/collapse-bench.mjs collapse`, self-time):
+- **`OutputWriter.refreshPositions` (print.ts:776) — ~51%** (single biggest cost)
+- **GC — ~14%** (allocation churn), **`trimEndSince` — ~7%**
+- **eval — 2.7%**, serialize composition — ~4%
+So C1–C4 (walk-count / eval) chase 2.7%. The prize is the **OutputWriter**. Two root causes, both on
+the goal's axes (fewest allocations / least redundant work):
+1. **Per-fragment `new OutputWriter()` churn — should be ONE writer per full tree serialization.**
+   Fragment sites (`serialize-helper.ts` x6, `interpolated.ts` x3, `rules.ts:614`, `declaration.ts:383/1059`)
+   allocate a writer + position arrays per node, then getSince/toString and discard. The writer already
+   exposes `mark`/`getSince`/`restore`/`replaceSince` — thread the single render writer and use mark/restore
+   instead of allocating. Keep a separate/pooled writer ONLY where fragment rendering is genuinely reentrant
+   (interleaved with the main buffer); never per-call allocation. (The `new OutputWriter(false, parts)`
+   flat-parts sites in call/query-condition/sequence are a different buffer kind — classify, don't blindly convert.)
+2. **`refreshPositions` rebuilds from index 0 on every trim/append** (both tracks-sources branches).
+   A `trimEndSince(mark)` only invalidates `_posLength`/line/col from `mark` onward — make it incremental
+   `refreshPositions(from)`, seeded from position[from-1], not a full-buffer rebuild. NOTE: `tracksSources`
+   is NOT the lever — probed flipping the default to false → no speedup + 26 regressions (top-level render
+   writer is already !tracksSources for no-sourcemap renders; the cost is the from-0 loop in BOTH branches).
+
+- [ ] **W1 — single-writer serialization** (root cause 1). Highest allocation win. → fewest object creations.
+- [ ] **W2 — incremental `refreshPositions(from)`** (root cause 2). Self-contained, lower-risk; do FIRST
+      (quick measurable A/B), then W1. Both in `print.ts` + `serialize-helper.ts` — sequence, don't parallelize.
+W1/W2 are reprioritized ABOVE C1–C4 (eval is 2.7%; the writer is >70% incl. GC+trims).
 
 **Still-deferred perf backlog (unchanged, no failing-test signal):**
 - [defer] `Reference` lookup + callable output-body placement — remaining hot path.
