@@ -940,7 +940,10 @@ describe('Call', () => {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('red 10px');
-      expect(CountingSequence.constructedCopies).toBe(2);
+      // Thin placement (LIVE_BINDING invariants 2/3): the callable binding
+      // surface SHARES the source arg node instead of deep-cloning it, so the
+      // Sequence is never reconstructed.
+      expect(CountingSequence.constructedCopies).toBe(0);
       expect(collectionEvalCalls).toBe(0);
       expect(originalArg.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
@@ -2284,8 +2287,11 @@ describe('Call', () => {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('ok');
-      expect(CountingSequence.constructedCopies).toBe(1);
-      expect(rawArg).not.toBe(originalValue);
+      // Thin placement (LIVE_BINDING invariants 2/3): rawArgs owns a fresh List
+      // surface for mutation isolation, but SHARES the source arg node — the
+      // Sequence is never reconstructed and stays canonically parented.
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(rawArg).toBe(originalValue);
       expect(rawArg instanceof Sequence ? rawArg.value[0] : undefined).toBe(originalLeaf);
       expect(rawArg?.parent?.parent).toBe(rule);
       expect(originalValue.parent).toBe(originalArgs);
@@ -2476,10 +2482,14 @@ describe('Call', () => {
         expect(rawArgs).not.toBe(buffered.originalArgs);
         expect(rawArgs).not.toBe(resolved.originalArgs);
       }
-      for (const { originalValue, originalArgs, rule } of [direct, buffered, resolved]) {
+      for (const { originalValue, originalArgs } of [direct, buffered, resolved]) {
         expect(originalArgs.value).toEqual([originalValue]);
         expect(originalValue.parent).toBe(originalArgs);
-        expect(originalArgs.parent).toBe(rule);
+        // The Call is built with the raw `new CountingCall` constructor, which
+        // parents nothing (LIVE_BINDING invariant 6). Only the `list()` factory
+        // parented originalValue → originalArgs; originalArgs itself stays
+        // unparented, and thin-placement render/resolve never reparents it.
+        expect(originalArgs.parent).toBeUndefined();
       }
     } finally {
       CountingCall.countConstructions = false;
@@ -2530,7 +2540,9 @@ describe('Call', () => {
         'inspect-owned',
         async function(value: Sequence) {
           receivedArg = value;
-          return any(value !== originalValue ? 'ok' : 'bad');
+          // Thin placement (LIVE_BINDING invariants 2/3): a static arg evaluates
+          // to itself and is SHARED through the callable surface, not deep-cloned.
+          return any(value === originalValue ? 'ok' : 'bad');
         },
         { params: [{ name: 'value', type: Sequence }] }
       )
@@ -2547,7 +2559,7 @@ describe('Call', () => {
 
     expect(result.toTrimmedString()).toBe('ok');
     expect(receivedArg).toBeDefined();
-    expect(receivedArg).not.toBe(originalValue);
+    expect(receivedArg).toBe(originalValue);
     expect(originalValue.parent).toBe(originalArgs);
     expect(originalArgs.parent).toBe(rule);
   });
