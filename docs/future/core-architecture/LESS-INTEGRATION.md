@@ -64,7 +64,7 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
   Test + lookup source unchanged since 918834a88 → non-source trigger (parser-output structure or a dep).
   Fix the fast-path (scope-frame/lookup-utils/callable-scope-frame) or update the guard to the current
   parser output. Disjoint from B (plugin/context). Core cluster → sequence with other core clusters.
-- [ ] **B — import base dir = CWD not importer dirname (~19 tests).** CONFIRMED root cause: the
+- [x] **B — DONE (merge — see log).** import base dir = CWD not importer dirname. CONFIRMED root cause: the
   functional Less parser is context-free and `LessPlugin.safeParse` (jess-plugin-less/src/index.ts)
   never attaches its file-bearing `TreeContext` (createTreeContext → file.path=dirname) to the parsed
   root `Rules`. So `rules._treeContext` is undefined → `rules.ts:5410` never sets `context.treeContext`
@@ -123,3 +123,4 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
 - **Cluster A partial** (b53590d9d): writeSelectorLike + string-selector header + less-parser prelude-dup; at-rule-bubbling 6/6, jess +7.
+- **Cluster B** (merged): safeParse attaches file-bearing TreeContext to root Rules (1 line, _treeContext public field); path-resolution 3/3, all-less +6 in-worktree, 0 new. jess-parseman all-less baseline now 41/93 (single gate ref).
