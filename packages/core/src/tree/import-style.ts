@@ -576,7 +576,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- getInlineSourceLocation always returns a full 6-element tuple, never []
     const node = new Any(source, { role: 'any' }, getInlineSourceLocation(source) as LocationInfo);
-    new Rules([node], undefined, undefined, treeContext);
+    const inlineRules = new Rules([node], undefined, undefined, treeContext);
+    // Pin the inline source root so later `adopt` into an import-site surface
+    // (whose treeContext is the importing file) cannot re-root the inline node's
+    // provenance. Source-map segments read `sourceRoot._treeContext.file`, so the
+    // inline node must keep resolving to the inlined file's tree context.
+    node._sourceRoot = inlineRules;
     return node;
   }
 
