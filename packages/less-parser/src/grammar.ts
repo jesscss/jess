@@ -122,7 +122,10 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)?){2,}/);
   const propRef = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
   const interpKey = regex(/(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-)?[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}(?:[@$]\{-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\}|[-_a-zA-Z0-9-￿])*/);
-  const declPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})*/);
+  // A purely-numeric name (`100:`) is a Less detached-ruleset map key, e.g.
+  // `@grays: { 100: @gray-100; }` (Bootstrap). Not valid CSS, but Less accepts it
+  // and `@grays[100]` reads it back; the whole-number alternative is tried first.
+  const declPropName = regex(/[0-9]+|\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})*/);
   const refKey = choice(nestedRef, lessVar, propRef, interpKey, ident);
   // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
   const refIndex = sequence(literal('['), parser({ trivia: rw }, sequence(optional(refKey), literal(']'))));
