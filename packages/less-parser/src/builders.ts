@@ -2227,6 +2227,16 @@ export class LessGrammar extends CssParser {
           j++;
         }
       }
+    } else if (inner && (inner as any).type === 'List') {
+      // A comma/semicolon List as the direct paren content is the ARG SEPARATOR,
+      // not a single list-valued arg: `.mixin(10px, 10px)` is two args, so spread
+      // the list's items. (The `@var(...)` path splits on comma in
+      // `_buildRefCallArgs`; this mirrors it for the namespace/mixin call path
+      // where the grammar hands us a real List node.) Space-separated content
+      // arrives as a Sequence/single node and stays one arg.
+      for (const it of ((inner as any).value ?? []) as JessNode[]) {
+        items.push(it);
+      }
     } else if (inner) {
       const isEmptyInner = this._isEmptyKeywordLike(inner);
       if (!isEmptyInner) {
