@@ -27,7 +27,7 @@ not band-aided in the plugin/integration layer.
   hot-reload via the alias; only rebuild if you change what the config loader itself imports.
 - Run: `cd packages/jess && TEST=true npx vitest run test/less/all-less.test.ts`. Core repros:
   `cd packages/core && npx vitest run <file> -t <name>`.
-- **all-less gate baseline (jess-parseman = single gate worktree): 52 passed / 41 failed / 93. Core: 0.**
+- **all-less gate baseline (jess-parseman = single gate worktree): 54 passed / 39 failed / 93. Core: 0.**
 
 ## Gate / merge rules (same discipline as CORE-CLEANUP)
 - One cluster per branch `less/<slug>` + worktree off `feature/parseman`.
@@ -128,6 +128,7 @@ Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH f
 
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
+- **D-color** (c65dc2782): named-color table; **C-lookup** (38b269453): accessor key typing + property lane excludes VarDecl; all-less→54.
 - **Cluster A partial** (b53590d9d): writeSelectorLike + string-selector header + less-parser prelude-dup; at-rule-bubbling 6/6, jess +7.
 - **Cluster B** (merged): safeParse attaches file-bearing TreeContext to root Rules (1 line, _treeContext public field); path-resolution 3/3, all-less +6 in-worktree, 0 new. jess-parseman all-less baseline now 41/93 (single gate ref).
 - **Cluster C partial** (70888504e, `less/cluster-c`, not merged): sub-bug #1 binding-cell materialization — `Declaration.valueNode()` coalesces flat parser segment-array var values; `createVarDeclarationBindingEntry` lazy `prepareValue`. functions.test.ts each() nested-rules (2) green, all-less +1 (`functions-harness.less`), full less suite 64→67 pass. Core suite unchanged (2 known ns-fastpath + pre-existing `sibling collapsed` mixin test + `extend-less-fixtures` module artifact; 0 new). Sub-bugs #2 (namespace accessor lookup) / #3 (`No matching mixins`) still open.
