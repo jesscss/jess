@@ -852,7 +852,8 @@ function lookupScopeFrameVariableBinding(
   key: string,
   opts: DeclarationFindOptions,
   env: RulesLookupAdapterEnv,
-  mode: ScopeFrameVariableBindingMode = 'full'
+  mode: ScopeFrameVariableBindingMode = 'full',
+  leakStart?: number
 ): ScopeFrameVariableBindingResult {
   if (mode === 'full' && (
     env.hasTarget
@@ -866,6 +867,7 @@ function lookupScopeFrameVariableBinding(
   }
   const hit = lookupScopeFrameVariable(frame, key, {
     start: mode === 'full' ? opts.start : undefined,
+    leakStart,
     filter: env.filter,
     blockedSource: node => env.context.searchScope.has(node),
     includeLive: mode === 'live-current' || env.readMode !== 'snapshot',
@@ -988,7 +990,7 @@ function performVariableRulesLookup(
     const frameHit = lookupScopeFrameVariableBinding(scope, keyStr, {
       start: occurrenceStart,
       filter: env.filter
-    }, env, frameMode);
+    }, env, frameMode, shape.start);
     if (frameHit) {
       return frameHit === SCOPE_FRAME_VARIABLE_MISS ? undefined : frameHit;
     }
