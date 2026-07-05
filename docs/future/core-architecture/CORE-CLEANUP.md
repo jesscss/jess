@@ -35,12 +35,23 @@ keeps dissolving into specific bugs, not the feared monolith:
 - **call arg-surface** (68e28e0aa, 49→45): 4 stale tests updated to the live-binding shared-node model.
 - **extend cluster (6) — DEFERRED, all 6, with a CONTRADICTION needing an owner ruling** (cleanup/extend-cluster,
   0 commits, clean):
-  - **Group A (4): committed-invariant contradiction on `ownCollapsedSourceChild`.** The extend
-    `sourceLeafClones===0` tests (5099574fd, May 9) require collapse to REUSE the source leaf; the newer
-    `selector-complex.test.ts:262`/`selector-compound.test.ts:240` "canonical survivor" tests (1291c8639,
-    May 27) require it to COPY (`resolved !== sourceChild`) — because `inherit(owner)` mutates the shared
-    source in place. Same code path, opposite requirements. A reuse-fix greens all 4 extend tests but
-    re-breaks the 2 newer ones. **NEEDS OWNER RULING: reuse (invariants 2/3/6, no-clone) vs copy-on-collapse.**
+  - **Group A (4): RESOLVED by owner → copy-on-write selector model (shared-bit + clone-on-mutate).**
+    The extend `sourceLeafClones===0` (May 9) and canonical-survivor `resolved!==sourceChild` (May 27)
+    tests are NOT contradictory — they're two contexts of ONE rule. **Owner ruling:** selectors carry a
+    `shared` marker; **any mutation (collapse `inherit`, or extend) mutates IN PLACE when unshared, and
+    CLONES-to-detach when shared.** This produces both committed behaviors for the same reason:
+      - eval-template collapse → source is shared across frames/iterations → mutation clones → canonical
+        `resolved !== sourceChild` holds;
+      - extend over an unshared selector → cheap in-place mutate → `sourceLeafClones === 0` holds.
+    Rationale (owner): the render buffer holds selector SLOTS (node refs) + text blocks — selectors
+    visible to extend stay as refs, NOT serialized text — so extend (terminal phase, multiple rounds over
+    the same selectors) must reach live nodes. Copying every round is wasteful; reuse the same ref when a
+    mixin body iterates the same selector, and **detach (COW) only when extend gives one instance different
+    visibility/extension than the shared others**. Keep BOTH committed test sets. Implementation: add a
+    `shared` mark (set when a selector ref is placed into >1 buffer slot / reused across iterations); gate
+    `inherit`/extend mutation on it (unshared→in place, shared→clone the slot's ref then mutate the clone).
+    This is its OWN carefully-staged unit (touches `inherit`/collapse/extend + the shared marker), to run
+    after the copy-boundary agent merges (both touch `node-base` clone). See [[selector-cow-shared-bit]].
   - **Group B (1): string-backed extend target** (`extend-roots.test.ts:116`) — `.child` string component
     dropped by `typeof item!=='string'` filter → spurious empty list item; expected `.base`-only output is
     ambiguous (materialize-noop vs append). Needs a semantics decision.
