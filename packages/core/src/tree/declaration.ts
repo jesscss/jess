@@ -110,7 +110,7 @@ type DeclarationEvalState = {
   output: Node;
   name?: DeclarationValue['name'];
   value?: DeclarationValue['value'];
-  important?: Any<'flag'>;
+  important?: DeclarationValue['important'];
   nil: boolean;
 };
 
@@ -124,7 +124,7 @@ type DeclarationRenderState = {
   value: DeclarationValue['value'];
   customInterpolatedValue?: CustomInterpolatedRenderValue;
   mergeAdapter?: DeclarationMergeAdapterState;
-  important?: Any<'flag'>;
+  important?: DeclarationValue['important'];
   importantText?: string;
   normalizedFromAssign?: AssignmentType;
   output?: Node;
@@ -141,7 +141,7 @@ function sameConcreteLocation(
 
 export function finalizeContextualImportantState(
   context: Context,
-  important: Any<'flag'> | undefined
+  important: DeclarationValue['important']
 ): { importantText?: string } {
   const importantText = context.hasImportantSource && !important
     ? '!important'
@@ -154,8 +154,8 @@ export function finalizeContextualImportantState(
 
 export function finalizeContextualImportantPublicState(
   context: Context,
-  important: Any<'flag'> | undefined
-): { important?: Any<'flag'>; importantText?: string } {
+  important: DeclarationValue['important']
+): { important?: DeclarationValue['important']; importantText?: string } {
   if (!context.hasImportantSource) {
     return important ? { important } : {};
   }
@@ -229,14 +229,14 @@ export function createDeclarationMergeAdapterState(
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
   value: DeclarationValue['value'];
-  important?: Any<'flag'>;
+  important?: DeclarationValue['important'];
   changed: boolean;
 };
 
 type DeclarationRegistrationState = {
   name: DeclarationValue['name'];
   value: DeclarationValue['value'];
-  important?: Any<'flag'>;
+  important?: DeclarationValue['important'];
   normalizedFromAssign?: AssignmentType;
   renderOnly?: boolean;
   renderAssignment?: {
@@ -1499,7 +1499,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         output,
         name: declOutput?.name,
         value: declOutput?.value,
-        important: declOutput?.important instanceof Any ? declOutput.important : undefined,
+        important: declOutput?.important,
         nil: output instanceof Nil
       };
     };
@@ -1529,34 +1529,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options: DeclarationRegistrationOptions = {}
   ): DeclarationRegistrationState {
     if (options.reuseCanonical === true) {
-      const imp = this.important;
       return {
         name: this.name,
         value: this.value,
-        important: imp instanceof Any ? imp : imp === true ? any('!important', { role: 'flag' }) : undefined
+        important: this.important
       };
     }
-    const importantCopy = this.copyImportantForDerived(this.important);
     return {
       name: this.copyNameForDerived(this.name),
       value: isDeferredDeclarationValue(this.value)
         ? this.value
         : this.copyValueForDerived(this.value),
-      important: importantCopy instanceof Any ? importantCopy : undefined
+      important: this.copyImportantForDerived(this.important)
     };
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
-    const imp = this.important;
-    const important = imp instanceof Any
-      ? imp
-      : imp === true
-        ? any('!important', { role: 'flag' })
-        : undefined;
     return {
       name: this.name,
       value: this.value,
-      important,
+      important: this.important,
       renderOnly: true
     };
   }
@@ -1810,7 +1802,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return {
         source: this,
         value: this.value,
-        important: this.important instanceof Any ? this.important : undefined,
+        important: this.important,
         changed: false
       };
     }
@@ -1820,7 +1812,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const state: DeclarationValueState<this> = {
         source: node,
         value: nodeValue,
-        important: node.important instanceof Any ? node.important : undefined,
+        important: node.important,
         changed: false
       };
       const setVal = (newValue: Node) => {
@@ -1829,7 +1821,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           state.changed = true;
         }
       };
-      const setImportant = (important: Any<'flag'>) => {
+      const setImportant = (important: DeclarationValue['important']) => {
         if (state.important !== important) {
           state.important = important;
           state.changed = true;
