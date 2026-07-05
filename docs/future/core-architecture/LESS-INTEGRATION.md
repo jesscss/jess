@@ -27,7 +27,7 @@ not band-aided in the plugin/integration layer.
   hot-reload via the alias; only rebuild if you change what the config loader itself imports.
 - Run: `cd packages/jess && TEST=true npx vitest run test/less/all-less.test.ts`. Core repros:
   `cd packages/core && npx vitest run <file> -t <name>`.
-- **all-less gate baseline (jess-parseman = single gate worktree): 47 passed / 46 failed / 93.**
+- **all-less gate baseline (jess-parseman = single gate worktree): 51 passed / 42 failed / 93. Core: 0.**
 
 ## Gate / merge rules (same discipline as CORE-CLEANUP)
 - One cluster per branch `less/<slug>` + worktree off `feature/parseman`.
@@ -44,14 +44,7 @@ Jess suite (source mode): **~86 failed / ~69 passed** (2 are native-load artifac
 Split: ~70% hard crashes (empty CSS), ~11% scope 'not defined', ~19% output diffs.
 
 ## Core gate baseline (IMPORTANT)
-Core is NOT at 0 on feature/parseman — **2 KNOWN pre-existing failures**, treat as the gate baseline
-(merge a cluster only if it adds NO failures beyond these 2):
-- `mixin.test.ts › namespace fast path: real Less stable namespaces avoid direct-crawl and array fallback`
-- `mixin.test.ts › namespace fast path: ruleset namespace path preserves callable namespace unions`
-Both are **perf-guard** tests (spy on `findMixinsFast`/`findMixin` to assert the fast path is taken;
-they fail because it falls back to a slow direct-crawl — rendering is unaffected). Test file + all
-lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a non-source change
-(dependency/parser-output). Tracked as cluster **NS-FASTPATH** below. Not correctness-blocking.
+Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH fixed the 2 perf-guard tests. Gate baseline = 0.
 
 ## Clusters (from triage) — leverage-ranked
 
@@ -60,10 +53,9 @@ lookup source are UNCHANGED since CORE-CLEANUP 918834a88, so the trigger is a no
   hoisted `SelectorLike` parents (serialize-helper.ts, was mistyped `Selector`); nested string selector
   lost under comparable-header (ruleset.ts `writeHeaderSelector` returned empty when `withoutComments`);
   at-rule prelude duped into body (less-parser builders.ts — restrict body to node children past the
-  brace). **at-rule-bubbling 6/6 GREEN**, jess +7, zero regressions. REMAINING A sub-issues (still open,
-  fold into a follow-up A2): `.eval`/`.hasFlag` on strings (~10 fixtures), `Expected node array item to
+  brace). **at-rule-bubbling 6/6 GREEN**, jess +7, zero regressions. A2 DONE (merge, all-less +3): Url.value string|Node, evaluate-node-array coercion, Operation string operands+recastNumericOperand, Paren/Negative ctor normalize, call arg coercion, extend string selector. Original remaining: `.eval`/`.hasFlag` on strings (~10 fixtures), `Expected node array item to
   evaluate to a node` (merge/each), `Cannot operate on Keyword/Paren` (mixins/calc). [[feedback-string-normalized-nodes]]
-- [ ] **NS-FASTPATH — namespace fast-path perf-guard regression (2 core tests, perf not correctness).**
+- [x] **NS-FASTPATH — DONE (merge, core 2→0).** fast path handles string-normalized parser output (staticNamespaceExcludesKey, prefixOwnsChildren >=1, findMixinPath direct dispatch). Original text:**
   `mixin.test.ts` namespace fast-path ×2 fall back to direct-crawl for stable namespaces (#theme/#panel).
   Test + lookup source unchanged since 918834a88 → non-source trigger (parser-output structure or a dep).
   Fix the fast-path (scope-frame/lookup-utils/callable-scope-frame) or update the guard to the current
