@@ -40,8 +40,7 @@ export {
   setCstState,
   cstChildrenOf,
   setCstChildren,
-  type SourceSpan,
-  type Provenance
+  type SourceSpan
 } from './tree/util/provenance.js';
 export {
   coerceListItems,
