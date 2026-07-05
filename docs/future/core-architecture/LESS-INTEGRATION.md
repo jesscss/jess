@@ -128,6 +128,7 @@ Core is BACK TO 0 (2692 passed) as of the A2/E/F/NS-FASTPATH wave. NS-FASTPATH f
 
 ## Log
 - **build-health** (b06132614): compat plugin builds against current core API; from-less 'out' fix.
+- **calc** (2681b7560): dimension.ts no longer fabricates compound units (throw→Operation preserves operands); calc-via-Reference reduction; F_MAY_ASYNC; cast.ts ESM. all-less→58, cleared nesting.
 - **color-fns** (cbeb40b01): fns color utils no longer read nonexistent node.location (sourceSpanOf/.inherit); color output correct, +4 tsc errors gone. Color all-less fixtures still blocked by: parser `red(rgb())` call-lexing (color-keyword+`(` not a Call), calc-on-relative-color-keyword, custom-property `--x:val` whitespace.
 - **tail-undefined** (51ad1b565): 7 root causes, all Cannot-read-undefined/selector-is-not-a-function crashes eliminated (crashes→diffs); core 2703/0.
 - **D-color** (c65dc2782): named-color table; **C-lookup** (38b269453): accessor key typing + property lane excludes VarDecl; all-less→54.
@@ -169,6 +170,7 @@ after bootstrap.less compiles; they're the path from all-less 56/93 → 93/93:
 - **extend diffs**: extend-chaining/media/nest/selector/extend output alignment.
 - **accessor/scope remnants**: namespacing-3/6/7 (guard-accessor LHS grammar, bare-`when(true)` Bool keyword), property-targeted, deep chained mixin-call-accessor.
 - **sourcemaps**: source-map annotation + artifact output (own harness).
+- **value-spacing / selector-arg** (parser trivia; blocks calc.less last line, css-3, css-grid): missing spaces between value terms (`translate(...) rotate(...)` fused; `$??` spacer artifact), `:not(.one)`→`:not` and `nth-child(...)` losing args (selector-fn args dropped in serialize). Overlaps less-parser — queue behind bootstrap.
 - **parser gaps** (also surfaced by bootstrap): unicode-range `U+0???`, `$??()` interpolation placeholders, multiline value newline-preservation (parser folds whitespace into spanless string terms).
 
 ## Follow-up: proper inline-JS backtick detection (replace the pre-scan)
