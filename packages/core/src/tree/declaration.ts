@@ -31,10 +31,14 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaAfterOffset, emitTriviaTokens } from './util/trivia.js';
+import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaAfterOffset, emitCommentTriviaBetweenNodes, emitTriviaTokens } from './util/trivia.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
+}
+
+function isIdentifierChar(value: string | undefined): boolean {
+  return Boolean(value && /[A-Za-z0-9_-]/u.test(value));
 }
 
 export const enum AssignmentType {
@@ -847,6 +851,41 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return w.getSince(position);
   }
 
+  /**
+   * Separator between two adjacent terms of a flat declaration value array.
+   *
+   * Two array shapes reach here: verbatim string fragments (whitespace baked
+   * into the strings, e.g. `['calc(', '100%', ' - ', '1px', ')']`) which must
+   * be concatenated exactly; and string-normalized value terms from the parser
+   * (e.g. `[2px, "solid", white]`) whose inter-term whitespace lives in the
+   * trivia map. So: emit authored trivia before a source-backed term when we
+   * have it, and otherwise insert a space ONLY when omitting it would fuse two
+   * identifier-like tokens. Never add an unconditional separator — that would
+   * corrupt verbatim fragments.
+   */
+  private emitValueTermSeparator(
+    prev: Node | string,
+    node: Node | string,
+    options: ReturnType<typeof getPrintOptions>
+  ): void {
+    const w = options.writer!;
+    if (options.trivia && node instanceof Node) {
+      if (prev instanceof Node) {
+        emitCommentTriviaBetweenNodes(prev, node, options);
+      }
+      const leadingTrivia = consumeTrivia(options.trivia, spanStartOf(node), 'before', options);
+      if (leadingTrivia) {
+        emitTriviaTokens(leadingTrivia, options);
+        return;
+      }
+    }
+    // Merge guard: a space only when the previous output ends identifier-like
+    // and the next term would begin identifier-like, keeping tokens distinct.
+    if (isIdentifierChar(w.lastChar())) {
+      w.queueSpacer(' ', nextText => /^[A-Za-z0-9_.#-]/u.test(nextText));
+    }
+  }
+
   private writeDeclarationFieldValueSyntax(
     value: DeclarationValue['value'],
     options: ReturnType<typeof getPrintOptions>
@@ -857,13 +896,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return;
     }
     if (Array.isArray(value)) {
+      let prev: Node | string | undefined;
       for (let i = 0; i < value.length; i++) {
         const item = value[i]!;
+        if (prev !== undefined) {
+          this.emitValueTermSeparator(prev, item, options);
+        }
         if (typeof item === 'string') {
           w.add(item, this);
         } else {
           item.writeSyntax(options);
         }
+        prev = item;
       }
       return;
     }
