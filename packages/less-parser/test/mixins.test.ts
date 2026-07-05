@@ -105,6 +105,16 @@ describe('mixinArg', () => {
     expect(errors.length).toBe(0);
   });
 
+  it('parses variadic params as Rest nodes (named and bare)', () => {
+    // Both `@rest...` and a bare `...` must be Rest nodes — not a `...` Keyword,
+    // which would make a variadic mixin fail to match any call.
+    for (const src of ['(@rest...)', '(...)']) {
+      const { errors, tree } = parse(src, 'MixinArgs');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree, { showOptions: true })).toContainString('(Rest');
+    }
+  });
+
   it('parses an arithmetic mixin-call argument as an Operation, not a raw Reference', () => {
     // Regression: mixin-call args were captured as opaque text, so a `@`-leading
     // chunk became a single Reference whose key was the raw expression string.

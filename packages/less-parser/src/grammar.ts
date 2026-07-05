@@ -549,7 +549,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // combinator consumes the whole expression (so `@a * 2` is never truncated at
   // `@a`). A bare `@a` is a Reference (the CALL shape); the mixin-DEFINITION builder
   // reinterprets a lone `@name` as a param.
-  const argRest = node('Rest', parser({ trivia: rw }, sequence(optional(lessVar), literal('...'))));
+  const argRest = node('Rest', parser({ trivia: rw }, choice(sequence(lessVar, literal('...')), literal('...'))));
   const argNamedSeq = node('NamedArg', parser({ trivia: rw }, sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueSequence))));
   const argNamedList = node('NamedArg', parser({ trivia: rw }, sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueList))));
   const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, g.valueSequence);
