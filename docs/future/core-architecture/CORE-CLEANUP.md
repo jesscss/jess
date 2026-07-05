@@ -33,9 +33,17 @@ Authoritative status (supersedes the inline markers further down):
   force it** — reopen only with a perf or maintainability rationale, not as "deferred correctness."
 - **CLOSED — measured, not worth it:** Focus B loops copy-per-iteration (measured 0.97×).
 - **ACTIVE BACKLOG (the real remaining work — NOT "deferred," just parked while driving to green):**
-  **C2** (trust `F_STATIC`, static+extend-free subtrees skip eval → the top live perf lever) → **C1** (collapse
-  state out of eval, its prereq) → C3/C4 (walk-fold north star); plus the **F_VISIBLE-cost** removal (3b
-  merge-engine rework — real, but no failing-test trigger, so scope on perf/legibility).
+  **C1→C2→C3/C4** (the walk-fold line). Fan-out results (3 agents off dev, 2026-07-05):
+  - **F_VISIBLE-cost (3b): DONE** — merged to dev (6e84441cb), `F_MERGE_SUPPRESSED` bit separates merge-
+    suppression from by-type `F_VISIBLE`. See Focus D.1 3b.
+  - **C1: PARTIAL** — eval no longer writes Ruleset `hoistToRoot` (2e21baae1, merged). Remaining: hoisted
+    AtRule header off `AtRule.frames` — blocked (live serialize `inFrames` lacks the full ancestor chain;
+    needs serialize-walk rework). See C1 in the staged plan.
+  - **C2: BLOCKED on C1** — proven that `F_STATIC` can't replace the static-render scan (+27 failures); eval
+    does real composition even on static input. The top perf lever is gated behind finishing C1 (composition
+    out of eval). See C2 in the staged plan.
+  Net: the remaining walk-fold work is now a KNOWN dependency chain — the serialize walk must retain the full
+  selector-ancestor chain (unblocks the C1 AtRule half) before C2's "skip eval for static subtrees" is reachable.
 - **GENUINELY DEFERRED (correctly):** F-consolidate (hot-file churn, zero correctness value); F_VISIBLE-1b
   `renderNodeFull` (no consumer until language conversion lands).
 
@@ -463,12 +471,25 @@ serialization/collapse state; no new visibility/eval-free flag.
 - [x] **C0 — dead-walk removal (DONE, 844046cbd, zero regression).** Deleted the dead `Ruleset.frames`
   write (confirmed no serialize reader; `getHoistedParent` is AtRule-only). Reordered `processExtends` to
   bail on `!context.extends.length` BEFORE the snapshot loop. Dead-weight, not a hotspot (A/B within noise).
-- [ ] **C1 — collapse state out of eval.** → T2, T4. Recover the hoisted-at-rule header from serialize-walk
-  structure (the walk already carries `composedSelectorStack`) instead of eval-captured `AtRule.frames`;
-  move `hoistToRoot` to a serialize-time decision. PREREQ: CPU-profile the gap (eval vs serialize) first.
-- [ ] **C2 — trust the flag.** → T1. Replace the `canRenderStaticRulesDirectly` scan with `F_STATIC` (+ root
-  `_hasExtends` gate); delete `isPlainStaticRuleLeaf`/`.every()`. Static+extend-free subtrees skip
-  registration-prep + eval → straight to serialize.
+- [~] **C1 — collapse state out of eval — PARTIAL (2e21baae1, merged into dev).** DONE: removed the eval-time
+  `if (collapseNesting) this.hoistToRoot = true` write in `Ruleset.evalNode`; the two collapse readers
+  (`writeSyntax` bare-`&` gate, `composeHeaderSelector` structuralParent gate) now go through
+  `isHoisted(options)` (`hoistToRoot ?? options.collapseNesting`) instead of the raw field. Eval no longer
+  writes Ruleset collapse state; byte-identical, 2737/0. **STILL OPEN — measured blocker:** moving the hoisted
+  AtRule HEADER recovery off eval-captured `AtRule.frames` (`at-rule.ts:1694`) onto the serialize walk. The
+  live serialize `inFrames` at a nested `@media` emit point carries only the immediate `.body`, NOT the full
+  `.card > .body` ancestor chain (the ancestor is folded into the header string and dropped from the frame
+  stack), so deriving the header from the live walk regresses deep-nested `@media` headers (`.card .body`
+  → `.body`, byte-diff confirmed). Needs the serialize walk to RETAIN the full ancestor chain — a bigger
+  rework than C1's scope. The `AtRule.frames` eval capture stays until then.
+- [ ] **C2 — trust the flag — BLOCKED on C1 (empirically proven, no-op reported, nothing committed).** A bare
+  `F_STATIC` check CANNOT replace the `canRenderStaticRulesDirectly` scan: substituting it gives **+27
+  failures** (ampersand/collapse-nesting composition, `+=`/`normalizedFromAssign` merge coalescing, nested
+  at-rule layer registration, interpolated-trivia lookup). Root cause: a static NESTED `Ruleset` propagates
+  `F_STATIC` UP to its parent, but the scan's `isPlainStaticRuleLeaf` rightly rejects nested-block/merge
+  containers because **eval still does the composition/coalescing/registration work even on fully-static
+  input**. `F_STATIC` = "no dynamic values" ≠ "eval is a no-op." So C2 is blocked on getting nesting-
+  composition out of eval — i.e. the OPEN half of C1 (and C3/C4). Not achievable as a standalone flag swap.
 - [ ] **C3 — extend gathered-in-walk + buffered apply at walk-end.** → T3. Static subtrees register targets
   via a cheap construction-time signal, not eval. Overlaps at-rule work landing on feature/parseman — gate hardest.
 - [ ] **C4 (north star) — fold eval INTO the render walk as lazy pull.** Eliminate the eager evaluated tree
@@ -818,7 +839,17 @@ the render list?* (merge decided) — no overloaded mutable flag.
      leading comments then `removeFlag(F_VISIBLE)`'d them + restored — a mutate/restore dance. Replaced
      with a `hoistedLeadingComments` Set threaded into `_emitRulesBody`; `emitNode` excludes them
      directly. Output-neutral (stable 60, zero delta). 2 of 4 rules.ts stomps gone.
-   - [PARTIALLY CLOSED] **3b — declaration-override last-wins** (rules.ts:5795/5797). **The failing
+   - [x] **3b — declaration-override last-wins — CLOSED (F_VISIBLE stomps excised).** Merged into dev as
+     `work/fvisible-cost` (commit 6e84441cb): the two `removeFlag(F_VISIBLE)` stomps in the merge engine
+     (rules.ts, now ~6190/6192) are replaced by a dedicated **`F_MERGE_SUPPRESSED`** flag bit (bit 16,
+     node-base.ts); the `visible` getter reads `(flags & (F_VISIBLE | F_MERGE_SUPPRESSED)) === F_VISIBLE`, so
+     `F_VISIBLE` is now PURELY by-type and never cleared by the merge engine. The old +6 render-only-suppression
+     regression did NOT recur — because the coupling funnels through ONE choke point (the `visible` getter),
+     and `direct-rules-lookup.ts` was verified to NOT read node-level F_VISIBLE at all (the original premise
+     that lookup consults it was false on this branch). Re-coalesce idempotency reads through `.visible`, so
+     the persistent bit covers it exactly as the old stomp did. Core 2737/0, byte-identical. The historical
+     block below (why render-only suppression failed) is kept for the forensic record.
+     — earlier note: **The failing
      merge-chain TEST is now GREEN** (cleanup/decl-merge, commit 1656b2e78): the real root cause was NOT
      the render-only vs physical-removal dilemma below — it was (1) the coalesce walk recursing into sibling
      `Ruleset`s (they carry the `N.Rules` bit) and (2) a shared mixin-output declaration node whose
