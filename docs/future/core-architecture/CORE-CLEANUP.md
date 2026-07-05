@@ -226,7 +226,11 @@ ask: can it be a **flag bit** (boolean → `F_*`), be **derived** (computed, not
 or be **dropped**? **DX may change** — getter names, method surface, even public API — as long as the new DX is
 **sane** (need not match or beat the old; just not bad). **Performance is the driver.** Track field-count per
 node class as a metric; slim the fat ones. Shared behavior across lean types goes in **util functions**, not a
-fat base class.
+fat base class. **Specializing a node into subtypes? Judge it on BOTH axes: (1) DISPATCH — measure (V8 often
+already inlines monomorphic method calls, so this is frequently a wash — the reference split proved it); (2)
+SHAPE-SLIM — build the per-kind FIELD MATRIX (kind × field → used?) and DROP unused fields per subtype. Keeping
+the union shape on all subtypes is a NAIVE split that captures at most dispatch and forfeits the slim payoff.
+If the matrix shows all fields used by all kinds, the split is pointless for slim.**
 
 **SLIM targets (audit → `packages/core/perf/SLIM_NODES_AUDIT.md`; heap census ~39k nodes/7.1MB; Ruleset 12000×
 is fattest×hottest — it inherits the fat `Rules` base, so slimming `Rules` slims all 12000 Rulesets):**
@@ -270,6 +274,13 @@ right fix depends on **how granular span tracking needs to be**, and the consume
     remove the calls later; don't reach into the parser). Gate: normal render byte-identical; round-trip keeps
     COMMENTS, drops sub-node whitespace (accepted). Sourcemaps: node-level only (CSS maps at rule/decl level).
     SEQUENCE after dead-CST (DONE, cc9888e2) — same worktree/agent.
+  - **`hasComment` API note (owner-flagged; for the parser/`Trivia` owners):** `makeTrivia` (trivia.ts:52)
+    computes `hasComment` as *any non-whitespace char in the run* — it's really `hasNonWhitespace`, equal to
+    "comment" only via the grammar invariant `trivia = ws|comment`. It's a lossy single bit: can't distinguish
+    `//` (line, no-collapse) from `/* */` (block, inline-safe) or any FUTURE erasable-but-meaningful trivia
+    kind, and would silently mislabel non-comment trivia as a comment. Fine for OUR comment-in-range use; but
+    the honest primitive is `hasNonWhitespace`, and finer needs should classify via the run's exposed
+    `src`+`[start,end]` (or add a `kind`/segments). Not urgent — a design note for when trivia broadens.
   - **Span storage (V8, answered):** keep `_spanStart`/`_spanEnd` as TWO inline number fields (SMIs → 0 alloc,
     inline in the hidden-class slot) — NOT a `{start,end}` object (1 heap alloc per spanned node, reintroduces
     the WeakMap cost) and NOT a packed single number (two offsets exceed V8's 31-bit SMI range → boxes to a
@@ -529,7 +540,13 @@ per class) instead of branching per-reference on `options.type`/flags? Separate 
   `type==='Reference'` + `N.Reference` bit so all checks pass), byte-identical, all tests green. **But measured
   PERF-NEUTRAL** (152.8 vs 153.0ms dynamic, same-dir A/B) — reference DISPATCH isn't the hotspot (the bench is
   GC + provenance dominated; V8 already handles the polymorphic Reference eval fine). Also: NO field slimmed —
-  all 7 kinds share the same 5 fields. Per "perf is the driver," REVERTED (net diff = base). Backup:
+  all 7 kinds kept the same 5 fields. **⚠ METHODOLOGY MISS (owner-flagged): that "no slim" was a NAIVE split,
+  not proof.** Behavior IS kind-gated (`options.type === 'variable'|'index'|'mixin-ruleset'` route different
+  paths, reference.ts:766/2383/2796), so the fields ARE differential — `target` only for index/property refs,
+  `role` for declaration refs, `_rulesLookupHandle` for mixin-ruleset. The agent kept the UNION shape instead of
+  building the per-kind field matrix + dropping unused fields per subtype. Rule going forward (added to SLIM):
+  a specialization must be judged on BOTH axes — DISPATCH (measure) AND SHAPE-SLIM (per-kind field-usage matrix
+  → drop unused fields per subtype). Per "perf is the driver," REVERTED (net diff = base). Backup:
   `perf/ref-specialization-regressed-backup`. **Lesson: this was a hypothesis measurement disproved** — only
   re-land if a reference-dispatch-heavy workload ever proves it hot. The eval engine is already free-functions
   threading `lookupType`, so the split bought only monomorphic dispatch, which wasn't the bottleneck.
