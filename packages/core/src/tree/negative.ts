@@ -10,6 +10,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import round from 'lodash-es/round.js';
+import { coerceValueNode, type NodeArrayItem } from './util/evaluate-node-array.js';
 
 const NEGATIVE_ONE = new Dimension({ number: -1 });
 
@@ -25,10 +26,13 @@ export class Negative extends Node<Node> {
     this.value.writeSyntax(options);
   }
 
-  constructor(value: Node, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    super(value, options, location);
+  constructor(value: NodeArrayItem, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
+    // A parser space-group arrives as a raw string/array; normalize to the
+    // canonical node form so negation stays node-only.
+    const node = value == null || value instanceof Node ? value : coerceValueNode(value);
+    super(node, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
-    this.value = value;
+    this.value = node;
     this._treeContext = treeContext;
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);

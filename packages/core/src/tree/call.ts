@@ -2,6 +2,7 @@ import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { coerceNodeArray } from './util/evaluate-node-array.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
@@ -223,7 +224,10 @@ function getRenderedCallNameText(name: string | Node | unknown): string | undefi
   return undefined;
 }
 
-function getKnownRenderedCallText(node: Node): string | undefined {
+function getKnownRenderedCallText(node: string | Node): string | undefined {
+  if (typeof node === 'string') {
+    return node;
+  }
   if (node instanceof Any) {
     return typeof node.value === 'string' ? node.value : undefined;
   }
@@ -347,7 +351,10 @@ function getKnownRenderedCallText(node: Node): string | undefined {
   return undefined;
 }
 
-function getKnownSourceCallText(node: Node): string | undefined {
+function getKnownSourceCallText(node: string | Node): string | undefined {
+  if (typeof node === 'string') {
+    return node;
+  }
   if (node instanceof Any) {
     return typeof node.value === 'string' ? node.value : undefined;
   }
@@ -592,9 +599,11 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     const ownResults = options?.ownResults ?? true;
-    const source = nodes.value;
+    const source = coerceNodeArray(nodes.value);
     const out = new Array<Node>(source.length);
-    let changed = false;
+    // Coercing raw parser segments to nodes is itself a change — the returned
+    // list must be rebuilt from `out`, not the original raw-valued `nodes`.
+    let changed = source !== (nodes.value as unknown as Node[]);
     const evalImmediate = (node: Node): Node => {
       const evald = Node.evalStatic(node, context);
       if (!(evald instanceof Node)) {
@@ -933,7 +942,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const rawArgs = args.value;
+    const rawArgs = coerceNodeArray(args.value);
     const last = rawArgs.length - 1;
     const findNextArgIndex = (start: number): number => {
       let i = start;

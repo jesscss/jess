@@ -67,7 +67,7 @@ function getNodeType(value: any): Node {
     if (value.startsWith('#')) {
       return new Color(value);
     } else {
-      let result = value.match(/^(\d*(?:\.\d+))([a-z]*)$/i);
+      let result = value.match(/^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]*)$/i);
       if (result) {
         const Dimension = getDimension();
         return new Dimension({ number: parseFloat(result[1]!), unit: result[2] });

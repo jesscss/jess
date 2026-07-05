@@ -17,6 +17,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { getDefaultGuardValue } from './util/default-guard.js';
+import { coerceValueNode, type NodeArrayItem } from './util/evaluate-node-array.js';
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
@@ -104,14 +105,19 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   }
 
   constructor(
-    value?: Node,
+    value?: NodeArrayItem,
     options?: ParenOptions,
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    // A parser space-group arrives as a raw string/array; normalize to the
+    // canonical node form so paren eval/render stays node-only.
+    const node = value === undefined || value instanceof Node
+      ? value
+      : coerceValueNode(value);
+    super(node, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
-    this.value = value;
+    this.value = node;
     this._treeContext = treeContext;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
