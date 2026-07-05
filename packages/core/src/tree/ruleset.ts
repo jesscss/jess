@@ -1901,11 +1901,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       context.frames.length = pushedFrameCount;
       pushedFrames = false;
     };
-    const collapseNesting = context.opts.output?.collapseNesting;
-    // Store frames snapshot for collapseNesting serialization
-    if (collapseNesting) {
-      this.frames = [...context.frames];
-    }
 
     const finishEvaluatedRules = (evaluatedRules: Rules | Nil): Rules | Nil => {
       restorePushedEvalFrames();

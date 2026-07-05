@@ -637,6 +637,12 @@ function isInstructionVisibleForRoot(
 
 export function processExtends(context: Context): void {
   try {
+    // No extends gathered this eval → skip the whole pre-extend selector
+    // snapshot walk over every registered ruleset. (The instructions list
+    // below would be empty anyway; bail before paying for the walk.)
+    if (!context.extends.length) {
+      return;
+    }
     // Snapshot eval'd value before any extend modifications.
     // This ensures getEffectiveSelector composes with original value,
     // not ones already modified by earlier extends in this pass.
