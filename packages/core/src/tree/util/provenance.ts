@@ -1,11 +1,11 @@
 /**
- * Source / Parséman-CST provenance — a node's source spans and CST metadata.
+ * Source provenance — a node's source spans.
  *
  * The data lives in INLINE fixed-shape fields on the `Node` base class
- * (`_spanStart`, `_spanEnd`, `_fieldSpans`, `_valueSpans`, `_cstState`,
- * `_cstChildren`), declared there initialized to `undefined` so the hidden
- * class stays monomorphic. This module owns the free-function surface that
- * reads/writes those fields; callers NEVER touch the fields directly. eval
+ * (`_spanStart`, `_spanEnd`, `_fieldSpans`, `_valueSpans`), declared there
+ * initialized to `undefined` so the hidden class stays monomorphic. This
+ * module owns the free-function surface that reads/writes those fields;
+ * callers NEVER touch the fields directly. eval
  * creates millions of source-free nodes that must not pay for provenance; the
  * one hot check (`isSourceFree`, used by `canReuseAsLeaf`) is the `F_HAS_SPAN`
  * flag bit, everything else is a cold field read.
@@ -31,10 +31,6 @@ type ProvenanceFields = {
   _fieldSpans: (SourceSpan | undefined)[] | undefined;
   /** Per-segment source spans for array-`value` children (e.g. selector-list items). */
   _valueSpans: (SourceSpan | undefined)[] | undefined;
-  /** Parséman parse-context snapshot (incremental re-parse re-entry key). */
-  _cstState: unknown;
-  /** Parséman structural children (CST leaves/nodes/errors in parse order). */
-  _cstChildren: ReadonlyArray<{ _tag: string }> | undefined;
 };
 
 /** Node has source provenance (a span). The one hot flag; kept on `node.flags`. */
@@ -112,24 +108,4 @@ export function valueSpansOf(node: object): (SourceSpan | undefined)[] | undefin
 
 export function setValueSpans(node: object, spans: (SourceSpan | undefined)[] | undefined): void {
   fieldsOf(node)._valueSpans = spans;
-}
-
-/** Parséman CST re-parse state. */
-export function cstStateOf(node: object): unknown {
-  return fieldsOf(node)._cstState;
-}
-
-export function setCstState(node: object, state: unknown): void {
-  fieldsOf(node)._cstState = state;
-}
-
-const EMPTY_CST_CHILDREN: ReadonlyArray<{ _tag: string }> = [];
-
-/** Parséman CST structural children (empty for eval-created nodes). */
-export function cstChildrenOf(node: object): ReadonlyArray<{ _tag: string }> {
-  return fieldsOf(node)._cstChildren ?? EMPTY_CST_CHILDREN;
-}
-
-export function setCstChildren(node: object, children: ReadonlyArray<{ _tag: string }>): void {
-  fieldsOf(node)._cstChildren = children;
 }
