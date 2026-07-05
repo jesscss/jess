@@ -254,14 +254,17 @@ right fix depends on **how granular span tracking needs to be**, and the consume
   mode exists. YET the parsers set them **unconditionally on every parse** (css-parser `setValueSpans`).
   - **NOT "selector-only" by design** — List / any array-valued node would need them too *if* we want sub-node
     round-trip fidelity for those. The current selector-only readership is incomplete usage, not intent.
-  - **DESIGN DECISION (owner):** how granular do we need spans? Options: (a) node-level only — drop
-    `fieldSpans`/`valueSpans` entirely, accept coarser round-trip (edit/round-trip uses the CST or reparse);
-    (b) sub-node, but **gated on trivia/round-trip mode** — common render (plain CSS + node-level sourcemap)
-    carries only span start/end; granular spans populated ONLY when round-trip requested (SLIM the common shape
-    + stop the unconditional parse-time writes); (c) keep eager (status quo — rejected, it fattens every node +
-    every parse for a rare mode). **Recommendation: (b), or (a) if Parseman edit-mode works on the CST** (which
-    the dead cstState/cstChildren suggest was the intent). Needs the owner's granularity ruling before coding.
-Follow-up stage — **AFTER SLIM #3** (shares node-base.ts); the cstState/cstChildren DELETE is unconditional.
+  - **DECIDED (owner): option (a) — DROP `fieldSpans`/`valueSpans` ENTIRELY.** Edit/round-trip works on the
+    CST or reparses (the dead `cstState`/`cstChildren` were that CST's stub), so the EVAL tree never needs
+    sub-node precision — node-level `spanStart`/`spanEnd` (for sourcemaps) is the whole requirement.
+    **Removal plan (own stage, careful):** delete the 2 fields (`node-base.ts`) + accessors
+    (`fieldSpansOf`/`valueSpansOf`/`setFieldSpans`/`setValueSpans` in `provenance.ts` + `index.ts` exports) +
+    the core READERS (selector-complex/compound/pseudo, declaration, at-rule — their sub-node-trivia emission
+    falls back to node-level/normalized) + the parser WRITERS (`css-parser` `setValueSpans`/`setFieldSpans` —
+    CROSS-PACKAGE, coordinate with the parser owners). **Gate nuance:** normal CSS render stays byte-identical,
+    but the AUTHORED trivia/round-trip output CHANGES (loses sub-node whitespace fidelity) — that's the accepted
+    tradeoff of the decision; trivia round-trip tests will need updating (or the feature moves to CST). SEQUENCE
+    **after the dead-CST delete** (shares node-base.ts/provenance.ts) — same worktree/agent.
 
 ### DRY + dead-code sweep (NEW standing task — requested)
 Systematic pass for (1) **repeated code → shared slim util functions/structures** (esp. the copy/surface/selector
