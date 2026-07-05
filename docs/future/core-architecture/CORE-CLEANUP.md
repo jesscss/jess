@@ -233,11 +233,11 @@ is fattest×hottest — it inherits the fat `Rules` base, so slimming `Rules` sl
 1. **`Rules`: 11 eager booleans → one `rulesFlags` int** (12000× × 11) — the dominant lever. `has*ChildSurface`
    (rules.ts:905-911) + `_bodyEvaluated`(934)/`_hasExtends`(948)/`_hasReferenceImports`(954)/
    `_registrationPrepared`(956). A Rules-only int (NOT base `flags` — that'd widen the read for leaf nodes);
-   `resetDerivedState`→`rulesFlags=0`; getters keep names → DX-neutral. **Do AFTER W1 merges (shares rules.ts).**
+   `resetDerivedState`→`rulesFlags=0`; getters keep names → DX-neutral. **IN PROGRESS (perf/slim-rules-flags).**
 2. **Drop dead `Selector.isSelector=true`** (12000×, selector.ts:82) — always true, redundant with `instanceof`.
-   Cleanest effort:payoff. **IN PROGRESS (reused audit worktree).**
+   Cleanest effort:payoff. **DONE — merged f3a3c02; byte-identical; own-key 12->11.**
 3. **`Node.frozen` → base `flags` bit** (~39k×, node-base.ts:562) — flags has headroom (14/31 used). Getter keeps
-   name. **Do AFTER provenance merges (shares node-base.ts).**
+   name. **IN PROGRESS (perf/slim-frozen).**
 4. PseudoSelector rare fields (3000×: `omitWrapperForSingleSelectorList`→flag; `generatedPseudoPlacementOverride`→subtype).
 5. (low-confidence) Rules `lookupVersion` counters (rules.ts:919-923) — lazy-alloc only if multi-kind lookup runs;
    MEASURE first, don't downgrade the lookup fast path for slot count.
