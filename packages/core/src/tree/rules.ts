@@ -3620,7 +3620,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const mark = w.mark();
 
     const ctx = options.context;
-    const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
+    const hoistedLeadingComments = new Set<Node>();
     const saved = savePrintState(options, ['referenceMode', 'referenceRenderEnabled']);
     const ownReferenceMode = this.options.referenceMode === true;
     if (ownReferenceMode && options.referenceMode !== true) {
@@ -3662,11 +3662,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           const commentStr = writeDetached(options, nextOptions => node.writeSyntax(nextOptions));
           w.add(normalizeIndent(commentStr, ''), node);
           w.add('\n');
-          const wasVisible = node.hasFlag(F_VISIBLE);
-          suppressedLeadingComments.push({ node, visible: wasVisible });
-          if (wasVisible) {
-            node.removeFlag(F_VISIBLE);
-          }
+          // Already emitted above; exclude from the body render-list instead of
+          // mutating F_VISIBLE (which must stay a by-type property).
+          hoistedLeadingComments.add(node);
         }
       }
       // @import must come after @charset but before other rules
@@ -3694,7 +3692,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
     }
 
-    this._emitRulesBody(options, 'source');
+    this._emitRulesBody(options, 'source', hoistedLeadingComments);
     if (depth === 0) {
       const eofTrivia = consumeEofTrivia(this, options);
       if (eofTrivia.trim()) {
@@ -3708,11 +3706,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // At root level, ensure output ends with a single newline (standard for CSS files)
     // Don't propagate all the last child's post content (which may have extra whitespace)
     if (depth === 0) {
-      for (const suppressed of suppressedLeadingComments) {
-        if (suppressed.visible) {
-          suppressed.node.addFlag(F_VISIBLE);
-        }
-      }
       result = w.getSince(mark).trimEnd();
       // Ensure exactly one trailing newline (only if there's content)
       result = result ? result + '\n' : '';
@@ -3800,9 +3793,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return this._emitRulesBody(options, 'render');
   }
 
-  private _emitRulesBody(options: FinalPrintOptions, mode: 'source'): void;
-  private _emitRulesBody(options: FinalPrintOptions, mode: 'render'): MaybePromise<void>;
-  private _emitRulesBody(options: FinalPrintOptions, mode: 'source' | 'render'): MaybePromise<void> {
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'render', exclude?: Set<Node>): MaybePromise<void>;
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'source' | 'render', exclude?: Set<Node>): MaybePromise<void> {
     const w = options.writer!;
     const context = options.context;
     const depth = options.depth ?? 0;
@@ -3916,7 +3909,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       ) {
         return;
       }
-      if (!n.visible) {
+      if (exclude?.has(n) || !n.visible) {
         emitLeadingBlockCommentForNode(n);
         return;
       }
