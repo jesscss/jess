@@ -1771,7 +1771,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         for (let i = 0; i < mergedItems.length; i++) {
           outputItems[i] = this.ownMergedAssignmentOutputItem(mergedItems[i]!);
         }
-        setVal(new List(outputItems));
+        // Eval-time derived container: SHARE the items (no reparent), but crawl
+        // them to bubble child flags (F_STATIC/F_MAY_ASYNC/…) so the merged value
+        // is classified correctly — a raw `new List` derives none on its own.
+        const merged = new List(outputItems);
+        for (let i = 0; i < outputItems.length; i++) {
+          merged.propagateFlagsFrom(outputItems[i]!);
+        }
+        setVal(merged);
       };
         /** Registration prep already stabilized the name; eval handles the value. */
       if (node.type === 'VarDeclaration') {
