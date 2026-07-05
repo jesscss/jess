@@ -23,13 +23,24 @@ failures** (mid-migration; see Focus D).
 Per-node direct-source writers. Most node families already have `override
 writeSyntax` in code; the old row tracker's checkboxes were stale.
 
-- [ ] **Checkbox-sync pass** — reconcile the archived NODE-REWRITE-TRACKER rows against
-  code; Ampersand / Mixin / AtRule / Rules / QueryCondition / Call / Declaration /
-  Interpolated all have `writeSyntax` and are effectively done.
-- [ ] `Node` base: confirm the generic `writeSyntax(options)` hook + fallback story is
-  the single path (no residual `toTrimmedString`-only nodes).
+- [x] **Checkbox-sync pass — DONE** (cleanup/serial-audit, pure audit, no code change). Full
+  node-type × writeSyntax enumeration: every type has serialization coverage; the 8 claimed
+  types (Ampersand/Mixin/AtRule/Rules/QueryCondition/Call/Declaration/Interpolated) all confirmed
+  to `override writeSyntax`. Inherited-by-parent (correct): Num←Dimension, CustomDeclaration←
+  Declaration, Stylesheet←Rules, Keyword←Any, RelativeSelector←ComplexSelector. JsArray/JsObject
+  emit '' by design.
+- [~] `Node` base single-path — **mostly**: the generic `writeSyntax(options)` hook (node-base:1537,
+  `@internal`, defaults to `toTrimmedString`) IS the effective single entry (all ~100 dispatch
+  sites call `.writeSyntax()`). But 5 **residual toTrimmedString-primary** types remain, serializing
+  via a `renderXSyntax` helper called from `toTrimmedString`: **Block, Quoted, Url, AttributeSelector,
+  PseudoSelector**. They serialize correctly today (idiom residue, not a gap). Fully closing A-node =
+  a new small unit:
+    - [ ] **A-flip** — flip those 5 to writeSyntax-primary (move `renderXSyntax` body into `writeSyntax`,
+      make `toTrimmedString` the thin wrapper); fix the stale base doc comment (node-base:1437-38 still
+      points overriders at `toTrimmedString`) + the `Selector`-base inverted default (selector.ts:159).
+      [touches node-base.ts + selector.ts — HOT-adjacent, sequence it.]
 - [ ] `Ruleset`: source-direct eligibility + bare-ampersand selector-list header path
-  (interacts with Focus D string-selector work).
+  (interacts with Focus D string-selector work). [HOT: ruleset.ts]
 
 ## Focus B — Binding / single-frame
 
