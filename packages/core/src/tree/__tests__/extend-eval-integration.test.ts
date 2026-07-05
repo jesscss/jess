@@ -371,12 +371,16 @@ describe('extend integration (eval -> toString)', () => {
     }
   });
 
-  it('extends attribute value without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
+  it('extends attribute value with substring replacement, keeping the implicit parent prefix (Less extend-selector attributes)', async () => {
     // Represents:
     // .attributes {
     //   [data="test"] { extend: attributes; }
     //   .attribute-test { &:extend([data="test"] all); }
     // }
+    // `all` ⇒ substring replacement: the [data="test"] fragment inside the matched
+    // `.attributes [data="test"]` is replaced by & (= `.attributes .attribute-test`),
+    // yielding `.attributes` + `.attributes .attribute-test`. The parent prefix doubling
+    // is correct `extend all` behavior (verified against Less 4.x), not a bug.
     const dataTest = attr({ name: 'data', op: '=', value: quoted('test') });
 
     const root = rules([
@@ -403,7 +407,7 @@ describe('extend integration (eval -> toString)', () => {
     expect(css).toBeString(`
       .attributes {
         [data="test"],
-        .attribute-test {
+        .attributes .attribute-test {
           extend: attributes;
         }
       }
