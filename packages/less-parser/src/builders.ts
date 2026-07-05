@@ -1868,7 +1868,14 @@ export class LessGrammar extends CssParser {
     const braceComp = comps.find(c => c.comp === '{');
     const braceStart = braceComp?.span.start ?? loc.end;
     const preludeText = this._source.slice(keywordEnd, braceStart).trim();
-    return this._buildAtRuleFromParts(name, preludeText || undefined, nodeChildren(children), loc);
+    // `g.queryPrelude` parses the prelude into real node children (e.g. the
+    // `(max-width: 600px)` Paren), so `children` holds BOTH prelude nodes and
+    // body nodes. The prelude is reconstructed from source text above; the body
+    // is only the nodes that begin after the opening brace.
+    const bodyNodes = comps
+      .filter((c): c is Spanned & { comp: JessNode } => typeof c.comp !== 'string' && c.span.start >= braceStart)
+      .map(c => c.comp);
+    return this._buildAtRuleFromParts(name, preludeText || undefined, bodyNodes, loc);
   }
 
   private _buildAtRulePrelude(text: string, loc: LocationInfo): JessNode {

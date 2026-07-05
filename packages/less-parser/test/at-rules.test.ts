@@ -80,6 +80,21 @@ describe('mediaInParens', () => {
     expect(errors.length).toBe(0);
   });
 
+  it('does not duplicate the query prelude paren into the at-rule body', () => {
+    // `g.queryPrelude` parses the prelude into real node children, so the query
+    // block builder must not also emit those prelude nodes as body rules.
+    const { errors, tree } = parse('@media (max-width: 600px) { .mobile-only { display: block; } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const atRule = tree!.rules[0];
+    if (!isNode(atRule, N.AtRule)) {
+      throw new Error('Expected an at-rule');
+    }
+    const body = atRule.rules;
+    expect(body.length).toBe(1);
+    expect(isNode(body[0], N.Ruleset)).toBe(true);
+    expect(isNode(body[0], N.Paren)).toBe(false);
+  });
+
   it('should parse escaped string in media query', () => {
     const { errors } = parse('@media ~"screen" { }', 'Stylesheet');
     expect(errors.length).toBe(0);

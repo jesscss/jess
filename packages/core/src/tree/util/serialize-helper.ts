@@ -17,7 +17,7 @@ import {
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
-import type { Selector } from '../selector.js';
+import type { Selector, SelectorLike } from '../selector.js';
 import { BasicSelector } from '../selector-basic.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
@@ -396,7 +396,7 @@ function directRenderFramesOf(atRule: AtRule): (Ruleset | AtRule)[] | undefined 
 function getHoistedParent(
   node: AtRule | Ruleset,
   options: FinalPrintOptions
-): { frame: Ruleset; selector: Selector } | undefined {
+): { frame: Ruleset; selector: SelectorLike } | undefined {
   if (!isNode(node, N.AtRule)) {
     return undefined;
   }
@@ -417,7 +417,7 @@ function getHoistedParent(
   // the frame stack snapshot captured when this at-rule's container was entered.
   const renderFrames = runtimeFrames ?? atRule.getRenderFrames() ?? directRenderFramesOf(atRule);
   let frame: Ruleset | undefined;
-  let parentSelector: Selector | undefined;
+  let parentSelector: SelectorLike | undefined;
   const frameCount = renderFrames?.length ?? 0;
   for (let i = 0; i < frameCount; i++) {
     const currentFrame = renderFrames![i]!;
@@ -429,8 +429,9 @@ function getHoistedParent(
     if (!currentSelector || currentSelector instanceof Nil) {
       continue;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const nextSelector = currentSelector as Selector;
+    // A frame selector is a string (strings-not-nodes model), a Selector node,
+    // or a selector-list array — all are SelectorLike.
+    const nextSelector = currentSelector as SelectorLike;
     parentSelector = parentSelector
       ? Ruleset.composeSelector(nextSelector, parentSelector)
       : nextSelector;
@@ -441,13 +442,33 @@ function getHoistedParent(
   return parentSelector ? { frame, selector: parentSelector } : undefined;
 }
 
+/**
+ * Write a hoisted parent selector to `writer`. The selector may be a string
+ * (strings-not-nodes model) or an array of string/Selector items (a selector
+ * list); a plain string is emitted verbatim, so no BasicSelector `valueOf`
+ * tag-lowercasing is applied to an already-composed multi-part selector.
+ */
+function writeSelectorLike(selector: SelectorLike, options: FinalPrintOptions): void {
+  const items = Array.isArray(selector) ? selector : [selector];
+  items.forEach((item, i) => {
+    if (i > 0) {
+      options.writer.add(', ', undefined);
+    }
+    if (typeof item === 'string') {
+      options.writer.add(item, undefined);
+    } else {
+      item.writeSyntax(options);
+    }
+  });
+}
+
 function renderHoistedParentHeader(
-  parent: { frame: Ruleset; selector: Selector },
+  parent: { frame: Ruleset; selector: SelectorLike },
   options: FinalPrintOptions,
   depth: number
 ): string {
   const writer = new OutputWriter();
-  parent.selector.writeSyntax({
+  writeSelectorLike(parent.selector, {
     ...options,
     writer,
     collapseNesting: false,
@@ -460,11 +481,11 @@ function renderHoistedParentHeader(
 const DIRECT_RULESET_HEADER = '\u0000';
 
 function renderHoistedParentComparableHeader(
-  parent: { frame: Ruleset; selector: Selector },
+  parent: { frame: Ruleset; selector: SelectorLike },
   options: FinalPrintOptions
 ): string {
   const writer = new OutputWriter();
-  parent.selector.writeSyntax({
+  writeSelectorLike(parent.selector, {
     ...options,
     writer,
     collapseNesting: false,
