@@ -416,3 +416,13 @@ Gaps to close when building the sandbox:
 Gate: core 2737/0 ×2, all-less 68/93 (identical to dev). Merge commit 84f315659 + fixup.
 **Continued work now happens on `feature/less-v5-alpha-readiness` (this worktree /Users/matthew/git/oss/jess);
 future sub-agent worktrees branch from it. dev remains the canonical fix line; alpha = dev + less-compat bridge.**
+
+## 2026-07-05 (alpha) — embedded-comments MERGED
+- less-parser grammar referenced `g.Paren` but never defined it → inherited CSS's 2-arm `Paren` (no `//`). Added a
+  Less-local `Paren` rule using the 3-arm Less `rw` so `//` line-comments parse inside paren/operation expressions.
+- Flips 0 fixtures but unblocks PARSE for comments/comments2/css-escapes → they now fail DOWNSTREAM (new clusters):
+  - **comment-preservation** (comments, comments2): now an eval/render OUTPUT DIFF — comments not preserved in rendered
+    CSS. (Relates to trivia-loss-on-eval, task #18.)
+  - **css-escapes**: SEPARATE eval bug — parses clean, then `eval/invalid-statement` "Value node is not valid as a
+    statement" at the leading `// CSS escapes tests` comment (leading line-comment trivia surfacing as a value stmt).
+- IN FLIGHT: `less/color-fns` (off dev 0ca270832) — red()/channel eval + `red (` spacing.
