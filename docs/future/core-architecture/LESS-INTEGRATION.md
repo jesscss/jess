@@ -27,7 +27,7 @@ not band-aided in the plugin/integration layer.
   hot-reload via the alias; only rebuild if you change what the config loader itself imports.
 - Run: `cd packages/jess && TEST=true npx vitest run test/less/all-less.test.ts`. Core repros:
   `cd packages/core && npx vitest run <file> -t <name>`.
-- **all-less gate baseline (jess-parseman = single gate worktree): 54 passed / 39 failed / 93. Core: 0.**
+- **all-less gate baseline (jess-parseman = single gate worktree): 56 passed / 37 failed / 93. Core: 0.**
 
 ## Gate / merge rules (same discipline as CORE-CLEANUP)
 - One cluster per branch `less/<slug>` + worktree off `feature/parseman`.
