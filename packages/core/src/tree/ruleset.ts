@@ -1,5 +1,5 @@
 import { sourceSpanOf } from './util/provenance.js';
-import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, defineType, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
@@ -66,7 +66,6 @@ export type RulesetValue = {
    */
   selectorBeforeExtend?: Selector | Nil;
 };
-
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -1501,7 +1500,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // but renders rerooted to the call site — the namespace ancestor is not in
     // `inFrames`, so composing against it would wrongly prepend it.
     const structuralParentActive = structuralParent
-      && Boolean(options.inFrames?.includes(this.parent!.parent as never));
+      && Boolean(options.inFrames?.some(f => f === this.parent!.parent));
     const composeParent: Selector | null = parentComposed ?? (
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       structuralParentActive && !(structuralParent instanceof Nil) ? structuralParent as Selector : null
