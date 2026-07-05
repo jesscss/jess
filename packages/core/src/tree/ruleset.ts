@@ -1489,9 +1489,17 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     )
       ? this.parent.parent.selector
       : null;
+    // The structural parent (canonical `parent.parent`) is only a valid compose
+    // root when that ancestor is an ACTIVE render frame. For a namespace-descended
+    // callable emitted at the call site (e.g. `.container.foo()` from root), the
+    // output body keeps its canonical namespace parent (`.foo` under `.container`)
+    // but renders rerooted to the call site — the namespace ancestor is not in
+    // `inFrames`, so composing against it would wrongly prepend it.
+    const structuralParentActive = structuralParent
+      && Boolean(options.inFrames?.includes(this.parent!.parent as never));
     const composeParent: Selector | null = parentComposed ?? (
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      structuralParent && !(structuralParent instanceof Nil) ? structuralParent as Selector : null
+      structuralParentActive && !(structuralParent instanceof Nil) ? structuralParent as Selector : null
     );
     const parentKey = composeParent ? composeParent.valueOf() : '';
     let cached = getCachedComposedSelector(options, this, parentKey);
