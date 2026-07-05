@@ -721,7 +721,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         // Check if this is a @plugin directive
         // In Less.js, @plugin syntax is: @plugin "plugin-name";
         // Handle both AtRule (modern) and Directive (v2) node types
-        if (node && (node.type === 'AtRule' || node.type === 'Directive')) {
+        if (node && (node.type === 'AtRule' || node.type === 'AtRuleStatement' || node.type === 'Directive')) {
           const atRuleName = node.name ?? node.value?.name;
           let nameValue: string | undefined;
 
@@ -1148,7 +1148,7 @@ export class LessCompatPlugin extends AbstractPlugin {
         // CRITICAL: For AtRule nodes, we need to call atRule() FIRST to process @plugin directives
         // before running Less visitors. Since our visitor is a plain object (not a class extending Visitor),
         // visit() doesn't automatically call atRule() via _visit(). We need to call it manually.
-        if ((node.type === 'AtRule' || node.type === 'Directive') && visitor.atRule) {
+        if ((node.type === 'AtRule' || node.type === 'AtRuleStatement' || node.type === 'Directive') && visitor.atRule) {
           // Call atRule() to process @plugin directives and add visitors
           // This must happen before we run Less visitors, so that newly added visitors
           // are available for subsequent nodes
