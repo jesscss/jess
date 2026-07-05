@@ -60,9 +60,8 @@ describe('Extend render', () => {
     const node = new ExtendList([child], undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
-    expect(node.nodes).toEqual([child]);
     expect(node.value).toEqual([child]);
-    expect(ExtendList.childKeys).toEqual(['nodes']);
+    expect(ExtendList.childKeys).toEqual(['value']);
   });
 
   it('keeps extend behavior when rendered inside a ruleset', async () => {
