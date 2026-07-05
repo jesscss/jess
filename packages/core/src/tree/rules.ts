@@ -167,6 +167,36 @@ function importInlinesMembersToParent(rules: Rules): boolean {
     || rules.options.inlinesMembersToParent === true;
 }
 
+// Link an inline-import's own scope frame as `frame`'s fallback, preserving any
+// earlier sibling imports already chained on `frame.fallbackFrame`. A nested
+// import (an imported file that itself `@import`s) already points its own
+// fallbackFrame at its inner import, so the earlier siblings must be threaded
+// past that internal chain — appended at the TAIL of the import frame's fallback
+// chain — rather than skipped. Skipping (the old `=== undefined` guard) dropped
+// every earlier top-level import the moment a later import was itself nested.
+// The tail walk stops if it would revisit `frame`, `importFrame`, or the chain
+// head, so no cycle is ever formed. Fallbacks are consulted only AFTER the
+// primary scope chain, so an enclosing declaration always wins.
+function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): void {
+  if (importFrame === frame || importFrame === frame.fallbackFrame) {
+    return;
+  }
+  const chain = frame.fallbackFrame;
+  let tail: ScopeFrame = importFrame;
+  while (
+    tail.fallbackFrame !== undefined
+    && tail.fallbackFrame !== chain
+    && tail.fallbackFrame !== frame
+    && tail.fallbackFrame !== importFrame
+  ) {
+    tail = tail.fallbackFrame;
+  }
+  if (tail.fallbackFrame === undefined) {
+    tail.fallbackFrame = chain;
+  }
+  frame.fallbackFrame = importFrame;
+}
+
 // A callable's per-call surface adopted under a mixin-output namespace member
 // (e.g. `.sayGender` bound under the output `.person` for `.person.sayGender()`)
 // resolves free vars up that DEFINITION member, not the call site. The member is
@@ -1292,22 +1322,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   // declaration always wins. Boundaries (`@compose` = true, rulesets = undefined)
   // are skipped. Reuses the already-read rules array (no extra scan).
   private linkInlineImportFallbackFrames(frame: ScopeFrame, rulesBody: Node[]): void {
-    let chain: ScopeFrame | undefined = frame.fallbackFrame;
     for (let i = 0; i < rulesBody.length; i++) {
       const child = rulesBody[i]!;
       if (!(child instanceof Rules) || !importInlinesMembersToParent(child)) {
         continue;
       }
-      const importFrame = child.getScopeFrame();
-      if (importFrame === frame || importFrame === chain) {
-        continue;
-      }
-      if (importFrame.fallbackFrame === undefined) {
-        importFrame.fallbackFrame = chain;
-      }
-      chain = importFrame;
+      linkImportFallbackFrame(frame, child.getScopeFrame());
     }
-    frame.fallbackFrame = chain;
   }
 
   private collectScopeFramePendingDeclarationNames(): VarDeclaration[] | undefined {
@@ -4647,11 +4668,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         // declaration always wins (imported members never override), and the fast frame
         // path is preserved. Named `@compose` and nested rulesets keep their own scope.
         if (importInlinesMembersToParent(node)) {
-          const importFrame = node.getScopeFrame();
-          if (importFrame !== this._scopeFrame && importFrame.fallbackFrame === undefined) {
-            importFrame.fallbackFrame = this._scopeFrame.fallbackFrame;
-          }
-          this._scopeFrame.fallbackFrame = importFrame;
+          linkImportFallbackFrame(this._scopeFrame, node.getScopeFrame());
         }
       }
       if (rulesMayContainExtends(node)) {

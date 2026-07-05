@@ -507,7 +507,15 @@ export function lookupScopeFrameVariable(
   while (true) {
     while (f) {
       if (visitedFallbackFrames?.has(f)) {
-        return { kind: 'miss' };
+        // Already searched this frame on an earlier fallback/parent walk. Stop
+        // walking THIS branch's parents, but keep consulting remaining fallback
+        // frames — a later fallback (e.g. an earlier top-level `@import`) may
+        // still hold the symbol. A nested import's placement frame lexically
+        // parents back to the import site, so its parent walk re-enters an
+        // already-visited frame; aborting the whole search here would drop every
+        // fallback queued past it. The fallback chain is finite and acyclic, so
+        // breaking (not returning) still terminates.
+        break;
       }
       visitedFallbackFrames?.add(f);
       const currentCell = f.currentBindingsByName.get(name);
