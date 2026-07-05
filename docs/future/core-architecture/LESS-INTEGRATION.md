@@ -305,3 +305,18 @@ Design (do NOT implement now — parser-scope, coordinate with the mixin-args gr
 - Decision rule for warning-vs-error is TESTABLE against the less.js corpus: "does Less 4.x accept it?" yes → warning
   in compat; Less-4-also-rejects → plain error (no category, no compat tension).
 - True long-term fix for THIS fixture: Jess grows a first-class map type so the port needn't fake maps. Out of scope.
+
+### Less 4.x compat mode — self-describing dialect (refined design)
+Compat mode is the DEFAULT when parsing `.less`, and AUTO-DISABLES (→ Jess-strict) when the file uses any
+Jess-native construct: `@-import` / dashed Less at-rules, `@use`, or `@compose`. The file's own vocabulary declares
+its dialect. TWO SEPARATE diagnostic axes — the trigger flips only the first:
+- **strict-violation** (gross/malformed, e.g. `{ <: %3c }`): warning in compat, ERROR once compat auto-disables.
+- **deprecation** (works now, removed in a future version, e.g. plain `@import`, inline `` `js` ``): STRONG warning in
+  BOTH modes, never fatal — a mid-migration file legitimately mixes `@use` with leftover `@import`; erroring on the
+  `@import` would punish correct adoption. (== the "warn, sometimes strongly" behavior.)
+- Trigger is WHOLE-FILE, so severity resolves POST-parse: collect diagnostics as `{category, span}` during parse,
+  pick the severity map once after knowing whether any dialect-trigger fired (a `@use` on line 300 makes a
+  strict-violation on line 5 an error). No two-pass parse — just deferred severity assignment.
+- Explicit override escape hatch: config `mode: 'less4' | 'strict'` or a `@-jess strict;` pragma forces it; auto-detect
+  decides only when unspecified.
+- Still testable: the less.js corpus is pure Less 4.x (no `@use`) → compat → warnings only → matches upstream.
