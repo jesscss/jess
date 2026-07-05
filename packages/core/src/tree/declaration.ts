@@ -354,7 +354,7 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (!isNode(node, N.Sequence | N.List)) {
     return false;
   }
-  if ((sourceSpanOf(node) !== undefined) !== 0 || !node.hasFlag(F_STATIC)) {
+  if (sourceSpanOf(node) !== undefined || !node.hasFlag(F_STATIC)) {
     return false;
   }
   const children = node instanceof Sequence ? node.value : node instanceof List ? node.value : [];
