@@ -88,7 +88,11 @@ const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   includeLiveBindings: false,
   includeFallbackFrames: true,
   prepareScopeFrame: false,
-  acceptsNode: (node): node is Declaration => isNode(node, N.Declaration),
+  // A property lookup must match a plain Declaration only. VarDeclaration extends
+  // Declaration (its nodeType carries BOTH bits), so an `N.Declaration` mask alone
+  // would also accept `@foo` — exclude it so `#ns[foo]` resolves the property, not
+  // a same-named variable.
+  acceptsNode: (node): node is Declaration => isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration),
   scopeMayContainFamily: scope => scope.hasDeclarationChildSurface || scope.hasReferenceImportChildSurface,
   childEntryMayContainFamily: entry => (
     entry.hasDeclarationSurface !== false || entry.hasReferenceImportSurface === true
