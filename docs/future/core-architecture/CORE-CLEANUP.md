@@ -228,6 +228,13 @@ or be **dropped**? **DX may change** — getter names, method surface, even publ
 node class as a metric; slim the fat ones. Shared behavior across lean types goes in **util functions**, not a
 fat base class.
 
+### LANDED LOG (integration branch `perf/walk-collapse` — bench after each merge)
+- **W2** incremental `refreshPositions` — collapse **1006→~290ms (~3.5x)**, nested **400→~225ms (~1.8x)**. HEADLINE (found only by profiling; walk-plan would've missed it).
+- **ref-nuke** `createRulesLikeReferenceSurface` reflective→same-prototype field-copy — that fn **164→21.5ms (~8x)**; dynamic end-to-end ~170→~157ms (modest, GC-absorbed); byte-identical. FAST-V8 compliance; kills dictionary-mode surface objects. (Contract: surface must NOT clone/inherit/reparent — field-copy is the only valid shape; tests lock it.)
+- **FAST-V8 sweep** `render-buffer` descriptor-check→`hasOwnProperty` walk (oracle-proven equivalent) + `define-function:338` fixed-shape; byte-identical. Hygiene. (`Object.assign` record-merge sites kept — genuine dynamic user keys.)
+- Benches: `packages/core/perf/collapse-bench.mjs` (static) + `dynamic-bench.mjs` (mixin/refs).
+Integrated now: static collapse ~290ms (min ~260, noisy), nested ~225ms, dynamic ~157ms. W2 = the structural win; ref-nuke/FAST-V8 = compliance/alloc.
+
 Suite is green, so this is now the live drive. **Finding (traced this pass):** the render
 pipeline runs ~4 structural passes *regardless of content*, and two of them exist only because
 eval still holds serialization/collapse state it was supposed to hand off.
