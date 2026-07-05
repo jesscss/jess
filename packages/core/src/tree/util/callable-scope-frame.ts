@@ -38,7 +38,14 @@ export function wireCallableScopeFrames({
     for (const [name, cell] of liveSlots) {
       setScopeFrameLiveBinding(frame, name, cell);
     }
-    frame.fallbackFrame = fallbackScopeFrame;
+    // The body frame's parent is the definition-site (lexical) frame. Config
+    // vars applied at the call/import site — e.g. an imported mixin's `with`
+    // configs — live on the call-site chain, not the definition chain, so the
+    // body must fall back to parentFrame to reach them. fallbackScopeFrame
+    // (the leaky-caller link) wins when present; otherwise chain a distinct
+    // call-site parent so imported bodies resolve configured vars.
+    frame.fallbackFrame = fallbackScopeFrame
+      ?? (parentFrame && parentFrame !== lexicalScopeFrame ? parentFrame : undefined);
     if (outerRules) {
       if (usesPreboundParamGuardOuterRules) {
         outerRules.scopeFrame = buildScopeFrame(
@@ -49,9 +56,13 @@ export function wireCallableScopeFrames({
           undefined,
           true
         );
-        if (parentFrame && parentFrame !== lexicalScopeFrame) {
-          outerRules.scopeFrame.fallbackFrame = parentFrame;
-        }
+        // The guard's prebound outer frame must resolve the same non-lexical
+        // surfaces the body frame can — the import/config fallback link
+        // (fallbackScopeFrame) plus any distinct call-site parent. Without the
+        // fallback link, a guard reading an imported "with" config var (or a
+        // leaky caller var) misses where the body would hit.
+        outerRules.scopeFrame.fallbackFrame = fallbackScopeFrame
+          ?? (parentFrame && parentFrame !== lexicalScopeFrame ? parentFrame : undefined);
       } else {
         outerRules.scopeFrame = frame;
       }
