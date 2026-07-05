@@ -56,9 +56,29 @@ keeps dissolving into specific bugs, not the feared monolith:
   - **Group C (1): implicit-`&` over-materialization** (`extend.ts:280`) — needs target-scope-relative
     source selection (absolute `fullSel` load-bearing for the cross-scope `.issue-2586` case). Scope-ancestor
     comparison, not a dedupe.
-Remaining genuine monolith (import-style fully triaged): config-surface `with`-bindings not on the
-callable/closure definition chain, wrapper-is-scope-identity, namespace cold/lazy eval-ordering.
-Smaller tractable pockets before the floor: declaration (3), reference (3), mixin-recursion (2), cloning (1).
+### Live work-list — the 40 remaining stable failures, each mapped to an owning unit
+**IN FLIGHT (3 agents, disjoint files):**
+- `cleanup/decl-ref` → reference (3), declaration copy-boundary (~2), cloning (1) — the no-copy/reuse boundary.
+- `cleanup/config-property` → import-style with-config property path (4).
+- `cleanup/extend-bc` → extend-roots string-backed (1, Group B), extend-eval attribute (1, Group C — dir corrected).
+
+**QUEUED (next waves, dispatch after in-flight merges to avoid rules.ts collision):**
+- **mixin scope (14)** — namespace-lookup / scope failures (`No matching mixins`, param-var lazy lookup,
+  mixin-ruleset namespace containers). Same config-surface/namespace-crawl family; the biggest remaining.
+- **import-style namespace-cold (3)** — `findMixinsFastForUncoveredCallable` / `hasReferenceImportChildSurface`
+  broad-crawl gating (distinct subsystem, verified separate from config-surface).
+- **import-style wrapper-identity + misc (≈4)** — D-family (declaration-lookup-version on derived surface;
+  compose finalRules `sourceNode`≠itself) + forward-only-downstream + multiple-imports placement.
+- **mixin-recursion (2)** — recursive-mixin serialization + nested-mixin-from-outside scope.
+
+**DEFERRED (written rationale above/here):**
+- declaration merge-chain (1) → D1-3b (coalesce removeFlag load-bearing; merge-engine rework).
+- call detached-collection→Rules (1) → callable-collection node-identity design decision.
+- extend-less-fixtures (1) → ENVIRONMENTAL (`@jesscss/css-parser` entry resolve in a fresh worktree; a
+  build/link artifact, not a core logic failure — passes in a fully-built tree).
+
+**The floor:** once the queued waves land, the irreducible core is the wrapper-is-scope-identity D-family +
+D1-3b, both deferred with rationale. Every one of the 40 is now IN-FLIGHT, QUEUED-with-plan, or DEFERRED-with-rationale.
 
 ---
 _Earlier snapshot (mechanical harvest to 60):_ Every open tracker item is CLOSED or
