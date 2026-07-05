@@ -17,8 +17,24 @@ change is real only if the stable set moves.
 
 ## Driver terminal status (this pass)
 
-**Stable failures: 85 → 60, zero regressions.** Every open tracker item is now **CLOSED or
-DEFERRED-with-rationale**. The mechanically-safe correctness + cleanup harvest is complete:
+**Stable failures: 85 → 53, zero regressions.** After the mechanical harvest reached 60, the
+"monolithic" E2/E3 cluster is being **chipped by scoped sub-agents in an isolated worktree** — and
+keeps dissolving into specific bugs, not the feared monolith:
+- **E2-a** (825dc3ec0, 60→59): property lookup now consults ancestor import fallback frames.
+- **E2-b** (35f8087a5, 59→59): single-key callable retry-walk drains ancestor fallback chains
+  (completes the 3-way lookup consistency; prerequisite, metric-neutral).
+- **E3-rebasing** (8689c52cb, 59→58): composed-selector cache was under-keyed (ruleset identity only);
+  keyed by `(ruleset, composed-parent)` — fixed mixin-body rebasing. Was a cache bug, not a monolith.
+- **provenance-migration stale tests** (any.test inline + control-surface, 58→53): the `501abdb8c`
+  side-table migration mechanically rewrote `.location` (array) → `sourceSpanOf` (`{start,end}|undefined`)
+  without fixing `.toHaveLength(0)`/`[...span]` probes. 5 tests cleared; vein now swept clean.
+Remaining genuine monolith (import-style fully triaged, all traced to file:line): config-surface
+`with`-bindings not on the callable/closure definition chain, wrapper-is-scope-identity, namespace
+cold/lazy eval-ordering. Still tractable ground in nesting-collapse/mixin/call/extend before that floor.
+
+---
+_Earlier snapshot (mechanical harvest to 60):_ Every open tracker item is CLOSED or
+DEFERRED-with-rationale. The mechanically-safe correctness + cleanup harvest is complete:
 - **Done:** Focus A (serialization audit; A-node done-by-design, A-flip rejected as make-work);
   Focus D Theme A selector serialization GREEN + trivia; Focus E E1; D.1 stages 1a/1c/2a; D1-3a
   (leading-comment hoist → exclusion set); F-rename (all 3 classes, 20 identifiers); Focus F
