@@ -1572,7 +1572,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         frameResults = direct;
       }
     }
-    return frameResults ?? UNCOVERED_CALLABLE_UNSUPPORTED;
+    if (frameResults) {
+      return frameResults;
+    }
+    return modeledChildSurface ? UNCOVERED_CALLABLE_MISS : UNCOVERED_CALLABLE_UNSUPPORTED;
   }
 
   private addCallableEntry(
