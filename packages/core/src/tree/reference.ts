@@ -2684,7 +2684,7 @@ function finalizeFallbackReferenceResult(
     throw getReferenceNotFoundError(lookupType, valueKeyStr);
   }
   if (fallbackValue === true) {
-    return new Any(`${valueKey}`, { role: referenceNode.role });
+    return new Any(`${valueKey}`, { role: referenceNode.options.role });
   }
   return evaluateFallbackValue(fallbackValue, context, textOnly);
 }
@@ -2712,7 +2712,7 @@ function finalizeCallableFallbackReferenceResult(
     ? candidate.params.toTrimmedString()
     : '';
   context.popReference();
-  return new Any(`${getLookupKeyDisplay(valueKey)}(${params})`, { role: referenceNode.role });
+  return new Any(`${getLookupKeyDisplay(valueKey)}(${params})`, { role: referenceNode.options.role });
 }
 
 function finalizeDirectReferenceResult(
@@ -3058,7 +3058,7 @@ function finalizeDeclarationReferenceResult(
     }
     if (!isNode(declarationValue)) {
       context.popReference();
-      return new Any(String(declarationValue), { role: referenceNode.role });
+      return new Any(String(declarationValue), { role: referenceNode.options.role });
     }
     if (useDeclOwnerScope) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -3327,7 +3327,7 @@ function finalizeReferenceLookupResult(
       if (fallbackText) {
         context.popReference();
         referenceNode._rulesLookupHandle = undefined;
-        return new Any(fallbackText, { role: referenceNode.role });
+        return new Any(fallbackText, { role: referenceNode.options.role });
       }
       return finalizeFallbackReferenceResult(
         referenceNode,
@@ -3642,7 +3642,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   readonly key: ReferenceValue['key'];
   /** Original un-flattened lookup name; see {@link ReferenceValue.rawKey}. */
   readonly rawKey: ReferenceValue['rawKey'];
-  readonly role: AnyRole | undefined;
 
   constructor(
     value: ReferenceValue | string,
@@ -3658,7 +3657,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     this.target = value.target;
     this.key = value.key;
     this.rawKey = value.rawKey;
-    this.role = options?.role;
     // References are always non-static
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
