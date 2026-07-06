@@ -11,6 +11,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { expectAst, expectAstContains, parse } from './_util.js';
+import { parseJessFn } from '../../src/functional-parser.js';
 
 /** Parse a top-level `$name…;` and return the VarDeclaration node's own
  * serialization (a top-level VarDeclaration is invisible in full CSS output). */
@@ -51,11 +52,24 @@ describe('corpus/variables', () => {
       )`);
   });
 
-  it('merge-assign +:', () => {
-    expectAstContains('$list +: 1, 2;', `
+  it('no variable `+:` operator — write compound-add explicitly', () => {
+    // There is NO Jess VARIABLE `+:` compound-add operator: `$foo +: 1` is not a
+    // valid variable assignment and does not parse. (Less PROPERTY `+:` merge is a
+    // separate feature on plain Declarations — see NOTES `legacyMerge` design.)
+    expect(parseJessFn('$foo +: 1;', 'Stylesheet').errors.length).toBeGreaterThan(0);
+    // Variable compound-add is written explicitly as `$foo: $foo + value`.
+    expectAstContains('$n: $n + 1;', `
       (VarDeclaration
-          assign: '+:'
-        name: 'list'`, { showOptions: true });
+        name: 'n'
+        value:
+          [
+            (Reference
+              key: 'n'
+            )
+            ' +'
+            (Num 1)
+          ]
+      )`);
   });
 
   it('conditional-assign (default-assignment) $foo?:', () => {

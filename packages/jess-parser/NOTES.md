@@ -129,29 +129,42 @@ Implementation:
 - Tests: `selector-capture-call.test.ts` (4) incl. a bracket-vs-dot divergence test.
   Core 2749/0; `$apply` unchanged.
 
-## Assignment operators (`?:` / `+:` / `:=`) — DONE (parse + serialize)
+## Variable assignment operators (`?:` / `:=`) — DONE (parse + serialize)
 - **`$foo?:` conditional / default-assignment** — Jess's equivalent of SCSS
   `!default` (NOT Jess). Serialization normalized to the canonical GLUED form:
   `$foo?: v` renders with NO space before the `:` (the spaced `$foo ?: v` authored
-  form normalizes to it). Same for compound-add `$list+:`. Fix: `isJessGluedAssign`
-  in `declaration.ts` glues `CondAssign`/`Add` only; `:=` (setDefined) and Less
-  `&,:`/`&_:` stay spaced (kept `$one := three` test green).
-- **`$foo +: v` is COMPOUND-ADD, not append/merge** — sugar for `$foo: $foo + v`;
-  `+` is delegated to `$foo`'s node type (number→add, list→concat, string→join, …).
-  Core ALREADY implements this correctly and the variable/property split is clean:
-  `case AssignmentType.Add` in `declaration.ts` uses `new Operation([ref, '+', v])`
-  for a VARIABLE (the `else` branch), and the Less comma-merge `List` only for a
-  plain PROPERTY `Declaration` (`this.type === 'Declaration'` guard, ~1726). The
-  only fix needed was the mislabeled enum comment (was "merges lists/sequences/
-  collections") — reworded to compound-add. No flag: `AssignmentType.Add` carries
-  both meanings cleanly via the node-type guard.
+  form normalizes to it). Fix: `isJessGluedAssign` in `declaration.ts` glues
+  `CondAssign`/`Add` only; `:=` (setDefined) and Less `&,:`/`&_:` stay spaced
+  (kept `$one := three` test green).
+- **NO variable `+:` operator** — the Jess VARIABLE compound-add operator was
+  REMOVED. `$foo +: 1` no longer parses; write it explicitly as `$foo: $foo + 1`.
+  `assignOp` grammar is `/\?:|:=|:/` (no `+:`); the builder's `AssignmentType.Add`
+  branch for VarDeclaration is gone. (`AssignmentType.Add` still exists in core for
+  the Less PROPERTY `+:` merge — a separate feature, see the deferred design below.)
 - **`$foo := bar` global (non-shadowing) assign — reuses core `setDefined`** (NOT a
   new AssignmentType; `SetGlobal` was deleted as a redundant duplicate). Builder
   sets `setDefined: true` on the VarDeclaration; core's existing setDefined eval
   (rules.ts ~4723) resolves the binding outward and writes its cell — eval already
-  exists. Grammar `assignOp` gains `:=` (BEFORE `:` so it wins over `:` + a `=`-led
-  value — was a silent mis-parse). Round-trips SPACED (`$foo := bar`) via the
+  exists. Grammar `assignOp` has `:=` BEFORE `:` so it wins over `:` + a `=`-led
+  value (was a silent mis-parse). Round-trips SPACED (`$foo := bar`) via the
   setDefined serialization path (`setDefined && assign === ':'` → `:=`).
+
+## Property `+:` merge — DEFERRED design (eval + option plumbing NOT built)
+Only the design; the merge-resolution eval + option plumbing are deferred (merge
+eval is already deferred-eval territory). This is the PROPERTY `+:` (plain
+`Declaration`, e.g. `background +: …`), NOT the removed variable op.
+- **Semantics = "add to the current value"**: `prop +: v` is sugar for
+  `prop: $($['prop'] + v)`. CONTRIBUTOR-ONLY — only the *adding* declaration needs
+  the flag; a plain `:` on the same property **replaces/resets** (wipes any prior
+  accumulation). This is a SUPERSET of Less's merge.
+- **Gated by a compilation-level `legacyMerge` option** (defaulted by the entry
+  file's extension):
+  - `legacyMerge: true` → LEGACY Less behavior: BOTH declarations must be flagged
+    to merge.
+  - `legacyMerge: false` → the NEW Jess model above (contributor-only add; `:`
+    resets).
+  - **Defaults: `.less` → `legacyMerge: true`; `.jess` → `legacyMerge: false`.**
+  - Granularity: compilation-level, defaulted by the entry file's extension.
 
 ## ⚠️ Semantics gaps to FLAG (found while verifying `:=` / `$!`)
 - **`setDefined` (`:=`) does NOT reassign the NEAREST outer binding in a 3-level

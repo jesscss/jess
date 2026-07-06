@@ -280,7 +280,7 @@ export class JessGrammar extends CssParser {
     const rawName = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
     const name = rawName.replace(/^\$/, '');
 
-    const opIdx = items.findIndex(i => i.comp === ':' || i.comp === '+:' || i.comp === '?:' || i.comp === ':=');
+    const opIdx = items.findIndex(i => i.comp === ':' || i.comp === '?:' || i.comp === ':=');
     const op = items[opIdx]?.comp as string | undefined;
 
     let end = items.length;
@@ -320,11 +320,10 @@ export class JessGrammar extends CssParser {
       important = this._source.slice(bang.span.start, impEnd);
     }
 
-    const assign = op === '+:'
-      ? AssignmentType.Add
-      : op === '?:'
-        ? AssignmentType.CondAssign
-        : undefined;
+    // No variable `+:` — the only variable assign op with an AssignmentType is `?:`
+    // (conditional). `$foo +: 1` is not a Jess variable operator; write `$foo:
+    // $foo + 1` explicitly. (Less PROPERTY `+:` merge lives on plain Declarations.)
+    const assign = op === '?:' ? AssignmentType.CondAssign : undefined;
 
     // `$foo := bar` is the global (non-shadowing) assign: reuse core's existing
     // `setDefined` (documented in declaration-var.ts as `Jess: $foo := 1`), which

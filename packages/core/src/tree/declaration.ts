@@ -44,12 +44,14 @@ function isIdentifierChar(value: string | undefined): boolean {
 
 export const enum AssignmentType {
   Default = ':',
-  // Jess VARIABLE `$foo +: v` is compound assignment — sugar for `$foo: $foo + v`;
-  // what `+` does is delegated to `$foo`'s node type (number → add, list → concat,
-  // string → join, …). Eval builds a `+` Operation on the current value (see
-  // `case AssignmentType.Add`). NOTE: for a plain Less PROPERTY Declaration
-  // (`background +: …`) the same op is the separate Less comma-merge — that path is
-  // guarded by `this.type === 'Declaration'` and is unaffected by the Jess meaning.
+  // `+:` — used for the Less PROPERTY merge on a plain `Declaration`
+  // (`background +: …`; the comma-merge `List` path, guarded by
+  // `this.type === 'Declaration'`). The Jess VARIABLE `$foo +: v` operator was
+  // REMOVED — the jess-parser no longer emits `Add` for a `VarDeclaration`;
+  // variable compound-add is written explicitly (`$foo: $foo + v`). The non-
+  // Declaration `else` branch of `case AssignmentType.Add` (a `+` Operation) stays
+  // for any other caller that constructs a var-typed `Add`. See NOTES for the
+  // deferred property-merge `legacyMerge` design.
   Add = '+:',
   // Subtract = '-:',      // math subtraction, like -= in JS
   // Multiply = '*:',      // math multiplication, like *= in JS

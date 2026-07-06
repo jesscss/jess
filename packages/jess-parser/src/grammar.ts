@@ -72,11 +72,15 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
 
   // ── Variable declarations ───────────────────────────────────────────────────
   // `$name: value;` — the variable's name is `name` (no `$`). Assignment ops:
-  // `:` normal, `+:` merge/add, `?:` conditional (assign only if undefined),
-  // `:=` non-shadowing/global (reassign the outer binding). `:=` MUST precede `:`
-  // in the alternation so it wins over `:` + a `=`-led value (`$foo := bar`).
+  // `:` normal, `?:` conditional (assign only if undefined), `:=` non-shadowing
+  // (reassign the outer binding). `:=` MUST precede `:` in the alternation so it
+  // wins over `:` + a `=`-led value (`$foo := bar`).
+  //
+  // NOTE: variable `+:` is INTENTIONALLY absent — there is no Jess VARIABLE
+  // compound-add operator; write it explicitly (`$foo: $foo + 1`). Less PROPERTY
+  // `+:` merge is a separate feature on plain Declarations, unaffected by this.
   const dollarDeclName = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const assignOp = regex(/\+:|\?:|:=|:/);
+  const assignOp = regex(/\?:|:=|:/);
   const VarDeclaration = node('VarDeclaration',
     parser({ trivia: rw }, sequence(
       dollarDeclName, assignOp, choice(g.JessCollection, g.valueList), optional(important), optional(literal(';'))

@@ -33,13 +33,14 @@ name (except `:=`, which is spaced):
 | --- | --- | --- |
 | `$foo: value` | assign | normal declaration (scoped) |
 | `$foo?: value` | default-assignment | assign only if `foo` is not already defined. This is Jess's equivalent of SCSS `!default` (which is not Jess). |
-| `$foo+: value` | compound-add | sugar for `$foo: $foo + value`. What `+` does is delegated to `$foo`'s type — number → add, list → concat, string → join, etc. |
 | `$foo := value` | global (non-shadowing) assign | reassign the existing binding (resolved outward) rather than creating a new shadowing local |
 
+There is no variable compound-add operator — write it explicitly:
+
 ```scss
-$foo?: 1;        // sets foo to 1 only if it wasn't already defined
-$n+: 1;          // $n: $n + 1  (compound-add; `+` follows $n's type)
-$foo := bar;     // reassign the existing `foo`, do not shadow
+$foo?: 1;         // sets foo to 1 only if it wasn't already defined
+$n: $n + 1;       // compound-add is spelled out; `+` follows $n's type
+$foo := bar;      // reassign the existing `foo`, do not shadow
 ```
 
 :::info
