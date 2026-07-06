@@ -85,10 +85,18 @@ export class Operation extends Node<OperationValue> {
     return isNode(node, N.Operation) || isNode(node, N.Paren) || isCalcCall(node);
   }
 
-  // A preserved calc holds a single inner operation as its only arg
-  // (`calc(l op r)`). CSS flattens nested calc, so when this operand is such a
-  // calc we splice its inner operation directly into the composing operation —
-  // yielding one flat `calc(...)` instead of `calc(calc(...) op Y)`.
+  // A preserved calc holds a single inner value as its only arg (`calc(l op r)`
+  // or, for an explicit `calc(@x)` wrapping an already-preserved calc,
+  // `calc((l op r))`). CSS flattens nested calc, so when this operand is such a
+  // calc we splice its inner value directly into the composing operation —
+  // yielding one flat `calc(...)` instead of `calc(calc(...) op Y)` (which
+  // renders with a redundant paren and, when the calc Call stayed as the
+  // operand, mis-serialized the wrapping operation).
+  //
+  // A bare inner Operation is spliced in directly. A Paren-wrapped inner
+  // expression keeps its Paren (precedence-safe) — `calc((a - b)) + 1`
+  // composes to `calc((a - b) + 1)`, never dropping the paren and changing
+  // meaning. A nested calc Call is unwrapped recursively.
   private static unwrapCalcOperand(node: Node): Node {
     if (isCalcCall(node)) {
       const args = (node as Call).args;
@@ -96,6 +104,9 @@ export class Operation extends Node<OperationValue> {
         const inner = args.value[0]!;
         if (isNode(inner, N.Operation)) {
           return inner;
+        }
+        if (isNode(inner, N.Paren) || isCalcCall(inner)) {
+          return Operation.unwrapCalcOperand(inner);
         }
       }
     }
