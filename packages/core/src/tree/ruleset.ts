@@ -108,7 +108,6 @@ type RulesetOptions = NodeOptions & {
 export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   static override childKeys = ['selector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
-  frames: (Ruleset | AtRule)[] | undefined;
   /** Stored as delivered: string, node, or plain array (an array IS a selector list). */
   selector: SelectorLike | Nil | undefined;
   declare readonly rules: Node[];
@@ -276,7 +275,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.sourceRoot?._treeContext
     ).inherit(this);
     node.hoistToRoot = this.hoistToRoot;
-    node.frames = this.frames ? [...this.frames] : undefined;
     return node;
   }
 
