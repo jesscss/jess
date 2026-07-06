@@ -218,14 +218,28 @@ export const generateId = (length = 8) => {
  * unique to the tree, such as the math mode.
  */
 export class TreeContext implements TreeContextOptions {
+  /** Non-option, per-tree transient data (trivia, lifted-comment ranges, …). */
   opts: Record<string, any>;
-  // changed to `rulesVisiblity` set during parsing
-  leakyScope: boolean | undefined;
-  bubbleRootAtRules: boolean | undefined;
-  mathMode: MathMode | undefined;
-  unitMode: UnitMode | undefined;
-  functionMode: FunctionMode | undefined;
-  equalityMode: EqualityMode | undefined;
+
+  /**
+   * The single resolved option set for this tree. Built once at construction
+   * from the file/plugin/language values; when the tree is made active on an
+   * eval {@link Context}, that context folds its compile-level options over this
+   * and shares the resulting object (see Context's `treeContext` setter), so
+   * `context.options` and `treeContext.options` are the SAME object — one place
+   * to read, no per-read merge.
+   */
+  options: ResolvedOptions;
+
+  // The promoted option fields are now a read-only VIEW over `options` — a single
+  // source of truth, replacing the old "some options are root fields, the rest
+  // fall into `opts`" split.
+  get mathMode() { return this.options.mathMode; }
+  get unitMode() { return this.options.unitMode; }
+  get functionMode() { return this.options.functionMode; }
+  get equalityMode() { return this.options.equalityMode; }
+  get leakyScope() { return this.options.leakyScope; }
+  get bubbleRootAtRules() { return this.options.bubbleRootAtRules; }
 
   /** @todo - Change how extend works based on this value */
   isModule: boolean | undefined;
@@ -238,32 +252,20 @@ export class TreeContext implements TreeContextOptions {
   plugin?: PluginInterface;
 
   constructor(opts: TreeContextOptions = {}) {
-    /**
-     * Known options are attached to the instance.
-     * Unknown options are assigned to `opts`
-     */
-    let {
-      mathMode,
-      unitMode,
-      functionMode,
-      equalityMode,
-      isModule,
-      file,
-      plugin,
-      leakyScope,
-      bubbleRootAtRules,
-      ...rest
-    } = opts;
-    this.mathMode = mathMode;
-    this.unitMode = unitMode;
-    this.functionMode = functionMode;
-    this.equalityMode = equalityMode;
+    // Resolve the file-level options once (no compile context yet — the eval
+    // Context folds that in on attach). Structural identity stays on the
+    // instance; every other unknown key is transient `opts` data.
+    this.options = resolveOptions(undefined, opts);
+    const { isModule, file, plugin, ...rest } = opts;
     this.isModule = isModule;
     this.file = file;
     this.plugin = plugin;
-    this.leakyScope = leakyScope;
-    this.bubbleRootAtRules = bubbleRootAtRules;
-    // this.scope = scope ?? new Scope(parentScope)
+    delete rest.mathMode;
+    delete rest.unitMode;
+    delete rest.functionMode;
+    delete rest.equalityMode;
+    delete rest.leakyScope;
+    delete rest.bubbleRootAtRules;
     this.opts = rest;
   }
 }
@@ -305,7 +307,15 @@ export class Context {
 
   set treeContext(tc: TreeContext) {
     this._treeContext = tc;
-    this._options = resolveOptions(this.opts, tc);
+    // Fold the compile-level options over the tree's own, once, and SHARE the
+    // result: `this._options` and `tc.options` become the same object, so eval
+    // (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
+    // hit one resolved set with nothing left to merge. Idempotent on re-entry
+    // (compile ?? already-folded === already-folded).
+    this._options = resolveOptions(this.opts, tc?.options);
+    if (tc) {
+      tc.options = this._options;
+    }
   }
 
   /**
