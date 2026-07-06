@@ -458,3 +458,11 @@ truthiness (condition.ts getBoolValue + Condition.resultPasses). namespacing-3 n
 `@media (min-width: @breakpoints[mobile])` — indexed accessor NOT consumed in query-prelude value position (shared
 css QueryFeature grammar); same as skipped namespacing-media. → next cluster.
 NEXT dispatched: at-rule/media-prelude value (media, namespacing-3 residual).
+
+## 2026-07-05 (alpha) — color-fn-call MERGED → board 73/93
+1-char parser fix: `NamedColor` lookahead `(?![-_a-zA-Z0-9])` → `(?![-_a-zA-Z0-9(])` so `red(...)` (named color + `(`)
+parses as a Call, not color-keyword + orphaned paren. Flipped basic + comprehensive. (Lesson: the prior color-fns
+agent stalled by bundling eval + serialize-spacing; re-scoped to the single fn-call root cause → quick win.)
+IN FLIGHT: media-prelude (media, namespacing-3 residual); serialize-whitespace (css-grid, whitespace, modern, rgba).
+Remaining after: guards (mixins-guards), nested-mixin (mixins-nested), css-escapes, functions, imports (inline/interp),
+rulesets, css-3. DEFER: extend x3, import-remote.
