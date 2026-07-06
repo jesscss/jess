@@ -1,4 +1,4 @@
-import { spanStartOf, sourceSpanOf } from './util/provenance.js';
+import { spanStartOf, spanEndOf, sourceSpanOf, valueSpansOf, type SourceSpan } from './util/provenance.js';
 import {
   Node,
   defineType,
@@ -19,6 +19,7 @@ import { selectorCompare } from './util/compare.js';
 import {
   consumeTrivia,
   emitCommentTriviaBeforeDelimiter,
+  emitCommentTriviaAfterOffset,
   emitTriviaTokens
 } from './util/trivia.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
@@ -106,7 +107,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
   }
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
-    emitSelectorListItems(this.value, printOptions);
+    emitSelectorListItems(this.value, printOptions, false, valueSpansOf(this));
   }
 
   /** Normalize value on separate lines with indentation */
@@ -358,10 +359,14 @@ export function finishSelectorListSurface(
 export function emitSelectorListItems(
   rawItems: readonly SelectorListItem[],
   printOptions: FinalPrintOptions,
-  suppressPre = false
+  suppressPre = false,
+  memberSpans?: readonly (SourceSpan | undefined)[]
 ): void {
   const w = printOptions.writer;
   const space = ''.padStart(printOptions.depth * 2);
+  // Per-slot member spans only line up with `rawItems` when no inner `:is(...)`
+  // hoisting rewrites the list. If any hoist happens (length changes), drop the
+  // spans — the offsets would no longer correspond to the emitted members.
   const value: SelectorListItem[] = [];
   for (const item of rawItems) {
     if (isNode(item, N.PseudoSelector) && item.name === ':is') {
@@ -413,18 +418,31 @@ export function emitSelectorListItems(
   if (length === 0) {
     return;
   }
+  // Only trust member spans when the emitted list matches the raw list 1:1
+  // (no `:is(...)` hoisting rewrote it).
+  const spans = memberSpans && memberSpans.length === length ? memberSpans : undefined;
   let item = value[0]!;
   emitSelectorListItem(item, printOptions, suppressPre);
   for (let i = 1; i < length; i++) {
     const prevItem = item;
     item = value[i]!;
+    // Comment authored AFTER the previous member, before the `,` (e.g.
+    // `#comments /* boo */,`). A node member exposes its own end; a bare-string
+    // member recovers it from the per-slot span.
+    const prevEnd = typeof prevItem !== 'string'
+      ? spanEndOf(prevItem)
+      : spans?.[i - 1]?.end;
     if (typeof prevItem !== 'string' && typeof item !== 'string') {
       emitCommentTriviaBeforeDelimiter(prevItem, item, printOptions);
+    } else if (printOptions.trivia && prevEnd !== undefined) {
+      emitCommentTriviaAfterOffset(printOptions.trivia, prevEnd, printOptions);
     }
     w.add(`,\n${space}`);
-    if (printOptions.trivia && typeof item !== 'string') {
+    // Comment authored BEFORE the next member (e.g. `, /* of */ .comments`).
+    const nextStart = typeof item !== 'string' ? spanStartOf(item) : spans?.[i]?.start;
+    if (printOptions.trivia && nextStart !== undefined) {
       emitTriviaTokens(
-        consumeTrivia(printOptions.trivia, spanStartOf(item), 'before', printOptions),
+        consumeTrivia(printOptions.trivia, nextStart, 'before', printOptions),
         printOptions,
         { skipLeadingWhitespace: true }
       );
@@ -436,7 +454,11 @@ export function emitSelectorListItems(
 export function emitSelectorListLike(
   value: SelectorListLike,
   options: FinalPrintOptions,
-  suppressPre = false
+  suppressPre = false,
+  memberSpans?: readonly (SourceSpan | undefined)[]
 ): void {
-  emitSelectorListItems(selectorListItems(value), options, suppressPre);
+  // A `SelectorList` node carries its own per-member spans; a bare-array surface
+  // does not, so the caller (e.g. the owning Ruleset) supplies them.
+  const spans = memberSpans ?? (Array.isArray(value) ? undefined : valueSpansOf(value));
+  emitSelectorListItems(selectorListItems(value), options, suppressPre, spans);
 }
