@@ -575,4 +575,33 @@ describe('Operation', () => {
     }
     expect(resolved.toTrimmedString()).toBe('50% + (50vh / 2 - 20px)');
   });
+
+  // Two-united `*` behaves per unitMode: preserve → calc fallback (composable),
+  // strict → throws (must NOT be swallowed), loose → folds to the left unit.
+  describe('two-united multiplication across unitMode', () => {
+    const mul = () => op([dimension([4, 'px']), '*', dimension([3, 'px'])]);
+
+    it('preserve mode yields a composable calc() fallback', async () => {
+      const context = new Context();
+      context.opts.unitMode = 'preserve';
+      const out = await mul().eval(context);
+      expect(out.render(context)).toBe('calc(4px * 3px)');
+      // and composing it further nests into a single flat calc
+      const composed = await op([out, '+', num(1)]).eval(context);
+      expect(composed.render(context)).toBe('calc(4px * 3px + 1)');
+    });
+
+    it('strict mode still throws on the unit misuse', () => {
+      const context = new Context();
+      context.opts.unitMode = 'strict';
+      expect(() => mul().eval(context)).toThrow(TypeError);
+    });
+
+    it('loose mode folds to the left unit', async () => {
+      const context = new Context();
+      context.opts.unitMode = 'loose';
+      const out = await mul().eval(context);
+      expect(out.render(context)).toBe('12px');
+    });
+  });
 });

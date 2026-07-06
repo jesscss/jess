@@ -8,7 +8,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Dimension } from './dimension.js';
 import { Color } from './color.js';
-import { Call } from './call.js';
+import { Call, isCalcCall } from './call.js';
 import { list } from './list.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
@@ -78,7 +78,28 @@ export class Operation extends Node<OperationValue> {
   // expression stays parenthesized on output. Treat it like a nested Operation:
   // preserve the operation rather than trying to operate on the Paren.
   private static isUnoperable(node: Node): boolean {
-    return isNode(node, N.Operation) || isNode(node, N.Paren);
+    // A preserved `calc(...)` Call (produced by createCalcFallback when
+    // `operate()` throws on incompatible units) is not a single operable
+    // terminal either. Recognizing it here routes `calc(X) op Y` through the
+    // compose path so it nests into a calc rather than stringifying to an Any.
+    return isNode(node, N.Operation) || isNode(node, N.Paren) || isCalcCall(node);
+  }
+
+  // A preserved calc holds a single inner operation as its only arg
+  // (`calc(l op r)`). CSS flattens nested calc, so when this operand is such a
+  // calc we splice its inner operation directly into the composing operation —
+  // yielding one flat `calc(...)` instead of `calc(calc(...) op Y)`.
+  private static unwrapCalcOperand(node: Node): Node {
+    if (isCalcCall(node)) {
+      const args = (node as Call).args;
+      if (args && args.value.length === 1) {
+        const inner = args.value[0]!;
+        if (isNode(inner, N.Operation)) {
+          return inner;
+        }
+      }
+    }
+    return node;
   }
 
   private withOperands(left: Node, right: Node): Operation {
@@ -210,6 +231,12 @@ export class Operation extends Node<OperationValue> {
         return renderOperands();
       }
       if (context.shouldOperate(op, l, r)) {
+        if (isCalcCall(l) || isCalcCall(r)) {
+          return this.createCalcFallback(
+            Operation.unwrapCalcOperand(l),
+            Operation.unwrapCalcOperand(r)
+          );
+        }
         if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           return renderOperands();
         }
@@ -325,6 +352,15 @@ export class Operation extends Node<OperationValue> {
         return n.withOperands(l, r);
       }
       if (context.shouldOperate(op, l, r)) {
+        // A preserved `calc(...)` operand must compose INTO a calc — nest and
+        // flatten to a single `calc(l op r)`, not a bare operation with a calc
+        // operand (which would stringify to an Any on the next operation).
+        if (isCalcCall(l) || isCalcCall(r)) {
+          return n.createCalcFallback(
+            Operation.unwrapCalcOperand(l),
+            Operation.unwrapCalcOperand(r)
+          );
+        }
         if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
           // operation intentionally remains unevaluated under current math mode,

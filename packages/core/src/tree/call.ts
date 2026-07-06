@@ -245,6 +245,16 @@ function getRenderedCallNameText(name: string | Node | unknown): string | undefi
   return undefined;
 }
 
+/**
+ * A `calc(...)` Call — including when the name arrives as a Reference/Any that
+ * renders to `calc`. Uses the same rendered-name detection as the calc-frame
+ * bookkeeping in `renderPlainFunctionCall`, so a preserved calc fallback is
+ * recognized wherever calc is (e.g. as an unoperable operand in `Operation`).
+ */
+export function isCalcCall(node: Node): node is Call {
+  return isNode(node, N.Call) && getRenderedCallNameText(node.name) === 'calc';
+}
+
 function getKnownRenderedCallText(node: string | Node): string | undefined {
   if (typeof node === 'string') {
     return node;
