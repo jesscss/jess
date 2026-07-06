@@ -78,6 +78,14 @@ export type PlacementCloneOptions = {
    * shared source tree.
    */
   detachChildren?: boolean;
+  /**
+   * Share (do NOT clone) non-reusable child nodes, but FREEZE them so the
+   * placement's `inherit`/`adopt` skips the reparent. The shared source child
+   * keeps its canonical `.parent`; the placement reads structural context from
+   * `_sourceRoot`/frames, never `.parent`. This is the zero-copy alternative to
+   * `detachChildren` — a container child is shared frozen instead of deep-copied.
+   */
+  shareChildren?: boolean;
 };
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
@@ -1201,6 +1209,7 @@ export abstract class Node<
     // placement policy at this level (strip comments, reuse inert leaves); we do
     // NOT recurse into a deep copy.
     const detachChildren = options?.detachChildren === true;
+    const shareChildren = options?.shareChildren === true;
     const clone = this.clone((n) => {
       if (stripComments && n.type === 'Comment') {
         return n.nil().inherit(n);
@@ -1211,6 +1220,13 @@ export abstract class Node<
       // leaf when its F_HAS_NODE_CHILD flag is stale, so test the value directly.
       if (detachChildren && n.hasNodeChild()) {
         return n.cloneForPlacement({ reuseLeaves, detachChildren });
+      }
+      // Zero-copy share: keep the SAME container child, but freeze it so the
+      // placement's `inherit`/`adopt` skips the reparent. The shared source
+      // child keeps its canonical `.parent` — no source mutation, no clone.
+      if (shareChildren && n.hasNodeChild()) {
+        n.frozen = true;
+        return n;
       }
       return reuseLeaves && n.canReuseAsLeaf() ? n.reuseAsLeaf() : n;
     });
