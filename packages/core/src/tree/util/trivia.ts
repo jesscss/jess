@@ -280,6 +280,28 @@ export function emitCommentTriviaAfterOffset(
 }
 
 /**
+ * Deterministic work counter for `commentRunsWithinSpan`, incremented once per
+ * comment-run visited (binary-search probe + window scan). A per-render scaling
+ * guardrail (`render-scaling.test.ts`) reads it to assert this stays ~O(1) per
+ * node rather than the O(#runs)-per-node full-map scan it replaced — a quadratic
+ * regression makes this total grow with nodes×runs instead of ~linearly.
+ *
+ * Production cost is a single unconditional integer increment inside loops that
+ * already run; it does not change any serialized output.
+ */
+let commentRunVisits = 0;
+
+/** Test-only: current cumulative `commentRunsWithinSpan` run-visit count. */
+export function getCommentRunVisits(): number {
+  return commentRunVisits;
+}
+
+/** Test-only: reset the cumulative `commentRunsWithinSpan` run-visit counter. */
+export function resetCommentRunVisits(): void {
+  commentRunVisits = 0;
+}
+
+/**
  * The comment-bearing trivia runs that fall entirely within `[spanStart,
  * spanEnd]`, in source order and de-duplicated by run identity.
  *
@@ -305,6 +327,7 @@ export function commentRunsWithinSpan(
   let hi = sorted.length;
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
+    commentRunVisits++;
     if (sorted[mid]!.start < spanStart) {
       lo = mid + 1;
     } else {
@@ -313,6 +336,7 @@ export function commentRunsWithinSpan(
   }
   const runs: Trivia[] = [];
   for (let i = lo; i < sorted.length; i++) {
+    commentRunVisits++;
     const run = sorted[i]!;
     // Sorted by start, so once start passes spanEnd no later run can fit.
     if (run.start > spanEnd) {
