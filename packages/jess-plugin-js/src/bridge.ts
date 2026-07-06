@@ -3,12 +3,16 @@ import {
   Any,
   Color,
   ColorFormat,
+  Declaration,
   Dimension,
   List,
   Node,
   Quoted,
+  Rules,
   Sequence
 } from '@jesscss/core';
+
+export type JsBridgeDeclaration = { name: string; value: JsBridgeValue };
 
 export type JsBridgeValue =
   | { __jessBridge: true; kind: 'scalar'; value: string | number | boolean }
@@ -18,7 +22,8 @@ export type JsBridgeValue =
   | { __jessBridge: true; kind: 'keyword'; value: string }
   | { __jessBridge: true; kind: 'anonymous'; value: string }
   | { __jessBridge: true; kind: 'list'; items: JsBridgeValue[]; separator?: ',' | ';' | '/' }
-  | { __jessBridge: true; kind: 'sequence'; items: JsBridgeValue[] };
+  | { __jessBridge: true; kind: 'sequence'; items: JsBridgeValue[] }
+  | { __jessBridge: true; kind: 'detached'; rules: JsBridgeDeclaration[] };
 
 type BridgeRecord = Record<string, unknown> & { __jessBridge?: unknown; kind?: unknown };
 
@@ -102,6 +107,23 @@ export function encodeBridgeValue(value: unknown): unknown {
       __jessBridge: true,
       kind: 'sequence',
       items: value.value.map(encodeBridgeChildValue)
+    } satisfies JsBridgeValue;
+  }
+  // A Less map / detached ruleset (e.g. `@grid-breakpoints: { xs: 0; ... }`)
+  // evaluates to a Rules/Mixin whose direct children are Declarations. Legacy
+  // Less @plugin functions read these via `arg.ruleset.rules` + `rule.eval()`,
+  // so surface them as a `detached` bridge value the worker can reconstruct.
+  if (value instanceof Rules) {
+    const rules: JsBridgeDeclaration[] = [];
+    for (const rule of (value as Rules).rules ?? []) {
+      if (rule instanceof Declaration && typeof rule.name === 'string') {
+        rules.push({ name: rule.name, value: encodeBridgeChildValue(rule.value) });
+      }
+    }
+    return {
+      __jessBridge: true,
+      kind: 'detached',
+      rules
     } satisfies JsBridgeValue;
   }
   return value;
