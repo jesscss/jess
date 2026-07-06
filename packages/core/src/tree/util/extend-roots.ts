@@ -925,14 +925,18 @@ export function processExtends(context: Context): void {
             }
             childForCompose = withSelectorBitLibrary(childIs, selector, parentSel);
           }
-          const composed = withSelectorBitLibrary(
-            (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentSel),
-            asExtendSelectorNode(childForCompose),
-            parentSel
-          );
-          const items: SelectorListItem[] = [
-            typeof composed === 'string' ? composed : composed
-          ];
+          const composedSurface = (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentSel);
+          // composeSelector can return a bare string when the child is a
+          // string-backed leaf (e.g. a nested `.ext9`). A string carries no
+          // bit-library slot to seed, so only thread the library into node output.
+          const composed = typeof composedSurface === 'string'
+            ? composedSurface
+            : withSelectorBitLibrary(
+                composedSurface,
+                asExtendSelectorNode(childForCompose),
+                parentSel
+              );
+          const items: SelectorListItem[] = [composed];
           for (const inst of crossingInstructions) {
             // For crossing matches, the extendWith must be the fully-composed
             // form of the extending ruleset (e.g. .footer-nav under .footer → .footer .footer-nav)
