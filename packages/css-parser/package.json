@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
-    "parseman": "workspace:*",
+    "parseman": "^0.16.0",
     "@types/color-name": "^1.1.1",
     "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0",
