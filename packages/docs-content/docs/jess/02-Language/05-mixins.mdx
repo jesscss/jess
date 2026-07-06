@@ -146,8 +146,8 @@ button-base($bg: #1a73e8, $color: #fff, $pad: 0.5em 1.25em) {
 }
 
 .button-primary   { $ > button-base(); }
-.button-secondary { $ > button-base(#fff; #1a73e8; 0.5em 1.25em); }
-.button-danger    { $ > button-base(#c62828; #fff; 0.5em 1.25em); }
+.button-secondary { $ > button-base(#fff, #1a73e8, 0.5em 1.25em); }
+.button-danger    { $ > button-base(#c62828, #fff, 0.5em 1.25em); }
 ```
 
 Let's break this down.
@@ -184,8 +184,8 @@ $ > button-base(~(one, two, three));
 
 ```less
 .button-primary   { $ > button-base(); }
-.button-secondary { $ > button-base(#fff; #1a73e8; 0.5em 1.25em); }
-.button-danger    { $ > button-base(#c62828; #fff; 0.5em 1.25em); }
+.button-secondary { $ > button-base(#fff, #1a73e8, 0.5em 1.25em); }
+.button-danger    { $ > button-base(#c62828, #fff, 0.5em 1.25em); }
 ```
 
 - **How to use:**  
@@ -193,7 +193,7 @@ $ > button-base(~(one, two, three));
 - **Using defaults:**  
   Calling `button-base()` with no arguments means all defaults are used.
 - **Overriding values:**  
-  Pass any or all values, in order, separated by semicolons, to override the defaults.
+  Pass any or all values, in order, separated by commas, to override the defaults.
   - For example:  
     `$ > button-base(#fff, #1a73e8, 0.5em 1.25em);`  
     sets a white background, blue text, and custom padding for `.button-secondary`.
@@ -284,16 +284,16 @@ Note that you can also compare arguments with each other, or with non-arguments:
 ```less
 $theme: "brand";
 
-button-theme($bg; $color) when ($theme = "brand") {
+button-theme($bg, $color) when ($theme = "brand") {
   // ...
 }
 
-button-theme($bg; $color) when ($theme = "minimal") {
+button-theme($bg, $color) when ($theme = "minimal") {
   // ...
 }
 
-max($a; $b) when ($a > $b) { width: $a }
-max($a; $b) when ($a < $b) { width: $b }
+max($a, $b) when ($a > $b) { width: $a }
+max($a, $b) when ($a < $b) { width: $b }
 ```
 
 :::info
@@ -392,7 +392,7 @@ div-2 {
 
 ## Selectors as Mixins
 
-Jess lets you "apply" or call rulesets as mixins using a namespace separator.
+Jess lets you "apply" or call rulesets as mixins with the `$apply` keyword.
 
 This is great when you want to define a class you can use on its own, but also “pull in” those same styles somewhere else.
 
@@ -408,13 +408,13 @@ This is great when you want to define a class you can use on its own, but also �
   box-shadow: 0 2px 8px #0002;
   padding: 1.5em;
   background: #fff;
-  $|.rounded; // or $|.rounded();
+  $apply .rounded;
 }
 ```
 
 :::info[Applying multiple selectors]
 
-For convenience, Jess allows you to apply multiple selectors at once by separating them with a comma and using the `apply` keyword.
+You can apply multiple selectors at once by separating them with a comma:
 
 ```less
 .card {
