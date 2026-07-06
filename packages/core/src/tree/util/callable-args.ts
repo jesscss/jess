@@ -2,6 +2,7 @@ import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { cast } from './cast.js';
+import { coerceValueNode } from './evaluate-node-array.js';
 import { withRulesContext } from './context.js';
 import { isNode } from './is-node.js';
 
@@ -61,6 +62,16 @@ export async function evaluateCallableArgs({
           }
         }
         evaluatedArgs.push(evald);
+        continue;
+      }
+      // A non-Node arg is either a parser value-shape (a space-group array or a
+      // bare string terminal) or a JS-interop value. The former must coerce to a
+      // space `Sequence` / keyword via `coerceValueNode`; `cast` would wrap an
+      // array as a comma `List`, corrupting a space-separated argument. Route
+      // value-shapes through coercion (and evaluate the result) and keep `cast`
+      // for genuine JS primitives.
+      if (typeof arg === 'string' || Array.isArray(arg)) {
+        evaluatedArgs.push(await coerceValueNode(arg).eval(context));
         continue;
       }
       evaluatedArgs.push(cast(arg));
