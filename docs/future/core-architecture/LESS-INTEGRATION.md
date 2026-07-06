@@ -636,3 +636,12 @@ fields — the perf design held).
 GATING LESSON: never gate off `pnpm -r build` (aborts at jess-plugin); build `awaitable-pipe @jesscss/core css/less/scss-parser fns jess-plugin-less jess-plugin-less-compat` explicitly + `jess compile`.
 Remaining 7 → 5 DEFERRED (extend x3, import-remote, mixins-guards C+D). Tractable: import-inline, import-interpolation
 (imports IN FLIGHT). Target green-modulo-deferred = 88/93.
+
+## 2026-07-05 (alpha) — bootstrap render probe: wall = empty Condition in compound guard (NOT @plugin/@import)
+Bootstrap parses fully, @plugin JS loads, @imports 1-4 (_functions/_variables/_mixins/_root) render clean. Wall at
+5th import _reboot: `TypeError: Cannot read properties of undefined (reading 'eval')` at condition.ts:155 — an EMPTY
+Condition node (left/op/right undefined; its sourceNode TEMPLATE is itself an empty Condition) reaches eval. Origin:
+`mixins/_transition.less:43` compound guard `& when (length(@t) > 0) and (length(extract(@t,1)) > 1)` — the 2nd operand
+`(length(extract(@t,1)) > 1)` becomes an empty Condition. Contextual (renders fine isolated; surfaces in full _reboot
+candidate-guard eval). Core-eval/parser-template. SAME CLASS as mixins-guards residual C (guard operand → Paren/empty
+not Condition). → dispatched less/guard-condition (fixes bootstrap wall + likely mixins-guards). Milestone-4 critical path.
