@@ -243,6 +243,11 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
 
 ## Focus C — Performance: collapse the walk count (ACTIVE — the perf drive)
 
+> **▶ ACTIVE DRIVE: [FLAG-WALK-DELETION.md](FLAG-WALK-DELETION.md)** — single-render-pass / always-share
+> eval → zero copy-based eval → delete `propagateFlagsFrom`. Root lever: `adopt()` stops reparenting
+> source children (`node-base.ts:669`). Full phased sequence (A→B→C→D) + orchestration protocol (branch
+> off dev, gate byte-identical + suite-green, pull-before-spawn/merge, push-when-green) live in that doc.
+
 ### ★ GOVERNING PRINCIPLE — eval evaluates VALUES; STRUCTURE belongs to serialize/render
 **Eval evaluates VALUES. Every STRUCTURAL transform — selector composition/collapse, declaration
 merge-coalescing, at-rule/layer registration — belongs in serialize/render, not eval.**
