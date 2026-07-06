@@ -1121,7 +1121,11 @@ function isSimpleSelectorPlacementCopy(node: Node): node is SimpleSelector {
 
 function copySimpleSelectorsForPlacement(nodes: SimpleSelector[]): SimpleSelector[] {
   return nodes.map((node) => {
-    const copied = node.cloneForPlacement({ reuseLeaves: false });
+    // Extend materialization: these are shared SOURCE simple selectors (plus the
+    // freshly-built `:is()` wrapper) placed into a new Compound/Complex container.
+    // Share their child containers frozen (B3) so `inherit`/`adopt` skips the
+    // reparent and the shared source tree is never mutated.
+    const copied = node.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
     if (!isSimpleSelectorPlacementCopy(copied)) {
       throw new TypeError('Expected simple selector copy');
     }
@@ -1133,7 +1137,8 @@ function copyComplexComponentForPlacement(node: ComplexSelectorComponent): Compl
   if (typeof node === 'string') {
     return node;
   }
-  const copied = node.cloneForPlacement({ reuseLeaves: false });
+  // Shared-source complex component (see copySimpleSelectorsForPlacement): B3 share frozen.
+  const copied = node.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
   if (!isComplexComponent(copied)) {
     throw new TypeError('Expected complex selector component copy');
   }
