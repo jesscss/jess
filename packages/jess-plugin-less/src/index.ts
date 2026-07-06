@@ -200,9 +200,12 @@ export class LessPlugin extends AbstractPlugin {
 
       // Thread the parser's whitespace/comment trivia into the render context so
       // the serializer can round-trip authored value whitespace (multi-line
-      // lists, custom-property value spacing). The functional CSS parser forwards
-      // trivia the same way (see cssParser.ts `context.opts.trivia = trivia`).
+      // lists, custom-property value spacing) AND inline comments. Standalone
+      // comments already round-trip as `Comment` nodes; their source ranges are
+      // reported so the render-time trivia view hides them (no double-emit). The
+      // functional CSS parser forwards trivia the same way (cssParser.ts).
       context.opts.trivia = parseResult.trivia;
+      context.opts.liftedCommentRanges = parseResult.liftedCommentRanges;
 
       // Convert parser deprecation warnings to diagnostics
       if ('warnings' in parseResult && parseResult.warnings) {

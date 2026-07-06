@@ -17,6 +17,9 @@ export type FunctionalParseResult = {
   errors: JessError[];
   warnings: Array<{ message: string; deprecation?: string }>;
   trivia: TriviaMap;
+  /** Source `[start, end)` ranges of comments lifted to standalone `Comment`
+   *  nodes; the render-time trivia view hides these so they aren't double-emitted. */
+  liftedCommentRanges: ReadonlyArray<readonly [number, number]>;
 };
 
 /**
@@ -29,6 +32,7 @@ export interface FunctionalParseHost {
   resetWarnings(): void;
   getWarnings(): Array<{ message: string; deprecation?: string }>;
   getErrors(): Array<{ message: string; offset?: number }>;
+  getLiftedCommentRanges(): ReadonlyArray<readonly [number, number]>;
   /** `ctx.build` host: construct the AST node for a structural `node(type, …)`. */
   build(
     type: string,
@@ -137,6 +141,7 @@ export function runFunctionalParse(
     tree,
     errors,
     warnings: host.getWarnings(),
-    trivia: buildLazyTriviaMap(res.triviaLog, input)
+    trivia: buildLazyTriviaMap(res.triviaLog, input),
+    liftedCommentRanges: host.getLiftedCommentRanges()
   };
 }
