@@ -277,3 +277,22 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
   reconciles — resolve, re-gate, then push. Roll a slice back rather than push red; never force-push.
 - Re-profile (collapse + dynamic bench, `JESS_PROFILE` split) after each phase to confirm no regression
   and capture wins.
+
+---
+
+## PROGRESS LOG
+
+- **Phase A1 — DONE** (dev `6de3c0cc7`). `F_MAY_ASYNC` deleted entirely (bit `0b10` freed); sync/async
+  guards → reactive attempt-sync/isThenable-bail; dead sync-twin helpers removed. Byte-identical,
+  bench-neutral, core 2744/0 (−2 = deleted flag-only tests). Net −395 lines.
+- **Phase A2 — DONE** (dev `ebacd2a2c`). `F_AMPERSAND` off the general `propagateFlagsFrom` + `F_CHILD_DERIVED`;
+  a `Selector`-base `propagateFlagsFrom` override bubbles it within the selector tree only. **Also fixed a
+  latent stale-flag bug** in `composeHeaderSelector` (guarded on `selectorHasAmpersandNode`). Byte-identical, 2744/0.
+- **Phase A3 — DONE** (dev `793467955`). Deleted 4 provably-pure leaf `F_STATIC` eval-skips (block.ts ×2,
+  url.ts ×2; kept url's `typeof===string` guard). **Scope correction:** the plan's "~25 leaf skips" was
+  optimistic — most F_STATIC render/eval reads are LOAD-BEARING (array-walk cost, structural branch to a
+  different render fn, single-item wrapper preservation), NOT redundant. They only go away when `F_STATIC`
+  itself is deleted (Phase C4, once eval is cheap-by-construction). Byte-identical, 2744/0.
+
+**Phase A complete.** `propagateFlagsFrom` now bubbles only `F_STATIC`/`F_NON_STATIC` + `F_HAS_NODE_CHILD`.
+Next: **Phase B — the reparent rework** (root lever: `adopt` stops reparenting source children).
