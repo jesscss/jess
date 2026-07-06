@@ -64,14 +64,14 @@ describe('getOptions', () => {
         compile: {
           mathMode: 'parens-division',
           unitMode: 'loose',
-          equalityMode: 'coerce',
+          equalityMode: 'exact',
           allowExtendSelectors: ['simple']
         }
       };
       const options = getOptions(config);
       expect(options.mathMode).toBe('parens-division');
       expect(options.unitMode).toBe('loose');
-      expect(options.equalityMode).toBe('coerce');
+      expect(options.equalityMode).toBe('exact');
       expect(options.allowExtendSelectors).toEqual(['simple']);
     });
 
@@ -123,7 +123,7 @@ describe('getOptions', () => {
         compile: {
           mathMode: 'always',
           unitMode: 'loose',
-          equalityMode: 'coerce'
+          equalityMode: 'exact'
         },
         language: {
           less: {
@@ -140,7 +140,7 @@ describe('getOptions', () => {
       };
       const options = getOptions(config, { input: 'src/styles.less', output: 'dist/styles.css' });
       expect(options.unitMode).toBe('loose'); // from compile
-      expect(options.equalityMode).toBe('coerce'); // from compile
+      expect(options.equalityMode).toBe('exact'); // from compile
       expect(options.leakyRules).toBe(true); // from language.less
       expect(options.mathMode).toBe('strict'); // from input (overrides language)
       expect(options.collapseNesting).toBe(false); // from input
