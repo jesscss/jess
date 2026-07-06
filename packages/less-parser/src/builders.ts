@@ -947,8 +947,11 @@ export class LessGrammar extends CssParser {
     // Function calls share the mixin args grammar, so they get the same `,`/`;`
     // mix rejection (e.g. `foo(@a: 1; @b: 2, @c: 3)`).
     this._checkMixedArgDelimiters(call.args as unknown as JessNode, 'function', loc);
+    // Lower `;`-args to comma + `~(…)` (after the mixed-delimiter check), matching
+    // the mixin path so function calls converge on the same unified AST.
+    const loweredArgs = this._lowerSemiArgs(call.args as unknown as JessNode, loc);
     const nameRef = new Reference(key, { type: 'function', fallbackValue: true } as any, loc);
-    const next = new Call({ name: nameRef as any, args: call.args as any }, { silentFail: true } as any, loc);
+    const next = new Call({ name: nameRef as any, args: loweredArgs as any }, { silentFail: true } as any, loc);
     return next as unknown as JessNode;
   }
 
@@ -1147,7 +1150,9 @@ export class LessGrammar extends CssParser {
     const inner = this._betweenParens(spannedComponents(raw));
     const args = this._assembleArgs(inner, loc);
     this._checkMixedArgDelimiters(args as unknown as JessNode, 'mixin', loc);
-    return args;
+    // Lower `;`-args to comma + `~(…)` (after the mixed-delimiter check, which
+    // needs the `;`-List) so Less `;` and Jess `~(…)` produce the same AST.
+    return this._lowerSemiArgs(args as unknown as JessNode, loc) as unknown as typeof args;
   }
 
   /** Less forbids mixing the COMMA and SEMICOLON argument separators: once a
@@ -1169,6 +1174,34 @@ export class LessGrammar extends CssParser {
         break;
       }
     }
+  }
+
+  /**
+   * Lower Less `;`-separated call args to the unified Jess representation: the outer
+   * args `List{ sep: ';' }` becomes comma-separated, and each element that is itself
+   * a comma-`List` (a `;`-group that held a comma-list) is wrapped in an escaped
+   * `Paren` — the same shape Jess authors write as `~(1, 2)`. So
+   * `.mixin(1, 2; 3, 4)` and Jess `mixin(~(1, 2), ~(3, 4))` converge on one AST.
+   *
+   * The escaped `Paren` evaluates to its inner value STRIPPED (paren.ts §escaped),
+   * so `~(1, 2)` binds/renders identically to the bare list `1, 2` — representation
+   * only, semantics unchanged. Scalar (non-List) elements pass through untouched.
+   *
+   * MUST run AFTER `_checkMixedArgDelimiters` (which inspects the `;`-List).
+   */
+  private _lowerSemiArgs(args: JessNode | undefined, loc: LocationInfo): JessNode | undefined {
+    const list = args as unknown as { type?: string; options?: { sep?: string }; value?: JessNode[] } | undefined;
+    if (!list || list.type !== 'List' || list.options?.sep !== ';' || !Array.isArray(list.value)) {
+      return args;
+    }
+    const lowered = list.value.map((el) => {
+      // A comma-list arg (an inner `List`) becomes `~(…)`; scalars stay as-is.
+      if ((el as { type?: string })?.type === 'List') {
+        return new Paren(el as unknown as Node, { escaped: true }, loc) as unknown as JessNode;
+      }
+      return el;
+    });
+    return new List(lowered as unknown as Node[], undefined, loc) as unknown as JessNode;
   }
 
   /**
