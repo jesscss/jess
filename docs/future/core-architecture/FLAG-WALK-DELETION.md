@@ -381,3 +381,16 @@ PERF priority order (re-profile between each):
 THEN (post-hotspots, as simplification not speed): resume Phase D (single-render-pass) + the flag-walk
 deletion (D3 done; D1/dynamic-leaf-share/C4). Still worth doing for fewer-passes/less-work, just not the
 perf headline. The `propagateFlagsFrom` deletion remains the /goal's endpoint — reached last, as cleanup.
+
+### 🛡 GUARDRAIL SLICE (queued — land immediately AFTER the comment-scan fix)
+Root cause of the comment-scan quadratic: gates were complexity-BLIND — byte-identical + suite green +
+memory-win all passed while the change went O(nodes × comments). Add a STANDING guardrail so this class
+of regression fails loudly:
+- **Deterministic scaling test** (`render-scaling.test.ts` or similar): render the same content at N / 2N / 4N
+  node counts and assert the WORK ratio is ~linear (≈2×), not super-linear (≈4× = quadratic). Prefer an
+  INSTRUMENTED COUNTER over wall-clock (immune to the ~25× env noise) — e.g. count total `commentRunsWithinSpan`
+  run-comparisons and assert O(nodes), not O(nodes×comments). Include a comment-heavy input so THIS exact
+  regression can never return silently, plus a general render/serialize-path linearity assertion.
+- Sequencing: after the comment-scan fix (it makes the path linear → the test is green and locks it in).
+- Consider (follow-up): a bench-regression merge gate + a review rule "no unbounded per-node scans of
+  document/whole-tree-scoped collections."
