@@ -970,13 +970,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const normalizedLeading = hasLeadingDeclarationBlockComment
             ? (leading.match(/\n([ \t]*)$/u)?.[1] ?? '')
             : leading.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-          const declIn = normalizedLeading + out;
+          // `out` already carries continuation indentation relative to the
+          // property line (see `formatNonCustomValue`), so measure the relative
+          // baseline from `out` itself (first line at column 0) — not from any
+          // authored leading indent, which is empty for non-first declarations
+          // and would otherwise re-base multi-line values inconsistently.
           const hasEmptyValue = /:\s*$/.test(out);
           // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
           // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
           const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
             ? `${idt}${out}`
-            : normalizeIndent(declIn, idt, true);
+            : normalizeIndent(out, idt, true);
           if (nn.name.valueOf().startsWith('--')) {
             w.add(idt);
             w.add(out, nn);

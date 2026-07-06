@@ -1,4 +1,4 @@
-import { setSourceSpan, spanStartOf, sourceSpanOf } from './util/provenance.js';
+import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   F_ALLOW_ROOT,
@@ -324,13 +324,18 @@ const inheritCustomInterpolatedValuePlacement = (sourceValue: Node, evaluatedVal
 
 const emitLeadingTriviaForCustomValue = (
   value: Node,
-  options: ReturnType<typeof getPrintOptions>
+  options: ReturnType<typeof getPrintOptions>,
+  fallbackSpanStart?: number
 ): void => {
   const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
   if (!trivia || trivia === true) {
     return;
   }
-  emitTriviaTokens(consumeTrivia(trivia, spanStartOf(value), 'before', options), options);
+  // Evaluated values (e.g. an rgba() Call) are re-created without a source span,
+  // so fall back to the authored value's original span start — the offset the
+  // leading-whitespace run (the space after `:`) is keyed on.
+  const offset = spanStartOf(value) ?? fallbackSpanStart;
+  emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
 };
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
@@ -818,7 +823,67 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node;
   }
 
-  private formatNonCustomValue(valOut: string, _options: PrintOptions) {
+  /**
+   * The authored column of this declaration's property (0-based). Continuation
+   * lines in a multi-line value carry their source-absolute indentation; the
+   * leaf serializer re-bases them relative to the property line, so subtract the
+   * property's own authored indent first to keep the relationship stable no
+   * matter what depth the declaration renders at.
+   */
+  private authoredPropertyIndent(options: PrintOptions): number {
+    const start = spanStartOf(this);
+    if (start === undefined) {
+      return 0;
+    }
+    // The source text lives on the trivia runs (the render context is not
+    // file-bearing). Any run keyed near this declaration carries the full `src`.
+    const trivia = options.trivia ?? undefined;
+    const src = trivia?.lookup(start, 'before')?.src
+      ?? trivia?.entries('before').next().value?.[1]?.src;
+    if (typeof src !== 'string') {
+      return 0;
+    }
+    const lineStart = src.lastIndexOf('\n', start - 1) + 1;
+    return start - lineStart;
+  }
+
+  /**
+   * True when the authored value began on the line after `:` (its leading trivia
+   * run carries a newline). less.js preserves that break — e.g. a multi-line
+   * `grid-template-areas` keeps its first string on its own line.
+   */
+  private valueLeadsWithNewline(value: DeclarationValue['value'], options: PrintOptions): boolean {
+    const trivia = options.trivia ?? undefined;
+    if (!trivia) {
+      return false;
+    }
+    // Descend to the value's first authored token: a List/Sequence carries the
+    // whole declaration-value span, so its own span start would pick up the
+    // declaration's leading trivia instead of the value's.
+    let first: Node | string | undefined = Array.isArray(value) ? value[0] : value;
+    while (first instanceof List || first instanceof Sequence) {
+      first = first.value[0];
+    }
+    const start = first instanceof Node ? spanStartOf(first) : undefined;
+    // Only trust the value's leading trivia when the value token is authored
+    // inside this declaration. A resolved value (e.g. a variable lookup) carries
+    // its definition-site span, whose leading trivia belongs to another line.
+    const declStart = spanStartOf(this);
+    const declEnd = spanEndOf(this);
+    if (
+      start === undefined
+      || declStart === undefined
+      || declEnd === undefined
+      || start < declStart
+      || start > declEnd
+    ) {
+      return false;
+    }
+    const run = trivia.lookup(start, 'before');
+    return run !== undefined && /[\r\n]/.test(run.src.slice(run.start, run.end));
+  }
+
+  private formatNonCustomValue(valOut: string, _options: PrintOptions, leadNewline = false) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
@@ -828,13 +893,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     // only the minimum continuation indent rather than emulating historical
     // Less fixture cases that collapsed some unindented continuations.
     const continuationIndent = '  ';
+    const propertyIndent = this.authoredPropertyIndent(_options);
     const lines = trimmedEnd.split('\n');
     let out = '';
     const [firstLine = '', ...restLines] = lines;
     const firstContent = firstLine.replace(/^[ \t]+/g, '').trimEnd();
 
     if (firstContent) {
-      out = ` ${firstContent}`;
+      // A value authored on the line after `:` keeps that break; its first token
+      // sits at the continuation indent (the leaf adds the property indent back).
+      out = leadNewline ? `\n${continuationIndent}${firstContent}` : ` ${firstContent}`;
     }
 
     for (const line of restLines) {
@@ -846,8 +914,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const lineIndent = line.match(/^[ \t]*/)?.[0].length ?? 0;
       const content = line.replace(/^[ \t]+/g, '').trimEnd();
       const isClosingLine = /^[}\])]([,;])?$/.test(content);
+      // Continuations are re-based relative to the property line (subtract its
+      // authored indent), then floored at the minimum continuation indent. The
+      // leaf serializer adds the render-time property indent back on top.
+      const relativeIndent = Math.max(0, lineIndent - propertyIndent);
       const normalizedIndent = ' '.repeat(
-        isClosingLine ? lineIndent : Math.max(continuationIndent.length, lineIndent)
+        isClosingLine ? lineIndent : Math.max(continuationIndent.length, relativeIndent)
       );
       out += `\n${normalizedIndent}${content}`;
     }
@@ -1014,6 +1086,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (isCustomProperty) {
       const saved = savePrintState(options, ['inCustom']);
       options.inCustom = true;
+      // Authored start of the value (before eval re-created it span-less), used
+      // to recover the leading-whitespace trivia keyed on that source offset.
+      const originalValueSpanStart = this.value instanceof Node
+        ? spanStartOf(this.value)
+        : undefined;
       // Preserve custom value text, but normalize boundary artifacts:
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
@@ -1028,11 +1105,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         && !needsCustomTrailingNewlineTrim(customValueText)
       ) {
         if (value instanceof Node) {
-          emitLeadingTriviaForCustomValue(value, options);
+          emitLeadingTriviaForCustomValue(value, options, originalValueSpanStart);
         }
         this.writeDeclarationFieldValueSyntax(value, options);
       } else if (fallbackOut !== undefined) {
-        const leading = customValueText === undefined ? '' : leadingHorizontalWhitespace(customValueText);
+        // Emit the authored leading whitespace from trivia (the value node keeps
+        // its source span here), falling back to the captured text's leading
+        // whitespace when no trivia is available (synthetic values).
+        const mark = w.mark();
+        if (value instanceof Node) {
+          emitLeadingTriviaForCustomValue(value, options, originalValueSpanStart);
+        }
+        const emittedLeading = w.getSince(mark).length > 0;
+        const leading = emittedLeading || customValueText === undefined
+          ? ''
+          : leadingHorizontalWhitespace(customValueText);
         w.add(`${leading}${fallbackOut}`, value);
       } else if (hasCustomInterpolatedRender) {
         const valueMark = w.mark();
@@ -1051,7 +1138,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } else {
         const valueMark = w.mark();
         if (value instanceof Node) {
-          emitLeadingTriviaForCustomValue(value, options);
+          emitLeadingTriviaForCustomValue(value, options, originalValueSpanStart);
         }
         this.writeDeclarationFieldValueSyntax(value, options);
         w.replaceSince(valueMark, (valueOut) => {
@@ -1069,8 +1156,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         this.renderCommaValueSyntax(mergeAdapter.value, options);
       } else {
         const valueMark = w.mark();
+        // The value's own leading whitespace is decided by `valueLeadsWithNewline`
+        // (guarded to authored, in-declaration spans) and re-materialized by
+        // `formatNonCustomValue`. Suppress the value node's boundary `before`
+        // trivia so a relocated value (e.g. a variable lookup) cannot bleed its
+        // definition-site leading newline into this declaration.
+        const leadNewline = this.valueLeadsWithNewline(value, options);
+        const savedBoundary = savePrintState(options, ['suppressBoundaryTrivia']);
+        options.suppressBoundaryTrivia = 'pre';
         this.writeDeclarationFieldValueSyntax(value, options);
-        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
+        restorePrintState(options, savedBoundary);
+        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options, leadNewline), value);
       }
       if (important || importantText) {
         w.add(' ');
