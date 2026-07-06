@@ -9,6 +9,13 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
 export type UnitMode = 'loose' | 'preserve' | 'strict';
 
 /**
+ * Function-call resolution modes — mirrors {@link UnitMode}. Governs an optional
+ * (global) function call that matched a registered function but couldn't be
+ * evaluated: `preserve` renders it as-is (+ warning), `error` throws.
+ */
+export type FunctionMode = 'preserve' | 'error';
+
+/**
  * Equality/coercion modes for guard comparisons.
  */
 export type EqualityMode = 'coerce' | 'strict';
@@ -133,6 +140,17 @@ export interface LessOptions {
    * @default 'preserve'
    */
   unitMode?: UnitMode;
+
+  /**
+   * How to handle an optional/global function call that matched a registered
+   * function but couldn't be evaluated (no matching signature, or it threw) —
+   * e.g. `unit(80/16)`, `color("x")`. Mirrors {@link unitMode}.
+   * - 'preserve': render the call as-is (like an unknown CSS function) + warn
+   * - 'error': throw the underlying function error (Less 4.x behavior)
+   * Unknown function names always render as-is regardless.
+   * @default 'preserve'
+   */
+  functionMode?: FunctionMode;
 
   /**
    * How to handle equality/coercion in guards and comparisons.
@@ -279,6 +297,7 @@ export interface InputOptions extends FileMatchOptions {
   // Compile-level options that can be overridden per-input
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  functionMode?: FunctionMode;
   equalityMode?: EqualityMode;
   allowExtendSelectors?: ExtendSelectorKind[];
   disableScriptModules?: boolean;
@@ -340,6 +359,7 @@ export interface StylesConfig {
     searchPaths?: string[];
     mathMode?: MathMode;
     unitMode?: UnitMode;
+    functionMode?: FunctionMode;
     equalityMode?: EqualityMode;
     allowExtendSelectors?: ExtendSelectorKind[];
     disableScriptModules?: boolean;

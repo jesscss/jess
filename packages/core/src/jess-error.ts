@@ -33,7 +33,8 @@ export type JessErrorCode =
   | 'eval/deprecated'
   | 'resolve/unused-variable'
   | 'selector/duplicate'
-  | 'selector/parentless-ampersand';
+  | 'selector/parentless-ampersand'
+  | 'function/unresolved';
 
 /**
  * Normalized error format for all phases (lexing, parsing, evaluation).
@@ -262,6 +263,11 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Parentless ampersand ignored',
     reason: 'Selector "${selector}" uses "&" without an available parent selector in this context.',
     fix: 'Move the selector under a real parent selector, or remove the stray "&".'
+  }],
+  ['function/unresolved', {
+    summary: 'Function "${name}" left as-is',
+    reason: '"${name}" matched a registered function but could not be evaluated: ${reason}',
+    fix: 'Fix the arguments, or set functionMode: \'error\' to make this fail.'
   }]
 ]);
 
@@ -727,6 +733,10 @@ export const WARN = {
 
   parentlessAmpersand(args: Common & { meta: { selector: string } }) {
     return makeJessError({ severity: 'warn', code: 'selector/parentless-ampersand', phase: 'eval', ...args });
+  },
+
+  unresolvedFunction(args: Common & { meta: { name: string; reason: string } }) {
+    return makeJessError({ severity: 'warn', code: 'function/unresolved', phase: 'eval', ...args });
   },
 
   extendNotFound(args: Common & { meta: { target: string } }) {

@@ -12,7 +12,7 @@ import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
 import type { StylesConfig } from './types.js';
-import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
+import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { isNode } from './tree/util/is-node.js';
@@ -58,6 +58,7 @@ export interface ContextOptions {
 
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  functionMode?: FunctionMode;
   equalityMode?: EqualityMode;
   disableScriptModules?: boolean;
   /**
@@ -169,6 +170,7 @@ export class TreeContext implements TreeContextOptions {
   bubbleRootAtRules: boolean | undefined;
   mathMode: MathMode | undefined;
   unitMode: UnitMode | undefined;
+  functionMode: FunctionMode | undefined;
   equalityMode: EqualityMode | undefined;
 
   /** @todo - Change how extend works based on this value */
@@ -189,6 +191,7 @@ export class TreeContext implements TreeContextOptions {
     let {
       mathMode,
       unitMode,
+      functionMode,
       equalityMode,
       isModule,
       file,
@@ -199,6 +202,7 @@ export class TreeContext implements TreeContextOptions {
     } = opts;
     this.mathMode = mathMode;
     this.unitMode = unitMode;
+    this.functionMode = functionMode;
     this.equalityMode = equalityMode;
     this.isModule = isModule;
     this.file = file;

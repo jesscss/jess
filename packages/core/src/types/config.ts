@@ -1,6 +1,6 @@
-import type { EqualityMode, MathMode, UnitMode } from './modes.js';
+import type { EqualityMode, FunctionMode, MathMode, UnitMode } from './modes.js';
 
-export type { EqualityMode, MathMode, UnitMode };
+export type { EqualityMode, FunctionMode, MathMode, UnitMode };
 export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 /**
@@ -133,6 +133,14 @@ export interface LessOptions {
    * @default 'loose'
    */
   unitMode?: UnitMode;
+
+  /**
+   * How an optional/global function call that matched a registered function but
+   * couldn't be evaluated is handled: `preserve` renders it as-is (+ warning),
+   * `error` throws. Mirrors {@link unitMode}.
+   * @default 'preserve'
+   */
+  functionMode?: FunctionMode;
 
   /**
    * How to handle equality/coercion in guards and comparisons.

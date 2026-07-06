@@ -17,6 +17,24 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
 export type UnitMode = 'loose' | 'preserve' | 'strict';
 
 /**
+ * Function-call resolution modes — mirrors {@link UnitMode}.
+ *
+ * Governs an OPTIONAL (fallback) function reference — every bare/global
+ * `fn(args)` — that resolves to a registered function but can't produce a value
+ * (no matching signature, or the function throws), e.g. `unit(80/16)`,
+ * `color("x")`.
+ *
+ * - `preserve`: render the call as-is (like Less v5 / an unknown CSS function)
+ *   and emit a warning that a matched function couldn't be evaluated.
+ * - `error`: throw the underlying function error (Less 4.x behavior).
+ *
+ * Unknown names (no registered function) always render as-is regardless — they
+ * fall back at name resolution, never reaching this decision. Explicitly
+ * imported functions are non-optional references and always error.
+ */
+export type FunctionMode = 'preserve' | 'error';
+
+/**
  * Equality modes for guard/comparison semantics.
  *
  * - `coerce`: Less-compatible coercive equality behavior
