@@ -82,10 +82,8 @@ export class Operation extends Node<OperationValue> {
   }
 
   private withOperands(left: Node, right: Node): Operation {
-    const finalLeft = left === this.left ? left.cloneForPlacement({ reuseLeaves: false }) : left;
-    const finalRight = right === this.right ? right.cloneForPlacement({ reuseLeaves: false }) : right;
     const node = new Operation(
-      [finalLeft, this.operator, finalRight],
+      [left, this.operator, right],
       this._options ? { ...this._options } : undefined,
       sourceSpanOf(this),
       this._treeContext

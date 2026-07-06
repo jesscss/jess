@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref, pseudo } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref, pseudo } from '../index.js';
 import type { ComplexSelectorComponent } from '../selector-complex.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';

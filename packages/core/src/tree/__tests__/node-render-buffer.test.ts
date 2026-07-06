@@ -63,7 +63,7 @@ import {
   whileNode
 } from '../index.js';
 import { extendList } from '../extend-list.js';
-import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
+import { F_NON_STATIC, Node } from '../node-base.js';
 import { MixinCollection } from '../util/callable-collection.js';
 import { callableRulesEntry } from '../util/callable-entry.js';
 import { OutputWriter, getPrintOptions, type PrintOptions } from '../util/print.js';
@@ -105,7 +105,7 @@ class AsyncValueNode extends Node<string> {
     private readonly resolved: Node = any(value)
   ) {
     super(value);
-    this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
+    this.addFlag(F_NON_STATIC);
   }
 
   override eval(_context: Context) {

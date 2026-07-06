@@ -92,38 +92,6 @@ export function coerceNodeArray(value: NodeArrayItem[]): Node[] {
   return out ?? (value as Node[]);
 }
 
-export function evaluateNodeArraySync(
-  context: Context,
-  rawValue: NodeArrayItem[]
-): MaybePromise<Node[]> {
-  const value = coerceNodeArray(rawValue);
-  let values: Node[] | undefined = value !== (rawValue as Node[]) ? value : undefined;
-  for (let index = 0; index < value.length; index++) {
-    const node = value[index]!;
-    const out = node.eval(context);
-    // Coercing a raw space-group array to a Sequence can surface may-async
-    // children the parent List classified as sync (its raw-array items carried
-    // no flags). Hand off to the async path when a result is thenable.
-    if (isThenable(out)) {
-      return evaluateNodeArrayRest(context, value, values, index, out as Promise<Node>);
-    }
-    const evaluated = out as Node;
-    if (!(evaluated instanceof Node)) {
-      throw new TypeError('Expected node array item to evaluate to a node');
-    }
-    if (values) {
-      values[index] = evaluated;
-    } else if (evaluated !== node) {
-      values = new Array<Node>(value.length);
-      for (let copyIndex = 0; copyIndex < index; copyIndex++) {
-        values[copyIndex] = value[copyIndex]!;
-      }
-      values[index] = evaluated;
-    }
-  }
-  return values ?? value;
-}
-
 export function evaluateNodeArrayMaybe(
   context: Context,
   rawValue: NodeArrayItem[]

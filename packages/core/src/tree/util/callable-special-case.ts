@@ -1,6 +1,6 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { Context } from '../../context.js';
-import { F_MAY_ASYNC, type Node } from '../node.js';
+import { type Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { List } from '../list.js';
@@ -64,9 +64,6 @@ export async function evaluateCallableSpecialCaseCandidate({
         needsCallerPlacementDuringEval = true;
         break;
       }
-    }
-    if (!needsCallerPlacementDuringEval) {
-      rules.addFlag(F_MAY_ASYNC);
     }
     if (needsCallerPlacementDuringEval) {
       callParent.adopt(rules);

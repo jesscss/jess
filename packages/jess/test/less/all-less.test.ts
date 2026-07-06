@@ -141,13 +141,18 @@ const skippedFixtures: SkippedFixture[] = ([
 const skippedFixtureReasons = new Map(skippedFixtures.map(({ file, reason }) => [file, reason]));
 
 const expectedFailureFixtures = new Map<string, string>([
-  ['tests-unit/import/import-reference-issues.less', 'reference import selector scoping differs from Less'],
+  // NOTE: import-reference-issues.less and starting-style.less graduated OUT of
+  // this list — the D3 single-render-pass change (removing the separate
+  // Compiler-level eval pre-pass so render() is the sole eval driver) eliminated
+  // a double-eval that (a) re-ran `+_:` shorthand merges twice (starting-style's
+  // padding accumulated to 10 values) and (b) re-ran import resolution twice
+  // (import-reference-issues threw "File not found" on the 2nd pass). Both now
+  // match the Less golden .css under the harness config.
   ['tests-unit/import/import-reference.less', 'reference import filtering leaves extra at-rules'],
   ['tests-unit/import/import.less', 'Less @plugin script execution is not available in this harness'],
   ['tests-unit/operations/operations-advanced.less', 'advanced math/color operation behavior differs from Less'],
   ['tests-unit/property-accessors/property-accessors.less', 'property accessor precedence differs from Less'],
   ['tests-unit/scope/scope.less', 'parent selector scope output differs from Less'],
-  ['tests-unit/starting-style/starting-style.less', 'nested shorthand math expansion in @starting-style differs from Less'],
   ['tests-config/namespacing/namespacing-1.less', 'namespace map duplicate precedence differs from Less'],
   ['tests-config/namespacing/namespacing-5.less', 'nested namespace callable lookup does not match Less'],
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],

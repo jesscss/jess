@@ -40,7 +40,7 @@ describe('Flag bubbling', () => {
       ]);
 
       const rulesetNode = tree.rules[0]! as Ruleset;
-      expectFlags(rulesetNode, true, false); // F_STATIC, not F_MAY_ASYNC
+      expectFlags(rulesetNode, true, false);
     });
 
     test('non-static content bubbles up through containers', () => {
@@ -55,7 +55,7 @@ describe('Flag bubbling', () => {
       ]);
 
       const rulesetNode = tree.rules[0]! as Ruleset;
-      expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC
+      expectFlags(rulesetNode, false, true);
     });
 
     test('mixed content bubbles up appropriate flags', () => {
@@ -71,7 +71,7 @@ describe('Flag bubbling', () => {
       ]);
 
       const rulesetNode = tree.rules[0]! as Ruleset;
-      expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC (due to variable)
+      expectFlags(rulesetNode, false, true);
     });
   });
 
@@ -87,7 +87,7 @@ describe('Flag bubbling', () => {
       ]);
 
       const rulesetNode = tree.rules[0]! as Ruleset;
-      expectFlags(rulesetNode, false, true); // F_MAY_ASYNC
+      expectFlags(rulesetNode, false, true);
     });
 
     test('mayAsync bubbles through multiple levels', () => {
@@ -131,7 +131,7 @@ describe('Flag bubbling', () => {
       ]);
 
       const rulesetNode = tree.rules[0]! as Ruleset;
-      expectFlags(rulesetNode, false, true); // F_MAY_ASYNC
+      expectFlags(rulesetNode, false, true);
     });
   });
 

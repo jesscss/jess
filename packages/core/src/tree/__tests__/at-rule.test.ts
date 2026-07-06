@@ -2,7 +2,7 @@ import { setSourceSpan } from '../util/provenance.js';
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   vardecl, ref, mixin, call, list, op,
-  num, dimension, amp, F_MAY_ASYNC,
+  num, dimension, amp,
   F_STATIC, paren, query, seq, comment, nil, quoted, color, co, interpolated,
   keyword, Anonymous
 } from '../index.js';
@@ -271,7 +271,6 @@ describe('AtRule', () => {
     });
     rules([parentAtRule]);
     const prelude = any('screen');
-    prelude.addFlags(F_MAY_ASYNC);
     prelude.eval = async (evalContext: Context) => {
       await Promise.resolve();
       expect(evalContext.rulesContext).toBe(savedRulesContext);
@@ -595,7 +594,6 @@ describe('AtRule', () => {
 
   it('registers async nested layer names from invocation records without mutating source children', async () => {
     const nestedPrelude = any('child');
-    nestedPrelude.addFlag(F_MAY_ASYNC);
     nestedPrelude.eval = async () => {
       await Promise.resolve();
       return any('child');
@@ -1244,7 +1242,6 @@ describe('AtRule', () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
-    body.addFlag(F_MAY_ASYNC);
     body.eval = async () => {
       await Promise.resolve();
       return body;

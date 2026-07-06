@@ -84,6 +84,14 @@ export type PlacementCloneOptions = {
    * shared source tree.
    */
   detachChildren?: boolean;
+  /**
+   * Share (do NOT clone) non-reusable child nodes, but FREEZE them so the
+   * placement's `inherit`/`adopt` skips the reparent. The shared source child
+   * keeps its canonical `.parent`; the placement reads structural context from
+   * `_sourceRoot`/frames, never `.parent`. This is the zero-copy alternative to
+   * `detachChildren` — a container child is shared frozen instead of deep-copied.
+   */
+  shareChildren?: boolean;
 };
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
@@ -243,7 +251,7 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 
 // Node state flags as bitmask
 export const F_VISIBLE = 0b1;
-export const F_MAY_ASYNC = 0b10;
+// bit 0b10 is free (was F_MAY_ASYNC, removed in the reactive single-render-pass drive)
 /**
  * @todo - The plan is to use these as signals for evaluation. If we
  * bubble these correctly, then we can exit early from evaluation for
@@ -285,7 +293,17 @@ export const F_HOIST_VALUE = 0b10000000000000;
 export { F_HAS_SPAN };
 // Bit 15 — F_HAS_SPAN is bit 14; this is the next free bit.
 export const F_FROZEN = 0b1000000000000000;
-// Bits 16/17 — per-slot span flags; also owned by util/provenance.ts (WeakMap
+/**
+ * A declaration occurrence superseded by a later merge (`+:`/`&,:`/`&_:`) in the
+ * same cascade scope. This is DISTINCT from `F_VISIBLE` (which means "this node
+ * type is CSS output"): merge suppression is a runtime dedup/override signal that
+ * render, the merge re-coalesce idempotency check, and lookup all honor, while
+ * `F_VISIBLE` stays a purely by-type property. Set on the superseded anchor by
+ * `_coalesceMergedDeclarations`; a merge-suppressed node is treated as hidden by
+ * `visible`. Bit 16.
+ */
+export const F_MERGE_SUPPRESSED = 0b10000000000000000;
+// Bits 17/18 — per-slot span flags; also owned by util/provenance.ts (WeakMap
 // side tables), re-exported here to keep the bit allocation discoverable.
 export { F_HAS_VALUESPANS, F_HAS_FIELDSPANS };
 
@@ -295,7 +313,7 @@ export { F_HAS_VALUESPANS, F_HAS_FIELDSPANS };
  * same flags — rather than recomputing them from children (that is eval-path
  * derivation, not copying). Canonical construction bubbles them via `adopt`.
  */
-export const F_CHILD_DERIVED = F_MAY_ASYNC | F_STATIC | F_NON_STATIC | F_AMPERSAND | F_HAS_NODE_CHILD;
+export const F_CHILD_DERIVED = F_STATIC | F_NON_STATIC | F_HAS_NODE_CHILD;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -484,9 +502,15 @@ export abstract class Node<
     }
   }
 
-  /** Runtime tracking: has eval been run on this node? */
+  /**
+   * Whether this node renders as CSS output. True iff its type is visible
+   * (`F_VISIBLE`) AND it has not been superseded by a later declaration merge
+   * (`F_MERGE_SUPPRESSED`). Keeping merge suppression in its own bit lets
+   * `F_VISIBLE` stay a purely by-type property that eval/clone can preserve,
+   * while render + merge re-coalesce idempotency read the combined signal here.
+   */
   get visible() {
-    return this.hasFlag(F_VISIBLE);
+    return (this.flags & (F_VISIBLE | F_MERGE_SUPPRESSED)) === F_VISIBLE;
   }
 
   /**
@@ -683,12 +707,6 @@ export abstract class Node<
     } else if (node.hasFlag(F_STATIC)) {
       this.addFlag(F_STATIC);
     }
-    if (node.hasFlag(F_MAY_ASYNC)) {
-      this.addFlag(F_MAY_ASYNC);
-    }
-    if (node.hasFlag(F_AMPERSAND) && this.type !== 'Rules') {
-      this.addFlag(F_AMPERSAND);
-    }
   }
 
   /**
@@ -808,14 +826,6 @@ export abstract class Node<
    * Processed nodes must always return a Node.
    */
   private forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, _context: Context) {
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      this._visitEntries((node, key, coll, idx) => {
-        const result = mustBeNode(func(node, idx));
-        coll[key] = result;
-      });
-      return;
-    }
-
     let pending: Promise<void> | undefined;
     let resumeIndex = 0;
     let nodes: Node[] | undefined;
@@ -1209,6 +1219,7 @@ export abstract class Node<
     // placement policy at this level (strip comments, reuse inert leaves); we do
     // NOT recurse into a deep copy.
     const detachChildren = options?.detachChildren === true;
+    const shareChildren = options?.shareChildren === true;
     const clone = this.clone((n) => {
       if (stripComments && n.type === 'Comment') {
         return n.nil().inherit(n);
@@ -1219,6 +1230,13 @@ export abstract class Node<
       // leaf when its F_HAS_NODE_CHILD flag is stale, so test the value directly.
       if (detachChildren && n.hasNodeChild()) {
         return n.cloneForPlacement({ reuseLeaves, detachChildren });
+      }
+      // Zero-copy share: keep the SAME container child, but freeze it so the
+      // placement's `inherit`/`adopt` skips the reparent. The shared source
+      // child keeps its canonical `.parent` — no source mutation, no clone.
+      if (shareChildren && n.hasNodeChild()) {
+        n.frozen = true;
+        return n;
       }
       return reuseLeaves && n.canReuseAsLeaf() ? n.reuseAsLeaf() : n;
     });
@@ -1342,26 +1360,6 @@ export abstract class Node<
     // §2.7: a node is a reusable template that re-evaluates per placement — no
     // retained `evaluated` result on the canonical node. This removes the
     // `evaluated` re-eval/cache reads from the hot path. See LIVE_BINDING §2.7.
-    if (!node.hasFlag(F_MAY_ASYNC)) {
-      return Node._evalStaticSync(node, context);
-    }
-
-    const evaluated = node.evalNode(context);
-    if (isThenable(evaluated)) {
-      return (evaluated as Promise<Node>).then((evald) => {
-        if (node !== evald) {
-          evald.inherit(node);
-        }
-        return evald;
-      });
-    }
-    if (node !== evaluated) {
-      evaluated.inherit(node);
-    }
-    return evaluated;
-  }
-
-  private static _evalStaticSync(node: Node, context: Context): MaybePromise<Node> {
     const evaluated = node.evalNode(context);
     if (isThenable(evaluated)) {
       return (evaluated as Promise<Node>).then((resolved) => {

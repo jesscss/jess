@@ -42,9 +42,10 @@ export const F_HAS_SPAN = 0b100000000000000;
  * nodes carry it. Gates the `valueSpansOf`/`valueSpanAt` WeakMap lookup so
  * non-carrying nodes pay only a bitwise-and.
  */
-export const F_HAS_VALUESPANS = 0b10000000000000000;
+// Bit 16 is F_MERGE_SUPPRESSED (node-base.ts); per-slot span flags take bits 17/18.
+export const F_HAS_VALUESPANS = 0b100000000000000000;
 /** Node carries per-slot FIELD spans (e.g. a declaration's `value` field). Sparse; same gating discipline as `F_HAS_VALUESPANS`. */
-export const F_HAS_FIELDSPANS = 0b100000000000000000;
+export const F_HAS_FIELDSPANS = 0b1000000000000000000;
 
 type Flagged = { flags: number };
 

@@ -1,6 +1,6 @@
 import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType, type NodeLocation } from './node.js';
+import { Node, defineType, type NodeLocation } from './node.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -81,7 +81,7 @@ export class Block extends Node<Node, BlockOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
-    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
+    const value = this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderBlockSyntax(resolved, prepared);
@@ -105,9 +105,6 @@ export class Block extends Node<Node, BlockOptions> {
   }
 
   private evaluateValue(context: Context): MaybePromise<Block> {
-    if (this.hasFlag(F_STATIC)) {
-      return this;
-    }
     const value = this.value.eval(context);
     const finalize = (resolvedValue: Node): Block => {
       if (resolvedValue === this.value) {

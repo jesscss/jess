@@ -352,7 +352,10 @@ describe('Operation', () => {
       throw new Error('Expected Operation result');
     }
     expect(resolved.toTrimmedString()).toBe('2em * 10px / 2');
-    expect(resolved.left).not.toBe(leftOperand);
+    // Reparent-free placement: the unchanged operand is SHARED into the
+    // materialized operation (same object), not cloned. Its canonical parent
+    // stays the source operation — placement never reparents a shared node.
+    expect(resolved.left).toBe(leftOperand);
     expect(resolved.left?.toTrimmedString()).toBe('2em');
     expect(leftOperand.parent).toBe(operationNode);
     expect(operationNode.parent).toBeUndefined();
@@ -393,8 +396,10 @@ describe('Operation', () => {
       throw new Error('Expected calc fallback Operation argument');
     }
     expect(calcArg).not.toBe(operationNode);
-    expect(calcArg.left).not.toBe(leftOperand);
-    expect(calcArg.right).not.toBe(rightOperand);
+    // Reparent-free placement: unchanged operands are SHARED into the calc
+    // fallback operation (same objects), not cloned.
+    expect(calcArg.left).toBe(leftOperand);
+    expect(calcArg.right).toBe(rightOperand);
     // Source operands stay owned by the canonical operation, unchanged — the
     // calc fallback materializes copies. (`evaluated` flag assertions removed:
     // it is being deleted as a clone-era relic; see LIVE_BINDING §2.7.)
@@ -565,6 +570,9 @@ describe('Operation', () => {
 
     const resolved = operation.resolve(context);
     expect(resolved).toBeInstanceOf(Operation);
-    expect((resolved as Operation).toTrimmedString()).toBe('50% + (50vh / 2 - 20px)');
+    if (!(resolved instanceof Operation)) {
+      throw new Error('Expected Operation result');
+    }
+    expect(resolved.toTrimmedString()).toBe('50% + (50vh / 2 - 20px)');
   });
 });

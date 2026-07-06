@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { List } from './list.js';
@@ -63,23 +63,18 @@ export class Expression extends Node<Node> {
         ? this.value.render(context, bufferOrOptions, options)
         : this.value.render(context, bufferOrOptions);
     }
-    if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const node = this.value.eval(context);
+    const evaluated = this.value.eval(context);
+    const renderNode = (node: unknown) => {
       if (!(node instanceof Node)) {
         throw new TypeError('Expected expression value to evaluate to a node');
       }
       return isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)
         : node.render(context, bufferOrOptions);
-    }
-    const node = this.evalNode(context);
-    return isThenable(node)
-      ? node.then(renderedNode => isRenderBuffer(bufferOrOptions)
-          ? renderedNode.render(context, bufferOrOptions, options)
-          : renderedNode.render(context, bufferOrOptions))
-      : isRenderBuffer(bufferOrOptions)
-        ? node.render(context, bufferOrOptions, options)
-        : node.render(context, bufferOrOptions);
+    };
+    return isThenable(evaluated)
+      ? evaluated.then(renderNode)
+      : renderNode(evaluated);
   }
 
   /** @internal */

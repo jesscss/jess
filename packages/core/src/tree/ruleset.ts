@@ -755,7 +755,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled !== false
-      && this.hoistToRoot
+      && this.isHoisted(options)
     ) {
       const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
       if (ownSelector && Ruleset.isBareAmpersandSelector(ownSelector)) {
@@ -1011,6 +1011,28 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         }
       }
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * True when the selector tree still holds a live `&` node (an ampersand not yet
+   * substituted for its parent). Distinct from the `F_AMPERSAND` flag, which is a
+   * cached "this subtree contains a `&`" bit: a selector already RESOLVED into its
+   * extended form (e.g. `.button:hover, .submit:hover`) carries no `&` node even
+   * though the flag may remain set from an earlier structural copy.
+   */
+  static selectorHasAmpersandNode(sel: SelectorLike | Nil): boolean {
+    if (typeof sel === 'string' || !sel || sel instanceof Nil) {
+      return false;
+    }
+    if (Array.isArray(sel)) {
+      return sel.some(item => Ruleset.selectorHasAmpersandNode(item));
+    }
+    for (const node of sel.nodes()) {
+      if (isNode(node, N.Ampersand)) {
+        return true;
+      }
     }
     return false;
   }
@@ -1572,7 +1594,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent as AtRule : undefined;
     const structuralParent = (
       !parentAtRule?.isRootOnly()
-      && this.hoistToRoot === true
+      && this.isHoisted(options)
       && this.parent?.parent
       && isNode(this.parent.parent, N.Ruleset)
     )
@@ -1605,6 +1627,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         && !Ruleset.isBareAmpersandSelector(ownSelector)
         && composeParent
         && hasExtendedComposeContext
+        // Only re-compose the raw own `&` selector when the render selector has NOT
+        // already been resolved into its extended form. Once `renderSelector` holds
+        // no live `&` node (e.g. `.button:hover, .submit:hover`), it IS the composed
+        // result — recomposing `&:hover` against the parent list would re-wrap it as
+        // `:is(.button, .submit):hover`.
+        && Ruleset.selectorHasAmpersandNode(renderSelector)
       )
         ? ownSelector
         : (referenceFilteredLocal instanceof Nil ? renderSelector : (referenceFilteredLocal ?? renderSelector));
@@ -2107,9 +2135,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.invalidateSelectorValueCache(undefined);
       }
       this.selector = selector;
-      if (context.opts.output?.collapseNesting) {
-        this.hoistToRoot = true;
-      }
       pushedRulesetFrameCount = context.rulesetFrames.length;
       pushedFrameCount = context.frames.length;
       context.rulesetFrames.push(this);
