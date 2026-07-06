@@ -1,24 +1,33 @@
 import { type Context } from '../context.js';
 import { Node, defineType, type LocationInfo } from './node.js';
 import { Selector } from './selector.js';
+import { Rules, resolveRulesetBySelector } from './rules.js';
+import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
+import { createCallableRulesSurface } from './util/callable-surface.js';
+import { sourceSpanOf } from './util/provenance.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
 
 export interface Apply extends Node<Selector[]> {
-  eval(context: Context): MaybePromise<Apply>;
+  eval(context: Context): MaybePromise<Rules>;
 }
 
 /**
- * Jess `$apply <selector-list>` — applies (calls) the listed rulesets as mixins.
- * Kept first-class in the AST (round-trips `$apply .a, .b;` structurally) instead
- * of being lowered to mixin calls.
+ * Jess `$apply <selector-list>` — merges the listed rulesets' bodies into the
+ * current rule. `$apply .foo` applies ONLY plain `Ruleset`s (`.foo {}`), matched
+ * on the whole selector, and merges in ALL matching `.foo {}` blocks (merge-all).
+ * Parametric `Mixin`s (`.foo() {}`) are NEVER applied — `$apply` deliberately does
+ * not touch the args/guards callable machinery (that is `$ > .foo()`).
  *
- * @todo eval semantics (expand to the applied rules) are TBD — this node is
- * currently structural / parse-only (see NOTES).
+ * Kept first-class in the AST (round-trips `$apply .a, .b;` structurally). At eval
+ * it expands, via the same thin-surface / live-binding mechanic a mixin call uses
+ * to inline its rules, into a `Rules` container of the matched rulesets' bodies —
+ * a LIVE binding to the referenced rulesets, not a frozen copy (see `evalNode`).
  */
 export class Apply extends Node<Selector[]> {
   static override childKeys = ['selectors'] as const;
@@ -61,21 +70,48 @@ export class Apply extends Node<Selector[]> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    // Structural / parse-only: render the authored surface (`$apply …;`). Eval-time
-    // expansion into the applied rules is TBD (see class @todo).
+    // `$apply` is invisible in CSS output on its own — eval expands it into the
+    // applied rules. A stray render (unevaluated) falls back to the authored surface.
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     return this.toTrimmedString(printOptions);
   }
 
-  override evalNode(context: Context): MaybePromise<Apply> {
-    // Minimal, non-crashing placeholder: eval each target selector and return the
-    // node structurally. Expanding `$apply` into the applied rules is out of scope
-    // for this "small" node (see class @todo).
-    const evaluated = this.selectors.map(s => s.eval(context));
-    if (evaluated.some(isThenable)) {
-      return Promise.all(evaluated).then(() => this);
+  /**
+   * Expand `$apply` into a `Rules` surface of the matched rulesets' bodies, using
+   * the SAME thin-surface / live-binding mechanic a mixin call uses to inline its
+   * rules (`createCallableRulesSurface`): each target selector is resolved
+   * ruleset-only (whole-selector, merge-all) against the active scope, and for
+   * every matched `Ruleset` a thin surface is created that SHARES the ruleset's
+   * canonical body children (push-without-adopt) and points `sourceNode` at the
+   * ruleset — so the applied rules are a LIVE binding to the referenced rulesets,
+   * not a frozen copy. The thin surfaces are collected into one container `Rules`
+   * that stands in for the `$apply` position; its output flattens into the parent
+   * (same merge mechanic control-flow rules use).
+   */
+  override evalNode(context: Context): MaybePromise<Rules> {
+    const scope = isNode(context.rulesContext, N.Rules) ? context.rulesContext : context.root;
+
+    const surfaces: Node[] = [];
+    for (const selector of this.selectors) {
+      for (const ruleset of resolveRulesetBySelector(selector, scope)) {
+        // Thin surface: shares the ruleset's body children + live `sourceNode`
+        // binding back to the ruleset (mirrors the mixin-call inline path).
+        surfaces.push(createCallableRulesSurface(ruleset));
+      }
     }
-    return this;
+
+    const container = new Rules(
+      [],
+      undefined,
+      sourceSpanOf(this),
+      this.sourceRoot?._treeContext
+    ).inherit(this);
+    for (const surface of surfaces) {
+      // Share the thin surface WITHOUT adopting (keep the live binding intact).
+      container.rules.push(surface);
+    }
+
+    return container.eval(context);
   }
 }
 

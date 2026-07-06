@@ -89,18 +89,42 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   `*[…]` in 08-interpolation, `$|…` removed / `$apply .rounded` in 05-mixins +
   `$ >` in 10-namespaces, mixin arg/param examples `;`→`,` in 05-mixins.
 
+## `$apply` / `Apply` eval semantics (DONE)
+`Apply.evalNode` expands `$apply` into the applied rulesets' bodies (user-specified
+semantics: apply ONLY plain `Ruleset`s, whole-selector match, merge-ALL; parametric
+`Mixin`s excluded — no callable/args/guards machinery):
+- **Shared ruleset-only lookup** `resolveRulesetBySelector(selector, scope)`
+  (`rules.ts`, exported): `getOrderedSelectorKeys` → `findMixinsFast(key,
+  { rulesetsOnly: true })`. New `rulesetsOnly` option on `findMixinsFast` mirrors the
+  existing `includeRulesets` filter in `collectBucketResults`: keep only
+  `isNode(candidate, N.Ruleset)` at whole-selector (`entry.match.length === 0`).
+- **Splice = thin `Rules` + live binding** (mixin-call inline mechanic): each matched
+  `Ruleset` → `createCallableRulesSurface(ruleset)` (shares the ruleset's body
+  children push-without-adopt + `sourceNode` live binding), collected into one
+  container `Rules` that flattens into the parent output. Reused
+  `createCallableRulesSurface` wholesale; did NOT reuse `evaluateCallableCollection`
+  (it bakes in args/candidate-matching/guards — out of scope for ruleset-only apply).
+- Tests: `core/src/tree/__tests__/apply.test.ts` (8 eval tests). Core 2745/0.
+
+## `*[…]` selector-capture ruleset-only — N/A (reported, no change)
+The coordinator's step-3 premise (Reference `*[…]` currently matches BOTH mixin and
+mixin-ruleset, "a miss") does NOT hold: the core `SelectorCapture` node
+(`selector-capture.ts`) is a pure selector resolver — its eval/resolve/render only
+resolve the INNER selector to a selector value; it does NO mixin/ruleset lookup at
+all (confirmed by `selector-capture.test.ts` ×6). The only capture→callable
+resolution is when a capture is CALLED (`call.ts:1481`, `*[.foo]()` → `MixinCollection`
+/ `evalCall`), which IS the args/guards machinery `$apply` must not touch and is a
+distinct construct. So there is no value-position `*[…]` "both-matching" to fix
+without breaking the SelectorCapture tests / altering the Less call path — left
+unchanged. `$apply`'s ruleset-only semantics are delivered via `resolveRulesetBySelector`.
+
 FOLLOW-UPS (out of the adjudicated scope; not yet built):
-- **`Apply` eval semantics** (expand `$apply` to the applied rules) TBD — the
-  `Apply` core node is currently structural / parse-only (`evalNode` evals the
-  target selectors and returns the node; `render` emits the authored `$apply …;`).
 - `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
   `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
   StyleImportValue.with node).
 - Mixin `;`-separated args, rest params `...$x`, and `$content()` callbacks (the
   doc still documents these features; parser support deferred).
 - `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
-  Map to core StyleImport / JsImport nodes.
-- Update canonical docs (`docs-content/docs/jess/**`) to the settled syntax.
 
 ---
 

@@ -117,6 +117,13 @@ type ExactCallableFindOptions = {
   hasTarget?: boolean;
   local?: boolean;
   includeRulesets?: boolean;
+  /**
+   * Ruleset-only lookup: collect ONLY plain `Ruleset` candidates (`.foo {}`),
+   * dropping `Mixin` (parametric/parens `.foo() {}`) and any other callable. Used
+   * by Jess `$apply` and `*[…]` selector capture, whose semantics apply rulesets
+   * as-is — never the args/guards callable machinery.
+   */
+  rulesetsOnly?: boolean;
   searchParents?: boolean;
   skipCurrentSurface?: boolean;
 };
@@ -1571,6 +1578,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): MixinEntry[] {
     let results: MixinEntry[] | undefined;
     const includeRulesets = options?.includeRulesets !== false;
+    const rulesetsOnly = options?.rulesetsOnly === true;
     const collectBucketResults = (candidates: CallableLookupEntry[]): boolean => {
       let found = false;
       for (let i = candidates.length - 1; i >= 0; i--) {
@@ -1580,6 +1588,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         const candidate = entry.value;
         if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+          continue;
+        }
+        // Ruleset-only ($apply / *[…]): keep plain Rulesets, drop Mixins etc.
+        if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
           continue;
         }
         (results ??= []).push(candidate);
@@ -6645,6 +6657,37 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 }
 
 export const rules = defineType(Rules, 'Rules');
+
+/**
+ * Ruleset-only, whole-selector lookup shared by Jess `$apply` and `*[…]` selector
+ * capture. Resolves `selector` (e.g. `.foo`) against `scope`'s callable surface,
+ * returning EVERY matching plain `Ruleset` (`.foo {}`) — merge-all, in scope order.
+ * Parametric `Mixin` definitions (`.foo() {}` / `.foo(@a) {}`) are NEVER returned;
+ * this deliberately does not touch the args/guards callable machinery.
+ *
+ * A capture whose selector has no plain basic key (e.g. `*`, `:hover`) yields `[]`.
+ */
+export function resolveRulesetBySelector(
+  selector: Selector | undefined,
+  scope: Rules
+): Ruleset[] {
+  const keys = getOrderedSelectorKeys(selector);
+  if (keys.length === 0) {
+    return [];
+  }
+  const found: Ruleset[] = [];
+  const seen = new Set<Ruleset>();
+  for (const key of keys) {
+    for (const entry of scope.findMixinsFast(key, { rulesetsOnly: true })) {
+      // rulesetsOnly guarantees Rulesets, but narrow defensively + de-dupe.
+      if (isNode(entry, N.Ruleset) && !seen.has(entry)) {
+        seen.add(entry);
+        found.push(entry);
+      }
+    }
+  }
+  return found;
+}
 
 // Registration prep has two pending lanes. Declaration-name nodes own a local
 // fixed-point state because one declaration name can unblock another; every
