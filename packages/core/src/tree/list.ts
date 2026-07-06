@@ -1,6 +1,6 @@
 import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { type Context } from '../context.js';
-import { defineType, F_CHILD_DERIVED, F_MAY_ASYNC, F_STATIC, Node, type NodeLocation } from './node.js';
+import { defineType, F_CHILD_DERIVED, F_STATIC, Node, type NodeLocation } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
@@ -17,7 +17,7 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { coerceValueNode, evaluateNodeArrayMaybe, evaluateNodeArraySync, type NodeArrayItem } from './util/evaluate-node-array.js';
+import { coerceValueNode, evaluateNodeArrayMaybe, type NodeArrayItem } from './util/evaluate-node-array.js';
 
 function emitListItem<T extends Node>(
   item: T,
@@ -53,21 +53,6 @@ function emitListItemSyntax<T extends Node>(
   }
 }
 
-function emitRenderedListItem<T extends Node>(
-  item: T,
-  context: Context,
-  options: ReturnType<typeof getPrintOptions>,
-  suppressPre = false
-): void {
-  const saved = options.suppressBoundaryTrivia;
-  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
-  try {
-    item.render(context, options);
-  } finally {
-    options.suppressBoundaryTrivia = saved;
-  }
-}
-
 function emitRenderedListItemMaybe<T extends Node>(
   item: T,
   context: Context,
@@ -84,14 +69,10 @@ function emitRenderedListItemMaybe<T extends Node>(
   };
   let rendered: MaybePromise<void>;
   try {
-    if (item.hasFlag(F_MAY_ASYNC)) {
-      const resolved = item.resolve(context);
-      rendered = isThenable(resolved)
-        ? resolved.then(renderNode)
-        : renderNode(resolved);
-    } else {
-      rendered = renderNode(item);
-    }
+    const resolved = item.resolve(context);
+    rendered = isThenable(resolved)
+      ? resolved.then(renderNode)
+      : renderNode(resolved);
   } catch (error: unknown) {
     options.suppressBoundaryTrivia = saved;
     throw error;
@@ -173,29 +154,6 @@ function emitListSeparator(
       { skipLeadingWhitespace: !preserveLeadingWhitespace }
     );
   }
-}
-
-function renderListValueDirect<T extends Node>(
-  context: Context,
-  value: T[],
-  options: PrintOptions,
-  sep: ListOptions['sep'] = ','
-): string {
-  const printOptions = getPrintOptions(options);
-  const w = printOptions.writer;
-  const mark = w.mark();
-  if (value.length === 0) {
-    return '';
-  }
-  let item = value[0]!;
-  emitRenderedListItem(item, context, printOptions);
-  for (let i = 1; i < value.length; i++) {
-    const prev = item;
-    item = value[i]!;
-    emitListSeparator(prev, item, printOptions, sep);
-    emitRenderedListItem(item, context, printOptions, true);
-  }
-  return w.getSince(mark);
 }
 
 function renderListValueDirectMaybe<T extends Node>(
@@ -345,9 +303,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this.renderResolvedListValue(context, this.value, bufferOrOptions, options);
     }
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.renderDirectListValue(context, bufferOrOptions, options);
-    }
     return this.renderDirectListValueMaybe(context, bufferOrOptions, options);
   }
 
@@ -404,23 +359,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       : out;
   }
 
-  private renderDirectListValue(
-    context: Context,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): string {
-    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
-    const prepared = buffer
-      ? prepareBufferPrintState(context, options)
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
-    const out = renderListValueDirect(context, this.value, prepared, this.sep ?? ',');
-    return buffer
-      ? writeRenderText(buffer, out)
-      : out;
-  }
-
   private renderDirectListValueMaybe(
     context: Context,
     bufferOrOptions?: RenderBuffer | PrintOptions,
@@ -446,9 +384,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       return this;
     }
     const source = this.value;
-    const values = this.hasFlag(F_MAY_ASYNC)
-      ? evaluateNodeArrayMaybe(context, source)
-      : evaluateNodeArraySync(context, source);
+    const values = evaluateNodeArrayMaybe(context, source);
     if (isThenable(values)) {
       return (values as Promise<Node[]>).then((resolvedValues) => {
         if (resolvedValues === source) {
