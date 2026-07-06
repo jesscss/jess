@@ -69,9 +69,12 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   `spannedComponents`, so rawChildren is unusable for it).
 
 - `$apply <selector-list>` — corpus 11. `$apply .a, .b` (never `$|…`,
-  adjudication #2); each selector lowers to a `$ > *[.sel]()` mixin Call (name is a
-  base-less `type:'mixin'` Reference keyed by a `SelectorCapture`). Comma list → a
-  List of Calls.
+  adjudication #2). Builds a dedicated first-class `Apply` core node
+  (`packages/core/src/tree/apply.ts`, modelled on `selector-capture.ts`) holding
+  the applied-selector list; each target coerced to a real Selector (lone →
+  BasicSelector). One selector and a comma list are both just an `Apply` with 1 or
+  N selectors; round-trips `$apply .a, .b;` structurally. (Superseded the earlier
+  `$ > *[.sel]()` mixin-Call lowering from `4ea1ad41e`.)
 
 - Jess `@-` at-rules — corpus 12. `@-compose`/`@-export`/`@-import` → StyleImport;
   `@-use`/`@-from` → JsImport (distinct `source`, adjudication #3). Round-trips:
@@ -87,17 +90,15 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   `$ >` in 10-namespaces, mixin arg/param examples `;`→`,` in 05-mixins.
 
 FOLLOW-UPS (out of the adjudicated scope; not yet built):
+- **`Apply` eval semantics** (expand `$apply` to the applied rules) TBD — the
+  `Apply` core node is currently structural / parse-only (`evalNode` evals the
+  target selectors and returns the node; `render` emits the authored `$apply …;`).
 - `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
   `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
   StyleImportValue.with node).
 - Mixin `;`-separated args, rest params `...$x`, and `$content()` callbacks (the
   doc still documents these features; parser support deferred).
 - `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
-- At-rules `@-compose` / `@-use` / `@-from` / `@-export` / `@-import`
-  (`04-atrules.mdx`). `@-use` (Sass-module namespace form) and `@-from` (ESM
-  `import (x as y)` / `import * as ns`) are DISTINCT rules (adjudication #3).
-  `@-compose` has modifiers `(reference)` / `(protected)` / `(export)` and
-  `set`/`with` blocks.
   Map to core StyleImport / JsImport nodes.
 - Update canonical docs (`docs-content/docs/jess/**`) to the settled syntax.
 

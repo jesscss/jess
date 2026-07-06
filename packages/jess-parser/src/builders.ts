@@ -21,7 +21,7 @@ import {
   If, For, While, Rules,
   Mixin, Call, List, Nil,
   Extend, ExtendFlag, BasicSelector,
-  SelectorCapture, SelectorList, Selector,
+  SelectorCapture, SelectorList, Selector, Apply,
   StyleImport, JsImport,
   type ForPattern, type ForIterable
 } from '@jesscss/core';
@@ -809,15 +809,16 @@ export class JessGrammar extends CssParser {
   }
 
   // ── `$apply` — selectors as mixins ────────────────────────────────────────────
-  // `$apply .rounded, .shadow;` → one mixin CALL per listed selector, each of the
-  // shape `$ > *[.sel]()`: a `Call` whose name is a base-less `type:'mixin'`
-  // Reference keyed by a `SelectorCapture` of that selector (`$apply .foo` ≈
-  // `$ > *[.foo]`; adjudicated — surface is `$apply <list>`, never `$|…`). A single
-  // selector → the lone Call; a comma list → a List of Calls.
+  // `$apply .rounded, .shadow;` → a single first-class `Apply` node holding the
+  // applied-selector list (surface is `$apply <list>`, never `$|…`; adjudicated).
+  // Each target is coerced to a real Selector node (lone → BasicSelector, same as
+  // `*[…]` capture); one selector and a comma list are both just an `Apply` with 1
+  // or N selectors. (Expanding `$apply` into the applied rules is an eval concern —
+  // the Apply node is structural / parse-only for now; see NOTES.)
   private _buildJessApply(rawChildren: ReadonlyArray<CSTLike>, location: LocationInfo): Node {
     // Reassemble per-selector text from the leaf run, splitting on `,` (`$apply`
     // and `;` dropped). Each selector is one apply target.
-    const selectors: string[] = [];
+    const selectorTexts: string[] = [];
     let cur = '';
     for (const it of spannedComponents(rawChildren)) {
       const c = it.comp;
@@ -829,7 +830,7 @@ export class JessGrammar extends CssParser {
       }
       if (c === ',') {
         if (cur) {
-          selectors.push(cur);
+          selectorTexts.push(cur);
         }
         cur = '';
         continue;
@@ -837,32 +838,13 @@ export class JessGrammar extends CssParser {
       cur += c;
     }
     if (cur) {
-      selectors.push(cur);
+      selectorTexts.push(cur);
     }
 
-    const makeApplyCall = (sel: string): Node => {
-      const capture = new SelectorCapture(
-        new BasicSelector(sel, undefined, location) as never,
-        undefined,
-        location
-      );
-      const base = new Reference('', { type: 'variable' }, location);
-      const name = new Reference(
-        { target: base, key: capture } as unknown as ReferenceValue,
-        { type: 'mixin' },
-        location
-      );
-      return new Call(
-        { name, args: new List([], undefined, location) } as never,
-        undefined,
-        location
-      ) as unknown as Node;
-    };
-
-    if (selectors.length <= 1) {
-      return makeApplyCall(selectors[0] ?? '');
-    }
-    return new List(selectors.map(makeApplyCall) as never, undefined, location) as unknown as Node;
+    const selectors = selectorTexts.map(
+      text => new BasicSelector(text, undefined, location) as unknown as Selector
+    );
+    return new Apply(selectors as never, undefined, location) as unknown as Node;
   }
 
   // ── Jess `@-` at-rules ────────────────────────────────────────────────────────

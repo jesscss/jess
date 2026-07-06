@@ -6,86 +6,45 @@
  *
  * `$apply <selector-list>` calls rulesets as mixins. The surface is ALWAYS
  * `$apply <list>` (space after `$apply`) — the `$|…` shorthand is INVALID and not
- * accepted (user-adjudicated). Each listed selector lowers to a mixin CALL of the
- * shape `$ > *[.sel]()` (`$apply .foo` ≈ `$ > *[.foo]`): a `Call` whose name is a
- * base-less `type:'mixin'` Reference keyed by a `SelectorCapture` of that selector.
- * A single selector → the lone Call; a comma list → a List of Calls.
+ * accepted (user-adjudicated). `$apply` stays FIRST-CLASS in the AST: it builds a
+ * single dedicated `Apply` core node holding the applied-selector list (each target
+ * coerced to a real Selector node, e.g. a lone `.rounded` → `BasicSelector`). One
+ * selector and a comma list are both just an `Apply` with 1 or N selectors; it
+ * round-trips structurally (`$apply .rounded, .shadow;`).
+ *
+ * (Eval-time expansion into the applied rules is TBD — the Apply node is
+ * structural / parse-only for now; see NOTES.)
  */
 import { describe, it } from 'vitest';
 import { expectAstContains, expectRoundTrip } from './_util.js';
 
 describe('corpus/apply', () => {
-  it('`$apply .rounded;` → a `$ > *[.rounded]()` mixin Call', () => {
+  it('`$apply .rounded;` → an Apply node with one selector', () => {
     expectAstContains('.card { $apply .rounded; }', `
-      (Call
-        name:
-          (Reference
-            target:
-              (Reference
-                key: ''
-              )
-            key:
-              (SelectorCapture
-                selector:
-                  (BasicSelector '.rounded')
-              )
-          )
-        args:
-          (List
-            value:
-              []
-          )
-      )`);
-  });
-
-  it('single `$apply` round-trips to the lowered `$ > *[.rounded]()`', () => {
-    expectRoundTrip('.card { $apply .rounded; }', '$ > *[.rounded]()');
-  });
-
-  it('comma list → one Call per selector, wrapped in a List', () => {
-    expectAstContains('.card { $apply .rounded, .shadow; }', `
-      (List
-        value:
+      (Apply
+        selectors:
           [
-            (Call
-              name:
-                (Reference
-                  target:
-                    (Reference
-                      key: ''
-                    )
-                  key:
-                    (SelectorCapture
-                      selector:
-                        (BasicSelector '.rounded')
-                    )
-                )
-              args:
-                (List
-                  value:
-                    []
-                )
-            )
-            (Call
-              name:
-                (Reference
-                  target:
-                    (Reference
-                      key: ''
-                    )
-                  key:
-                    (SelectorCapture
-                      selector:
-                        (BasicSelector '.shadow')
-                    )
-                )
-              args:
-                (List
-                  value:
-                    []
-                )
-            )
+            (BasicSelector '.rounded')
           ]
       )`);
+  });
+
+  it('single `$apply` round-trips to `$apply .rounded;`', () => {
+    expectRoundTrip('.card { $apply .rounded; }', '$apply .rounded;');
+  });
+
+  it('comma list → one Apply node holding all selectors', () => {
+    expectAstContains('.card { $apply .rounded, .shadow; }', `
+      (Apply
+        selectors:
+          [
+            (BasicSelector '.rounded')
+            (BasicSelector '.shadow')
+          ]
+      )`);
+  });
+
+  it('comma list round-trips to `$apply .rounded, .shadow;`', () => {
+    expectRoundTrip('.card { $apply .rounded, .shadow; }', '$apply .rounded, .shadow;');
   });
 });
