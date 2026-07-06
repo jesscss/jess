@@ -127,10 +127,10 @@ export class LessGrammar extends CssParser {
         this._warnAtRulePreludeVars(span);
         return this._buildLessQueryAtRuleBlock(children, raw, loc);
       case 'NamedColor':          return this._buildNamedColor(children, loc);
-      case 'Comparison':          return this._buildComparison(children, loc);
+      case 'Comparison':          return this._buildComparison(raw, loc);
       case 'GuardDefault':        return new DefaultGuard('default()', {}, loc) as unknown as JessNode;
       case 'GuardInParens':       return this._buildGuardInParens(children, loc);
-      case 'GuardTerm':           return this._buildGuardTerm(children, loc);
+      case 'GuardTerm':           return this._buildGuardTerm(raw, loc);
       case 'GuardAnd':            return this._buildGuardJoin(children, loc, 'and');
       case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
       case 'Guard':               return this._buildGuard(children, loc);
@@ -485,18 +485,42 @@ export class LessGrammar extends CssParser {
     }
   }
 
-  private _buildComparison(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const nodes = nodeChildren(children);
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const left = nodes[0] ?? this._lessKeyword('', loc);
-    const op = ls.find(l => />=|<=|=>|=<|=~|[<>=]/.test(l.value));
-    const right = nodes[1] ?? this._lessKeyword('', loc);
-    if (op) {
-      return new Condition(
-        [left, this._normalizeCompareOp(op.value), right],
-        {},
-        loc
-      ) as unknown as JessNode;
+  /** A guard comparison operator leaf (`=`, `<`, `>=`, `=<`, `=~`, …). */
+  private _isCompareOpLeaf(text: string): boolean {
+    return />=|<=|=>|=<|=~|[<>=]/.test(text);
+  }
+
+  /**
+   * Split a guard term's ordered components into `left [op right]`. A bare-keyword
+   * operand (`foo`, `true`) is a leaf string — not a node — so `nodeChildren`
+   * alone drops it; walk the ordered stream so string operands become real
+   * keyword nodes (their guard truthiness is decided at eval by `Condition`).
+   */
+  private _guardComparison(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo):
+    { left: Node; op?: ConditionOperator; right?: Node } {
+    const items = spannedComponents(raw);
+    let op: ConditionOperator | undefined;
+    const operands: Node[] = [];
+    for (const it of items) {
+      if (typeof it.comp === 'string') {
+        if (this._isCompareOpLeaf(it.comp)) {
+          op = this._normalizeCompareOp(it.comp);
+          continue;
+        }
+        operands.push(this._lessKeyword(it.comp, loc) as unknown as Node);
+      } else {
+        operands.push(it.comp as unknown as Node);
+      }
+    }
+    const left = this._maybeDefaultGuard(operands[0] ?? this._lessKeyword('', loc), loc);
+    const right = operands[1] !== undefined ? this._maybeDefaultGuard(operands[1], loc) : undefined;
+    return { left, op, right };
+  }
+
+  private _buildComparison(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const { left, op, right } = this._guardComparison(raw, loc);
+    if (op && right) {
+      return new Condition([left, op, right], {}, loc) as unknown as JessNode;
     }
     return new Condition([left], {}, loc) as unknown as JessNode;
   }
@@ -530,23 +554,21 @@ export class LessGrammar extends CssParser {
   }
 
   /** A single guard term: optional `not`, then a paren-guard or a comparison/value. */
-  private _buildGuardTerm(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const nodes = nodeChildren(children);
-    const hasNot = ls.some(l => l.value === 'not');
+  private _buildGuardTerm(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(raw);
+    const hasNot = items.some(i => typeof i.comp === 'string' && i.comp === 'not');
+    // Everything after an optional leading `not` is the operand run.
+    const rest = raw.filter(rc => !(rc._tag === 'leaf' && (rc as { value?: string }).value === 'not'));
+    const nodes = nodeChildren(rest as ReadonlyArray<Child>);
     let term: Node;
     if (nodes.length >= 1 && (nodes[0] as any).type === 'Paren') {
       // guardInParens branch (already a Paren node)
       term = nodes[0]!;
     } else {
-      const left = this._maybeDefaultGuard(nodes[0] ?? this._lessKeyword('', loc), loc);
-      const op = ls.find(l => />=|<=|=>|=<|=~|[<>=]/.test(l.value));
-      if (op && nodes[1]) {
-        const right = this._maybeDefaultGuard(nodes[1], loc);
-        term = new Condition([left, this._normalizeCompareOp(op.value), right], {}, loc) as unknown as Node;
-      } else {
-        term = left;
-      }
+      const { left, op, right } = this._guardComparison(rest, loc);
+      term = op && right
+        ? new Condition([left, op, right], {}, loc) as unknown as Node
+        : left;
     }
     if (hasNot) {
       return new Condition([term as any], { negate: true }, loc) as unknown as JessNode;
@@ -1195,10 +1217,19 @@ export class LessGrammar extends CssParser {
     const name = String(nameItem?.comp ?? '').slice(1);
     const valueItems = colonIdx >= 0 ? items.slice(colonIdx + 1) : [];
     const { value } = this._assembleValue(valueItems, loc);
-    // A param/arg VarDeclaration value is always a Node in the callable-binding
-    // path (it calls `value.hasFlag(...)`). `_assembleValue` leaves a lone bare
-    // keyword (`@a: inherit`) as a raw string, so wrap it in a Keyword here.
-    const paramValue = typeof value === 'string' ? this._valueKeyword(value, loc) : value;
+    // A param/arg VarDeclaration value is always a single Node in the callable-
+    // binding path (it calls `value.hasFlag(...)`). `_assembleValue` leaves a lone
+    // bare keyword (`@a: inherit`) as a raw string, and a space-separated segment
+    // (`@padding: 40px 10px`) as a bare Component array — wrap each into a Node.
+    let paramValue: Component;
+    if (typeof value === 'string') {
+      paramValue = this._valueKeyword(value, loc) as unknown as Component;
+    } else if (Array.isArray(value)) {
+      const seq = value.map(c => this._argComponent(c, loc));
+      paramValue = new Sequence(seq as unknown as Node[], undefined, loc) as unknown as Component;
+    } else {
+      paramValue = value;
+    }
     return new VarDeclaration(
       { name: name as any, value: paramValue as any } as any,
       {} as VarDeclarationOptions,
