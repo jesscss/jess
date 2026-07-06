@@ -661,3 +661,11 @@ copied per each() iteration → FIXED. **Bootstrap advances PAST _reboot.**
 Bootstrap next wall: `ReferenceError: 'enable-responsive-font-sizes' is not defined` at Reference.evalNode (scope-
 resolution) — a bootstrap `@enable-responsive-font-sizes` var (defined in _variables) not visible in a guard-eval scope.
 Free-var-through-guard / import-scope class. → dispatched less/bootstrap-wall2. Milestone-4 chain continues.
+
+## 2026-07-06 (alpha) — bootstrap-wall2 MERGED → board 87/93 (core 2760/0)
+scope-frame lookupScopeFrameVariable: replaced first-wins `fallbackFrame ??=` (latched an inner mixin-frame's EMPTY
+fallback, shadowing the import fallback) with a fallbackQueue draining EVERY parent frame's fallbackFrame (cycle-safe
+via visitedFallbackFrames). Flipped **import-interpolation** GREEN; bootstrap advances past @enable-responsive-font-sizes.
+all-less 87/93. Remaining 6 → 5 DEFERRED (extend x3, import-remote, mixins-guards D). Tractable: import-inline (imports IN FLIGHT).
+Bootstrap next wall: `ReferenceError: 'name' is not defined` at `_grid.less:49` — `each(@grid-breakpoints, #(@width, @name){...})`
+each() `#()` PATTERN-BOUND loop variables not bound per iteration. → dispatched less/bootstrap-wall3. Milestone-4 chain.
