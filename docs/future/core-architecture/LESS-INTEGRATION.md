@@ -689,3 +689,11 @@ import-inline MERGED: `(inline)` option wins over `(css)` → raw verbatim inclu
 => all-less is GREEN modulo documented deferrals. Milestone-2 done.
 Now: (1) batch-cherry-pick ~14 accumulated fixes to dev (dev at 79, well behind). (2) continue bootstrap render chain
 (wall4 = @min-in-guard IN FLIGHT) toward bootstrap.less → .css + timing (milestone 4).
+
+## 2026-07-06 (alpha) — bootstrap-wall4 MERGED (88/93, core 2760/0): async searchScope guard
+reference.ts: release the searchScope self-recursion guard on SYNCHRONOUS eval-span completion (right after
+evaluateReferenceValueNode returns) instead of the async `.finally`. An ASYNC binding (`@min: breakpoint-min(...)`, a
+plugin-js fn) left its guard entry lingering across the await → falsely blocked a SIBLING nested-`&` guard's read of
+`@min` (blockedSource in scope-frame.ts:553). Genuine self-refs (`i: i+1`) read synchronously before eval returns, so
+still protected. bootstrap advances past @min. Bootstrap next wall: `Cannot operate on Paren` — arithmetic on a
+parenthesized expression (operation.ts/paren.ts, operand not unwrapped/evaluated before the op). → dispatched wall5.
