@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, decl, el, extend, ExtendFlag, rules, ruleset, sel, sellist, Node } from '../index.js';
+import { any, compound, decl, el, extend, ExtendFlag, is, rules, ruleset, sel, sellist, Node } from '../index.js';
 import { copySelectorForPlacement } from '../util/selector-utils.js';
 
 /**
@@ -105,5 +105,52 @@ describe('B2 share-without-reparent proof', () => {
     const registered = context.extends[0]?.[1];
     expect(registered).toBeDefined();
     expect(() => assertAcyclic(registered)).not.toThrow();
+  });
+
+  it('B3: full extend eval over a compound with a CONTAINER sibling leaves the source AST unmutated', async () => {
+    // Extend a compound `:is(.x, .y).target` whose sibling part is a CONTAINER
+    // (`:is(.x, .y)`, has node children) — the non-trivial placement case (a leaf
+    // would `reuseAsLeaf` regardless). This guards the general extend-eval
+    // source-integrity invariant that the B3 share-frozen placement helpers
+    // (`copySimpleSelectorsForPlacement`/`copyComplexComponentForPlacement`) must
+    // preserve: the AUTHORED source nodes below stay byte-for-byte unmutated —
+    // same objects, canonical parents, no cycle — after a full extend eval.
+    // (The changed helpers' exact-output correctness is pinned separately by the
+    // `extend-selector-algorithm` suite, which drives them directly.)
+    const context = new Context();
+
+    const argX = el('.x');
+    const argY = el('.y');
+    const containerSibling = is(sellist([sel([argX]), sel([argY])]));
+    const targetPart = el('.target');
+    const sourceCompound = compound([containerSibling, targetPart]);
+    const argList = containerSibling.arg;
+    if (!(argList instanceof Node)) {
+      throw new Error('expected :is() arg selector');
+    }
+    const argItems = childNodes(argList);
+
+    const root = rules([
+      ruleset({
+        selector: sourceCompound,
+        rules: [decl({ name: 'color', value: any('red') })]
+      }),
+      ruleset({
+        selector: el('.other'),
+        rules: [extend({ target: el('.target'), flag: ExtendFlag.All })]
+      })
+    ]);
+
+    await root.eval(context);
+
+    // Authored source AST unmutated: same objects, canonical parents preserved.
+    expect(containerSibling.parent).toBe(sourceCompound);
+    expect(targetPart.parent).toBe(sourceCompound);
+    expect(argList.parent).toBe(containerSibling);
+    for (const argItem of argItems) {
+      expect(argItem.parent).toBe(argList);
+    }
+    // No cycle introduced into the authored source tree.
+    expect(() => assertAcyclic(sourceCompound)).not.toThrow();
   });
 });
