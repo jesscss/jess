@@ -533,3 +533,13 @@ IN FLIGHT: value-trivia, nested-mixin, selector-interp (bootstrap blocker).
 Remaining 14 (4 DEFERRED: extend x3, import-remote): comments, comments2, css-3, css-escapes, functions, import-inline,
 import-interpolation, media, mixins-guards, rulesets.
 Bootstrap→css next: resolve @import chain (bootstrap.less is @import-driven) then render with jsPlugin() recipe.
+
+## 2026-07-05 (alpha) — root-statement MERGED → board 80/93 (core 2749/0)
+`Any` (port of Less `Anonymous`) now sets `F_ALLOW_ROOT` at construction (Less's Anonymous does unconditionally);
+`Keyword extends Any` strips it. Root-level `e()`/call value is statement-legal → css-escapes GREEN (was aborting the
+whole render via checkValidNodes). By-type-at-construction, no runtime flag mutation.
+functions residual: `%(...)`/format string function emits raw `%("rgb(%d…",…)` unevaluated — fns string-format bug (separate).
+IN FLIGHT: rulesets (.selector composition); functions (fns %/format); imports (import-inline + import-interpolation —
+also bootstrap's next blocker: import-chain resolution).
+Remaining 13 (4 DEFERRED: extend x3, import-remote): comments, comments2, css-3, functions, import-inline,
+import-interpolation, media, mixins-guards, rulesets.
