@@ -314,3 +314,12 @@ Next: **Phase B — the reparent rework** (root lever: `adopt` stops reparenting
   **Prerequisite (new slice B2-pre): make extend's selector composition parent-pointer-free** — thread the
   structural context (enclosing compound/pseudo) explicitly instead of reading `child.parent`. Then B2 (and
   likely B3 ampersand/extend, same subsystem) unblock. Deep extend-engine refactor — gate hardest.
+
+- **Phase B2-pre — DONE** (dev `c1e3170ae`). Extend composition parent-pointer-free: `applyExtensionAtPath`
+  threads `enclosingCompound`/`enclosingPseudo` instead of climbing `current.parent` for `:is()`-append-vs-wrap.
+  12-line change, byte-identical, all 23 extend files green. Turned the feared extend-engine wall into a slice.
+- **Phase B2 — DONE** (dev `49631d299`). Selector placement SHARES child selectors (no `detachChildren` deep-copy).
+  **Mechanism (reusable for B3/B4):** `PlacementCloneOptions.shareChildren` — share the SAME source child but
+  `frozen=true` first, so `adopt`'s `if(!node.frozen) setParent` SKIPS the reparent; shared child keeps its
+  canonical parent. Proof test `b2-proof.test.ts` confirms source tree unmutated / acyclic (non-tautological).
+  **New baseline 2746/0** (+2 proof tests). Byte-identical.
