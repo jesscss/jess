@@ -252,6 +252,12 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(g.GuardAnd, many(sequence(choice(regex(/or(?![-\w])/), literal(',')), g.GuardAnd)))));
   const Guard = node('Guard',
     parser({ trivia: rw }, sequence(regex(/when(?![-\w])/), g.GuardOr)));
+  // `if(cond, then, else)` / `boolean(cond)` reuse the guard sub-grammar, but the
+  // top-level `,` is the ARGUMENT separator, not a guard `or`. `CondOr` is `GuardOr`
+  // without the comma alt (a comma inside `(...)` is still an `or`, handled by the
+  // nested GuardInParens → GuardOr). Builds via the shared 'GuardOr' fold.
+  const CondOr = node('GuardOr',
+    parser({ trivia: rw }, sequence(g.GuardAnd, many(sequence(regex(/or(?![-\w])/), g.GuardAnd)))));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
   // `&` glued to a suffix (`&1`, `&-bar`) OR a prefix (`.foo-&`, `#bar-&`) — Less
@@ -469,7 +475,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const nsHead = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)(?:[.#]-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)*/);
   const NsAccessor = node('NsAccessor',
     noTrivia(sequence(nsHead, refIndex, many(choice(refIndex, refCall)))));
-  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -649,6 +655,25 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
       regex(/each(?![-\w])/i), literal('('), functionCallArgs, optional(literal(';'))
     )));
 
+  // ── Logical / conditional functions (Less) ──────────────────────────────────
+  // `boolean(cond)` and `if(cond, then[, else])` take a GUARD expression as their
+  // condition — the same `and`/`or`/`not`/comparison sub-grammar used by `when`
+  // guards (GuardOr) — so an infix `true and isnumber(6)`, a `not(2 > 1)`, or a
+  // `2 < 1` comparison parses into a Condition, not a bare value list. The
+  // then/else branches of `if` are ordinary call arguments (values OR detached
+  // rulesets: `if(cond, {c: 3}, {d: 4})`). Ordered before the generic `Call` in
+  // `value` so the keyword routes here; every other name falls to `Call`.
+  const BooleanCall = node('BooleanCall',
+    parser({ trivia: rw }, sequence(
+      regex(/boolean(?![-\w])/i), literal('('), g.CondOr, expect(literal(')'), ')')
+    )));
+  const IfCall = node('IfCall',
+    parser({ trivia: rw }, sequence(
+      regex(/if(?![-\w])/i), literal('('), g.CondOr,
+      optional(sequence(literal(','), callArgSeq, optional(sequence(literal(','), callArgSeq)))),
+      expect(literal(')'), ')')
+    )));
+
   // ── At-rules ───────────────────────────────────────────────────────────────
   const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
 
@@ -707,12 +732,12 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     rw,
     stylesheetItem, blockItem,
     Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
-    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
+    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, CondOr, Guard,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
-    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, SquareParen, anyValue, EachFor,
+    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, IfCall, BooleanCall, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };
