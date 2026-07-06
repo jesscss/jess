@@ -195,6 +195,36 @@ placement copy as: {already-dead | live copy → eliminate (how) | thin structur
 already shares its children}. That inventory is the ordered work-list to drive copy-based eval to
 zero; the flag-walk deletion (Stages 1–4 above) is its tail.
 
+### STEP 0 RESULT (done — `work/zero-copy-eval` off dev, no code changes needed)
+**Deep value-tree copies are already ZERO on this branch.** Mixin/ruleset call placement does NOT
+copy the body (`$for`/`$if` share it via `createIterationEvalSurface(share=true)`; `own*`/`withParts`
+are constructor-time *shallow* ownership normalization that reuse leaves + share grandchildren).
+`Node.clone` and `cloneForPlacement` are shallow surface wrappers that share value children. No dead
+copy sites; nothing safely deep-copy→share convertible remains. The always-share invariant already
+holds for value trees.
+
+**THE SINGLE ROOT BLOCKER for the residual (shallow) copies:** `adopt()` → `setParent(node, this)`
+at **`node-base.ts:669`**, gated `if (!node.frozen)`. A *frozen* (shared) node placed into a new
+surface keeps its canonical parent — `adopt` skips the reparent, only flags propagate. Every
+remaining shallow clone exists to produce a *frozen* node so this reparent is skipped; sharing an
+UN-frozen source node would reparent the SOURCE and corrupt the shared tree. Copies forced by this:
+selector COW, operation operands, ampersand/extend selector materialization, collapse-survivor.
+
+**→ The one lever to reach zero copies:** make placement parenting **never reparent a source node**
+— route placement parenting through the frame/binding layer so `adopt`/`parentChildren` never call
+`setParent` on a source child. Then selectors/operations/extend share un-frozen children directly,
+those 4 clone families delete, and the reuse gates + `F_STATIC`/`F_NON_STATIC` bubble die with them.
+This IS the single-render-pass reparent rework — the big, coupled piece.
+
+**NOT copies (stay regardless):** `$while` iteration body (genuine cross-iteration variable state —
+`i = i+1`; needs isolated state until per-iteration state lives fully in the frame), and declaration
+`+:` merge (`deriveWithParts`/rules.ts:5960/6112/6188 — constructs a genuinely NEW combined value,
+not a placement copy).
+
+**Pure-cleanup note (no copy reduction, owner ruling):** `cloning.ts` `canReuseLeaf`/`reuseLeaf`
+duplicate `Node.canReuseAsLeaf`/`reuseAsLeaf`; `copyForPlacement` is a small superset of
+`cloneForPlacement`. Consolidatable, but both already share children → eliminates no copies.
+
 ---
 
 ## Gates (every stage)
