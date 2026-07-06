@@ -714,3 +714,11 @@ stayed an Any → each bound @i to it → Dimension.operate(Any) throw. bootstra
 Bootstrap next wall: `Expected sync compound selector evaluation to return a node` (selector-compound.ts:258 via
 Ruleset._prepareRulesetSelectorIdentity) — a compound selector component eval returns non-node (async on a sync path).
 → dispatched wall7.
+
+## 2026-07-06 (alpha) — bootstrap-wall7 MERGED (88/93, core 2761/0): compound selector async component
+selector-compound.ts: evalNode/resolveForRender route through the thenable-aware evaluateComponents (dropped the
+sync-only evaluateComponentsSync + its throw). An InterpolatedSelector component (`&$infix` in grid `.col-@{infix}-…`)
+whose `@infix` resolves async (plugin-js/each) returns a Promise; F_MAY_ASYNC is unset (async only knowable at runtime),
+so the sync path threw. Now promotes to a promise cleanly. bootstrap advances.
+Bootstrap next wall: `'value' is not defined` — `@{value}` interpolation reading the each loop var @value; interpolation
+eval frame lacks per-iteration bindings (same class as wall3's flagged residual). → dispatched wall8.
