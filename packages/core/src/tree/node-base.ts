@@ -28,7 +28,13 @@ import {
   sourceSpanOf,
   spanStartOf,
   isSourceFree,
-  F_HAS_SPAN
+  valueSpansOf,
+  setValueSpans,
+  fieldSpansOf,
+  setFieldSpans,
+  F_HAS_SPAN,
+  F_HAS_VALUESPANS,
+  F_HAS_FIELDSPANS
 } from './util/provenance.js';
 
 const { isArray } = Array;
@@ -297,6 +303,9 @@ export const F_FROZEN = 0b1000000000000000;
  * `visible`. Bit 16.
  */
 export const F_MERGE_SUPPRESSED = 0b10000000000000000;
+// Bits 17/18 — per-slot span flags; also owned by util/provenance.ts (WeakMap
+// side tables), re-exported here to keep the bit allocation discoverable.
+export { F_HAS_VALUESPANS, F_HAS_FIELDSPANS };
 
 /**
  * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
@@ -434,9 +443,10 @@ export abstract class Node<
   // free functions in `util/provenance.ts` (`sourceSpanOf`, `setSourceSpan`).
   // Declared here initialized to `undefined` so the hidden class stays
   // monomorphic; the parser sets them once at construction (via the constructor
-  // `location` arg). The one hot check is the `F_HAS_SPAN` flag. Per-sub-component
-  // span arrays are intentionally NOT stored — authored inter-component
-  // whitespace is normalized; comments round-trip via a node-span comment scan.
+  // `location` arg). The one hot check is the `F_HAS_SPAN` flag. Per-slot span
+  // arrays are intentionally NOT stored as fields — they are sparse (only
+  // source multi-member nodes carry them) and live in WeakMap side tables in
+  // `util/provenance.ts`, gated by `F_HAS_VALUESPANS`/`F_HAS_FIELDSPANS`.
   // NEVER attach these dynamically.
   _spanStart: number | undefined = undefined;
   _spanEnd: number | undefined = undefined;
@@ -1399,6 +1409,15 @@ export abstract class Node<
       setParent(this, this.parent ?? node.parent);
     }
     setSourceSpan(this, sourceSpanOf(node));
+    // Per-slot spans are sparse (only source multi-member nodes carry them); the
+    // flag check keeps eval nodes free. Carry them across derivation so a derived
+    // selector-list / value surface can still place inter-member comment trivia.
+    if (node.hasFlag(F_HAS_VALUESPANS) && !this.hasFlag(F_HAS_VALUESPANS)) {
+      setValueSpans(this, valueSpansOf(node));
+    }
+    if (node.hasFlag(F_HAS_FIELDSPANS) && !this.hasFlag(F_HAS_FIELDSPANS)) {
+      setFieldSpans(this, fieldSpansOf(node));
+    }
     this._sourceRoot ??= node.sourceRoot;
     if (isRulesNode(this)) {
       this._treeContext ??= node.sourceRoot?._treeContext;
