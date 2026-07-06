@@ -9,6 +9,12 @@ import {
   getCommentRunVisits,
   resetCommentRunVisits
 } from '../util/trivia.js';
+import {
+  getExtendMatchWork,
+  resetExtendMatchWork
+} from '../util/extend-walk.js';
+import { Parser } from '../../../../less-parser/src/index.js';
+import type { RenderBufferNode } from '../util/render-buffer.js';
 import type { TriviaMap, Trivia } from '../../types/index.js';
 
 /**
@@ -151,5 +157,75 @@ describe('render scaling guardrail', () => {
     const size4N = r4N.css.length;
     expect(size4N / sizeN).toBeGreaterThan(3.5);
     expect(size4N / sizeN).toBeLessThan(4.5);
+  });
+
+  /**
+   * Extend-matcher scaling guardrail. The chained-extend discovery
+   * (`findChainedExtendsWithSkips`) once re-scanned the ENTIRE extend list for
+   * every applied extend and re-ran `wouldExtendChange` (a full selector-matcher
+   * descent) from scratch on every pair — O(I²) matcher descents in the number
+   * of extend instructions. It slipped every prior gate (byte-identical +
+   * suite-green) because those are complexity-blind.
+   *
+   * `getExtendMatchWork()` counts every FULL (cache-missing) `wouldExtendChange`
+   * descent across a render. The pass-scoped memo turns repeat probes into Map
+   * hits and the target-value index stops the whole-list rescan, so the total
+   * scales ~linearly with instruction count. Rendering the SAME shape at
+   * increasing extend counts and asserting the WORK grows ~linearly (via a
+   * DETERMINISTIC counter, not a wall clock) fails LOUDLY if either the memo or
+   * the index regresses back to the quadratic.
+   */
+  function buildExtendHeavySheet(components: number): string {
+    // Each component contributes a local 3-link chain
+    // (.a-i → .b-i:extend(.a-i) → .c-i:extend(.b-i)) plus a hook that extends
+    // one of a few shared bases. Every applied extend triggers chained
+    // discovery, which (pre-fix) rescans ALL components' extends.
+    let src = '';
+    for (let i = 0; i < 4; i++) {
+      src += `.base-${i} { color: rgb(${i}, ${i}, ${i}); }\n`;
+    }
+    for (let c = 0; c < components; c++) {
+      src += `.a-${c} { color: red; }\n`;
+      src += `.b-${c}:extend(.a-${c}) { margin: 1px; }\n`;
+      src += `.c-${c}:extend(.b-${c}) { padding: 1px; }\n`;
+      src += `.hook-${c} { &:extend(.base-${c % 4}); width: ${c}px; }\n`;
+    }
+    return src;
+  }
+
+  async function extendWorkForRender(source: string): Promise<{ css: string; work: number }> {
+    const parser = new Parser();
+    const { tree } = parser.parse(source);
+    resetExtendMatchWork();
+    const css = await renderNodeToString(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      tree as unknown as RenderBufferNode,
+      new Context(),
+      { context: new Context() }
+    );
+    return { css, work: getExtendMatchWork() };
+  }
+
+  it('extend-matcher work scales ~linearly, not quadratically, with extend count', async () => {
+    const N = 25;
+
+    const rN = await extendWorkForRender(buildExtendHeavySheet(N));
+    const r2N = await extendWorkForRender(buildExtendHeavySheet(2 * N));
+    const r4N = await extendWorkForRender(buildExtendHeavySheet(4 * N));
+
+    // Sanity: the chained extends actually fire (matcher work is exercised and
+    // the chain resolves — .b-0 gained .a-0, etc.).
+    expect(rN.work).toBeGreaterThan(0);
+    expect(rN.css).toContain('.a-0');
+
+    // Quadratic ⇒ work(4N)/work(N) ≈ 16; linear ≈ 4. A generous 8× bound fails
+    // loudly on the O(I²) rescan (~16×) with headroom for constants and the
+    // per-candidate index-lookup term.
+    const ratio = r4N.work / rN.work;
+    expect(ratio).toBeLessThan(8);
+
+    // Each doubling must stay well under the quadratic ~4×.
+    expect(r2N.work / rN.work).toBeLessThan(3.5);
+    expect(r4N.work / r2N.work).toBeLessThan(3.5);
   });
 });

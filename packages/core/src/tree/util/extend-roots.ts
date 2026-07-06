@@ -19,7 +19,7 @@ import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
-import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './extend-walk.js';
+import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch, beginExtendMatchPass, endExtendMatchPass } from './extend-walk.js';
 import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
@@ -653,6 +653,11 @@ export function processExtends(context: Context): void {
     if (!context.extends.length) {
       return;
     }
+    // Install the pass-scoped matcher memo. The extend set is immutable for the
+    // whole pass, so the invariant (target, find, extendWith, partial, parent)
+    // match relation is cacheable — collapsing the O(I²) re-matching done by
+    // chained-extend discovery + classify. Torn down in the finally below.
+    beginExtendMatchPass();
     // Snapshot eval'd value before any extend modifications.
     // This ensures getEffectiveSelector composes with original value,
     // not ones already modified by earlier extends in this pass.
@@ -1163,6 +1168,7 @@ export function processExtends(context: Context): void {
       context.warnings.push(toDiagnostic(diagnostic));
     }
   } finally {
+    endExtendMatchPass();
     rulesetsByRoot.clear();
   }
 }
