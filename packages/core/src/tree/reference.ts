@@ -139,6 +139,13 @@ export type ReferenceOptions = {
   preserveRulesLike?: boolean;
   /** Internal call-site hint: terminal mixin-ruleset lookup cannot use rulesets when args are present. */
   mixinRulesetCallHasArgs?: boolean;
+  /**
+   * Internal call-site hint: this mixin-ruleset reference is being EVALUATED as a
+   * call statement (`#ns > .m()`), which emits output — every same-named namespace
+   * on the path contributes. A bare value/index lookup (`#ns.m[@x]`) does NOT set
+   * this and keeps override (last-wins) namespace semantics.
+   */
+  mixinRulesetCall?: boolean;
 };
 
 // `sourceNode` stays on the public shallow-owned surface for compatibility and
@@ -1086,7 +1093,8 @@ function performMixinRulesLookup(
       hasTarget: lookupContext.hasTarget,
       local: shape.local || undefined,
       terminalMixinOnly: shape.terminalMixinOnly || undefined,
-      rulesetsOnly: captureKey || undefined
+      rulesetsOnly: captureKey || undefined,
+      mixinCall: lookupContext.referenceNode.options.mixinRulesetCall || undefined
     }
   );
 }
@@ -1111,7 +1119,8 @@ function performMixinRulesetRulesLookup(
       hasTarget: lookupContext.hasTarget,
       local: shape.local || undefined,
       terminalMixinOnly: shape.terminalMixinOnly || undefined,
-      rulesetsOnly: captureKey || undefined
+      rulesetsOnly: captureKey || undefined,
+      mixinCall: lookupContext.referenceNode.options.mixinRulesetCall || undefined
     }
   );
 }
