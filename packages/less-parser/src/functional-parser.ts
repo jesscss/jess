@@ -72,7 +72,10 @@ export function parseLessFn(
   mathMode: MathMode = 'parens-division',
   context?: TreeContext
 ): LessFnParseResult {
-  host.mathMode = mathMode;
+  // mathMode comes from the threaded context when present (the caller's per-file
+  // TreeContext carries it, alongside every other option); the `mathMode` param
+  // is only the context-less fallback for bare `parseLessFn(src)` callers.
+  host.mathMode = context?.mathMode ?? mathMode;
   host.context = context;
   const g = lessGrammar as Record<string, unknown>;
   // Less trivia includes `//` line comments, so trailing `//…` is not leftover.

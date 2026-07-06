@@ -72,10 +72,9 @@ export class LessPlugin extends AbstractPlugin {
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? true;
     this.collapseNesting = opts.collapseNesting ?? false;
 
-    this.parser = new Parser({
-      mathMode: this.mathMode,
-      leakyScope: this.leakyScope
-    });
+    // mathMode (and every other option) reaches the parser via the per-file
+    // TreeContext threaded into parse() — no constructor config needed.
+    this.parser = new Parser();
   }
 
   private createTreeContext(filePath: string, source: string): TreeContext {
