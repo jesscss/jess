@@ -255,6 +255,7 @@ export function fieldIndexOf(node: JessNode, key: string): { index: number; coun
 export function buildLazyTriviaMap(log: number[], src: string): TriviaMap {
   let before: Map<number, Trivia> | undefined;
   let after: Map<number, Trivia> | undefined;
+  let sortedComments: readonly Trivia[] | undefined;
 
   const build = () => {
     before = new Map<number, Trivia>();
@@ -290,6 +291,24 @@ export function buildLazyTriviaMap(log: number[], src: string): TriviaMap {
         build();
       }
       return (direction === 'before' ? before! : after!).has(offset);
+    },
+    commentRuns() {
+      if (sortedComments === undefined) {
+        if (!after) {
+          build();
+        }
+        // Mirror the `after`-index source set of the per-node scan; runs are
+        // unique per `after` offset, so no cross-offset dedupe is needed here.
+        const runs: Trivia[] = [];
+        for (const run of after!.values()) {
+          if (run.hasComment) {
+            runs.push(run);
+          }
+        }
+        runs.sort((a, b) => a.start - b.start);
+        sortedComments = runs;
+      }
+      return sortedComments;
     }
   };
 }
