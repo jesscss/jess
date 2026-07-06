@@ -1042,6 +1042,103 @@ export class LessGrammar extends CssParser {
     return result as unknown as JessNode;
   }
 
+  /**
+   * A quoted string value. Unlike plain CSS, Less interpolates `@{var}` / `${prop}`
+   * inside quoted (and escaped `~"…"`) strings and inside `@import` paths. When the
+   * raw content holds an interpolation, split it into an `Interpolated` value the same
+   * way the reference parser's `processStringInterpolation` does (source with
+   * INTERPOLATION_PLACEHOLDER, `@var`/`$prop` references in `replacements`); otherwise
+   * fall through to the plain CSS builder (bare-string value).
+   */
+  protected override _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const text = children
+      .filter((c): c is CSTLeaf => c._tag === 'leaf')
+      .map(l => l.value)
+      .join('');
+    const inner = text.slice(1, -1);
+    if (inner.includes('@{') || inner.includes('${')) {
+      const value = this._buildStringInterpolation(inner, loc);
+      return new Quoted(value as any, { quote: text[0] as '"' | '\'' }, loc) as unknown as JessNode;
+    }
+    return super._buildQuoted(children, loc);
+  }
+
+  /**
+   * Build an escaped `~'…'` Quoted (at-rule prelude position), interpolating any
+   * `@{var}` / `${prop}` in its body the same way `_buildQuoted` does — so
+   * `~'@{a} / @{b}'` renders its substituted values instead of literal text.
+   */
+  private _buildEscapedQuoted(inner: string, quote: '"' | '\'', loc: LocationInfo): JessNode {
+    const value = (inner.includes('@{') || inner.includes('${'))
+      ? this._buildStringInterpolation(inner, loc)
+      : inner;
+    return new Quoted(value as any, { quote, escaped: true }, loc) as unknown as JessNode;
+  }
+
+  /**
+   * Split a quoted-string body on `@{…}` / `${…}` interpolations into an
+   * `Interpolated` (source + reference replacements). Port of the reference parser's
+   * `processStringInterpolation`/`findInterpolations` (productions/values.ts): brace
+   * matching is nesting-aware, and a nested-interpolated name resolves through a
+   * variable Reference wrapped in an Expression.
+   */
+  private _buildStringInterpolation(value: string, loc: LocationInfo): Interpolated {
+    const matches = this._findInterpolations(value);
+    const replacements: Node[] = [];
+    let source = value;
+    let offset = 0;
+    for (const match of matches) {
+      const adjustedStart = match.start - offset;
+      const adjustedEnd = match.end - offset;
+      source = source.slice(0, adjustedStart) + INTERPOLATION_PLACEHOLDER + source.slice(adjustedEnd);
+      offset += (match.end - match.start) - INTERPOLATION_PLACEHOLDER.length;
+      if (match.content.includes('@{') || match.content.includes('${')) {
+        // Nested interpolation resolves through a variable Reference, kept
+        // expression-wrapped so it re-renders as a single interpolated slot.
+        const nestedRef = new Reference(
+          { key: this._buildStringInterpolation(match.content, loc) as any } as unknown as ReferenceValue,
+          { type: 'variable', role: 'ident' } as any, loc
+        );
+        replacements.push(new Expression(nestedRef as any, undefined, loc) as unknown as Node);
+      } else {
+        replacements.push(createInterpolatedReference(match.prefix, match.content, loc) as unknown as Node);
+      }
+    }
+    return new Interpolated({ source, replacements: replacements as any }, { role: 'ident' }, loc);
+  }
+
+  /**
+   * Locate `@{…}` / `${…}` interpolation runs in a string, counting nested braces so
+   * `@{@{x}}` and `@{fn(a, b)}` are matched whole. Returns start/end/prefix/content.
+   */
+  private _findInterpolations(value: string): Array<{ start: number; end: number; prefix: string; content: string }> {
+    const matches: Array<{ start: number; end: number; prefix: string; content: string }> = [];
+    let i = 0;
+    while (i < value.length) {
+      if ((value[i] === '@' || value[i] === '$') && value[i + 1] === '{') {
+        const prefix = value[i]!;
+        const start = i;
+        i += 2;
+        let braceCount = 1;
+        const contentStart = i;
+        while (i < value.length && braceCount > 0) {
+          if (value[i] === '{') {
+            braceCount++;
+          } else if (value[i] === '}') {
+            braceCount--;
+          }
+          i++;
+        }
+        if (braceCount === 0) {
+          matches.push({ start, end: i, prefix, content: value.slice(contentStart, i - 1) });
+        }
+      } else {
+        i++;
+      }
+    }
+    return matches;
+  }
+
   protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const call = super._buildCall(rawChildren, loc) as unknown as {
       name: unknown; args: unknown; _options?: Record<string, unknown>;
@@ -1847,15 +1944,13 @@ export class LessGrammar extends CssParser {
     // prelude for CSS imports (and strip the whole `url(...)`, not just its inner
     // quotes, when extracting a trailing media query).
     const urlNode = builtNodes.find(n => n.type === 'Url') as unknown as Url | undefined;
-    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
+    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as Quoted | undefined;
     let pathNode: Quoted | undefined;
     if (quotedNode) {
-      const quote = quotedNode.quote ?? '"';
-      const inner = typeof quotedNode.value === 'string'
-        ? quotedNode.value
-        : (quotedNode.value as any)?.valueOf?.() ?? '';
-      const innerNode = inner;
-      pathNode = new Quoted(innerNode, { quote }, loc);
+      // Reuse the built Quoted so an interpolated path (`@import "@{theme}.less"`)
+      // keeps its Interpolated value and resolves before import resolution — flattening
+      // it to `.valueOf()` would strip the `@{…}` references.
+      pathNode = new Quoted(quotedNode.value, { quote: quotedNode.quote ?? '"' }, loc);
     } else {
       // Fallback: extract path from preludeText (AtRuleStatement uses scanTo leaves)
       const _qm = preludeText.match(/(['"])([^'"]+)\1/);
@@ -2022,7 +2117,7 @@ export class LessGrammar extends CssParser {
     const buildWord = (w: string): JessNode => {
       const es = escapedStrRe.exec(w);
       if (es) {
-        return new Quoted(es[2]!, { quote: es[1] as '\'' | '"', escaped: true }, loc) as unknown as JessNode;
+        return this._buildEscapedQuoted(es[2]!, es[1] as '\'' | '"', loc);
       }
       const mv = singleVarRe.exec(w);
       if (mv) {
@@ -2103,7 +2198,7 @@ export class LessGrammar extends CssParser {
       const buildOperand = (t: string): JessNode | undefined => {
         const es = escapedStrRe.exec(t);
         if (es) {
-          return new Quoted(es[2]!, { quote: es[1] as '\'' | '"', escaped: true }, loc) as unknown as JessNode;
+          return this._buildEscapedQuoted(es[2]!, es[1] as '\'' | '"', loc);
         }
         const mv = singleVarRe.exec(t);
         if (mv) {
