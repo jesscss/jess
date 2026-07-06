@@ -633,9 +633,18 @@ export abstract class Node<
    * the object shape.
    */
   toJSON(): Record<string, unknown> {
-    const { sourceNode, parent, ...rest } = this;
+    // Drop the internal back-references that would make `JSON.stringify(node)`
+    // cycle: `sourceNode` (a node is its own source), `parent` (points up the
+    // tree), `_sourceRoot` (points at the root `Rules`), and `_treeContext`
+    // (context → sourceTrees → nodes). `JSON.stringify` honors `toJSON()`, so
+    // excluding them keeps stringify cycle-safe without per-instance
+    // non-enumerable defs. Subclasses with their OWN back-refs (e.g. `Rules`
+    // `_scopeFrame`) must extend this via `super.toJSON()` and delete theirs.
+    const { sourceNode, parent, _sourceRoot, _treeContext, ...rest } = this;
     void sourceNode;
     void parent;
+    void _sourceRoot;
+    void _treeContext;
     return rest;
   }
 

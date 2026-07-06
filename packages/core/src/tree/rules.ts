@@ -1185,6 +1185,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * Rules clones still need to preserve function bindings so visitor/plugin
    * registrations survive the explicit clone sites that remain outside the hot path.
    */
+  override toJSON(): Record<string, unknown> {
+    // `_scopeFrame` back-references this `Rules` (frame → rulesNode) at eval
+    // time, so it must be dropped to keep `JSON.stringify` cycle-safe — the same
+    // discipline as the base back-refs (sourceNode/parent/_sourceRoot). The
+    // lookup caches hold resolved callables/frames that can also retain
+    // back-refs; they are derived, non-tree data, so drop them too.
+    const json = super.toJSON();
+    delete json._scopeFrame;
+    delete json.callableLookupCache;
+    delete json.directDeclarationLookupCache;
+    delete json.functionLookupCache;
+    return json;
+  }
+
   override clone(cloneFn?: (n: Node) => Node): this {
     const source = this.rules;
     let value: Node[];
