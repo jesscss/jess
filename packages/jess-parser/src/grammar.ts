@@ -286,6 +286,49 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
       optional(literal(';'))
     )));
 
+  // ── Jess `@-` at-rules (compiler at-rules; dash-prefixed for future-CSS safety) ─
+  //   @-compose 'path' [as ns|*];   → StyleImport{ type:'compose' }
+  //   @-export 'path';              → StyleImport{ type:'compose', forward }
+  //   @-import 'path';              → StyleImport{ type:'import' } (renders @import)
+  //   @-use 'path' [as ns];         → JsImport{ source:'use' } (namespace module)
+  //   @-from 'path' import (a as b) | * as ns;  → JsImport{ source:'from' } (ESM)
+  // `@-use` and `@-from` are DISTINCT constructs (adjudication #3), not aliases.
+  // Path is a Quoted string; namespace / import names are bare idents (or `*`).
+  const importPath = g.Quoted;
+  const importNs = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|\*/);
+  const asClause = parser({ trivia: rw }, sequence(regex(/as(?![-\w])/), importNs));
+  // Import specifier: `name` | `name as alias` | `* as ns`.
+  const importName = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|\*/);
+  const importSpec = parser({ trivia: rw }, sequence(importName, optional(asClause)));
+
+  const ComposeAtRule = node('ComposeAtRule',
+    parser({ trivia: rw }, sequence(
+      regex(/@-compose(?![-\w])/), importPath, optional(asClause), optional(literal(';'))
+    )));
+  const ExportAtRule = node('ExportAtRule',
+    parser({ trivia: rw }, sequence(
+      regex(/@-export(?![-\w])/), importPath, optional(literal(';'))
+    )));
+  const ImportAtRule = node('ImportAtRule',
+    parser({ trivia: rw }, sequence(
+      regex(/@-import(?![-\w])/), importPath, optional(literal(';'))
+    )));
+  const UseAtRule = node('UseAtRule',
+    parser({ trivia: rw }, sequence(
+      regex(/@-use(?![-\w])/), importPath, optional(asClause), optional(literal(';'))
+    )));
+  const FromAtRule = node('FromAtRule',
+    parser({ trivia: rw }, sequence(
+      regex(/@-from(?![-\w])/), importPath, regex(/import(?![-\w])/),
+      choice(
+        // `import * as ns`
+        sequence(literal('*'), asClause),
+        // `import (a, b as c, …)`
+        sequence(literal('('), importSpec, many(sequence(literal(','), importSpec)), literal(')'))
+      ),
+      optional(literal(';'))
+    )));
+
   // ── Anonymous mixins & functions ─────────────────────────────────────────────
   // A nameless Mixin in VALUE position, started with `@(` or `@{`. Four shapes:
   //   @() { … }          anon mixin (params, block body)
@@ -322,6 +365,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // ── Root + rule bodies (re-declared so Jess `rw`/`//` + `$` items apply) ─────
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
+      g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
       g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
       g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset
     ))));
@@ -330,6 +374,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}'))));
 
   const declarationList = parser({ trivia: rw }, many(choice(
+    g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
     g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
     g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
@@ -346,6 +391,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     If, For, While,
     MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall,
     AnonMixin, Extend, SelectorCapture, Apply,
+    ComposeAtRule, ExportAtRule, ImportAtRule, UseAtRule, FromAtRule,
     Stylesheet, Ruleset, declarationList
   };
 })]);

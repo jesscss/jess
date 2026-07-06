@@ -73,8 +73,21 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   base-less `type:'mixin'` Reference keyed by a `SelectorCapture`). Comma list → a
   List of Calls.
 
-STILL TO BUILD (order: `@-` at-rules → docs):
-- At-rules `@-compose` / `@-use` / `@-from` / `@-export` / `@-import` (see below).
+- Jess `@-` at-rules — corpus 12. `@-compose`/`@-export`/`@-import` → StyleImport;
+  `@-use`/`@-from` → JsImport (distinct `source`, adjudication #3). Round-trips:
+  `@-compose 'p' [as ns|*];`, `@-export 'p';`, `@-use 'p' [as ns];`,
+  `@-from 'p' import (a, b as c) | * as ns;`. NOTE: `@-import` round-trips as
+  `@import` (core's `StyleImport{type:'import'}.writeSyntax` emits `@import` — it
+  deliberately overlaps the CSS at-rule; the leading `@-` is authored-only sugar).
+  Base forms only; `@-compose` modifiers `(reference)`/`(protected)`/`(export)` +
+  `set`/`with` blocks are NOT yet built (follow-up).
+
+STILL TO BUILD (order: docs → follow-ups):
+- Update canonical Docusaurus docs to the settled syntax (drop `$` from `$*[…]`,
+  drop `$|…`, fix `;`-vs-`,` mixin-arg examples).
+- `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
+  `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
+  StyleImportValue.with node).
 - `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
 - At-rules `@-compose` / `@-use` / `@-from` / `@-export` / `@-import`
   (`04-atrules.mdx`). `@-use` (Sass-module namespace form) and `@-from` (ESM

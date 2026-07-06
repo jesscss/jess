@@ -22,6 +22,7 @@ import {
   Mixin, Call, List, Nil,
   Extend, ExtendFlag, BasicSelector,
   SelectorCapture, SelectorList, Selector,
+  StyleImport, JsImport,
   type ForPattern, type ForIterable
 } from '@jesscss/core';
 import type { Span } from 'parseman';
@@ -64,6 +65,11 @@ export class JessGrammar extends CssParser {
       case 'SelectorCapture': return this._buildJessSelectorCapture(children, rawChildren, loc(span));
       case 'Extend':         return this._buildJessExtend(children, rawChildren, loc(span));
       case 'Apply':          return this._buildJessApply(rawChildren, loc(span));
+      case 'ComposeAtRule':  return this._buildJessCompose(children, rawChildren, loc(span));
+      case 'ExportAtRule':   return this._buildJessExport(children, loc(span));
+      case 'ImportAtRule':   return this._buildJessImportAt(children, loc(span));
+      case 'UseAtRule':      return this._buildJessUse(children, rawChildren, loc(span));
+      case 'FromAtRule':     return this._buildJessFrom(children, rawChildren, loc(span));
       case 'Expression':     return this._buildJessExpression(children, loc(span));
       case 'Condition':      return this._buildJessCondition(children, loc(span));
       case 'JessKeyword':    return this._valueKeyword((children.find(isLeaf)?.value) ?? '', loc(span)) as unknown as Node;
@@ -857,6 +863,134 @@ export class JessGrammar extends CssParser {
       return makeApplyCall(selectors[0] ?? '');
     }
     return new List(selectors.map(makeApplyCall) as never, undefined, location) as unknown as Node;
+  }
+
+  // ── Jess `@-` at-rules ────────────────────────────────────────────────────────
+  // The quoted path arrives as a built `Quoted` node child; namespace / `as` / import
+  // specifier names arrive as leaves. `@-compose`/`@-export`/`@-import` → StyleImport;
+  // `@-use`/`@-from` → JsImport (distinct `source` per adjudication #3).
+
+  private _importPath(children: ReadonlyArray<Node | CSTLike>): Node {
+    return children.find(c => !isLeaf(c) && (c as Node).type === 'Quoted') as Node;
+  }
+
+  // Read the namespace after an `as` leaf (`as theme` / `as *`) from a leaf run.
+  private _asNamespace(rawChildren: ReadonlyArray<CSTLike>): string | undefined {
+    const comps = spannedComponents(rawChildren).map(i => i.comp);
+    const asIdx = comps.indexOf('as');
+    if (asIdx >= 0 && typeof comps[asIdx + 1] === 'string') {
+      return comps[asIdx + 1] as string;
+    }
+    return undefined;
+  }
+
+  // `@-compose 'path' [as ns|*];` → StyleImport{ type: 'compose' }.
+  private _buildJessCompose(
+    children: ReadonlyArray<Node | CSTLike>,
+    rawChildren: ReadonlyArray<CSTLike>,
+    location: LocationInfo
+  ): Node {
+    const path = this._importPath(children);
+    const namespace = this._asNamespace(rawChildren);
+    return new StyleImport(
+      { path } as never,
+      { type: 'compose', importOptions: {}, ...(namespace ? { namespace } : {}) } as never,
+      location
+    ) as unknown as Node;
+  }
+
+  // `@-export 'path';` → StyleImport{ type: 'compose', importOptions: { forward } }.
+  private _buildJessExport(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo): Node {
+    const path = this._importPath(children);
+    return new StyleImport(
+      { path } as never,
+      { type: 'compose', importOptions: { forward: true } } as never,
+      location
+    ) as unknown as Node;
+  }
+
+  // `@-import 'path';` → StyleImport{ type: 'import' }. (Renders `@import` — core
+  // deliberately overlaps the CSS at-rule; it does NOT round-trip to `@-import`.)
+  private _buildJessImportAt(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo): Node {
+    const path = this._importPath(children);
+    return new StyleImport(
+      { path } as never,
+      { type: 'import', importOptions: {} } as never,
+      location
+    ) as unknown as Node;
+  }
+
+  // `@-use 'path' [as ns];` → JsImport{ source: 'use' } (namespace-module form).
+  private _buildJessUse(
+    children: ReadonlyArray<Node | CSTLike>,
+    rawChildren: ReadonlyArray<CSTLike>,
+    location: LocationInfo
+  ): Node {
+    const path = this._importPath(children);
+    const namespace = this._asNamespace(rawChildren);
+    return new JsImport(
+      { path } as never,
+      { source: 'use', ...(namespace ? { namespace } : {}) } as never,
+      location
+    ) as unknown as Node;
+  }
+
+  // `@-from 'path' import (a, b as c) | * as ns;` → JsImport{ source: 'from' }.
+  // ESM-style import: either a namespace import (`* as ns`, one `['*', ns]` spec) or
+  // a named-import list (each `name` or `name as alias` → a `[name, alias?]` spec).
+  private _buildJessFrom(
+    children: ReadonlyArray<Node | CSTLike>,
+    rawChildren: ReadonlyArray<CSTLike>,
+    location: LocationInfo
+  ): Node {
+    const path = this._importPath(children);
+    // Walk the leaf run after `import`, collecting specifiers. `as` binds the
+    // preceding name to the following alias; `(` `)` `,` are structural.
+    const comps = spannedComponents(rawChildren)
+      .map(i => i.comp)
+      .filter((c): c is string => typeof c === 'string');
+    const importIdx = comps.indexOf('import');
+    const rest = importIdx >= 0 ? comps.slice(importIdx + 1) : [];
+
+    const imports: Array<[string, string] | string> = [];
+    let pendingName: string | undefined;
+    let expectAlias = false;
+    for (const c of rest) {
+      if (c === '(' || c === ')' || c === ';') {
+        continue;
+      }
+      if (c === ',') {
+        if (pendingName !== undefined) {
+          imports.push(pendingName);
+        }
+        pendingName = undefined;
+        expectAlias = false;
+        continue;
+      }
+      if (c === 'as') {
+        expectAlias = true;
+        continue;
+      }
+      if (expectAlias) {
+        imports.push([pendingName ?? '*', c]);
+        pendingName = undefined;
+        expectAlias = false;
+        continue;
+      }
+      if (pendingName !== undefined) {
+        imports.push(pendingName);
+      }
+      pendingName = c;
+    }
+    if (pendingName !== undefined) {
+      imports.push(pendingName);
+    }
+
+    return new JsImport(
+      { path, imports } as never,
+      { source: 'from' } as never,
+      location
+    ) as unknown as Node;
   }
 
   private _buildForPattern(bindingNames: string[], location: LocationInfo): ForPattern {
