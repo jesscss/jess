@@ -82,12 +82,16 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   Base forms only; `@-compose` modifiers `(reference)`/`(protected)`/`(export)` +
   `set`/`with` blocks are NOT yet built (follow-up).
 
-STILL TO BUILD (order: docs → follow-ups):
-- Update canonical Docusaurus docs to the settled syntax (drop `$` from `$*[…]`,
-  drop `$|…`, fix `;`-vs-`,` mixin-arg examples).
+- Canonical Docusaurus docs updated to the settled syntax (`60b7b35f6`): `$*[…]`→
+  `*[…]` in 08-interpolation, `$|…` removed / `$apply .rounded` in 05-mixins +
+  `$ >` in 10-namespaces, mixin arg/param examples `;`→`,` in 05-mixins.
+
+FOLLOW-UPS (out of the adjudicated scope; not yet built):
 - `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
   `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
   StyleImportValue.with node).
+- Mixin `;`-separated args, rest params `...$x`, and `$content()` callbacks (the
+  doc still documents these features; parser support deferred).
 - `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
 - At-rules `@-compose` / `@-use` / `@-from` / `@-export` / `@-import`
   (`04-atrules.mdx`). `@-use` (Sass-module namespace form) and `@-from` (ESM
