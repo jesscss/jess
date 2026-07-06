@@ -784,7 +784,8 @@ function mergeDirectChildRulesVisibility(
 
 function collectCallableBucketResults(
   bucket: CallableLookupEntry[],
-  includeRulesets: boolean
+  includeRulesets: boolean,
+  rulesetsOnly = false
 ): MixinEntry[] | undefined {
   let results: MixinEntry[] | undefined;
   for (let i = bucket.length - 1; i >= 0; i--) {
@@ -796,6 +797,10 @@ function collectCallableBucketResults(
     if (!includeRulesets && isNode(candidate, N.Ruleset)) {
       continue;
     }
+    // Ruleset-only (bracket capture `*[.foo]()`): drop non-Ruleset callables.
+    if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
+      continue;
+    }
     (results ??= []).push(candidate);
   }
   return results;
@@ -805,7 +810,8 @@ function collectCallableBucketRemainderResults(
   bucket: CallableLookupEntry[],
   includeRulesets: boolean,
   path: readonly string[],
-  offset: number
+  offset: number,
+  rulesetsOnly = false
 ): MixinEntry[] | undefined {
   const restLength = path.length - offset - 1;
   if (restLength <= 0) {
@@ -829,6 +835,9 @@ function collectCallableBucketRemainderResults(
     }
     const candidate = entry.value;
     if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+      continue;
+    }
+    if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
       continue;
     }
     (results ??= []).push(candidate);
@@ -1689,7 +1698,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     key: string,
     reason: Extract<ScopeFrameCallableLookupResult, { kind: 'uncovered' }>['reason'],
     includeRulesets: boolean,
-    options: CallableFindOptions
+    options: CallableFindOptions,
+    rulesetsOnly = false
   ): UncoveredCallableResult {
     if (reason !== 'child-surface' && reason !== 'reference-import') {
       return UNCOVERED_CALLABLE_UNSUPPORTED;
@@ -1738,7 +1748,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         searchParents: false
       });
       if (frameHit.kind === 'hit') {
-        const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+        const results = collectCallableBucketResults(frameHit.bucket, includeRulesets, rulesetsOnly);
         if (results) {
           (frameResults ??= []).push(...results);
         }
@@ -1768,7 +1778,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           key,
           reason,
           includeRulesets,
-          options
+          options,
+          rulesetsOnly
         );
         if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
           if (direct.length > 0) {
@@ -1781,7 +1792,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         key,
         reason,
         includeRulesets,
-        options
+        options,
+        rulesetsOnly
       );
       if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED && direct.length > 0) {
         frameResults = direct;
@@ -3613,6 +3625,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
+      // Bracket-capture call `*[.foo]()`: terminal hits must be plain Rulesets only.
+      const rulesetsOnly = options.rulesetsOnly === true;
       const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
         this.prepareCallableLookupFrame(callableFrame, keys, includeRulesets);
@@ -3622,7 +3636,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
-          const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+          const results = collectCallableBucketResults(frameHit.bucket, includeRulesets, rulesetsOnly);
           if (results) {
             return results;
           }
@@ -3635,7 +3649,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             keys,
             frameHit.reason,
             includeRulesets,
-            options
+            options,
+            rulesetsOnly
           );
           if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
             frameMissCovered = true;
@@ -3688,7 +3703,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
               }
             }
             if (retryHit.kind === 'hit') {
-              const results = collectCallableBucketResults(retryHit.bucket, includeRulesets);
+              const results = collectCallableBucketResults(retryHit.bucket, includeRulesets, rulesetsOnly);
               if (results) {
                 return results;
               }
@@ -3702,7 +3717,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                   keys,
                   retryHit.reason,
                   includeRulesets,
-                  options
+                  options,
+                  rulesetsOnly
                 );
                 if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
                   frameMissCovered = true;

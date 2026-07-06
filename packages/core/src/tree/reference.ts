@@ -266,6 +266,17 @@ function isInsideSelectorCapture(node: Node | undefined): boolean {
   return false;
 }
 
+/**
+ * A bracket-capture call reference `*[.foo]()` — the reference's KEY is a
+ * `SelectorCapture` node. This is DISTINCT from the dot mixin-ruleset call
+ * `*.foo()` (a string key, `type: 'mixin-ruleset'`, no capture key). The bracket
+ * form resolves ruleset-only; the dot form is unchanged (both mixin + ruleset).
+ */
+function isSelectorCaptureKeyReference(referenceNode: Reference): boolean {
+  const key = referenceNode.key;
+  return typeof key === 'object' && key !== null && !Array.isArray(key) && key.type === 'SelectorCapture';
+}
+
 function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   if (isNode(selector, N.BasicSelector) || selector.type === 'InterpolatedSelector') {
     return selector.valueOf();
@@ -1064,14 +1075,18 @@ function performMixinRulesLookup(
   if (shouldPrepareCallableReferenceFrame(scope, lookupContext, shape, key)) {
     scope.getScopeFrame();
   }
+  // Bracket-capture call `*[.foo]()` resolves RULESET-only: allow rulesets through
+  // (no `'Mixin'` filter, which would drop them) and filter to Rulesets.
+  const captureKey = isSelectorCaptureKeyReference(lookupContext.referenceNode);
   return scope.findMixin(
     key,
-    'Mixin',
+    captureKey ? undefined : 'Mixin',
     {
       context: lookupContext.context,
       hasTarget: lookupContext.hasTarget,
       local: shape.local || undefined,
-      terminalMixinOnly: shape.terminalMixinOnly || undefined
+      terminalMixinOnly: shape.terminalMixinOnly || undefined,
+      rulesetsOnly: captureKey || undefined
     }
   );
 }
@@ -1085,6 +1100,9 @@ function performMixinRulesetRulesLookup(
   if (shouldPrepareCallableReferenceFrame(scope, lookupContext, shape, key)) {
     scope.getScopeFrame();
   }
+  // Dot mixin-ruleset call `*.foo()` stays both; bracket-capture `*[.foo]()`
+  // resolves ruleset-only.
+  const captureKey = isSelectorCaptureKeyReference(lookupContext.referenceNode);
   return scope.findMixin(
     key,
     undefined,
@@ -1092,7 +1110,8 @@ function performMixinRulesetRulesLookup(
       context: lookupContext.context,
       hasTarget: lookupContext.hasTarget,
       local: shape.local || undefined,
-      terminalMixinOnly: shape.terminalMixinOnly || undefined
+      terminalMixinOnly: shape.terminalMixinOnly || undefined,
+      rulesetsOnly: captureKey || undefined
     }
   );
 }
@@ -3671,17 +3690,26 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add(']');
         break;
       case 'variable':
-        if (target) {
-          w.add('.$');
+        // A variable lookup ON a target renders in brackets (`$theme[foo]`);
+        // `.$key` is not a valid Jess form. A base-less variable-interpolation
+        // (`role: 'ident'`, e.g. `.widget-$[side]`) also brackets: `$[side]`. A
+        // plain bare `$foo` (no target) has already emitted its `$` above.
+        if (target || this.role === 'ident') {
+          w.add('[');
+          emitReferenceSyntaxKey(this, printableKey, options);
+          w.add(']');
+        } else {
+          emitReferenceSyntaxKey(this, printableKey, options);
         }
-        emitReferenceSyntaxKey(this, printableKey, options);
         break;
       case 'declaration':
         w.add('.');
         emitReferenceSyntaxKey(this, printableKey, options);
         break;
       case 'property':
-        if (target) {
+        // Property lookup on a target, and base-less property-interpolation
+        // (`role: 'ident'`, e.g. `$['border-color']`), both render in brackets.
+        if (target || this.role === 'ident') {
           w.add('[');
           emitReferenceSyntaxKey(this, printableKey, options);
           w.add(']');

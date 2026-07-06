@@ -116,4 +116,11 @@ export type CallableFindOptions = {
   context?: Context;
   /** For mixin-ruleset calls with args, namespace containers may be rulesets but terminal hits must be mixins. */
   terminalMixinOnly?: boolean;
+  /**
+   * Ruleset-only terminal match: collect ONLY plain `Ruleset` candidates, dropping
+   * `Mixin`s. Used by the Jess bracket-capture call `*[.foo]()` (distinct from the
+   * dot mixin-ruleset call `*.foo()`, which stays both). Filters terminal hits only;
+   * namespace containers are unaffected.
+   */
+  rulesetsOnly?: boolean;
 };

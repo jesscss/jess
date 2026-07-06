@@ -106,17 +106,28 @@ semantics: apply ONLY plain `Ruleset`s, whole-selector match, merge-ALL; paramet
   (it bakes in args/candidate-matching/guards — out of scope for ruleset-only apply).
 - Tests: `core/src/tree/__tests__/apply.test.ts` (8 eval tests). Core 2745/0.
 
-## `*[…]` selector-capture ruleset-only — N/A (reported, no change)
-The coordinator's step-3 premise (Reference `*[…]` currently matches BOTH mixin and
-mixin-ruleset, "a miss") does NOT hold: the core `SelectorCapture` node
-(`selector-capture.ts`) is a pure selector resolver — its eval/resolve/render only
-resolve the INNER selector to a selector value; it does NO mixin/ruleset lookup at
-all (confirmed by `selector-capture.test.ts` ×6). The only capture→callable
-resolution is when a capture is CALLED (`call.ts:1481`, `*[.foo]()` → `MixinCollection`
-/ `evalCall`), which IS the args/guards machinery `$apply` must not touch and is a
-distinct construct. So there is no value-position `*[…]` "both-matching" to fix
-without breaking the SelectorCapture tests / altering the Less call path — left
-unchanged. `$apply`'s ruleset-only semantics are delivered via `resolveRulesetBySelector`.
+## `*[.foo]()` bracket-capture CALL is ruleset-only (DONE)
+Correction to an earlier N/A: the bracket-capture CALL `*[.foo]()` IS made
+ruleset-only, and it's a DIFFERENT construct from the dot mixin-ruleset call
+`*.foo()` — so the change is surgical and leaves `*.foo()` untouched:
+- `*[.foo]()` — a `Call` whose name is a `Reference` whose KEY is a `SelectorCapture`
+  (`cap.parent === reference`; `isInsideSelectorCapture(reference)` is FALSE — the
+  capture is a child, not an ancestor). Now resolves RULESET-only (same as `$apply`):
+  a same-named `.foo` Mixin is excluded.
+- `*.foo()` — a `Reference` with a STRING key + `options.type === 'mixin-ruleset'`,
+  no capture. UNCHANGED (matches both mixin + ruleset).
+Implementation:
+- `rulesetsOnly` threaded through `findMixin`'s string-key path +
+  `collectCallableBucketResults` / `collectCallableBucketRemainderResults` /
+  `findMixinsFastForUncoveredCallable` (mirrors the `includeRulesets` guard;
+  `CallableFindOptions.rulesetsOnly`).
+- Gate: new `isSelectorCaptureKeyReference(referenceNode)` (key is a SelectorCapture)
+  in `performMixinRulesLookup` / `performMixinRulesetRulesLookup`; when true, drop the
+  `'Mixin'` filter (so rulesets are allowed) and pass `rulesetsOnly: true`.
+- The BARE `*[…]` value (not called) is still a pure selector resolver — it does no
+  lookup, so it's unaffected (SelectorCapture tests ×6 stay green).
+- Tests: `selector-capture-call.test.ts` (4) incl. a bracket-vs-dot divergence test.
+  Core 2749/0; `$apply` unchanged.
 
 FOLLOW-UPS (out of the adjudicated scope; not yet built):
 - `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
