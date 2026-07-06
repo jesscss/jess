@@ -79,7 +79,11 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // NOTE: variable `+:` is INTENTIONALLY absent — there is no Jess VARIABLE
   // compound-add operator; write it explicitly (`$foo: $foo + 1`). Less PROPERTY
   // `+:` merge is a separate feature on plain Declarations, unaffected by this.
-  const dollarDeclName = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  //
+  // `$!foo: bar` is a live-binding ASSIGNMENT — the `!` right after `$` mirrors the
+  // `$!foo` read form. It parses (with a warning; eval is a TODO), so the name regex
+  // allows an optional `!` before the identifier.
+  const dollarDeclName = regex(/\$!?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const assignOp = regex(/\?:|:=|:/);
   const VarDeclaration = node('VarDeclaration',
     parser({ trivia: rw }, sequence(

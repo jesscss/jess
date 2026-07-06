@@ -134,20 +134,45 @@ Implementation:
   `!default` (NOT Jess). Serialization normalized to the canonical GLUED form:
   `$foo?: v` renders with NO space before the `:` (the spaced `$foo ?: v` authored
   form normalizes to it). Fix: `isJessGluedAssign` in `declaration.ts` glues
-  `CondAssign`/`Add` only; `:=` (setDefined) and Less `&,:`/`&_:` stay spaced
-  (kept `$one := three` test green).
+  `CondAssign`/`Add` only; `:=` (setDefined/nearestOuter) and Less `&,:`/`&_:` stay
+  spaced (kept `$one := three` test green).
 - **NO variable `+:` operator** — the Jess VARIABLE compound-add operator was
   REMOVED. `$foo +: 1` no longer parses; write it explicitly as `$foo: $foo + 1`.
   `assignOp` grammar is `/\?:|:=|:/` (no `+:`); the builder's `AssignmentType.Add`
   branch for VarDeclaration is gone. (`AssignmentType.Add` still exists in core for
   the Less PROPERTY `+:` merge — a separate feature, see the deferred design below.)
-- **`$foo := bar` global (non-shadowing) assign — reuses core `setDefined`** (NOT a
-  new AssignmentType; `SetGlobal` was deleted as a redundant duplicate). Builder
-  sets `setDefined: true` on the VarDeclaration; core's existing setDefined eval
-  (rules.ts ~4723) resolves the binding outward and writes its cell — eval already
-  exists. Grammar `assignOp` has `:=` BEFORE `:` so it wins over `:` + a `=`-led
-  value (was a silent mis-parse). Round-trips SPACED (`$foo := bar`) via the
-  setDefined serialization path (`setDefined && assign === ':'` → `:=`).
+- **`$foo := bar` = NEAREST-OUTER non-shadowing assign — distinct `nearestOuter`
+  marker (NOT `setDefined`).** User-settled semantics: reassign the *nearest
+  enclosing scope that already defines `$foo`* (JS-block style), NOT the global/top
+  binding. Sass `!global` = `setDefined` = global/top — a GENUINELY DIFFERENT
+  semantics (verified: setDefined evals `!global`-ish), so `:=` MUST NOT share it.
+  - New `nearestOuter?: boolean` option on `DeclarationOptions` (distinct from
+    `setDefined`). Jess builder sets `nearestOuter: true` for `:=` (the earlier
+    `setDefined`-reuse is reverted; `SetGlobal` enum stays deleted).
+  - Serialization: `:=` now renders for `setDefined || nearestOuter` (same surface,
+    distinct flags) — both `declaration.ts` sites. Round-trips SPACED `$foo := bar`.
+  - **Eval DEFERRED** — nearest-outer scope-walk + reassignment is NOT implemented.
+    `nearestOuter` is read by NO eval code, so `:=` currently has NO eval effect
+    (verified: `.box` reads the ORIGINAL value, not the `:=` write). This is
+    preferable to wrong `!global` eval. `setDefined`/`!global` eval is UNCHANGED
+    (verified: still reassigns). TODO below.
+  - Grammar `assignOp` has `:=` BEFORE `:` so it wins over `:` + a `=`-led value.
+- **`$!foo: bar` live-binding ASSIGNMENT — parse-with-warning.** The `$!` sigil
+  right after `$` (mirrors the `$!foo` read form). Grammar `dollarDeclName` allows
+  an optional `!` (`/\$!?-?…/`); the builder strips the `!`, records
+  `liveBinding: true` on the VarDeclaration (new option), and emits a parser
+  warning (`result.warnings`, `deprecation: 'live-binding-assignment'`:
+  "…parsed but not yet evaluated (not implemented)"). Renders back `$!name`.
+  **Eval DEFERRED** — "assign through the live binding" not implemented (TODO).
+
+## setDefined / `!global` ↔ `:=` split — blast radius (investigated)
+- `setDefined: true` is SET by: scss-parser (3 sites, `sawGlobal` = Sass `!global`)
+  and — until this change — the jess `:=` builder. Now ONLY scss sets it.
+- `setDefined` is READ by ~12 core sites (rules.ts registration/eval incl. the
+  assign-through-binding at ~4723, + direct-rules-lookup.ts) implementing the
+  `!global` "assign the existing (global) binding" eval. ALL of that is UNTOUCHED —
+  `:=` moving to `nearestOuter` leaves `setDefined`/`!global` semantics intact
+  (core 2749/0). `nearestOuter` is read by no eval code yet (deferred).
 
 ## Property `+:` merge — DEFERRED design (eval + option plumbing NOT built)
 Only the design; the merge-resolution eval + option plumbing are deferred (merge
@@ -166,23 +191,14 @@ eval is already deferred-eval territory). This is the PROPERTY `+:` (plain
   - **Defaults: `.less` → `legacyMerge: true`; `.jess` → `legacyMerge: false`.**
   - Granularity: compilation-level, defaulted by the entry file's extension.
 
-## ⚠️ Semantics gaps to FLAG (found while verifying `:=` / `$!`)
-- **`setDefined` (`:=`) does NOT reassign the NEAREST outer binding in a 3-level
-  scope.** Verified: `$x: one` (root); `.a { $x: two; .b { $x := three; inner: $x };
-  after: $x }` → `.b` reads `three` but `.a`'s `after` still reads `two` (NOT
-  three). The GLOBAL case works (`$c: red` root, `$c := blue` in `.btn`, `.box`
-  reads blue). So setDefined behaves like `!global`-ish / writes a local-ish cell,
-  NOT strictly "reassign nearest outer binding". If the user's intent for `:=` is
-  "reassign the *nearest* enclosing binding" (JS block-scope semantics), there is a
-  gap between that and setDefined's actual behavior — user should reconcile.
-- **`$!foo: bar;` live-binding ASSIGNMENT does NOT parse.** The live-binding
-  REFERENCE `$!foo` (value position, e.g. `color: $!foo`) parses fine, but the
-  ASSIGNMENT form `$!foo: bar;` fails ("Unexpected input") — `dollarDeclName`
-  (`/\$-?[ident]/`) doesn't allow the `!` after `$`. Docs now present `$!foo: bar`
-  as the live-binding assignment (replacing retired `$^`), but the PARSER doesn't
-  accept it yet. Fix would be a one-token grammar change (`\$!?-?…`) PLUS eval for
-  "assign through the live binding" — deferred/flagged rather than silently added
-  (eval unvalidated). `$^` linear-set is fully RETIRED from the docs.
+## Deferred eval TODOs (parse + serialize done; NO eval effect yet)
+- **`$foo := bar` nearest-outer reassignment eval** — walk to the nearest enclosing
+  scope defining `$foo` and reassign THAT binding (JS-block style), NOT the global
+  one. Real scope-walking work; deferred. Until built, `:=` has no eval effect (an
+  inert marker, like `$!foo:`). Must NOT be routed through `setDefined`'s `!global`
+  eval. (`nearestOuter` option; see the assignment-operators section.)
+- **`$!foo: bar` live-binding assignment eval** — "assign through the live binding".
+  Not implemented; the parser accepts `$!foo:` and WARNS. (`liveBinding` option.)
 
 FOLLOW-UPS (out of the adjudicated scope; not yet built):
 - `$!foo: bar;` live-binding assignment parse + eval (see flag above).

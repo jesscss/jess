@@ -87,18 +87,36 @@ describe('corpus/variables', () => {
     expect(varDeclSyntax('$x ?: 1;')).toBe('$x?: 1');
   });
 
-  it('global (non-shadowing) assign := (core setDefined)', () => {
-    // `$foo := bar` reassigns the existing binding (resolved outward) rather than
-    // shadowing. It reuses core's existing `setDefined` (documented as `Jess:
-    // $foo := 1`), which already has eval — NOT a new AssignmentType. `:=` must
-    // win over `:` + a `=`-led value (was a silent mis-parse).
+  it('nearest-outer (non-shadowing) assign := ', () => {
+    // `$foo := bar` reassigns the NEAREST enclosing scope that already defines
+    // `$foo` (JS-block style), NOT the global binding. It carries a `nearestOuter`
+    // marker — DISTINCT from Sass `!global` (core's `setDefined`); the two must not
+    // share a flag. `:=` must win over `:` + a `=`-led value (was a mis-parse).
+    // Eval (nearest-outer scope-walk) is DEFERRED — currently no eval effect (see
+    // NOTES), which is preferable to wrong `!global` eval.
     expectAstContains('$foo := bar;', `
       (VarDeclaration
-          setDefined: true
+          nearestOuter: true
         name: 'foo'`, { showOptions: true });
-    // Round-trips SPACED — `$foo := bar` — the user's canonical spelling. (`:=` is
-    // synthesized from setDefined in serialization; assign stays the default `:`.)
+    // Round-trips SPACED — `$foo := bar`. (`:=` is synthesized from nearestOuter in
+    // serialization; `assign` stays the default `:`.)
     expect(varDeclSyntax('$foo := bar;')).toBe('$foo := bar');
+  });
+
+  it('live-binding assignment $!foo: — parses + warns (eval TODO)', () => {
+    // `$!foo: bar` is the live-binding ASSIGNMENT (the `$!` sigil, mirroring the
+    // `$!foo` read form). The parser ACCEPTS it (the `!` is stripped from the name
+    // and recorded as `liveBinding`), and emits a warning that it is not yet
+    // evaluated. Eval ("assign through the live binding") is a TODO (see NOTES).
+    expectAstContains('$!foo: bar;', `
+      (VarDeclaration
+          liveBinding: true
+        name: 'foo'`, { showOptions: true });
+    // Round-trips WITH the `$!` sigil.
+    expect(varDeclSyntax('$!foo: bar;')).toBe('$!foo: bar');
+    // A parser warning surfaces on `result.warnings`.
+    const warnings = parseJessFn('$!foo: bar;', 'Stylesheet').warnings;
+    expect(warnings.some(w => w.deprecation === 'live-binding-assignment')).toBe(true);
   });
 
   it('variable declaration with !important', () => {

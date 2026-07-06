@@ -278,7 +278,18 @@ export class JessGrammar extends CssParser {
   private _buildJessVarDeclaration(children: ReadonlyArray<Node | CSTLike>, rawChildren: ReadonlyArray<CSTLike>, location: LocationInfo): Node {
     const items = spannedComponents(rawChildren);
     const rawName = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
-    const name = rawName.replace(/^\$/, '');
+    // `$!foo` is a live-binding ASSIGNMENT — strip the `$` then the `!` sigil and
+    // record `liveBinding` on the node (mirrors the `$!foo` read form). Eval is a
+    // TODO, so warn that it is parsed but not evaluated.
+    const afterDollar = rawName.replace(/^\$/, '');
+    const liveBinding = afterDollar[0] === '!';
+    const name = liveBinding ? afterDollar.slice(1) : afterDollar;
+    if (liveBinding) {
+      this._warn(
+        `live-binding assignment '$!${name}:' is parsed but not yet evaluated (not implemented)`,
+        'live-binding-assignment'
+      );
+    }
 
     const opIdx = items.findIndex(i => i.comp === ':' || i.comp === '?:' || i.comp === ':=');
     const op = items[opIdx]?.comp as string | undefined;
@@ -325,18 +336,21 @@ export class JessGrammar extends CssParser {
     // $foo + 1` explicitly. (Less PROPERTY `+:` merge lives on plain Declarations.)
     const assign = op === '?:' ? AssignmentType.CondAssign : undefined;
 
-    // `$foo := bar` is the global (non-shadowing) assign: reuse core's existing
-    // `setDefined` (documented in declaration-var.ts as `Jess: $foo := 1`), which
-    // already implements the eval — assign through the resolved outer binding
-    // rather than shadowing. It renders back as `:=` (spaced) via the setDefined
-    // serialization path; `assign` stays the default `:`.
-    const setDefined = op === ':=';
+    // `$foo := bar` is the NEAREST-OUTER non-shadowing assign: reassign the nearest
+    // enclosing scope that already defines `$foo` (JS-block style), NOT the global
+    // binding. This is DISTINCT from Sass `!global` (core's `setDefined`) — so it
+    // carries its own `nearestOuter` marker, not `setDefined`. Renders `:=` (spaced)
+    // via the shared `:=` serialization path; `assign` stays the default `:`.
+    // Eval is DEFERRED (nearest-outer scope-walk not implemented; no eval effect —
+    // preferable to wrong `!global` eval).
+    const nearestOuter = op === ':=';
 
     return new VarDeclaration(
       { name, value, important } as never,
       {
         ...(assign ? { assign } : {}),
-        ...(setDefined ? { setDefined: true } : {})
+        ...(nearestOuter ? { nearestOuter: true } : {}),
+        ...(liveBinding ? { liveBinding: true } : {})
       },
       location
     ) as unknown as Node;

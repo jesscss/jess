@@ -93,13 +93,24 @@ export type DeclarationOptions = {
    */
   readonly?: boolean;
   /**
-   * Instead of implicitly declaring or overriding,
-   * requires a variable to previously be explicitly
-   * declared within scope.
+   * Instead of implicitly declaring or overriding, requires a variable to
+   * previously be explicitly declared within scope, and assigns THAT binding
+   * (the global / top one) — Sass `!global` semantics.
    *
-   * Used by SCSS (!global) and Jess's (^$foo:)
+   * Used by SCSS `!global`. NOT Jess `:=` — that is `nearestOuter` (below), a
+   * distinct nearest-enclosing-binding intent. (`setDefined` still renders `:=`.)
    */
   setDefined?: boolean;
+
+  /**
+   * Jess `$foo := bar` — NEAREST-OUTER non-shadowing assignment: reassign the
+   * nearest enclosing scope that already defines `$foo` (JS-block style), NOT the
+   * global/top binding. DISTINCT from `setDefined` (Sass `!global`). Renders `:=`.
+   *
+   * @todo eval — nearest-outer scope-walk + reassignment is NOT implemented; `:=`
+   * currently has no eval effect (preferable to wrong `!global` eval).
+   */
+  nearestOuter?: boolean;
 
   /** Used by SCSS (!default) and Jess (?:) */
   // setIfUndefined?: boolean
@@ -976,12 +987,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       customInterpolatedSource
       && getSingleInterpolatedDeclarationValue(value) === customInterpolatedSource
     );
-    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
-    // setDefined uses `:=` with default spacing rules.
+    const { assign = ':', normalizedFromAssign, setDefined, nearestOuter } = this._options ?? {};
+    // `:=` renders for both Sass `!global` (setDefined) and Jess nearest-outer
+    // (nearestOuter) — same surface, distinct semantics — with default spacing.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
       ? AssignmentType.Default
       : assign;
-    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
+    const effAssign = ((setDefined || nearestOuter) && printedAssign === ':') ? ':=' : printedAssign;
     // Jess name-glued assignment ops (`$foo?:`, `$list+:`) render with NO space
     // before the operator — the canonical authored form. `:` and the Less forms
     // (`:=`, `&,:`, `&_:`) keep their existing spacing.
@@ -1145,9 +1157,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (this.important !== undefined && importantText === undefined) {
       return false;
     }
-    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
+    const { assign = ':', normalizedFromAssign, setDefined, nearestOuter } = this._options ?? {};
     const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
-    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
+    const effAssign = ((setDefined || nearestOuter) && printedAssign === ':') ? ':=' : printedAssign;
     const w = options.writer!;
     w.add(nameText, this.name instanceof Node ? this.name : this);
     // Jess name-glued ops (`$foo?:`, `$list+:`) omit the leading space.
