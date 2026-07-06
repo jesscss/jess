@@ -475,7 +475,13 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const nsHead = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)(?:[.#]-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)*/);
   const NsAccessor = node('NsAccessor',
     noTrivia(sequence(nsHead, refIndex, many(choice(refIndex, refCall)))));
-  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.FormatCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  // A CSS `unicode-range` token (`U+A5`, `U+0-7F`, `U+0???`, `U+??????`). Ordered
+  // before Dimension/Num/anyValue so the whole `U+…` run is one verbatim value — a
+  // bare `ident` would stop at the `+` and leave `+0???`/`0-7F` to be mis-folded as
+  // arithmetic. @see https://drafts.csswg.org/css-syntax/#urange-syntax
+  const UnicodeRange = node('UnicodeRange',
+    parser({ trivia: rw }, regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/)));
+  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.FormatCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -745,7 +751,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
-    valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
+    valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, IfCall, BooleanCall, FormatCall, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
