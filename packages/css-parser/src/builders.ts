@@ -16,6 +16,8 @@ import {
   valueSpansOf,
   setValueSpans as setNodeValueSpans,
   sourceSpanOf,
+  setSourceSpan,
+  spanStartOf,
   type SourceSpan
 } from '@jesscss/core';
 
@@ -784,22 +786,26 @@ export class CssParser {
     if (segValues.length === 1) {
       return { value: segValues[0]!, span };
     }
-    const listValues = segValues.map((v) => {
+    const listValues = segValues.map((v, i) => {
+      const seg = filledSegments[i]!;
+      const segSpan: Span = { start: seg[0]!.span.start, end: seg[seg.length - 1]!.span.end };
       if (Array.isArray(v)) {
         return v.map(c => typeof c === 'string' ? this._valueKeyword(c, loc) as unknown as Component : c);
       }
       if (typeof v === 'string') {
-        return this._valueKeyword(v, loc) as unknown as Component;
+        // Give the item its own segment span so the serializer can recover the
+        // authored inter-item whitespace from the trivia map (keyed by offset).
+        return this._valueKeyword(v, spanToLocation(segSpan)) as unknown as Component;
+      }
+      // A single-node segment (e.g. a comma item that is one Keyword/Call) keeps
+      // whatever span it already carries; stamp the segment span only when it has
+      // none, so inter-item trivia lookup (`spanStartOf(item)`) resolves.
+      if (spanStartOf(v as unknown as object) === undefined) {
+        setSourceSpan(v as unknown as Node, segSpan);
       }
       return v;
     });
     const list = new List(listValues as unknown as Node[], undefined, loc);
-    if (filledSegments.length) {
-      setValueSpans(list as unknown as JessNode, filledSegments.map(seg => ({
-        start: seg[0]!.span.start,
-        end: seg[seg.length - 1]!.span.end
-      })));
-    }
     return { value: list as unknown as Component, span };
   }
 

@@ -144,7 +144,6 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/import/import-reference-issues.less', 'reference import selector scoping differs from Less'],
   ['tests-unit/import/import-reference.less', 'reference import filtering leaves extra at-rules'],
   ['tests-unit/import/import.less', 'Less @plugin script execution is not available in this harness'],
-  ['tests-unit/mixins-guards-default-func/mixins-guards-default-func.less', 'default() guard resolution differs from Less'],
   ['tests-unit/operations/operations-advanced.less', 'advanced math/color operation behavior differs from Less'],
   ['tests-unit/property-accessors/property-accessors.less', 'property accessor precedence differs from Less'],
   ['tests-unit/scope/scope.less', 'parent selector scope output differs from Less'],

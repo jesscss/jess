@@ -11,6 +11,7 @@ import {
   type PrintOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic,
+  type TriviaMap,
   JessError,
   toDiagnostic,
   WARN,
@@ -190,6 +191,50 @@ function getSearchPaths(options: Record<string, unknown>): string[] | undefined 
     return options.paths.filter((value): value is string => typeof value === 'string');
   }
   return undefined;
+}
+
+/**
+ * A view over a TriviaMap that hides comment-bearing runs. Less rounds comments
+ * through real `Comment` nodes, so exposing comment trivia to the serializer
+ * would double-emit them (and their surrounding whitespace). We only want the
+ * pure-whitespace runs — the authored spacing inside declaration values.
+ */
+function whitespaceOnlyTrivia(trivia: TriviaMap): TriviaMap {
+  return {
+    lookup(offset, direction) {
+      const run = trivia.lookup(offset, direction);
+      return run && !run.hasComment ? run : undefined;
+    },
+    *entries(direction) {
+      for (const entry of trivia.entries(direction)) {
+        if (!entry[1].hasComment) {
+          yield entry;
+        }
+      }
+    },
+    has(offset, direction) {
+      const run = trivia.lookup(offset, direction);
+      return run !== undefined && !run.hasComment;
+    }
+  };
+}
+
+/**
+ * A parser plugin builds its own file-bearing TreeContext and records authored
+ * whitespace/comment trivia on it (`node._treeContext.opts.trivia`). Rendering,
+ * however, drives the shared render `context`, and the serializer seeds its
+ * trivia from `context.opts.trivia`. Bridge the two so authored value whitespace
+ * (multi-line lists, custom-property value spacing) survives to output. The root
+ * file wins; imports keep their own per-node context for anything context-scoped.
+ */
+function adoptSourceTrivia(context: Context, node: { _treeContext?: Context } | null): void {
+  if (!node || 'trivia' in context.opts) {
+    return;
+  }
+  const trivia = node._treeContext?.opts?.trivia;
+  if (trivia) {
+    context.opts.trivia = whitespaceOnlyTrivia(trivia as TriviaMap);
+  }
 }
 
 let nextRenderProfileId = 0;
@@ -1060,6 +1105,7 @@ export class Compiler {
       if (!parsedNode) {
         throw new Error(`Failed to parse ${filePath ?? '<input>'}`);
       }
+      adoptSourceTrivia(context, parsedNode);
       tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
         this.applyBeforeEvalVisitors(context, parsedNode, filePath ?? '<input>')
       );
@@ -1091,6 +1137,7 @@ export class Compiler {
       if (!loadedNode) {
         throw new Error(`Failed to load ${filePath!}`);
       }
+      adoptSourceTrivia(context, loadedNode);
       tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
         this.applyBeforeEvalVisitors(context, loadedNode, filePath!)
       );
