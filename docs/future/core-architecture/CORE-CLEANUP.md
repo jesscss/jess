@@ -745,6 +745,73 @@ per class) instead of branching per-reference on `options.type`/flags? Separate 
 crashes, toBeString, stale materialization tests) are superseded and marked DONE in the
 authoritative Focus D progress section below. -->
 
+## Focus G — mixin namespace resolution: consolidate the several routes (OPEN — staged)
+
+**Owner directive:** "Having several routes to resolve mixins is a non-starter — should be
+drastically cleaned up." This focus tracks that consolidation. A driving bug was landed first
+(minimal correct fix, gated 2805/0 core + corpus 88→89), and the full consolidation is staged
+below rather than done as a blind refactor.
+
+### The several routes (mapped)
+A `#ns > .m()` mixin call reaches `scope.findMixin` (reference.ts `performMixinRulesetRulesLookup`
+/ `performMixinRulesLookup`) → `findMixinPath`, which fans out into **three parallel namespace
+walks** that each accumulate differently:
+1. **`findRulesetNamespacePathFast`** — the RULESET-form namespace path (`#ns { … }`). Its prefix
+   loop historically **returned on the first resolving match** (last-registered, via reverse
+   bucket iteration) — so same-named ruleset namespaces collapsed to one.
+2. **`findMixinNamespacePathFast`** — the MIXIN-form namespace path (`#ns() { … }`). Already
+   accumulates across matches (`nestedResults.push`), but its `matches` come reverse-ordered
+   from `collectCallableBucketResults`, so multiple same-named mixin namespaces emit reversed.
+3. **`findCallableDescendants`** — resolves `.m` inside each mixin-form namespace; iterates
+   `namespaceMixins` (reverse bucket order).
+`findMixinPath` runs (1) FIRST and returns early if it yields; (1) also `return undefined` when a
+same-named MIXIN namespace shadows the ruleset one — so a name with BOTH forms dropped the
+ruleset defs. Net: three routes, three different accumulation/ordering rules, and a
+ruleset-vs-mixin exclusivity that silently dropped one side.
+
+### The bug that drove this (LANDED — commit on fix/less-corpus-failures)
+`#foo when(@g>0){.m(){a}} #foo when(@g>0){.m(){c}} .caller{ #foo > .m(); }` emitted only the LAST
+ruleset's `.m` (`c`). Root cause: route (1)'s first-match return. Real Less.js accumulates BOTH
+(verified against less-4x lessc). Corpus fixture `tests-unit/mixins-guards` (`#guarded-caller`)
+needed all THREE same-named `#guarded` namespaces (a plain guarded ruleset + two mixin-form) to
+contribute, in source order. Fix (minimal, aligned with the consolidation target — accumulate in
+source order across all same-named namespaces for CALLS, keep override for value lookups):
+- **route (1):** accumulate across prefix matches in SOURCE order; gate on a new `mixinCall`
+  option (below) so bare value/index lookups keep override (last-wins) — `#lib.sizes[@x]` /
+  `#lib.core.colors[primary]` still resolve the override, verified by `namespacing-2`/`-4`.
+- **route (3):** iterate `namespaceMixins` back-to-front (source order).
+- **ruleset+mixin coexistence:** `findRulesetNamespacePathFast` gained
+  `resolvePrefixesDespiteMixinNamespace` so `findMixinPath` can UNION the ruleset-form defs with
+  the mixin path (only for `mixinCall`), instead of dropping one side.
+- **the call/value distinction** (the key signal the routes were missing): a mixin-ruleset
+  reference reached through `Call` is tagged `mixinRulesetCall` (call.ts `withMixinRulesetCallArgsHint`);
+  the strategies thread it into `CallableFindOptions.mixinCall`. Emitting CALL ⇒ accumulate all
+  same-named namespaces; bare value/index lookup ⇒ override. This distinction was **absent** at
+  the `findMixin` layer — both looked like `type=mixin-ruleset, hasArgs=undefined` — which is
+  precisely why the routes conflated the two semantics.
+Gate: core 2805/0 (twice, stable), corpus 88→89 (only extend trio + import-remote remain), no new
+tsc errors, byte-identical elsewhere.
+
+### Consolidation plan (STAGED — the real cleanup the owner wants)
+The three walks should collapse to ONE namespace-path resolver that takes an accumulation policy
+(`accumulate` for calls / `override` for value lookups) and a source-order guarantee, resolving
+ruleset-form and mixin-form namespaces uniformly (a namespace is a namespace; its FORM shouldn't
+pick a separate code path). Concretely:
+- Unify `findRulesetNamespacePathFast` + `findMixinNamespacePathFast` + the descendant walk into
+  one recursive walk over "namespace segments" that, per segment, collects ALL same-named
+  namespaces (both forms) from the callable bucket in SOURCE order, then recurses. The
+  `mixinCall`/override policy is a parameter, not a fork.
+- Kill `resolvePrefixesDespiteMixinNamespace` and the `findMixinPath` union — they exist only to
+  paper over the ruleset/mixin route split; a unified walk resolves both forms in one pass.
+- Normalize bucket iteration: `collectCallableBucketResults` / `collectCallableBucketRemainderResults`
+  / `collectRulesetPrefixes` all iterate REVERSE (newest-first) for legacy first-match/override;
+  a unified resolver should read them once, in a single defined order, and let the policy decide
+  first-vs-all. (Do NOT globally flip these — several first-match/override callers depend on
+  reverse; the flip must be per-resolver, gated.)
+- Risk: perf-critical, 2805-test surface; each unification stage must be gated (build core, stable
+  set unchanged, byte-identical, A/B the collapse/dynamic benches). Do it as its own focus, not
+  inline with a corpus fix.
+
 ## Focus E — scope / mixin lookup misses (== task #17 tail)
 
 `'x' is not defined` / `No matching mixins found`, funneling through

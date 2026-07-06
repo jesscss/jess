@@ -3115,7 +3115,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   private findRulesetNamespacePathFast(
     keys: string[],
     options: CallableFindOptions = {},
-    pathStart = 0
+    pathStart = 0,
+    // When a same-named mixin namespace also exists, the walk normally defers to
+    // the mixin path (returns undefined). Set this to still resolve the ruleset
+    // prefix defs so findMixinPath can UNION ruleset + mixin namespace results
+    // (`#g when(…) {…} #g() {…}` — both contribute).
+    resolvePrefixesDespiteMixinNamespace = false
   ): MixinEntry[] | undefined {
     if (keys.length - pathStart < 2) {
       return undefined;
@@ -3287,7 +3292,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           searchParents
         }).length > 0;
       }
-      if (hasMixinNamespace) {
+      if (hasMixinNamespace && !(resolvePrefixesDespiteMixinNamespace && prefixMatches.length > 0)) {
         return undefined;
       }
 
@@ -3347,14 +3352,28 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         return DEFINITE_MISS;
       }
 
+      // A mixin CALL (`#foo > .m()`) invokes every same-named namespace on the
+      // path, so accumulate each prefix match's resolution. A bare value/index
+      // lookup keeps override (last-wins) semantics — return the first match.
+      const accumulate = options.mixinCall === true;
+      // Longest-consumed prefixes win first. Stable-sort keeps the incoming
+      // newest-first order within a length; the call accumulation wants source
+      // order (oldest first) so later same-named namespaces override as authored,
+      // so reverse within each equal-length group when accumulating.
       if (prefixMatches.length > 1) {
-        prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+        if (accumulate) {
+          prefixMatches.sort((a, b) => a.consumed.length - b.consumed.length).reverse();
+        } else {
+          prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+        }
       }
       let sawLegacyOnlyPrefix = false;
       let simpleLookupOptions: ExactCallableFindOptions | undefined;
       let nestedOptions: CallableFindOptions | undefined;
       const existingNoParentOptions = options.searchParents === false ? options : undefined;
       const terminalFilterType = options.terminalMixinOnly === true ? 'Mixin' : undefined;
+      let accumulated: MixinEntry[] | undefined;
+      let accumulatedOwned = false;
 
       for (const { ruleset, consumed } of prefixMatches) {
         if (selectorNeedsLegacyFallback(ruleset)) {
@@ -3364,7 +3383,23 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const remainderStart = offset + consumed.length;
         const remainderLength = path.length - remainderStart;
         if (remainderLength === 0) {
-          return options.terminalMixinOnly === true ? DEFINITE_MISS : [ruleset];
+          if (options.terminalMixinOnly === true) {
+            continue;
+          }
+          if (!accumulate) {
+            return [ruleset];
+          }
+          if (accumulated === undefined) {
+            accumulated = [ruleset];
+            accumulatedOwned = true;
+          } else {
+            if (!accumulatedOwned) {
+              accumulated = [...accumulated];
+              accumulatedOwned = true;
+            }
+            accumulated.push(ruleset);
+          }
+          continue;
         }
         let resolved: MixinEntry[] | undefined;
         if (remainderLength === 1) {
@@ -3453,10 +3488,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           }
         }
         if (resolved?.length) {
-          return resolved;
+          if (!accumulate) {
+            return resolved;
+          }
+          if (accumulated === undefined) {
+            accumulated = resolved;
+          } else {
+            if (!accumulatedOwned) {
+              accumulated = [...accumulated];
+              accumulatedOwned = true;
+            }
+            for (let i = 0; i < resolved.length; i++) {
+              accumulated.push(resolved[i]!);
+            }
+          }
         }
       }
 
+      if (accumulated !== undefined && accumulated.length > 0) {
+        return accumulated;
+      }
       return sawLegacyOnlyPrefix ? undefined : DEFINITE_MISS;
     };
 
@@ -3548,7 +3599,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let resolved: MixinEntry[] | undefined;
     let resolvedOwned = false;
     let descendantMissCovered = false;
-    for (let i = 0; i < namespaceMixins.length; i++) {
+    // namespaceMixins arrives newest-first (reverse bucket order); walk it back
+    // to front so same-named namespaces' descendant output accumulates in the
+    // source order they were authored.
+    for (let i = namespaceMixins.length - 1; i >= 0; i--) {
       const entry = namespaceMixins[i]!;
       if (!isNode(entry, N.Mixin)) {
         continue;
@@ -3854,10 +3908,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
     let compoundPrefixFast: CallableRulesetPathResult | undefined;
     let mixinNamespaceFast: MixinEntry[] | undefined;
+    let rulesetNamespaceUnion: MixinEntry[] | undefined;
     if (mixinFilterType !== 'Mixin') {
       const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
       if (rulesetNamespaceFast !== undefined) {
         return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
+      }
+      // For an emitting call, the head namespace may also exist in mixin form
+      // (rnf deferred). Resolve its ruleset-form defs so they union with the
+      // mixin path below — same-named ruleset and mixin namespaces both
+      // contribute their descendant output. Value lookups keep override semantics.
+      if (options.mixinCall === true) {
+        const rulesetDespiteMixin = this.findRulesetNamespacePathFast(keys, options, 0, true);
+        if (rulesetDespiteMixin !== undefined && rulesetDespiteMixin.length > 0) {
+          rulesetNamespaceUnion = rulesetDespiteMixin;
+        }
       }
       let namespaceMixins: MixinEntry[] | undefined;
       let namespaceMixinMissCovered = false;
@@ -3941,24 +4006,35 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       );
     }
     const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
+    let combined: MixinEntry[] | undefined;
+    let combinedOwned = false;
     if (compoundPrefixFast !== undefined && compoundPrefixFast.entries.length > 0) {
-      let compoundUnion = compoundPrefixFast.entries;
-      let compoundUnionOwned = compoundPrefixFast.owned;
+      combined = compoundPrefixFast.entries;
+      combinedOwned = compoundPrefixFast.owned;
       if (fast !== undefined && fast.length > 0) {
-        if (!compoundUnionOwned) {
-          compoundUnion = [...compoundUnion];
-          compoundUnionOwned = true;
+        if (!combinedOwned) {
+          combined = [...combined];
+          combinedOwned = true;
         }
         for (let i = 0; i < fast.length; i++) {
-          compoundUnion.push(fast[i]!);
+          combined.push(fast[i]!);
         }
       }
-      return compoundUnion;
+    } else if (fast !== undefined && fast.length > 0) {
+      combined = fast;
     }
-    if (fast !== undefined) {
-      return fast.length > 0 ? fast : undefined;
+    if (rulesetNamespaceUnion !== undefined) {
+      // Ruleset-form namespace defs precede the mixin-form defs in source order.
+      if (combined === undefined) {
+        return rulesetNamespaceUnion;
+      }
+      const merged = [...rulesetNamespaceUnion];
+      for (let i = 0; i < combined.length; i++) {
+        merged.push(combined[i]!);
+      }
+      return merged;
     }
-    return undefined;
+    return combined;
   }
 
   findFunction(

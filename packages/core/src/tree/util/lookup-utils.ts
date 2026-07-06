@@ -123,4 +123,10 @@ export type CallableFindOptions = {
    * namespace containers are unaffected.
    */
   rulesetsOnly?: boolean;
+  /**
+   * The lookup is an emitting mixin-ruleset CALL (`#ns > .m()`): every same-named
+   * namespace on the path contributes its descendant output. Unset for bare
+   * value/index lookups, which keep override (last-wins) namespace semantics.
+   */
+  mixinCall?: boolean;
 };

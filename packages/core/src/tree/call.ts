@@ -158,11 +158,20 @@ function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): s
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference;
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference {
   if (
-    args?.value.length
-    && isNode(name, N.Reference)
+    isNode(name, N.Reference)
     && name.options?.type === 'mixin-ruleset'
-    && name.options.mixinRulesetCallHasArgs !== true
   ) {
+    const hasArgs = Boolean(args?.value.length);
+    // Mark every mixin-ruleset reference reached through a call as an emitting
+    // call (all same-named namespaces on the path contribute), and carry the
+    // args hint. A bare value/index lookup never routes here, so it keeps
+    // override (last-wins) namespace semantics.
+    if (
+      name.options.mixinRulesetCall === true
+      && name.options.mixinRulesetCallHasArgs === hasArgs
+    ) {
+      return name;
+    }
     return new Reference(
       {
         target: name.target,
@@ -171,7 +180,8 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
       },
       {
         ...name.options,
-        mixinRulesetCallHasArgs: true
+        mixinRulesetCall: true,
+        mixinRulesetCallHasArgs: hasArgs || undefined
       },
       sourceSpanOf(name),
       name.sourceRoot?._treeContext
