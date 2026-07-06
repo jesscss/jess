@@ -228,7 +228,52 @@ duplicate `Node.canReuseAsLeaf`/`reuseAsLeaf`; `copyForPlacement` is a small sup
 ---
 
 ## Gates (every stage)
-Build core (+jess for benches); core suite green (2737/0 on dev at time of writing — confirm the
+Build core (+jess for benches); core suite green (~2746/0 on dev at time of writing — confirm the
 current number; a lone `mixin.test.ts` sibling-collapsed fail is the known load flake, re-run in
-isolation); output byte-identical on `collapse-bench` + `dynamic-bench`; for Stage 1a also confirm
+isolation); output byte-identical on `collapse-bench` + `dynamic-bench`; for Phase A1 also confirm
 the bench stays neutral (per the measured A/B). Same-directory A/B only.
+
+---
+
+## Orchestration — the drive-to-done (this is the executable plan)
+
+**Phased sequence (respect dependencies; fan out only across disjoint files):**
+
+- **Phase A — independent flag work (low-risk, parallelizable):**
+  - `A1` `F_MAY_ASYNC` → reactive: every `if(!hasFlag(F_MAY_ASYNC)){sync}else{async}` becomes
+    attempt-sync / `isThenable`-bail (the `evaluateSelectorsRest` pattern); drop `F_MAY_ASYNC` from
+    `propagateFlagsFrom` + constructors + `F_CHILD_DERIVED`. Measured neutral-to-faster.
+  - `A2` `F_AMPERSAND` → compute within selector construction/composition; drop from `propagateFlagsFrom`.
+  - `A3` (after A1) delete the ~25 leaf `hasFlag(F_STATIC)?this.value:this.value.eval()` skips (they
+    fall into the reactive eval). Exception: keep `sequence.ts` single-item wrapper behavior.
+- **Phase B — the reparent rework (serialize; prove the pattern first):** route placement parenting
+  through the frame/binding layer so `adopt`/`parentChildren` never `setParent` a source child.
+  `B0` prove on operation operands (most isolated) → `B1` operation operands → `B2` selector COW
+  (`detachChildren`) → `B3` ampersand/extend selector materialization → `B4` collapse-survivor. Each
+  deletes its clone family.
+- **Phase C-early (falls out of B):** `C1` delete reuse gates (`canReuseLeaf`/`canReuseAsLeaf`/
+  `!F_NON_STATIC`) + clone-to-freeze machinery; `C2` delete `F_HAS_NODE_CHILD` (residual → value check).
+- **Phase D — single render pass:** `D1` relocate `Rules.evalNode`/`_prepareForEval` structural work
+  to the render walk (registration → construction-time index; composition → ruleset-enter + deferred
+  selector slot; extend-gather → in-walk; root at-rule hoist → top slot); `D2` delete
+  `canRenderStaticRulesDirectly`/`isPlainStaticRuleLeaf`/`static-rules.ts`; `D3` collapse the Compiler
+  eval-then-render split (`index.ts`) so all output flows through `render()`.
+- **Phase C-late (finish):** `C3` registration gating → construction index, callable-guard static →
+  guard-local, type-guard reads → value checks; `C4` delete `F_STATIC`/`F_NON_STATIC`,
+  `F_CHILD_DERIVED`, and `propagateFlagsFrom` entirely.
+- **Leave alone (NOT copies):** `$while` cross-iteration state; `+:` decl-merge value-bake (`deriveWithParts`).
+
+**Protocol (dev is a HOT shared branch — the less-integration drive commits continuously):**
+- One slice at a time (serialize merges; fan out only across provably disjoint files).
+- Before each spawn: `git fetch origin`; branch the slice worktree off the CURRENT `origin/dev` tip
+  (`git worktree add ../jess-<slice> -b work/<slice> dev`); hand the agent the invariants + slice spec
+  + build/flake gotchas above.
+- Agent works to the gate in ITS worktree only (never touches dev); reports diff + before/after suite
+  counts + byte-identical confirmation, or a precise blocker.
+- Integrate: `git fetch origin`; disjoint-check the slice's files vs `origin/dev`-since-base; merge
+  `--no-ff` into dev; re-run the FULL suite; confirm NO new failures vs the freshly-pulled dev baseline
+  (sibling flake re-run isolated). **ONLY if green: PUSH dev.** Tick the phase here.
+- **PULL from dev (fetch) before every spawn AND every merge.** If dev moved under a slice, the merge
+  reconciles — resolve, re-gate, then push. Roll a slice back rather than push red; never force-push.
+- Re-profile (collapse + dynamic bench, `JESS_PROFILE` split) after each phase to confirm no regression
+  and capture wins.
