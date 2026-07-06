@@ -58,6 +58,7 @@ export class JessGrammar extends CssParser {
       case 'Mixin':          return this._buildJessMixin(children, loc(span));
       case 'MixinParam':     return this._buildJessMixinParam(children, rawChildren, loc(span));
       case 'MixinCall':      return this._buildJessMixinCall(children, loc(span));
+      case 'AnonMixin':      return this._buildJessAnonMixin(children, loc(span));
       case 'Expression':     return this._buildJessExpression(children, loc(span));
       case 'Condition':      return this._buildJessCondition(children, loc(span));
       case 'JessKeyword':    return this._valueKeyword((children.find(isLeaf)?.value) ?? '', loc(span)) as unknown as Node;
@@ -634,6 +635,48 @@ export class JessGrammar extends CssParser {
 
     return new Call(
       { name: base, args: new List(args as never, undefined, location) } as never,
+      undefined,
+      location
+    ) as unknown as Node;
+  }
+
+  // ── Anonymous mixins & functions ─────────────────────────────────────────────
+  // `@(params) { … }` / `@{ … }` / `@(params) > { … }` / `@(params) > <expr>` → a
+  // NAMELESS Mixin (core has no separate anon/function class). A FUNCTION is marked
+  // by the `>` return operator; per the docs a function is "a mixin that looks up
+  // the final `return:` assignment", so the single-expression form `@() > <expr>`
+  // is normalised here into a body of one `return: <expr>` Declaration — the block
+  // form `@() > { return: … }` already carries its `return` decl(s) verbatim.
+  private _buildJessAnonMixin(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo): Node {
+    const hasReturn = children.some(c => isLeaf(c) && c.value === '>');
+    const hasBlock = children.some(c => isLeaf(c) && c.value === '{');
+    const isExprFn = hasReturn && !hasBlock;
+
+    const nodes = children.filter(c => (c as CSTLike)._tag === 'node') as Node[];
+    const isParam = (n: Node): boolean =>
+      n.type === 'VarDeclaration'
+      && Boolean((n as unknown as { options?: { paramVar?: boolean } }).options?.paramVar);
+    const params = nodes.filter(isParam);
+    const bodyNodes = nodes.filter(n => !isParam(n));
+
+    let rules: Node[];
+    if (isExprFn) {
+      // Single-expression function → `return: <expr>`. `valueSequence` yields one
+      // or more value nodes; a lone node is the value, several become a space List.
+      const value: Node = bodyNodes.length === 1
+        ? bodyNodes[0]!
+        : new List(bodyNodes as never, undefined, location) as unknown as Node;
+      rules = [new Declaration({ name: 'return', value } as never, undefined, location) as unknown as Node];
+    } else {
+      rules = bodyNodes;
+    }
+
+    const paramsList = params.length
+      ? new List(params as never, undefined, location)
+      : undefined;
+
+    return new Mixin(
+      { ...(paramsList ? { params: paramsList } : {}), rules } as never,
       undefined,
       location
     ) as unknown as Node;
