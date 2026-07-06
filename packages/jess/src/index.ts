@@ -23,6 +23,7 @@ import {
 } from '@jesscss/core';
 import {
   getOptions,
+  applyStrictPreset,
   type StylesConfig,
   type OutputOptions
 } from 'styles-config';
@@ -517,6 +518,13 @@ export class Compiler {
       renderOptions || {},
       arrayConcatCustomizer
     );
+    // Expand the `strict` convenience preset once, on the compile config, so the
+    // v5 bundle it sets (functionMode/unitMode/leakyScope/allowOverloadedImport)
+    // reaches eval via `context.opts` (contextOptions spreads compile). Individual
+    // options already set always win; `equalityMode` (a dialect) is untouched.
+    if (effectiveConfig.compile?.strict) {
+      effectiveConfig.compile = applyStrictPreset(effectiveConfig.compile);
+    }
     const jsPluginConfig: JsPluginConfig = {
       jsReadRoot: resolveJsReadRoot(filePath, configFilePath)
     };

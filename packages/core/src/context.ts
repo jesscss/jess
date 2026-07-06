@@ -60,6 +60,8 @@ export interface ContextOptions {
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
   equalityMode?: EqualityMode;
+  /** See LessOptions.allowOverloadedImport. Enforcement pending its definition. */
+  allowOverloadedImport?: boolean;
   disableScriptModules?: boolean;
   /**
    * @deprecated Use `disableScriptModules` instead.

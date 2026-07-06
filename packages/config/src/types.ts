@@ -245,6 +245,29 @@ export interface LessOptions {
   quiet?: boolean;
 
   /**
+   * Convenience preset. When `true`, sets the v5 "recommended" bundle for any of
+   * the following left `undefined` (individual options always win):
+   * - `functionMode: 'preserve'`
+   * - `unitMode: 'preserve'`
+   * - `leakyScope: true`
+   * - `allowOverloadedImport: false`
+   *
+   * Modeled after `tsconfig` `strict`: it only *sets* semantic options, it is not
+   * itself a mode. `equalityMode` is a dialect (not a strictness axis) and is left
+   * untouched.
+   * @default false
+   */
+  strict?: boolean;
+
+  /**
+   * Whether re-importing a file/namespace may contribute *overloaded* (duplicated,
+   * additively-merged) definitions rather than being de-duplicated like Less's
+   * `@import (once)`. `strict` sets this to `false`.
+   * @default true
+   */
+  allowOverloadedImport?: boolean;
+
+  /**
    * @deprecated This is legacy Less behavior.
    *
    * Controls whether mixins and detached rulesets "leak" their inner rules.
@@ -303,6 +326,8 @@ export interface InputOptions extends FileMatchOptions {
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
   equalityMode?: EqualityMode;
+  strict?: boolean;
+  allowOverloadedImport?: boolean;
   allowExtendSelectors?: ExtendSelectorKind[];
   disableScriptModules?: boolean;
   /**
@@ -365,6 +390,12 @@ export interface StylesConfig {
     unitMode?: UnitMode;
     functionMode?: FunctionMode;
     equalityMode?: EqualityMode;
+    /** See {@link LessOptions.strict}. Expanded onto the other compile modes. */
+    strict?: boolean;
+    /** See {@link LessOptions.allowOverloadedImport}. */
+    allowOverloadedImport?: boolean;
+    /** See {@link LessOptions.leakyScope}. */
+    leakyScope?: boolean;
     allowExtendSelectors?: ExtendSelectorKind[];
     disableScriptModules?: boolean;
     /**

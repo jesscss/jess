@@ -231,6 +231,24 @@ export interface LessOptions {
   quiet?: boolean;
 
   /**
+   * Convenience preset. When `true`, sets the v5 "recommended" bundle for any of
+   * these left `undefined` (individual options always win): `functionMode:
+   * 'preserve'`, `unitMode: 'preserve'`, `leakyScope: true`,
+   * `allowOverloadedImport: false`. Modeled after `tsconfig` `strict` — it only
+   * sets semantic options. `equalityMode` is a dialect and is left untouched.
+   * @default false
+   */
+  strict?: boolean;
+
+  /**
+   * Whether re-importing a file/namespace may contribute *overloaded* (duplicated,
+   * additively-merged) definitions rather than being de-duplicated like Less's
+   * `@import (once)`. `strict` sets this to `false`.
+   * @default true
+   */
+  allowOverloadedImport?: boolean;
+
+  /**
    * @deprecated This is legacy Less behavior.
    *
    * Controls whether mixins and detached rulesets "leak" their inner rules.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getOptions } from '../src/options.js';
+import { getOptions, applyStrictPreset } from '../src/options.js';
 import type { StylesConfig } from '../src/types.js';
 
 describe('getOptions', () => {
@@ -257,5 +257,46 @@ describe('getOptions', () => {
       const options = getOptions({});
       expect(options).toBeDefined();
     });
+  });
+});
+
+describe('applyStrictPreset', () => {
+  it('fills the v5 bundle when strict is true and options are undefined', () => {
+    const out = applyStrictPreset({ strict: true });
+    expect(out).toMatchObject({
+      strict: true,
+      functionMode: 'preserve',
+      unitMode: 'preserve',
+      leakyScope: true,
+      allowOverloadedImport: false
+    });
+  });
+
+  it('never overrides an explicitly-set option (individual options win)', () => {
+    const out = applyStrictPreset({
+      strict: true,
+      functionMode: 'error',
+      unitMode: 'strict',
+      leakyScope: false,
+      allowOverloadedImport: true
+    });
+    expect(out).toMatchObject({
+      functionMode: 'error',
+      unitMode: 'strict',
+      leakyScope: false,
+      allowOverloadedImport: true
+    });
+  });
+
+  it('is a no-op (and does not fill) when strict is falsy', () => {
+    expect(applyStrictPreset({})).toEqual({});
+    expect(applyStrictPreset({ strict: false })).toEqual({ strict: false });
+  });
+
+  it('does not mutate its input', () => {
+    const input = { strict: true };
+    const out = applyStrictPreset(input);
+    expect(input).toEqual({ strict: true });
+    expect(out).not.toBe(input);
   });
 });
