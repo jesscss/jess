@@ -149,6 +149,7 @@ export class LessGrammar extends CssParser {
       case 'OperationTop':        return this._buildOperation(children, loc, this.mathMode === 'always') as unknown as JessNode;
       case 'EscapedValue':        return this._buildEscapedValue(children, loc);
       case 'InterpValue':         return this._buildInterpValue(raw, loc);
+      case 'NsAccessor':          return this._buildNsAccessor(children, loc);
       case 'AtRuleStatement':     return this._buildAtRuleStatement(children, loc);
       case 'ExtendTarget':        return this._buildExtendTarget(children, raw, loc);
       case 'ExtendPseudo':        return this._buildExtendPseudo(children, loc);
@@ -319,11 +320,23 @@ export class LessGrammar extends CssParser {
   private _buildReference(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const varName = ls[0]?.value ?? '';
-    let base: JessNode = new Reference(
-      varName.startsWith('@') ? varName.slice(1) : varName,
-      varName.startsWith('@') ? { type: 'variable' as const } : {},
-      loc
-    ) as unknown as JessNode;
+    // Head sigil types the base reference. `@a` → variable. `$color` → a bare
+    // property accessor: an `index` reference with a Quoted key and no target,
+    // resolved against the current scope (port of varReference's PropertyReference
+    // branch). Anything else → bare index base.
+    const isVar = varName.startsWith('@');
+    const isProp = varName.startsWith('$');
+    let base: JessNode = isProp
+      ? new Reference(
+          { key: new Quoted(varName.slice(1), { quote: '\'' }, loc) as any } as unknown as ReferenceValue,
+          { type: 'index' },
+          loc
+        ) as unknown as JessNode
+      : new Reference(
+          isVar ? varName.slice(1) : varName,
+          isVar ? { type: 'variable' as const } : {},
+          loc
+        ) as unknown as JessNode;
     let i = 1;
     while (i < ls.length) {
       const tok = ls[i]!.value;
@@ -349,6 +362,61 @@ export class LessGrammar extends CssParser {
             payload.args = args;
           }
           i += 3; // '(', content, ')'
+        }
+        base = new Call(payload as any, {}, loc) as unknown as JessNode;
+      } else {
+        break;
+      }
+    }
+    return base;
+  }
+
+  /**
+   * Build a namespace INDEXED-accessor value: a `.`/`#` selector-path head glued to
+   * a `[accessor]` (and any further `[accessor]`/`(call)` chain), e.g.
+   * `#ns.options[val1]`. The grammar (NsAccessor) captures this as ONE value operand
+   * so it survives arithmetic folding; here we reassemble it into the mixin-ruleset
+   * name Reference + accessor chain — the SAME shape the declaration-value
+   * _assembleSegment path produces for a lone `#ns.options[val1]`. Call-headed forms
+   * (`.mixin()`, `.mixin()[k]`) do NOT reach here (they keep the GluedParen path).
+   * Leaves: [ headText, '[', key?, ']', '(', content?, ')' … ].
+   */
+  private _buildNsAccessor(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const headText = (ls[0]?.value ?? '').trim();
+    // Split the selector path into segments: `#ns.options` → ['#ns', '.options'];
+    // combinators (`#ns > .a`) are dropped, each `.`/`#` name is one segment.
+    const pathSegs = headText.match(/[#.][^#.>+~\s]*/g) ?? [headText];
+    const nameKey: string | string[] = pathSegs.length === 1 ? pathSegs[0]! : pathSegs;
+    const rawKey = pathSegs.length > 1 ? pathSegs.join('') : undefined;
+    let base: JessNode = new Reference(
+      { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
+      { type: 'mixin-ruleset', role: 'name' } as any, loc
+    ) as unknown as JessNode;
+    let i = 1;
+    while (i < ls.length) {
+      const tok = ls[i]!.value;
+      if (tok === '[') {
+        if (ls[i + 1]?.value === ']') {
+          base = new Reference(
+            { target: base as any, key: -1 } as unknown as ReferenceValue,
+            { type: 'index' }, loc
+          ) as unknown as JessNode;
+          i += 2;
+        } else {
+          base = this._applyReferenceAccessor(base, ls[i + 1]!.value, loc);
+          i += 3;
+        }
+      } else if (tok === '(') {
+        const payload: Record<string, unknown> = { name: base };
+        if (ls[i + 1]?.value === ')') {
+          i += 2;
+        } else {
+          const args = this._buildRefCallArgs(ls[i + 1]!.value, loc);
+          if (args) {
+            payload.args = args;
+          }
+          i += 3;
         }
         base = new Call(payload as any, {}, loc) as unknown as JessNode;
       } else {
