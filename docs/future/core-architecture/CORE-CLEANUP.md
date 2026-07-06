@@ -39,16 +39,19 @@ Authoritative status (supersedes the inline markers further down):
   - **C1: PARTIAL** — eval no longer writes Ruleset `hoistToRoot` (2e21baae1, merged). Remaining open half:
     hoisted AtRule header off `AtRule.frames` — needs the serialize walk to retain the full selector-ancestor
     chain (live `inFrames` lacks it). This open half IS C2 migration 1. See C1 in the staged plan.
-  - **C2: GATED ON 3 EVAL→SERIALIZE MIGRATIONS** (not one vague "C1") — proven that `F_STATIC` can't yet
+  - **C2: GATED ON THE EVAL→SERIALIZE MIGRATIONS** (not one vague "C1") — proven that `F_STATIC` can't yet
     replace the static-render scan (+27 failures) because eval still does STRUCTURAL work on static input.
-    Per the GOVERNING PRINCIPLE (eval = values; structure = serialize/render), the +27 decompose into 3
-    mostly-independent migrations: (1) serialize retains the ancestor chain [= C1's open half], (2) merge decls
-    not `F_STATIC` [independent, small], (3) at-rule/layer registration → serialize [independent, small].
-    Migrations 2 and 3 can run in parallel NOW; migration 1 is the larger serialize-walk rework. When all
-    three land, C2 is a one-line deletion. See C2 in the staged plan for the decomposition table.
-  Net: the remaining walk-fold work is a KNOWN 3-migration set, not a single dependency — 2 of the 3 are
-  independent small wins that can start immediately; the third (serialize ancestor-chain retention) is C1's
-  open half. Once all three land, `F_STATIC` alone gates the static render fast path.
+    Per the GOVERNING PRINCIPLE (eval = values; structure = serialize/render), the +27 decomposed into 3
+    candidate migrations; the fan-out (2026-07-05) resolved them:
+    (2) **merge decls not `F_STATIC` — ✅ DONE** (e23d11287): merge decls get `F_NON_STATIC` at construction,
+    redundant assign-check deleted. (3) **at-rule/layer registration → serialize — NOT independent, folded into
+    C3**: Jess's "layer registration" is `@layer`-name `:extend()` scoping keyed on evaluated objects + consumed
+    by extend during eval, not CSS cascade ordering (investigated, blocked). (1) **serialize retains the
+    ancestor chain — OPEN = C1's open half.** So C2 now gates on just TWO real items: C1's open half + C3
+    (extend-out-of-eval, which subsumes old migration 3). See C2 in the staged plan for the table.
+  Net: the walk-fold tail is **composition + extend out of eval** (C1 open half + C3). Migration 2 landed as a
+  clean standalone win; the "layer registration is just output ordering" split-out was WRONG (it's extend
+  scoping). Once C1-rest + C3 land, `isPlainStaticRuleLeaf` is redundant and `F_STATIC` alone gates the fast path.
 - **GENUINELY DEFERRED (correctly):** F-consolidate (hot-file churn, zero correctness value); F_VISIBLE-1b
   `renderNodeFull` (no consumer until language conversion lands).
 
@@ -510,15 +513,16 @@ serialization/collapse state; no new visibility/eval-free flag.
   +27 failures. When all three land, `isPlainStaticRuleLeaf`'s leaf-scan is redundant and C2 is a **one-line
   deletion** (the scan collapses to a bare `F_STATIC` read):
 
-  | # | Migration | Kills | Independence |
+  | # | Migration | Kills | Status |
   |---|-----------|-------|--------------|
-  | 1 | **Serialize walk retains the full selector-ancestor chain** — drop serialize's dependency on eval-captured `AtRule.frames`; the live `inFrames` currently carries only the immediate ruleset, not the full `.card > .body` chain. | compose / collapse-nesting failures | **= C1's remaining open half** (see C1 above). Bigger; serialize-walk rework. |
-  | 2 | **Merge declarations must not be `F_STATIC`** — a `+:`/`+_:`/`normalizedFromAssign` decl needs structural coalescing but is currently marked value-static, and `isPlainStaticRuleLeaf` compensates with a redundant assign-check. Fix at flag time (or move coalescing to serialize). | merge-chain (`+=`/`normalizedFromAssign`) failures | **Fully independent, small.** Can run now, in parallel with 3. |
-  | 3 | **At-rule/layer registration → render/serialize** — it's an output-ordering concern, shouldn't force eval on static content. | nested at-rule / layer-registration failures | **Fully independent, small.** Can run now, in parallel with 2. |
+  | 1 | **Serialize walk retains the full selector-ancestor chain** — drop serialize's dependency on eval-captured `AtRule.frames`; the live `inFrames` currently carries only the immediate ruleset, not the full `.card > .body` chain. | compose / collapse-nesting failures | **OPEN = C1's remaining half** (see C1). Bigger; serialize-walk rework. |
+  | 2 | **Merge declarations must not be `F_STATIC`** — a `+:`/`+_:`/`normalizedFromAssign` decl needs structural coalescing. | merge-chain (`+=`/`normalizedFromAssign`) failures | ✅ **DONE (e23d11287, merged to dev).** Merge decls get `F_NON_STATIC` at the `Declaration` constructor (sticky — blocks `F_STATIC` + upward propagation, so the container isn't render-direct but still flows through eval where coalescing runs); the redundant `isPlainStaticRuleLeaf` assign-check is deleted as dead code. 2737/0, byte-identical. |
+  | 3 | ~~At-rule/layer registration → render~~ **NOT independent — folds into C3.** Jess has NO CSS `@layer` cascade-ordering registry (it emits `@layer` in source order). What the +27 hit is `@layer`-NAME registration for **`:extend()` visibility scoping** (`AtRule._extractAndStoreLayerName` → `ExtendRoots.rootsByLayerName`), keyed on **evaluated** `Rules` objects and consumed by extend **during eval**. Can't move to serialize while extend runs in eval. | nested at-rule / layer-scoped-extend failures | **BLOCKED (investigated, ae66… ). Reclassified into C3 (extend-out-of-eval)** — not a standalone win. |
 
-  Migrations 2 and 3 are disjoint from migration 1 and from each other — spawn them concurrently now.
-  Migration 1 is C1's open half and is the largest (serialize ancestor-chain retention). (The interpolated-
-  trivia lookup failure in the +27 rides along with these — no separate migration.)
+  So the "3 migrations" collapse to **TWO real gates**: migration 2 ✅ done; migrations 1 & 3 are BOTH facets of
+  getting composition + extend out of eval (C1 open half + C3). The clean-split intuition ("layer registration is
+  just output ordering") was wrong — in Jess it's extend scoping, inherently eval-phase until extend moves.
+  (The interpolated-trivia lookup failure in the +27 rides along with migration 1 — no separate migration.)
 - [ ] **C3 — extend gathered-in-walk + buffered apply at walk-end.** → T3. Static subtrees register targets
   via a cheap construction-time signal, not eval. Overlaps at-rule work landing on feature/parseman — gate hardest.
 - [ ] **C4 (north star) — fold eval INTO the render walk as lazy pull.** Eliminate the eager evaluated tree
