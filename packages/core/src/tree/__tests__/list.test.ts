@@ -1,5 +1,5 @@
 import { sourceSpanOf } from '../util/provenance.js';
-import { TreeContext, List, list, spaced, num, any, op, ref, rules, vardecl, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass } from '../index.js';
+import { TreeContext, List, list, spaced, num, any, op, ref, rules, vardecl, F_STATIC, type Rules as RulesClass } from '../index.js';
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
 import { Node } from '../node.js';
@@ -249,13 +249,11 @@ describe('List', () => {
     asyncItem.render = async () => {
       throw new Error('async list render should render the resolved item, not the source item');
     };
-    asyncItem.addFlag(F_MAY_ASYNC);
     asyncItem.removeFlag(F_STATIC);
     const listNode = list([
       asyncItem,
       any('solid')
     ]);
-    listNode.addFlag(F_MAY_ASYNC);
     listNode.removeFlag(F_STATIC);
     const originalMap = listNode.value.map;
     Object.defineProperty(listNode.value, 'map', {
@@ -276,17 +274,17 @@ describe('List', () => {
     }
   });
 
-  it('renders dynamic sync list items directly without resolving the list items first', () => {
+  it('renders dynamic sync list items synchronously via the reactive path', () => {
     const dynamicItem = op([num(1), '+', num(2)]);
-    dynamicItem.resolve = () => {
-      throw new Error('List render should render dynamic sync items directly');
-    };
     const listNode = list([
       dynamicItem,
       any('solid')
     ]);
 
-    expect(listNode.render(context)).toBe('3, solid');
+    // Sync items resolve without producing a thenable, so render stays sync.
+    const rendered = listNode.render(context);
+    expect(rendered).toBe('3, solid');
+    expect(typeof rendered).toBe('string');
   });
 
   it('writes dynamic sync direct list render output into flat buffers once', () => {

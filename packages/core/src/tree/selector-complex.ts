@@ -4,7 +4,6 @@ import { type Ampersand } from './ampersand.js';
 import {
   Node,
   defineType,
-  F_MAY_ASYNC,
   F_AMPERSAND,
   type NodeLocation,
   type NodeOptions
@@ -265,9 +264,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    */
   override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeComponents(context, this.evaluateComponentsSync(context, false), true);
-    }
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
       ? (evaluatedValue as Promise<Array<Node | string>>).then(value => this.finalizeComponents(context, value, true))
@@ -276,35 +272,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeComponents(context, this.evaluateComponentsSync(context, true), false);
-    }
     const resolvedValue = this.evaluateComponents(context, true);
     return isThenable(resolvedValue)
       ? (resolvedValue as Promise<Array<Node | string>>).then(value => this.finalizeComponents(context, value, false))
       : this.finalizeComponents(context, resolvedValue as Array<Node | string>, false);
-  }
-
-  private evaluateComponentsSync(context: Context, resolve: boolean): Array<Node | string> {
-    const currentValue = this.value;
-    const evaluatedValue = new Array<Node | string>(currentValue.length);
-    for (let i = 0; i < currentValue.length; i++) {
-      const component = currentValue[i]!;
-      if (typeof component === 'string') {
-        evaluatedValue[i] = component;
-        continue;
-      }
-      const out = resolve ? component.resolve(context) : component.eval(context);
-      if (!(out instanceof Node)) {
-        if (out !== null && typeof out === 'object') {
-          throw new TypeError('Expected sync complex selector evaluation to return a node');
-        }
-        evaluatedValue[i] = component;
-        continue;
-      }
-      evaluatedValue[i] = this.isAllowedEvaluatedComponent(out) ? out : component;
-    }
-    return evaluatedValue;
   }
 
   private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Node | string>> {

@@ -313,7 +313,12 @@ function createAmpersandWithSelectorContainer(
 }
 
 function ownSelectorForAppend(selector: Selector): Selector {
-  const owned = selector.cloneForPlacement({ reuseLeaves: false });
+  // Shared-source sibling in a `&`-append: the appended part is freshly built,
+  // but the OTHER parts are shared source selectors copied only to dodge the
+  // reparent into the new Compound/Complex container. Share them frozen (B3):
+  // the new top-level wrapper is still allocated, but child containers stay at
+  // their canonical parent and `inherit`/`adopt` skips the reparent.
+  const owned = selector.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
   if (!(owned instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
@@ -347,7 +352,8 @@ function ownComplexComponentForAppend(component: ComplexSelectorComponent): Comp
   if (typeof component === 'string') {
     return component;
   }
-  return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false }));
+  // Shared-source complex component (see ownSelectorForAppend): share frozen.
+  return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false, shareChildren: true }));
 }
 
 function createBasicSelectorLike(selector: SimpleSelector, value: string): BasicSelector {
@@ -526,7 +532,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       ? new BasicSelector(rawSelector)
       : rawSelector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      const arg = selector.cloneForPlacement();
+      // Wrapping the container SelectorList in a generated `:is()`: the list's
+      // child selectors are shared SOURCE nodes, wrapped (not owned) — share them
+      // frozen (B3) so the wrapper's `inherit`/`adopt` skips the reparent and the
+      // source container is never mutated.
+      const arg = selector.cloneForPlacement({ shareChildren: true });
       if (!(arg instanceof Selector)) {
         throw new TypeError('Expected selector copy');
       }

@@ -19,9 +19,11 @@ export { default as tan } from './tan.js';
 
 /** Logic */
 export { default as iif } from './iif.js';
+export { boolean, not, and, or } from './logical.js';
 
 /** String */
 export { default as e } from './e.js';
+export { default as escape } from './escape.js';
 export { default as replace } from './replace.js';
 export { default as format } from './format.js';
 

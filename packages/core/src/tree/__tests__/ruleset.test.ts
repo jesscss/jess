@@ -1,4 +1,4 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref, pseudo } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref, pseudo } from '../index.js';
 import type { ComplexSelectorComponent } from '../selector-complex.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
@@ -641,6 +641,23 @@ describe('Rule', () => {
     const composed = Ruleset.composeSelector(child, parent);
 
     expect(composed.toTrimmedString()).toBe('.parent > .scope .item + .next');
+  });
+
+  it('wraps a multi-item list parent in :is() when composing a string child', () => {
+    // Regression: `.a { #x, #y { .z { … } } }` — the grouped `#x, #y` frame is a
+    // SelectorList parent; composing the string-backed child `.z` textually would
+    // distribute it across the group (`#x, #y .z`). It must wrap in `:is()`.
+    const parent = sellist([sel([el('#x')]), sel([el('#y')])]);
+    const composed = Ruleset.composeSelector('.z', parent);
+    expect(composed.toString().trim()).toBe(':is(#x, #y) .z');
+  });
+
+  it('wraps a multi-item array parent in :is() when composing a string child', () => {
+    const composed = Ruleset.composeSelector('.z', [
+      sel([el('#x')]),
+      sel([el('#y')])
+    ]);
+    expect(composed.toString().trim()).toBe(':is(#x, #y) .z');
   });
 
   it('renders an already-evaluated ruleset idempotently (re-eval is allowed)', async () => {

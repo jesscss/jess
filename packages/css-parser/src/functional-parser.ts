@@ -20,6 +20,7 @@ class BuilderHost extends CssParser implements FunctionalParseHost {
   resetWarnings() {
     this._warnings = [];
     this._errors = [];
+    this._liftedCommentRanges = [];
   }
 
   getWarnings() {

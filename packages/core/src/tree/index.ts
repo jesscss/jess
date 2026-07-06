@@ -12,7 +12,6 @@ import {
   Node,
   type LocationInfo,
   F_VISIBLE,
-  F_MAY_ASYNC,
   F_STATIC,
   F_NON_STATIC,
   F_HAS_NODE_CHILD
@@ -22,7 +21,7 @@ import { compare } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 
-export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC, F_HAS_NODE_CHILD };
+export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_STATIC, F_NON_STATIC, F_HAS_NODE_CHILD };
 export { N } from './node-type.js';
 
 import { Selector } from './selector.js';

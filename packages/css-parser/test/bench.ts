@@ -1,24 +1,23 @@
-/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- Chevrotain-parser benchmark: token-array / JSON-snapshot casts are inherent framework integration. */
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- benchmark: the JSON baseline-snapshot cast is inherent. */
 /**
  * Parser benchmark: Jess CSS parser vs saved Jess baseline snapshots
  *
- * Usage:
- *   pnpm exec tsx test/bench.ts
- *   pnpm exec tsx test/bench.ts --save
- *   pnpm exec tsx test/bench.ts --baseline test/bench-results/some-run.json
- *   pnpm exec tsx test/bench.ts --per-file
+ * Benchmarks the macro-compiled FUNCTIONAL parser (`parseCssFn`) — the shipping
+ * parse path — NOT the legacy Chevrotain `CssRecursiveParser`. Run it through the
+ * macro register so the grammar is compiled (interpreter fallback otherwise):
  *
- * With GC stats:
- *   node --expose-gc --import tsx test/bench.ts
+ *   pnpm bench                 # = node --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts
+ *   pnpm bench --save
+ *   pnpm bench --baseline test/bench-results/some-run.json
+ *   pnpm bench --per-file
+ *
+ * With GC stats: prefix with `node --expose-gc` (the `bench` script path).
  */
-import { Lexer } from 'chevrotain';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import type { IToken } from 'chevrotain';
-import { cssLexer } from '../src/cssTokens.js';
-import { CssRecursiveParser, type TokenMap } from '../src/cssRecursiveParser.js';
+import { parseCssFn } from '../src/functional-parser.js';
 
 const thisFile = fileURLToPath(import.meta.url);
 const thisDir = path.dirname(thisFile);
@@ -102,24 +101,8 @@ const corpus = collectTestCSS();
 const allCSS = corpus.map(f => f.css).join('\n\n');
 console.log(`Corpus: ${corpus.length} files, ${allCSS.length} chars, ~${allCSS.split('\n').length} lines\n`);
 
-const { lexer: lexerDef, T } = cssLexer;
-const lexer = new Lexer(lexerDef, {
-  ensureOptimizations: true,
-  skipValidations: true
-});
-const lexResult = lexer.tokenize(allCSS);
-console.log(`Tokens: ${lexResult.tokens.length}`);
-if (lexResult.errors.length > 0) {
-  console.warn(`Lexer errors: ${lexResult.errors.length}`);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-const parser = new CssRecursiveParser(T as TokenMap);
-
-function parseCurrent(tokens: any[]): number {
-  parser.input = tokens as IToken[];
-  parser.stylesheet();
-  return parser.errors.length;
+function parseCurrent(css: string): number {
+  return parseCssFn(css).errors.length;
 }
 
 interface BenchResult {
@@ -148,7 +131,6 @@ interface SavedBenchSnapshot {
     files: number;
     chars: number;
     lines: number;
-    tokens: number;
   };
   warmup: number;
   iterations: number;
@@ -156,10 +138,10 @@ interface SavedBenchSnapshot {
   results: Array<BenchResult & { name: string }>;
 }
 
-function bench(fn: (tokens: any[]) => number): BenchResult {
+function bench(fn: (css: string) => number): BenchResult {
   let errors = 0;
   for (let i = 0; i < WARMUP; i++) {
-    errors = fn(lexResult.tokens);
+    errors = fn(allCSS);
   }
 
   if (global.gc) {
@@ -169,7 +151,7 @@ function bench(fn: (tokens: any[]) => number): BenchResult {
   const times: number[] = [];
   for (let i = 0; i < ITERATIONS; i++) {
     const start = performance.now();
-    fn(lexResult.tokens);
+    fn(allCSS);
     times.push(performance.now() - start);
   }
 
@@ -269,8 +251,7 @@ function saveSnapshot(result: BenchResult): void {
     corpus: {
       files: corpus.length,
       chars: allCSS.length,
-      lines: allCSS.split('\n').length,
-      tokens: lexResult.tokens.length
+      lines: allCSS.split('\n').length
     },
     warmup: WARMUP,
     iterations: ITERATIONS,
@@ -289,14 +270,14 @@ function saveSnapshot(result: BenchResult): void {
   console.log(`Updated latest snapshot: ${latestPath}`);
 }
 
-function measureMemory(fn: (tokens: any[]) => number): { heapDelta: number; rss: number } {
+function measureMemory(fn: (css: string) => number): { heapDelta: number; rss: number } {
   if (global.gc) {
     global.gc();
   }
   const before = process.memoryUsage();
 
   for (let i = 0; i < ITERATIONS; i++) {
-    fn(lexResult.tokens);
+    fn(allCSS);
   }
 
   if (global.gc) {
@@ -335,22 +316,18 @@ if (global.gc) {
 if (hasFlag('--per-file')) {
   console.log(`\n── Per-file breakdown ──\n`);
   const nameW = Math.max(...corpus.map(f => f.name.length), 10);
-  console.log('File'.padEnd(nameW) + '   tokens     ms');
+  console.log('File'.padEnd(nameW) + '   chars     ms');
   console.log('─'.repeat(nameW + 18));
 
   for (const file of corpus) {
-    const fileLex = lexer.tokenize(file.css);
-    if (fileLex.errors.length > 0) {
-      continue;
-    }
     const N = 100;
     const t0 = performance.now();
     for (let i = 0; i < N; i++) {
-      parseCurrent(fileLex.tokens);
+      parseCurrent(file.css);
     }
     const avgMs = (performance.now() - t0) / N;
     console.log(
-      `${file.name.padEnd(nameW)} ${String(fileLex.tokens.length).padStart(7)}  ${avgMs.toFixed(2).padStart(6)}`
+      `${file.name.padEnd(nameW)} ${String(file.css.length).padStart(7)}  ${avgMs.toFixed(2).padStart(6)}`
     );
   }
 }

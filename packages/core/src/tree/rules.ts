@@ -7,7 +7,8 @@ import {
   type TreeContext,
   F_ALLOW_ROOT,
   F_STATIC,
-  F_VISIBLE
+  F_VISIBLE,
+  F_MERGE_SUPPRESSED
 } from './node.js';
 import { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -210,6 +211,24 @@ function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): vo
   frame.fallbackFrame = importFrame;
 }
 
+// Walk a frame's lexical parent chain to detect any per-call live-binding scope
+// (mixin params / loop vars). Used to distinguish a genuinely re-usable mixin body
+// child (whose per-call output must not be baked into the shared template) from a
+// nested ruleset/@media body re-used only for selector nesting (whose output is
+// invariant across evals). Bounded + cycle-guarded like the other frame walks.
+function frameChainHasLiveBindings(frame: ScopeFrame | undefined): boolean {
+  let f = frame;
+  const seen = new Set<ScopeFrame>();
+  while (f && !seen.has(f)) {
+    if (f.hasLiveBindings) {
+      return true;
+    }
+    seen.add(f);
+    f = f.parent;
+  }
+  return false;
+}
+
 // A callable's per-call surface adopted under a mixin-output namespace member
 // (e.g. `.sayGender` bound under the output `.person` for `.person.sayGender()`)
 // resolves free vars up that DEFINITION member, not the call site. The member is
@@ -220,9 +239,24 @@ function isRetainedOutputDefinitionParent(
   parent: Node | undefined,
   enclosingScope: Rules | undefined
 ): boolean {
-  return isNode(parent, N.Rules)
-    && parent !== enclosingScope
-    && (parent as Rules).getScopeFrame().parent?.hasLiveBindings === true;
+  if (!isNode(parent, N.Rules) || parent === enclosingScope) {
+    return false;
+  }
+  const frame = (parent as Rules).getScopeFrame();
+  // The hasLiveBindings-parent signal alone is too broad: an ordinary nested
+  // ruleset inside a mixin body (e.g. a doubly-nested `.innest` inside `.inner`)
+  // also chains to the call's param slots, yet it is NOT a retained output — its
+  // per-call placement re-point must still fire so a second call rebinds its free
+  // vars to the new call's slots instead of resolving through the first call's
+  // cached frame chain.
+  //
+  // A retained mixin-output member OWNS its frame (`frame.rulesNode === parent`). A
+  // per-call re-evaluated body child is COW-derived during eval, which re-points its
+  // frame's `rulesNode` to the derived output surface (`frame.rulesNode !== parent`)
+  // — the marker that it is a placed body, not a retained definition. Require frame
+  // ownership so only the genuine retained-output parent suppresses the re-point.
+  return frame.parent?.hasLiveBindings === true
+    && frame.rulesNode === parent;
 }
 
 function keysStartWith(keys: readonly string[], path: readonly string[], pathStart = 0): boolean {
@@ -1083,6 +1117,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
   /**
+   * Transient, set for exactly one eval when `_evalPreparedRules` re-points this
+   * shared canonical body child's lexical frame parent to a per-call placement
+   * scope (§4). It marks the node as a re-used body whose evaluated output must NOT
+   * be baked back into the shared template (Ruleset.finishEvaluatedRules reads +
+   * clears it), so a second call of the enclosing mixin re-evaluates cleanly.
+   */
+  _placementRepointed = false;
+  /**
    * Set once this Rules' body has been evaluated (even a lazy mixin body, when it
    * IS evaluated). Narrow §2.7 eval-state signal — the replacement for the deleted
    * general `evaluated` flag, mirroring `Call._evaluatedCallOutput`. Purely gates
@@ -1159,6 +1201,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * Rules clones still need to preserve function bindings so visitor/plugin
    * registrations survive the explicit clone sites that remain outside the hot path.
    */
+  override toJSON(): Record<string, unknown> {
+    // `_scopeFrame` back-references this `Rules` (frame → rulesNode) at eval
+    // time, so it must be dropped to keep `JSON.stringify` cycle-safe — the same
+    // discipline as the base back-refs (sourceNode/parent/_sourceRoot). The
+    // lookup caches hold resolved callables/frames that can also retain
+    // back-refs; they are derived, non-tree data, so drop them too.
+    const json = super.toJSON();
+    delete json._scopeFrame;
+    delete json.callableLookupCache;
+    delete json.directDeclarationLookupCache;
+    delete json.functionLookupCache;
+    return json;
+  }
+
   override clone(cloneFn?: (n: Node) => Node): this {
     const source = this.rules;
     let value: Node[];
@@ -3939,6 +3995,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
     }
+    // The `.parent` walk dead-ends when the lookup starts inside a surface that
+    // eval created but did not node-parent into the tree — a THIN control body
+    // (For/If/While), an @media/@supports body eval frame, or a called detached
+    // ruleset. Plugin/global functions (`range`, `length`, …) are registered on
+    // the tree root, so fall back to it: JS functions live in one global
+    // namespace, and any locally-bound function would have been found on the
+    // parent walk above before we reach here.
+    if (searchParents && options?.context) {
+      const root = options.context.root;
+      if (root && root !== this) {
+        return root.functionsByName?.get(keys);
+      }
+    }
     return undefined;
   }
 
@@ -4478,20 +4547,29 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const sourceWasRoot = this === context.root || (context.root === undefined && context.rulesContext === undefined);
+    // The effective PrintOptions is the 3rd arg in the buffer overload, else the
+    // 2nd. Its `preSerializeRoot` hook (D3) runs the compiler's post-eval /
+    // pre-render plugin visitors on the tree render just evaluated — the reason
+    // the old separate eval pre-pass existed — so no second eval is needed.
+    const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    const preSerializeRoot = sourceWasRoot ? printOptions?.preSerializeRoot : undefined;
+    const serialize = (state: RulesRenderState): MaybePromise<string> => {
+      checkValidNodes(state.output?.rules, context);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
+        : renderRulesStateToString(state, context, bufferOrOptions);
+    };
+    const afterEval = (state: RulesRenderState): MaybePromise<string> => {
+      if (!preSerializeRoot || !state.output) {
+        return serialize(state);
+      }
+      const hooked = preSerializeRoot(state.output);
+      const applyHook = (replaced: Rules | void): MaybePromise<string> =>
+        serialize(replaced ? { ...state, output: replaced } : state);
+      return isThenable(hooked) ? hooked.then(applyHook) : applyHook(hooked);
+    };
     const value = this.evalForRender(context, sourceWasRoot);
-    if (isThenable(value)) {
-      return value.then((state) => {
-        checkValidNodes(state.output?.rules, context);
-        return isRenderBuffer(bufferOrOptions)
-          ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
-          : renderRulesStateToString(state, context, bufferOrOptions);
-      });
-    }
-    checkValidNodes(value.output?.rules, context);
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeRulesStateRenderOutput(bufferOrOptions, value, context, options);
-    }
-    return renderRulesStateToString(value, context, bufferOrOptions);
+    return isThenable(value) ? value.then(afterEval) : afterEval(value);
   }
 
   /** All rules, with nested rules flattened */
@@ -6165,8 +6243,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // identity (thin model): the SAME node is both the callee's own rendered
       // declaration and the placement copy in this host's output subtree. A merge
       // occurrence here can be superseded by a later `+:` in the host, and the
-      // coalesce strips F_VISIBLE by node identity — which would also hide the
-      // callee's own declaration. Detach (COW) the shared placement copy into a
+      // coalesce marks it merge-suppressed by node identity — which would also hide
+      // the callee's own declaration. Detach (COW) the shared placement copy into a
       // distinct instance owned by the output surface before it can be superseded.
       if (inMixinOutput) {
         const idx = ownerRules.rules.indexOf(node);
@@ -6215,9 +6293,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && existingAnchor.ownerRules === ownerRules;
         if (!anchorIsSameOccurrence) {
           if (existingAnchor.node === currentNode && existingAnchor.ownerRules !== ownerRules) {
-            existingAnchor.ownerRules.removeFlag(F_VISIBLE);
+            existingAnchor.ownerRules.addFlag(F_MERGE_SUPPRESSED);
           } else {
-            existingAnchor.node.removeFlag(F_VISIBLE);
+            existingAnchor.node.addFlag(F_MERGE_SUPPRESSED);
           }
           mergedAnchorByName.set(name, occurrence);
           if (currentAccumulatedValue) {
@@ -6487,7 +6565,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // with/set). One behavior for every node-re-use site, keyed on what the
       // node IS (its sourceNode), not a stamped marker. No reparent, no clone.
       // See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
-      rules.getScopeFrame().parent = enclosingScope.getScopeFrame();
+      const placementFrame = enclosingScope.getScopeFrame();
+      rules.getScopeFrame().parent = placementFrame;
+      // Signal Ruleset.finishEvaluatedRules NOT to bake this eval's output back into
+      // the shared canonical node — but ONLY when the placement scope resolves live
+      // per-call bindings (mixin params). Such a body produces DIFFERENT output per
+      // call (the mixins-nested second-call bug: `width: @a` baked to `30`), so it
+      // must return a fresh surface. A placement with no live-binding ancestor
+      // (a nested ruleset / @media body re-used for selector nesting) produces the
+      // same output every eval, so the in-place bake stays correct there — and, more
+      // importantly, keeps the node identity that extend post-processing relies on.
+      if (frameChainHasLiveBindings(placementFrame)) {
+        rules._placementRepointed = true;
+      }
     } else if (rules === this && rules._closureScope) {
       // Detached-ruleset closure: a Rules passed as an arg / stored in a variable
       // closes over the SURFACE where it was written (`_closureScope`, captured at

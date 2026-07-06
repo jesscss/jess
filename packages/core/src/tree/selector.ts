@@ -1,5 +1,5 @@
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { Node, type NodeLocation, type NodeOptions, type NodeValue, defineType } from './node.js';
+import { Node, type NodeLocation, type NodeOptions, type NodeValue, defineType, F_AMPERSAND } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
@@ -137,7 +137,30 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   override clone(cloneFn?: (n: Node) => Node): this {
     const cloned = super.clone(cloneFn);
     cloned.keySetLibrary = this.keySetLibrary;
+    // `F_AMPERSAND` is a selector-scoped structural flag (see
+    // `propagateFlagsFrom`), NOT part of the generic `F_CHILD_DERIVED` set that
+    // `Node.clone` preserves. A faithful selector copy has the same `&`
+    // containment as its source, so carry it here — otherwise a cloned
+    // `.inside &` render selector loses the flag and `composeSelector` prepends
+    // the parent instead of substituting it (`.top .inside :is(.top)` doubling).
+    if (this.hasFlag(F_AMPERSAND)) {
+      cloned.addFlag(F_AMPERSAND);
+    }
     return cloned;
+  }
+
+  /**
+   * `F_AMPERSAND` ("this subtree contains a `&`") is a SELECTOR-only concern: the
+   * containment chain is `Ampersand` → `CompoundSelector` → `ComplexSelector` →
+   * `SelectorList`, and every reader (ruleset `&` substitution, the extend engine)
+   * asks it of a selector. It is bubbled here, scoped to the selector tree, rather
+   * than by the general `Node.propagateFlagsFrom` — value nodes must not carry it.
+   */
+  override propagateFlagsFrom(node: Node): void {
+    super.propagateFlagsFrom(node);
+    if (node.hasFlag(F_AMPERSAND)) {
+      this.addFlag(F_AMPERSAND);
+    }
   }
 
   protected override evalNode(context: Context): MaybePromise<Node> {

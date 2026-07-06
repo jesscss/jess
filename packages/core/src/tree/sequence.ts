@@ -1,5 +1,5 @@
 import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
-import { Node, F_MAY_ASYNC, F_STATIC, defineType, type NodeLocation } from './node.js';
+import { Node, F_STATIC, defineType, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
@@ -27,8 +27,7 @@ import {
   emitTriviaTokens
 } from './util/trivia.js';
 import {
-  evaluateNodeArrayMaybe,
-  evaluateNodeArraySync
+  evaluateNodeArrayMaybe
 } from './util/evaluate-node-array.js';
 
 export type SequenceOptions = {
@@ -56,14 +55,6 @@ function sequenceNodeTrivia(node: Node): PrintOptions['trivia'] | undefined {
     : node._treeContext?.opts?.trivia;
 }
 
-function emitRenderedSequenceNode(
-  node: Node,
-  context: Context,
-  options: ReturnType<typeof getPrintOptions>
-): void {
-  void node.render(context, options);
-}
-
 function emitRenderedSequenceNodeMaybe(
   node: Node,
   context: Context,
@@ -75,13 +66,10 @@ function emitRenderedSequenceNodeMaybe(
       return rendered.then(() => undefined);
     }
   };
-  if (node.hasFlag(F_MAY_ASYNC)) {
-    const resolved = node.resolve(context);
-    return isThenable(resolved)
-      ? resolved.then(renderNode)
-      : renderNode(resolved);
-  }
-  return renderNode(node);
+  const resolved = node.resolve(context);
+  return isThenable(resolved)
+    ? resolved.then(renderNode)
+    : renderNode(resolved);
 }
 
 function writeRenderedSequenceNode(
@@ -117,7 +105,14 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private withValue(value: Node[]): Sequence {
-    return new Sequence(
+    // Preserve the concrete class (e.g. QueryCondition) across eval so its
+    // syntax writer — not the base Sequence one — renders the evaluated value.
+    const Ctor = this.constructor as new (
+      value: Node[],
+      options?: SequenceOptions,
+      location?: NodeLocation
+    ) => Sequence;
+    return new Ctor(
       value,
       this._options ? { ...this._options } : undefined,
       sourceSpanOf(this)
@@ -129,6 +124,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     for (let i = 0; i < this.value.length; i++) {
       values[i] = this.value[i]!.cloneForPlacement();
     }
+    // Addition output is always a plain space Sequence — no subclass identity to
+    // preserve — so construct the base directly (a subclass ctor here would defeat
+    // the "no source reconstruction" contract; see sequence.test.ts).
     return new Sequence(
       values,
       this._options ? { ...this._options } : undefined,
@@ -205,78 +203,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     this.writeSyntax(printOptions);
     return printOptions.writer.getSince(mark);
-  }
-
-  private renderSequenceValueDirect(context: Context, value: readonly Node[], options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
-    const w = printOptions.writer;
-    if (value.length === 0) {
-      return '';
-    }
-    const mark = w.mark();
-    let prev: Node | undefined;
-
-    if (printOptions.inCustom) {
-      for (let i = 0; i < value.length; i++) {
-        const node = value[i]!;
-        if (node instanceof Nil) {
-          continue;
-        }
-        emitRenderedSequenceNode(node, context, printOptions);
-      }
-      return w.getSince(mark);
-    }
-
-    for (let i = 0; i < value.length; i++) {
-      const node = value[i]!;
-      if (node instanceof Nil) {
-        continue;
-      }
-      if (prev) {
-        const prevLastChar = w.lastChar();
-        const prevEndsWithSpace = prevLastChar === ' ';
-        const sourceTrivia = (
-          printOptions.trivia
-          && sequenceNodeTrivia(prev) === printOptions.trivia
-          && sequenceNodeTrivia(node) === printOptions.trivia
-        );
-        const trivia = sourceTrivia ? printOptions.trivia : undefined;
-        const hasTrivia = Boolean(
-          trivia
-          && (
-            hasNonWhitespaceTrivia(trivia.lookup(spanEndOf(prev), 'after'))
-            || hasNonWhitespaceTrivia(trivia.lookup(spanStartOf(node), 'before'))
-          )
-        );
-        const prevEnd = spanEndOf(prev);
-        const nodeStart = spanStartOf(node);
-        const noSep = Boolean(
-          sourceTrivia
-          && prevEnd !== undefined
-          && nodeStart !== undefined
-          && (prevEnd === nodeStart || prevEnd + 1 === nodeStart)
-        );
-        const needsMergeGuard = noSep && isIdentifierChar(prevLastChar);
-
-        if (
-          !prevEndsWithSpace
-          && !hasTrivia
-          && (!noSep || needsMergeGuard)
-        ) {
-          w.queueSpacer(' ', needsMergeGuard
-            ? nextText => /^[A-Za-z0-9_-]/u.test(nextText)
-            : undefined);
-        }
-      }
-      emitRenderedSequenceNode(node, context, printOptions);
-      prev = node;
-    }
-
-    return w.getSince(mark);
-  }
-
-  private renderSequenceDirect(context: Context, options?: PrintOptions): string {
-    return this.renderSequenceValueDirect(context, this.value, options);
   }
 
   private renderSequenceDirectMaybe(context: Context, options?: PrintOptions): MaybePromise<string> {
@@ -434,9 +360,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     if (this.hasFlag(F_STATIC)) {
       return this.renderResolvedValue(context, this.value, prepared, buffer);
     }
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.renderDirectValue(context, prepared, buffer);
-    }
     return this.renderDirectValueMaybe(context, prepared, buffer);
   }
 
@@ -456,17 +379,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
       return writeRenderedSequenceNode(buffer, value.render(context, prepared));
     }
     const out = this.renderSequenceSyntax(value, prepared);
-    return buffer && !sequenceRenderSharesWriter(buffer)
-      ? writeRenderText(buffer, out)
-      : out;
-  }
-
-  private renderDirectValue(
-    context: Context,
-    prepared: FinalPrintOptions,
-    buffer?: RenderBuffer
-  ): string {
-    const out = this.renderSequenceDirect(context, prepared);
     return buffer && !sequenceRenderSharesWriter(buffer)
       ? writeRenderText(buffer, out)
       : out;
@@ -546,9 +458,6 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   override evalNode(context: Context): MaybePromise<Node> {
     if (this.hasFlag(F_STATIC)) {
       return this;
-    }
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeValues(evaluateNodeArraySync(context, this.value));
     }
     const values = evaluateNodeArrayMaybe(context, this.value);
     return isThenable(values)

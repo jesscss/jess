@@ -16,6 +16,8 @@ import {
   valueSpansOf,
   setValueSpans as setNodeValueSpans,
   sourceSpanOf,
+  setSourceSpan,
+  spanStartOf,
   type SourceSpan
 } from '@jesscss/core';
 
@@ -253,6 +255,7 @@ export function fieldIndexOf(node: JessNode, key: string): { index: number; coun
 export function buildLazyTriviaMap(log: number[], src: string): TriviaMap {
   let before: Map<number, Trivia> | undefined;
   let after: Map<number, Trivia> | undefined;
+  let sortedComments: readonly Trivia[] | undefined;
 
   const build = () => {
     before = new Map<number, Trivia>();
@@ -288,6 +291,24 @@ export function buildLazyTriviaMap(log: number[], src: string): TriviaMap {
         build();
       }
       return (direction === 'before' ? before! : after!).has(offset);
+    },
+    commentRuns() {
+      if (sortedComments === undefined) {
+        if (!after) {
+          build();
+        }
+        // Mirror the `after`-index source set of the per-node scan; runs are
+        // unique per `after` offset, so no cross-offset dedupe is needed here.
+        const runs: Trivia[] = [];
+        for (const run of after!.values()) {
+          if (run.hasComment) {
+            runs.push(run);
+          }
+        }
+        runs.sort((a, b) => a.start - b.start);
+        sortedComments = runs;
+      }
+      return sortedComments;
     }
   };
 }
@@ -335,6 +356,18 @@ export class CssParser {
   protected _strictEOF = false;
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
   protected _errors: Array<{ message: string; offset?: number }> = [];
+  /**
+   * Source ranges of comments lifted to standalone `Comment` nodes (see
+   * `_maybeEmitComment`). These comments round-trip through the tree, so the
+   * render-time trivia view must NOT also emit them (that would double-print).
+   * Inline comments — never lifted — stay in trivia and are placed by the
+   * serializers. Recorded per parse; read via `getLiftedCommentRanges()`.
+   */
+  protected _liftedCommentRanges: Array<[number, number]> = [];
+
+  getLiftedCommentRanges(): ReadonlyArray<readonly [number, number]> {
+    return this._liftedCommentRanges;
+  }
 
   protected _warn(message: string, deprecation?: string) {
     this._warnings.push(deprecation ? { message, deprecation } : { message });
@@ -428,7 +461,8 @@ export class CssParser {
     orderedRuleNodes: JessNode[],
     bodyStart: number,
     bodyEnd: number,
-    loc: LocationInfo
+    loc: LocationInfo,
+    atRoot = false
   ): JessNode[] {
     const src = this._source;
     const out: JessNode[] = [];
@@ -436,7 +470,10 @@ export class CssParser {
     for (const rule of orderedRuleNodes) {
       const nextStart = sourceSpanOf(rule)?.start;
       if (typeof nextStart === 'number' && nextStart >= gapStart) {
-        const followingIsNestedRule = (rule as { type?: string }).type === 'Ruleset';
+        // A same-line comment ahead of a nested ruleset is recovered from the
+        // trivia map at serialize time — but ONLY inside another rule's body.
+        // At the stylesheet root, eval drops that trivia, so lift there instead.
+        const followingIsNestedRule = !atRoot && (rule as { type?: string }).type === 'Ruleset';
         out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, followingIsNestedRule, loc));
         const nextEnd = sourceSpanOf(rule)?.end;
         gapStart = typeof nextEnd === 'number' ? nextEnd : nextStart;
@@ -517,6 +554,7 @@ export class CssParser {
     if (followingIsNestedRule && followingStart !== undefined && this._sameLine(src, end - 1, followingStart)) {
       return;
     }
+    this._liftedCommentRanges.push([start, end]);
     out.push(new Comment(src.slice(start, end), undefined, loc) as unknown as JessNode);
   }
 
@@ -539,7 +577,11 @@ export class CssParser {
 
   protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const nodes = nodeChildren(children);
-    const lifted = this._liftStandaloneComments(nodes, loc.start, loc.end, loc);
+    // The Stylesheet node's span ends at the last consumed statement, so trailing
+    // trivia (a comment on the last line) sits past `loc.end`. Scan to the true
+    // source end so a trailing standalone comment is lifted like any other.
+    const bodyEnd = Math.max(loc.end, this._source.length);
+    const lifted = this._liftStandaloneComments(nodes, loc.start, bodyEnd, loc, true);
     return new Rules(lifted, undefined, loc);
   }
 
@@ -784,22 +826,34 @@ export class CssParser {
     if (segValues.length === 1) {
       return { value: segValues[0]!, span };
     }
-    const listValues = segValues.map((v) => {
+    const listValues = segValues.map((v, i) => {
+      const seg = filledSegments[i]!;
+      const segSpan: Span = { start: seg[0]!.span.start, end: seg[seg.length - 1]!.span.end };
       if (Array.isArray(v)) {
-        return v.map(c => typeof c === 'string' ? this._valueKeyword(c, loc) as unknown as Component : c);
+        const mapped = v.map(c => typeof c === 'string' ? this._valueKeyword(c, loc) as unknown as Component : c);
+        // Stamp the segment span on the raw space-group array so the coerced
+        // `Sequence` (see `coerceValueNode`) inherits it — lets the List serializer
+        // recover authored inter-item whitespace (e.g. a newline after a comma in a
+        // multi-token `box-shadow` value) from the trivia map via `spanStartOf`.
+        if (spanStartOf(mapped as unknown as object) === undefined) {
+          setSourceSpan(mapped as unknown as Node, segSpan);
+        }
+        return mapped as unknown as Component;
       }
       if (typeof v === 'string') {
-        return this._valueKeyword(v, loc) as unknown as Component;
+        // Give the item its own segment span so the serializer can recover the
+        // authored inter-item whitespace from the trivia map (keyed by offset).
+        return this._valueKeyword(v, spanToLocation(segSpan)) as unknown as Component;
+      }
+      // A single-node segment (e.g. a comma item that is one Keyword/Call) keeps
+      // whatever span it already carries; stamp the segment span only when it has
+      // none, so inter-item trivia lookup (`spanStartOf(item)`) resolves.
+      if (spanStartOf(v as unknown as object) === undefined) {
+        setSourceSpan(v as unknown as Node, segSpan);
       }
       return v;
     });
     const list = new List(listValues as unknown as Node[], undefined, loc);
-    if (filledSegments.length) {
-      setValueSpans(list as unknown as JessNode, filledSegments.map(seg => ({
-        start: seg[0]!.span.start,
-        end: seg[seg.length - 1]!.span.end
-      })));
-    }
     return { value: list as unknown as Component, span };
   }
 

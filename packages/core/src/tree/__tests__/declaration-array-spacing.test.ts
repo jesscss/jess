@@ -1,4 +1,4 @@
-import { decl, any, color } from '../index.js';
+import { decl, any, color, quoted } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { setSourceSpan } from '../util/provenance.js';
@@ -48,6 +48,20 @@ describe('declaration flat-array value spacing', () => {
     const ctx = new Context();
     ctx.opts.trivia = trivia;
     expect(d.toString({ trivia })).toBe('border: 2px\n          solid\n          black');
+  });
+
+  it('keeps the space before a quoted term following a string fragment', () => {
+    // `content: is "theme1"` — `is` is a bare string term, `"theme1"` a Quoted
+    // Node. The merge guard must not drop the authored space before the quote.
+    const q = quoted('theme1', { quote: '"' });
+    const d = decl({ name: 'content', value: ['is', q] as any });
+    expect(d.toTrimmedString()).toBe('content: is "theme1"');
+  });
+
+  it('keeps the space before a single-quoted term following a string fragment', () => {
+    const q = quoted('theme1', { quote: '\'' });
+    const d = decl({ name: 'content', value: ['is not', q] as any });
+    expect(d.toTrimmedString()).toBe("content: is not 'theme1'");
   });
 
   it('does not insert separators between verbatim string fragments', () => {

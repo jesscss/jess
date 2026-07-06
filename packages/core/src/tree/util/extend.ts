@@ -367,6 +367,10 @@ export function applyExtendsToSelector(
     inst.extendRoot,
     inst.extendNode
   ] as [Selector, Selector, boolean, Rules | undefined, Node | undefined]);
+  // Index `allExtends` by simple-target value once per pass so chained-extend
+  // discovery visits only extends whose target can appear in a candidate,
+  // instead of re-scanning the whole list per applied extend (O(I²)→~O(I·k)).
+  const extendTargetIndex = buildExtendTargetIndex(allExtendTuples);
   const queuedKeys = new Set(
     instructions.map(inst => `${inst.partial ? 1 : 0}|${inst.target.valueOf()}|${inst.extendWith.valueOf()}`)
   );
@@ -410,7 +414,8 @@ export function applyExtendsToSelector(
               allExtendTuples,
               skipKeys,
               originalSelector,
-              originalSelectorValues
+              originalSelectorValues,
+              extendTargetIndex
             );
             for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
               const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
@@ -449,7 +454,8 @@ export function applyExtendsToSelector(
             target,
             extendWith,
             originalSelector,
-            originalSelectorValues
+            originalSelectorValues,
+            extendTargetIndex
           );
           for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
             const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
@@ -1121,7 +1127,11 @@ function isSimpleSelectorPlacementCopy(node: Node): node is SimpleSelector {
 
 function copySimpleSelectorsForPlacement(nodes: SimpleSelector[]): SimpleSelector[] {
   return nodes.map((node) => {
-    const copied = node.cloneForPlacement({ reuseLeaves: false });
+    // Extend materialization: these are shared SOURCE simple selectors (plus the
+    // freshly-built `:is()` wrapper) placed into a new Compound/Complex container.
+    // Share their child containers frozen (B3) so `inherit`/`adopt` skips the
+    // reparent and the shared source tree is never mutated.
+    const copied = node.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
     if (!isSimpleSelectorPlacementCopy(copied)) {
       throw new TypeError('Expected simple selector copy');
     }
@@ -1133,7 +1143,8 @@ function copyComplexComponentForPlacement(node: ComplexSelectorComponent): Compl
   if (typeof node === 'string') {
     return node;
   }
-  const copied = node.cloneForPlacement({ reuseLeaves: false });
+  // Shared-source complex component (see copySimpleSelectorsForPlacement): B3 share frozen.
+  const copied = node.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
   if (!isComplexComponent(copied)) {
     throw new TypeError('Expected complex selector component copy');
   }
@@ -3908,6 +3919,91 @@ function validateCompoundSelector(value: any[]): {
   return { isValid: true };
 }
 
+type ExtendTuple = [Selector, Selector, boolean, any, any];
+
+/**
+ * Target-value index over `allExtends`, built once per `applyExtendsToSelector`
+ * pass. `findChainedExtendsWithSkips` otherwise re-scans the ENTIRE extend list
+ * for every (candidate) — O(I) per applied extend × I extends = O(I²).
+ *
+ * A target is "simple" (index-safe) when it is a single simple selector: it can
+ * only match a candidate if that exact selector value appears as one of the
+ * candidate's subtree values (`collectSelectorSubtreeValues` descends into every
+ * simple). So for simple targets, the chaining loop only needs to visit extends
+ * whose target value is actually present in the candidate — a Map lookup instead
+ * of a full-list scan. Compound / complex / list targets can match a SUBSET or a
+ * cross-position span whose whole value never appears as a single subtree value,
+ * so they are NOT index-safe and live in `nonSimple`, checked for every candidate
+ * (rare in practice — most `:extend` targets are a single class/id).
+ */
+interface ExtendTargetIndex {
+  bySimpleTarget: Map<string, ExtendTuple[]>;
+  nonSimple: ExtendTuple[];
+  /** Original position of each tuple in `allExtends`, for stable ordering. */
+  position: Map<ExtendTuple, number>;
+}
+
+/**
+ * The single-simple value of a target if it is index-safe, else undefined.
+ * Index-safe = one position, one simple: a bare SimpleSelector, or a
+ * Compound/Complex/List that reduces to exactly one simple component.
+ */
+function singleSimpleTargetValue(target: Selector): string | undefined {
+  if (isNode(target, N.SelectorList)) {
+    return undefined;
+  }
+  if (isNode(target, N.CompoundSelector)) {
+    const simples = target.value.filter(c => typeof c !== 'string');
+    return simples.length === 1 ? target.valueOf() : undefined;
+  }
+  if (isNode(target, N.ComplexSelector)) {
+    let simple: Selector | undefined;
+    for (const comp of target.value) {
+      if (isCombinator(comp)) {
+        // a combinator ⇒ multi-position ⇒ not index-safe
+        return undefined;
+      }
+      if (typeof comp === 'string') {
+        continue;
+      }
+      if (simple) {
+        return undefined;
+      }
+      simple = comp as Selector;
+    }
+    return simple ? singleSimpleTargetValue(simple) : undefined;
+  }
+  if (isNode(target, N.PseudoSelector)) {
+    // A pseudo target (e.g. :extend(:hover)) can match within a compound as a
+    // subset ⇒ treat as non-simple to be safe.
+    return undefined;
+  }
+  // SimpleSelector (class/id/element/attr) — the canonical index-safe case.
+  return target.valueOf();
+}
+
+function buildExtendTargetIndex(allExtends: ExtendTuple[]): ExtendTargetIndex {
+  const bySimpleTarget = new Map<string, ExtendTuple[]>();
+  const nonSimple: ExtendTuple[] = [];
+  const position = new Map<ExtendTuple, number>();
+  for (let i = 0; i < allExtends.length; i += 1) {
+    const tuple = allExtends[i]!;
+    position.set(tuple, i);
+    const key = singleSimpleTargetValue(tuple[0]);
+    if (key === undefined) {
+      nonSimple.push(tuple);
+    } else {
+      let bucket = bySimpleTarget.get(key);
+      if (!bucket) {
+        bucket = [];
+        bySimpleTarget.set(key, bucket);
+      }
+      bucket.push(tuple);
+    }
+  }
+  return { bySimpleTarget, nonSimple, position };
+}
+
 /**
  * Finds extends that should be processed next on a newly transformed selector.
  * This is part of the iterative extend process: when a selector is transformed
@@ -3933,14 +4029,16 @@ export function findChainedExtends(
   currentTarget: Selector,
   currentSelectorWithExtend: Selector,
   originalSelector: Selector,
-  originalValues?: Set<string>
+  originalValues?: Set<string>,
+  index?: ExtendTargetIndex
 ): Array<[Selector, Selector, boolean, any, any]> {
   return findChainedExtendsWithSkips(
     extendedSelector,
     allExtends,
     new Set([`${currentTarget.valueOf()}|${currentSelectorWithExtend.valueOf()}`]),
     originalSelector,
-    originalValues
+    originalValues,
+    index
   );
 }
 
@@ -4043,34 +4141,65 @@ function findChainedExtendsWithSkips(
   allExtends: Array<[Selector, Selector, boolean, any, any]>,
   skipKeys: Set<string>,
   originalSelector: Selector,
-  originalValues = collectSelectorSubtreeValues(originalSelector)
+  originalValues = collectSelectorSubtreeValues(originalSelector),
+  index?: ExtendTargetIndex
 ): Array<[Selector, Selector, boolean, any, any]> {
-  const chained: Array<[Selector, Selector, boolean, any, any]> = [];
+  const chained: ExtendTuple[] = [];
   const candidates = collectNewSelectorCandidates(extendedSelector, originalValues);
   const queued = new Set<string>();
 
+  const considerTuple = (tuple: ExtendTuple, candidate: Selector): void => {
+    const [otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode] = tuple;
+    const skipKey = `${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
+    if (skipKeys.has(skipKey)) {
+      return;
+    }
+    const chainKey = `${otherPartial ? 1 : 0}|${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
+    if (queued.has(chainKey)) {
+      return;
+    }
+    // `wouldExtendChange` is memoized per pass, so both probes collapse to a
+    // Map hit after their first evaluation.
+    if (wouldExtendChange(originalSelector, otherTarget, otherSelectorWithExtend, otherPartial)) {
+      return;
+    }
+    if (!wouldExtendChange(candidate, otherTarget, otherSelectorWithExtend, otherPartial)) {
+      return;
+    }
+    chained.push([otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
+    queued.add(chainKey);
+  };
+
   for (const candidate of candidates) {
-    for (const [otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode] of allExtends) {
-      const skipKey = `${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
-      if (skipKeys.has(skipKey)) {
-        continue;
+    if (index) {
+      // Only extends whose simple target value actually appears in this
+      // candidate's subtree can match; plus the (rare) non-simple targets.
+      // Gather the relevant tuples, then process them in original `allExtends`
+      // order so chaining order (and thus applied-extend order) is IDENTICAL to
+      // the full-scan path.
+      const candidateValues = collectSelectorSubtreeValues(candidate);
+      const relevant = new Set<ExtendTuple>();
+      for (const value of candidateValues) {
+        const bucket = index.bySimpleTarget.get(value);
+        if (bucket) {
+          for (const tuple of bucket) {
+            relevant.add(tuple);
+          }
+        }
       }
-
-      if (wouldExtendChange(originalSelector, otherTarget, otherSelectorWithExtend, otherPartial)) {
-        continue;
+      for (const tuple of index.nonSimple) {
+        relevant.add(tuple);
       }
-
-      if (!wouldExtendChange(candidate, otherTarget, otherSelectorWithExtend, otherPartial)) {
-        continue;
+      const ordered = [...relevant].sort(
+        (a, b) => (index.position.get(a) ?? 0) - (index.position.get(b) ?? 0)
+      );
+      for (const tuple of ordered) {
+        considerTuple(tuple, candidate);
       }
-
-      const chainKey = `${otherPartial ? 1 : 0}|${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
-      if (queued.has(chainKey)) {
-        continue;
+    } else {
+      for (const tuple of allExtends) {
+        considerTuple(tuple, candidate);
       }
-
-      chained.push([otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
-      queued.add(chainKey);
     }
   }
 
@@ -4096,6 +4225,8 @@ export function applyExtensionAtLocation(
 /**
  * Recursively applies an extension at a specific path.
  * @param contextSelector - When wrapping inside a compound, the compound that will contain the :is(); used for element/ID conflict validation.
+ * @param enclosingPseudo - The PseudoSelector whose `arg` is `current`, threaded from the descent so composition does not read `current.parent`. Enables shared (non-reparented) selectors for B2.
+ * @param enclosingCompound - The CompoundSelector containing `enclosingPseudo`, threaded from the descent instead of reading `current.parent.parent`.
  */
 function applyExtensionAtPath(
   current: Selector,
@@ -4104,7 +4235,9 @@ function applyExtensionAtPath(
   extendWith: Selector,
   extensionType: 'replace' | 'append' | 'wrap',
   location?: ExtendLocation,
-  contextSelector?: Selector
+  contextSelector?: Selector,
+  enclosingPseudo?: PseudoSelector,
+  enclosingCompound?: CompoundSelector
 ): Selector | ExtendErrorType {
   // When at root compound with a contiguous slice to wrap, replace that slice with :is(matched, extendWith)
   if (path.length === 0 && isNode(current, N.CompoundSelector) && location?.contiguousCompoundRange) {
@@ -4185,12 +4318,12 @@ function applyExtensionAtPath(
         && itemSelector
         && isNode(itemSelector, N.SimpleSelector)
         && isNode(matchedNode, N.SimpleSelector)
-        && isNode(current.parent, N.PseudoSelector)
-        && current.parent.name === ':is'
-        && isNode(current.parent.parent, N.CompoundSelector)
+        && enclosingPseudo !== undefined
+        && enclosingPseudo.name === ':is'
+        && enclosingCompound !== undefined
       ) {
-        const parentCompound = current.parent.parent;
-        const pseudoIndex = parentCompound.value.findIndex(n => n === current.parent);
+        const parentCompound = enclosingCompound;
+        const pseudoIndex = parentCompound.value.findIndex(n => n === enclosingPseudo);
         const trailing = pseudoIndex >= 0 ? parentCompound.value.slice(pseudoIndex + 1) : [];
         // Only force append-to-:is() for pseudo tails like `:is(.a,.b):after`.
         // For structural tails like `.a:is(.b,.c).d`, preserve positional wrap semantics.
@@ -4280,7 +4413,7 @@ function applyExtensionAtPath(
       return current;
     }
     const compoundChild = applyExtensionAtPath(
-      targetChild, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext
+      targetChild, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext, undefined, current
     );
     if (typeof compoundChild === 'string') {
       return compoundChild;
@@ -4342,7 +4475,7 @@ function applyExtensionAtPath(
       return result;
     } else {
       // Navigate deeper into the argument
-      const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined);
+      const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined, current, enclosingCompound);
       if (typeof newArg === 'string') {
         return newArg;
       }

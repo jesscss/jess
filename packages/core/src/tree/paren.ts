@@ -4,7 +4,7 @@ import { Any } from './any.js';
 import { Bool, createPublicBool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_MAY_ASYNC, F_NON_STATIC, type NodeLocation } from './node.js';
+import { Node, defineType, F_NON_STATIC, type NodeLocation } from './node.js';
 import { Dimension } from './dimension.js';
 import { List, renderListValueSyntax } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -200,17 +200,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       return this.renderEvaluatedNode(context, currentValue, isOp, resolved, bufferOrOptions, options);
     };
     try {
-      if (!currentValue.hasFlag(F_MAY_ASYNC)) {
-        const evaluated = currentValue.eval(context);
-        if (!(evaluated instanceof Node)) {
-          throw new TypeError('Expected paren value to evaluate to a node');
-        }
-        return finish(evaluated);
-      }
       const maybeEvald = currentValue.eval(context);
       if (isThenable(maybeEvald)) {
         return maybeEvald.then(
-          finish,
+          (evaluated) => {
+            if (!(evaluated instanceof Node)) {
+              throw new TypeError('Expected paren value to evaluate to a node');
+            }
+            return finish(evaluated);
+          },
           (error) => {
             if (isOp) {
               context.parenFrames.pop();
@@ -219,7 +217,10 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           }
         );
       }
-      return finish(maybeEvald as Node);
+      if (!(maybeEvald instanceof Node)) {
+        throw new TypeError('Expected paren value to evaluate to a node');
+      }
+      return finish(maybeEvald);
     } catch (error) {
       if (isOp) {
         context.parenFrames.pop();

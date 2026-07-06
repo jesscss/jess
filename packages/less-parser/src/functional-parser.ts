@@ -25,6 +25,7 @@ class BuilderHost extends LessGrammar implements FunctionalParseHost {
   resetWarnings() {
     this._warnings = [];
     this._errors = [];
+    this._liftedCommentRanges = [];
   }
 
   getWarnings() {
@@ -113,7 +114,8 @@ export class LessParser {
         tree: nil() as unknown as Rules,
         errors: [toParseError('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead.', backtick, text)],
         warnings: [],
-        trivia: buildLazyTriviaMap([], text)
+        trivia: buildLazyTriviaMap([], text),
+        liftedCommentRanges: []
       };
     }
     return parseLessFn(text, rule, this._mathMode);

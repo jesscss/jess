@@ -11,6 +11,8 @@ import {
   type PrintOptions,
   type ErrorDiagnostic,
   type WarningDiagnostic,
+  type TriviaMap,
+  type Trivia,
   JessError,
   toDiagnostic,
   WARN,
@@ -190,6 +192,89 @@ function getSearchPaths(options: Record<string, unknown>): string[] | undefined 
     return options.paths.filter((value): value is string => typeof value === 'string');
   }
   return undefined;
+}
+
+type CommentRange = readonly [number, number];
+
+/**
+ * A view over a TriviaMap that hides comment runs. The dialect decides how much:
+ *
+ * - `liftedRanges === undefined` — the parser doesn't report which comments it
+ *   lifted to `Comment` nodes, so hide EVERY comment run (whitespace-only view).
+ *   The historical, conservative behavior; used where inline-comment placement
+ *   isn't wired end-to-end.
+ * - `liftedRanges` provided — hide ONLY the runs already lifted to standalone
+ *   `Comment` nodes (re-emitting those would double-print). INLINE comments (in
+ *   selectors, values, function args, at-rule preludes) are never lifted — they
+ *   only survive via trivia — so their runs pass through for the serializers to
+ *   place. A run is "lifted" when a lifted range overlaps it; the whole run is
+ *   then hidden (the container serializer re-inserts inter-statement spacing).
+ *
+ * Pure-whitespace runs always pass (authored value/list spacing).
+ */
+function commentAwareTrivia(trivia: TriviaMap, liftedRanges: readonly CommentRange[] | undefined): TriviaMap {
+  const isHidden = (run: { start: number; end: number; hasComment: boolean }): boolean => {
+    if (!run.hasComment) {
+      return false;
+    }
+    if (liftedRanges === undefined) {
+      return true;
+    }
+    for (const [start, end] of liftedRanges) {
+      if (start < run.end && end > run.start) {
+        return true;
+      }
+    }
+    return false;
+  };
+  let visibleComments: readonly Trivia[] | undefined;
+  return {
+    lookup(offset, direction) {
+      const run = trivia.lookup(offset, direction);
+      return run && !isHidden(run) ? run : undefined;
+    },
+    *entries(direction) {
+      for (const entry of trivia.entries(direction)) {
+        if (!isHidden(entry[1])) {
+          yield entry;
+        }
+      }
+    },
+    has(offset, direction) {
+      const run = trivia.lookup(offset, direction);
+      return run !== undefined && !isHidden(run);
+    },
+    commentRuns() {
+      if (visibleComments === undefined) {
+        // Inner index is already sorted/deduped; drop hidden (lifted) runs so
+        // they don't double-print, preserving the filtered view's semantics.
+        visibleComments = trivia.commentRuns().filter(run => !isHidden(run));
+      }
+      return visibleComments;
+    }
+  };
+}
+
+/**
+ * A parser plugin builds its own file-bearing TreeContext and records authored
+ * whitespace/comment trivia on it (`node._treeContext.opts.trivia`). Rendering,
+ * however, drives the shared render `context`, and the serializer seeds its
+ * trivia from `context.opts.trivia`. Bridge the two so authored value whitespace
+ * (multi-line lists, custom-property value spacing) survives to output. The root
+ * file wins; imports keep their own per-node context for anything context-scoped.
+ */
+function adoptSourceTrivia(context: Context, node: { _treeContext?: Context } | null): void {
+  if (!node || 'trivia' in context.opts) {
+    return;
+  }
+  const trivia = node._treeContext?.opts?.trivia;
+  if (trivia) {
+    // `liftedCommentRanges` present → expose inline comments, hide the lifted
+    // standalone ones (Less). Absent → hide every comment run (whitespace-only),
+    // the conservative default for dialects that don't report lifts yet.
+    const liftedRanges = node._treeContext?.opts?.liftedCommentRanges as readonly CommentRange[] | undefined;
+    context.opts.trivia = commentAwareTrivia(trivia as TriviaMap, liftedRanges);
+  }
 }
 
 let nextRenderProfileId = 0;
@@ -1022,12 +1107,18 @@ export class Compiler {
     }
   }
 
-  private async evaluateInput(
+  /**
+   * Parse + before-eval transforms + `context.root` — everything the tree needs
+   * BEFORE evaluation. The eval itself is driven separately: `compile()` evals
+   * here via `evaluateInput`; the render path defers eval into `render()` (D3 —
+   * `render()` is the sole eval driver for serialization).
+   */
+  private async prepareInputTree(
     context: Context,
     resolved: ResolvedRenderConfig,
     input: { filePath?: string; source?: string; language?: string; extension?: string },
     profile?: RenderProfile
-  ) {
+  ): Promise<Rules> {
     const { filePath, source, language, extension } = input;
     const rootLessSourceOptions: RootLessSourceOptions = {
       banner: typeof resolved.activeOptions.banner === 'string'
@@ -1060,6 +1151,7 @@ export class Compiler {
       if (!parsedNode) {
         throw new Error(`Failed to parse ${filePath ?? '<input>'}`);
       }
+      adoptSourceTrivia(context, parsedNode);
       tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
         this.applyBeforeEvalVisitors(context, parsedNode, filePath ?? '<input>')
       );
@@ -1091,6 +1183,7 @@ export class Compiler {
       if (!loadedNode) {
         throw new Error(`Failed to load ${filePath!}`);
       }
+      adoptSourceTrivia(context, loadedNode);
       tree = await measureProfileAsync(profile, 'applyBeforeEvalVisitors', () =>
         this.applyBeforeEvalVisitors(context, loadedNode, filePath!)
       );
@@ -1099,6 +1192,21 @@ export class Compiler {
       }
     }
 
+    return tree;
+  }
+
+  /**
+   * Prepare + eval + pre-render visitors, returning the EVALUATED tree. Used by
+   * `compile()`, which returns an evaluated tree without serializing it. The
+   * render path does NOT use this — it drives eval through `render()` (D3).
+   */
+  private async evaluateInput(
+    context: Context,
+    resolved: ResolvedRenderConfig,
+    input: { filePath?: string; source?: string; language?: string; extension?: string },
+    profile?: RenderProfile
+  ): Promise<Rules> {
+    const tree = await this.prepareInputTree(context, resolved, input, profile);
     const evald = await measureProfileAsync(profile, 'eval', async () => tree.eval(context));
     return measureProfileSync(profile, 'applyPreRenderVisitors', () =>
       this.applyPreRenderVisitors(context, evald)
@@ -1108,7 +1216,15 @@ export class Compiler {
   private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
     const printOptions: PrintOptions = {
       collapseNesting: context.opts.output?.collapseNesting,
-      context
+      context,
+      // D3: `render()` is the sole eval driver. `tree` enters unevaluated; render
+      // evaluates it, then fires this hook on the evaluated root so post-eval /
+      // pre-render plugin visitors transform it before serialization — the role
+      // the removed separate `tree.eval()` pre-pass used to serve.
+      preSerializeRoot: evaluatedRoot =>
+        measureProfileSync(profile, 'applyPreRenderVisitors', () =>
+          this.applyPreRenderVisitors(context, evaluatedRoot)
+        )
     };
 
     let css = await measureProfileAsync(profile, 'render', async () => {
@@ -1177,7 +1293,7 @@ export class Compiler {
   async render(filePath: string, options?: Partial<ConfigOptions>) {
     const { resolved, context, profile } = await this.prepareRender(filePath, options);
     try {
-      const tree = await this.evaluateInput(context, resolved, { filePath }, profile);
+      const tree = await this.prepareInputTree(context, resolved, { filePath }, profile);
       const css = await this.renderTree(tree, context, profile);
       finalizeRenderProfile(profile, {
         method: 'render',
@@ -1212,8 +1328,8 @@ export class Compiler {
     const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const evald = await this.evaluateInput(context, resolved, { filePath, source: content, language, extension }, profile);
-      const css = await this.renderTree(evald, context, profile);
+      const tree = await this.prepareInputTree(context, resolved, { filePath, source: content, language, extension }, profile);
+      const css = await this.renderTree(tree, context, profile);
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
@@ -1257,13 +1373,13 @@ export class Compiler {
     const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const evald = await this.evaluateInput(context, resolved, {
+      const tree = await this.prepareInputTree(context, resolved, {
         filePath,
         source,
         language,
         extension
       }, profile);
-      const css = await this.renderTree(evald, context, profile);
+      const css = await this.renderTree(tree, context, profile);
 
       const loadedUrls: string[] = [];
 

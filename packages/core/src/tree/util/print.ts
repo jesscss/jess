@@ -64,6 +64,15 @@ export type PrintOptions = {
     sourceRoot?: string;
     fromFilePath?: string;
   };
+  /**
+   * Root-render hook fired on the EVALUATED root tree after `render()` drives
+   * eval and BEFORE serialization. Lets the compiler run post-eval / pre-render
+   * plugin visitors on the evaluated tree without a separate pre-pass eval (D3 —
+   * single render driver). Return a replacement root to swap what gets
+   * serialized; returning void keeps the (possibly mutated in place) tree. Only
+   * consulted for a root (`sourceWasRoot`) render.
+   */
+  preSerializeRoot?: (evaluatedRoot: import('../rules.js').Rules) => MaybePromise<import('../rules.js').Rules | void>;
 };
 
 export type FinalPrintOptions = PrintOptions & {

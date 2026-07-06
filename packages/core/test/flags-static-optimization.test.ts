@@ -49,7 +49,7 @@ describe('Static optimization', () => {
     expect(declaration.type).toBe('Declaration');
 
     // Verify that the declaration has static flags
-    expectFlags(declaration, true, false); // F_STATIC, not F_MAY_ASYNC
+    expectFlags(declaration, true, false);
   });
 
   test('dynamic declarations have non-static flags', () => {
@@ -74,7 +74,7 @@ describe('Static optimization', () => {
     expect(declaration.type).toBe('Declaration');
 
     // Verify that the declaration has mayAsync flags
-    expectFlags(declaration, false, true); // not F_STATIC, F_MAY_ASYNC
+    expectFlags(declaration, false, true);
   });
 
   test('operations always have non-static flags', () => {
@@ -99,7 +99,7 @@ describe('Static optimization', () => {
     expect(operation!.type).toBe('Operation');
 
     // Verify that the operation has non-static flags
-    expectFlags(operation!, false, false); // not F_STATIC, not F_MAY_ASYNC (static operation)
+    expectFlags(operation!, false, false);
   });
 
   test('function calls always have non-static flags', () => {
@@ -124,7 +124,7 @@ describe('Static optimization', () => {
     expect(callNode!.type).toBe('Call');
 
     // Verify that the function call has non-static and mayAsync flags
-    expectFlags(callNode!, false, true); // not F_STATIC, F_MAY_ASYNC (function calls are potentially async)
+    expectFlags(callNode!, false, true);
   });
 
   test('static container nodes have static flags', () => {
@@ -152,7 +152,7 @@ describe('Static optimization', () => {
     expect(listNode!.type).toBe('List');
 
     // Verify that the list has static flags
-    expectFlags(listNode!, true, false); // F_STATIC, not F_MAY_ASYNC
+    expectFlags(listNode!, true, false);
   });
 
   test('dynamic container nodes have non-static flags', () => {
@@ -180,7 +180,7 @@ describe('Static optimization', () => {
     expect(listNode!.type).toBe('List');
 
     // Verify that the list has mayAsync flags
-    expectFlags(listNode!, false, true); // not F_STATIC, F_MAY_ASYNC
+    expectFlags(listNode!, false, true);
   });
 
   test('mixed content rulesets have appropriate flags', () => {
@@ -202,7 +202,7 @@ describe('Static optimization', () => {
     expect(rulesetNode).toBeDefined();
 
     // The ruleset should have mayAsync flags due to dynamic content
-    expectFlags(rulesetNode, false, true); // not F_STATIC, F_MAY_ASYNC
+    expectFlags(rulesetNode, false, true);
 
     const declarations = rulesetNode.rules;
 

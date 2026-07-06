@@ -64,6 +64,23 @@ describe('guardInParens', () => {
   });
 });
 
+describe('comparison operand: escaped value', () => {
+  // `~"…"` (EscapedValue) is a valid comparison operand. Before adding EscapedValue
+  // to `guardOperand`, the bare-`Quoted` alt failed on the leading `~`, so `anyValue`
+  // swallowed `~"theme1" = @str` into a Sequence — dropping the `=` comparison, and
+  // the guard never evaluated (mixin overload never matched).
+  it('builds a Condition for `~"…" = @var`, not a bare Paren/Sequence', () => {
+    const { errors, tree } = parse('when (~"theme1" = @str)', 'Guard');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Condition');
+    expect(out).toContainString('escaped: true');
+    expect(out).toContainString("value: 'theme1'");
+    expect(out).toContainString("key: 'str'");
+    expect(out).not.toContainString('(Sequence');
+  });
+});
+
 describe('css guards (guarded rulesets)', () => {
   // The `when` KEYWORD is the guard boundary — the selector run must stop at it
   // regardless of what follows (`(`, `not (`, `default()`, …). A too-narrow

@@ -1,7 +1,7 @@
 import { sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
+import { Any, Call, Color, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -53,7 +53,6 @@ const run = (text: string) => makeTrivia(text, 0, text.length);
 class AsyncAny extends Any<string> {
   constructor(value: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -64,7 +63,6 @@ class AsyncAny extends Any<string> {
 class AsyncRenderedAny extends Any<string> {
   constructor(value: string, private readonly renderedValue: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -75,7 +73,6 @@ class AsyncRenderedAny extends Any<string> {
 class RejectingAny extends Any<string> {
   constructor(value: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -126,7 +123,6 @@ class AsyncWriterTrackingCustomSyntaxAny extends Any<string> {
   constructor(value: string) {
     super(value);
     this.renderedNode = new WriterTrackingCustomSyntaxNode(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -137,7 +133,6 @@ class AsyncWriterTrackingCustomSyntaxAny extends Any<string> {
 class AsyncCustomSyntaxAny extends Any<string> {
   constructor(value: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -251,6 +246,25 @@ describe('Call', () => {
     expect(writer.toString()).toBe('fn(10, 20, 30)');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
+  });
+
+  it('does not double the separator when a space-group arg term already carries leading whitespace', () => {
+    // Repro of the `less` `modern` fixture: the parser bakes leading spaces into
+    // value keywords that follow a `)`-terminated term (e.g. `... calc(l - 0.1) c h`
+    // yields keyword terms `" c"` / `" h"`). The known-text fast path in
+    // `getKnownRenderedCallText` joined space-group terms with an unconditional
+    // space, so a term that already carried a leading space rendered doubled.
+    const rule = call({
+      name: 'fn',
+      args: list([
+        seq([
+          any('from'),
+          any(' c'),
+          any(' h')
+        ])
+      ])
+    });
+    expect(rule.render(context)).toBe('fn(from c h)');
   });
 
   it('serializes escaped scalar list call source args without whole-call readback', () => {
@@ -2336,7 +2350,6 @@ describe('Call', () => {
     expect(originalValue.parent).toBe(originalArgs);
     expect(originalArgs.parent).toBe(rule);
   });
-
 
   it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {
     const seenRawArgs: List[] = [];

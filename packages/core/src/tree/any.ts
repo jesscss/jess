@@ -2,7 +2,7 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
+import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_ALLOW_ROOT } from './node-base.js';
 import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { FinalPrintOptions, PrintOptions } from './util/print.js';
@@ -65,6 +65,12 @@ export class Any<
     this._treeContext = treeContext;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
+    // Less's `Anonymous` (this node's namesake) is statement-legal by type
+    // (`allowRoot = true`). A root-position call/mixin/detached-ruleset that
+    // evaluates to a bare value produces an `Any`, and Less emits it as the
+    // final statement — e.g. root-level `e('/* … */')`. Keyword (a subclass)
+    // is NOT root-legal in Less, so it strips this flag in its constructor.
+    this.addFlag(F_ALLOW_ROOT);
   }
 
   override prepareRegistration(_context: Context): this {
@@ -154,6 +160,10 @@ export class Keyword extends Any<'keyword'> {
   ) {
     // Force role to 'keyword'
     super(value, { ...options, role: 'keyword' }, location, treeContext);
+    // Less's `Keyword` is NOT statement-legal (no `allowRoot`), unlike the
+    // `Anonymous`/`Any` base. A bare keyword in statement position stays an
+    // eval/invalid-statement error, matching Less.
+    this.removeFlag(F_ALLOW_ROOT);
   }
 }
 defineType(Keyword, 'Keyword');

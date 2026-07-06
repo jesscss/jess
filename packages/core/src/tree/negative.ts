@@ -1,4 +1,4 @@
-import { Node, defineType, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { Any } from './any.js';
 import { Dimension } from './dimension.js';
@@ -75,10 +75,6 @@ export class Negative extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.value.eval(context) as Node;
-      return this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options);
-    }
     const value = this.value.eval(context);
     return isThenable(value)
       ? value.then(evaluated => this.renderEvaluatedValue(context, evaluated, bufferOrOptions, options))
@@ -123,10 +119,6 @@ export class Negative extends Node<Node> {
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    if (!this.value.hasFlag(F_MAY_ASYNC)) {
-      const evaluated = this.value.eval(context) as Node;
-      return this.operateNegativeValue(evaluated, context);
-    }
     const value = this.value.eval(context);
     return isThenable(value)
       ? value.then(evaluated => this.operateNegativeValue(evaluated, context))
