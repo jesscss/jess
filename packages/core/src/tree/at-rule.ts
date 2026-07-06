@@ -925,7 +925,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         }
       }
     }
-    const hasHoistedRulesetParent = context.bubbleRootAtRules
+    const hasHoistedRulesetParent = context.options.bubbleRootAtRules
       && this.isRootOnly()
       && hasRulesetFrame;
     const renderSourceBody = Boolean(
@@ -1645,7 +1645,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         break;
       }
     }
-    const hasHoistedRulesetParent = context.bubbleRootAtRules
+    const hasHoistedRulesetParent = context.options.bubbleRootAtRules
       && this.isRootOnly()
       && hasRulesetFrame;
     const record = {

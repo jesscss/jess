@@ -90,7 +90,7 @@ export async function evaluateCallableSpecialCaseCandidate({
 
     candidateParent.adopt(unlocked);
     attachMixinOutputSlot(unlocked, sourceRules, restrictMixinOutputLookup, {
-      fallbackFrame: context.leakyScope === true ? parentFrame : undefined
+      fallbackFrame: context.options.leakyScope === true ? parentFrame : undefined
     });
     unlocked.index = candidate.index;
     const evaledUnlocked = unlocked.eval(context);

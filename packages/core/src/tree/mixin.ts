@@ -306,7 +306,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   }
 
   private _prepareMixinBodyVisibility(rules: Rules, context: Context): void {
-    if (context.leakyScope) {
+    if (context.options.leakyScope) {
       rules.options.rulesVisibility.Mixin = 'public';
       // Keep Less mixin-definition vars as fallback by default. Call-time scope
       // controls for params/local vars are handled in mixin evaluation paths.

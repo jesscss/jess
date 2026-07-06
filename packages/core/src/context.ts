@@ -217,7 +217,7 @@ export const generateId = (length = 8) => {
  * Additionally, it sets options that may be
  * unique to the tree, such as the math mode.
  */
-export class TreeContext implements TreeContextOptions {
+export class TreeContext {
   /** Non-option, per-tree transient data (trivia, lifted-comment ranges, …). */
   opts: Record<string, any>;
 
@@ -230,16 +230,6 @@ export class TreeContext implements TreeContextOptions {
    * to read, no per-read merge.
    */
   options: ResolvedOptions;
-
-  // The promoted option fields are now a read-only VIEW over `options` — a single
-  // source of truth, replacing the old "some options are root fields, the rest
-  // fall into `opts`" split.
-  get mathMode() { return this.options.mathMode; }
-  get unitMode() { return this.options.unitMode; }
-  get functionMode() { return this.options.functionMode; }
-  get equalityMode() { return this.options.equalityMode; }
-  get leakyScope() { return this.options.leakyScope; }
-  get bubbleRootAtRules() { return this.options.bubbleRootAtRules; }
 
   /** @todo - Change how extend works based on this value */
   isModule: boolean | undefined;
@@ -335,7 +325,7 @@ export class Context {
    */
   setOption<K extends keyof ResolvedOptions>(key: K, value: ResolvedOptions[K]): void {
     this.opts[key] = value;
-    this._options = resolveOptions(this.opts, this._treeContext);
+    this._options = resolveOptions(this.opts, this._treeContext?.options);
   }
 
   /**
@@ -555,15 +545,6 @@ export class Context {
 
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
-
-  /** Thin accessors over the resolved option set (kept for existing callers). */
-  get leakyScope() {
-    return this.options.leakyScope;
-  }
-
-  get bubbleRootAtRules() {
-    return this.options.bubbleRootAtRules;
-  }
 
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;

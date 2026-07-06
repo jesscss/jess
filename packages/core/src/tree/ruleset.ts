@@ -790,7 +790,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return true;
     }
     return !context.opts.output?.collapseNesting
-      && !context.bubbleRootAtRules
+      && !context.options.bubbleRootAtRules
       && atRule.isRootOnly();
   }
 
@@ -1909,7 +1909,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return;
     }
     node.options.rulesVisibility ??= {};
-    if (context.leakyScope) {
+    if (context.options.leakyScope) {
       node.options.rulesVisibility.Mixin = 'public';
       node.options.rulesVisibility.VarDeclaration = 'optional';
     } else {

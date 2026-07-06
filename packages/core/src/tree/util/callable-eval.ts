@@ -48,7 +48,7 @@ export async function evaluateCallableCollection({
     caller
   });
   const debugDefaultGuard = process.env.DEBUG_DEFAULT_GUARD === '1';
-  const restrictMixinOutputLookup = context.leakyScope !== true;
+  const restrictMixinOutputLookup = context.options.leakyScope !== true;
   const defaultState = createCallableDefaultState();
   const ordinaryCallSiteRules = context.rulesContext ?? caller?.rulesParent ?? caller?.sourceRulesParent;
   if (!ordinaryCallSiteRules) {

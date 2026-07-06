@@ -104,7 +104,7 @@ export async function executeCallableCandidate({
       liveSlots,
       usesPreboundParamGuardOuterRules
     });
-  } else if (context.leakyScope === true && parentFrame) {
+  } else if (context.options.leakyScope === true && parentFrame) {
     wireCallableScopeFrames({
       rules,
       parentFrame,

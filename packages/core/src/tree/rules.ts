@@ -5821,7 +5821,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             rulesVisibility: result.options.rulesVisibility,
             readonly: result.options.readonly
           }, context);
-          if (context.leakyScope && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
+          if (context.options.leakyScope && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
             out.injectLeakyMixinOutputBindings(result, idx);
           }
           if (result.hoistToRoot) {
