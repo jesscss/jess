@@ -19,37 +19,29 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
  */
 const TD = resolveLessTestDataRoot();
 
+// With Less-4-parity error surfacing ON (functionMode:'error', unitMode:'strict'
+// — see makeCompiler), the function/unit "divergences" now ERROR like Less, so
+// they're gone from this list. What remains is: genuine v5 behavior that no
+// option changes, plus REAL gaps where Jess still fails to error.
 const acceptedDivergences = new Map<string, string>([
-  // Intentional v5 repairs — Jess correctly PRESERVES where Less 4.x threw.
-  ['tests-error/eval/add-mixed-units.less', 'v5 unitMode:preserve → calc() for mixed-unit +, not an error'],
-  ['tests-error/eval/add-mixed-units2.less', 'v5 unitMode:preserve → calc() for mixed-unit +, not an error'],
-  ['tests-error/eval/divide-mixed-units.less', 'v5 unitMode:preserve → calc() for mixed-unit /, not an error'],
-  ['tests-error/eval/color-func-invalid-color.less', 'v5 functionMode:preserve → renders color() as-is + warns, not an error'],
-  ['tests-error/eval/color-func-invalid-color-2.less', 'v5 functionMode:preserve → renders color() as-is + warns, not an error'],
-  // Real should-error GAPS — Jess accepts what Less rejects; to fix (make Jess error).
-  ['tests-error/eval/css-guard-default-func.less', 'GAP: default() in a non-mixin CSS guard should error'],
-  ['tests-error/eval/detached-ruleset-1.less', 'GAP: detached ruleset used on a property should error'],
-  ['tests-error/eval/detached-ruleset-2.less', 'GAP: @a() detached call without [...] lookup should error'],
-  ['tests-error/eval/detached-ruleset-3.less', 'GAP: property/detached-call in the root should error'],
-  ['tests-error/eval/ampersand-merge-template-invalid.less', 'GAP: invalid ampersand merge template should error'],
-  ['tests-error/eval/mixin-not-visible-in-scope-1.less', 'GAP: mixin not visible across sibling & scopes should error'],
-  // More intentional v5 repairs (functionMode/unitMode preserve).
-  ['tests-error/eval/multiply-mixed-units.less', 'v5 unitMode:preserve → calc() for mixed-unit *, not an error'],
-  ['tests-error/eval/percentage-non-number-argument.less', 'v5 functionMode:preserve → renders percentage() as-is, not an error'],
-  ['tests-error/eval/unit-function.less', 'v5 functionMode:preserve → renders unit() as-is, not an error'],
-  ['tests-error/eval/root-func-undefined-1.less', 'v5 functionMode:preserve → unknown func() renders as-is, not an error'],
-  ['tests-error/eval/svg-gradient1.less', 'v5 functionMode:preserve → renders svg-gradient() as-is, not an error'],
-  ['tests-error/eval/svg-gradient2.less', 'v5 functionMode:preserve → renders svg-gradient() as-is, not an error'],
-  ['tests-error/eval/svg-gradient3.less', 'v5 functionMode:preserve → renders svg-gradient() as-is, not an error'],
-  ['tests-error/eval/svg-gradient4.less', 'v5 functionMode:preserve → renders svg-gradient() as-is, not an error'],
-  ['tests-error/eval/svg-gradient5.less', 'v5 functionMode:preserve → renders svg-gradient() as-is, not an error'],
-  ['tests-error/eval/svg-gradient6.less', 'v5 functionMode:preserve → renders svg-gradient() as-is, not an error'],
-  // More real should-error GAPS — Jess accepts what Less rejects; to fix.
+  // Intentional v5 behavior even under error-surfacing options — a color fn whose
+  // argument is a runtime `var()` can't be evaluated at build, so v5 preserves it.
+  ['tests-error/eval/color-func-invalid-color-2.less', 'v5 preserves darken(var(--x), …): a runtime var() arg is un-evaluable at build'],
+
+  // Real should-error GAPS — Jess still ACCEPTS these with error options on;
+  // each asserts KEEP-accepting, so a fix that closes it trips the test.
   ['tests-error/eval/property-in-root.less', 'GAP: a property in the root should error'],
   ['tests-error/eval/property-in-root2.less', 'GAP: a property in the root should error'],
   ['tests-error/eval/property-interp-not-defined.less', 'GAP: undefined @var in a property-name interpolation should error'],
+  ['tests-error/eval/detached-ruleset-1.less', 'GAP: detached ruleset used on a property should error'],
+  ['tests-error/eval/detached-ruleset-2.less', 'GAP: @a() detached call without [...] lookup should error'],
+  ['tests-error/eval/detached-ruleset-3.less', 'GAP: property/detached-call in the root should error'],
+  ['tests-error/eval/css-guard-default-func.less', 'GAP: default() in a non-mixin CSS guard should error'],
   ['tests-error/eval/multiple-guards-on-css-selectors.less', 'GAP: a guard on a multi-selector rule should error'],
   ['tests-error/eval/multiple-guards-on-css-selectors2.less', 'GAP: a guard on a multi-selector rule should error'],
+  ['tests-error/eval/root-func-undefined-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
+  ['tests-error/eval/ampersand-merge-template-invalid.less', 'GAP: invalid ampersand merge template should error'],
+  ['tests-error/eval/mixin-not-visible-in-scope-1.less', 'GAP: mixin not visible across sibling & scopes should error'],
   ['tests-error/parse/invalid-color-with-comment.less', 'GAP: malformed hex color (#fffff) should be a parse error'],
   ['tests-error/parse/mixins-guards-cond-expected.less', 'GAP: guard without a parenthesized condition should be a parse error']
 ]);
@@ -70,7 +62,15 @@ function makeCompiler() {
   return new Compiler({
     output: { collapseNesting: true },
     compile: {
-      plugins: [lessPlugin(), lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] })]
+      plugins: [lessPlugin(), lessCompatPlugin({ plugins: [lessHarnessFunctionsPlugin] })],
+      // Less 4.x-parity error surfacing: this corpus asks "does Jess error where
+      // Less 4.x errors". Under the v5-lenient defaults (functionMode/unitMode
+      // 'preserve') Jess would render bad-function / mixed-unit input as-is —
+      // that's option-controlled, not a gap. Turn the options that gate those
+      // errors ON so what remains accepting is a REAL gap. (leakyScope /
+      // equalityMode stay at Less-4 defaults: Less 4.x is leaky + `less` equality.)
+      functionMode: 'error',
+      unitMode: 'strict'
     }
   });
 }
