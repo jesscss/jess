@@ -23,6 +23,7 @@ export { boolean, not, and, or } from './logical.js';
 
 /** String */
 export { default as e } from './e.js';
+export { default as escape } from './escape.js';
 export { default as replace } from './replace.js';
 export { default as format } from './format.js';
 
