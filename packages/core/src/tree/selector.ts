@@ -137,6 +137,15 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   override clone(cloneFn?: (n: Node) => Node): this {
     const cloned = super.clone(cloneFn);
     cloned.keySetLibrary = this.keySetLibrary;
+    // `F_AMPERSAND` is a selector-scoped structural flag (see
+    // `propagateFlagsFrom`), NOT part of the generic `F_CHILD_DERIVED` set that
+    // `Node.clone` preserves. A faithful selector copy has the same `&`
+    // containment as its source, so carry it here — otherwise a cloned
+    // `.inside &` render selector loses the flag and `composeSelector` prepends
+    // the parent instead of substituting it (`.top .inside :is(.top)` doubling).
+    if (this.hasFlag(F_AMPERSAND)) {
+      cloned.addFlag(F_AMPERSAND);
+    }
     return cloned;
   }
 
