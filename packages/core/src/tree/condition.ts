@@ -154,7 +154,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     return Condition.getBoolValue(node as ConditionResultValue, false);
   }
 
-  static getResult(a: ConditionResultValue, b: ConditionResultValue, op: ConditionOperator, equalityMode: EqualityMode = 'loose'): boolean {
+  static getResult(a: ConditionResultValue, b: ConditionResultValue, op: ConditionOperator, equalityMode: EqualityMode = 'less'): boolean {
     switch (op) {
       case 'and': return Condition.getBoolValue(a, false) && Condition.getBoolValue(b, false);
       case 'or': return Condition.getBoolValue(a, false) || Condition.getBoolValue(b, false);
@@ -162,30 +162,54 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (typeof a === 'boolean' || typeof b === 'boolean') {
           return op === '=' && Condition.getBoolValue(a, false) === Condition.getBoolValue(b, false);
         }
-        let cmp = a.compare(b);
-        // Strict equality (JS `===`): cross-type operands never compare equal, so
-        // a `0` from a loose/coercive compare (e.g. `2px = 2`) is demoted to
-        // "incomparable" when the two node types differ.
-        if (cmp === 0 && equalityMode === 'strict' && a.type !== b.type) {
-          cmp = undefined;
+        // `cmp` is the raw ordering (<, >) from the node's own compare; equality
+        // (=, and the equal branch of <=/>=) is decided per DIALECT.
+        const cmp = a.compare(b);
+        const equal = Condition.equalUnder(a, b, cmp, equalityMode);
+        switch (op) {
+          case '=': return equal;
+          case '<': return cmp === -1;
+          case '>': return cmp === 1;
+          case '<=': return equal || cmp === -1;
+          case '>=': return equal || cmp === 1;
+          default: return false;
         }
-        switch (cmp) {
-          case -1:
-            return op === '<' || op === '<=';
-          case 0:
-            return op === '=' || op === '>=' || op === '<=';
-          case 1:
-            return op === '>' || op === '>=';
-          default:
-            return false;
+    }
+  }
+
+  /**
+   * Dialect equality verdict, given the node's raw compare result. Matches the
+   * upstream engines (verified against Less 4.6.3 + Dart Sass):
+   * - `less`: coercive compare, but quoted↔unquoted text never match
+   *   (`2px = 2` ✓, `a = "a"` ✗, `red = "red"` ✗).
+   * - `sass`: quote-insensitive string equality; otherwise same-type + equal
+   *   (`a == "a"` ✓, `2px == 2` ✗, `red == "red"` ✗).
+   * - `exact`: same node type + equal, no coercion.
+   */
+  private static equalUnder(a: Node, b: Node, cmp: 0 | 1 | -1 | undefined, mode: EqualityMode): boolean {
+    const aStr = a.type === 'Quoted' || a.type === 'Keyword';
+    const bStr = b.type === 'Quoted' || b.type === 'Keyword';
+    switch (mode) {
+      case 'sass':
+        if (aStr && bStr) {
+          return String(a.valueOf?.() ?? a) === String(b.valueOf?.() ?? b);
         }
+        return cmp === 0 && a.type === b.type;
+      case 'exact':
+        return cmp === 0 && a.type === b.type;
+      case 'less':
+      default:
+        if ((a.type === 'Quoted') !== (b.type === 'Quoted')) {
+          return false;
+        }
+        return cmp === 0;
     }
   }
 
   evaluateBoolean(context: Context): MaybePromise<boolean> {
     const { left, operator: op, right } = this;
     const negated = this.negate;
-    const equalityMode: EqualityMode = context.opts?.equalityMode ?? this._treeContext?.equalityMode ?? 'loose';
+    const equalityMode: EqualityMode = context.opts?.equalityMode ?? this._treeContext?.equalityMode ?? 'less';
     const leftResult = left.eval(context);
     if (isThenable(leftResult)) {
       return (leftResult as Promise<Node>).then((resolvedLeft) => {

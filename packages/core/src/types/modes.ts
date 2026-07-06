@@ -35,11 +35,16 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
 export type FunctionMode = 'preserve' | 'error';
 
 /**
- * Equality modes for guard/comparison semantics — the JS `==` vs `===` split.
+ * Equality dialects for guard/comparison semantics. Less 4.x and Sass are NOT a
+ * strictness gradient — they diverge in OPPOSITE directions (Less coerces
+ * unit↔unitless numbers but treats quoted vs unquoted text as distinct; Sass is
+ * the reverse), so these are named by dialect, not by "loose/strict":
  *
- * - `loose`: Less-compatible loose equality — cross-type operands can compare
- *   equal (like JS `==`), e.g. `2px = 2`.
- * - `strict`: type-strict equality (like JS `===`) — operands must be the same
- *   node type to compare equal.
+ * - `less`: Less 4.x equality. `2px = 2` ✓ (numeric coercion); `a = "a"` ✗ and
+ *   `red = "red"` ✗ (quoted vs unquoted differ).
+ * - `sass`: Dart Sass equality. `2px == 2` ✗ (unit-strict); `a == "a"` ✓
+ *   (quote-insensitive strings); `red == "red"` ✗ (Color vs string).
+ * - `exact`: no coercion — operands must be the same node type. Stricter than
+ *   both (`2px = 2` ✗, `a = "a"` ✗).
  */
-export type EqualityMode = 'loose' | 'strict';
+export type EqualityMode = 'less' | 'sass' | 'exact';

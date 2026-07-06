@@ -51,7 +51,7 @@ export class ScssPlugin extends AbstractPlugin {
   constructor(public opts: ScssPluginOptions = {}) {
     super();
     this.unitMode = opts.unitMode ?? 'preserve';
-    this.equalityMode = opts.equalityMode ?? 'strict';
+    this.equalityMode = opts.equalityMode ?? 'sass';
     this.parser = new Parser();
   }
 

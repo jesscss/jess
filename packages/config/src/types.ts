@@ -16,9 +16,13 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
 export type FunctionMode = 'preserve' | 'error';
 
 /**
- * Equality/coercion modes for guard comparisons.
+ * Equality dialects for guard comparisons — named by dialect (Less 4.x and Sass
+ * diverge in opposite directions), not by strictness:
+ * - `less`: Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
+ * - `sass`: Dart Sass equality (unit-strict; quote-insensitive strings)
+ * - `exact`: no coercion — operands must be the same node type
  */
-export type EqualityMode = 'loose' | 'strict';
+export type EqualityMode = 'less' | 'sass' | 'exact';
 export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 /**

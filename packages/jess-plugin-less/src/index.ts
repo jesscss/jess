@@ -67,7 +67,7 @@ export class LessPlugin extends AbstractPlugin {
       unitMode = 'preserve';
     }
     this.unitMode = unitMode;
-    this.equalityMode = opts.equalityMode ?? 'loose';
+    this.equalityMode = opts.equalityMode ?? 'less';
     this.leakyScope = opts.leakyScope ?? true;
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? true;
     this.collapseNesting = opts.collapseNesting ?? false;

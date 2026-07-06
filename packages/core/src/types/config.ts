@@ -143,10 +143,11 @@ export interface LessOptions {
   functionMode?: FunctionMode;
 
   /**
-   * How to handle equality/coercion in guards and comparisons.
-   * - 'loose': Less-compatible loose (coercive) equality (JS '==')
-   * - 'strict': type-strict behavior
-   * @default 'loose'
+   * Guard-comparison dialect (verified vs Less 4.6.3 + Dart Sass):
+   * - 'less': Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
+   * - 'sass': Dart Sass equality (unit-strict; quote-insensitive strings)
+   * - 'exact': no coercion — same node type required
+   * @default 'less' (Less plugin) / 'sass' (SCSS plugin)
    */
   equalityMode?: EqualityMode;
 

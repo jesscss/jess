@@ -13,7 +13,7 @@ export function normalizeComparableWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-export function compare(a: any, b: any, mode: EqualityMode = 'loose') {
+export function compare(a: any, b: any, mode: EqualityMode = 'less') {
   if (a === b) {
     return 0;
   }
@@ -24,7 +24,7 @@ export function compare(a: any, b: any, mode: EqualityMode = 'loose') {
     return a.compare(b);
   }
   /** Do comparison without strict equality */
-  if (mode === 'loose' && a == b) {
+  if (mode !== 'exact' && a == b) {
     return 0;
   }
   return undefined;
@@ -82,7 +82,7 @@ export function comparePosition(a: Node, b: Node) {
   return a0.index! - b0.index!;
 }
 
-export function compareNodeArray(a: any[], b: any[], mode: EqualityMode = 'loose'): 0 | 1 | -1 | undefined {
+export function compareNodeArray(a: any[], b: any[], mode: EqualityMode = 'less'): 0 | 1 | -1 | undefined {
   let output: 0 | 1 | -1 | undefined;
 
   if (a.length !== b.length) {
