@@ -284,12 +284,21 @@ export class Context {
   readonly opts: ContextOptions;
 
   private _treeContext!: TreeContext;
-  private _options: ResolvedOptions;
+
+  /**
+   * Flat, fully-resolved options for the currently-active tree context — the one
+   * place to read a resolved option (`context.options.unitMode`). Every field is
+   * present, so there is no `??` and no per-read merge. Written only by the
+   * `treeContext` setter (and shared with that tree context); do not assign it
+   * directly. See {@link ResolvedOptions}.
+   */
+  options: ResolvedOptions;
 
   /**
    * The active file's tree context. Assigning it (at import entry/exit and
-   * ruleset scope changes) recomputes the cached {@link options} once, so the
-   * fast-path reads that follow are plain field accesses.
+   * ruleset scope changes) recomputes `options` once and shares the resulting
+   * object with the tree context, so the fast-path reads that follow are plain
+   * field accesses.
    */
   get treeContext(): TreeContext {
     return this._treeContext;
@@ -298,23 +307,14 @@ export class Context {
   set treeContext(tc: TreeContext) {
     this._treeContext = tc;
     // Fold the compile-level options over the tree's own, once, and SHARE the
-    // result: `this._options` and `tc.options` become the same object, so eval
+    // result: `context.options` and `tc.options` become the same object, so eval
     // (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
     // hit one resolved set with nothing left to merge. Idempotent on re-entry
     // (compile ?? already-folded === already-folded).
-    this._options = resolveOptions(this.opts, tc?.options);
+    this.options = resolveOptions(this.opts, tc?.options);
     if (tc) {
-      tc.options = this._options;
+      tc.options = this.options;
     }
-  }
-
-  /**
-   * Flat, fully-resolved options for the currently-active tree context. Read
-   * these on the eval fast path (`context.options.unitMode`) — every field is
-   * present, so there is no `??` and no per-read merge. See {@link ResolvedOptions}.
-   */
-  get options(): ResolvedOptions {
-    return this._options;
   }
 
   /**
@@ -325,7 +325,7 @@ export class Context {
    */
   setOption<K extends keyof ResolvedOptions>(key: K, value: ResolvedOptions[K]): void {
     this.opts[key] = value;
-    this._options = resolveOptions(this.opts, this._treeContext?.options);
+    this.options = resolveOptions(this.opts, this._treeContext?.options);
   }
 
   /**
@@ -550,7 +550,7 @@ export class Context {
     this.opts = opts;
     // Seed resolved options from compile config (no tree context yet); the
     // treeContext setter recomputes this once a file's context is active.
-    this._options = resolveOptions(opts, undefined);
+    this.options = resolveOptions(opts, undefined);
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
     if (opts.output?.compress !== undefined) {
