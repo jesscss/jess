@@ -679,3 +679,13 @@ Residual (out of scope): interpolated PROPERTY NAME `@{name}:` in a shared neste
 Bootstrap next wall: `'min' is not defined` in a `when` guard (Condition.evaluateBoolean) — another guard-scope var case.
 imports agent KILLED (stale base c1f819462 + long-run, no commit; import-interpolation already flipped by wall2).
 → dispatch import-inline FRESH + bootstrap-wall4. Remaining all-less 6 → 5 DEFERRED (extend x3, import-remote, mixins-guards D) + import-inline.
+
+## 2026-07-06 (alpha) — MILESTONE 2 ✓ all-less GREEN-MODULO-DEFERRED → 88/93 (core 2760/0)
+import-inline MERGED: `(inline)` option wins over `(css)` → raw verbatim inclusion; @media tail via _buildAtRulePrelude
+(normalized spacing). ALL 5 remaining all-less failures are DEFERRED-with-rationale:
+- extend, extend-nest, extend-selector — root-shape-#2 (nested `&:extend` against string parent; needs extend-roots rework)
+- import-remote — remote HTTPS fetch (legitimately unsupported / expected-fail)
+- mixins-guards — residual D only (#guarded-caller namespace guarded-overload ordering; C fixed)
+=> all-less is GREEN modulo documented deferrals. Milestone-2 done.
+Now: (1) batch-cherry-pick ~14 accumulated fixes to dev (dev at 79, well behind). (2) continue bootstrap render chain
+(wall4 = @min-in-guard IN FLIGHT) toward bootstrap.less → .css + timing (milestone 4).
