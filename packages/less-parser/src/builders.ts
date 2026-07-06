@@ -147,6 +147,7 @@ export class LessGrammar extends CssParser {
       case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
       case 'BooleanCall':         return this._buildBooleanCall(children, loc);
       case 'IfCall':              return this._buildIfCall(children, loc);
+      case 'FormatCall':          return this._buildFormatCall(raw, loc);
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
       case 'Negative':            return new Negative(this._negativeOperand(children), undefined, loc) as unknown as JessNode;
       case 'OperationTop':        return this._buildOperation(children, loc, this.mathMode === 'always') as unknown as JessNode;
@@ -620,6 +621,91 @@ export class LessGrammar extends CssParser {
     const nameRef = new Reference('if', { type: 'function', fallbackValue: true } as any, loc);
     const argList = new List(args as any, {}, loc);
     return new Call({ name: nameRef as any, args: argList as any }, { silentFail: true } as any, loc) as unknown as JessNode;
+  }
+
+  /**
+   * Deprecated Less `%(format, args…)` string formatting, LOWERED at build time.
+   *
+   * Jess already has full string interpolation, so `%()` is redundant Less-4 legacy —
+   * we emit a `percent-format` deprecation warning and, when the format is a string
+   * literal, splice its `%[sda]` directives into the canonical `Interpolated` node
+   * (the same one `@{var}` string interpolation builds), wrapped in a `Quoted` that
+   * preserves the literal's quote char / escaped flag:
+   *   - `%s`  → bare interpolation slot (a Quoted arg inserts with its quotes stripped);
+   *   - `%d`/`%a` → identical bare slot (d/a are the same in Less);
+   *   - `%S`/`%D`/`%A` → the arg WRAPPED in `escape(…)` (URL-encode);
+   *   - `%%` → a literal `%`.
+   * A dynamic (non-literal) format (`%(hello)`, `%(e("…"), …)`) can't be lowered at
+   * parse time, so it falls back to a best-effort runtime `%` Call with the same warning.
+   */
+  private _buildFormatCall(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    this._warn('%() string formatting is deprecated — use string interpolation', 'percent-format');
+
+    // Assemble the args exactly like a normal Call so bare keywords (`%(hello)`) are
+    // keyword-ified and comma runs fold uniformly.
+    const argList = this._assembleArgs(this._betweenParens(spannedComponents(raw)), loc) as unknown as List<Node>;
+    const args = (argList.value ?? []) as Node[];
+    const format = args[0];
+    const rest = args.slice(1);
+
+    // The format must be a Quoted literal (plain `"…"`, `'…'`, or escaped `~"…"`)
+    // wrapping a bare string to lower; anything else stays a runtime call.
+    if (format instanceof Quoted && typeof format.value === 'string') {
+      const { source, replacements } = this._lowerFormatString(format.value, rest, loc);
+      const interp = new Interpolated({ source, replacements: replacements as any }, { role: 'ident' }, loc);
+      return new Quoted(interp as any, { quote: format.quote, escaped: format.escaped }, loc) as unknown as JessNode;
+    }
+
+    // Dynamic / non-literal format (`%(hello)`, `%(e("…"), …)`): best-effort runtime `%` Call.
+    const nameRef = new Reference('%', { type: 'function', fallbackValue: true } as any, loc);
+    return new Call({ name: nameRef as any, args: argList as any }, { silentFail: true } as any, loc) as unknown as JessNode;
+  }
+
+  /**
+   * Turn a printf-style format string into an `Interpolated` source + replacements.
+   * `%[sda]` → one `INTERPOLATION_PLACEHOLDER` slot consuming the next positional arg
+   * (uppercase → wrapped in `escape(…)` to URL-encode); `%%` → a literal `%`.
+   */
+  private _lowerFormatString(
+    formatText: string, restArgs: ReadonlyArray<Node>, loc: LocationInfo
+  ): { source: string; replacements: Node[] } {
+    let source = '';
+    const replacements: Node[] = [];
+    let argIndex = 0;
+    for (let i = 0; i < formatText.length; i++) {
+      const ch = formatText[i]!;
+      if (ch !== '%') {
+        source += ch;
+        continue;
+      }
+      const next = formatText[i + 1];
+      if (next === '%') {
+        source += '%';
+        i++;
+        continue;
+      }
+      if (next && /[sda]/i.test(next)) {
+        const arg = restArgs[argIndex++];
+        if (arg) {
+          source += INTERPOLATION_PLACEHOLDER;
+          // Uppercase directive (`%S`/`%D`/`%A`) → URL-encode the inserted value.
+          if (/[A-Z]/.test(next)) {
+            const escapeRef = new Reference('escape', { type: 'function', fallbackValue: true } as any, loc);
+            const escapeArgs = new List([arg] as any, {}, loc);
+            replacements.push(new Call({ name: escapeRef as any, args: escapeArgs as any }, { silentFail: true } as any, loc) as unknown as Node);
+          } else {
+            replacements.push(arg);
+          }
+        } else {
+          // No matching arg — Less leaves the directive in place as literal text.
+          source += ch + next;
+        }
+        i++;
+        continue;
+      }
+      source += ch;
+    }
+    return { source, replacements };
   }
 
   private _buildInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
