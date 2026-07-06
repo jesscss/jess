@@ -261,13 +261,13 @@ describe('getOptions', () => {
 });
 
 describe('applyStrictPreset', () => {
-  it('fills the v5 bundle when strict is true and options are undefined', () => {
+  it('fills the strict bundle when strict is true and options are undefined', () => {
     const out = applyStrictPreset({ strict: true });
     expect(out).toMatchObject({
       strict: true,
-      functionMode: 'preserve',
-      unitMode: 'preserve',
-      leakyScope: true,
+      unitMode: 'strict',
+      equalityMode: 'exact',
+      leakyScope: false,
       allowOverloadedImport: false
     });
   });
@@ -275,15 +275,15 @@ describe('applyStrictPreset', () => {
   it('never overrides an explicitly-set option (individual options win)', () => {
     const out = applyStrictPreset({
       strict: true,
-      functionMode: 'error',
-      unitMode: 'strict',
-      leakyScope: false,
+      unitMode: 'loose',
+      equalityMode: 'less',
+      leakyScope: true,
       allowOverloadedImport: true
     });
     expect(out).toMatchObject({
-      functionMode: 'error',
-      unitMode: 'strict',
-      leakyScope: false,
+      unitMode: 'loose',
+      equalityMode: 'less',
+      leakyScope: true,
       allowOverloadedImport: true
     });
   });

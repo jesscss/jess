@@ -8,18 +8,18 @@ import path from 'path';
  */
 export interface StrictPresetOptions {
   strict?: boolean;
-  functionMode?: 'preserve' | 'error';
   unitMode?: 'loose' | 'preserve' | 'strict';
+  equalityMode?: 'less' | 'sass' | 'exact';
   leakyScope?: boolean;
   allowOverloadedImport?: boolean;
 }
 
 /**
- * Expand the `strict` convenience preset. When `strict` is truthy, fills the v5
- * "recommended" bundle for any governed option left `undefined` — an explicitly
- * set option always wins. Modeled after `tsconfig`'s `strict`: it only *sets*
- * semantic options, it is not itself a mode. `equalityMode` is a dialect, not a
- * strictness axis, so it is deliberately untouched.
+ * Expand the `strict` convenience preset. When `strict` is truthy, fills the
+ * strict bundle for any governed option left `undefined` — an explicitly set
+ * option always wins. Modeled after `tsconfig`'s `strict`: it only *sets*
+ * semantic options, it is not itself a mode. Sets the strictest value of each
+ * governed axis (`equalityMode: 'exact'` is the no-coercion dialect).
  *
  * Returns a new object (never mutates the input); a no-op when `strict` is falsy.
  */
@@ -28,9 +28,9 @@ export function applyStrictPreset<T extends StrictPresetOptions>(opts: T): T {
     return opts;
   }
   const filled = { ...opts };
-  filled.functionMode ??= 'preserve';
-  filled.unitMode ??= 'preserve';
-  filled.leakyScope ??= true;
+  filled.unitMode ??= 'strict';
+  filled.equalityMode ??= 'exact';
+  filled.leakyScope ??= false;
   filled.allowOverloadedImport ??= false;
   return filled;
 }

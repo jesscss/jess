@@ -519,9 +519,9 @@ export class Compiler {
       arrayConcatCustomizer
     );
     // Expand the `strict` convenience preset once, on the compile config, so the
-    // v5 bundle it sets (functionMode/unitMode/leakyScope/allowOverloadedImport)
+    // bundle it sets (unitMode/equalityMode/leakyScope/allowOverloadedImport)
     // reaches eval via `context.opts` (contextOptions spreads compile). Individual
-    // options already set always win; `equalityMode` (a dialect) is untouched.
+    // options already set always win.
     if (effectiveConfig.compile?.strict) {
       effectiveConfig.compile = applyStrictPreset(effectiveConfig.compile);
     }

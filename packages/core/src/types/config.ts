@@ -231,11 +231,11 @@ export interface LessOptions {
   quiet?: boolean;
 
   /**
-   * Convenience preset. When `true`, sets the v5 "recommended" bundle for any of
-   * these left `undefined` (individual options always win): `functionMode:
-   * 'preserve'`, `unitMode: 'preserve'`, `leakyScope: true`,
+   * Convenience preset. When `true`, sets the strict bundle for any of these left
+   * `undefined` (individual options always win): `unitMode: 'strict'`,
+   * `equalityMode: 'exact'` (the no-coercion dialect), `leakyScope: false`,
    * `allowOverloadedImport: false`. Modeled after `tsconfig` `strict` — it only
-   * sets semantic options. `equalityMode` is a dialect and is left untouched.
+   * sets semantic options, it is not itself a mode.
    * @default false
    */
   strict?: boolean;
