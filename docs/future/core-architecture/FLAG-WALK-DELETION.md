@@ -296,3 +296,10 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
 
 **Phase A complete.** `propagateFlagsFrom` now bubbles only `F_STATIC`/`F_NON_STATIC` + `F_HAS_NODE_CHILD`.
 Next: **Phase B — the reparent rework** (root lever: `adopt` stops reparenting source children).
+
+- **Phase B0/B1 — DONE** (dev `b2afaec39`). Operation operands now shared, no clone. KEY FINDING: `withOperands`
+  used the RAW `new Operation([...])` (not the `op()` factory), so per invariant 7 it never called
+  `parentChildren()`/`setParent` on operands — the `cloneForPlacement` was cargo-cult, removed. **Proven pattern
+  for B2-B4:** place shared children via a NON-parenting construction path (raw `new` + `propagateFlagsFrom`/
+  `inherit`), OR make `adopt` skip `setParent` on a source child; placement context comes from `_sourceRoot`/frame,
+  never `.parent`. B1 subsumed. Byte-identical, 2744/0.
