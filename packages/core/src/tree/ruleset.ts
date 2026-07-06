@@ -1959,8 +1959,17 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const enclosing = isNode(context.rulesContext, N.Rules) ? context.rulesContext : undefined;
       if (enclosing && enclosing !== node && !isNonClassicImportBoundary(enclosing)) {
         const frame = node.getScopeFrame();
-        if (frame.parent === undefined) {
-          frame.parent = enclosing.getScopeFrame();
+        const enclosingFrame = enclosing.getScopeFrame();
+        // Seed the prep-time lexical parent so an interpolated selector/declaration
+        // name (`.@{a}`, `@{name}:`) resolves up the enclosing scope. A SHARED loop/
+        // mixin body is prepped twice: first under the source template (no live
+        // slots), which latches `frame.parent` to the static canonical parent; then
+        // under the per-iteration/per-call PLACEMENT surface, whose frame carries the
+        // live slots (`@name`, `@width`). The placement surface is the authoritative
+        // dynamic parent, so re-point to it even when a stale template parent is
+        // already set — otherwise the second prep's name resolution misses the slots.
+        if (frame.parent === undefined || enclosingFrame.hasLiveBindings) {
+          frame.parent = enclosingFrame;
         }
       }
       const rulesetFrameCount = context.rulesetFrames.length;
