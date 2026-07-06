@@ -193,28 +193,54 @@ function getSearchPaths(options: Record<string, unknown>): string[] | undefined 
   return undefined;
 }
 
+type CommentRange = readonly [number, number];
+
 /**
- * A view over a TriviaMap that hides comment-bearing runs. Less rounds comments
- * through real `Comment` nodes, so exposing comment trivia to the serializer
- * would double-emit them (and their surrounding whitespace). We only want the
- * pure-whitespace runs — the authored spacing inside declaration values.
+ * A view over a TriviaMap that hides comment runs. The dialect decides how much:
+ *
+ * - `liftedRanges === undefined` — the parser doesn't report which comments it
+ *   lifted to `Comment` nodes, so hide EVERY comment run (whitespace-only view).
+ *   The historical, conservative behavior; used where inline-comment placement
+ *   isn't wired end-to-end.
+ * - `liftedRanges` provided — hide ONLY the runs already lifted to standalone
+ *   `Comment` nodes (re-emitting those would double-print). INLINE comments (in
+ *   selectors, values, function args, at-rule preludes) are never lifted — they
+ *   only survive via trivia — so their runs pass through for the serializers to
+ *   place. A run is "lifted" when a lifted range overlaps it; the whole run is
+ *   then hidden (the container serializer re-inserts inter-statement spacing).
+ *
+ * Pure-whitespace runs always pass (authored value/list spacing).
  */
-function whitespaceOnlyTrivia(trivia: TriviaMap): TriviaMap {
+function commentAwareTrivia(trivia: TriviaMap, liftedRanges: readonly CommentRange[] | undefined): TriviaMap {
+  const isHidden = (run: { start: number; end: number; hasComment: boolean }): boolean => {
+    if (!run.hasComment) {
+      return false;
+    }
+    if (liftedRanges === undefined) {
+      return true;
+    }
+    for (const [start, end] of liftedRanges) {
+      if (start < run.end && end > run.start) {
+        return true;
+      }
+    }
+    return false;
+  };
   return {
     lookup(offset, direction) {
       const run = trivia.lookup(offset, direction);
-      return run && !run.hasComment ? run : undefined;
+      return run && !isHidden(run) ? run : undefined;
     },
     *entries(direction) {
       for (const entry of trivia.entries(direction)) {
-        if (!entry[1].hasComment) {
+        if (!isHidden(entry[1])) {
           yield entry;
         }
       }
     },
     has(offset, direction) {
       const run = trivia.lookup(offset, direction);
-      return run !== undefined && !run.hasComment;
+      return run !== undefined && !isHidden(run);
     }
   };
 }
@@ -233,7 +259,11 @@ function adoptSourceTrivia(context: Context, node: { _treeContext?: Context } | 
   }
   const trivia = node._treeContext?.opts?.trivia;
   if (trivia) {
-    context.opts.trivia = whitespaceOnlyTrivia(trivia as TriviaMap);
+    // `liftedCommentRanges` present → expose inline comments, hide the lifted
+    // standalone ones (Less). Absent → hide every comment run (whitespace-only),
+    // the conservative default for dialects that don't report lifts yet.
+    const liftedRanges = node._treeContext?.opts?.liftedCommentRanges as readonly CommentRange[] | undefined;
+    context.opts.trivia = commentAwareTrivia(trivia as TriviaMap, liftedRanges);
   }
 }
 
