@@ -976,8 +976,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     // Merge guard: a space only when the previous output ends identifier-like
     // and the next term would begin identifier-like, keeping tokens distinct.
+    // A following value Node (e.g. the Quoted in `is "theme1"`) is a real,
+    // space-separated term — its leading whitespace lived in neither side, and a
+    // quote can never token-merge with a preceding identifier — so include the
+    // quote characters in the predicate to keep that authored space.
     if (isIdentifierChar(w.lastChar())) {
-      w.queueSpacer(' ', nextText => /^[A-Za-z0-9_.#-]/u.test(nextText));
+      w.queueSpacer(' ', nextText => /^[A-Za-z0-9_.#'"-]/u.test(nextText));
     }
   }
 
