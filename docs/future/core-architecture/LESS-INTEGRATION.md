@@ -645,3 +645,11 @@ Condition node (left/op/right undefined; its sourceNode TEMPLATE is itself an em
 `(length(extract(@t,1)) > 1)` becomes an empty Condition. Contextual (renders fine isolated; surfaces in full _reboot
 candidate-guard eval). Core-eval/parser-template. SAME CLASS as mixins-guards residual C (guard operand → Paren/empty
 not Condition). → dispatched less/guard-condition (fixes bootstrap wall + likely mixins-guards). Milestone-4 critical path.
+
+## 2026-07-05 (alpha) — guard-condition MERGED (86/93); bootstrap wall is SEPARATE (plugin-js path)
+guard-condition added g.EscapedValue to guardOperand + Comparison right-operand → `~"x"=@y` builds a Condition
+(mixins-guards residual C RESOLVED; fixture still red on residual D = #guarded-caller namespace overload ordering, deep).
+Bootstrap empty-Condition is NOT the guard-grammar bug: the compound guard parses+evals fine via plugin-less. The throw
+(condition.ts:155, empty Condition TEMPLATE) reproduces ONLY with @jesscss/plugin-js wired + full _reboot scope, via
+`_transition`'s `each(@transition, #(){...})` detached-ruleset body guard eval. → deep core-eval/detached-ruleset/each
+clone issue. Dispatched less/bootstrap-wall to repro WITH plugin-js + fix. Milestone-4 critical path.
