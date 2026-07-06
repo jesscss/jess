@@ -352,6 +352,9 @@ right fix depends on **how granular span tracking needs to be**, and the consume
   mode exists. YET the parsers set them **unconditionally on every parse** (css-parser `setValueSpans`).
   - **NOT "selector-only" by design** — List / any array-valued node would need them too *if* we want sub-node
     round-trip fidelity for those. The current selector-only readership is incomplete usage, not intent.
+  - ⚠️ **SUPERSEDED — this DROP plan was tried (`468747cc7`) and REVERTED (`311cf9232`): a node-level comment
+    check can't place comments in inter-member gaps → broke `comments`/`comments2`. See the LANDED LOG
+    "span-array drop" entry. Do NOT re-attempt the drop. Original plan kept below for the forensic record.**
   - **DECIDED (owner): DROP `fieldSpans`/`valueSpans` (per-sub-component arrays), REPLACE readers with a
     node-level COMMENT check.** Edit/round-trip works on the CST/reparse, so eval nodes need only node-level
     `spanStart`/`spanEnd`. **Owner refinement:** normalized selectors don't need per-component whitespace — the
@@ -431,9 +434,18 @@ free. Raw-bitwise would cost DX across hundreds of sites for ~0 gain. Revisit ON
 - **provenance-inline** killed the `PROV` WeakMap → 6 inline `= undefined` span fields on `Node`. **Heap alloc 40.5→23.6MB (~42% less; the `set` 59% hotspot GONE); dynamic parse 54.8→46.3ms (~15%).** byte-identical (133 fixtures). The provenance smell is fully resolved (parser-set inline fields, no side-table).
 - **W1 single-writer** 6/18 fragment sites → shared writer + `restore`; **−25.7% OutputWriter allocations (~10,800 fewer)**; byte-identical. The other 12 sites are INTENTIONALLY separate — `CountingWriter` tests enforce keeping fragments off the caller writer (architectural contract, not laziness) — so "one writer per serialization" is partial-by-design.
 - Benches: `packages/core/perf/collapse-bench.mjs` (static) + `dynamic-bench.mjs` (mixin/refs).
-- **span-array drop** — `_fieldSpans`/`_valueSpans` deleted; readers → node-span comment scan against Parséman's
-  `opts.trivia` (comments round-trip verbatim, sub-node whitespace normalizes); base `Node` down to
-  `_spanStart`/`_spanEnd` only (6 provenance fields → **2**). byte-identical normal render; own-key 29→27.
+- **span-array drop** — ⚠️ **REVERTED on dev (do NOT re-land).** Landed as `468747cc7` (deleted
+  `_fieldSpans`/`_valueSpans`, readers → node-span comment scan), then **deliberately reversed same-day by
+  `311cf9232`**: the node-span scan CANNOT round-trip comments in the gap BETWEEN sub-components of a
+  multi-member selector list / declaration value (`#comments /* boo */, /* of */ .comments`) → broke the
+  `comments`/`comments2` less fixtures. The re-enable stores per-slot spans OFF the Node shape (flag-gated
+  WeakMaps `F_HAS_VALUESPANS`/`F_HAS_FIELDSPANS`, flat packed SMI arrays), so the node shape stays lean
+  (`_spanStart`/`_spanEnd` inline only) AND eval's source-free nodes pay one bitwise-and to skip — the slim
+  goal is met without deleting the feature. all-less 84→86 (both fixtures green), no regressions. The
+  residual `setFieldSpans` ~2.1% (re-profile) is PARSE-time WeakMap churn (parser stamps per-slot spans on
+  every multi-member node even when comment-free); the safe win is gating the parser stamp on actual
+  comment-presence — parser-package territory, parse-time (amortized in parse-once/render-many). **The
+  "DECIDED (owner): DROP fieldSpans/valueSpans" plan above (§ lines ~349-369) is SUPERSEDED by this revert.**
 - **core-residuals** — `canReuseLeaf` field-read→flag (FAST-V8); other residuals deferred (complexity > sub-1%).
 - **doc-order gate** (cfdf829e6, post-trunk-sync) — `_assignRootDocumentOrder` now gated on root `_hasExtends`;
   extend-free sheets (the common case) skip the full-tree walk + `WeakMap<Ruleset,number>` alloc entirely. Map is
