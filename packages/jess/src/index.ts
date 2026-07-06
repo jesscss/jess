@@ -12,6 +12,7 @@ import {
   type ErrorDiagnostic,
   type WarningDiagnostic,
   type TriviaMap,
+  type Trivia,
   JessError,
   toDiagnostic,
   WARN,
@@ -227,6 +228,7 @@ function commentAwareTrivia(trivia: TriviaMap, liftedRanges: readonly CommentRan
     }
     return false;
   };
+  let visibleComments: readonly Trivia[] | undefined;
   return {
     lookup(offset, direction) {
       const run = trivia.lookup(offset, direction);
@@ -242,6 +244,14 @@ function commentAwareTrivia(trivia: TriviaMap, liftedRanges: readonly CommentRan
     has(offset, direction) {
       const run = trivia.lookup(offset, direction);
       return run !== undefined && !isHidden(run);
+    },
+    commentRuns() {
+      if (visibleComments === undefined) {
+        // Inner index is already sorted/deduped; drop hidden (lifted) runs so
+        // they don't double-print, preserving the filtered view's semantics.
+        visibleComments = trivia.commentRuns().filter(run => !isHidden(run));
+      }
+      return visibleComments;
     }
   };
 }

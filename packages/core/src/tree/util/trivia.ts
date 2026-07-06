@@ -18,6 +18,7 @@ export function createTriviaMap(indexes?: {
 }): TriviaMap {
   const before = indexes?.before ?? new Map<number, Trivia>();
   const after = indexes?.after ?? new Map<number, Trivia>();
+  let sortedComments: readonly Trivia[] | undefined;
   return {
     lookup(offset, direction) {
       if (offset === undefined) {
@@ -39,6 +40,24 @@ export function createTriviaMap(indexes?: {
       return direction === 'before'
         ? before.has(offset)
         : after.has(offset);
+    },
+    commentRuns() {
+      if (sortedComments === undefined) {
+        // Mirror the exact source set the old per-node scan used: the `after`
+        // index only. A run keyed from both offsets is the same object, so
+        // dedupe by identity to keep it single.
+        const seen = new Set<Trivia>();
+        const runs: Trivia[] = [];
+        for (const run of after.values()) {
+          if (run.hasComment && !seen.has(run)) {
+            seen.add(run);
+            runs.push(run);
+          }
+        }
+        runs.sort((a, b) => a.start - b.start);
+        sortedComments = runs;
+      }
+      return sortedComments;
     }
   };
 }
@@ -261,6 +280,28 @@ export function emitCommentTriviaAfterOffset(
 }
 
 /**
+ * Deterministic work counter for `commentRunsWithinSpan`, incremented once per
+ * comment-run visited (binary-search probe + window scan). A per-render scaling
+ * guardrail (`render-scaling.test.ts`) reads it to assert this stays ~O(1) per
+ * node rather than the O(#runs)-per-node full-map scan it replaced — a quadratic
+ * regression makes this total grow with nodes×runs instead of ~linearly.
+ *
+ * Production cost is a single unconditional integer increment inside loops that
+ * already run; it does not change any serialized output.
+ */
+let commentRunVisits = 0;
+
+/** Test-only: current cumulative `commentRunsWithinSpan` run-visit count. */
+export function getCommentRunVisits(): number {
+  return commentRunVisits;
+}
+
+/** Test-only: reset the cumulative `commentRunsWithinSpan` run-visit counter. */
+export function resetCommentRunVisits(): void {
+  commentRunVisits = 0;
+}
+
+/**
  * The comment-bearing trivia runs that fall entirely within `[spanStart,
  * spanEnd]`, in source order and de-duplicated by run identity.
  *
@@ -279,20 +320,32 @@ export function commentRunsWithinSpan(
   if (!trivia || spanStart === undefined || spanEnd === undefined) {
     return [];
   }
-  const seen = new Set<Trivia>();
+  const sorted = trivia.commentRuns();
+  // Binary-search the first run with `start >= spanStart`; the array is sorted
+  // ascending by `start` and already deduped to comment-bearing runs.
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    commentRunVisits++;
+    if (sorted[mid]!.start < spanStart) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
   const runs: Trivia[] = [];
-  for (const [, run] of trivia.entries('after')) {
-    if (
-      run.hasComment
-      && run.start >= spanStart
-      && run.end <= spanEnd
-      && !seen.has(run)
-    ) {
-      seen.add(run);
+  for (let i = lo; i < sorted.length; i++) {
+    commentRunVisits++;
+    const run = sorted[i]!;
+    // Sorted by start, so once start passes spanEnd no later run can fit.
+    if (run.start > spanEnd) {
+      break;
+    }
+    if (run.end <= spanEnd) {
       runs.push(run);
     }
   }
-  runs.sort((a, b) => a.start - b.start);
   return runs;
 }
 

@@ -19,7 +19,7 @@ import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
-import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './extend-walk.js';
+import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch, beginExtendMatchPass, endExtendMatchPass } from './extend-walk.js';
 import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
@@ -609,7 +609,8 @@ function isInstructionVisibleForRoot(
     extendRoot?: Rules;
     fromReferenceScope: boolean;
   },
-  getCachedVisibleRoots?: (root: Rules) => Set<Rules>
+  getCachedVisibleRoots?: (root: Rules) => Set<Rules>,
+  isSameOrDescendant?: (rulesetRoot: Rules, extendRoot: Rules) => boolean
 ): boolean {
   if (!instruction.extendRoot) {
     return false;
@@ -623,7 +624,10 @@ function isInstructionVisibleForRoot(
   if (instruction.extendRoot === rootRules) {
     return true;
   }
-  if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
+  const sameOrDescendant = isSameOrDescendant
+    ? isSameOrDescendant(rootRules, instruction.extendRoot)
+    : context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot);
+  if (sameOrDescendant) {
     return true;
   }
   const visibleRoots = getCachedVisibleRoots
@@ -649,6 +653,11 @@ export function processExtends(context: Context): void {
     if (!context.extends.length) {
       return;
     }
+    // Install the pass-scoped matcher memo. The extend set is immutable for the
+    // whole pass, so the invariant (target, find, extendWith, partial, parent)
+    // match relation is cacheable — collapsing the O(I²) re-matching done by
+    // chained-extend discovery + classify. Torn down in the finally below.
+    beginExtendMatchPass();
     // Snapshot eval'd value before any extend modifications.
     // This ensures getEffectiveSelector composes with original value,
     // not ones already modified by earlier extends in this pass.
@@ -719,12 +728,34 @@ export function processExtends(context: Context): void {
       return cached;
     };
 
+    // The extend-root graph (childrenRoots/layerName/isProtected) is fully built
+    // during eval and STABLE for the whole processExtends pass, so
+    // isSameOrDescendantRoot(rootRules, extendRoot) is invariant here. It is the
+    // O(R × I × depth) driver — a recursive descendant walk run once per
+    // (root × extend-instruction) pair. Memoize it per (extendRoot, rootRules)
+    // for this pass. Pass-scoped: the cache is discarded when processExtends
+    // returns, so no cross-render staleness is possible.
+    const sameOrDescendantCache = new Map<Rules, Map<Rules, boolean>>();
+    const getCachedSameOrDescendant = (rulesetRoot: Rules, extendRoot: Rules): boolean => {
+      let byRuleset = sameOrDescendantCache.get(extendRoot);
+      if (!byRuleset) {
+        byRuleset = new Map<Rules, boolean>();
+        sameOrDescendantCache.set(extendRoot, byRuleset);
+      }
+      let cached = byRuleset.get(rulesetRoot);
+      if (cached === undefined) {
+        cached = context.extendRoots.isSameOrDescendantRoot(rulesetRoot, extendRoot);
+        byRuleset.set(rulesetRoot, cached);
+      }
+      return cached;
+    };
+
     for (const [rootRules, rulesetSet] of rulesetsByRoot) {
       if (!rootRules) {
         continue;
       }
       const visibleExtends = instructions.filter(instruction =>
-        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
+        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots, getCachedSameOrDescendant)
       );
       if (!visibleExtends.length) {
         continue;
@@ -1137,6 +1168,7 @@ export function processExtends(context: Context): void {
       context.warnings.push(toDiagnostic(diagnostic));
     }
   } finally {
+    endExtendMatchPass();
     rulesetsByRoot.clear();
   }
 }

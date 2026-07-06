@@ -243,6 +243,37 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
 
 ## Focus C — Performance: collapse the walk count (ACTIVE — the perf drive)
 
+> ### ★★ HEADLINE GOAL — core does **1/10th the work** it does today (per render)
+> Core has been through many refactors and carries accreted work: multiple structural passes, per-placement
+> copies, fat nodes, redundant flag/registration crawls. **Target: 10× less work per render for byte-identical
+> output.** This is a forcing function — every pass, allocation, field, and flag-crawl must justify itself or die.
+> - **"Work" = a product of three axes, each measured against the `REPROFILE_CURRENT.md` baseline:**
+>   (1) **traversals** — N structural passes → ONE render-driven walk (single-render-pass);
+>   (2) **allocations** — per-placement copies → zero (always-share); fat nodes → slim (SLIM_NODES audits);
+>   (3) **redundant compute** — delete the flag walk (`propagateFlagsFrom`), pre-pass registration, reuse gates,
+>       and any recomputation that a construction-time index or per-frame lookup makes unnecessary.
+> - **Honest framing:** 10× is a stretch north-star, not a literal gate — even 2–3× is a major win. But treat it
+>   as the bar: if a change doesn't move work toward 1/10th, question whether it's the right change. **Measure
+>   every slice against the reprofile baseline** (CPU self-time %, heap bytes/allocations, traversal count).
+> - It subsumes the levers below: the single-render-pass drive, the copy elimination, the flag-walk deletion, and
+>   the SLIM-NODES work are all *how* we get to 1/10th.
+>
+> **HOW TO REASON (the lens — apply before optimizing anything):**
+> 1. **Necessity first, not speed. "Is this work we actually have to do? Does the USER benefit from it existing?"**
+>    The biggest wins are DELETING work that produces no user-visible output — defensive/speculative/vestigial
+>    passes, caches, and fields that accreted across refactors — not making that work faster. Before optimizing a
+>    pass, ask whether it should exist at all. (D3 already proved this: the second eval was pure vestige — deleting
+>    it was worth more than any speed-up, and even fixed bugs.) [[feedback-no-defensive-slowdowns]]
+> 2. **Specialize for what users actually compile; don't make everyone pay for generality.** The fully-general
+>    multi-syntax / multi-feature / multi-plugin path carries overhead most compiles never touch. Detect the
+>    use-case cheaply and take a LEANER path:
+>    - **`.less`-only** compilation should not pay for the SCSS grammar/plugin, the interpolation machinery it
+>      doesn't use, or the Less-compat bridge unless the sheet needs it.
+>    - A **static, extend-free** sheet should not pay for the dynamic eval / registration / extend subsystems.
+>    - Feature-gate whole subsystems on cheap CONSTRUCTION-TIME signals (has-extends, has-mixins, has-references,
+>      has-interpolation) so the common shape runs a fraction of the machinery.
+>    The unit of the 10× isn't only "make the pass cheaper" — it's "for THIS input, don't run the pass at all."
+
 > **▶ ACTIVE DRIVE: [FLAG-WALK-DELETION.md](FLAG-WALK-DELETION.md)** — single-render-pass / always-share
 > eval → zero copy-based eval → delete `propagateFlagsFrom`. Root lever: `adopt()` stops reparenting
 > source children (`node-base.ts:669`). Full phased sequence (A→B→C→D) + orchestration protocol (branch

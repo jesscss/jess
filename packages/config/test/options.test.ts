@@ -7,11 +7,11 @@ describe('getOptions', () => {
     it('should infer language from .less extension', () => {
       const config: StylesConfig = {
         language: {
-          less: { leakyRules: true }
+          less: { leakyScope: true }
         }
       };
       const options = getOptions(config, { input: 'src/styles.less' });
-      expect(options.leakyRules).toBe(true);
+      expect(options.leakyScope).toBe(true);
     });
 
     it('should infer language from .scss extension', () => {
@@ -47,14 +47,14 @@ describe('getOptions', () => {
     it('should allow explicit language to override inferred', () => {
       const config: StylesConfig = {
         language: {
-          less: { leakyRules: true },
+          less: { leakyScope: true },
           scss: { precision: 10 }
         }
       };
       // File is .less but we explicitly request scss options
       const options = getOptions(config, { language: 'scss', input: 'src/styles.less' });
       expect(options.precision).toBe(10);
-      expect(options.leakyRules).toBeUndefined();
+      expect(options.leakyScope).toBeUndefined();
     });
   });
 
@@ -93,7 +93,7 @@ describe('getOptions', () => {
     it('should override language options with matched input options', () => {
       const config: StylesConfig = {
         language: {
-          less: { mathMode: 'parens-division', leakyRules: true, allowExtendSelectors: ['compound'] }
+          less: { mathMode: 'parens-division', leakyScope: true, allowExtendSelectors: ['compound'] }
         },
         input: [
           { mathMode: 'strict', allowExtendSelectors: ['basic'] }
@@ -101,7 +101,7 @@ describe('getOptions', () => {
       };
       const options = getOptions(config, { input: 'src/styles.less' });
       expect(options.mathMode).toBe('strict');
-      expect(options.leakyRules).toBe(true); // from language.less
+      expect(options.leakyScope).toBe(true); // from language.less
       expect(options.allowExtendSelectors).toEqual(['basic']);
     });
 
@@ -128,7 +128,7 @@ describe('getOptions', () => {
         language: {
           less: {
             mathMode: 'parens-division',
-            leakyRules: true
+            leakyScope: true
           }
         },
         input: [
@@ -141,7 +141,7 @@ describe('getOptions', () => {
       const options = getOptions(config, { input: 'src/styles.less', output: 'dist/styles.css' });
       expect(options.unitMode).toBe('loose'); // from compile
       expect(options.equalityMode).toBe('exact'); // from compile
-      expect(options.leakyRules).toBe(true); // from language.less
+      expect(options.leakyScope).toBe(true); // from language.less
       expect(options.mathMode).toBe('strict'); // from input (overrides language)
       expect(options.collapseNesting).toBe(false); // from input
       expect(options.compress).toBe(true); // from output
@@ -153,68 +153,68 @@ describe('getOptions', () => {
     it('should match entries without file property as defaults', () => {
       const config: StylesConfig = {
         input: [
-          { leakyRules: true }
+          { leakyScope: true }
         ]
       };
       const options = getOptions(config, { input: 'any/file.less' });
-      expect(options.leakyRules).toBe(true);
+      expect(options.leakyScope).toBe(true);
     });
 
     it('should match exact file paths', () => {
       const config: StylesConfig = {
         input: [
-          { leakyRules: false },
-          { file: 'src/legacy.less', leakyRules: true }
+          { leakyScope: false },
+          { file: 'src/legacy.less', leakyScope: true }
         ]
       };
       const options = getOptions(config, { input: 'src/legacy.less' });
-      expect(options.leakyRules).toBe(true);
+      expect(options.leakyScope).toBe(true);
     });
 
     it('should match basename patterns', () => {
       const config: StylesConfig = {
         input: [
-          { leakyRules: false },
-          { file: 'legacy.less', leakyRules: true }
+          { leakyScope: false },
+          { file: 'legacy.less', leakyScope: true }
         ]
       };
       const options = getOptions(config, { input: '/path/to/legacy.less' });
-      expect(options.leakyRules).toBe(true);
+      expect(options.leakyScope).toBe(true);
     });
 
     it('should match glob patterns', () => {
       const config: StylesConfig = {
         input: [
-          { leakyRules: false },
-          { file: 'legacy/**/*.less', leakyRules: true }
+          { leakyScope: false },
+          { file: 'legacy/**/*.less', leakyScope: true }
         ]
       };
       const options = getOptions(config, { input: 'legacy/old/styles.less' });
-      expect(options.leakyRules).toBe(true);
+      expect(options.leakyScope).toBe(true);
     });
 
     it('should not match when glob does not match', () => {
       const config: StylesConfig = {
         input: [
-          { leakyRules: false },
-          { file: 'legacy/**/*.less', leakyRules: true }
+          { leakyScope: false },
+          { file: 'legacy/**/*.less', leakyScope: true }
         ]
       };
       const options = getOptions(config, { input: 'modern/styles.less' });
-      expect(options.leakyRules).toBe(false);
+      expect(options.leakyScope).toBe(false);
     });
 
     it('should merge multiple matching entries in order', () => {
       const config: StylesConfig = {
         input: [
-          { mathMode: 'always', leakyRules: false },
+          { mathMode: 'always', leakyScope: false },
           { file: '**/*.less', mathMode: 'parens-division' },
-          { file: 'legacy/**/*.less', leakyRules: true }
+          { file: 'legacy/**/*.less', leakyScope: true }
         ]
       };
       const options = getOptions(config, { input: 'legacy/old.less' });
       expect(options.mathMode).toBe('parens-division'); // from **/*.less
-      expect(options.leakyRules).toBe(true); // from legacy/**/*.less
+      expect(options.leakyScope).toBe(true); // from legacy/**/*.less
     });
 
     it('should match output files with glob patterns', () => {
@@ -232,10 +232,10 @@ describe('getOptions', () => {
   describe('single object vs array', () => {
     it('should handle single input object', () => {
       const config: StylesConfig = {
-        input: { leakyRules: true }
+        input: { leakyScope: true }
       };
       const options = getOptions(config, { input: 'src/styles.less' });
-      expect(options.leakyRules).toBe(true);
+      expect(options.leakyScope).toBe(true);
     });
 
     it('should handle single output object', () => {

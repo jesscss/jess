@@ -363,3 +363,34 @@ record threaded through ~35 serializers + the render walk = bigger than the copy
   serialize/sourcemap/extend/eval. **DECISION POINT (owner):** commit to Phase D, or bank Phase A+B and close the
   flag-walk goal as "deletable flags gone (F_MAY_ASYNC, F_AMPERSAND off the walk); F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD
   gated on the single-render-pass project."
+
+### ⚑ REPRIORITIZED by the CPU profile (REPROFILE_CURRENT.md) — hotspots first, flag-walk as cleanup
+Fresh profile verdict: **Phase D's entire surface (eval-fold / registration / copy / reuse-gates /
+`propagateFlagsFrom`) is <1% of self-time** — NOT a perf lever. The real hotspots are elsewhere. Owner
+decision: **attack measured hotspots for PERF first; then finish the flag-walk / single-render-pass as
+code-health simplification (maintainability + the 10× "do less work" spirit), NOT as a speed project.**
+
+PERF priority order (re-profile between each):
+1. **Comment-scan quadratic — ~70% self-time (IN PROGRESS, `work/fix-comment-scan-quadratic`).**
+   `commentRunsWithinSpan` scans the whole-file comment map per serialized node (O(nodes × comments)) —
+   a regression from the span-array drop. Range-query / forward-cursor. Isolated, days not weeks.
+2. **Extend selector matcher — ~25% on real Less** (`extendSelector`/`applyExtendsToSelector`/`wouldMatchNode`/
+   `processExtends`). The next perf target after comment-scan.
+3. **GC / allocation churn — ~4-6%.**
+
+THEN (post-hotspots, as simplification not speed): resume Phase D (single-render-pass) + the flag-walk
+deletion (D3 done; D1/dynamic-leaf-share/C4). Still worth doing for fewer-passes/less-work, just not the
+perf headline. The `propagateFlagsFrom` deletion remains the /goal's endpoint — reached last, as cleanup.
+
+### 🛡 GUARDRAIL SLICE (queued — land immediately AFTER the comment-scan fix)
+Root cause of the comment-scan quadratic: gates were complexity-BLIND — byte-identical + suite green +
+memory-win all passed while the change went O(nodes × comments). Add a STANDING guardrail so this class
+of regression fails loudly:
+- **Deterministic scaling test** (`render-scaling.test.ts` or similar): render the same content at N / 2N / 4N
+  node counts and assert the WORK ratio is ~linear (≈2×), not super-linear (≈4× = quadratic). Prefer an
+  INSTRUMENTED COUNTER over wall-clock (immune to the ~25× env noise) — e.g. count total `commentRunsWithinSpan`
+  run-comparisons and assert O(nodes), not O(nodes×comments). Include a comment-heavy input so THIS exact
+  regression can never return silently, plus a general render/serialize-path linearity assertion.
+- Sequencing: after the comment-scan fix (it makes the path linear → the test is green and locks it in).
+- Consider (follow-up): a bench-regression merge gate + a review rule "no unbounded per-node scans of
+  document/whole-tree-scoped collections."
