@@ -3638,10 +3638,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   static override childKeys = ['target', 'key'] as const;
 
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
-  readonly target: ReferenceValue['target'];
   readonly key: ReferenceValue['key'];
+  /**
+   * `target`/`rawKey` are DISJOINT fields: only index/property/mixin-ruleset
+   * references ever carry them (a plain `variable`/`function` reference — the
+   * bulk of live instances — never does). They are declared without an
+   * initializer and assigned only when present, so the common shape omits both
+   * hidden-class slots. Readers must tolerate the field being absent (accessing
+   * a missing own property returns `undefined`, e.g. `this.target ?? …`).
+   */
+  declare readonly target?: ReferenceValue['target'];
   /** Original un-flattened lookup name; see {@link ReferenceValue.rawKey}. */
-  readonly rawKey: ReferenceValue['rawKey'];
+  declare readonly rawKey?: ReferenceValue['rawKey'];
 
   constructor(
     value: ReferenceValue | string,
@@ -3654,9 +3662,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     super(value, options, location);
     this._treeContext = treeContext;
-    this.target = value.target;
     this.key = value.key;
-    this.rawKey = value.rawKey;
+    if (value.target !== undefined) {
+      (this as { target?: ReferenceValue['target'] }).target = value.target;
+    }
+    if (value.rawKey !== undefined) {
+      (this as { rawKey?: ReferenceValue['rawKey'] }).rawKey = value.rawKey;
+    }
     // References are always non-static
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
