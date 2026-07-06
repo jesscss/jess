@@ -234,6 +234,26 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
       optional(literal(';'))
     )));
 
+  // ── `$extend` statement ──────────────────────────────────────────────────────
+  // `$extend <target> [!exact];` — a statement (NOT Less's `:extend()` pseudo).
+  // The target is a selector run: `.box`, a comma list `.a, .b`, or a namespaced
+  // `ns|.sel`. Jess/Sass default is a partial (`All`) match; `!exact` flips it to
+  // Less's exact match. Builds a core `Extend{ target, flag }` — which already
+  // serializes back with the `$extend` sigil. Extending a CAPTURED selector
+  // (`$extend $type;`, where `$type: $*[.sel]`) waits on `$*[…]` (see NOTES).
+  const extendNs = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\|/);
+  const extendTargetPart = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
+  const extendTarget = parser({ trivia: rw }, sequence(
+    optional(extendNs), oneOrMore(extendTargetPart)
+  ));
+  const Extend = node('Extend',
+    parser({ trivia: rw }, sequence(
+      regex(/\$extend(?![-\w])/),
+      extendTarget, many(sequence(literal(','), extendTarget)),
+      optional(regex(/!exact(?![-\w])/)),
+      optional(literal(';'))
+    )));
+
   // ── Anonymous mixins & functions ─────────────────────────────────────────────
   // A nameless Mixin in VALUE position, started with `@(` or `@{`. Four shapes:
   //   @() { … }          anon mixin (params, block body)
@@ -270,7 +290,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // ── Root + rule bodies (re-declared so Jess `rw`/`//` + `$` items apply) ─────
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
-      g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
+      g.Extend, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
       g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset
     ))));
 
@@ -278,7 +298,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}'))));
 
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
+    g.Extend, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
     g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
   )));
@@ -293,7 +313,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     elseClause, forRange,
     If, For, While,
     MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall,
-    AnonMixin,
+    AnonMixin, Extend,
     Stylesheet, Ruleset, declarationList
   };
 })]);

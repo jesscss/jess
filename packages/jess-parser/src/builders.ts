@@ -20,6 +20,7 @@ import {
   Declaration, Collection,
   If, For, While, Rules,
   Mixin, Call, List, Nil,
+  Extend, ExtendFlag, BasicSelector,
   type ForPattern, type ForIterable
 } from '@jesscss/core';
 import type { Span } from 'parseman';
@@ -59,6 +60,7 @@ export class JessGrammar extends CssParser {
       case 'MixinParam':     return this._buildJessMixinParam(children, rawChildren, loc(span));
       case 'MixinCall':      return this._buildJessMixinCall(children, loc(span));
       case 'AnonMixin':      return this._buildJessAnonMixin(children, loc(span));
+      case 'Extend':         return this._buildJessExtend(children, rawChildren, loc(span));
       case 'Expression':     return this._buildJessExpression(children, loc(span));
       case 'Condition':      return this._buildJessCondition(children, loc(span));
       case 'JessKeyword':    return this._valueKeyword((children.find(isLeaf)?.value) ?? '', loc(span)) as unknown as Node;
@@ -680,6 +682,68 @@ export class JessGrammar extends CssParser {
       undefined,
       location
     ) as unknown as Node;
+  }
+
+  // ── `$extend` statement ──────────────────────────────────────────────────────
+  // `$extend <target> [, <target>]* [!exact];` → a core `Extend{ target, flag }`.
+  // Target text is reassembled from the leaf run (`$extend`, `!exact`, `;`, and the
+  // `,` separators are dropped); a namespace `ns|` folds into the Extend.namespace.
+  // Jess/Sass default is a partial match (`All`); `!exact` selects Less's exact
+  // match. A comma list builds one Extend per target wrapped in a List.
+  private _buildJessExtend(
+    children: ReadonlyArray<Node | CSTLike>,
+    rawChildren: ReadonlyArray<CSTLike>,
+    location: LocationInfo
+  ): Node {
+    const items = spannedComponents(rawChildren);
+    const flag = items.some(i => i.comp === '!exact') ? ExtendFlag.Exact : ExtendFlag.All;
+
+    // Group the selector-text leaves into per-target strings, splitting on `,`.
+    const targets: Array<{ ns?: string; text: string }> = [];
+    let cur: { ns?: string; text: string } = { text: '' };
+    for (const it of items) {
+      const c = it.comp;
+      if (typeof c !== 'string') {
+        continue;
+      }
+      if (c === '$extend' || c === '!exact' || c === ';') {
+        continue;
+      }
+      if (c === ',') {
+        if (cur.text || cur.ns) {
+          targets.push(cur);
+        }
+        cur = { text: '' };
+        continue;
+      }
+      if (c.endsWith('|')) {
+        cur.ns = c.slice(0, -1);
+        continue;
+      }
+      cur.text += c;
+    }
+    if (cur.text || cur.ns) {
+      targets.push(cur);
+    }
+
+    // The target must be a Selector NODE (Extend.writeSyntax calls target.write­
+    // Syntax); a bare string crashes it. Wrap the selector text in a BasicSelector
+    // (same shape core's `asExtendSelectorNode` produces for a string).
+    const makeExtend = (t: { ns?: string; text: string }): Node =>
+      new Extend(
+        {
+          target: new BasicSelector(t.text, undefined, location) as never,
+          flag,
+          ...(t.ns ? { namespace: t.ns } : {})
+        } as never,
+        {},
+        location
+      ) as unknown as Node;
+
+    if (targets.length <= 1) {
+      return makeExtend(targets[0] ?? { text: '' });
+    }
+    return new List(targets.map(makeExtend) as never, undefined, location) as unknown as Node;
   }
 
   private _buildForPattern(bindingNames: string[], location: LocationInfo): ForPattern {
