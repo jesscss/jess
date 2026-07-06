@@ -323,3 +323,24 @@ Next: **Phase B — the reparent rework** (root lever: `adopt` stops reparenting
   `frozen=true` first, so `adopt`'s `if(!node.frozen) setParent` SKIPS the reparent; shared child keeps its
   canonical parent. Proof test `b2-proof.test.ts` confirms source tree unmutated / acyclic (non-tautological).
   **New baseline 2746/0** (+2 proof tests). Byte-identical.
+
+- **Phase B4 (collapse-survivor) — GENUINE COPY, left (documented; no change).** `inherit(owner)` mutates the node
+  ITSELF (source span via `setSourceSpan`, `removeFlag(F_VISIBLE)`, `addFlag(F_GENERATED/F_EXTENDED/...)`) with
+  UNCONDITIONAL writes that `frozen` does NOT guard — unlike `adopt`'s child-reparent. Freeze-share → 3
+  canonical-child guard tests fail (proven). Same class as B3's `copySelectorTreeForExtend`. **Phase B complete:**
+  reparent-avoidance clones (B0/B2/B3) eliminated via freeze-share; mutate-after-copy clones (B4, extend:3467) stay.
+
+### ⚠ REASSESSMENT after Phase B — the reuse gates are NOT deletable yet (chain runs deeper)
+Grep of dev post-B3: `canReuseAsLeaf`/`reuseAsLeaf` are LIVE and pervasive (selector-list/complex/compound,
+declaration.ts ×8, at-rule.ts, rules.ts, mixin.ts) — they are the leaf-SHARING decision ("share this inert
+source-free static leaf as-is, else copy"), fed by `!F_NON_STATIC` + `!F_HAS_NODE_CHILD`. They are NOT
+reparent-avoidance cruft. So Phase C-early (delete reuse gates + `F_HAS_NODE_CHILD`) is BLOCKED, and the real
+dependency chain is:
+  **propagateFlagsFrom (F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD) → reuse gates (share-vs-copy) → copies remain
+  wherever placement MUTATES a node → `inherit` stamps span/flags/parent onto nodes.**
+To delete the reuse gates + flags, the copies must go; the copies exist because `inherit`/placement MUTATES nodes.
+**The real remaining lever is: make `inherit`'s node-mutation (span/flags/parent) live in the frame/context, not
+on the node** — then placement never mutates a shared node, every node shares, the reuse gates + flags delete.
+This IS the single-render-pass / structural-state-to-frame rework (Phase D + C-late) — a multi-slice project, not
+a quick C-early. Next step: an INVESTIGATION of `inherit`'s mutations — what each writes, who reads it, whether it
+can be threaded off the node — returning a feasibility + design, not a blind rewrite.
