@@ -191,6 +191,41 @@ eval is already deferred-eval territory). This is the PROPERTY `+:` (plain
   - **Defaults: `.less` → `legacyMerge: true`; `.jess` → `legacyMerge: false`.**
   - Granularity: compilation-level, defaulted by the entry file's extension.
 
+## Mixin / function CALL argument model — SETTLED (not yet built)
+Supersedes the old deferred "advanced mixin args (`;`-separated)" item.
+- **Comma-separated ONLY** in `.jess`. `;` is NOT a Jess argument separator.
+- A **space-separated** list is a single bare arg: `mixin(1px 2px, red)` = 2 args
+  (first a space-list) — exactly like `margin: 1px 2px`.
+- A **comma-list as a single arg** uses the paren-escape wrapper **`~(1, 2, 3)`**:
+  `mixin(~(1, 2, 3), red)` = 2 args (first a comma-list). The `~` marks the parens
+  as a *wrapper* that is STRIPPED — NOT a `Paren` value node. Same convention as
+  Less string escaping `~"…"`.
+- **Both `~"…"` (string escape) and `~(…)` (paren/list escape) are PRESERVED in
+  `.jess`.** Parser note (for when built): `~(` glued must resolve to the
+  list-wrapper, NOT `~`-operator applied to a `(…)` group.
+
+### DEFERRED TASK 1 — lower Less `;`-args → comma + `~(…)`
+When parsing LESS mixin/function args (the `;`-separated form), lower AT PARSE TIME
+to the unified representation: args comma-separated, any comma-list argument wrapped
+in `~(…)`. Less's `;` syntax and Jess's `~(…)` syntax then produce the SAME AST.
+Pure surface-syntax lowering (identical semantics) — **NO runtime option needed**
+(contrast `legacyMerge`, which gates genuinely different merge semantics).
+
+### DEFERRED TASK 2 (consideration, not a firm decision) — drop `;` from `List`
+Investigate making `List` comma-only (drop the `sep: ';'` option;
+`ListOptions.sep` is `',' | ';' | '/'` in `core/src/tree/list.ts:249`), while
+KEEPING the `{ … }` collection/map `;`-separators (map entries) intact. Aligns
+`List` with the commas-only direction.
+Dependents of `;`-separated `List` found (would need review before dropping):
+  - `core/src/tree/paren.ts:245,348` — checks `List.options.sep === ';'`.
+  - `less-parser/src/productions/values.ts:542,722,1110` + `guards.ts:816` —
+    construct `{ sep: ';' }` lists (Less `;`-list values / mixin-arg branches).
+  - `scss-parser/src/productions/values.ts:669` — SCSS `;`-list values.
+  - `css-parser/src/builders.ts:1042`, `css-parser/src/productions/values.ts:745`,
+    `css-parser/src/productions/misc.ts:467` — CSS `;`-list construction.
+  Note: this is `List`-level; the `{ … }` Collection `;`-entry separator is separate
+  and stays.
+
 ## Deferred eval TODOs (parse + serialize done; NO eval effect yet)
 - **`$foo := bar` nearest-outer reassignment eval** — walk to the nearest enclosing
   scope defining `$foo` and reassign THAT binding (JS-block style), NOT the global
@@ -205,8 +240,9 @@ FOLLOW-UPS (out of the adjudicated scope; not yet built):
 - `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
   `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
   StyleImportValue.with node).
-- Mixin `;`-separated args, rest params `...$x`, and `$content()` callbacks (the
-  doc still documents these features; parser support deferred).
+- Mixin/function call args (comma-only + `~(…)` list-wrapper) — SETTLED, see the
+  "CALL argument model" section above (+ deferred tasks 1 & 2). Rest params
+  `...$x` and `$content()` callbacks still deferred (docs document them).
 - `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
 
 ---
