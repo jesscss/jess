@@ -363,3 +363,21 @@ record threaded through ~35 serializers + the render walk = bigger than the copy
   serialize/sourcemap/extend/eval. **DECISION POINT (owner):** commit to Phase D, or bank Phase A+B and close the
   flag-walk goal as "deletable flags gone (F_MAY_ASYNC, F_AMPERSAND off the walk); F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD
   gated on the single-render-pass project."
+
+### ⚑ REPRIORITIZED by the CPU profile (REPROFILE_CURRENT.md) — hotspots first, flag-walk as cleanup
+Fresh profile verdict: **Phase D's entire surface (eval-fold / registration / copy / reuse-gates /
+`propagateFlagsFrom`) is <1% of self-time** — NOT a perf lever. The real hotspots are elsewhere. Owner
+decision: **attack measured hotspots for PERF first; then finish the flag-walk / single-render-pass as
+code-health simplification (maintainability + the 10× "do less work" spirit), NOT as a speed project.**
+
+PERF priority order (re-profile between each):
+1. **Comment-scan quadratic — ~70% self-time (IN PROGRESS, `work/fix-comment-scan-quadratic`).**
+   `commentRunsWithinSpan` scans the whole-file comment map per serialized node (O(nodes × comments)) —
+   a regression from the span-array drop. Range-query / forward-cursor. Isolated, days not weeks.
+2. **Extend selector matcher — ~25% on real Less** (`extendSelector`/`applyExtendsToSelector`/`wouldMatchNode`/
+   `processExtends`). The next perf target after comment-scan.
+3. **GC / allocation churn — ~4-6%.**
+
+THEN (post-hotspots, as simplification not speed): resume Phase D (single-render-pass) + the flag-walk
+deletion (D3 done; D1/dynamic-leaf-share/C4). Still worth doing for fewer-passes/less-work, just not the
+perf headline. The `propagateFlagsFrom` deletion remains the /goal's endpoint — reached last, as cleanup.
