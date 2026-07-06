@@ -303,3 +303,14 @@ Next: **Phase B — the reparent rework** (root lever: `adopt` stops reparenting
   for B2-B4:** place shared children via a NON-parenting construction path (raw `new` + `propagateFlagsFrom`/
   `inherit`), OR make `adopt` skip `setParent` on a source child; placement context comes from `_sourceRoot`/frame,
   never `.parent`. B1 subsumed. Byte-identical, 2744/0.
+
+- **Phase B2 (selector COW) — BLOCKED (precise, valid outcome; nothing committed).** The selector reparent is
+  REAL (not cargo-cult): `Selector.inherit()` (selector.ts:123-133) `adopt()`s each child → `setParent`.
+  Dropping `detachChildren` reparents the SOURCE compounds → `[Circular]`. **Root blocker = extend's composition
+  engine reads `child.parent`**: `extend.ts:4188-4193` climbs `current.parent`/`.parent.parent` to decide
+  `:is()`-append-vs-wrap; `extend.ts:4156` reparents children into generated compounds; the extend registry
+  (`context.extends`) reuses the source selector across matches, so the placement copy must be independently
+  owned. Placed `:is()` wrapper needs `child.parent === wrapper`; source registry needs `child.parent === source`.
+  **Prerequisite (new slice B2-pre): make extend's selector composition parent-pointer-free** — thread the
+  structural context (enclosing compound/pseudo) explicitly instead of reading `child.parent`. Then B2 (and
+  likely B3 ampersand/extend, same subsystem) unblock. Deep extend-engine refactor — gate hardest.
