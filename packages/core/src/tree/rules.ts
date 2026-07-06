@@ -3953,6 +3953,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
     }
+    // The `.parent` walk dead-ends when the lookup starts inside a surface that
+    // eval created but did not node-parent into the tree — a THIN control body
+    // (For/If/While), an @media/@supports body eval frame, or a called detached
+    // ruleset. Plugin/global functions (`range`, `length`, …) are registered on
+    // the tree root, so fall back to it: JS functions live in one global
+    // namespace, and any locally-bound function would have been found on the
+    // parent walk above before we reach here.
+    if (searchParents && options?.context) {
+      const root = options.context.root;
+      if (root && root !== this) {
+        return root.functionsByName?.get(keys);
+      }
+    }
     return undefined;
   }
 
