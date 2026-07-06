@@ -100,4 +100,22 @@ describe('calc reduction', () => {
     const z = await op([op([x, '*', num(2)]), '+', y]).eval(context);
     expect(z.render(context)).toBe('calc(100% * 100% * 2 + 100% * 100% + 1)');
   });
+
+  // Regression: an explicit `calc(@x)` wrapping an already-preserved calc
+  // survives eval as `calc((l op r))` (a Paren-wrapped inner). Composing it with
+  // a further operation must keep the operator and stay a single well-formed
+  // calc — not drop the operator / double-nest (`calc(((100% * 100%)))1`).
+  // A Paren-wrapped inner is kept parenthesized (precedence-safe).
+  it('composes a Paren-wrapped preserved-calc operand keeping the operator', async () => {
+    const parenCalc = () =>
+      call({ name: 'calc', args: list([paren(op([dimension([100, '%']), '*', dimension([100, '%'])]))]) });
+
+    // calc((100% * 100%)) + 1 -> calc((100% * 100%) + 1)  (operator kept)
+    expect(await render(op([parenCalc(), '+', num(1)])))
+      .toBe('calc((100% * 100%) + 1)');
+
+    // calc((100% * 100%)) * 2 -> composes without throwing "Cannot operate on Any"
+    expect(await render(op([parenCalc(), '*', num(2)])))
+      .toBe('calc((100% * 100%) * 2)');
+  });
 });

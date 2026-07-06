@@ -1960,11 +1960,29 @@ export class Call extends Node<CallValue, CallOptions> {
       if (
         isCalc && evaluatedArgs && evaluatedArgs.value.length === 1
       ) {
-        const dim = unwrapToDimension(evaluatedArgs.value[0]!);
+        const arg0 = evaluatedArgs.value[0]!;
+        const dim = unwrapToDimension(arg0);
         if (dim) {
           return dim;
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.value[0]!);
+          return new Paren(arg0);
+        }
+        // Outermost calc wrapping an already-preserved calc — e.g. an explicit
+        // `calc(@x)` where `@x` is `calc(a op b)`. CSS flattens nested calc:
+        // rebuild as a single `calc(...)` around the inner calc's content so we
+        // emit `calc(a op b)` (not `calc((a op b))`) and keep a calc Call (not
+        // an Any), so a further `calc(@x) op Y` still composes.
+        if (isCalcCall(arg0)) {
+          const innerArgs = arg0.args;
+          if (innerArgs && innerArgs.value.length === 1) {
+            const node = new Call(
+              { name: 'calc', args: list([innerArgs.value[0]!]), contentNode: state.contentNode },
+              { silentFail: false },
+              sourceSpanOf(this),
+              this.sourceRoot?._treeContext
+            );
+            return this.markCallOutput(node);
+          }
         }
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
