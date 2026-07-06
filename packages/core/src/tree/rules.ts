@@ -969,6 +969,7 @@ const R_BODY_EVALUATED = 1 << 7;
 const R_HAS_EXTENDS = 1 << 8;
 const R_HAS_REFERENCE_IMPORTS = 1 << 9;
 const R_REGISTRATION_PREPARED = 1 << 10;
+const R_PLACEMENT_REPOINTED = 1 << 11;
 /** Bits reset by `resetDerivedState` (child-derived surfaces + extend/reference-import). */
 const R_DERIVED_STATE_MASK =
   R_HAS_DIRECT_CHILD_RULE_SURFACE
@@ -1107,7 +1108,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * be baked back into the shared template (Ruleset.finishEvaluatedRules reads +
    * clears it), so a second call of the enclosing mixin re-evaluates cleanly.
    */
-  _placementRepointed = false;
+  get _placementRepointed(): boolean {
+    return (this.rulesFlags & R_PLACEMENT_REPOINTED) !== 0;
+  }
+
+  set _placementRepointed(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_PLACEMENT_REPOINTED;
+    } else {
+      this.rulesFlags &= ~R_PLACEMENT_REPOINTED;
+    }
+  }
+
   /**
    * Set once this Rules' body has been evaluated (even a lazy mixin body, when it
    * IS evaluated). Narrow §2.7 eval-state signal — the replacement for the deleted
