@@ -144,9 +144,9 @@ export interface LessOptions {
 
   /**
    * How to handle equality/coercion in guards and comparisons.
-   * - 'coerce': Less-compatible coercion behavior
+   * - 'loose': Less-compatible loose (coercive) equality (JS '==')
    * - 'strict': type-strict behavior
-   * @default 'coerce'
+   * @default 'loose'
    */
   equalityMode?: EqualityMode;
 

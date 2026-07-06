@@ -18,7 +18,7 @@ export type FunctionMode = 'preserve' | 'error';
 /**
  * Equality/coercion modes for guard comparisons.
  */
-export type EqualityMode = 'coerce' | 'strict';
+export type EqualityMode = 'loose' | 'strict';
 export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 /**
@@ -154,9 +154,9 @@ export interface LessOptions {
 
   /**
    * How to handle equality/coercion in guards and comparisons.
-   * - 'coerce': Less-compatible coercion behavior
+   * - 'loose': Less-compatible loose (coercive) equality (JS '==')
    * - 'strict': type-strict behavior
-   * @default 'coerce'
+   * @default 'loose'
    */
   equalityMode?: EqualityMode;
 

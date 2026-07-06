@@ -35,9 +35,11 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
 export type FunctionMode = 'preserve' | 'error';
 
 /**
- * Equality modes for guard/comparison semantics.
+ * Equality modes for guard/comparison semantics — the JS `==` vs `===` split.
  *
- * - `coerce`: Less-compatible coercive equality behavior
- * - `strict`: type-strict equality behavior
+ * - `loose`: Less-compatible loose equality — cross-type operands can compare
+ *   equal (like JS `==`), e.g. `2px = 2`.
+ * - `strict`: type-strict equality (like JS `===`) — operands must be the same
+ *   node type to compare equal.
  */
-export type EqualityMode = 'coerce' | 'strict';
+export type EqualityMode = 'loose' | 'strict';

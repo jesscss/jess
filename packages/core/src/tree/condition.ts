@@ -1,4 +1,5 @@
 import { type Context } from '../context.js';
+import type { EqualityMode } from '../types/modes.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType, type NodeLocation } from './node.js';
 import { Bool, createPublicBool } from './bool.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
@@ -153,7 +154,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     return Condition.getBoolValue(node as ConditionResultValue, false);
   }
 
-  static getResult(a: ConditionResultValue, b: ConditionResultValue, op: ConditionOperator): boolean {
+  static getResult(a: ConditionResultValue, b: ConditionResultValue, op: ConditionOperator, equalityMode: EqualityMode = 'loose'): boolean {
     switch (op) {
       case 'and': return Condition.getBoolValue(a, false) && Condition.getBoolValue(b, false);
       case 'or': return Condition.getBoolValue(a, false) || Condition.getBoolValue(b, false);
@@ -161,7 +162,14 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (typeof a === 'boolean' || typeof b === 'boolean') {
           return op === '=' && Condition.getBoolValue(a, false) === Condition.getBoolValue(b, false);
         }
-        switch (a.compare(b)) {
+        let cmp = a.compare(b);
+        // Strict equality (JS `===`): cross-type operands never compare equal, so
+        // a `0` from a loose/coercive compare (e.g. `2px = 2`) is demoted to
+        // "incomparable" when the two node types differ.
+        if (cmp === 0 && equalityMode === 'strict' && a.type !== b.type) {
+          cmp = undefined;
+        }
+        switch (cmp) {
           case -1:
             return op === '<' || op === '<=';
           case 0:
@@ -177,6 +185,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   evaluateBoolean(context: Context): MaybePromise<boolean> {
     const { left, operator: op, right } = this;
     const negated = this.negate;
+    const equalityMode: EqualityMode = context.opts?.equalityMode ?? this._treeContext?.equalityMode ?? 'loose';
     const leftResult = left.eval(context);
     if (isThenable(leftResult)) {
       return (leftResult as Promise<Node>).then((resolvedLeft) => {
@@ -188,12 +197,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (isThenable(rightResult)) {
           return (rightResult as Promise<Node>).then((resolvedRight) => {
             const b = getDefaultGuardValue(resolvedRight, context) ?? resolvedRight;
-            const result = Condition.getResult(a, b, op!);
+            const result = Condition.getResult(a, b, op!, equalityMode);
             return negated ? !result : result;
           });
         }
         const b = getDefaultGuardValue(rightResult, context) ?? rightResult;
-        const result = Condition.getResult(a, b, op!);
+        const result = Condition.getResult(a, b, op!, equalityMode);
         return negated ? !result : result;
       });
     }
@@ -205,12 +214,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     if (isThenable(rightResult)) {
       return (rightResult as Promise<Node>).then((resolvedRight) => {
         const b = getDefaultGuardValue(resolvedRight, context) ?? resolvedRight;
-        const result = Condition.getResult(a, b, op!);
+        const result = Condition.getResult(a, b, op!, equalityMode);
         return negated ? !result : result;
       });
     }
     const b = getDefaultGuardValue(rightResult, context) ?? rightResult;
-    const result = Condition.getResult(a, b, op!);
+    const result = Condition.getResult(a, b, op!, equalityMode);
     return negated ? !result : result;
   }
 
