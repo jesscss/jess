@@ -706,3 +706,11 @@ Bootstrap next wall: `Cannot operate on Any` (dimension.ts:118 via Operation.eva
 on an Any operand (grid/spacer math; operand stayed Any instead of a Num). → dispatched wall6.
 Bootstrap wall chain so far: parse ✓ @plugin ✓ nested-import-scope ✓ empty-Condition ✓ var-scope ✓ each-loop-vars ✓
 @min-async-guard ✓ operate-on-Paren ✓ → operate-on-Any (wall6).
+
+## 2026-07-06 (alpha) — bootstrap-wall6 MERGED (88/93, core 2760/0): findFunction root fallback
+rules.ts findFunction: when the `.parent` walk dead-ends (each/detached-ruleset/@media thin surfaces aren't parented
+into the tree), fall back to context.root.functionsByName. Global JS fns (range/length) were unreachable → range(N)
+stayed an Any → each bound @i to it → Dimension.operate(Any) throw. bootstrap grid math evaluates.
+Bootstrap next wall: `Expected sync compound selector evaluation to return a node` (selector-compound.ts:258 via
+Ruleset._prepareRulesetSelectorIdentity) — a compound selector component eval returns non-node (async on a sync path).
+→ dispatched wall7.
