@@ -203,6 +203,24 @@ function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): vo
   frame.fallbackFrame = importFrame;
 }
 
+// Walk a frame's lexical parent chain to detect any per-call live-binding scope
+// (mixin params / loop vars). Used to distinguish a genuinely re-usable mixin body
+// child (whose per-call output must not be baked into the shared template) from a
+// nested ruleset/@media body re-used only for selector nesting (whose output is
+// invariant across evals). Bounded + cycle-guarded like the other frame walks.
+function frameChainHasLiveBindings(frame: ScopeFrame | undefined): boolean {
+  let f = frame;
+  const seen = new Set<ScopeFrame>();
+  while (f && !seen.has(f)) {
+    if (f.hasLiveBindings) {
+      return true;
+    }
+    seen.add(f);
+    f = f.parent;
+  }
+  return false;
+}
+
 // A callable's per-call surface adopted under a mixin-output namespace member
 // (e.g. `.sayGender` bound under the output `.person` for `.person.sayGender()`)
 // resolves free vars up that DEFINITION member, not the call site. The member is
@@ -213,9 +231,24 @@ function isRetainedOutputDefinitionParent(
   parent: Node | undefined,
   enclosingScope: Rules | undefined
 ): boolean {
-  return isNode(parent, N.Rules)
-    && parent !== enclosingScope
-    && (parent as Rules).getScopeFrame().parent?.hasLiveBindings === true;
+  if (!isNode(parent, N.Rules) || parent === enclosingScope) {
+    return false;
+  }
+  const frame = (parent as Rules).getScopeFrame();
+  // The hasLiveBindings-parent signal alone is too broad: an ordinary nested
+  // ruleset inside a mixin body (e.g. a doubly-nested `.innest` inside `.inner`)
+  // also chains to the call's param slots, yet it is NOT a retained output — its
+  // per-call placement re-point must still fire so a second call rebinds its free
+  // vars to the new call's slots instead of resolving through the first call's
+  // cached frame chain.
+  //
+  // A retained mixin-output member OWNS its frame (`frame.rulesNode === parent`). A
+  // per-call re-evaluated body child is COW-derived during eval, which re-points its
+  // frame's `rulesNode` to the derived output surface (`frame.rulesNode !== parent`)
+  // — the marker that it is a placed body, not a retained definition. Require frame
+  // ownership so only the genuine retained-output parent suppresses the re-point.
+  return frame.parent?.hasLiveBindings === true
+    && frame.rulesNode === parent;
 }
 
 function keysStartWith(keys: readonly string[], path: readonly string[], pathStart = 0): boolean {
@@ -1066,6 +1099,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   functionLookupVersionsByName: Map<string, number> | undefined;
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
+  /**
+   * Transient, set for exactly one eval when `_evalPreparedRules` re-points this
+   * shared canonical body child's lexical frame parent to a per-call placement
+   * scope (§4). It marks the node as a re-used body whose evaluated output must NOT
+   * be baked back into the shared template (Ruleset.finishEvaluatedRules reads +
+   * clears it), so a second call of the enclosing mixin re-evaluates cleanly.
+   */
+  _placementRepointed = false;
   /**
    * Set once this Rules' body has been evaluated (even a lazy mixin body, when it
    * IS evaluated). Narrow §2.7 eval-state signal — the replacement for the deleted
@@ -6459,7 +6500,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // with/set). One behavior for every node-re-use site, keyed on what the
       // node IS (its sourceNode), not a stamped marker. No reparent, no clone.
       // See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
-      rules.getScopeFrame().parent = enclosingScope.getScopeFrame();
+      const placementFrame = enclosingScope.getScopeFrame();
+      rules.getScopeFrame().parent = placementFrame;
+      // Signal Ruleset.finishEvaluatedRules NOT to bake this eval's output back into
+      // the shared canonical node — but ONLY when the placement scope resolves live
+      // per-call bindings (mixin params). Such a body produces DIFFERENT output per
+      // call (the mixins-nested second-call bug: `width: @a` baked to `30`), so it
+      // must return a fresh surface. A placement with no live-binding ancestor
+      // (a nested ruleset / @media body re-used for selector nesting) produces the
+      // same output every eval, so the in-place bake stays correct there — and, more
+      // importantly, keeps the node identity that extend post-processing relies on.
+      if (frameChainHasLiveBindings(placementFrame)) {
+        rules._placementRepointed = true;
+      }
     } else if (rules === this && rules._closureScope) {
       // Detached-ruleset closure: a Rules passed as an arg / stored in a variable
       // closes over the SURFACE where it was written (`_closureScope`, captured at
