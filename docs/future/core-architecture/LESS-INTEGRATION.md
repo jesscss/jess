@@ -494,3 +494,9 @@ it into `context.opts.trivia`). Fix (value-trivia cluster, dispatched): (a) less
 + inter-term whitespace trivia, (b) jess-plugin-less threads parseResult.trivia → render context, (c) render emits it.
 Custom-prop `--x:` leading space is the same capture gap (less.js preserves verbatim, so no `: ` band-aid).
 IN FLIGHT: guards (mixins-guards); value-trivia (whitespace, css-grid, rgba).
+
+## 2026-07-05 (alpha) — guards MERGED → board 75/93 (core 2746/0, 0 flip)
+callable guard-filter (callable-guard.ts:227, callable-default-guard.ts:164) used strict `instanceof Bool` → rejected
+keyword true/false guards; now `Condition.resultPasses`. mixins-guards guard-filter cases fixed but fixture still red on
+residuals: `~"..."` isequal spacing, list comma/space separator normalization, deferred ruleset-guard-namespace ordering.
+IN FLIGHT: value-trivia (whitespace/css-grid/rgba); nested-mixin (mixins-nested param arithmetic).
