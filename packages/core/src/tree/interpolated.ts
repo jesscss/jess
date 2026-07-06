@@ -1,5 +1,5 @@
 import { sourceSpanOf } from './util/provenance.js';
-import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
+import { Node, F_VISIBLE, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
 import { Any, type AnyRole, type AnyOptions } from './any.js';
 import type { Context } from '../context.js';
 import { BasicSelector } from './selector-basic.js';
@@ -194,8 +194,8 @@ export class Interpolated<
     this.source = value.source;
     this.replacements = value.replacements;
     this.role = options?.role as Role | undefined;
-    // Interpolated nodes are always non-static and may be async
-    this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
+    // Interpolated nodes are always non-static
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
   override valueOf(): string {

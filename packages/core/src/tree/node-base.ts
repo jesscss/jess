@@ -237,7 +237,7 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 
 // Node state flags as bitmask
 export const F_VISIBLE = 0b1;
-export const F_MAY_ASYNC = 0b10;
+// bit 0b10 is free (was F_MAY_ASYNC, removed in the reactive single-render-pass drive)
 /**
  * @todo - The plan is to use these as signals for evaluation. If we
  * bubble these correctly, then we can exit early from evaluation for
@@ -296,7 +296,7 @@ export const F_MERGE_SUPPRESSED = 0b10000000000000000;
  * same flags — rather than recomputing them from children (that is eval-path
  * derivation, not copying). Canonical construction bubbles them via `adopt`.
  */
-export const F_CHILD_DERIVED = F_MAY_ASYNC | F_STATIC | F_NON_STATIC | F_AMPERSAND | F_HAS_NODE_CHILD;
+export const F_CHILD_DERIVED = F_STATIC | F_NON_STATIC | F_AMPERSAND | F_HAS_NODE_CHILD;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -689,9 +689,6 @@ export abstract class Node<
     } else if (node.hasFlag(F_STATIC)) {
       this.addFlag(F_STATIC);
     }
-    if (node.hasFlag(F_MAY_ASYNC)) {
-      this.addFlag(F_MAY_ASYNC);
-    }
     if (node.hasFlag(F_AMPERSAND) && this.type !== 'Rules') {
       this.addFlag(F_AMPERSAND);
     }
@@ -814,14 +811,6 @@ export abstract class Node<
    * Processed nodes must always return a Node.
    */
   private forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, _context: Context) {
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      this._visitEntries((node, key, coll, idx) => {
-        const result = mustBeNode(func(node, idx));
-        coll[key] = result;
-      });
-      return;
-    }
-
     let pending: Promise<void> | undefined;
     let resumeIndex = 0;
     let nodes: Node[] | undefined;
@@ -1348,26 +1337,6 @@ export abstract class Node<
     // §2.7: a node is a reusable template that re-evaluates per placement — no
     // retained `evaluated` result on the canonical node. This removes the
     // `evaluated` re-eval/cache reads from the hot path. See LIVE_BINDING §2.7.
-    if (!node.hasFlag(F_MAY_ASYNC)) {
-      return Node._evalStaticSync(node, context);
-    }
-
-    const evaluated = node.evalNode(context);
-    if (isThenable(evaluated)) {
-      return (evaluated as Promise<Node>).then((evald) => {
-        if (node !== evald) {
-          evald.inherit(node);
-        }
-        return evald;
-      });
-    }
-    if (node !== evaluated) {
-      evaluated.inherit(node);
-    }
-    return evaluated;
-  }
-
-  private static _evalStaticSync(node: Node, context: Context): MaybePromise<Node> {
     const evaluated = node.evalNode(context);
     if (isThenable(evaluated)) {
       return (evaluated as Promise<Node>).then((resolved) => {

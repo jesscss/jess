@@ -1,7 +1,7 @@
 import { sourceSpanOf } from './util/provenance.js';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
+import { Node, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
@@ -888,8 +888,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     this.path = value.path;
     this.with = value.with;
     this.withNode = value.with?.node;
-    // Style imports are always non-static and may be async
-    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+    // Style imports are always non-static
+    this.addFlags(F_NON_STATIC);
   }
 
   private getCanonicalSourcePath(options: FinalPrintOptions): string | undefined {

@@ -1,5 +1,5 @@
 import {
-  F_MAY_ASYNC, F_STATIC, F_NON_STATIC,
+  F_STATIC,
   type Node, type Rules, Any, Node as NodeClass, Rules as RulesNode,
   // Simplified API
   decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, op, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, interpolatedSelector, num,
@@ -310,16 +310,18 @@ export function createMultipleRules(ruleNodes: Node[] = []) {
   }));
 }
 
-// Flag assertion helpers
+// Flag assertion helpers.
+// The former `mayAsync` dimension was removed with F_MAY_ASYNC (every node is
+// async-capable under the reactive render/eval path); the argument is retained
+// for call-site compatibility but only F_STATIC is asserted now. A static node
+// is never non-static and vice versa.
 export const expectFlags = (
   node: Node,
   isStatic: boolean,
-  mayAsync: boolean,
+  _mayAsync: boolean,
   description = ''
 ) => {
-  const prefix = description ? `${description}: ` : '';
   expect(node.hasFlag(F_STATIC)).toBe(isStatic);
-  expect(node.hasFlag(F_MAY_ASYNC)).toBe(mayAsync);
 };
 
 export const expectStatic = (node: Node, description = '') => {
