@@ -29,7 +29,7 @@ export class LessPlugin extends AbstractPlugin {
   mathMode: MathMode;
   unitMode: UnitMode;
   equalityMode: EqualityMode;
-  leakyRules: boolean;
+  leakyScope: boolean;
   bubbleRootAtRules: boolean;
   collapseNesting: boolean;
 
@@ -68,13 +68,13 @@ export class LessPlugin extends AbstractPlugin {
     }
     this.unitMode = unitMode;
     this.equalityMode = opts.equalityMode ?? 'coerce';
-    this.leakyRules = opts.leakyRules ?? true;
+    this.leakyScope = opts.leakyScope ?? true;
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? true;
     this.collapseNesting = opts.collapseNesting ?? false;
 
     this.parser = new Parser({
       mathMode: this.mathMode,
-      leakyRules: this.leakyRules
+      leakyScope: this.leakyScope
     });
   }
 
@@ -92,7 +92,7 @@ export class LessPlugin extends AbstractPlugin {
       plugin: this,
       allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
       collapseNesting: this.collapseNesting,
-      leakyRules: this.leakyRules,
+      leakyScope: this.leakyScope,
       bubbleRootAtRules: this.bubbleRootAtRules
     });
   }

@@ -240,7 +240,7 @@ export interface LessOptions {
    * - Both mixins and detached rulesets: Mixin and VarDeclaration nodes are 'private'
    * @default true
    */
-  leakyRules?: boolean;
+  leakyScope?: boolean;
 
   /**
    * Whether to collapse nested selectors (Less 1.x-4.x style flattening)

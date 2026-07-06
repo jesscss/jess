@@ -5,7 +5,7 @@ import { evaluateCallableCollection } from '../callable-eval.js';
 
 describe('callable eval helper', () => {
   it('evaluates callable entries through the top-level helper', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     const candidate = mixin({
       name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),

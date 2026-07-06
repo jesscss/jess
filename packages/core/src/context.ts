@@ -75,7 +75,7 @@ export interface ContextOptions {
    *
    * @deprecated - a Less feature
    */
-  leakyRules?: boolean;
+  leakyScope?: boolean;
 
   /**
    * Whether to bubble root-only at-rules (like @font-face, @keyframes)
@@ -166,7 +166,7 @@ export const generateId = (length = 8) => {
 export class TreeContext implements TreeContextOptions {
   opts: Record<string, any>;
   // changed to `rulesVisiblity` set during parsing
-  leakyRules: boolean | undefined;
+  leakyScope: boolean | undefined;
   bubbleRootAtRules: boolean | undefined;
   mathMode: MathMode | undefined;
   unitMode: UnitMode | undefined;
@@ -196,7 +196,7 @@ export class TreeContext implements TreeContextOptions {
       isModule,
       file,
       plugin,
-      leakyRules,
+      leakyScope,
       bubbleRootAtRules,
       ...rest
     } = opts;
@@ -207,7 +207,7 @@ export class TreeContext implements TreeContextOptions {
     this.isModule = isModule;
     this.file = file;
     this.plugin = plugin;
-    this.leakyRules = leakyRules;
+    this.leakyScope = leakyScope;
     this.bubbleRootAtRules = bubbleRootAtRules;
     // this.scope = scope ?? new Scope(parentScope)
     this.opts = rest;
@@ -457,9 +457,9 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  _leakyRules: boolean | undefined;
-  get leakyRules() {
-    return this._leakyRules ?? this.treeContext?.leakyRules ?? false;
+  _leakyScope: boolean | undefined;
+  get leakyScope() {
+    return this._leakyScope ?? this.treeContext?.leakyScope ?? false;
   }
 
   _bubbleRootAtRules: boolean | undefined;
@@ -471,8 +471,8 @@ export class Context {
     this.opts = opts;
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
-    if (opts.leakyRules !== undefined) {
-      this._leakyRules = opts.leakyRules;
+    if (opts.leakyScope !== undefined) {
+      this._leakyScope = opts.leakyScope;
     }
     if (opts.bubbleRootAtRules !== undefined) {
       this._bubbleRootAtRules = opts.bubbleRootAtRules;

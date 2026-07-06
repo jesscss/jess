@@ -104,11 +104,11 @@ export async function executeCallableCandidate({
       liveSlots,
       usesPreboundParamGuardOuterRules
     });
-  } else if (context.leakyRules === true && parentFrame) {
+  } else if (context.leakyScope === true && parentFrame) {
     wireCallableScopeFrames({
       rules,
       parentFrame,
-      leakyRules: true
+      leakyScope: true
     });
   } else if (definedInImportedSurface) {
     // Param-less callable defined inside an imported/composed surface: no live

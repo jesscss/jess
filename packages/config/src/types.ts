@@ -251,7 +251,7 @@ export interface LessOptions {
    * - Both mixins and detached rulesets: Mixin and VarDeclaration nodes are 'private'
    * @default true
    */
-  leakyRules?: boolean;
+  leakyScope?: boolean;
 
   /**
    * Whether to collapse nested selectors (Less 1.x-4.x style flattening)
@@ -315,7 +315,7 @@ export interface InputOptions extends FileMatchOptions {
   strictImports?: boolean | 'error';
   rewriteUrls?: boolean | 'all' | 'local' | 'off';
   rootpath?: string;
-  leakyRules?: boolean;
+  leakyScope?: boolean;
   collapseNesting?: boolean;
   bubbleRootAtRules?: boolean;
 

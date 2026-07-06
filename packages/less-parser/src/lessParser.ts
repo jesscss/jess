@@ -40,13 +40,13 @@ function getSharedLexerAndParser(config: LessParserConfig): { lexer: Lexer; pars
   // Apply per-parse config to the cached parser instance
   const {
     looseMode = true,
-    leakyRules = true,
+    leakyScope = true,
     mathMode = 'parens-division',
     wrapOuterExpressions = true,
     legacyMode = looseMode
   } = config;
   cachedParser.looseMode = looseMode;
-  cachedParser.leakyRules = leakyRules;
+  cachedParser.leakyScope = leakyScope;
   cachedParser.mathMode = mathMode;
   cachedParser.wrapOuterExpressions = wrapOuterExpressions;
   cachedParser.legacyMode = legacyMode;

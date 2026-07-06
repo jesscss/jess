@@ -49,7 +49,7 @@ export type LessParserConfig = CssRecursiveParserConfig & {
    * When false:
    * - Both mixins and detached rulesets: Mixin and VarDeclaration nodes are 'private'
    */
-  leakyRules?: boolean;
+  leakyScope?: boolean;
 
   /**
    * Less math evaluation mode. Used during parsing to decide whether a given
@@ -117,7 +117,7 @@ export type RuleContext = CssRuleContext & {
 export class LessRecursiveParser extends CssRecursiveParser {
   declare T: TokenMap;
   looseMode: boolean;
-  leakyRules: boolean;
+  leakyScope: boolean;
   /** Warnings collected during parsing */
   warnings: Array<{ message: string; token?: IToken; deprecation?: string }> = [];
 
@@ -167,7 +167,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
     let {
       legacyMode,
       looseMode = true,
-      leakyRules = true,
+      leakyScope = true,
       mathMode = 'parens-division',
       wrapOuterExpressions = true,
       ...rest
@@ -177,7 +177,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
 
     this.T = T;
     this.looseMode = looseMode;
-    this.leakyRules = leakyRules;
+    this.leakyScope = leakyScope;
     this.mathMode = mathMode;
     this.wrapOuterExpressions = wrapOuterExpressions;
     this.warnings = [];

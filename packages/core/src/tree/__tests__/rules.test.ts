@@ -1182,7 +1182,7 @@ describe('Rules', () => {
       });
 
       it('nested rulesets inherit nearer parent vars over globals in Less mode', async () => {
-        context = new Context({ leakyRules: true });
+        context = new Context({ leakyScope: true });
         getProp = getPropWithContext.bind(context, context);
         getVar = getVarWithContext.bind(context, context);
         getDeclEither = getDeclEitherWithContext.bind(context, context);
@@ -1239,7 +1239,7 @@ describe('Rules', () => {
       });
 
       it('preserves start when searching later child rules', async () => {
-        context = new Context({ leakyRules: true });
+        context = new Context({ leakyScope: true });
         getProp = getPropWithContext.bind(context, context);
         getVar = getVarWithContext.bind(context, context);
         getDeclEither = getDeclEitherWithContext.bind(context, context);
@@ -1263,7 +1263,7 @@ describe('Rules', () => {
       });
 
       it('still sees later same-scope vars in Less mode', async () => {
-        context = new Context({ leakyRules: true });
+        context = new Context({ leakyScope: true });
         getProp = getPropWithContext.bind(context, context);
         getVar = getVarWithContext.bind(context, context);
         getDeclEither = getDeclEitherWithContext.bind(context, context);
@@ -1285,7 +1285,7 @@ describe('Rules', () => {
       });
 
       it('still sees later parent-scope vars from inside nested rulesets in Less mode', async () => {
-        context = new Context({ leakyRules: true });
+        context = new Context({ leakyScope: true });
         getProp = getPropWithContext.bind(context, context);
         getVar = getVarWithContext.bind(context, context);
         getDeclEither = getDeclEitherWithContext.bind(context, context);

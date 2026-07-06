@@ -3215,7 +3215,7 @@ describe('Call', () => {
   });
 
   it('does not let detached ruleset calls read caller scope in non-leaky mode', async () => {
-    context = new Context({ leakyRules: false });
+    context = new Context({ leakyScope: false });
     const root = rules([
       vardecl({
         name: 'themeBlock',
@@ -3238,7 +3238,7 @@ describe('Call', () => {
   });
 
   it('lets detached ruleset calls read caller scope in leaky mode', async () => {
-    context = new Context({ leakyRules: true });
+    context = new Context({ leakyScope: true });
     const root = rules([
       vardecl({
         name: 'themeBlock',

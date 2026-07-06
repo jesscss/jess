@@ -611,7 +611,7 @@ export class Compiler {
       unitMode: lessOptions.unitMode,
       equalityMode: lessOptions.equalityMode,
       allowExtendSelectors: lessOptions.allowExtendSelectors,
-      leakyRules: lessOptions.leakyRules,
+      leakyScope: lessOptions.leakyScope,
       bubbleRootAtRules: lessOptions.bubbleRootAtRules,
       collapseNesting: lessOptions.collapseNesting
     });

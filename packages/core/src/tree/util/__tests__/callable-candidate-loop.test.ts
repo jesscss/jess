@@ -18,7 +18,7 @@ import { executeCallableCandidateLoop } from '../callable-candidate-loop.js';
 
 describe('callable candidate loop helper', () => {
   it('handles ruleset special-case candidates through output state', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     const callerRules = rules([]);
     const candidate = ruleset({
       selector: el('.candidate'),
@@ -58,7 +58,7 @@ describe('callable candidate loop helper', () => {
   });
 
   it('handles ordinary callable entries through candidate setup and execution', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     const candidate = mixin({
       name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
@@ -106,7 +106,7 @@ describe('callable candidate loop helper', () => {
   });
 
   it('handles anonymous callable-rules through the unlocked special-case path', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     const detachedBody = rules([
       decl({ name: 'color', value: any('red') })
     ]);

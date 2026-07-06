@@ -498,7 +498,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   &:hover:extend(.button:hover) {}
 }
 `;
-    const context = new Context({ output: { collapseNesting: true }, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: true }, leakyScope: true });
     const parser = new Parser();
     const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -890,7 +890,7 @@ div:is(.ext5, .ext7),
 .ee:extend(.dd all,.bb) {}
 .ff:extend(.dd,.bb all) {}
 `;
-    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
     const parser = new Parser();
     const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -919,7 +919,7 @@ div:is(.ext5, .ext7),
 
   it('5d. parsed full extend.less keeps exact nested matches out of the .aa .dd branch', async () => {
     const source = readFileSync(path.join(testData, 'tests-unit/extend/extend.less'), 'utf8');
-    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
     const parser = new Parser();
     const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -947,7 +947,7 @@ div:is(.ext5, .ext7),
 }
 .dbl:extend(.e.e) {}
 `;
-    const context = new Context({ output: { collapseNesting: false }, leakyRules: true });
+    const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
     const parser = new Parser();
     const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
