@@ -118,6 +118,13 @@ type ExactCallableFindOptions = {
   hasTarget?: boolean;
   local?: boolean;
   includeRulesets?: boolean;
+  /**
+   * Ruleset-only lookup: collect ONLY plain `Ruleset` candidates (`.foo {}`),
+   * dropping `Mixin` (parametric/parens `.foo() {}`) and any other callable. Used
+   * by Jess `$apply` and `*[…]` selector capture, whose semantics apply rulesets
+   * as-is — never the args/guards callable machinery.
+   */
+  rulesetsOnly?: boolean;
   searchParents?: boolean;
   skipCurrentSurface?: boolean;
 };
@@ -811,7 +818,8 @@ function mergeDirectChildRulesVisibility(
 
 function collectCallableBucketResults(
   bucket: CallableLookupEntry[],
-  includeRulesets: boolean
+  includeRulesets: boolean,
+  rulesetsOnly = false
 ): MixinEntry[] | undefined {
   let results: MixinEntry[] | undefined;
   for (let i = bucket.length - 1; i >= 0; i--) {
@@ -823,6 +831,10 @@ function collectCallableBucketResults(
     if (!includeRulesets && isNode(candidate, N.Ruleset)) {
       continue;
     }
+    // Ruleset-only (bracket capture `*[.foo]()`): drop non-Ruleset callables.
+    if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
+      continue;
+    }
     (results ??= []).push(candidate);
   }
   return results;
@@ -832,7 +844,8 @@ function collectCallableBucketRemainderResults(
   bucket: CallableLookupEntry[],
   includeRulesets: boolean,
   path: readonly string[],
-  offset: number
+  offset: number,
+  rulesetsOnly = false
 ): MixinEntry[] | undefined {
   const restLength = path.length - offset - 1;
   if (restLength <= 0) {
@@ -856,6 +869,9 @@ function collectCallableBucketRemainderResults(
     }
     const candidate = entry.value;
     if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+      continue;
+    }
+    if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
       continue;
     }
     (results ??= []).push(candidate);
@@ -1627,6 +1643,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): MixinEntry[] {
     let results: MixinEntry[] | undefined;
     const includeRulesets = options?.includeRulesets !== false;
+    const rulesetsOnly = options?.rulesetsOnly === true;
     const collectBucketResults = (candidates: CallableLookupEntry[]): boolean => {
       let found = false;
       for (let i = candidates.length - 1; i >= 0; i--) {
@@ -1636,6 +1653,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         const candidate = entry.value;
         if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+          continue;
+        }
+        // Ruleset-only ($apply / *[…]): keep plain Rulesets, drop Mixins etc.
+        if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
           continue;
         }
         (results ??= []).push(candidate);
@@ -1733,7 +1754,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     key: string,
     reason: Extract<ScopeFrameCallableLookupResult, { kind: 'uncovered' }>['reason'],
     includeRulesets: boolean,
-    options: CallableFindOptions
+    options: CallableFindOptions,
+    rulesetsOnly = false
   ): UncoveredCallableResult {
     if (reason !== 'child-surface' && reason !== 'reference-import') {
       return UNCOVERED_CALLABLE_UNSUPPORTED;
@@ -1782,7 +1804,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         searchParents: false
       });
       if (frameHit.kind === 'hit') {
-        const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+        const results = collectCallableBucketResults(frameHit.bucket, includeRulesets, rulesetsOnly);
         if (results) {
           (frameResults ??= []).push(...results);
         }
@@ -1812,7 +1834,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           key,
           reason,
           includeRulesets,
-          options
+          options,
+          rulesetsOnly
         );
         if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
           if (direct.length > 0) {
@@ -1825,7 +1848,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         key,
         reason,
         includeRulesets,
-        options
+        options,
+        rulesetsOnly
       );
       if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED && direct.length > 0) {
         frameResults = direct;
@@ -3091,7 +3115,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   private findRulesetNamespacePathFast(
     keys: string[],
     options: CallableFindOptions = {},
-    pathStart = 0
+    pathStart = 0,
+    // When a same-named mixin namespace also exists, the walk normally defers to
+    // the mixin path (returns undefined). Set this to still resolve the ruleset
+    // prefix defs so findMixinPath can UNION ruleset + mixin namespace results
+    // (`#g when(…) {…} #g() {…}` — both contribute).
+    resolvePrefixesDespiteMixinNamespace = false
   ): MixinEntry[] | undefined {
     if (keys.length - pathStart < 2) {
       return undefined;
@@ -3263,7 +3292,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           searchParents
         }).length > 0;
       }
-      if (hasMixinNamespace) {
+      if (hasMixinNamespace && !(resolvePrefixesDespiteMixinNamespace && prefixMatches.length > 0)) {
         return undefined;
       }
 
@@ -3323,14 +3352,28 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         return DEFINITE_MISS;
       }
 
+      // A mixin CALL (`#foo > .m()`) invokes every same-named namespace on the
+      // path, so accumulate each prefix match's resolution. A bare value/index
+      // lookup keeps override (last-wins) semantics — return the first match.
+      const accumulate = options.mixinCall === true;
+      // Longest-consumed prefixes win first. Stable-sort keeps the incoming
+      // newest-first order within a length; the call accumulation wants source
+      // order (oldest first) so later same-named namespaces override as authored,
+      // so reverse within each equal-length group when accumulating.
       if (prefixMatches.length > 1) {
-        prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+        if (accumulate) {
+          prefixMatches.sort((a, b) => a.consumed.length - b.consumed.length).reverse();
+        } else {
+          prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+        }
       }
       let sawLegacyOnlyPrefix = false;
       let simpleLookupOptions: ExactCallableFindOptions | undefined;
       let nestedOptions: CallableFindOptions | undefined;
       const existingNoParentOptions = options.searchParents === false ? options : undefined;
       const terminalFilterType = options.terminalMixinOnly === true ? 'Mixin' : undefined;
+      let accumulated: MixinEntry[] | undefined;
+      let accumulatedOwned = false;
 
       for (const { ruleset, consumed } of prefixMatches) {
         if (selectorNeedsLegacyFallback(ruleset)) {
@@ -3340,7 +3383,23 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const remainderStart = offset + consumed.length;
         const remainderLength = path.length - remainderStart;
         if (remainderLength === 0) {
-          return options.terminalMixinOnly === true ? DEFINITE_MISS : [ruleset];
+          if (options.terminalMixinOnly === true) {
+            continue;
+          }
+          if (!accumulate) {
+            return [ruleset];
+          }
+          if (accumulated === undefined) {
+            accumulated = [ruleset];
+            accumulatedOwned = true;
+          } else {
+            if (!accumulatedOwned) {
+              accumulated = [...accumulated];
+              accumulatedOwned = true;
+            }
+            accumulated.push(ruleset);
+          }
+          continue;
         }
         let resolved: MixinEntry[] | undefined;
         if (remainderLength === 1) {
@@ -3429,10 +3488,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           }
         }
         if (resolved?.length) {
-          return resolved;
+          if (!accumulate) {
+            return resolved;
+          }
+          if (accumulated === undefined) {
+            accumulated = resolved;
+          } else {
+            if (!accumulatedOwned) {
+              accumulated = [...accumulated];
+              accumulatedOwned = true;
+            }
+            for (let i = 0; i < resolved.length; i++) {
+              accumulated.push(resolved[i]!);
+            }
+          }
         }
       }
 
+      if (accumulated !== undefined && accumulated.length > 0) {
+        return accumulated;
+      }
       return sawLegacyOnlyPrefix ? undefined : DEFINITE_MISS;
     };
 
@@ -3524,7 +3599,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let resolved: MixinEntry[] | undefined;
     let resolvedOwned = false;
     let descendantMissCovered = false;
-    for (let i = 0; i < namespaceMixins.length; i++) {
+    // namespaceMixins arrives newest-first (reverse bucket order); walk it back
+    // to front so same-named namespaces' descendant output accumulates in the
+    // source order they were authored.
+    for (let i = namespaceMixins.length - 1; i >= 0; i--) {
       const entry = namespaceMixins[i]!;
       if (!isNode(entry, N.Mixin)) {
         continue;
@@ -3657,6 +3735,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
+      // Bracket-capture call `*[.foo]()`: terminal hits must be plain Rulesets only.
+      const rulesetsOnly = options.rulesetsOnly === true;
       const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
         this.prepareCallableLookupFrame(callableFrame, keys, includeRulesets);
@@ -3666,7 +3746,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
-          const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+          const results = collectCallableBucketResults(frameHit.bucket, includeRulesets, rulesetsOnly);
           if (results) {
             return results;
           }
@@ -3679,7 +3759,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             keys,
             frameHit.reason,
             includeRulesets,
-            options
+            options,
+            rulesetsOnly
           );
           if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
             frameMissCovered = true;
@@ -3732,7 +3813,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
               }
             }
             if (retryHit.kind === 'hit') {
-              const results = collectCallableBucketResults(retryHit.bucket, includeRulesets);
+              const results = collectCallableBucketResults(retryHit.bucket, includeRulesets, rulesetsOnly);
               if (results) {
                 return results;
               }
@@ -3746,7 +3827,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                   keys,
                   retryHit.reason,
                   includeRulesets,
-                  options
+                  options,
+                  rulesetsOnly
                 );
                 if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
                   frameMissCovered = true;
@@ -3826,10 +3908,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
     let compoundPrefixFast: CallableRulesetPathResult | undefined;
     let mixinNamespaceFast: MixinEntry[] | undefined;
+    let rulesetNamespaceUnion: MixinEntry[] | undefined;
     if (mixinFilterType !== 'Mixin') {
       const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
       if (rulesetNamespaceFast !== undefined) {
         return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
+      }
+      // For an emitting call, the head namespace may also exist in mixin form
+      // (rnf deferred). Resolve its ruleset-form defs so they union with the
+      // mixin path below — same-named ruleset and mixin namespaces both
+      // contribute their descendant output. Value lookups keep override semantics.
+      if (options.mixinCall === true) {
+        const rulesetDespiteMixin = this.findRulesetNamespacePathFast(keys, options, 0, true);
+        if (rulesetDespiteMixin !== undefined && rulesetDespiteMixin.length > 0) {
+          rulesetNamespaceUnion = rulesetDespiteMixin;
+        }
       }
       let namespaceMixins: MixinEntry[] | undefined;
       let namespaceMixinMissCovered = false;
@@ -3913,24 +4006,35 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       );
     }
     const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
+    let combined: MixinEntry[] | undefined;
+    let combinedOwned = false;
     if (compoundPrefixFast !== undefined && compoundPrefixFast.entries.length > 0) {
-      let compoundUnion = compoundPrefixFast.entries;
-      let compoundUnionOwned = compoundPrefixFast.owned;
+      combined = compoundPrefixFast.entries;
+      combinedOwned = compoundPrefixFast.owned;
       if (fast !== undefined && fast.length > 0) {
-        if (!compoundUnionOwned) {
-          compoundUnion = [...compoundUnion];
-          compoundUnionOwned = true;
+        if (!combinedOwned) {
+          combined = [...combined];
+          combinedOwned = true;
         }
         for (let i = 0; i < fast.length; i++) {
-          compoundUnion.push(fast[i]!);
+          combined.push(fast[i]!);
         }
       }
-      return compoundUnion;
+    } else if (fast !== undefined && fast.length > 0) {
+      combined = fast;
     }
-    if (fast !== undefined) {
-      return fast.length > 0 ? fast : undefined;
+    if (rulesetNamespaceUnion !== undefined) {
+      // Ruleset-form namespace defs precede the mixin-form defs in source order.
+      if (combined === undefined) {
+        return rulesetNamespaceUnion;
+      }
+      const merged = [...rulesetNamespaceUnion];
+      for (let i = 0; i < combined.length; i++) {
+        merged.push(combined[i]!);
+      }
+      return merged;
     }
-    return undefined;
+    return combined;
   }
 
   findFunction(
@@ -4054,8 +4158,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             const importPrelude = importRule.prelude;
             if (importPrelude && typeof importPrelude !== 'string' && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
-              if (!isThenable(maybePrelude)) {
-                importRule.prelude = maybePrelude as Node;
+              if (!isThenable<Node>(maybePrelude) && isNode(maybePrelude)) {
+                importRule.prelude = maybePrelude;
                 importRule.adopt(importRule.prelude);
               }
             }
@@ -5091,13 +5195,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           context.extendRoots.popExtendRoot();
         }
       };
-      if (isThenable(mp)) {
-        return (mp as Promise<this>)
-          .then((result) => {
+      if (isThenable<this>(mp)) {
+        return mp
+          .then((result: this) => {
             popNestableBody();
             return result;
           })
-          .catch((error) => {
+          .catch((error: unknown) => {
             rules._registrationPrepared = false;
             this._restoreRegistrationAfterError(context, saved);
             throw error;
@@ -5163,12 +5267,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     prepState: RegistrationPrepState
   ): MaybePromise<this> {
     const pendingResult = this._scanRegistrationNodes(rules, context, prepState);
-    if (isThenable(pendingResult)) {
-      return (pendingResult as Promise<RegistrationPrepState>).then(scanState =>
+    if (isThenable<RegistrationPrepState>(pendingResult)) {
+      return pendingResult.then((scanState: RegistrationPrepState) =>
         this._finishRegistrationPrep(rules, context, saved, scanState)
       );
     }
-    return this._finishRegistrationPrep(rules, context, saved, pendingResult as RegistrationPrepState);
+    return this._finishRegistrationPrep(rules, context, saved, pendingResult);
   }
 
   private _scanRegistrationNodes(
@@ -5250,8 +5354,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const finishAfterDeclarations = () => {
       return this._finishOrderedIdentityRegistrationPrep(rules, context, saved, prepState);
     };
-    if (isThenable(declarationResult)) {
-      return (declarationResult as Promise<void>).then(finishAfterDeclarations);
+    if (isThenable<void>(declarationResult)) {
+      return declarationResult.then(finishAfterDeclarations);
     }
     return finishAfterDeclarations();
   }
@@ -5464,8 +5568,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const finish = () => {
       this._applyResolvedRegistrationNodes(rules, pendingDeclarationNames.resolvedNodes);
     };
-    if (isThenable(result)) {
-      return (result as Promise<void>).then(finish);
+    if (isThenable<void>(result)) {
+      return result.then(finish);
     }
     return finish();
   }
@@ -5495,8 +5599,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this._restoreRegistrationContext(context, saved);
       return this;
     };
-    if (isThenable(orderedResult)) {
-      return (orderedResult as Promise<void>).then(finish);
+    if (isThenable<void>(orderedResult)) {
+      return orderedResult.then(finish);
     }
     return finish();
   }
@@ -5600,12 +5704,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         try {
           const result = node.prepareRegistration(context);
 
-          if (isThenable(result)) {
+          if (isThenable<Node>(result)) {
             const remaining: Node[] = [];
             for (let nextIndex = i + 1; nextIndex < unresolvedDeclarations.length; nextIndex++) {
               remaining.push(unresolvedDeclarations[nextIndex]!);
             }
-            return result.then((resolvedNode) => {
+            return result.then((resolvedNode: Node) => {
               if (handleResolvedNode(resolvedNode, node, stillUnresolved)) {
                 madeProgress = true;
               }
@@ -5622,7 +5726,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             });
           }
 
-          if (handleResolvedNode(result as Node, node, stillUnresolved)) {
+          if (handleResolvedNode(result, node, stillUnresolved)) {
             madeProgress = true;
           }
         } catch {
@@ -5656,12 +5760,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         try {
           const result = node.prepareRegistration(context);
 
-          if (isThenable(result)) {
+          if (isThenable<Node>(result)) {
             const remaining: Node[] = [];
             for (let nextIndex = i + 1; nextIndex < orderedIdentities.length; nextIndex++) {
               remaining.push(orderedIdentities[nextIndex]!);
             }
-            return result.then((resolvedNode) => {
+            return result.then((resolvedNode: Node) => {
               handleResolvedNode(resolvedNode, node, []);
               // Continue with remaining nodes
               orderedIdentities.length = 0;
@@ -5672,7 +5776,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             });
           }
 
-          handleResolvedNode(result as Node, node, []);
+          handleResolvedNode(result, node, []);
         } catch {
           // Can't resolve during registration prep — leave in place for eval.
         }
@@ -5854,17 +5958,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const result = (() => {
         try {
           const value = rule.eval(context);
-          return isThenable(value)
-            ? (value as Promise<Node>).catch(handleError)
+          return isThenable<Node>(value)
+            ? value.catch(handleError)
             : value;
         } catch (error) {
           return handleError(error);
         }
       })();
-      if (isThenable(result)) {
-        return (result as Promise<Node | undefined>).then(resolved => applyResult(idx, rule, resolved));
+      if (isThenable<Node | undefined>(result)) {
+        return result.then((resolved: Node | undefined) => applyResult(idx, rule, resolved));
       }
-      applyResult(idx, rule, result as Node | undefined);
+      applyResult(idx, rule, result);
     };
 
     // These are the two eval-owned side-effect lanes left after removing the
@@ -5903,8 +6007,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       };
       const drained = drainRest(0);
-      if (isThenable(drained) && allowRetry) {
-        return (drained as Promise<void>).then(() => drainPendingImports(false));
+      if (isThenable<void>(drained) && allowRetry) {
+        return drained.then(() => drainPendingImports(false));
       }
       return drained;
     };
@@ -5939,24 +6043,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             }
             return true;
           }, false);
-          if (isThenable(normal)) {
-            return (normal as Promise<void>).then(() => ({ output, rulesToHoist }));
+          if (isThenable<void>(normal)) {
+            return normal.then(() => ({ output, rulesToHoist }));
           }
           return { output, rulesToHoist };
         };
-        if (isThenable(calls)) {
-          return (calls as Promise<void>).then(afterCalls);
+        if (isThenable<void>(calls)) {
+          return calls.then(afterCalls);
         }
         return afterCalls();
       };
-      if (isThenable(importDrain)) {
-        return (importDrain as Promise<void>).then(afterImports);
+      if (isThenable<void>(importDrain)) {
+        return importDrain.then(afterImports);
       }
       return afterImports();
     };
 
-    if (isThenable(evaluateImports)) {
-      return (evaluateImports as Promise<void>).then(evaluateBody);
+    if (isThenable<void>(evaluateImports)) {
+      return evaluateImports.then(evaluateBody);
     }
     return evaluateBody();
   }
@@ -6389,12 +6493,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._ensureRootExtendStack(rules, context);
     this._assignRootDocumentOrder(rules, context);
     const evaluated = this._evaluateSourceOrder(rules, context, importsOnly);
-    if (isThenable(evaluated)) {
-      return (evaluated as Promise<{ output: Rules; rulesToHoist: boolean }>).then(({ output, rulesToHoist }) =>
+    if (isThenable<{ output: Rules; rulesToHoist: boolean }>(evaluated)) {
+      return evaluated.then(({ output, rulesToHoist }: { output: Rules; rulesToHoist: boolean }) =>
         this._finishSourceOrderEvaluation(output, rulesToHoist)
       );
     }
-    const { output, rulesToHoist } = evaluated as { output: Rules; rulesToHoist: boolean };
+    const { output, rulesToHoist } = evaluated;
     return this._finishSourceOrderEvaluation(output, rulesToHoist);
   }
 
@@ -6478,12 +6582,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       : undefined;
     this._setupContextForRules(context, this);
     const rulesAfterPrep = this._prepareRegistrationForEval(context);
-    if (isThenable(rulesAfterPrep)) {
-      return (rulesAfterPrep as Promise<Rules>).then(rules =>
+    if (isThenable<Rules>(rulesAfterPrep)) {
+      return rulesAfterPrep.then((rules: Rules) =>
         this._evalPreparedRules(rules, context, enclosingScope, importsOnly)
       );
     }
-    return this._evalPreparedRules(rulesAfterPrep as Rules, context, enclosingScope, importsOnly);
+    return this._evalPreparedRules(rulesAfterPrep, context, enclosingScope, importsOnly);
   }
 
   private _evalPreparedRules(
@@ -6579,8 +6683,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     // Eval owns registration prep. This step establishes lookup identities
     // before the source-order eval walk without evaluating rule bodies.
-    const result = this._prepareRegistrationOnce(context);
-    return isThenable(result) ? (result as Promise<Rules>) : result;
+    return this._prepareRegistrationOnce(context);
   }
 
   private _createRegistrationPrepState(): RegistrationPrepState {
@@ -6735,6 +6838,37 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 }
 
 export const rules = defineType(Rules, 'Rules');
+
+/**
+ * Ruleset-only, whole-selector lookup shared by Jess `$apply` and `*[…]` selector
+ * capture. Resolves `selector` (e.g. `.foo`) against `scope`'s callable surface,
+ * returning EVERY matching plain `Ruleset` (`.foo {}`) — merge-all, in scope order.
+ * Parametric `Mixin` definitions (`.foo() {}` / `.foo(@a) {}`) are NEVER returned;
+ * this deliberately does not touch the args/guards callable machinery.
+ *
+ * A capture whose selector has no plain basic key (e.g. `*`, `:hover`) yields `[]`.
+ */
+export function resolveRulesetBySelector(
+  selector: Selector | undefined,
+  scope: Rules
+): Ruleset[] {
+  const keys = getOrderedSelectorKeys(selector);
+  if (keys.length === 0) {
+    return [];
+  }
+  const found: Ruleset[] = [];
+  const seen = new Set<Ruleset>();
+  for (const key of keys) {
+    for (const entry of scope.findMixinsFast(key, { rulesetsOnly: true })) {
+      // rulesetsOnly guarantees Rulesets, but narrow defensively + de-dupe.
+      if (isNode(entry, N.Ruleset) && !seen.has(entry)) {
+        seen.add(entry);
+        found.push(entry);
+      }
+    }
+  }
+  return found;
+}
 
 // Registration prep has two pending lanes. Declaration-name nodes own a local
 // fixed-point state because one declaration name can unblock another; every

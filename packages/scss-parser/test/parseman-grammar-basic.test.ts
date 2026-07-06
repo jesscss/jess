@@ -14,7 +14,7 @@ function parseOk(src: string) {
   return result;
 }
 
-describe('ScssParserParseman — baseline', () => {
+describe('ScssParser — baseline', () => {
   it('parses a $var declaration', () => {
     const { tree } = parseOk('$color: red;');
     expect(tree.rules[0]!.type).toBe('VarDeclaration');
@@ -26,7 +26,7 @@ describe('ScssParserParseman — baseline', () => {
   });
 });
 
-describe('ScssParserParseman — @if / @else', () => {
+describe('ScssParser — @if / @else', () => {
   it('parses @if / @else if / @else into a nested If chain', () => {
     const { tree } = parseOk(
       '@if 1 = 1 { .a { color: red; } } @else if 2 = 2 { .b { color: blue; } } @else { .c { color: green; } }'
@@ -86,7 +86,7 @@ describe('ScssParserParseman — @if / @else', () => {
   });
 });
 
-describe('ScssParserParseman — @each / @for / @while', () => {
+describe('ScssParser — @each / @for / @while', () => {
   it('parses @each $a in $list as For', () => {
     const { tree } = parseOk('@each $a in $list { .x { y: $a; } }');
     const loop = tree.rules[0]!;
@@ -133,7 +133,7 @@ describe('ScssParserParseman — @each / @for / @while', () => {
   });
 });
 
-describe('ScssParserParseman — @mixin / @include / @content', () => {
+describe('ScssParser — @mixin / @include / @content', () => {
   it('parses @content as Call(Reference content)', () => {
     const { tree } = parseOk('@content;');
     const call = tree.rules[0]!;
@@ -196,7 +196,7 @@ describe('ScssParserParseman — @mixin / @include / @content', () => {
   });
 });
 
-describe('ScssParserParseman — @function / @return', () => {
+describe('ScssParser — @function / @return', () => {
   it('parses @function definition with @return', () => {
     const { tree } = parseOk('@function add($a, $b: 2) { @return $a; }');
     expect(isNode(tree.rules[0], N.Func)).toBe(true);
@@ -206,7 +206,7 @@ describe('ScssParserParseman — @function / @return', () => {
   });
 });
 
-describe('ScssParserParseman — interpolation (#{…})', () => {
+describe('ScssParser — interpolation (#{…})', () => {
   it('parses interpolation inside strings', () => {
     const { tree } = parseOk('.a { content: "foo #{$bar} baz"; }');
     const ruleset = tree.rules[0]!;
@@ -284,7 +284,7 @@ describe('ScssParserParseman — interpolation (#{…})', () => {
   });
 });
 
-describe('ScssParserParseman — maps / lists / module refs', () => {
+describe('ScssParser — maps / lists / module refs', () => {
   it('parses a Sass map literal as Collection', () => {
     const { tree } = parseOk('.a { x: ("regular": 400, "medium": 500); }');
     const ruleset = tree.rules[0]!;
@@ -334,7 +334,7 @@ describe('ScssParserParseman — maps / lists / module refs', () => {
   });
 });
 
-describe('ScssParserParseman — @use / @forward / @import / @extend', () => {
+describe('ScssParser — @use / @forward / @import / @extend', () => {
   it('parses @use as StyleImport(compose)', () => {
     const { tree } = parseOk('@use "foo";');
     expect(isNode(tree.rules[0], N.StyleImport)).toBe(true);
@@ -450,7 +450,7 @@ describe('ScssParserParseman — @use / @forward / @import / @extend', () => {
   });
 });
 
-describe('ScssParserParseman — trailing commas', () => {
+describe('ScssParser — trailing commas', () => {
   it('parses function calls with a trailing comma', () => {
     parseOk('a { z: foo(1, 2,); }');
   });

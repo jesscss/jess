@@ -7,7 +7,7 @@ export { ScssGrammar } from './builders.js';
 export { scssGrammar } from './grammar.js';
 
 import { ScssParser } from './functional-parser.js';
-export { ScssParser, ScssParserParseman, parseScssFn, type ScssFnParseResult, type ScssFnParseOptions } from './functional-parser.js';
+export { ScssParser, parseScssFn, type ScssFnParseResult, type ScssFnParseOptions } from './functional-parser.js';
 
 // Chevrotain parser — kept for lexer/token tests and gradual migration.
 export type { ScssRules, SyntacticContentAssistSuggestion } from './scssParser.js';

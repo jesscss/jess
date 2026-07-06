@@ -60,6 +60,6 @@ export function parseJessFn(input: string, rule = 'Stylesheet'): JessFnParseResu
 }
 
 /** Functional Jess parser — macro-composed Less + SCSS + Jess. */
-export class JessParserParsemanFn {
+export class JessParserFn {
   parse = (text: string, rule = 'Stylesheet'): JessFnParseResult => parseJessFn(text, rule);
 }

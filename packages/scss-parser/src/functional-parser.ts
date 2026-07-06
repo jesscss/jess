@@ -116,6 +116,3 @@ export class ScssParser {
     return [];
   }
 }
-
-/** @deprecated Use {@link ScssParser}. */
-export { ScssParser as ScssParserParseman };
