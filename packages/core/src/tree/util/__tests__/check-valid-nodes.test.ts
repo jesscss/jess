@@ -5,6 +5,7 @@ import { Dimension } from '../../dimension.js';
 import { Operation } from '../../operation.js';
 import { Comment } from '../../comment.js';
 import { Declaration } from '../../declaration.js';
+import { Any, Keyword } from '../../any.js';
 
 describe('checkValidNodes', () => {
   it('throws when a value node (no F_ALLOW_ROOT) sits in a statement position', () => {
@@ -29,6 +30,20 @@ describe('checkValidNodes', () => {
     expect(comment.hasFlag(F_ALLOW_ROOT)).toBe(true);
     expect(decl.hasFlag(F_ALLOW_ROOT)).toBe(true);
     expect(() => checkValidNodes([comment, decl])).not.toThrow();
+  });
+
+  it('accepts a bare Any (Less Anonymous is allowRoot) in statement position', () => {
+    // A root-position call that evaluates to a bare value produces an Any;
+    // Less emits it as the final statement (e.g. `e('/* … */')`).
+    const value = new Any('/* anything to unquote */', { role: 'any' });
+    expect(value.hasFlag(F_ALLOW_ROOT)).toBe(true);
+    expect(() => checkValidNodes([value])).not.toThrow();
+  });
+
+  it('rejects a bare Keyword in statement position (Less Keyword is not allowRoot)', () => {
+    const kw = new Keyword('auto');
+    expect(kw.hasFlag(F_ALLOW_ROOT)).toBe(false);
+    expect(() => checkValidNodes([kw])).toThrow();
   });
 
   it('is a no-op for empty or missing bodies', () => {
