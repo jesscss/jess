@@ -2926,33 +2926,44 @@ function evaluateBindingHandleValue(
     context.rulesContext = bindingRulesContext ?? bindingSource.rulesParent ?? context.rulesContext;
     changedRulesContext = true;
   }
+
+  // The searchScope recursion guard only needs to cover the SYNCHRONOUS span of
+  // the value evaluation: a self-reference (`i: i + 1`) reads the same binding
+  // while descending into its own value, which happens before eval returns. If
+  // the value eval yields a thenable, releasing the guard only in the deferred
+  // `.finally` keeps `bindingSource` blocked for the whole await window — long
+  // enough to falsely reject an INDEPENDENT, overlapping read of the same
+  // binding (e.g. two sibling `& when (@min ...)` guards in a mixin body, whose
+  // `@min` is an async plugin-fn call). Release the guard as soon as the sync
+  // phase completes so concurrent consumers resolve normally. The rulesContext
+  // swap genuinely spans the async eval, so it stays deferred to `.finally`.
   if (bindingSource) {
     context.searchScope.add(bindingSource);
   }
+  let guardHeld = bindingSource !== undefined;
+  const releaseGuard = () => {
+    if (guardHeld) {
+      context.searchScope.delete(bindingSource!);
+      guardHeld = false;
+    }
+  };
 
   try {
     const result = evaluateReferenceValueNode(bindingValue, context, evalFlags);
+    releaseGuard();
     if (isThenable(result)) {
       return Promise.resolve(result).finally(() => {
-        if (bindingSource) {
-          context.searchScope.delete(bindingSource);
-        }
         if (changedRulesContext) {
           context.rulesContext = savedRulesContext;
         }
       });
-    }
-    if (bindingSource) {
-      context.searchScope.delete(bindingSource);
     }
     if (changedRulesContext) {
       context.rulesContext = savedRulesContext;
     }
     return result;
   } catch (error) {
-    if (bindingSource) {
-      context.searchScope.delete(bindingSource);
-    }
+    releaseGuard();
     if (changedRulesContext) {
       context.rulesContext = savedRulesContext;
     }
@@ -3000,7 +3011,20 @@ function finalizeDeclarationReferenceResult(
     context.popReference();
     return preservedValue;
   }
+  // The searchScope recursion guard only covers the SYNCHRONOUS span of the
+  // value evaluation (a self-reference reads the same declaration while
+  // descending into its own value, before eval returns). Releasing it only in
+  // the deferred `.finally` keeps the declaration blocked across the whole await
+  // window when the value eval is async, falsely rejecting an independent,
+  // overlapping read of the same declaration. Release once the sync phase ends.
   context.searchScope.add(declaration);
+  let searchScopeHeld = true;
+  const releaseSearchScope = () => {
+    if (searchScopeHeld) {
+      context.searchScope.delete(declaration);
+      searchScopeHeld = false;
+    }
+  };
   let referencePopped = false;
   let importantPushed = false;
   const popReference = () => {
@@ -3041,6 +3065,7 @@ function finalizeDeclarationReferenceResult(
       context.rulesContext = declOwner as Rules;
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
+    releaseSearchScope();
     const finalize = (evaluatedNode: Node): Node => {
       restoreRulesContext();
       if (!isMergedAssign) {
@@ -3067,22 +3092,17 @@ function finalizeDeclarationReferenceResult(
             importantPushed = false;
           }
           throw error;
-        })
-        .finally(() => {
-          context.searchScope.delete(declaration);
         });
     }
-    const finalized = finalize(evaluated);
-    context.searchScope.delete(declaration);
-    return finalized;
+    return finalize(evaluated);
   } catch (error) {
+    releaseSearchScope();
     restoreRulesContext();
     popReference();
     if (importantPushed) {
       context.popImportantSource();
       importantPushed = false;
     }
-    context.searchScope.delete(declaration);
     throw error;
   }
 }
