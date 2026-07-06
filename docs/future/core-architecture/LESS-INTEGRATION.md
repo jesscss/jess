@@ -375,3 +375,33 @@ Gaps to close when building the sandbox:
 3. **Guard test:** assert plugin-js is absent from `dependencies` and present in `peerDependenciesMeta` as optional on
    BOTH `jess` and `jess-plugin-less-compat`; add a `pnpm publish --dry-run` closure check so it never enters the
    shipped runtime tree. (`bootstrap-less-port` is already correctly a devDep of `jess`.)
+
+## 2026-07-05 (resumed on integrate/final) — merges + parser-tail diagnosis
+- **eval-important MERGED** (core 2732/0, all-less 63/93 held): 6 `x instanceof Any ? x : undefined` narrowings
+  across Declaration eval-state + registration/render dropped the string-normalized `important` flag. Now passed
+  through. `property-targeted` serializes `!important` (still fails on separate `background: $color` accessor).
+- **hasFlag throw = PARSER (mixins-guards/advanced/nested, 3 fixtures).** `callable-binding.ts:6`
+  `value.hasFlag(F_STATIC)` throws because a lone bare keyword as a mixin PARAM DEFAULT (`.default(@a: inherit)`) or
+  NAMED-ARG (`.m(@a: A)`) is emitted as a raw STRING, not a Keyword node. Source: `css-parser/builders.ts:784`
+  `_assembleValue` single-segment path skips the `_valueKeyword` wrapping the list branch applies. Core binding
+  correctly assumes param/arg values are Nodes. Fix (targeted): wrap the lone bare-string in a Keyword, scoped to the
+  mixin/arg builders so plain declaration bare-string values stay strings. NOTE: css-parser is shared css/less/scss/jess.
+
+## 2026-07-05 — board 67/93 (was 63); at-rule serialize merged
+- **at-rule-serialize MERGED** (core 2737/0): flipped **at-rules, at-rules-bubbling, at-rules-declarations, calc** green.
+  Killed the `$??` sigil leak — it was a CORE bug (flat-array decl values never evaluated → Call serialized its
+  `$name?(...)` Jess source form), NOT a parser `$`-sigil gap. Also fixed query-condition paren attach (`url-prefix()`).
+- Parser clearance GRANTED (user): targeted parser fixes are now mine, gated against css/scss too.
+- **IN FLIGHT:** `less/keyword-value` (parser) — bare-keyword param-default/named-arg → Keyword node (mixins-guards/advanced/nested).
+- **NEXT — color-fns (basic/rgba/comprehensive/modern):** `$??` now gone; remaining = (a) `red()`/color fns not
+  evaluating (`red(rgb(100%,0,0))` should → `255`), (b) a spurious space `red (rgb…)` — the at-rule "always space
+  adjacent value nodes" rule likely OVER-spaces a function-name+paren-args boundary; needs refinement so a Call/
+  fn-name+Paren doesn't get spaced while genuine space-lists still do.
+
+## 2026-07-05 — board 68/93; dev now holds the work (FF from feature/parseman)
+- dev fast-forwarded to hold all session work; this worktree switched to `dev`; future merges land on dev. origin/dev
+  is 6+ behind (not pushed — maintainer's mainline).
+- **keyword-value MERGED**: `_buildNamedArg` (less-parser) wraps bare-keyword param-default/named-arg in a Keyword
+  node (scoped, no shared `_assembleValue` touch). css/scss/less-parser suites clean. Flipped **mixins-advanced**.
+  mixins-guards/mixins-nested have DEEPER failures beyond this (further along now — hasFlag throw gone).
+- IN FLIGHT: `less/color-fns` (core: red()/channel eval + `red (` over-spacing).

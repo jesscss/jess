@@ -1,5 +1,4 @@
 import type { Context } from '../../context.js';
-import { Bool } from '../bool.js';
 import { Condition } from '../condition.js';
 import type { Node } from '../node.js';
 import { F_STATIC } from '../node.js';
@@ -223,8 +222,11 @@ export async function evaluateCallableGuard({
     if (guard instanceof Condition) {
       passes = await guard.evaluateBoolean(context);
     } else {
+      // A bare (non-Condition) guard body — `when ((@value))`, `when (#ns[flag])` —
+      // resolves to a Bool or a keyword `true`/`false`; Less honours both, so use
+      // the canonical truth check rather than a strict `instanceof Bool`.
       const resolvedGuard = await guard.eval(context);
-      passes = resolvedGuard instanceof Bool && resolvedGuard.value === true;
+      passes = Condition.resultPasses(resolvedGuard);
     }
     return {
       passes,

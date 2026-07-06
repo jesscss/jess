@@ -52,14 +52,14 @@ function copyForPlacement(
   if (!options.owned && canReuseLeaf(node)) {
     return reuseLeaf(node);
   }
-  // Copy-on-write: a Selector's ownership clone adopts (reparents) its child
-  // selectors. If it shared them, adopt would reparent the SOURCE children and
-  // corrupt the shared source tree, so detach non-reusable child selectors into
-  // owned copies. Scalar leaves are still reused (no needless clones).
+  // A Selector's placement clone SHARES its child selectors (frozen) instead of
+  // deep-copying them: `Selector.inherit()` adopts each child, but the frozen bit
+  // makes `adopt` skip the reparent, so the shared SOURCE children keep their
+  // canonical `.parent` and are not mutated. Scalar leaves are still reused.
   if (node instanceof Selector) {
     return node.cloneForPlacement({
       reuseLeaves: true,
-      detachChildren: true,
+      shareChildren: true,
       ...(options.preserveComments ? { stripComments: false } : {})
     });
   }

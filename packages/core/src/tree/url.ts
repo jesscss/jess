@@ -1,5 +1,5 @@
 import { sourceSpanOf } from './util/provenance.js';
-import { Node, F_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, defineType, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
@@ -96,7 +96,7 @@ export class Url extends Node<string | Node> {
       ? prepareBufferPrintState(context, options)
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       : prepareRenderPrintState(context, bufferOrOptions as import('./util/print.js').PrintOptions | undefined);
-    const value = this.hasFlag(F_STATIC) || typeof this.value === 'string'
+    const value = typeof this.value === 'string'
       ? this.value
       : this.value.eval(context);
     if (isThenable(value)) {
@@ -118,7 +118,7 @@ export class Url extends Node<string | Node> {
   }
 
   private evaluateValue(context: Context): MaybePromise<Node> {
-    if (this.hasFlag(F_STATIC) || typeof this.value === 'string') {
+    if (typeof this.value === 'string') {
       return this;
     }
     const value = this.value.eval(context);

@@ -182,6 +182,57 @@ describe('mfValue', () => {
     const { errors } = parse('@media (width: 500px) { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
+
+  it('builds an indexed accessor for `@var[key]` in a feature value (not an opaque keyword)', () => {
+    const { errors, tree } = parse('@media (min-width: @breakpoints[mobile]) { }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    // The feature value must be a Reference accessor (target Reference + key),
+    // NOT a Keyword('@breakpoints[mobile]').
+    expect(out).toContainString('(Reference');
+    expect(out).toContainString('key:\n');
+    expect(out).not.toContainString('@breakpoints[mobile]');
+  });
+
+  it('builds a math Operation for a parenthesized feature value (not an opaque keyword)', () => {
+    const { errors, tree } = parse('@media screen and (min-width: (@some-var + 1)) { }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Operation');
+    expect(out).not.toContainString('(@some-var + 1)');
+  });
+
+  it('evaluates a parenthesized math feature value in a media prelude', async () => {
+    const { errors, tree } = parse(
+      '@some-var: 60px;\n@media screen and (min-width: (@some-var + 1)) { a { color: red; } }',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('@media screen and (min-width: 61px) {');
+  });
+
+  it('unwraps an escaped-string feature value (`~"2/1"`) to its literal content', async () => {
+    const { errors, tree } = parse(
+      '@media (-o-min-device-pixel-ratio: ~"2/1") { a { color: red; } }',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('(-o-min-device-pixel-ratio: 2/1)');
+    expect(String(evald)).not.toContain('~"2/1"');
+  });
+
+  it('unwraps a bare `@var` referencing an escaped string in a media prelude', async () => {
+    const { errors, tree } = parse(
+      '@all: ~"all";\n@tv: ~"(tv)";\n@media @all and @tv { a { color: red; } }',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('@media all and (tv) {');
+    expect(String(evald)).not.toContain('"all"');
+  });
 });
 
 describe('at-rule prelude comments', () => {

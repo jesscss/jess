@@ -31,6 +31,7 @@ import {
   For, type ForPattern,
   Interpolated, InterpolatedSelector, Sequence, CustomDeclaration,
   Color, Paren, Condition, type ConditionOperator,
+  Num, Dimension,
   Mixin, Expression, Operation, Negative,
   shouldOperateWithMathFrames, type MathMode,
   StyleImport,
@@ -127,13 +128,14 @@ export class LessGrammar extends CssParser {
         this._warnAtRulePreludeVars(span);
         return this._buildLessQueryAtRuleBlock(children, raw, loc);
       case 'NamedColor':          return this._buildNamedColor(children, loc);
-      case 'Comparison':          return this._buildComparison(children, loc);
+      case 'Comparison':          return this._buildComparison(raw, loc);
       case 'GuardDefault':        return new DefaultGuard('default()', {}, loc) as unknown as JessNode;
       case 'GuardInParens':       return this._buildGuardInParens(children, loc);
-      case 'GuardTerm':           return this._buildGuardTerm(children, loc);
+      case 'GuardTerm':           return this._buildGuardTerm(raw, loc);
       case 'GuardAnd':            return this._buildGuardJoin(children, loc, 'and');
       case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
       case 'Guard':               return this._buildGuard(children, loc);
+      case 'UnicodeRange':        return this._lessKeyword(this._source.slice(span.start, span.end), loc) as unknown as JessNode;
       case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, loc);
       case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
       case 'VarCall':             return this._buildVarCall(children, raw, loc);
@@ -144,11 +146,15 @@ export class LessGrammar extends CssParser {
       case 'AnonymousMixinDefinition': return this._buildAnonMixin(children, loc) as unknown as JessNode;
       case 'DetachedRuleset':     return this._buildDetachedRuleset(children, loc) as unknown as JessNode;
       case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
+      case 'BooleanCall':         return this._buildBooleanCall(children, loc);
+      case 'IfCall':              return this._buildIfCall(children, loc);
+      case 'FormatCall':          return this._buildFormatCall(raw, loc);
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
       case 'Negative':            return new Negative(this._negativeOperand(children), undefined, loc) as unknown as JessNode;
       case 'OperationTop':        return this._buildOperation(children, loc, this.mathMode === 'always') as unknown as JessNode;
       case 'EscapedValue':        return this._buildEscapedValue(children, loc);
       case 'InterpValue':         return this._buildInterpValue(raw, loc);
+      case 'NsAccessor':          return this._buildNsAccessor(children, loc);
       case 'AtRuleStatement':     return this._buildAtRuleStatement(children, loc);
       case 'ExtendTarget':        return this._buildExtendTarget(children, raw, loc);
       case 'ExtendPseudo':        return this._buildExtendPseudo(children, loc);
@@ -266,18 +272,23 @@ export class LessGrammar extends CssParser {
       if (accMatch) {
         const accText = accMatch[1]!.trim();
         const accessorKey = this._decodeAccessorKey(accText, loc);
+        // A numeric accessor key (`foo[2]` / `foo[]` → last, key -1) is an INDEX
+        // lookup; a variable dispatch would fail with `'-1' is not defined`.
+        const accessorRefOptions = typeof accessorKey === 'number'
+          ? { type: 'index' as const }
+          : {};
         if (grammarPartialAccessor) {
           // Fix in-place: replace the wrong key on the existing Reference wrapper
           rawValue = new Reference(
             { target: rv.target as any, key: accessorKey as any } as unknown as ReferenceValue,
-            {},
+            accessorRefOptions,
             loc
           ) as unknown as JessNode;
         } else {
           // No partial grammar accessor: wrap with new Reference
           rawValue = new Reference(
             { target: rawValue as any, key: accessorKey as any } as unknown as ReferenceValue,
-            {},
+            accessorRefOptions,
             loc
           ) as unknown as JessNode;
         }
@@ -319,11 +330,23 @@ export class LessGrammar extends CssParser {
   private _buildReference(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const varName = ls[0]?.value ?? '';
-    let base: JessNode = new Reference(
-      varName.startsWith('@') ? varName.slice(1) : varName,
-      varName.startsWith('@') ? { type: 'variable' as const } : {},
-      loc
-    ) as unknown as JessNode;
+    // Head sigil types the base reference. `@a` → variable. `$color` → a bare
+    // property accessor: an `index` reference with a Quoted key and no target,
+    // resolved against the current scope (port of varReference's PropertyReference
+    // branch). Anything else → bare index base.
+    const isVar = varName.startsWith('@');
+    const isProp = varName.startsWith('$');
+    let base: JessNode = isProp
+      ? new Reference(
+          { key: new Quoted(varName.slice(1), { quote: '\'' }, loc) as any } as unknown as ReferenceValue,
+          { type: 'index' },
+          loc
+        ) as unknown as JessNode
+      : new Reference(
+          isVar ? varName.slice(1) : varName,
+          isVar ? { type: 'variable' as const } : {},
+          loc
+        ) as unknown as JessNode;
     let i = 1;
     while (i < ls.length) {
       const tok = ls[i]!.value;
@@ -349,6 +372,61 @@ export class LessGrammar extends CssParser {
             payload.args = args;
           }
           i += 3; // '(', content, ')'
+        }
+        base = new Call(payload as any, {}, loc) as unknown as JessNode;
+      } else {
+        break;
+      }
+    }
+    return base;
+  }
+
+  /**
+   * Build a namespace INDEXED-accessor value: a `.`/`#` selector-path head glued to
+   * a `[accessor]` (and any further `[accessor]`/`(call)` chain), e.g.
+   * `#ns.options[val1]`. The grammar (NsAccessor) captures this as ONE value operand
+   * so it survives arithmetic folding; here we reassemble it into the mixin-ruleset
+   * name Reference + accessor chain — the SAME shape the declaration-value
+   * _assembleSegment path produces for a lone `#ns.options[val1]`. Call-headed forms
+   * (`.mixin()`, `.mixin()[k]`) do NOT reach here (they keep the GluedParen path).
+   * Leaves: [ headText, '[', key?, ']', '(', content?, ')' … ].
+   */
+  private _buildNsAccessor(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
+    const headText = (ls[0]?.value ?? '').trim();
+    // Split the selector path into segments: `#ns.options` → ['#ns', '.options'];
+    // combinators (`#ns > .a`) are dropped, each `.`/`#` name is one segment.
+    const pathSegs = headText.match(/[#.][^#.>+~\s]*/g) ?? [headText];
+    const nameKey: string | string[] = pathSegs.length === 1 ? pathSegs[0]! : pathSegs;
+    const rawKey = pathSegs.length > 1 ? pathSegs.join('') : undefined;
+    let base: JessNode = new Reference(
+      { key: nameKey, ...(rawKey ? { rawKey } : {}) } as unknown as ReferenceValue,
+      { type: 'mixin-ruleset', role: 'name' } as any, loc
+    ) as unknown as JessNode;
+    let i = 1;
+    while (i < ls.length) {
+      const tok = ls[i]!.value;
+      if (tok === '[') {
+        if (ls[i + 1]?.value === ']') {
+          base = new Reference(
+            { target: base as any, key: -1 } as unknown as ReferenceValue,
+            { type: 'index' }, loc
+          ) as unknown as JessNode;
+          i += 2;
+        } else {
+          base = this._applyReferenceAccessor(base, ls[i + 1]!.value, loc);
+          i += 3;
+        }
+      } else if (tok === '(') {
+        const payload: Record<string, unknown> = { name: base };
+        if (ls[i + 1]?.value === ')') {
+          i += 2;
+        } else {
+          const args = this._buildRefCallArgs(ls[i + 1]!.value, loc);
+          if (args) {
+            payload.args = args;
+          }
+          i += 3;
         }
         base = new Call(payload as any, {}, loc) as unknown as JessNode;
       } else {
@@ -417,18 +495,42 @@ export class LessGrammar extends CssParser {
     }
   }
 
-  private _buildComparison(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const nodes = nodeChildren(children);
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const left = nodes[0] ?? this._lessKeyword('', loc);
-    const op = ls.find(l => />=|<=|=>|=<|=~|[<>=]/.test(l.value));
-    const right = nodes[1] ?? this._lessKeyword('', loc);
-    if (op) {
-      return new Condition(
-        [left, this._normalizeCompareOp(op.value), right],
-        {},
-        loc
-      ) as unknown as JessNode;
+  /** A guard comparison operator leaf (`=`, `<`, `>=`, `=<`, `=~`, …). */
+  private _isCompareOpLeaf(text: string): boolean {
+    return />=|<=|=>|=<|=~|[<>=]/.test(text);
+  }
+
+  /**
+   * Split a guard term's ordered components into `left [op right]`. A bare-keyword
+   * operand (`foo`, `true`) is a leaf string — not a node — so `nodeChildren`
+   * alone drops it; walk the ordered stream so string operands become real
+   * keyword nodes (their guard truthiness is decided at eval by `Condition`).
+   */
+  private _guardComparison(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo):
+    { left: Node; op?: ConditionOperator; right?: Node } {
+    const items = spannedComponents(raw);
+    let op: ConditionOperator | undefined;
+    const operands: Node[] = [];
+    for (const it of items) {
+      if (typeof it.comp === 'string') {
+        if (this._isCompareOpLeaf(it.comp)) {
+          op = this._normalizeCompareOp(it.comp);
+          continue;
+        }
+        operands.push(this._lessKeyword(it.comp, loc) as unknown as Node);
+      } else {
+        operands.push(it.comp as unknown as Node);
+      }
+    }
+    const left = this._maybeDefaultGuard(operands[0] ?? this._lessKeyword('', loc), loc);
+    const right = operands[1] !== undefined ? this._maybeDefaultGuard(operands[1], loc) : undefined;
+    return { left, op, right };
+  }
+
+  private _buildComparison(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const { left, op, right } = this._guardComparison(raw, loc);
+    if (op && right) {
+      return new Condition([left, op, right], {}, loc) as unknown as JessNode;
     }
     return new Condition([left], {}, loc) as unknown as JessNode;
   }
@@ -462,23 +564,21 @@ export class LessGrammar extends CssParser {
   }
 
   /** A single guard term: optional `not`, then a paren-guard or a comparison/value. */
-  private _buildGuardTerm(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
-    const nodes = nodeChildren(children);
-    const hasNot = ls.some(l => l.value === 'not');
+  private _buildGuardTerm(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(raw);
+    const hasNot = items.some(i => typeof i.comp === 'string' && i.comp === 'not');
+    // Everything after an optional leading `not` is the operand run.
+    const rest = raw.filter(rc => !(rc._tag === 'leaf' && (rc as { value?: string }).value === 'not'));
+    const nodes = nodeChildren(rest as ReadonlyArray<Child>);
     let term: Node;
     if (nodes.length >= 1 && (nodes[0] as any).type === 'Paren') {
       // guardInParens branch (already a Paren node)
       term = nodes[0]!;
     } else {
-      const left = this._maybeDefaultGuard(nodes[0] ?? this._lessKeyword('', loc), loc);
-      const op = ls.find(l => />=|<=|=>|=<|=~|[<>=]/.test(l.value));
-      if (op && nodes[1]) {
-        const right = this._maybeDefaultGuard(nodes[1], loc);
-        term = new Condition([left, this._normalizeCompareOp(op.value), right], {}, loc) as unknown as Node;
-      } else {
-        term = left;
-      }
+      const { left, op, right } = this._guardComparison(rest, loc);
+      term = op && right
+        ? new Condition([left, op, right], {}, loc) as unknown as Node
+        : left;
     }
     if (hasNot) {
       return new Condition([term as any], { negate: true }, loc) as unknown as JessNode;
@@ -502,6 +602,116 @@ export class LessGrammar extends CssParser {
   /** guard: `when` guardOr — returns the single guardOr child. */
   private _buildGuard(children: ReadonlyArray<Child>, loc: LocationInfo) {
     return (nodeChildren(children)[0] ?? this._lessKeyword('', loc)) as unknown as JessNode;
+  }
+
+  /**
+   * `boolean(cond)` — the condition is a guard expression (GuardOr → Condition /
+   * Paren / keyword). Returns it directly: a Condition evaluates to a Bool, and a
+   * bare keyword `true`/`false` is honoured by `Condition.getBoolValue` at the
+   * consuming site. Wrapped in a Paren so the value renders as the evaluated bool
+   * (matching Less's `boolean()` returning a Keyword true/false).
+   */
+  private _buildBooleanCall(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const cond = nodeChildren(children)[0] ?? this._lessKeyword('', loc);
+    return new Paren(cond as any, {}, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `if(cond, then[, else])` — the condition is a guard expression; the branches
+   * are ordinary values or detached rulesets. Build a `Call` to the registered
+   * `if` fn with `[cond, then?, else?]`, so the fn evaluates the condition (a
+   * Condition/Bool/keyword) and picks a branch.
+   */
+  private _buildIfCall(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const args = nodeChildren(children);
+    const nameRef = new Reference('if', { type: 'function', fallbackValue: true } as any, loc);
+    const argList = new List(args as any, {}, loc);
+    return new Call({ name: nameRef as any, args: argList as any }, { silentFail: true } as any, loc) as unknown as JessNode;
+  }
+
+  /**
+   * Deprecated Less `%(format, args…)` string formatting, LOWERED at build time.
+   *
+   * Jess already has full string interpolation, so `%()` is redundant Less-4 legacy —
+   * we emit a `percent-format` deprecation warning and, when the format is a string
+   * literal, splice its `%[sda]` directives into the canonical `Interpolated` node
+   * (the same one `@{var}` string interpolation builds), wrapped in a `Quoted` that
+   * preserves the literal's quote char / escaped flag:
+   *   - `%s`  → bare interpolation slot (a Quoted arg inserts with its quotes stripped);
+   *   - `%d`/`%a` → identical bare slot (d/a are the same in Less);
+   *   - `%S`/`%D`/`%A` → the arg WRAPPED in `escape(…)` (URL-encode);
+   *   - `%%` → a literal `%`.
+   * A dynamic (non-literal) format (`%(hello)`, `%(e("…"), …)`) can't be lowered at
+   * parse time, so it falls back to a best-effort runtime `%` Call with the same warning.
+   */
+  private _buildFormatCall(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    this._warn('%() string formatting is deprecated — use string interpolation', 'percent-format');
+
+    // Assemble the args exactly like a normal Call so bare keywords (`%(hello)`) are
+    // keyword-ified and comma runs fold uniformly.
+    const argList = this._assembleArgs(this._betweenParens(spannedComponents(raw)), loc) as unknown as List<Node>;
+    const args = (argList.value ?? []) as Node[];
+    const format = args[0];
+    const rest = args.slice(1);
+
+    // The format must be a Quoted literal (plain `"…"`, `'…'`, or escaped `~"…"`)
+    // wrapping a bare string to lower; anything else stays a runtime call.
+    if (format instanceof Quoted && typeof format.value === 'string') {
+      const { source, replacements } = this._lowerFormatString(format.value, rest, loc);
+      const interp = new Interpolated({ source, replacements: replacements as any }, { role: 'ident' }, loc);
+      return new Quoted(interp as any, { quote: format.quote, escaped: format.escaped }, loc) as unknown as JessNode;
+    }
+
+    // Dynamic / non-literal format (`%(hello)`, `%(e("…"), …)`): best-effort runtime `%` Call.
+    const nameRef = new Reference('%', { type: 'function', fallbackValue: true } as any, loc);
+    return new Call({ name: nameRef as any, args: argList as any }, { silentFail: true } as any, loc) as unknown as JessNode;
+  }
+
+  /**
+   * Turn a printf-style format string into an `Interpolated` source + replacements.
+   * `%[sda]` → one `INTERPOLATION_PLACEHOLDER` slot consuming the next positional arg
+   * (uppercase → wrapped in `escape(…)` to URL-encode); `%%` → a literal `%`.
+   */
+  private _lowerFormatString(
+    formatText: string, restArgs: ReadonlyArray<Node>, loc: LocationInfo
+  ): { source: string; replacements: Node[] } {
+    let source = '';
+    const replacements: Node[] = [];
+    let argIndex = 0;
+    for (let i = 0; i < formatText.length; i++) {
+      const ch = formatText[i]!;
+      if (ch !== '%') {
+        source += ch;
+        continue;
+      }
+      const next = formatText[i + 1];
+      if (next === '%') {
+        source += '%';
+        i++;
+        continue;
+      }
+      if (next && /[sda]/i.test(next)) {
+        const arg = restArgs[argIndex++];
+        if (arg) {
+          source += INTERPOLATION_PLACEHOLDER;
+          // Uppercase directive (`%S`/`%D`/`%A`) → URL-encode the inserted value.
+          if (/[A-Z]/.test(next)) {
+            const escapeRef = new Reference('escape', { type: 'function', fallbackValue: true } as any, loc);
+            const escapeArgs = new List([arg] as any, {}, loc);
+            replacements.push(new Call({ name: escapeRef as any, args: escapeArgs as any }, { silentFail: true } as any, loc) as unknown as Node);
+          } else {
+            replacements.push(arg);
+          }
+        } else {
+          // No matching arg — Less leaves the directive in place as literal text.
+          source += ch + next;
+        }
+        i++;
+        continue;
+      }
+      source += ch;
+    }
+    return { source, replacements };
   }
 
   private _buildInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -530,7 +740,31 @@ export class LessGrammar extends CssParser {
     // here — generic PseudoSelector is guarded against it (extendAhead). So this
     // builder only ever sees real CSS pseudo-classes/elements.
     const pseudo = super.buildNode(type, span, children, state, raw) as JessNode;
-    const pseudoArg = (pseudo as unknown as { arg?: unknown }).arg;
+    // `readPseudoArg` (css builder) only recognizes node/array args. Under the Less
+    // grammar an `nth` arg (`4n+1`) arrives as a leaf string and a single-member
+    // selector list collapses to a bare string — both of which it skips, leaving
+    // `arg` undefined (`:not(.one)` → `:not`). Recover the arg as the child that
+    // sits between the `(` and `)` leaves.
+    let pseudoArg = (pseudo as unknown as { arg?: unknown }).arg;
+    if (pseudoArg === undefined) {
+      const open = children.findIndex(c => (c as CSTLeaf)._tag === 'leaf' && (c as CSTLeaf).value === '(');
+      if (open >= 0) {
+        const inner = children[open + 1];
+        const isClose = (inner as CSTLeaf)?._tag === 'leaf' && (inner as CSTLeaf).value === ')';
+        if (inner !== undefined && !isClose) {
+          // A collapsed single-member selector list arrives as a bare string, an
+          // `nth` value as a leaf token; both wrap to a Keyword so the pseudo arg
+          // is an eval-able Node. A real node (multi-member list, etc.) passes through.
+          const recovered = typeof inner === 'string'
+            ? this._lessKeyword(inner, loc)
+            : (inner as CSTLeaf)._tag === 'leaf'
+              ? this._lessKeyword((inner as CSTLeaf).value, loc)
+              : (inner as unknown as JessNode);
+          (pseudo as unknown as { arg: unknown }).arg = recovered;
+          pseudoArg = recovered;
+        }
+      }
+    }
     if (Array.isArray(pseudoArg)) {
       // Unknown-pseudo: raw string array → Keyword[] for structured serialization.
       const keywordNodes = (pseudoArg as unknown[]).map(item =>
@@ -921,6 +1155,18 @@ export class LessGrammar extends CssParser {
     if (!inner) {
       return this._lessKeyword('', loc) as unknown as JessNode;
     }
+    // Quoted keeps `escaped` as its own readonly instance field (render reads the
+    // field, not `_options`), so mutating `_options` alone would leave the field
+    // `false` and the string would print quoted. Rebuild the Quoted through its
+    // constructor so both the field and `_options` carry `escaped: true`. Paren
+    // (`~(…)`) reads `_options.escaped` directly, so the option merge suffices.
+    if (inner instanceof Quoted) {
+      return new Quoted(
+        inner.value,
+        { quote: inner.quote, escaped: true },
+        loc
+      ) as unknown as JessNode;
+    }
     const n = inner as unknown as { _options?: Record<string, unknown> };
     n._options = { ...(n._options ?? {}), escaped: true };
     return inner;
@@ -937,6 +1183,103 @@ export class LessGrammar extends CssParser {
       return this._lessKeyword(result, loc) as unknown as JessNode;
     }
     return result as unknown as JessNode;
+  }
+
+  /**
+   * A quoted string value. Unlike plain CSS, Less interpolates `@{var}` / `${prop}`
+   * inside quoted (and escaped `~"…"`) strings and inside `@import` paths. When the
+   * raw content holds an interpolation, split it into an `Interpolated` value the same
+   * way the reference parser's `processStringInterpolation` does (source with
+   * INTERPOLATION_PLACEHOLDER, `@var`/`$prop` references in `replacements`); otherwise
+   * fall through to the plain CSS builder (bare-string value).
+   */
+  protected override _buildQuoted(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    const text = children
+      .filter((c): c is CSTLeaf => c._tag === 'leaf')
+      .map(l => l.value)
+      .join('');
+    const inner = text.slice(1, -1);
+    if (inner.includes('@{') || inner.includes('${')) {
+      const value = this._buildStringInterpolation(inner, loc);
+      return new Quoted(value as any, { quote: text[0] as '"' | '\'' }, loc) as unknown as JessNode;
+    }
+    return super._buildQuoted(children, loc);
+  }
+
+  /**
+   * Build an escaped `~'…'` Quoted (at-rule prelude position), interpolating any
+   * `@{var}` / `${prop}` in its body the same way `_buildQuoted` does — so
+   * `~'@{a} / @{b}'` renders its substituted values instead of literal text.
+   */
+  private _buildEscapedQuoted(inner: string, quote: '"' | '\'', loc: LocationInfo): JessNode {
+    const value = (inner.includes('@{') || inner.includes('${'))
+      ? this._buildStringInterpolation(inner, loc)
+      : inner;
+    return new Quoted(value as any, { quote, escaped: true }, loc) as unknown as JessNode;
+  }
+
+  /**
+   * Split a quoted-string body on `@{…}` / `${…}` interpolations into an
+   * `Interpolated` (source + reference replacements). Port of the reference parser's
+   * `processStringInterpolation`/`findInterpolations` (productions/values.ts): brace
+   * matching is nesting-aware, and a nested-interpolated name resolves through a
+   * variable Reference wrapped in an Expression.
+   */
+  private _buildStringInterpolation(value: string, loc: LocationInfo): Interpolated {
+    const matches = this._findInterpolations(value);
+    const replacements: Node[] = [];
+    let source = value;
+    let offset = 0;
+    for (const match of matches) {
+      const adjustedStart = match.start - offset;
+      const adjustedEnd = match.end - offset;
+      source = source.slice(0, adjustedStart) + INTERPOLATION_PLACEHOLDER + source.slice(adjustedEnd);
+      offset += (match.end - match.start) - INTERPOLATION_PLACEHOLDER.length;
+      if (match.content.includes('@{') || match.content.includes('${')) {
+        // Nested interpolation resolves through a variable Reference, kept
+        // expression-wrapped so it re-renders as a single interpolated slot.
+        const nestedRef = new Reference(
+          { key: this._buildStringInterpolation(match.content, loc) as any } as unknown as ReferenceValue,
+          { type: 'variable', role: 'ident' } as any, loc
+        );
+        replacements.push(new Expression(nestedRef as any, undefined, loc) as unknown as Node);
+      } else {
+        replacements.push(createInterpolatedReference(match.prefix, match.content, loc) as unknown as Node);
+      }
+    }
+    return new Interpolated({ source, replacements: replacements as any }, { role: 'ident' }, loc);
+  }
+
+  /**
+   * Locate `@{…}` / `${…}` interpolation runs in a string, counting nested braces so
+   * `@{@{x}}` and `@{fn(a, b)}` are matched whole. Returns start/end/prefix/content.
+   */
+  private _findInterpolations(value: string): Array<{ start: number; end: number; prefix: string; content: string }> {
+    const matches: Array<{ start: number; end: number; prefix: string; content: string }> = [];
+    let i = 0;
+    while (i < value.length) {
+      if ((value[i] === '@' || value[i] === '$') && value[i + 1] === '{') {
+        const prefix = value[i]!;
+        const start = i;
+        i += 2;
+        let braceCount = 1;
+        const contentStart = i;
+        while (i < value.length && braceCount > 0) {
+          if (value[i] === '{') {
+            braceCount++;
+          } else if (value[i] === '}') {
+            braceCount--;
+          }
+          i++;
+        }
+        if (braceCount === 0) {
+          matches.push({ start, end: i, prefix, content: value.slice(contentStart, i - 1) });
+        }
+      } else {
+        i++;
+      }
+    }
+    return matches;
   }
 
   protected override _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
@@ -1127,8 +1470,21 @@ export class LessGrammar extends CssParser {
     const name = String(nameItem?.comp ?? '').slice(1);
     const valueItems = colonIdx >= 0 ? items.slice(colonIdx + 1) : [];
     const { value } = this._assembleValue(valueItems, loc);
+    // A param/arg VarDeclaration value is always a single Node in the callable-
+    // binding path (it calls `value.hasFlag(...)`). `_assembleValue` leaves a lone
+    // bare keyword (`@a: inherit`) as a raw string, and a space-separated segment
+    // (`@padding: 40px 10px`) as a bare Component array — wrap each into a Node.
+    let paramValue: Component;
+    if (typeof value === 'string') {
+      paramValue = this._valueKeyword(value, loc) as unknown as Component;
+    } else if (Array.isArray(value)) {
+      const seq = value.map(c => this._argComponent(c, loc));
+      paramValue = new Sequence(seq as unknown as Node[], undefined, loc) as unknown as Component;
+    } else {
+      paramValue = value;
+    }
     return new VarDeclaration(
-      { name: name as any, value: value as any } as any,
+      { name: name as any, value: paramValue as any } as any,
       {} as VarDeclarationOptions,
       loc
     ) as unknown as JessNode;
@@ -1731,15 +2087,13 @@ export class LessGrammar extends CssParser {
     // prelude for CSS imports (and strip the whole `url(...)`, not just its inner
     // quotes, when extracting a trailing media query).
     const urlNode = builtNodes.find(n => n.type === 'Url') as unknown as Url | undefined;
-    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as { quote?: '"' | '\''; value?: unknown } | undefined;
+    const quotedNode = builtNodes.find(n => n.type === 'Quoted') as unknown as Quoted | undefined;
     let pathNode: Quoted | undefined;
     if (quotedNode) {
-      const quote = quotedNode.quote ?? '"';
-      const inner = typeof quotedNode.value === 'string'
-        ? quotedNode.value
-        : (quotedNode.value as any)?.valueOf?.() ?? '';
-      const innerNode = inner;
-      pathNode = new Quoted(innerNode, { quote }, loc);
+      // Reuse the built Quoted so an interpolated path (`@import "@{theme}.less"`)
+      // keeps its Interpolated value and resolves before import resolution — flattening
+      // it to `.valueOf()` would strip the `@{…}` references.
+      pathNode = new Quoted(quotedNode.value, { quote: quotedNode.quote ?? '"' }, loc);
     } else {
       // Fallback: extract path from preludeText (AtRuleStatement uses scanTo leaves)
       const _qm = preludeText.match(/(['"])([^'"]+)\1/);
@@ -1762,13 +2116,20 @@ export class LessGrammar extends CssParser {
       rest = rest.replace(/\bas\s+[^\s;(]+\s*/g, '');
       rest = rest.replace(/;\s*$/, '').trim();
       if (rest) {
-        mediaNode = this._lessKeyword(rest, loc) as unknown as Node;
+        // Parse the trailing media query as a real media prelude (feature
+        // conditions become Paren(Declaration) etc.) so it re-serializes with
+        // normalized spacing (`(min-width:600px)` → `(min-width: 600px)`),
+        // matching Less. A bare keyword tail (`screen`) round-trips unchanged.
+        mediaNode = this._buildAtRulePrelude(rest, loc) as unknown as Node;
       }
     }
     const pathMatch2 = /['"]([^'"]+)['"]/.exec(preludeText);
     const pathStr = pathMatch2 ? pathMatch2[1] : '';
     const isCssImport = pathStr ? LessGrammar._isCssUrl(pathStr, opts) : false;
-    if (isCssImport || opts.includes('css')) {
+    // `(inline)` wins over `(css)`: even `@import (inline, css) "x"` must inject
+    // the target's raw text verbatim (StyleImport inline path), never emit a
+    // passthrough CSS `@import`.
+    if (!opts.includes('inline') && (isCssImport || opts.includes('css'))) {
       const preludeItems: JessNode[] = [];
       const pathPrelude = (urlNode ?? pathNode) as unknown as JessNode | undefined;
       if (pathPrelude) {
@@ -1840,7 +2201,21 @@ export class LessGrammar extends CssParser {
     if (USE_NAMES.includes(name)) {
       return this._buildUseAtRuleFromPrelude(children, loc, name);
     }
-    const rawPreludeText = ls.slice(1).find(l => l.value !== '{' && l.value !== '}')?.value.trim();
+    // Reconstruct the prelude from source between the name keyword and the `{`,
+    // so a comment authored right after the name (`@keyframes /* c */ hover`) is
+    // kept — the prelude leaf itself starts at the first non-trivia token, past
+    // that comment. A trailing comment already sits inside the leaf. Falls back
+    // to the leaf value when spans are unavailable.
+    const nameSpan = (nameLf as unknown as { span?: Span })?.span;
+    const braceLf = ls.find(l => l.value === '{');
+    const braceStart = (braceLf as unknown as { span?: Span })?.span?.start;
+    let rawPreludeText: string | undefined;
+    if (nameSpan && typeof braceStart === 'number') {
+      const sliced = this._source.slice(nameSpan.end, braceStart).trim();
+      rawPreludeText = sliced.length > 0 ? sliced : undefined;
+    } else {
+      rawPreludeText = ls.slice(1).find(l => l.value !== '{' && l.value !== '}')?.value.trim();
+    }
     return this._buildAtRuleFromParts(name, rawPreludeText, nodeChildren(children), loc);
   }
 
@@ -1906,7 +2281,7 @@ export class LessGrammar extends CssParser {
     const buildWord = (w: string): JessNode => {
       const es = escapedStrRe.exec(w);
       if (es) {
-        return new Quoted(es[2]!, { quote: es[1] as '\'' | '"', escaped: true }, loc) as unknown as JessNode;
+        return this._buildEscapedQuoted(es[2]!, es[1] as '\'' | '"', loc);
       }
       const mv = singleVarRe.exec(w);
       if (mv) {
@@ -1921,6 +2296,114 @@ export class LessGrammar extends CssParser {
       return this._lessKeyword(w, loc) as unknown as JessNode;
     };
 
+    // `@var[key]` accessor in value position → Reference(target=Reference(var), key).
+    // (Authoritative accessor shape: lookupOrCall in productions/guards.ts; mirrors
+    // the top-level `varAccRe` branch in buildItem below.)
+    const varAccRe = /^@(-?[_a-zA-Z\x80-￿][-_a-zA-Z0-9\x80-￿]*)\[([^\]]*)\]$/;
+    const buildAccessor = (varName: string, accInner: string): JessNode => {
+      const varBase = new Reference(
+        { key: varName } as unknown as ReferenceValue, {}, loc
+      ) as unknown as JessNode;
+      const inner = accInner.trim();
+      let accKey: JessNode | string | number;
+      let accType: 'variable' | 'index';
+      if (inner === '') {
+        accKey = -1;
+        accType = 'index';
+      } else if (inner.startsWith('@')) {
+        accKey = inner.slice(1);
+        accType = 'variable';
+      } else {
+        accKey = new Quoted(inner, {}, loc) as unknown as JessNode;
+        accType = 'index';
+      }
+      return new Reference(
+        { target: varBase as any, key: accKey as any } as unknown as ReferenceValue,
+        { type: accType }, loc
+      ) as unknown as JessNode;
+    };
+
+    // Operator token in a prelude math expression (`(@some-var + 1)`). Kept simple:
+    // a `+ - * /` surrounded by whitespace (bare `-`/`+` glued to a following number
+    // is a signed operand, not a binary op — matches the value grammar's sumOp gate).
+    const prodOps = new Set(['*', '/']);
+    const buildFeatureValue = (raw: string): JessNode => {
+      const propVal = raw.trim();
+      // `~"…"` escaped string, bare `@var`, or `@var[key]` accessor.
+      if (escapedStrRe.test(propVal) || singleVarRe.test(propVal)) {
+        return buildWord(propVal);
+      }
+      const vam = varAccRe.exec(propVal);
+      if (vam) {
+        return buildAccessor(vam[1]!, vam[2] ?? '');
+      }
+      // A parenthesized math expression `(<expr>)` — fold `left op right …` into a
+      // left-associative Operation over References/Dimensions/Nums so eval computes
+      // it (`(@some-var + 1)` → `61px`). `* /` bind tighter than `+ -`.
+      const paren = /^\(([\s\S]*)\)$/.exec(propVal);
+      if (paren) {
+        const op = buildMathExpr(paren[1]!.trim());
+        if (op) {
+          return new Expression(op as unknown as Node, { parens: true } as any, loc) as unknown as JessNode;
+        }
+      }
+      return this._lessKeyword(propVal, loc) as unknown as JessNode;
+    };
+
+    // Build a left-associative Operation tree from a flat `operand op operand …`
+    // math run, honoring `* /` over `+ -` precedence. Returns undefined if the run
+    // isn't a recognizable binary expression (caller falls back to a keyword).
+    const buildMathExpr = (expr: string): JessNode | undefined => {
+      // Split on whitespace; operators must be space-separated (`@some-var + 1`).
+      const parts = expr.split(/\s+/).filter(Boolean);
+      if (parts.length < 3 || parts.length % 2 === 0) {
+        return undefined;
+      }
+      const buildOperand = (t: string): JessNode | undefined => {
+        const es = escapedStrRe.exec(t);
+        if (es) {
+          return this._buildEscapedQuoted(es[2]!, es[1] as '\'' | '"', loc);
+        }
+        const mv = singleVarRe.exec(t);
+        if (mv) {
+          return new Reference(mv[1]!, { type: 'index' as const, role: 'ident' as const }, loc) as unknown as JessNode;
+        }
+        const va = varAccRe.exec(t);
+        if (va) {
+          return buildAccessor(va[1]!, va[2] ?? '');
+        }
+        const dim = /^([+-]?(?:\d*\.\d+|\d+))([_a-zA-Z%][-_a-zA-Z0-9%]*)?$/.exec(t);
+        if (dim) {
+          return dim[2]
+            ? new Dimension({ number: parseFloat(dim[1]!), unit: dim[2]! }, undefined, loc) as unknown as JessNode
+            : new Num(parseFloat(dim[1]!), undefined, loc) as unknown as JessNode;
+        }
+        return undefined;
+      };
+      // First fold `* /`, then `+ -`, over a flat operand/operator list.
+      const nodes: Array<JessNode | string | undefined> = parts.map((p, i) =>
+        i % 2 === 0 ? buildOperand(p) : (/^[-+*/]$/.test(p) ? p : undefined));
+      if (nodes.some(n => n === undefined)) {
+        return undefined;
+      }
+      const foldPass = (matchOp: (op: string) => boolean): boolean => {
+        for (let i = 1; i < nodes.length - 1; i += 2) {
+          const op = nodes[i] as string;
+          if (matchOp(op)) {
+            const left = nodes[i - 1] as JessNode;
+            const right = nodes[i + 1] as JessNode;
+            const combined = new Operation([left, op, right] as any, undefined, loc) as unknown as JessNode;
+            nodes.splice(i - 1, 3, combined);
+            return true;
+          }
+        }
+        return false;
+      };
+      while (foldPass(op => prodOps.has(op))) { /* fold products */ }
+      while (foldPass(op => op === '+' || op === '-')) { /* fold sums */ }
+      return nodes.length === 1 ? (nodes[0] as JessNode) : undefined;
+    };
+
     const buildParen = (inner: string): JessNode => {
       const trimmed = inner.trim();
       const colonIdx = trimmed.indexOf(':');
@@ -1928,11 +2411,11 @@ export class LessGrammar extends CssParser {
         const propName = trimmed.slice(0, colonIdx).trim();
         const propVal = trimmed.slice(colonIdx + 1).trim();
         const nameNode = propName;
-        // A bare `@var` value normalizes to an indexed Reference (→ `$[var]`),
-        // matching atRulePreludeBareVariableAs:'index' in productions/values.ts.
-        const valueNode = singleVarRe.test(propVal)
-          ? buildWord(propVal)
-          : this._lessKeyword(propVal, loc) as unknown as JessNode;
+        // The value may be a bare `@var` (→ indexed Reference, matching
+        // atRulePreludeBareVariableAs:'index'), a `@var[key]` accessor, a `~"…"`
+        // escaped string, or a parenthesized math expression — all evaluated so
+        // the prelude renders computed values (Less 4.x parity).
+        const valueNode = buildFeatureValue(propVal);
         const decl = new Declaration({ name: nameNode as any, value: valueNode as any }, undefined, loc);
         return new Paren(decl as any, undefined, loc) as unknown as JessNode;
       }
@@ -2333,9 +2816,13 @@ export class LessGrammar extends CssParser {
           break;
         }
         const innerKey = this._decodeAccessorKey(c as JessNode, loc);
+        // A numeric accessor key (`foo[2]`, or `foo[]` → last, key -1) is an
+        // INDEX lookup, not a variable lookup. Dispatching it as `variable`
+        // sends `-1` through the variable resolver and fails with `'-1' is not
+        // defined`; `index` resolves it via `rules.at(-1)` (the last value).
         base = new Reference(
           { target: base as any, key: innerKey as any } as unknown as ReferenceValue,
-          { type: 'variable' as const }, loc
+          { type: typeof innerKey === 'number' ? 'index' as const : 'variable' as const }, loc
         ) as unknown as JessNode;
         i++;
       } else if (isJessNodeVal(c) && (c as any).type === 'Paren') {

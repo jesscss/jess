@@ -1,5 +1,5 @@
 import { sourceSpanOf } from './util/provenance.js';
-import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
+import { Node, F_VISIBLE, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
 import { Any, type AnyRole, type AnyOptions } from './any.js';
 import type { Context } from '../context.js';
 import { BasicSelector } from './selector-basic.js';
@@ -194,8 +194,8 @@ export class Interpolated<
     this.source = value.source;
     this.replacements = value.replacements;
     this.role = options?.role as Role | undefined;
-    // Interpolated nodes are always non-static and may be async
-    this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
+    // Interpolated nodes are always non-static
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
   override valueOf(): string {
@@ -442,15 +442,24 @@ export class Interpolated<
     const node = this;
     const currentReplacements = node.replacements;
     const evaluatedReplacements = new Array<Node>(currentReplacements.length);
+    // Every `@{...}` slot of one interpolation resolves in the SAME scope — the
+    // one active when we start. But `context.rulesContext` is a single mutable
+    // field, and evaluating an earlier slot can descend through an async plugin
+    // function (e.g. Bootstrap `breakpoint-infix`) whose deferred save/restore of
+    // `rulesContext` interleaves and lands a stale scope back on the context
+    // between slots. A later slot reading a per-iteration loop binding (`@value`)
+    // would then resolve against that leaked scope and miss. Pin the entry scope
+    // and re-assert it before each slot so every slot sees the interpolation's own.
+    const scope = context.rulesContext;
     let changed = false;
     for (let idx = 0; idx < currentReplacements.length; idx++) {
       const n = currentReplacements[idx]!;
-      const out = this.evaluateReplacement(context, n, mode);
+      const out = this.evaluateReplacement(context, n, mode, scope);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           evaluatedReplacements[idx] = result;
           changed ||= result !== n;
-          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed);
+          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed, scope);
         });
       }
       const result = out as Node;
@@ -465,16 +474,17 @@ export class Interpolated<
     mode: 'eval' | 'resolve',
     evaluatedReplacements: Node[],
     start: number,
-    changed: boolean
+    changed: boolean,
+    scope: Context['rulesContext']
   ): MaybePromise<Interpolated<Role>> {
     const currentReplacements = this.replacements;
     for (let idx = start; idx < currentReplacements.length; idx++) {
       const n = currentReplacements[idx]!;
-      const out = this.evaluateReplacement(context, n, mode);
+      const out = this.evaluateReplacement(context, n, mode, scope);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           evaluatedReplacements[idx] = result;
-          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed || result !== n);
+          return this.evaluateInterpolatedRest(context, mode, evaluatedReplacements, idx + 1, changed || result !== n, scope);
         });
       }
       const result = out as Node;
@@ -484,7 +494,10 @@ export class Interpolated<
     return this.finalizeEvaluatedInterpolated(evaluatedReplacements, changed);
   }
 
-  private evaluateReplacement(context: Context, node: Node, mode: 'eval' | 'resolve'): MaybePromise<Node> {
+  private evaluateReplacement(context: Context, node: Node, mode: 'eval' | 'resolve', scope: Context['rulesContext']): MaybePromise<Node> {
+    // Re-assert the interpolation's own scope: a prior slot's async eval may have
+    // leaked a stale `rulesContext` back onto the shared context.
+    context.rulesContext = scope;
     return mode === 'eval' ? node.eval(context) : node.resolve(context);
   }
 

@@ -1,5 +1,5 @@
 import { setSourceSpan } from '../util/provenance.js';
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, jsarray, jsobj, AssignmentType, F_MAY_ASYNC, F_NON_STATIC, defaultguard, style, type Node, type AnyRole } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, jsarray, jsobj, AssignmentType, F_NON_STATIC, defaultguard, style, type Node, type AnyRole } from '../index.js';
 import { Context } from '../../context.js';
 import type { ReferenceOptions } from '../reference.js';
 import { isNode } from '../util/is-node.js';
@@ -65,10 +65,10 @@ function expectNodeType(value: unknown, type: string): void {
 class AsyncRulesContextAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
-    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+    this.addFlag(F_NON_STATIC);
   }
 
-  // @ts-expect-error – async override returns Promise, but Any<AnyRole>.eval() interface is synchronous; F_MAY_ASYNC flag makes this valid at runtime
+  // @ts-expect-error – async override returns Promise, but Any<AnyRole>.eval() interface is synchronous
   override async eval(evalContext: Context) {
     await Promise.resolve();
     expect(evalContext.rulesContext).toBe(expectedAsyncRulesContext);
@@ -86,10 +86,10 @@ class NativeRenderAny extends Any<AnyRole> {
 class AsyncNativeRenderAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
-    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+    this.addFlag(F_NON_STATIC);
   }
 
-  // @ts-expect-error – async override returns Promise, but Any<AnyRole>.eval() interface is synchronous; F_MAY_ASYNC flag makes this valid at runtime
+  // @ts-expect-error – async override returns Promise, but Any<AnyRole>.eval() interface is synchronous
   override async eval() {
     await Promise.resolve();
     return new NativeRenderAny(this.value);
@@ -99,10 +99,10 @@ class AsyncNativeRenderAny extends Any<AnyRole> {
 class RejectingAsyncAny extends Any<AnyRole> {
   constructor(value: string) {
     super(value);
-    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+    this.addFlag(F_NON_STATIC);
   }
 
-  // @ts-expect-error – returning Promise.reject while Any<AnyRole>.eval() interface is synchronous; F_MAY_ASYNC flag makes this valid at runtime
+  // @ts-expect-error – returning Promise.reject while Any<AnyRole>.eval() interface is synchronous
   override eval() {
     return Promise.reject(new Error(this.value));
   }

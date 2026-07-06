@@ -35,12 +35,18 @@ fast-forward with no lost value.
 |---|---|---|---|---|
 | Surface memoizations | `b9c0434a4` + `3ad85763c` | 163ms | 163.6 / 166.4ms | **no gain → discard** |
 | Hot-path serialize | `a2cd0de0d` | 163ms | 166.4 / 167.6ms | **no gain → discard** |
-| Extend-instruction chain | `c53429cb8`→`4b3969f15`→`da9d1548c` + `be3cbc8e0` | 163ms | *(background port in progress)* | pending |
+| Extend-instruction chain | `c53429cb8`→`4b3969f15`→`da9d1548c` + `be3cbc8e0` | 172.7 / 162.2ms | 163.8 / 168.6ms | **no gain + 3 test regressions → discard** |
 
-Ported cleanly via `git cherry-pick -n -X theirs` (dropping doc churn). The
-**extend chain does NOT cherry-pick** — parseman's `extend-roots.ts` diverged
-(SelectorLike model; `.parent` not `.sourceParent`), so it needs manual porting;
-that is being proven out separately.
+The first two groups ported cleanly via `git cherry-pick -n -X theirs` (dropping doc
+churn). The **extend chain does NOT cherry-pick** — parseman's `extend-roots.ts`
+diverged (SelectorLike model; `.parent` not `.sourceParent`) — so it was ported by
+hand (`extend-roots.ts` + `extend.ts`) and measured: median unchanged (no speedup,
+matching the other groups), AND the hand-adaptation broke **3 of 378 extend tests**
+(baseline: 0 failures). Dev's headline `processExtends 88→63ms` claim does not
+transfer to parseman: it optimizes the pre-refactor engine. Fails the bar on both
+speedup and correctness — the strongest DISCARD of the set. (Note: an autonomous
+port agent applied the change but died before reporting; the measurement was
+finished by hand from its worktree.)
 
 ## Per-commit classification (static eval, 7-agent sweep)
 

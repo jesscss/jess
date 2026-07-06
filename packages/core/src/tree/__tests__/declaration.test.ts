@@ -195,6 +195,40 @@ describe('Declaration', () => {
     expect(rendered).toBe('color: red');
   });
 
+  it('carries a string important flag through eval into serialized output', async () => {
+    const root = rules([
+      vardecl({ name: 'tone', value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: 'color',
+      value: ref({ key: 'tone' }, { type: 'variable' }),
+      important: '!important'
+    });
+    const resolved = await Promise.resolve(node.eval(context));
+    expect(resolved.toTrimmedString()).toBe('color: red !important');
+  });
+
+  it('carries a string important flag through eval on a Collection value', async () => {
+    const root = rules([
+      vardecl({ name: 'tone', value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: 'margin',
+      value: coll([spaced([any('0'), ref({ key: 'tone' }, { type: 'variable' })])]),
+      important: '!important'
+    });
+    const resolved = await Promise.resolve(node.eval(context));
+    expect(resolved.toTrimmedString()).toMatch(/ !important$/);
+  });
+
   it('writes resolved declaration output into segmented buffers', async () => {
     const root = rules([
       vardecl({ name: 'tone', value: any('red') })

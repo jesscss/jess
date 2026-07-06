@@ -1,4 +1,4 @@
-import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
+import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
@@ -208,13 +208,11 @@ describe('Sequence', () => {
     asyncItem.render = async () => {
       throw new Error('async sequence render should render the resolved item, not the source item');
     };
-    asyncItem.addFlag(F_MAY_ASYNC);
     asyncItem.removeFlag(F_STATIC);
     const sequenceNode = seq([
       asyncItem,
       any('solid')
     ]);
-    sequenceNode.addFlag(F_MAY_ASYNC);
     sequenceNode.removeFlag(F_STATIC);
     const originalMap = sequenceNode.value.map;
     Object.defineProperty(sequenceNode.value, 'map', {
@@ -235,22 +233,17 @@ describe('Sequence', () => {
     }
   });
 
-  it('renders dynamic sync sequence items directly without resolving them first', () => {
+  it('renders dynamic sync sequence items synchronously via the reactive path', () => {
     const dynamicItem = op([num(1), '+', num(2)]);
-    const originalResolve = dynamicItem.resolve;
-    dynamicItem.resolve = function throwOnResolve(): never {
-      throw new Error('sync sequence render should not resolve items before rendering');
-    };
     const sequenceNode = seq([
       dynamicItem,
       any('solid')
     ]);
 
-    try {
-      expect(sequenceNode.render(context)).toBe('3 solid');
-    } finally {
-      dynamicItem.resolve = originalResolve;
-    }
+    // Sync items resolve without producing a thenable, so render stays sync.
+    const rendered = sequenceNode.render(context);
+    expect(rendered).toBe('3 solid');
+    expect(typeof rendered).toBe('string');
   });
 
   it('writes dynamic sync direct sequence render output into flat buffers once', () => {
@@ -331,10 +324,8 @@ describe('Sequence', () => {
     asyncItem.render = async () => {
       throw new Error('async sequence buffer render should render the resolved item, not the source item');
     };
-    asyncItem.addFlag(F_MAY_ASYNC);
     asyncItem.removeFlag(F_STATIC);
     const sequenceNode = seq([asyncItem]);
-    sequenceNode.addFlag(F_MAY_ASYNC);
     sequenceNode.removeFlag(F_STATIC);
     const buffer = createRenderBuffer('flat');
 

@@ -266,6 +266,28 @@ export interface ScopeFrame {
   hasReferenceImports: boolean;
 }
 
+/**
+ * Shared empty-bindings sentinel. Used as the initial value of a frame's
+ * `currentBindingsByName` / `liveSlotsByName` when the frame has no bindings,
+ * so the common empty-frame case (a static ruleset with only property
+ * declarations) allocates zero per-frame binding Maps.
+ *
+ * INVARIANT: this instance is never mutated. Every READER only calls
+ * `.get()` / `.has()` / iterates / copies via `new Map(x)` — all correct on an
+ * empty Map. Every WRITE path (`setCurrentBindingCell`, `setScopeFrameLiveBinding`,
+ * and the population loops in `buildScopeFrame`) checks `isEmptyBindings` and
+ * swaps in a fresh mutable Map before the first `.set()`, so the sentinel stays
+ * empty and shared. Because it is shared it must NOT be handed to
+ * `declarationBucketsByName`, which is mutated in place by leaky-mode/reference
+ * registration.
+ */
+const EMPTY_BINDINGS: Map<string, BindingCell> = new Map<string, BindingCell>();
+
+/** True when `map` is the shared empty-bindings sentinel. */
+function isEmptyBindings(map: Map<string, BindingCell>): boolean {
+  return map === EMPTY_BINDINGS;
+}
+
 let nextBindingCellLookupIdentity = 1;
 
 export function ensureBindingCellLookupIdentity(cell: BindingCell): number {
@@ -285,10 +307,14 @@ function setCurrentBindingCell(
   cell: BindingCell
 ): void {
   ensureBindingCellLookupIdentity(cell);
-  if (frame.currentBindingsByName.get(name) !== cell) {
+  let map = frame.currentBindingsByName;
+  if (isEmptyBindings(map)) {
+    frame.currentBindingsByName = map = new Map<string, BindingCell>();
+    frame.currentBindingsVersion++;
+  } else if (map.get(name) !== cell) {
     frame.currentBindingsVersion++;
   }
-  frame.currentBindingsByName.set(name, cell);
+  map.set(name, cell);
 }
 
 /**
@@ -327,7 +353,11 @@ export function buildScopeFrame(
   // saves one Map allocation + full copy per frame build). Live-slot-only frames
   // (varsByName undefined) still get their own empty map.
   const declarationBucketsByName = varsByName ?? new Map<string, BindingEntry[]>();
-  const currentBindingsByName = new Map<string, BindingCell>();
+
+  // Bindings maps start at the shared frozen empty sentinel; the common case
+  // (a static ruleset with no vars and no live slots) never allocates one.
+  // Materialize a real mutable Map only on the first write below.
+  let currentBindingsByName: Map<string, BindingCell> = EMPTY_BINDINGS;
 
   if (varsByName) {
     for (const [name, entries] of varsByName) {
@@ -336,16 +366,24 @@ export function buildScopeFrame(
       }
       const currentEntry = entries[entries.length - 1];
       if (currentEntry) {
+        if (isEmptyBindings(currentBindingsByName)) {
+          currentBindingsByName = new Map<string, BindingCell>();
+        }
         currentBindingsByName.set(name, currentEntry.cell);
       }
     }
   }
 
-  const liveSlotsByName = liveSlots ?? new Map<string, BindingCell>();
+  // A live-slot-only frame reuses the caller-supplied map by reference; an
+  // absent one stays the frozen empty sentinel (never grown here).
+  const liveSlotsByName: Map<string, BindingCell> = liveSlots ?? EMPTY_BINDINGS;
   let hasLiveBindings = false;
   for (const [name, cell] of liveSlotsByName) {
     ensureBindingCellLookupIdentity(cell);
     cell.live = true;
+    if (isEmptyBindings(currentBindingsByName)) {
+      currentBindingsByName = new Map<string, BindingCell>();
+    }
     currentBindingsByName.set(name, cell);
     hasLiveBindings = true;
   }
@@ -385,6 +423,9 @@ export function setScopeFrameLiveBinding(
 ): void {
   ensureBindingCellLookupIdentity(cell);
   cell.live = true;
+  if (isEmptyBindings(frame.liveSlotsByName)) {
+    frame.liveSlotsByName = new Map<string, BindingCell>();
+  }
   frame.liveSlotsByName.set(name, cell);
   setCurrentBindingCell(frame, name, cell);
   frame.hasLiveBindings = true;
@@ -502,7 +543,14 @@ export function lookupScopeFrameVariable(
   let leakStart = options?.leakStart;
   const searchParents = options?.searchParents !== false;
   const includeFallbackFrames = options?.includeFallbackFrames !== false;
-  let fallbackFrame = includeFallbackFrames ? frame?.fallbackFrame : undefined;
+  // Every frame in the parent walk can carry its own import fallback (an inner
+  // mixin-body frame AND the root that holds the `@import`ed decls). Queue each
+  // one — an inner frame's fallback must not shadow an outer frame's, so a single
+  // first-wins slot dropped every import fallback above the innermost placement.
+  const fallbackQueue: ScopeFrame[] = [];
+  if (includeFallbackFrames && frame?.fallbackFrame) {
+    fallbackQueue.push(frame.fallbackFrame);
+  }
   let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
     while (f) {
@@ -630,8 +678,8 @@ export function lookupScopeFrameVariable(
       if (!searchParents) {
         return { kind: 'miss' };
       }
-      if (includeFallbackFrames) {
-        fallbackFrame ??= f.fallbackFrame;
+      if (includeFallbackFrames && f.fallbackFrame) {
+        fallbackQueue.push(f.fallbackFrame);
       }
       start = undefined;
       // A leak binding on the parent frame is source-order gated against where
@@ -645,20 +693,27 @@ export function lookupScopeFrameVariable(
       f = f.parent;
     }
 
-    if (!fallbackFrame) {
-      return { kind: 'miss' };
+    // Dequeue the next unvisited fallback head. A head already searched (its
+    // chain cycled back, or two frames shared a fallback) is skipped, not spun
+    // on — the `visitedFallbackFrames` set makes each parent walk total. When the
+    // queue drains, the symbol is genuinely absent.
+    let nextFallback: ScopeFrame | undefined;
+    while (fallbackQueue.length > 0) {
+      const candidate = fallbackQueue.shift()!;
+      if (!visitedFallbackFrames?.has(candidate)) {
+        nextFallback = candidate;
+        break;
+      }
     }
-    // If the next fallback head was already searched, the fallback chain has
-    // cycled — every remaining frame is visited, so the symbol is not here.
-    // Terminate (the inner `break` above only stops a single parent walk; this
-    // guard is what keeps a cyclic chain from spinning forever).
-    if (visitedFallbackFrames?.has(fallbackFrame)) {
+    if (!nextFallback) {
       return { kind: 'miss' };
     }
 
-    f = fallbackFrame;
+    f = nextFallback;
     visitedFallbackFrames ??= new Set();
-    fallbackFrame = fallbackFrame.fallbackFrame;
+    if (nextFallback.fallbackFrame) {
+      fallbackQueue.push(nextFallback.fallbackFrame);
+    }
     start = undefined;
   }
 }

@@ -114,7 +114,83 @@ interface FindSpec {
   original: Selector;
 }
 
+// ─────────────────────────────────────────────────
+// Pass-scoped matcher memoization
+//
+// During a single `processExtends` pass the extend set is immutable: the same
+// (target, find, extendWith, partial, parentSelector) tuple is re-matched
+// O(I²) times by the chained-extend discovery + classify passes, each time
+// re-running `decomposeFind` + a full `wouldMatchNode` descent. Caching the
+// invariant answers for the duration of one pass collapses that quadratic.
+//
+// Both caches are pass-scoped (installed by `beginExtendMatchPass` /
+// `endExtendMatchPass` around `processExtends`) — they are `undefined` outside
+// a pass so a plain non-pass call (tests, diagnostics) memoizes nothing and can
+// never observe cross-render staleness.
+//
+// KEY CORRECTNESS: `wouldExtendChange`'s result depends on the full value of
+// target, find, extendWith (self-extend short-circuit + recursive composed
+// probe), partial, AND parentSelector (root/ampersand/parentContains branches).
+// The key captures all five by `valueOf()`. `wouldExtendChange` always forces
+// `presenceMatchMode = false`, so that bit is constant here and needs no key.
+let findSpecCache: Map<string, FindSpec> | undefined;
+let wouldExtendChangeCache: Map<string, boolean> | undefined;
+
+// Deterministic matcher-work counter for the render-scaling guardrail. Counts
+// every FULL (cache-missing) `wouldExtendChange` matcher descent — the O(I²)
+// driver on multi-root extend. The pass-scoped memo turns repeat probes into
+// cache hits, so this total scales with the number of DISTINCT match relations
+// (~O(I·k)), not the number of probe calls (~O(I²)). Reverting the memo makes
+// the same workload recompute every probe → the counter jumps super-linearly,
+// which the guardrail asserts against. Instrumentation only; no behavior.
+let extendMatchWork = 0;
+export function resetExtendMatchWork(): void {
+  extendMatchWork = 0;
+}
+export function getExtendMatchWork(): number {
+  return extendMatchWork;
+}
+
+// Test-only escape hatch: when disabled, `beginExtendMatchPass` installs no
+// caches so `wouldExtendChange`/`decomposeFind` recompute every probe. Used by
+// the memo differential test to render the same sheet with the memo ON vs OFF
+// and assert byte-identical CSS. Never toggled in production paths.
+let extendMatchMemoEnabled = true;
+export function setExtendMatchMemoEnabled(enabled: boolean): void {
+  extendMatchMemoEnabled = enabled;
+}
+
+export function beginExtendMatchPass(): void {
+  if (!extendMatchMemoEnabled) {
+    findSpecCache = undefined;
+    wouldExtendChangeCache = undefined;
+    return;
+  }
+  findSpecCache = new Map();
+  wouldExtendChangeCache = new Map();
+}
+
+export function endExtendMatchPass(): void {
+  findSpecCache = undefined;
+  wouldExtendChangeCache = undefined;
+}
+
 function decomposeFind(find: Selector): FindSpec {
+  const cache = findSpecCache;
+  if (cache) {
+    const key = find.valueOf();
+    const cached = cache.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const computed = decomposeFindUncached(find);
+    cache.set(key, computed);
+    return computed;
+  }
+  return decomposeFindUncached(find);
+}
+
+function decomposeFindUncached(find: Selector): FindSpec {
   if (isNode(find, N.ComplexSelector)) {
     const positions: Selector[][] = [];
     const combinators: string[] = [];
@@ -1126,11 +1202,25 @@ export function wouldExtendChange(
   partial: boolean,
   parentSelector?: Selector
 ): boolean {
+  const cache = wouldExtendChangeCache;
+  let key: string | undefined;
+  if (cache) {
+    key = `${partial ? 1 : 0} ${target.valueOf()} ${find.valueOf()} ${extendWith.valueOf()} ${parentSelector ? parentSelector.valueOf() : ''}`;
+    const cached = cache.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+  extendMatchWork += 1;
   const prev = presenceMatchMode;
   presenceMatchMode = false;
   try {
     const spec = decomposeFind(find);
-    return !!wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+    const result = !!wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+    if (cache && key !== undefined) {
+      cache.set(key, result);
+    }
+    return result;
   } finally {
     presenceMatchMode = prev;
   }

@@ -1,4 +1,4 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
+import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
 import type { Context } from '../context.js';
 import { cast } from './util/cast.js';
 import type { DeclarationFindOptions } from './util/lookup-utils.js';
@@ -2684,7 +2684,7 @@ function finalizeFallbackReferenceResult(
     throw getReferenceNotFoundError(lookupType, valueKeyStr);
   }
   if (fallbackValue === true) {
-    return new Any(`${valueKey}`, { role: referenceNode.role });
+    return new Any(`${valueKey}`, { role: referenceNode.options.role });
   }
   return evaluateFallbackValue(fallbackValue, context, textOnly);
 }
@@ -2712,7 +2712,7 @@ function finalizeCallableFallbackReferenceResult(
     ? candidate.params.toTrimmedString()
     : '';
   context.popReference();
-  return new Any(`${getLookupKeyDisplay(valueKey)}(${params})`, { role: referenceNode.role });
+  return new Any(`${getLookupKeyDisplay(valueKey)}(${params})`, { role: referenceNode.options.role });
 }
 
 function finalizeDirectReferenceResult(
@@ -2926,33 +2926,44 @@ function evaluateBindingHandleValue(
     context.rulesContext = bindingRulesContext ?? bindingSource.rulesParent ?? context.rulesContext;
     changedRulesContext = true;
   }
+
+  // The searchScope recursion guard only needs to cover the SYNCHRONOUS span of
+  // the value evaluation: a self-reference (`i: i + 1`) reads the same binding
+  // while descending into its own value, which happens before eval returns. If
+  // the value eval yields a thenable, releasing the guard only in the deferred
+  // `.finally` keeps `bindingSource` blocked for the whole await window — long
+  // enough to falsely reject an INDEPENDENT, overlapping read of the same
+  // binding (e.g. two sibling `& when (@min ...)` guards in a mixin body, whose
+  // `@min` is an async plugin-fn call). Release the guard as soon as the sync
+  // phase completes so concurrent consumers resolve normally. The rulesContext
+  // swap genuinely spans the async eval, so it stays deferred to `.finally`.
   if (bindingSource) {
     context.searchScope.add(bindingSource);
   }
+  let guardHeld = bindingSource !== undefined;
+  const releaseGuard = () => {
+    if (guardHeld) {
+      context.searchScope.delete(bindingSource!);
+      guardHeld = false;
+    }
+  };
 
   try {
     const result = evaluateReferenceValueNode(bindingValue, context, evalFlags);
+    releaseGuard();
     if (isThenable(result)) {
       return Promise.resolve(result).finally(() => {
-        if (bindingSource) {
-          context.searchScope.delete(bindingSource);
-        }
         if (changedRulesContext) {
           context.rulesContext = savedRulesContext;
         }
       });
-    }
-    if (bindingSource) {
-      context.searchScope.delete(bindingSource);
     }
     if (changedRulesContext) {
       context.rulesContext = savedRulesContext;
     }
     return result;
   } catch (error) {
-    if (bindingSource) {
-      context.searchScope.delete(bindingSource);
-    }
+    releaseGuard();
     if (changedRulesContext) {
       context.rulesContext = savedRulesContext;
     }
@@ -3000,7 +3011,20 @@ function finalizeDeclarationReferenceResult(
     context.popReference();
     return preservedValue;
   }
+  // The searchScope recursion guard only covers the SYNCHRONOUS span of the
+  // value evaluation (a self-reference reads the same declaration while
+  // descending into its own value, before eval returns). Releasing it only in
+  // the deferred `.finally` keeps the declaration blocked across the whole await
+  // window when the value eval is async, falsely rejecting an independent,
+  // overlapping read of the same declaration. Release once the sync phase ends.
   context.searchScope.add(declaration);
+  let searchScopeHeld = true;
+  const releaseSearchScope = () => {
+    if (searchScopeHeld) {
+      context.searchScope.delete(declaration);
+      searchScopeHeld = false;
+    }
+  };
   let referencePopped = false;
   let importantPushed = false;
   const popReference = () => {
@@ -3034,13 +3058,14 @@ function finalizeDeclarationReferenceResult(
     }
     if (!isNode(declarationValue)) {
       context.popReference();
-      return new Any(String(declarationValue), { role: referenceNode.role });
+      return new Any(String(declarationValue), { role: referenceNode.options.role });
     }
     if (useDeclOwnerScope) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       context.rulesContext = declOwner as Rules;
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
+    releaseSearchScope();
     const finalize = (evaluatedNode: Node): Node => {
       restoreRulesContext();
       if (!isMergedAssign) {
@@ -3067,22 +3092,17 @@ function finalizeDeclarationReferenceResult(
             importantPushed = false;
           }
           throw error;
-        })
-        .finally(() => {
-          context.searchScope.delete(declaration);
         });
     }
-    const finalized = finalize(evaluated);
-    context.searchScope.delete(declaration);
-    return finalized;
+    return finalize(evaluated);
   } catch (error) {
+    releaseSearchScope();
     restoreRulesContext();
     popReference();
     if (importantPushed) {
       context.popImportantSource();
       importantPushed = false;
     }
-    context.searchScope.delete(declaration);
     throw error;
   }
 }
@@ -3307,7 +3327,7 @@ function finalizeReferenceLookupResult(
       if (fallbackText) {
         context.popReference();
         referenceNode._rulesLookupHandle = undefined;
-        return new Any(fallbackText, { role: referenceNode.role });
+        return new Any(fallbackText, { role: referenceNode.options.role });
       }
       return finalizeFallbackReferenceResult(
         referenceNode,
@@ -3618,11 +3638,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   static override childKeys = ['target', 'key'] as const;
 
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
-  readonly target: ReferenceValue['target'];
   readonly key: ReferenceValue['key'];
+  /**
+   * `target`/`rawKey` are DISJOINT fields: only index/property/mixin-ruleset
+   * references ever carry them (a plain `variable`/`function` reference — the
+   * bulk of live instances — never does). They are declared without an
+   * initializer and assigned only when present, so the common shape omits both
+   * hidden-class slots. Readers must tolerate the field being absent (accessing
+   * a missing own property returns `undefined`, e.g. `this.target ?? …`).
+   */
+  declare readonly target?: ReferenceValue['target'];
   /** Original un-flattened lookup name; see {@link ReferenceValue.rawKey}. */
-  readonly rawKey: ReferenceValue['rawKey'];
-  readonly role: AnyRole | undefined;
+  declare readonly rawKey?: ReferenceValue['rawKey'];
 
   constructor(
     value: ReferenceValue | string,
@@ -3635,12 +3662,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     super(value, options, location);
     this._treeContext = treeContext;
-    this.target = value.target;
     this.key = value.key;
-    this.rawKey = value.rawKey;
-    this.role = options?.role;
-    // References are always non-static and may be async
-    this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
+    if (value.target !== undefined) {
+      (this as { target?: ReferenceValue['target'] }).target = value.target;
+    }
+    if (value.rawKey !== undefined) {
+      (this as { rawKey?: ReferenceValue['rawKey'] }).rawKey = value.rawKey;
+    }
+    // References are always non-static
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
   override valueOf() {

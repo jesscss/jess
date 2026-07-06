@@ -277,3 +277,120 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
   reconciles — resolve, re-gate, then push. Roll a slice back rather than push red; never force-push.
 - Re-profile (collapse + dynamic bench, `JESS_PROFILE` split) after each phase to confirm no regression
   and capture wins.
+
+---
+
+## PROGRESS LOG
+
+- **Phase A1 — DONE** (dev `6de3c0cc7`). `F_MAY_ASYNC` deleted entirely (bit `0b10` freed); sync/async
+  guards → reactive attempt-sync/isThenable-bail; dead sync-twin helpers removed. Byte-identical,
+  bench-neutral, core 2744/0 (−2 = deleted flag-only tests). Net −395 lines.
+- **Phase A2 — DONE** (dev `ebacd2a2c`). `F_AMPERSAND` off the general `propagateFlagsFrom` + `F_CHILD_DERIVED`;
+  a `Selector`-base `propagateFlagsFrom` override bubbles it within the selector tree only. **Also fixed a
+  latent stale-flag bug** in `composeHeaderSelector` (guarded on `selectorHasAmpersandNode`). Byte-identical, 2744/0.
+- **Phase A3 — DONE** (dev `793467955`). Deleted 4 provably-pure leaf `F_STATIC` eval-skips (block.ts ×2,
+  url.ts ×2; kept url's `typeof===string` guard). **Scope correction:** the plan's "~25 leaf skips" was
+  optimistic — most F_STATIC render/eval reads are LOAD-BEARING (array-walk cost, structural branch to a
+  different render fn, single-item wrapper preservation), NOT redundant. They only go away when `F_STATIC`
+  itself is deleted (Phase C4, once eval is cheap-by-construction). Byte-identical, 2744/0.
+
+**Phase A complete.** `propagateFlagsFrom` now bubbles only `F_STATIC`/`F_NON_STATIC` + `F_HAS_NODE_CHILD`.
+Next: **Phase B — the reparent rework** (root lever: `adopt` stops reparenting source children).
+
+- **Phase B0/B1 — DONE** (dev `b2afaec39`). Operation operands now shared, no clone. KEY FINDING: `withOperands`
+  used the RAW `new Operation([...])` (not the `op()` factory), so per invariant 7 it never called
+  `parentChildren()`/`setParent` on operands — the `cloneForPlacement` was cargo-cult, removed. **Proven pattern
+  for B2-B4:** place shared children via a NON-parenting construction path (raw `new` + `propagateFlagsFrom`/
+  `inherit`), OR make `adopt` skip `setParent` on a source child; placement context comes from `_sourceRoot`/frame,
+  never `.parent`. B1 subsumed. Byte-identical, 2744/0.
+
+- **Phase B2 (selector COW) — BLOCKED (precise, valid outcome; nothing committed).** The selector reparent is
+  REAL (not cargo-cult): `Selector.inherit()` (selector.ts:123-133) `adopt()`s each child → `setParent`.
+  Dropping `detachChildren` reparents the SOURCE compounds → `[Circular]`. **Root blocker = extend's composition
+  engine reads `child.parent`**: `extend.ts:4188-4193` climbs `current.parent`/`.parent.parent` to decide
+  `:is()`-append-vs-wrap; `extend.ts:4156` reparents children into generated compounds; the extend registry
+  (`context.extends`) reuses the source selector across matches, so the placement copy must be independently
+  owned. Placed `:is()` wrapper needs `child.parent === wrapper`; source registry needs `child.parent === source`.
+  **Prerequisite (new slice B2-pre): make extend's selector composition parent-pointer-free** — thread the
+  structural context (enclosing compound/pseudo) explicitly instead of reading `child.parent`. Then B2 (and
+  likely B3 ampersand/extend, same subsystem) unblock. Deep extend-engine refactor — gate hardest.
+
+- **Phase B2-pre — DONE** (dev `c1e3170ae`). Extend composition parent-pointer-free: `applyExtensionAtPath`
+  threads `enclosingCompound`/`enclosingPseudo` instead of climbing `current.parent` for `:is()`-append-vs-wrap.
+  12-line change, byte-identical, all 23 extend files green. Turned the feared extend-engine wall into a slice.
+- **Phase B2 — DONE** (dev `49631d299`). Selector placement SHARES child selectors (no `detachChildren` deep-copy).
+  **Mechanism (reusable for B3/B4):** `PlacementCloneOptions.shareChildren` — share the SAME source child but
+  `frozen=true` first, so `adopt`'s `if(!node.frozen) setParent` SKIPS the reparent; shared child keeps its
+  canonical parent. Proof test `b2-proof.test.ts` confirms source tree unmutated / acyclic (non-tautological).
+  **New baseline 2746/0** (+2 proof tests). Byte-identical.
+
+- **Phase B4 (collapse-survivor) — GENUINE COPY, left (documented; no change).** `inherit(owner)` mutates the node
+  ITSELF (source span via `setSourceSpan`, `removeFlag(F_VISIBLE)`, `addFlag(F_GENERATED/F_EXTENDED/...)`) with
+  UNCONDITIONAL writes that `frozen` does NOT guard — unlike `adopt`'s child-reparent. Freeze-share → 3
+  canonical-child guard tests fail (proven). Same class as B3's `copySelectorTreeForExtend`. **Phase B complete:**
+  reparent-avoidance clones (B0/B2/B3) eliminated via freeze-share; mutate-after-copy clones (B4, extend:3467) stay.
+
+### ⚠ REASSESSMENT after Phase B — the reuse gates are NOT deletable yet (chain runs deeper)
+Grep of dev post-B3: `canReuseAsLeaf`/`reuseAsLeaf` are LIVE and pervasive (selector-list/complex/compound,
+declaration.ts ×8, at-rule.ts, rules.ts, mixin.ts) — they are the leaf-SHARING decision ("share this inert
+source-free static leaf as-is, else copy"), fed by `!F_NON_STATIC` + `!F_HAS_NODE_CHILD`. They are NOT
+reparent-avoidance cruft. So Phase C-early (delete reuse gates + `F_HAS_NODE_CHILD`) is BLOCKED, and the real
+dependency chain is:
+  **propagateFlagsFrom (F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD) → reuse gates (share-vs-copy) → copies remain
+  wherever placement MUTATES a node → `inherit` stamps span/flags/parent onto nodes.**
+To delete the reuse gates + flags, the copies must go; the copies exist because `inherit`/placement MUTATES nodes.
+**The real remaining lever is: make `inherit`'s node-mutation (span/flags/parent) live in the frame/context, not
+on the node** — then placement never mutates a shared node, every node shares, the reuse gates + flags delete.
+This IS the single-render-pass / structural-state-to-frame rework (Phase D + C-late) — a multi-slice project, not
+a quick C-early. Next step: an INVESTIGATION of `inherit`'s mutations — what each writes, who reads it, whether it
+can be threaded off the node — returning a feasibility + design, not a blind rewrite.
+
+### ⚠⚠ ENDGAME VERDICT (inherit investigation, `INHERIT_MUTATION_DESIGN.md`)
+`inherit` is NOT the lever and threading its mutations off-node is NOT worth it. Regime split: ~95% of ~90
+`inherit` sites are FRESH-receiver (`new X().inherit(this)` — already always-share-safe); only `selector-complex.ts:367`
+(collapse-survivor) still hands `inherit` a shared node (extend already hands a fresh `cloneForPlacement` shell, so
+extend is NOT a blocker). The intrinsic mutations (source span + F_VISIBLE/F_EXTENDED/F_GENERATED) are read at
+SERIALIZE time off the node, and extend needs the SAME shared source to carry DIFFERENT flags per match — one node
+can't hold two states, so this is per-output-node identity, not per-frame context. Relocating = per-node placement
+record threaded through ~35 serializers + the render walk = bigger than the copy it removes. REJECTED.
+- **Optional cheap tidy (I2):** make collapse-survivor (`selector-complex.ts:367`) hand `inherit` a fresh shell with
+  B2 `shareChildren` frozen children — then `inherit` only ever mutates fresh nodes (invariant clean). Small copy
+  reduction, does NOT unlock the flag deletion.
+- **THE REMAINING GATE = Phase D (single-render-pass / dynamic-leaf-share), NOT inherit.** The reuse gates
+  (`canReuseAsLeaf`/`!F_NON_STATIC`) hang on whether a DYNAMIC leaf can be shared at render (looked up per-frame)
+  instead of copied — which needs eval folded into the render walk (structural/registration state in the frame,
+  serialize reads provenance per output position). That is the multi-week, high-regression-risk rework touching
+  serialize/sourcemap/extend/eval. **DECISION POINT (owner):** commit to Phase D, or bank Phase A+B and close the
+  flag-walk goal as "deletable flags gone (F_MAY_ASYNC, F_AMPERSAND off the walk); F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD
+  gated on the single-render-pass project."
+
+### ⚑ REPRIORITIZED by the CPU profile (REPROFILE_CURRENT.md) — hotspots first, flag-walk as cleanup
+Fresh profile verdict: **Phase D's entire surface (eval-fold / registration / copy / reuse-gates /
+`propagateFlagsFrom`) is <1% of self-time** — NOT a perf lever. The real hotspots are elsewhere. Owner
+decision: **attack measured hotspots for PERF first; then finish the flag-walk / single-render-pass as
+code-health simplification (maintainability + the 10× "do less work" spirit), NOT as a speed project.**
+
+PERF priority order (re-profile between each):
+1. **Comment-scan quadratic — ~70% self-time (IN PROGRESS, `work/fix-comment-scan-quadratic`).**
+   `commentRunsWithinSpan` scans the whole-file comment map per serialized node (O(nodes × comments)) —
+   a regression from the span-array drop. Range-query / forward-cursor. Isolated, days not weeks.
+2. **Extend selector matcher — ~25% on real Less** (`extendSelector`/`applyExtendsToSelector`/`wouldMatchNode`/
+   `processExtends`). The next perf target after comment-scan.
+3. **GC / allocation churn — ~4-6%.**
+
+THEN (post-hotspots, as simplification not speed): resume Phase D (single-render-pass) + the flag-walk
+deletion (D3 done; D1/dynamic-leaf-share/C4). Still worth doing for fewer-passes/less-work, just not the
+perf headline. The `propagateFlagsFrom` deletion remains the /goal's endpoint — reached last, as cleanup.
+
+### 🛡 GUARDRAIL SLICE (queued — land immediately AFTER the comment-scan fix)
+Root cause of the comment-scan quadratic: gates were complexity-BLIND — byte-identical + suite green +
+memory-win all passed while the change went O(nodes × comments). Add a STANDING guardrail so this class
+of regression fails loudly:
+- **Deterministic scaling test** (`render-scaling.test.ts` or similar): render the same content at N / 2N / 4N
+  node counts and assert the WORK ratio is ~linear (≈2×), not super-linear (≈4× = quadratic). Prefer an
+  INSTRUMENTED COUNTER over wall-clock (immune to the ~25× env noise) — e.g. count total `commentRunsWithinSpan`
+  run-comparisons and assert O(nodes), not O(nodes×comments). Include a comment-heavy input so THIS exact
+  regression can never return silently, plus a general render/serialize-path linearity assertion.
+- Sequencing: after the comment-scan fix (it makes the path linear → the test is green and locks it in).
+- Consider (follow-up): a bench-regression merge gate + a review rule "no unbounded per-node scans of
+  document/whole-tree-scoped collections."

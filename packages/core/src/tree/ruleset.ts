@@ -1,4 +1,4 @@
-import { sourceSpanOf } from './util/provenance.js';
+import { sourceSpanOf, valueSpansOf } from './util/provenance.js';
 import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
@@ -317,6 +317,20 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    *   to avoid distribution; simple/compound/complex parents splice inline.
    */
   static composeSelector(child: SelectorLike, parent: SelectorLike): SelectorLike {
+    // A multi-item list parent (SelectorList node or array) can't compose
+    // textually — a bare descendant prepend of its comma-joined text distributes
+    // the child across the group (`.a, .b .z`). Promote a string child to a node
+    // so it flows through `_prependParent`, which wraps the group in `:is()`.
+    const parentIsMultiList = (isNode(parent, N.SelectorList) && parent.value.length > 1)
+      || (Array.isArray(parent) && parent.length > 1);
+    if (typeof child === 'string' && parentIsMultiList) {
+      child = new BasicSelector(child);
+      // A raw array parent must become a SelectorList node so `_prependParent`
+      // wraps the group in `:is()` instead of the node path dropping it.
+      if (Array.isArray(parent)) {
+        parent = SelectorList.create(parent);
+      }
+    }
     // String-backed selectors (scanner-native simple selectors) compose
     // textually: substitute `&` with the parent, or prepend the parent via a
     // descendant combinator. Returned as a string so the flattened ruleset keeps
@@ -741,7 +755,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (
       options.referenceMode === true
       && options.referenceRenderEnabled !== false
-      && this.hoistToRoot
+      && this.isHoisted(options)
     ) {
       const ownSelector = (this.options as RulesetOptions | undefined)?.ownSelector;
       if (ownSelector && Ruleset.isBareAmpersandSelector(ownSelector)) {
@@ -870,7 +884,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       throw new TypeError('Expected nil-selector render guard copy to remain a Node');
     }
     const finishGuard = (guardResult: Node): MaybePromise<Rules | Nil> => {
-      const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
+      const guardPasses = Condition.resultPasses(guardResult);
       return guardPasses ? this.evalNilSelectorBodyForRender(context) : new Nil();
     };
     const guardResult = ownedGuard.eval(context);
@@ -997,6 +1011,28 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         }
       }
       return true;
+    }
+    return false;
+  }
+
+  /**
+   * True when the selector tree still holds a live `&` node (an ampersand not yet
+   * substituted for its parent). Distinct from the `F_AMPERSAND` flag, which is a
+   * cached "this subtree contains a `&`" bit: a selector already RESOLVED into its
+   * extended form (e.g. `.button:hover, .submit:hover`) carries no `&` node even
+   * though the flag may remain set from an earlier structural copy.
+   */
+  static selectorHasAmpersandNode(sel: SelectorLike | Nil): boolean {
+    if (typeof sel === 'string' || !sel || sel instanceof Nil) {
+      return false;
+    }
+    if (Array.isArray(sel)) {
+      return sel.some(item => Ruleset.selectorHasAmpersandNode(item));
+    }
+    for (const node of sel.nodes()) {
+      if (isNode(node, N.Ampersand)) {
+        return true;
+      }
     }
     return false;
   }
@@ -1443,6 +1479,84 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return undefined;
   }
 
+  /**
+   * The parent frame selector this ruleset composes against under
+   * `collapseNesting` — the top of the composed-selector stack (skipping this
+   * ruleset's own cached entry), falling back to the structural parent when
+   * hoisted. Shared by `composeHeaderSelector` (node selectors) and the
+   * array-surface header path (selector-list selectors), so both prepend the
+   * parent context. Reference-mode filtering stays in `composeHeaderSelector`.
+   */
+  private composeParentSelector(options: FinalPrintOptions): Selector | null {
+    let rawParentComposed = options.composedSelectorStack?.at(-1);
+    if (
+      rawParentComposed
+      && cachedComposedMatches(options, this, rawParentComposed.valueOf())
+    ) {
+      rawParentComposed = options.composedSelectorStack?.at(-2);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent as AtRule : undefined;
+    const structuralParent = (
+      !parentAtRule?.isRootOnly()
+      && this.hoistToRoot === true
+      && this.parent?.parent
+      && isNode(this.parent.parent, N.Ruleset)
+    )
+      ? this.parent.parent.selector
+      : null;
+    const structuralParentActive = structuralParent
+      && Boolean(options.inFrames?.some(f => f === this.parent!.parent));
+    return rawParentComposed ?? (
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      structuralParentActive && !(structuralParent instanceof Nil) ? structuralParent as Selector : null
+    );
+  }
+
+  /**
+   * The composed frame selector to push for children under `collapseNesting`,
+   * for any selector surface. Node selectors defer to
+   * {@link composeHeaderSelector}; a selector-list array surface composes each
+   * item against the parent frame and returns a `SelectorList` node so nested
+   * children wrap the group in `:is()` (`.a { #x, #y { .z {…} } }` →
+   * `:is(.a #x, .a #y) .z`). Returns `undefined` when there is nothing to push.
+   */
+  composePushedSelector(options: FinalPrintOptions): Selector | undefined {
+    const sel = this.selector;
+    if (!sel || sel instanceof Nil) {
+      return undefined;
+    }
+    if (!Array.isArray(sel)) {
+      return this.composeHeaderSelector(
+        options,
+        typeof sel === 'string' ? new BasicSelector(sel) : sel,
+        undefined,
+        { skipCurrentCachedParent: false, skipSameSelectorCompose: false }
+      );
+    }
+    const composeParent = this.composeParentSelector(options);
+    const parentKey = composeParent ? composeParent.valueOf() : '';
+    const hit = getCachedComposedSelector(options, this, parentKey);
+    if (hit) {
+      return hit;
+    }
+    const composed: SelectorLike = composeParent
+      ? Ruleset.composeSelector(sel, composeParent)
+      : sel;
+    const node = composed instanceof Selector
+      ? composed
+      : Array.isArray(composed)
+        ? SelectorList.create(composed)
+        // A string surface (scanner-native single item): wrap so children still
+        // see a pushable frame selector.
+        : new BasicSelector(composed);
+    // Cache so the header render — which happens with this ruleset's own composed
+    // selector on top of the stack — recognizes and skips its own entry
+    // (`cachedComposedMatches`) instead of composing the parent context twice.
+    setCachedComposedSelector(options, this, node, parentKey);
+    return node;
+  }
+
   composeHeaderSelector(
     options: FinalPrintOptions,
     renderSelector: Selector,
@@ -1480,7 +1594,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent as AtRule : undefined;
     const structuralParent = (
       !parentAtRule?.isRootOnly()
-      && this.hoistToRoot === true
+      && this.isHoisted(options)
       && this.parent?.parent
       && isNode(this.parent.parent, N.Ruleset)
     )
@@ -1513,6 +1627,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         && !Ruleset.isBareAmpersandSelector(ownSelector)
         && composeParent
         && hasExtendedComposeContext
+        // Only re-compose the raw own `&` selector when the render selector has NOT
+        // already been resolved into its extended form. Once `renderSelector` holds
+        // no live `&` node (e.g. `.button:hover, .submit:hover`), it IS the composed
+        // result — recomposing `&:hover` against the parent list would re-wrap it as
+        // `:is(.button, .submit):hover`.
+        && Ruleset.selectorHasAmpersandNode(renderSelector)
       )
         ? ownSelector
         : (referenceFilteredLocal instanceof Nil ? renderSelector : (referenceFilteredLocal ?? renderSelector));
@@ -1578,13 +1698,40 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // carries no node flags, so skip the node-only reference-filter/compose logic and
     // emit it directly below (mirroring the string surface branch above).
     if (Array.isArray(renderSelector)) {
+      // An array surface carries no node flags, so reference-filter/`&`/extend
+      // logic doesn't apply — but nesting still does: under `collapseNesting`,
+      // prepend the parent frame context (`.a { #x, #y { … } }` →
+      // `.a #x, .a #y`), composing each list item independently.
+      let emitSelector: SelectorLike = renderSelector;
+      if (options.collapseNesting) {
+        // Emit the same composed value pushed for children, so the header and
+        // the child frame context stay consistent (and share the cache entry).
+        emitSelector = this.composePushedSelector(options) ?? renderSelector;
+      }
       const position = options.writer.position();
       const savedTrivia = options.trivia;
       if (withoutComments) {
         options.trivia = createTriviaMap();
       }
       try {
-        emitSelectorListLike(renderSelector, options);
+        if (typeof emitSelector === 'string') {
+          options.writer.add(emitSelector);
+        } else if (Array.isArray(emitSelector) || isNode(emitSelector, N.SelectorList)) {
+          // The per-member spans are stamped on this Ruleset by the parser and
+          // describe `this.selector`. Only pass them through when we are emitting
+          // that exact uncomposed array (no nesting-prefix rewrote the offsets),
+          // so an authored comment between bare-string members round-trips.
+          // Per-member spans (stamped by the parser, carried across derivation)
+          // describe the authored source members. They stay valid under
+          // nesting-prefix composition because the trivia is looked up by
+          // absolute source offset, and `emitSelectorListItems` only uses them
+          // when the member count is unchanged (no `:is(...)` hoisting). Skip in
+          // the comparable-header (`withoutComments`) pass, which strips trivia.
+          const spans = withoutComments ? undefined : valueSpansOf(this);
+          emitSelectorListLike(emitSelector, options, false, spans);
+        } else {
+          emitSelector.writeSyntax(options);
+        }
         options.writer.trimEndSince(position);
       } finally {
         options.trivia = savedTrivia;
@@ -1840,8 +1987,17 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const enclosing = isNode(context.rulesContext, N.Rules) ? context.rulesContext : undefined;
       if (enclosing && enclosing !== node && !isNonClassicImportBoundary(enclosing)) {
         const frame = node.getScopeFrame();
-        if (frame.parent === undefined) {
-          frame.parent = enclosing.getScopeFrame();
+        const enclosingFrame = enclosing.getScopeFrame();
+        // Seed the prep-time lexical parent so an interpolated selector/declaration
+        // name (`.@{a}`, `@{name}:`) resolves up the enclosing scope. A SHARED loop/
+        // mixin body is prepped twice: first under the source template (no live
+        // slots), which latches `frame.parent` to the static canonical parent; then
+        // under the per-iteration/per-call PLACEMENT surface, whose frame carries the
+        // live slots (`@name`, `@width`). The placement surface is the authoritative
+        // dynamic parent, so re-point to it even when a stale template parent is
+        // already set — otherwise the second prep's name resolution misses the slots.
+        if (frame.parent === undefined || enclosingFrame.hasLiveBindings) {
+          frame.parent = enclosingFrame;
         }
       }
       const rulesetFrameCount = context.rulesetFrames.length;
@@ -1913,6 +2069,33 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       }
 
       if ((evaluatedRules as unknown) !== this) {
+        // §2.7: the source-order eval already COW-derived a fresh body surface
+        // (`evaluatedRules`) rather than write into a canonical node. When `this` is
+        // that canonical template — a shared nesting/mixin body child re-used across
+        // calls — copying the evaluated rules BACK into `this` bakes per-call values
+        // (`width: @a` -> `width: 30`) into the shared template, so a SECOND call of
+        // the enclosing mixin reads the first call's values. Return a fresh Ruleset
+        // shell that shares the (re-evaluated) selector/guard and carries the derived
+        // body, leaving the canonical `this` untouched. A non-canonical `this` (a
+        // per-eval surface) owns its slots, so the in-place write stays correct.
+        const canonical = this.sourceNode === undefined || this.sourceNode === this;
+        const placementRepointed = this._placementRepointed;
+        this._placementRepointed = false;
+        if (canonical && placementRepointed) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const shell = this._deriveShell(sourceSpanOf(this)) as Ruleset;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          (shell as unknown as { rules: Node[] }).rules = evaluatedRules.rules;
+          for (let i = 0; i < shell.rules.length; i++) {
+            shell.adopt(shell.rules[i]!);
+          }
+          shell.sourceNode = this;
+          shell.hoistToRoot = this.hoistToRoot;
+          if (!shell.hasVisibleRules()) {
+            shell.removeFlag(F_VISIBLE);
+          }
+          return shell;
+        }
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (this as unknown as { rules: Node[] }).rules = evaluatedRules.rules;
         for (let i = 0; i < this.rules.length; i++) {
@@ -1952,9 +2135,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         this.invalidateSelectorValueCache(undefined);
       }
       this.selector = selector;
-      if (context.opts.output?.collapseNesting) {
-        this.hoistToRoot = true;
-      }
       pushedRulesetFrameCount = context.rulesetFrames.length;
       pushedFrameCount = context.frames.length;
       context.rulesetFrames.push(this);
@@ -1991,9 +2171,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         : (guard as unknown as Node).eval(context);
       const finishGuard = (result: boolean | Node): Nil | undefined => {
-        const guardPasses = typeof result === 'boolean'
-          ? result
-          : Boolean(result instanceof Bool && result.value === true);
+        const guardPasses = Condition.resultPasses(result);
         if (!guardPasses) {
           const nil = createPublicNil();
           this.adopt(nil);
