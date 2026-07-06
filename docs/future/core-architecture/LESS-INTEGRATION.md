@@ -615,3 +615,12 @@ value-term merge-guard predicate allows quote chars (`is "theme1"` spacing). No 
   reorder — deep namespace-overload mechanism. DEFERRED. (mixins-guards needs BOTH C+D → deferred.)
 IN FLIGHT: imports (bootstrap @import chain); perslot-spans (comments/comments2 un-defer via flag+WeakMap+flat array).
 Remaining tractable: import-inline, import-interpolation (imports), comments, comments2 (perslot-spans).
+
+## 2026-07-05 (alpha) — perslot-spans merge REVERTED (regression), re-integrating
+perslot-spans (d53b6d4e7, preserved on less/perslot-spans-wip) gated CLEAN in isolation (core 2755/0, all-less 86,
+comments+comments2 green) but merged into alpha-with-mixins-guards it regressed to core 2744/13 + all-less 27/93.
+Failing core tests: extend-less-fixtures (4), mixin.test namespace-fastpath (5), reference.test (4) — derivation/lookup
+tests, NOT comment tests. Suspect: (a) inherit() per-slot-span carry corrupting derived nodes broadly, or (b)
+auto-merged declaration.ts (mixins-guards + perslot both changed it) semantically broken. simple.less passes ISOLATED —
+full-run-only collapse → state/derivation interaction. Reset alpha to c66819c7f (84/93 green). RE-INTEGRATE with
+FULL-suite gating (not isolated) + fix the interaction.
