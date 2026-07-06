@@ -1097,12 +1097,18 @@ export class Compiler {
     }
   }
 
-  private async evaluateInput(
+  /**
+   * Parse + before-eval transforms + `context.root` — everything the tree needs
+   * BEFORE evaluation. The eval itself is driven separately: `compile()` evals
+   * here via `evaluateInput`; the render path defers eval into `render()` (D3 —
+   * `render()` is the sole eval driver for serialization).
+   */
+  private async prepareInputTree(
     context: Context,
     resolved: ResolvedRenderConfig,
     input: { filePath?: string; source?: string; language?: string; extension?: string },
     profile?: RenderProfile
-  ) {
+  ): Promise<Rules> {
     const { filePath, source, language, extension } = input;
     const rootLessSourceOptions: RootLessSourceOptions = {
       banner: typeof resolved.activeOptions.banner === 'string'
@@ -1176,6 +1182,21 @@ export class Compiler {
       }
     }
 
+    return tree;
+  }
+
+  /**
+   * Prepare + eval + pre-render visitors, returning the EVALUATED tree. Used by
+   * `compile()`, which returns an evaluated tree without serializing it. The
+   * render path does NOT use this — it drives eval through `render()` (D3).
+   */
+  private async evaluateInput(
+    context: Context,
+    resolved: ResolvedRenderConfig,
+    input: { filePath?: string; source?: string; language?: string; extension?: string },
+    profile?: RenderProfile
+  ): Promise<Rules> {
+    const tree = await this.prepareInputTree(context, resolved, input, profile);
     const evald = await measureProfileAsync(profile, 'eval', async () => tree.eval(context));
     return measureProfileSync(profile, 'applyPreRenderVisitors', () =>
       this.applyPreRenderVisitors(context, evald)
@@ -1185,7 +1206,15 @@ export class Compiler {
   private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
     const printOptions: PrintOptions = {
       collapseNesting: context.opts.output?.collapseNesting,
-      context
+      context,
+      // D3: `render()` is the sole eval driver. `tree` enters unevaluated; render
+      // evaluates it, then fires this hook on the evaluated root so post-eval /
+      // pre-render plugin visitors transform it before serialization — the role
+      // the removed separate `tree.eval()` pre-pass used to serve.
+      preSerializeRoot: evaluatedRoot =>
+        measureProfileSync(profile, 'applyPreRenderVisitors', () =>
+          this.applyPreRenderVisitors(context, evaluatedRoot)
+        )
     };
 
     let css = await measureProfileAsync(profile, 'render', async () => {
@@ -1254,7 +1283,7 @@ export class Compiler {
   async render(filePath: string, options?: Partial<ConfigOptions>) {
     const { resolved, context, profile } = await this.prepareRender(filePath, options);
     try {
-      const tree = await this.evaluateInput(context, resolved, { filePath }, profile);
+      const tree = await this.prepareInputTree(context, resolved, { filePath }, profile);
       const css = await this.renderTree(tree, context, profile);
       finalizeRenderProfile(profile, {
         method: 'render',
@@ -1289,8 +1318,8 @@ export class Compiler {
     const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const evald = await this.evaluateInput(context, resolved, { filePath, source: content, language, extension }, profile);
-      const css = await this.renderTree(evald, context, profile);
+      const tree = await this.prepareInputTree(context, resolved, { filePath, source: content, language, extension }, profile);
+      const css = await this.renderTree(tree, context, profile);
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
@@ -1334,13 +1363,13 @@ export class Compiler {
     const { resolved, context, profile } = await this.prepareRender(filePath, renderOptions, { language, extension });
 
     try {
-      const evald = await this.evaluateInput(context, resolved, {
+      const tree = await this.prepareInputTree(context, resolved, {
         filePath,
         source,
         language,
         extension
       }, profile);
-      const css = await this.renderTree(evald, context, profile);
+      const css = await this.renderTree(tree, context, profile);
 
       const loadedUrls: string[] = [];
 

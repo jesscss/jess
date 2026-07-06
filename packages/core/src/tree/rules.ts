@@ -4505,20 +4505,29 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const sourceWasRoot = this === context.root || (context.root === undefined && context.rulesContext === undefined);
+    // The effective PrintOptions is the 3rd arg in the buffer overload, else the
+    // 2nd. Its `preSerializeRoot` hook (D3) runs the compiler's post-eval /
+    // pre-render plugin visitors on the tree render just evaluated — the reason
+    // the old separate eval pre-pass existed — so no second eval is needed.
+    const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    const preSerializeRoot = sourceWasRoot ? printOptions?.preSerializeRoot : undefined;
+    const serialize = (state: RulesRenderState): MaybePromise<string> => {
+      checkValidNodes(state.output?.rules, context);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
+        : renderRulesStateToString(state, context, bufferOrOptions);
+    };
+    const afterEval = (state: RulesRenderState): MaybePromise<string> => {
+      if (!preSerializeRoot || !state.output) {
+        return serialize(state);
+      }
+      const hooked = preSerializeRoot(state.output);
+      const applyHook = (replaced: Rules | void): MaybePromise<string> =>
+        serialize(replaced ? { ...state, output: replaced } : state);
+      return isThenable(hooked) ? hooked.then(applyHook) : applyHook(hooked);
+    };
     const value = this.evalForRender(context, sourceWasRoot);
-    if (isThenable(value)) {
-      return value.then((state) => {
-        checkValidNodes(state.output?.rules, context);
-        return isRenderBuffer(bufferOrOptions)
-          ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
-          : renderRulesStateToString(state, context, bufferOrOptions);
-      });
-    }
-    checkValidNodes(value.output?.rules, context);
-    if (isRenderBuffer(bufferOrOptions)) {
-      return writeRulesStateRenderOutput(bufferOrOptions, value, context, options);
-    }
-    return renderRulesStateToString(value, context, bufferOrOptions);
+    return isThenable(value) ? value.then(afterEval) : afterEval(value);
   }
 
   /** All rules, with nested rules flattened */
