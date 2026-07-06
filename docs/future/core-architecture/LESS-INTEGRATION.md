@@ -669,3 +669,13 @@ via visitedFallbackFrames). Flipped **import-interpolation** GREEN; bootstrap ad
 all-less 87/93. Remaining 6 → 5 DEFERRED (extend x3, import-remote, mixins-guards D). Tractable: import-inline (imports IN FLIGHT).
 Bootstrap next wall: `ReferenceError: 'name' is not defined` at `_grid.less:49` — `each(@grid-breakpoints, #(@width, @name){...})`
 each() `#()` PATTERN-BOUND loop variables not bound per iteration. → dispatched less/bootstrap-wall3. Milestone-4 chain.
+
+## 2026-07-06 (alpha) — bootstrap-wall3 MERGED → board 87/93 (core 2760/0)
+_prepareChildRulesRegistration re-seeds a nested ruleset's prep-time frame parent when the enclosing frame
+hasLiveBindings (not only if unset) — an each() `#()` body nested ruleset was prepped twice and kept its stale template
+parent, so name resolution never reached the per-iteration live slots (@name/@width). bootstrap advances past _grid.
+Residual (out of scope): interpolated PROPERTY NAME `@{name}:` in a shared nested each-body latches to iteration 1
+(name resolution prep-cached; values eval-time). Bootstrap uses @name/@width as values, unaffected.
+Bootstrap next wall: `'min' is not defined` in a `when` guard (Condition.evaluateBoolean) — another guard-scope var case.
+imports agent KILLED (stale base c1f819462 + long-run, no commit; import-interpolation already flipped by wall2).
+→ dispatch import-inline FRESH + bootstrap-wall4. Remaining all-less 6 → 5 DEFERRED (extend x3, import-remote, mixins-guards D) + import-inline.
