@@ -624,3 +624,15 @@ tests, NOT comment tests. Suspect: (a) inherit() per-slot-span carry corrupting 
 auto-merged declaration.ts (mixins-guards + perslot both changed it) semantically broken. simple.less passes ISOLATED —
 full-run-only collapse → state/derivation interaction. Reset alpha to c66819c7f (84/93 green). RE-INTEGRATE with
 FULL-suite gating (not isolated) + fix the interaction.
+
+## 2026-07-05 (alpha) — perslot-spans RE-INTEGRATED clean → board 86/93 (core 2757/0)
+The earlier "regression" was a STALE-LIB FALSE NEGATIVE, not a code bug: `pnpm -r build` ABORTS at a pre-existing
+`jess-plugin` TS5096 tsconfig error, leaving `@jesscss/core` (and downstream) lib STALE → the lib-dependent tests
+(extend-less-fixtures, mixin namespace-fastpath, reference) + all-less falsely collapsed to 27/93. Rebased perslot
+onto alpha (declaration.ts hunks are far apart from mixins-guards' → correct 3-way merge applies both), built the
+core-path libs EXPLICITLY (jess via `compile`, not `build`, to skip api-extractor), gate = core 2757/0 ×2, all-less 86.
+**comments + comments2 GREEN** via per-slot spans (F_HAS_VALUESPANS/FIELDSPANS flags + WeakMap flat-SMI-array, NO Node
+fields — the perf design held).
+GATING LESSON: never gate off `pnpm -r build` (aborts at jess-plugin); build `awaitable-pipe @jesscss/core css/less/scss-parser fns jess-plugin-less jess-plugin-less-compat` explicitly + `jess compile`.
+Remaining 7 → 5 DEFERRED (extend x3, import-remote, mixins-guards C+D). Tractable: import-inline, import-interpolation
+(imports IN FLIGHT). Target green-modulo-deferred = 88/93.
