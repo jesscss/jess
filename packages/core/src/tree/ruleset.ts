@@ -317,6 +317,20 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    *   to avoid distribution; simple/compound/complex parents splice inline.
    */
   static composeSelector(child: SelectorLike, parent: SelectorLike): SelectorLike {
+    // A multi-item list parent (SelectorList node or array) can't compose
+    // textually — a bare descendant prepend of its comma-joined text distributes
+    // the child across the group (`.a, .b .z`). Promote a string child to a node
+    // so it flows through `_prependParent`, which wraps the group in `:is()`.
+    const parentIsMultiList = (isNode(parent, N.SelectorList) && parent.value.length > 1)
+      || (Array.isArray(parent) && parent.length > 1);
+    if (typeof child === 'string' && parentIsMultiList) {
+      child = new BasicSelector(child);
+      // A raw array parent must become a SelectorList node so `_prependParent`
+      // wraps the group in `:is()` instead of the node path dropping it.
+      if (Array.isArray(parent)) {
+        parent = SelectorList.create(parent);
+      }
+    }
     // String-backed selectors (scanner-native simple selectors) compose
     // textually: substitute `&` with the parent, or prepend the parent via a
     // descendant combinator. Returned as a string so the flattened ruleset keeps
@@ -1443,6 +1457,84 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     return undefined;
   }
 
+  /**
+   * The parent frame selector this ruleset composes against under
+   * `collapseNesting` — the top of the composed-selector stack (skipping this
+   * ruleset's own cached entry), falling back to the structural parent when
+   * hoisted. Shared by `composeHeaderSelector` (node selectors) and the
+   * array-surface header path (selector-list selectors), so both prepend the
+   * parent context. Reference-mode filtering stays in `composeHeaderSelector`.
+   */
+  private composeParentSelector(options: FinalPrintOptions): Selector | null {
+    let rawParentComposed = options.composedSelectorStack?.at(-1);
+    if (
+      rawParentComposed
+      && cachedComposedMatches(options, this, rawParentComposed.valueOf())
+    ) {
+      rawParentComposed = options.composedSelectorStack?.at(-2);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const parentAtRule = isNode(this.parent, N.AtRule) ? this.parent as AtRule : undefined;
+    const structuralParent = (
+      !parentAtRule?.isRootOnly()
+      && this.hoistToRoot === true
+      && this.parent?.parent
+      && isNode(this.parent.parent, N.Ruleset)
+    )
+      ? this.parent.parent.selector
+      : null;
+    const structuralParentActive = structuralParent
+      && Boolean(options.inFrames?.some(f => f === this.parent!.parent));
+    return rawParentComposed ?? (
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      structuralParentActive && !(structuralParent instanceof Nil) ? structuralParent as Selector : null
+    );
+  }
+
+  /**
+   * The composed frame selector to push for children under `collapseNesting`,
+   * for any selector surface. Node selectors defer to
+   * {@link composeHeaderSelector}; a selector-list array surface composes each
+   * item against the parent frame and returns a `SelectorList` node so nested
+   * children wrap the group in `:is()` (`.a { #x, #y { .z {…} } }` →
+   * `:is(.a #x, .a #y) .z`). Returns `undefined` when there is nothing to push.
+   */
+  composePushedSelector(options: FinalPrintOptions): Selector | undefined {
+    const sel = this.selector;
+    if (!sel || sel instanceof Nil) {
+      return undefined;
+    }
+    if (!Array.isArray(sel)) {
+      return this.composeHeaderSelector(
+        options,
+        typeof sel === 'string' ? new BasicSelector(sel) : sel,
+        undefined,
+        { skipCurrentCachedParent: false, skipSameSelectorCompose: false }
+      );
+    }
+    const composeParent = this.composeParentSelector(options);
+    const parentKey = composeParent ? composeParent.valueOf() : '';
+    const hit = getCachedComposedSelector(options, this, parentKey);
+    if (hit) {
+      return hit;
+    }
+    const composed: SelectorLike = composeParent
+      ? Ruleset.composeSelector(sel, composeParent)
+      : sel;
+    const node = composed instanceof Selector
+      ? composed
+      : Array.isArray(composed)
+        ? SelectorList.create(composed)
+        // A string surface (scanner-native single item): wrap so children still
+        // see a pushable frame selector.
+        : new BasicSelector(composed);
+    // Cache so the header render — which happens with this ruleset's own composed
+    // selector on top of the stack — recognizes and skips its own entry
+    // (`cachedComposedMatches`) instead of composing the parent context twice.
+    setCachedComposedSelector(options, this, node, parentKey);
+    return node;
+  }
+
   composeHeaderSelector(
     options: FinalPrintOptions,
     renderSelector: Selector,
@@ -1578,13 +1670,29 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // carries no node flags, so skip the node-only reference-filter/compose logic and
     // emit it directly below (mirroring the string surface branch above).
     if (Array.isArray(renderSelector)) {
+      // An array surface carries no node flags, so reference-filter/`&`/extend
+      // logic doesn't apply — but nesting still does: under `collapseNesting`,
+      // prepend the parent frame context (`.a { #x, #y { … } }` →
+      // `.a #x, .a #y`), composing each list item independently.
+      let emitSelector: SelectorLike = renderSelector;
+      if (options.collapseNesting) {
+        // Emit the same composed value pushed for children, so the header and
+        // the child frame context stay consistent (and share the cache entry).
+        emitSelector = this.composePushedSelector(options) ?? renderSelector;
+      }
       const position = options.writer.position();
       const savedTrivia = options.trivia;
       if (withoutComments) {
         options.trivia = createTriviaMap();
       }
       try {
-        emitSelectorListLike(renderSelector, options);
+        if (typeof emitSelector === 'string') {
+          options.writer.add(emitSelector);
+        } else if (Array.isArray(emitSelector) || isNode(emitSelector, N.SelectorList)) {
+          emitSelectorListLike(emitSelector, options);
+        } else {
+          emitSelector.writeSyntax(options);
+        }
         options.writer.trimEndSince(position);
       } finally {
         options.trivia = savedTrivia;
