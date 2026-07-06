@@ -483,3 +483,14 @@ interpolate correctly but fail DOWNSTREAM: media = comment-preservation in @medi
 cross-import variable hoisting (import scope-order). Both new residual clusters.
 Comment-preservation now blocks comments, comments2, media (do AFTER serialize-whitespace to avoid trivia-file overlap).
 IN FLIGHT: serialize-whitespace; guards (mixins-guards filtering).
+
+## 2026-07-05 (alpha) — serialize-whitespace MERGED → board 75/93 (core 2743/0)
+modern GREEN: Call render fast-path (call.ts:290 getKnownRenderedCallText) added an unconditional join space on top of
+whitespace already baked into a keyword term → doubled. Now only joins when neither boundary has whitespace.
+**whitespace/css-grid/rgba PARSER-PUNTED (precise diagnosis):** whitespace is genuinely LOST at parse — the less-parser
+value-list builds items sharing the whole-value span (no per-item spans) with NO inter-term whitespace trivia, so
+serialize has no data to preserve. ALSO `jess-plugin-less/src/index.ts` drops the parser's `trivia` map (never threads
+it into `context.opts.trivia`). Fix (value-trivia cluster, dispatched): (a) less-parser value-list emits per-item spans
++ inter-term whitespace trivia, (b) jess-plugin-less threads parseResult.trivia → render context, (c) render emits it.
+Custom-prop `--x:` leading space is the same capture gap (less.js preserves verbatim, so no `: ` band-aid).
+IN FLIGHT: guards (mixins-guards); value-trivia (whitespace, css-grid, rgba).
