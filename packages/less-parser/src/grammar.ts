@@ -475,7 +475,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const nsHead = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)(?:[.#]-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)*/);
   const NsAccessor = node('NsAccessor',
     noTrivia(sequence(nsHead, refIndex, many(choice(refIndex, refCall)))));
-  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.FormatCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -674,6 +674,15 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
       expect(literal(')'), ')')
     )));
 
+  // ── Deprecated Less `%()` string-format function ─────────────────────────────
+  // `%(format, args…)` is printf-style formatting. We LOWER it at build time into a
+  // `Quoted(Interpolated)` — the canonical string-interpolation node — with a
+  // deprecation warning (see `_buildFormatCall`). The `%(?=\()` lookahead matches
+  // ONLY when the `(` follows immediately, so the bare `%` mod operator (`10 % 3`,
+  // parsed by `prodOp`) is UNAFFECTED. Ordered before the generic `Call` in `value`.
+  const FormatCall = node('FormatCall',
+    parser({ trivia: rw }, sequence(regex(/%(?=\()/), literal('('), functionCallArgs)));
+
   // ── At-rules ───────────────────────────────────────────────────────────────
   const atPrelude = optional(scanTo(choice(literal('{'), literal(';')), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
 
@@ -737,7 +746,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
-    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, IfCall, BooleanCall, SquareParen, anyValue, EachFor,
+    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, IfCall, BooleanCall, FormatCall, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };
