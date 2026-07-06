@@ -57,7 +57,8 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
 - Mixins: defs, params (`$p[: default]`), guards (`when`), `$ >` calls + chains —
   corpus 07 (`eb6ec5c2b`).
 - Anonymous mixins `@() {}` / `@{}` + functions `@() > { … }` / `@() > <expr>`
-  (single-expr normalised to a `return:` decl) — corpus 08 (`0ecdbba1f`).
+  (single-expr normalised to a `result:` decl — the CSS `@function` return
+  descriptor) — corpus 08 (`0ecdbba1f`).
 - `$extend` statement (`.sel`, `!exact`, `ns|sel`, comma list, `$type` variable
   target, `*[.sel]` capture target) — corpus 09 (`bddeb55ac` + capture commit).
   Literal targets wrapped in a `BasicSelector` (a bare string crashes

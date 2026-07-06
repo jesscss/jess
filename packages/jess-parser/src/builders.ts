@@ -681,10 +681,11 @@ export class JessGrammar extends CssParser {
   // ── Anonymous mixins & functions ─────────────────────────────────────────────
   // `@(params) { … }` / `@{ … }` / `@(params) > { … }` / `@(params) > <expr>` → a
   // NAMELESS Mixin (core has no separate anon/function class). A FUNCTION is marked
-  // by the `>` return operator; per the docs a function is "a mixin that looks up
-  // the final `return:` assignment", so the single-expression form `@() > <expr>`
-  // is normalised here into a body of one `return: <expr>` Declaration — the block
-  // form `@() > { return: … }` already carries its `return` decl(s) verbatim.
+  // by the `>` operator; per the docs a function is "a mixin that looks up the final
+  // `result:` assignment" (aligns with the CSS `@function` `result:` descriptor), so
+  // the single-expression form `@() > <expr>` is normalised here into a body of one
+  // `result: <expr>` Declaration — the block form `@() > { result: … }` already
+  // carries its `result` decl(s) verbatim.
   private _buildJessAnonMixin(children: ReadonlyArray<Node | CSTLike>, location: LocationInfo): Node {
     const hasReturn = children.some(c => isLeaf(c) && c.value === '>');
     const hasBlock = children.some(c => isLeaf(c) && c.value === '{');
@@ -699,12 +700,12 @@ export class JessGrammar extends CssParser {
 
     let rules: Node[];
     if (isExprFn) {
-      // Single-expression function → `return: <expr>`. `valueSequence` yields one
+      // Single-expression function → `result: <expr>`. `valueSequence` yields one
       // or more value nodes; a lone node is the value, several become a space List.
       const value: Node = bodyNodes.length === 1
         ? bodyNodes[0]!
         : new List(bodyNodes as never, undefined, location) as unknown as Node;
-      rules = [new Declaration({ name: 'return', value } as never, undefined, location) as unknown as Node];
+      rules = [new Declaration({ name: 'result', value } as never, undefined, location) as unknown as Node];
     } else {
       rules = bodyNodes;
     }

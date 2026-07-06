@@ -343,11 +343,12 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // A nameless Mixin in VALUE position, started with `@(` or `@{`. Four shapes:
   //   @() { … }          anon mixin (params, block body)
   //   @{ … }             anon mixin (no params, block body)
-  //   @() > { … }        FUNCTION, block body (looks up final `return:`)
-  //   @() > <expr>       FUNCTION, single-expression body (sugar → `return: <expr>`)
-  // The `>` return marker distinguishes a function from a plain anon mixin; the
-  // builder normalises the single-expr form into a `return` Declaration body so a
-  // function is uniformly "a Mixin whose body assigns `return`" (per the docs).
+  //   @() > { … }        FUNCTION, block body (looks up final `result:`)
+  //   @() > <expr>       FUNCTION, single-expression body (sugar → `result: <expr>`)
+  // The `>` marker distinguishes a function from a plain anon mixin; the builder
+  // normalises the single-expr form into a `result` Declaration body so a function
+  // is uniformly "a Mixin whose body assigns `result`" (per the docs; aligns with
+  // the CSS `@function` `result:` return descriptor).
   const AnonMixin = node('AnonMixin',
     parser({ trivia: rw }, sequence(
       literal('@'),
