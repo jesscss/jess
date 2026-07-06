@@ -296,7 +296,7 @@ export const F_MERGE_SUPPRESSED = 0b10000000000000000;
  * same flags — rather than recomputing them from children (that is eval-path
  * derivation, not copying). Canonical construction bubbles them via `adopt`.
  */
-export const F_CHILD_DERIVED = F_STATIC | F_NON_STATIC | F_AMPERSAND | F_HAS_NODE_CHILD;
+export const F_CHILD_DERIVED = F_STATIC | F_NON_STATIC | F_HAS_NODE_CHILD;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -688,9 +688,6 @@ export abstract class Node<
       this.removeFlag(F_STATIC);
     } else if (node.hasFlag(F_STATIC)) {
       this.addFlag(F_STATIC);
-    }
-    if (node.hasFlag(F_AMPERSAND) && this.type !== 'Rules') {
-      this.addFlag(F_AMPERSAND);
     }
   }
 
