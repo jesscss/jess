@@ -982,18 +982,87 @@ const R_DERIVED_STATE_MASK =
   | R_HAS_EXTENDS
   | R_HAS_REFERENCE_IMPORTS;
 
+/**
+ * Cold, rarely-allocated callable/function/child-rule lookup state, moved OFF the
+ * per-instance `Rules` shape into one lazily-allocated fixed-shape struct. A leaf
+ * declaration-only Ruleset (the majority of the ~12k instances) never runs a
+ * multi-kind lookup, so it carries ONE `undefined` `_lookup` slot instead of the
+ * ~12 fields below. Only a WRITE allocates the struct; reads see `undefined` and
+ * fall back to the neutral value (undefined map / `0` version).
+ *
+ * FAST-V8: every field is declared up-front so V8 keeps a single monomorphic
+ * hidden class. No dynamic attach / `Object.assign` / `defineProperty` / `delete`.
+ */
+class RulesLookupState {
+  functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
+  callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
+  directChildRuleEntries: Array<RulesEntryLike> | null | undefined = undefined;
+  directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined = undefined;
+  directDeclarationsByName: Map<string, Declaration[] | null> | undefined = undefined;
+  directDeclarationLookupCache: Map<string, {
+    readonly optionalMatch: DirectDeclarationOccurrence | undefined;
+    readonly publicMatch: DirectDeclarationOccurrence | undefined;
+    readonly readonly: boolean;
+  }> | undefined = undefined;
+
+  declarationLookupVersionsByName: Map<string, number> | undefined = undefined;
+  functionLookupVersionsByName: Map<string, number> | undefined = undefined;
+  _closureScope: Rules | undefined = undefined;
+  callableLookupVersion = 0;
+  functionLookupVersion = 0;
+  declarationLookupVersion = 0;
+}
+
 export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
   static override childKeys: readonly string[] = ['rules'] as const;
 
   readonly rules: Node[];
 
-  functionsByName: Map<string, JsFunction | Func> | undefined;
   /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
   varsByName: Map<string, BindingEntry[]> | undefined;
-  /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
-  callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined;
-  directChildRuleEntries: Array<RulesEntryLike> | null | undefined;
-  directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined;
+  /**
+   * Cold callable/function/child-rule lookup state (see `RulesLookupState`). One
+   * slot instead of ~12 eager fields; lazily allocated on first WRITE by
+   * `ensureLookup()`. Reads go through the property getters below (never allocate).
+   */
+  private _lookup: RulesLookupState | undefined = undefined;
+
+  private ensureLookup(): RulesLookupState {
+    return this._lookup ??= new RulesLookupState();
+  }
+
+  get functionsByName(): Map<string, JsFunction | Func> | undefined {
+    return this._lookup?.functionsByName;
+  }
+
+  set functionsByName(value: Map<string, JsFunction | Func> | undefined) {
+    this.ensureLookup().functionsByName = value;
+  }
+
+  get callableLookupCache(): Map<string, CallableLookupEntry[] | null> | undefined {
+    return this._lookup?.callableLookupCache;
+  }
+
+  set callableLookupCache(value: Map<string, CallableLookupEntry[] | null> | undefined) {
+    this.ensureLookup().callableLookupCache = value;
+  }
+
+  get directChildRuleEntries(): Array<RulesEntryLike> | null | undefined {
+    return this._lookup?.directChildRuleEntries;
+  }
+
+  set directChildRuleEntries(value: Array<RulesEntryLike> | null | undefined) {
+    this.ensureLookup().directChildRuleEntries = value;
+  }
+
+  get directDeclarationChildEntries(): Array<RulesEntryLike> | null | undefined {
+    return this._lookup?.directDeclarationChildEntries;
+  }
+
+  set directDeclarationChildEntries(value: Array<RulesEntryLike> | null | undefined) {
+    this.ensureLookup().directDeclarationChildEntries = value;
+  }
+
   /**
    * Rules-only packed boolean state (11 formerly-per-instance booleans). One int
    * slot instead of eleven `false`/`false`… fields keeps the Rules shape narrow
@@ -1086,19 +1155,72 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
-  directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
-  directDeclarationLookupCache: Map<string, {
+  get directDeclarationsByName(): Map<string, Declaration[] | null> | undefined {
+    return this._lookup?.directDeclarationsByName;
+  }
+
+  set directDeclarationsByName(value: Map<string, Declaration[] | null> | undefined) {
+    this.ensureLookup().directDeclarationsByName = value;
+  }
+
+  get directDeclarationLookupCache(): Map<string, {
     readonly optionalMatch: DirectDeclarationOccurrence | undefined;
     readonly publicMatch: DirectDeclarationOccurrence | undefined;
     readonly readonly: boolean;
-  }> | undefined;
+  }> | undefined {
+    return this._lookup?.directDeclarationLookupCache;
+  }
+
+  set directDeclarationLookupCache(value: Map<string, {
+    readonly optionalMatch: DirectDeclarationOccurrence | undefined;
+    readonly publicMatch: DirectDeclarationOccurrence | undefined;
+    readonly readonly: boolean;
+  }> | undefined) {
+    this.ensureLookup().directDeclarationLookupCache = value;
+  }
 
   lookupVersion = 0;
-  declarationLookupVersion = 0;
-  declarationLookupVersionsByName: Map<string, number> | undefined;
-  callableLookupVersion = 0;
-  functionLookupVersion = 0;
-  functionLookupVersionsByName: Map<string, number> | undefined;
+
+  get declarationLookupVersion(): number {
+    return this._lookup?.declarationLookupVersion ?? 0;
+  }
+
+  set declarationLookupVersion(value: number) {
+    this.ensureLookup().declarationLookupVersion = value;
+  }
+
+  get declarationLookupVersionsByName(): Map<string, number> | undefined {
+    return this._lookup?.declarationLookupVersionsByName;
+  }
+
+  set declarationLookupVersionsByName(value: Map<string, number> | undefined) {
+    this.ensureLookup().declarationLookupVersionsByName = value;
+  }
+
+  get callableLookupVersion(): number {
+    return this._lookup?.callableLookupVersion ?? 0;
+  }
+
+  set callableLookupVersion(value: number) {
+    this.ensureLookup().callableLookupVersion = value;
+  }
+
+  get functionLookupVersion(): number {
+    return this._lookup?.functionLookupVersion ?? 0;
+  }
+
+  set functionLookupVersion(value: number) {
+    this.ensureLookup().functionLookupVersion = value;
+  }
+
+  get functionLookupVersionsByName(): Map<string, number> | undefined {
+    return this._lookup?.functionLookupVersionsByName;
+  }
+
+  set functionLookupVersionsByName(value: Map<string, number> | undefined) {
+    this.ensureLookup().functionLookupVersionsByName = value;
+  }
+
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
   /**
@@ -1147,7 +1269,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * not its canonical `sourceNode.parent` (which lacks them). See
    * parseman-wrapper-is-scope-identity.
    */
-  _closureScope: Rules | undefined;
+  get _closureScope(): Rules | undefined {
+    return this._lookup?._closureScope;
+  }
+
+  set _closureScope(value: Rules | undefined) {
+    this.ensureLookup()._closureScope = value;
+  }
+
   /**
    * Track whether this Rules subtree contains extend instructions.
    * Prep work for Track 5 segmented render selection.
@@ -1205,9 +1334,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // back-refs; they are derived, non-tree data, so drop them too.
     const json = super.toJSON();
     delete json._scopeFrame;
-    delete json.callableLookupCache;
-    delete json.directDeclarationLookupCache;
-    delete json.functionLookupCache;
+    // The cold lookup fields now live on `_lookup` (a nested struct). Drop the raw
+    // struct and re-emit only the non-cyclic, non-cache subset at top level so the
+    // serialized shape matches the pre-slim behavior (functions + child-entry
+    // surfaces + version counters kept; `callableLookupCache` /
+    // `directDeclarationLookupCache` / `_closureScope` back-ref dropped).
+    delete json._lookup;
+    const lookup = this._lookup;
+    if (lookup) {
+      json.functionsByName = lookup.functionsByName;
+      json.functionLookupVersion = lookup.functionLookupVersion;
+      json.functionLookupVersionsByName = lookup.functionLookupVersionsByName;
+      json.directChildRuleEntries = lookup.directChildRuleEntries;
+      json.directDeclarationChildEntries = lookup.directDeclarationChildEntries;
+      json.directDeclarationsByName = lookup.directDeclarationsByName;
+      json.declarationLookupVersion = lookup.declarationLookupVersion;
+      json.declarationLookupVersionsByName = lookup.declarationLookupVersionsByName;
+      json.callableLookupVersion = lookup.callableLookupVersion;
+    }
     return json;
   }
 
@@ -1266,38 +1410,30 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private resetDerivedState(source: Rules): void {
-    // Only preserve explicit function bindings across clones. This supports
-    // Less plugin compat without reusing derived declaration/callable lookup
-    // state, which must be rebuilt from AST nodes via lazy indexing.
+    // IMPORTANT: cloned Rules must rebuild their derived lookup state. Otherwise a
+    // clone can inherit empty/incorrect lookup maps, causing lookup misses (e.g. @c
+    // in detached-rulesets). The derive shell starts with `_lookup === undefined`
+    // (all cold lookup fields at their neutral value), so the only thing to carry
+    // across is the explicit function-binding subset below — everything else is
+    // already cleared by virtue of the struct being unallocated.
+    //
+    // Only preserve explicit function bindings across clones. This supports Less
+    // plugin compat without reusing derived declaration/callable lookup state,
+    // which must be rebuilt from AST nodes via lazy indexing.
     if (source.functionsByName) {
-      this.functionsByName = new Map(source.functionsByName);
-      this.functionLookupVersion = source.functionLookupVersion;
-      this.functionLookupVersionsByName = source.functionLookupVersionsByName
+      const lookup = this.ensureLookup();
+      lookup.functionsByName = new Map(source.functionsByName);
+      lookup.functionLookupVersion = source.functionLookupVersion;
+      lookup.functionLookupVersionsByName = source.functionLookupVersionsByName
         ? new Map(source.functionLookupVersionsByName)
         : undefined;
-    } else {
-      this.functionsByName = undefined;
-      this.functionLookupVersion = 0;
-      this.functionLookupVersionsByName = undefined;
     }
-
-    // IMPORTANT: cloned Rules must rebuild their derived lookup state.
-    // Otherwise, a clone can inherit empty/incorrect lookup maps, causing
-    // lookup misses (e.g. @c in detached-rulesets).
     this.varsByName = undefined;
-    this.callableLookupCache = undefined;
-    this.directChildRuleEntries = undefined;
-    this.directDeclarationChildEntries = undefined;
     // Clear all child-derived surface bits + _hasExtends/_hasReferenceImports in
     // one masked write. Deliberately leaves _bodyEvaluated and _registrationPrepared
     // untouched, matching the prior per-field resets (which did not reset those).
     this.rulesFlags &= ~R_DERIVED_STATE_MASK;
-    this.directDeclarationsByName = undefined;
-    this.directDeclarationLookupCache = undefined;
     this.lookupVersion = 0;
-    this.declarationLookupVersion = 0;
-    this.declarationLookupVersionsByName = undefined;
-    this.callableLookupVersion = 0;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
