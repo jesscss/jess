@@ -500,3 +500,12 @@ callable guard-filter (callable-guard.ts:227, callable-default-guard.ts:164) use
 keyword true/false guards; now `Condition.resultPasses`. mixins-guards guard-filter cases fixed but fixture still red on
 residuals: `~"..."` isequal spacing, list comma/space separator normalization, deferred ruleset-guard-namespace ordering.
 IN FLIGHT: value-trivia (whitespace/css-grid/rgba); nested-mixin (mixins-nested param arithmetic).
+
+## 2026-07-05 (alpha) — @plugin JS runtime UN-DEFERRED (design was already settled)
+Correction: the "stop here / maintainer-scoped sandbox" deferral was a misread. The design IS settled — plugin
+present → execute the @plugin JS; absent → throw the existing gate. That's exactly what the compat handler already
+does (delegate to an injected runtime via `loadLessPluginFileWithDeno`, throw otherwise). `JsPlugin`
+(packages/jess-plugin-js, index.ts:617/141) already exposes `importLessPlugin`+`supportedExtensions`+default `jsPlugin`
+— the duck-typed shape the handler searches for. So this is WIRING, not design/sandbox-building.
+IN FLIGHT: plugin-js-wire (add jsPlugin() to the plugin list; verify injection; probe bootstrap → does @plugin execute
++ render, or next blocker). This is the milestone-4 endgame (bootstrap.less → .css). Plus value-trivia, nested-mixin.
