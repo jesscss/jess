@@ -442,10 +442,15 @@ free. Raw-bitwise would cost DX across hundreds of sites for ~0 gain. Revisit ON
   WeakMaps `F_HAS_VALUESPANS`/`F_HAS_FIELDSPANS`, flat packed SMI arrays), so the node shape stays lean
   (`_spanStart`/`_spanEnd` inline only) AND eval's source-free nodes pay one bitwise-and to skip — the slim
   goal is met without deleting the feature. all-less 84→86 (both fixtures green), no regressions. The
-  residual `setFieldSpans` ~2.1% (re-profile) is PARSE-time WeakMap churn (parser stamps per-slot spans on
-  every multi-member node even when comment-free); the safe win is gating the parser stamp on actual
-  comment-presence — parser-package territory, parse-time (amortized in parse-once/render-many). **The
-  "DECIDED (owner): DROP fieldSpans/valueSpans" plan above (§ lines ~349-369) is SUPERSEDED by this revert.**
+  residual `setFieldSpans` ~2.1% (re-profile) was PARSE-time WeakMap churn (parser stamped per-slot spans on
+  every multi-member node even when comment-free). **LANDED (span-stamp-gate, `b19b66a92`): gate the
+  css-parser stamp on `spanMayContainComment(src, start, end)`** — a conservative superset of "has a real
+  comment" (`/*`|`//`; a `//` in a url/string is a harmless false-positive, a real comment is never missed).
+  Comment-free input now pays nothing; collapse bench ~266→~244ms median (~8%, matching a full no-op ceiling
+  ~231ms). Zero regressions (css-parser 188✓; less-parser + all-less same pre-existing fails; comments/
+  comments2 green — they carry comments so the gate stamps them). Parse-time cost, amortized in parse-once/
+  render-many. **The "DECIDED (owner): DROP fieldSpans/valueSpans" plan above (§ lines ~349-369) is SUPERSEDED
+  by the revert; the GATE is the perf answer, not deletion.**
 - **core-residuals** — `canReuseLeaf` field-read→flag (FAST-V8); other residuals deferred (complexity > sub-1%).
 - **doc-order gate** (cfdf829e6, post-trunk-sync) — `_assignRootDocumentOrder` now gated on root `_hasExtends`;
   extend-free sheets (the common case) skip the full-tree walk + `WeakMap<Ruleset,number>` alloc entirely. Map is
