@@ -1,5 +1,5 @@
 /**
- * JessParserParseman — thin adapter over the functional Jess parser.
+ * JessParser — thin adapter over the functional Jess parser.
  *
  * Exposes a stable `.parse(text, rule?)` returning `{ tree, errors, warnings }`
  * so callers (and the test corpus) don't depend on the functional entry's exact
@@ -16,7 +16,7 @@ export type ParseResult<T extends Node = Node> = {
   warnings: Array<{ message: string; deprecation?: string }>;
 };
 
-export class JessParserParseman {
+export class JessParser {
   constructor(_config?: JessParserConfig) {
     this.parse = this.parse.bind(this);
   }
