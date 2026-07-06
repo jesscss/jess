@@ -4526,7 +4526,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     const preSerializeRoot = sourceWasRoot ? printOptions?.preSerializeRoot : undefined;
     const serialize = (state: RulesRenderState): MaybePromise<string> => {
-      checkValidNodes(state.output?.rules, context);
+      checkValidNodes(state.output?.rules, context, sourceWasRoot);
       return isRenderBuffer(bufferOrOptions)
         ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
         : renderRulesStateToString(state, context, bufferOrOptions);

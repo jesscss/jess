@@ -26,6 +26,7 @@ export type JessErrorCode =
   | 'eval/bad-call-arity'
   | 'eval/type-mismatch'
   | 'eval/invalid-statement'
+  | 'eval/property-in-root'
   | 'extend/protected-boundary'
   | 'extend/not-found'
   | 'extend/not-accessible'
@@ -217,6 +218,12 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Value node is not valid as a statement',
     reason: '${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.',
     fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
+  }],
+
+  ['eval/property-in-root', {
+    summary: 'Properties must be inside selector blocks. They cannot be in the root',
+    reason: 'The property "${what}" was evaluated at the root — most often a mixin or detached ruleset call that dropped its declarations into the top level.',
+    fix: 'Put the property inside a selector block (e.g. call the mixin/detached ruleset from within a ruleset).'
   }],
 
   // Extend

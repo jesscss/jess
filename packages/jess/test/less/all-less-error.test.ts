@@ -30,12 +30,11 @@ const acceptedDivergences = new Map<string, string>([
 
   // Real should-error GAPS — Jess still ACCEPTS these with error options on;
   // each asserts KEEP-accepting, so a fix that closes it trips the test.
-  ['tests-error/eval/property-in-root.less', 'GAP: a property in the root should error'],
-  ['tests-error/eval/property-in-root2.less', 'GAP: a property in the root should error'],
+  // (property-in-root / property-in-root2 / detached-ruleset-3 GRADUATED — they
+  //  now error via checkValidNodes' root property-in-root check.)
   ['tests-error/eval/property-interp-not-defined.less', 'GAP: undefined @var in a property-name interpolation should error'],
   ['tests-error/eval/detached-ruleset-1.less', 'GAP: detached ruleset used on a property should error'],
   ['tests-error/eval/detached-ruleset-2.less', 'GAP: @a() detached call without [...] lookup should error'],
-  ['tests-error/eval/detached-ruleset-3.less', 'GAP: property/detached-call in the root should error'],
   ['tests-error/eval/css-guard-default-func.less', 'GAP: default() in a non-mixin CSS guard should error'],
   ['tests-error/eval/multiple-guards-on-css-selectors.less', 'GAP: a guard on a multi-selector rule should error'],
   ['tests-error/eval/multiple-guards-on-css-selectors2.less', 'GAP: a guard on a multi-selector rule should error'],
