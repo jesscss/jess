@@ -562,3 +562,13 @@ Less `%(fmt, args…)` printf-style string format has an ILLEGAL/ambiguous name 
 - fns implements ONE `sprintf`; parser lowers `%(…)` → `sprintf(…)`. CSS `format()` untouched.
 (The functions agent is making functions.less green with the underlying formatter now; the rename/lowering is this
 separate compat-pass refinement.)
+
+## 2026-07-05 (alpha) — if-boolean MERGED (board 81/93, core 2751/0, 0 flip)
+if/boolean/not/and/or implemented: IfCall/BooleanCall parser productions parse the condition through the GUARD
+sub-grammar (real Condition nodes; CondOr = comma-free GuardOr since `,` is the if-arg separator); iif widened to
+any Node/boolean via getBoolValue; new fns/logical.ts; detached-ruleset if-branches work. functions.less #boolean/#if
+block renders fully correct — fixture red ONLY on the `%()` lines now.
+**HELD (user design decision): `%()` — merge faithful PercentCall+existing-fn OR lower `%()`→interpolation.**
+Design settled on lowering (`%s`/`%d`/`%a`→bare interp; `%S/%D/%A`→escape-wrapped; args as Interpolated replacements =
+the `$(expr)` full-expression surface form, distinct from `$[key]` accessor). functions.less flips once `%` lands (if-boolean already in).
+IN FLIGHT: imports (bootstrap @import chain); comment-preservation (comments, comments2).
