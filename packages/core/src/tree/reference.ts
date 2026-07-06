@@ -3724,7 +3724,9 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         // `.$key` is not a valid Jess form. A base-less variable-interpolation
         // (`role: 'ident'`, e.g. `.widget-$[side]`) also brackets: `$[side]`. A
         // plain bare `$foo` (no target) has already emitted its `$` above.
-        if (target || this.role === 'ident') {
+        // (Role lives on `options.role` — the `this.role` field was removed in the
+        // dev merge that migrated role reads to `options.role`.)
+        if (target || this.options.role === 'ident') {
           w.add('[');
           emitReferenceSyntaxKey(this, printableKey, options);
           w.add(']');
@@ -3739,7 +3741,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       case 'property':
         // Property lookup on a target, and base-less property-interpolation
         // (`role: 'ident'`, e.g. `$['border-color']`), both render in brackets.
-        if (target || this.role === 'ident') {
+        if (target || this.options.role === 'ident') {
           w.add('[');
           emitReferenceSyntaxKey(this, printableKey, options);
           w.add(']');
