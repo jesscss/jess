@@ -1,9 +1,11 @@
 # Flag-Walk Deletion — audit & plan
 
-**Goal:** delete `propagateFlagsFrom` (`node-base.ts:684`) — the per-child flag-bubble
-crawl paid at construction AND re-paid at eval-time whenever a derived/eval node
-"recomputes its flags by crawling shared children." Every flag it computes is either
-removable, measured-worthless, or re-scopable to a narrower structure.
+**Goal:** achieve **zero copy-based eval** (owner invariant: nodes are ALWAYS shared — render
+walks the shared body and looks up values against the frame; no per-placement node copy). Deleting
+`propagateFlagsFrom` (`node-base.ts:684`) — the per-child flag-bubble crawl — is a CONSEQUENCE of
+this, because the flags exist to serve the copy path. **Any copy-based eval that remains today is IN
+SCOPE for this work to eliminate, not a dependency to wait on.** Every flag the walk computes is
+then removable, measured-worthless, or re-scopable.
 
 ```js
 // node-base.ts:684 — the walk we are killing
@@ -182,9 +184,16 @@ replacement signal." That framing was wrong: the reuse gate is a **mistake**, no
 always shared and their values are looked up at render against the frame; there is no share-vs-clone
 decision. So the reuse gate + clone/owned-surface machinery are deleted (Stage 3b) with no
 replacement, and `F_STATIC`/`F_NON_STATIC` have no surviving keep-reader — the flags delete outright
-(Stage 4). The only caveat is empirical, not architectural: confirm how much copy-based eval remains
-in the half-migrated tree before ripping the clone paths, so the invariant is enforced without
-regressing a path that hasn't finished migrating to live bindings yet.
+(Stage 4). Any copy-based eval still present in the half-migrated tree is NOT a gate — it is part of
+this work: the first step is to audit every clone/copy/reuse site in the eval path and eliminate
+each (share instead of copy) until copy-based eval is zero. That elimination is what makes the clone
+machinery, the reuse gates, and the static flags all fall away.
+
+**STEP 0 (the roadmap): copy-site audit.** Classify every `clone` / `cloneForPlacement` /
+`reuseLeaf` / `canReuseLeaf` / `deriveWithParts` / `ownRules`-style copy and every mixin/param
+placement copy as: {already-dead | live copy → eliminate (how) | thin structural placement that
+already shares its children}. That inventory is the ordered work-list to drive copy-based eval to
+zero; the flag-walk deletion (Stages 1–4 above) is its tail.
 
 ---
 
