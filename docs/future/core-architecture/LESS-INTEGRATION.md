@@ -697,3 +697,12 @@ plugin-js fn) left its guard entry lingering across the await → falsely blocke
 `@min` (blockedSource in scope-frame.ts:553). Genuine self-refs (`i: i+1`) read synchronously before eval returns, so
 still protected. bootstrap advances past @min. Bootstrap next wall: `Cannot operate on Paren` — arithmetic on a
 parenthesized expression (operation.ts/paren.ts, operand not unwrapped/evaluated before the op). → dispatched wall5.
+
+## 2026-07-06 (alpha) — bootstrap-wall5 MERGED (88/93, core 2760/0): unary-minus paren math
+grammar.ts GluedParen lookbehind: trailing `-` now only matches when terminating an identifier
+(`(?<=[)\]\w.#…]|[\w.#…]-)\(`), so `-(a/b)` falls through to the strict math Paren (was permissive slash-list →
+Negative.operate on unreduced Paren → "Cannot operate on Paren"). bootstrap advances.
+Bootstrap next wall: `Cannot operate on Any` (dimension.ts:118 via Operation.evaluateOperands) — a Dimension operating
+on an Any operand (grid/spacer math; operand stayed Any instead of a Num). → dispatched wall6.
+Bootstrap wall chain so far: parse ✓ @plugin ✓ nested-import-scope ✓ empty-Condition ✓ var-scope ✓ each-loop-vars ✓
+@min-async-guard ✓ operate-on-Paren ✓ → operate-on-Any (wall6).
