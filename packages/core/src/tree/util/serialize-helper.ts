@@ -18,7 +18,6 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector, SelectorLike } from '../selector.js';
-import { BasicSelector } from '../selector-basic.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 
@@ -535,17 +534,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     if (isBareAmp) {
       isTransparentWrapper = true;
     } else {
-      const cached = sel && !(sel instanceof Nil)
-        ? rs.composeHeaderSelector(
-            options,
-            typeof sel === 'string' ? new BasicSelector(sel) : sel,
-            undefined,
-            {
-              skipCurrentCachedParent: false,
-              skipSameSelectorCompose: false
-            }
-          )
-        : undefined;
+      const cached = rs.composePushedSelector(options);
       if (cached) {
         pushedComposed = true;
         pushedComposedSelector = cached;
