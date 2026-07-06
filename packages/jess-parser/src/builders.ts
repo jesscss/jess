@@ -21,6 +21,7 @@ import {
   If, For, While, Rules,
   Mixin, Call, List, Nil,
   Extend, ExtendFlag, BasicSelector,
+  SelectorCapture, SelectorList, Selector,
   type ForPattern, type ForIterable
 } from '@jesscss/core';
 import type { Span } from 'parseman';
@@ -60,6 +61,7 @@ export class JessGrammar extends CssParser {
       case 'MixinParam':     return this._buildJessMixinParam(children, rawChildren, loc(span));
       case 'MixinCall':      return this._buildJessMixinCall(children, loc(span));
       case 'AnonMixin':      return this._buildJessAnonMixin(children, loc(span));
+      case 'SelectorCapture': return this._buildJessSelectorCapture(children, rawChildren, loc(span));
       case 'Extend':         return this._buildJessExtend(children, rawChildren, loc(span));
       case 'Expression':     return this._buildJessExpression(children, loc(span));
       case 'Condition':      return this._buildJessCondition(children, loc(span));
@@ -684,6 +686,46 @@ export class JessGrammar extends CssParser {
     ) as unknown as Node;
   }
 
+  // ── Selector capture `*[…]` ──────────────────────────────────────────────────
+  // `*[.notice]` / `*[.a, .b]` → a core `SelectorCapture` wrapping a Selector node
+  // (renders back `*[…]`, NO `$`). The inner SelectorList child may arrive as a
+  // Selector node, a bare selector STRING (a lone `.notice` collapses to text in
+  // the CSS builder), or an array of items; coerce it to a real Selector so the
+  // capture's writeSyntax/eval have a node to work with.
+  private _buildJessSelectorCapture(
+    children: ReadonlyArray<Node | CSTLike>,
+    rawChildren: ReadonlyArray<CSTLike>,
+    location: LocationInfo
+  ): Node {
+    // The selector payload is the built SelectorList child, sitting between the `*`
+    // `[` and the `]` in `children`. It arrives as a bare array (the CSS builder
+    // returns `(Selector|string)[]` for a comma list), a Selector node, or a bare
+    // string (a lone `.notice` collapses to text). The `*`/`[`/`]` are leaf tokens.
+    const payload = children.find(
+      c => Array.isArray(c) || c instanceof Selector
+        || (typeof c === 'string' && c !== '*' && c !== '[' && c !== ']')
+        || (!isLeaf(c) && (c as CSTLike)._tag === 'node')
+    );
+    const selector = this._captureSelectorFrom(payload, location);
+    return new SelectorCapture(selector as never, undefined, location) as unknown as Node;
+  }
+
+  // Coerce a captured selector payload into a Selector NODE. The CSS SelectorList
+  // builder collapses a lone selector to a bare STRING, a complex/compound one to a
+  // Selector node, and a COMMA LIST to a plain array of items. Normalise all three:
+  // a string → BasicSelector; an array → SelectorList; a built Selector passes
+  // through.
+  private _captureSelectorFrom(payload: unknown, location: LocationInfo): Selector {
+    const toSel = (c: unknown): Selector =>
+      typeof c === 'string'
+        ? new BasicSelector(c, undefined, location) as unknown as Selector
+        : c as Selector;
+    if (Array.isArray(payload)) {
+      return SelectorList.create(payload.map(toSel) as never) as unknown as Selector;
+    }
+    return toSel(payload);
+  }
+
   // ── `$extend` statement ──────────────────────────────────────────────────────
   // `$extend <target> [, <target>]* [!exact];` → a core `Extend{ target, flag }`.
   // Target text is reassembled from the leaf run (`$extend`, `!exact`, `;`, and the
@@ -697,6 +739,19 @@ export class JessGrammar extends CssParser {
   ): Node {
     const items = spannedComponents(rawChildren);
     const flag = items.some(i => i.comp === '!exact') ? ExtendFlag.Exact : ExtendFlag.All;
+
+    // A capture (`$extend *[.sel];`) or a variable holding one (`$extend $type;`)
+    // arrives as a BUILT node target — use it directly. (These are single-target;
+    // the text-run path below handles literal-selector comma lists.)
+    const nodeTargets = children.filter(
+      c => !isLeaf(c) && ((c as Node).type === 'SelectorCapture' || (c as Node).type === 'Reference')
+    ) as Node[];
+    if (nodeTargets.length) {
+      const made = nodeTargets.map(t =>
+        new Extend({ target: t as never, flag } as never, {}, location) as unknown as Node
+      );
+      return made.length === 1 ? made[0]! : new List(made as never, undefined, location) as unknown as Node;
+    }
 
     // Group the selector-text leaves into per-target strings, splitting on `,`.
     const targets: Array<{ ns?: string; text: string }> = [];

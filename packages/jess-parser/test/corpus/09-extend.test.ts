@@ -65,4 +65,29 @@ describe('corpus/extend', () => {
           ]
       )`);
   });
+
+  it('`$extend $type;` → Extend whose target is a variable Reference', () => {
+    expectAstContains('.danger { $extend $type; }', `
+      (Extend
+        target:
+          (Reference
+            key: 'type'
+          )
+      )`);
+  });
+
+  it('`$extend *[.notice];` → Extend whose target is a SelectorCapture', () => {
+    expectAstContains('.danger { $extend *[.notice]; }', `
+      (Extend
+        target:
+          (SelectorCapture
+            selector:
+              (BasicSelector '.notice')
+          )
+      )`);
+  });
+
+  it('capture-target extend round-trips to `$extend *[.notice];`', () => {
+    expect(extendSyntax('$extend *[.notice];')).toBe('$extend *[.notice];');
+  });
 });

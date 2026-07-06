@@ -243,15 +243,32 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // (`$extend $type;`, where `$type: $*[.sel]`) waits on `$*[…]` (see NOTES).
   const extendNs = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\|/);
   const extendTargetPart = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
-  const extendTarget = parser({ trivia: rw }, sequence(
-    optional(extendNs), oneOrMore(extendTargetPart)
-  ));
+  // Target: a capture `*[.sel]`, a variable `$type` holding a capture, or a literal
+  // selector run (`.box` / `ns|.sel`). Capture/Reference tried first so they claim
+  // the run before the plain-selector fallback.
+  const extendTarget = choice(
+    g.SelectorCapture,
+    g.Reference,
+    parser({ trivia: rw }, sequence(optional(extendNs), oneOrMore(extendTargetPart)))
+  );
   const Extend = node('Extend',
     parser({ trivia: rw }, sequence(
       regex(/\$extend(?![-\w])/),
       extendTarget, many(sequence(literal(','), extendTarget)),
       optional(regex(/!exact(?![-\w])/)),
       optional(literal(';'))
+    )));
+
+  // ── Selector capture `*[…]` ──────────────────────────────────────────────────
+  // `*[.notice]` / `*[.a, .b]` — a selector-VALUED payload (core `SelectorCapture`,
+  // which serializes back as `*[…]`, NO `$` sigil; adjudicated). Appears in value
+  // position (`$type: *[.notice];`) and as an `$extend` target (`$extend *[.sel];`).
+  // The inner is a selector list; the builder coerces the (possibly string) inner
+  // selector to a proper Selector node so writeSyntax/eval have a real node.
+  const SelectorCapture = node('SelectorCapture',
+    noTrivia(sequence(
+      literal('*'), literal('['),
+      parser({ trivia: rw }, sequence(g.SelectorList, expect(literal(']'), ']')))
     )));
 
   // ── Anonymous mixins & functions ─────────────────────────────────────────────
@@ -283,7 +300,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
 
   // ── Values: prepend Jess `$` forms before the CSS value set ─────────────────
   const value = choice(
-    g.Expression, g.DollarInterp, g.AnonMixin, g.Reference,
+    g.Expression, g.DollarInterp, g.AnonMixin, g.SelectorCapture, g.Reference,
     g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue
   );
 
@@ -313,7 +330,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     elseClause, forRange,
     If, For, While,
     MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall,
-    AnonMixin, Extend,
+    AnonMixin, Extend, SelectorCapture,
     Stylesheet, Ruleset, declarationList
   };
 })]);

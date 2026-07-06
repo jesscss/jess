@@ -58,14 +58,19 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   corpus 07 (`eb6ec5c2b`).
 - Anonymous mixins `@() {}` / `@{}` + functions `@() > { … }` / `@() > <expr>`
   (single-expr normalised to a `return:` decl) — corpus 08 (`0ecdbba1f`).
-- `$extend` statement (`.sel`, `!exact`, `ns|sel`, comma list) — corpus 09
-  (`bddeb55ac`). Target wrapped in a `BasicSelector` (a bare string crashes
-  `Extend.writeSyntax`). `$extend $captured;` waits on `$*[…]`.
+- `$extend` statement (`.sel`, `!exact`, `ns|sel`, comma list, `$type` variable
+  target, `*[.sel]` capture target) — corpus 09 (`bddeb55ac` + capture commit).
+  Literal targets wrapped in a `BasicSelector` (a bare string crashes
+  `Extend.writeSyntax`); node targets (Reference/SelectorCapture) used directly.
+- Selector capture `*[.notice]` / `*[.a, .b]` / `*[.foo .bar]` — corpus 10. Core
+  `SelectorCapture` wrapping a coerced Selector node; renders `*[…]`, NO `$`
+  (adjudication #1). Inner: lone → BasicSelector, list → SelectorList, complex →
+  ComplexSelector. Read from `children` (the comma-list array collapses to `""` in
+  `spannedComponents`, so rawChildren is unusable for it).
 
-STILL TO BUILD (order: capture → `$apply` → `@-` at-rules → docs):
-- `*[…]` (selector capture, bare — see adjudication #1). Unlocks `$extend *[.sel]`
-  and the `$theme["$[foo]"]` dynamic-property key.
+STILL TO BUILD (order: `$apply` → `@-` at-rules → docs):
 - `$apply <selector-list>` (adjudication #2) — `$apply .a, .b`, never `$|…`.
+- `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
 - At-rules `@-compose` / `@-use` / `@-from` / `@-export` / `@-import`
   (`04-atrules.mdx`). `@-use` (Sass-module namespace form) and `@-from` (ESM
   `import (x as y)` / `import * as ns`) are DISTINCT rules (adjudication #3).
