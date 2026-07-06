@@ -647,7 +647,10 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // selector / accessor char — the args of a `.name(…)` / `#ns.x(…)` reference.
   // Parsed permissively; the Declaration builder reassembles the selector +
   // round-paren-args + square-paren-accessor items into a Reference/Call chain.
-  const GluedParen = node('Paren', parser({ trivia: rw }, sequence(regex('(?<=[)\\]\\w.#\\u0080-\\uffff-])\\('), g.permissiveParenBody)));
+  // A trailing `-` counts ONLY when it terminates an identifier (`.my-mixin-(…)`),
+  // never a standalone unary minus — `-(@a / 2)` is a Negative around a math Paren,
+  // so its `(` must fall through to the strict `g.Paren` (slash divides in-parens).
+  const GluedParen = node('Paren', parser({ trivia: rw }, sequence(regex('(?<=[)\\]\\w.#\\u0080-\\uffff]|[\\w.#\\u0080-\\uffff]-)\\('), g.permissiveParenBody)));
   const squareParenBody = parser({ trivia: rw }, sequence(optional(g.valueList), literal(']')));
   const SquareParen = node('SquareParen', parser({ trivia: rw }, sequence(literal('['), g.squareParenBody)));
   const anyValue = choice(ident, anyValueTok);
