@@ -82,8 +82,6 @@ const skippedFixtures: SkippedFixture[] = ([
   'tests-unit/selectors/selectors.less', // infinite loop (EvalState migration)
   'tests-unit/detached-rulesets/detached-rulesets.less', // async deadlock
   'tests-unit/functions-each/functions-each.less', // async deadlock
-  'tests-unit/layer/layer.less', // async deadlock
-  'tests-unit/lazy-eval/lazy-eval.less', // async deadlock
   'tests-unit/mixins/mixins.less', // async deadlock
   'tests-unit/extend-exact/extend-exact.less', // infinite loop in extend exact matching
   'tests-unit/mixins-important/mixins-important.less', // async deadlock
