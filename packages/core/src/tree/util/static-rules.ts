@@ -14,13 +14,11 @@ export function isPlainStaticRuleLeaf(node: Node): boolean {
   if (isNode(node, N.VarDeclaration) && node.hasFlag(F_STATIC) && !node.visible) {
     return true;
   }
-  if (!isNode(node, N.Declaration) || !node.hasFlag(F_STATIC)) {
-    return false;
-  }
-  const assign = node.options.assign;
-  const normalizedFromAssign = node.options.normalizedFromAssign;
-  return normalizedFromAssign === undefined
-    && (assign === undefined || assign === ':');
+  // Merge declarations (`+:` / `&,:` / `&_:` or normalized-from-assign) are never
+  // F_STATIC — the constructor marks them F_NON_STATIC because they need
+  // structural coalescing during eval — so the F_STATIC gate below already
+  // excludes them; no separate assign check is required.
+  return isNode(node, N.Declaration) && node.hasFlag(F_STATIC);
 }
 
 export function canRenderStaticRulesDirectly(rules: StaticRulesLike): boolean {
