@@ -580,3 +580,16 @@ replacement, `%S`/`%D`/`%A`→Call('escape',[arg]) URL-encode (new fns/escape.ts
 Remaining 11 (4 DEFERRED: extend x3, import-remote): comments, comments2, css-3, import-inline, import-interpolation,
 media, mixins-guards. IN FLIGHT: imports, comment-preservation, css-3.
 dev is ~5 behind (root-statement, rulesets, if-boolean, percent-lower + css-escapes-test) — batch-cherry-pick pending.
+
+## 2026-07-05 (alpha) — comment-preservation MERGED → board 83/93 (core 2751/0)
+css-parser records lifted-standalone-Comment ranges (getLiftedCommentRanges); jess commentAwareTrivia hides only those,
+passes INLINE comment runs to the serializer (which already had emitCommentTriviaBeforeDelimiter etc.). Also: trailing
+top-level comment, same-line standalone before root ruleset, at-rule prelude leading comment. **media GREEN** (comment
+in @media body was its last residual).
+**comments, comments2 → DEFERRED (strings-not-nodes provenance):** remaining cases are comments INSIDE selectors /
+between selector-list members, and a trailing comment after a BARE-STRING KEYWORD value (`a: yes /*c*/`). Selector
+members + bare keywords are plain JS strings with no node identity; `setValueSpans`/`valueSpansOf` are no-ops in core,
+so those tokens can't carry a provenance span through eval. Needs eval span-provenance (node identity for those tokens)
+— materially beyond comment work, risks the green trivia suites. DEFERRED-with-rationale.
+Remaining 10 → 6 DEFERRED (extend x3, import-remote, comments, comments2). Tractable: css-3, import-inline,
+import-interpolation, mixins-guards. IN FLIGHT: imports, css-3. Target "green-modulo-deferred" = 87/93.
