@@ -344,3 +344,22 @@ on the node** — then placement never mutates a shared node, every node shares,
 This IS the single-render-pass / structural-state-to-frame rework (Phase D + C-late) — a multi-slice project, not
 a quick C-early. Next step: an INVESTIGATION of `inherit`'s mutations — what each writes, who reads it, whether it
 can be threaded off the node — returning a feasibility + design, not a blind rewrite.
+
+### ⚠⚠ ENDGAME VERDICT (inherit investigation, `INHERIT_MUTATION_DESIGN.md`)
+`inherit` is NOT the lever and threading its mutations off-node is NOT worth it. Regime split: ~95% of ~90
+`inherit` sites are FRESH-receiver (`new X().inherit(this)` — already always-share-safe); only `selector-complex.ts:367`
+(collapse-survivor) still hands `inherit` a shared node (extend already hands a fresh `cloneForPlacement` shell, so
+extend is NOT a blocker). The intrinsic mutations (source span + F_VISIBLE/F_EXTENDED/F_GENERATED) are read at
+SERIALIZE time off the node, and extend needs the SAME shared source to carry DIFFERENT flags per match — one node
+can't hold two states, so this is per-output-node identity, not per-frame context. Relocating = per-node placement
+record threaded through ~35 serializers + the render walk = bigger than the copy it removes. REJECTED.
+- **Optional cheap tidy (I2):** make collapse-survivor (`selector-complex.ts:367`) hand `inherit` a fresh shell with
+  B2 `shareChildren` frozen children — then `inherit` only ever mutates fresh nodes (invariant clean). Small copy
+  reduction, does NOT unlock the flag deletion.
+- **THE REMAINING GATE = Phase D (single-render-pass / dynamic-leaf-share), NOT inherit.** The reuse gates
+  (`canReuseAsLeaf`/`!F_NON_STATIC`) hang on whether a DYNAMIC leaf can be shared at render (looked up per-frame)
+  instead of copied — which needs eval folded into the render walk (structural/registration state in the frame,
+  serialize reads provenance per output position). That is the multi-week, high-regression-risk rework touching
+  serialize/sourcemap/extend/eval. **DECISION POINT (owner):** commit to Phase D, or bank Phase A+B and close the
+  flag-walk goal as "deletable flags gone (F_MAY_ASYNC, F_AMPERSAND off the walk); F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD
+  gated on the single-render-pass project."
