@@ -151,7 +151,21 @@ export function getExtendMatchWork(): number {
   return extendMatchWork;
 }
 
+// Test-only escape hatch: when disabled, `beginExtendMatchPass` installs no
+// caches so `wouldExtendChange`/`decomposeFind` recompute every probe. Used by
+// the memo differential test to render the same sheet with the memo ON vs OFF
+// and assert byte-identical CSS. Never toggled in production paths.
+let extendMatchMemoEnabled = true;
+export function setExtendMatchMemoEnabled(enabled: boolean): void {
+  extendMatchMemoEnabled = enabled;
+}
+
 export function beginExtendMatchPass(): void {
+  if (!extendMatchMemoEnabled) {
+    findSpecCache = undefined;
+    wouldExtendChangeCache = undefined;
+    return;
+  }
   findSpecCache = new Map();
   wouldExtendChangeCache = new Map();
 }
