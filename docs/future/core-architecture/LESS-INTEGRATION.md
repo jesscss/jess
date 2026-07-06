@@ -653,3 +653,11 @@ Bootstrap empty-Condition is NOT the guard-grammar bug: the compound guard parse
 (condition.ts:155, empty Condition TEMPLATE) reproduces ONLY with @jesscss/plugin-js wired + full _reboot scope, via
 `_transition`'s `each(@transition, #(){...})` detached-ruleset body guard eval. → deep core-eval/detached-ruleset/each
 clone issue. Dispatched less/bootstrap-wall to repro WITH plugin-js + fix. Milestone-4 critical path.
+
+## 2026-07-05 (alpha) — bootstrap-wall #1 MERGED (86/93, core 2760/0): Condition.clone
+Condition.clone() override rebuilds the array value [left,op,right] (base Node.clone object-rebuild {left,right} emptied
+it since Condition reads value[0..2] + operator outside childKeys). Empty-Condition throw when a guard is placement-
+copied per each() iteration → FIXED. **Bootstrap advances PAST _reboot.**
+Bootstrap next wall: `ReferenceError: 'enable-responsive-font-sizes' is not defined` at Reference.evalNode (scope-
+resolution) — a bootstrap `@enable-responsive-font-sizes` var (defined in _variables) not visible in a guard-eval scope.
+Free-var-through-guard / import-scope class. → dispatched less/bootstrap-wall2. Milestone-4 chain continues.
