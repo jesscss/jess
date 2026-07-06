@@ -449,3 +449,12 @@ DEFER: extend/extend-nest/extend-selector (root-shape-#2); import-remote (remote
 `NsAccessor` production binds the accessor as one operand before arithmetic folding. Both PARSE fixes (less-parser).
 Flipped namespacing-operations + property-targeted. Core 2737/0.
 NEXT dispatched: namespace-resolution (namespacing-3, namespacing-7).
+
+## 2026-07-05 (alpha) — namespace-resolution MERGED → board 71/93 (core 2742/0)
+namespacing-7 green. Key: space-value named-arg built a bare array → `hasFlag` crash that dropped ALL of
+namespacing-3 AND namespacing-7 output — fixed by wrapping in Sequence (completes the param/arg value-is-Node
+invariant alongside keyword-value). Also: bare-keyword guard operands, ns-accessor in guards, keyword true/false
+truthiness (condition.ts getBoolValue + Condition.resultPasses). namespacing-3 now renders all but ONE residual:
+`@media (min-width: @breakpoints[mobile])` — indexed accessor NOT consumed in query-prelude value position (shared
+css QueryFeature grammar); same as skipped namespacing-media. → next cluster.
+NEXT dispatched: at-rule/media-prelude value (media, namespacing-3 residual).
