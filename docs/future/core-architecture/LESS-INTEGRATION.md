@@ -428,7 +428,7 @@ future sub-agent worktrees branch from it. dev remains the canonical fix line; a
 - IN FLIGHT: `less/color-fns` (off dev 0ca270832) — red()/channel eval + `red (` spacing.
 
 ## 2026-07-05 (alpha) — fresh triage of 25 failures → cluster roadmap (board 68/93)
-IN FLIGHT: color-fns (basic/rgba/comprehensive/modern — red()/channel eval + spacing); accessor-lookup
+MERGED: accessor-lookup (namespacing-operations + property-targeted green, 68→70). IN FLIGHT: color-fns; namespace-resolution
 (namespacing-operations `#ns.opt[val1]` + property-targeted `$color` — reference eval).
 Remaining clusters to dispatch (disjoint batches; HOT reference/scope-frame ones SEQUENCE):
 - **serialize/whitespace (css-grid, whitespace, modern)** — multi-line value newline collapse + color-calc spacing;
@@ -443,3 +443,9 @@ Remaining clusters to dispatch (disjoint batches; HOT reference/scope-frame ones
 - **imports (import-inline, import-interpolation)** — @import not inlined + var-interpolated import path.
 - **rulesets** — ruleset `.selector` not combined into `:is()` via call.
 DEFER: extend/extend-nest/extend-selector (root-shape-#2); import-remote (remote HTTPS — CONFIRM expected-fail).
+
+## 2026-07-05 (alpha) — accessor-lookup MERGED → board 70/93
+`$color` = Reference head widened to `choice(lessVar, propRef)` → builds index accessor; `#ns.opt[k]` = new
+`NsAccessor` production binds the accessor as one operand before arithmetic folding. Both PARSE fixes (less-parser).
+Flipped namespacing-operations + property-targeted. Core 2737/0.
+NEXT dispatched: namespace-resolution (namespacing-3, namespacing-7).
