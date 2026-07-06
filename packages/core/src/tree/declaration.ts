@@ -44,12 +44,20 @@ function isIdentifierChar(value: string | undefined): boolean {
 
 export const enum AssignmentType {
   Default = ':',
-  Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
+  // Jess VARIABLE `$foo +: v` is compound assignment — sugar for `$foo: $foo + v`;
+  // what `+` does is delegated to `$foo`'s node type (number → add, list → concat,
+  // string → join, …). Eval builds a `+` Operation on the current value (see
+  // `case AssignmentType.Add`). NOTE: for a plain Less PROPERTY Declaration
+  // (`background +: …`) the same op is the separate Less comma-merge — that path is
+  // guarded by `this.type === 'Declaration'` and is unaffected by the Jess meaning.
+  Add = '+:',
   // Subtract = '-:',      // math subtraction, like -= in JS
   // Multiply = '*:',      // math multiplication, like *= in JS
   // Divide = '/:',        // math division, like /= in JS
   CondAssign = '?:',       // assign only when no value is already defined
-  SetGlobal = ':=',        // non-shadowing/global: reassign the existing outer binding (eval TBD)
+  // Note: `$foo := bar` (global/non-shadowing assign) is NOT an AssignmentType —
+  // it's core's `setDefined` option on the VarDeclaration (`:=` is synthesized in
+  // serialization from `setDefined && assign === ':'`).
   // CondAdd = '?+:',      // add if defined, otherwise assign
   // CondSubtract = '?-:', // subtract if defined, otherwise assign
   // CondMultiply = '?*:', // multiply if defined, otherwise assign

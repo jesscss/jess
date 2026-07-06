@@ -133,23 +133,46 @@ Implementation:
 - **`$foo?:` conditional / default-assignment** — Jess's equivalent of SCSS
   `!default` (NOT Jess). Serialization normalized to the canonical GLUED form:
   `$foo?: v` renders with NO space before the `:` (the spaced `$foo ?: v` authored
-  form normalizes to it). Same for merge-assign `$list+:`. Fix: `isJessGluedAssign`
-  in `declaration.ts` glues `CondAssign`/`Add` only; Less `:=`/`&,:`/`&_:` stay
-  spaced (kept `$one := three` test green).
-- **`$foo := bar` global (non-shadowing) assign** — reassigns the existing outer
-  binding rather than shadowing. New `AssignmentType.SetGlobal = ':='`; grammar
-  `assignOp` gains `:=` (BEFORE `:` so it wins over `:` + a `=`-led value — was a
-  silent mis-parse). Round-trips SPACED (`$foo := bar`, canonical). Builder sets
-  `assign: ':='` like `?:`/`+:`.
-- **`:=` eval semantics (non-shadowing / reassign-outer-binding) TBD** — parse +
-  serialize only for now.
-- **Reconcile `:=` with the doc's `$^foo:` linear-set.** `02-variables.mdx` §"Set
-  linearly" documents non-shadowing assignment as `$^color: blue` (the `^`
-  linear-set). The user settled `$foo := bar` as the operator spelling of the same
-  intent — the two overlap. Docs now cross-link them (an info box); the user should
-  decide whether `$^:` and `:=` coexist or one supersedes the other at eval time.
+  form normalizes to it). Same for compound-add `$list+:`. Fix: `isJessGluedAssign`
+  in `declaration.ts` glues `CondAssign`/`Add` only; `:=` (setDefined) and Less
+  `&,:`/`&_:` stay spaced (kept `$one := three` test green).
+- **`$foo +: v` is COMPOUND-ADD, not append/merge** — sugar for `$foo: $foo + v`;
+  `+` is delegated to `$foo`'s node type (number→add, list→concat, string→join, …).
+  Core ALREADY implements this correctly and the variable/property split is clean:
+  `case AssignmentType.Add` in `declaration.ts` uses `new Operation([ref, '+', v])`
+  for a VARIABLE (the `else` branch), and the Less comma-merge `List` only for a
+  plain PROPERTY `Declaration` (`this.type === 'Declaration'` guard, ~1726). The
+  only fix needed was the mislabeled enum comment (was "merges lists/sequences/
+  collections") — reworded to compound-add. No flag: `AssignmentType.Add` carries
+  both meanings cleanly via the node-type guard.
+- **`$foo := bar` global (non-shadowing) assign — reuses core `setDefined`** (NOT a
+  new AssignmentType; `SetGlobal` was deleted as a redundant duplicate). Builder
+  sets `setDefined: true` on the VarDeclaration; core's existing setDefined eval
+  (rules.ts ~4723) resolves the binding outward and writes its cell — eval already
+  exists. Grammar `assignOp` gains `:=` (BEFORE `:` so it wins over `:` + a `=`-led
+  value — was a silent mis-parse). Round-trips SPACED (`$foo := bar`) via the
+  setDefined serialization path (`setDefined && assign === ':'` → `:=`).
+
+## ⚠️ Semantics gaps to FLAG (found while verifying `:=` / `$!`)
+- **`setDefined` (`:=`) does NOT reassign the NEAREST outer binding in a 3-level
+  scope.** Verified: `$x: one` (root); `.a { $x: two; .b { $x := three; inner: $x };
+  after: $x }` → `.b` reads `three` but `.a`'s `after` still reads `two` (NOT
+  three). The GLOBAL case works (`$c: red` root, `$c := blue` in `.btn`, `.box`
+  reads blue). So setDefined behaves like `!global`-ish / writes a local-ish cell,
+  NOT strictly "reassign nearest outer binding". If the user's intent for `:=` is
+  "reassign the *nearest* enclosing binding" (JS block-scope semantics), there is a
+  gap between that and setDefined's actual behavior — user should reconcile.
+- **`$!foo: bar;` live-binding ASSIGNMENT does NOT parse.** The live-binding
+  REFERENCE `$!foo` (value position, e.g. `color: $!foo`) parses fine, but the
+  ASSIGNMENT form `$!foo: bar;` fails ("Unexpected input") — `dollarDeclName`
+  (`/\$-?[ident]/`) doesn't allow the `!` after `$`. Docs now present `$!foo: bar`
+  as the live-binding assignment (replacing retired `$^`), but the PARSER doesn't
+  accept it yet. Fix would be a one-token grammar change (`\$!?-?…`) PLUS eval for
+  "assign through the live binding" — deferred/flagged rather than silently added
+  (eval unvalidated). `$^` linear-set is fully RETIRED from the docs.
 
 FOLLOW-UPS (out of the adjudicated scope; not yet built):
+- `$!foo: bar;` live-binding assignment parse + eval (see flag above).
 - `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
   `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the
   StyleImportValue.with node).

@@ -324,13 +324,21 @@ export class JessGrammar extends CssParser {
       ? AssignmentType.Add
       : op === '?:'
         ? AssignmentType.CondAssign
-        : op === ':='
-          ? AssignmentType.SetGlobal
-          : undefined;
+        : undefined;
+
+    // `$foo := bar` is the global (non-shadowing) assign: reuse core's existing
+    // `setDefined` (documented in declaration-var.ts as `Jess: $foo := 1`), which
+    // already implements the eval — assign through the resolved outer binding
+    // rather than shadowing. It renders back as `:=` (spaced) via the setDefined
+    // serialization path; `assign` stays the default `:`.
+    const setDefined = op === ':=';
 
     return new VarDeclaration(
       { name, value, important } as never,
-      assign ? { assign } : {},
+      {
+        ...(assign ? { assign } : {}),
+        ...(setDefined ? { setDefined: true } : {})
+      },
       location
     ) as unknown as Node;
   }

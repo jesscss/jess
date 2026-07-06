@@ -33,20 +33,20 @@ name (except `:=`, which is spaced):
 | --- | --- | --- |
 | `$foo: value` | assign | normal declaration (scoped) |
 | `$foo?: value` | default-assignment | assign only if `foo` is not already defined. This is Jess's equivalent of SCSS `!default` (which is not Jess). |
-| `$foo+: value` | merge-assign | merge into `foo` if it already exists (lists / sequences / collections) |
-| `$foo := value` | global (non-shadowing) assign | reassign the existing outer binding rather than creating a new shadowing local |
+| `$foo+: value` | compound-add | sugar for `$foo: $foo + value`. What `+` does is delegated to `$foo`'s type — number → add, list → concat, string → join, etc. |
+| `$foo := value` | global (non-shadowing) assign | reassign the existing binding (resolved outward) rather than creating a new shadowing local |
 
 ```scss
 $foo?: 1;        // sets foo to 1 only if it wasn't already defined
-$list+: 1, 2;    // merges 1, 2 into the existing list
-$foo := bar;     // reassign the outer `foo`, do not shadow
+$n+: 1;          // $n: $n + 1  (compound-add; `+` follows $n's type)
+$foo := bar;     // reassign the existing `foo`, do not shadow
 ```
 
 :::info
 
-`$foo := bar` and the linear set `$^foo: bar` (see [Set linearly](#set-linearly))
-both write the existing outer binding instead of shadowing. `:=` is the direct
-operator spelling of that intent.
+`$foo := bar` is the operator form of a non-shadowing assignment. `$!foo: bar`
+(the `$!` [live-binding](#live-binding) form) is the related "assign the live
+binding" spelling.
 
 :::
 
@@ -88,36 +88,22 @@ Like CSS and Less, Jess variables have a value per scope. This is similar to how
   </TabItem>
 </Tabs>
 
-## Linear variables
+## Live binding
 
-Sass evaluates more like PHP than CSS, so variables do not have a value per scope. Instead, they have a linear value, which is evaluated from the current scope upwards. To support Sass migration, Jess supports this too!
+By default a `$var` reference reads the value the variable had *at that point* in
+the scope. Sometimes you want the **live** value — the latest value the variable
+holds, even if it is reassigned later in the same scope. Jess writes this with the
+`$!` sigil.
 
-Linear variables are evaluated (and can be set) linearly, using `^`.  (You can think of `^` like the "upwards pointer" to the declared variable.)
-
-:::info
-
-In most cases, you shouldn't need this feature, unless you're mutating the value of a variable after setting within access to the same scope. However, it's useful for some cases, and necessary for supporting Sass's variable lookup behavior.
-
-:::
-
-### Get linearly
+Reading `$!foo` yields the live value:
 
 <Tabs>
   <TabItem value="jess" label="Jess">
     ```scss
     .btn {
       $color: red;
-      color: $^color; // value is red
-      $color: blue;
-    }
-    ```
-  </TabItem>
-  <TabItem value="less" label="Less (unsupported)">
-    ```scss
-    .btn {
-      @color: red;
-      color: @color; // value is blue
-      @color: blue;
+      color: $!color; // live: reflects the latest value
+      $color: blue;   // color resolves to blue
     }
     ```
   </TabItem>
@@ -125,28 +111,23 @@ In most cases, you shouldn't need this feature, unless you're mutating the value
     ```scss
     .btn {
       $color: red;
-      color: $color; // value is red
+      color: $color; // value is red (read at this point)
       $color: blue;
     }
     ```
   </TabItem>
 </Tabs>
 
-### Set linearly
-
-Similar to getting, you can set previously-declared variables using `^`. Jess will search upwards linearly and outwardly (by scope), and override the last known declaration. Among stylesheet languages, this feature is unique to Jess, but is more familiar to those used to conventional programming languages.
-
-Note: this ***can*** be used as a replacement for Sass's `!global` ***if*** the referenced variable was global.
-
-For example:
+You can also **assign the live binding** — reassign an existing outer variable
+rather than shadowing it — with `$!foo: value`. This is the non-shadowing
+counterpart to the [`:=` operator](#assignment-operators):
 
 <Tabs>
   <TabItem value="js" label="JavaScript">
     ```js
     let color = 'red';
     {
-      // Do not shadow, but assign
-      color = 'blue';
+      color = 'blue'; // do not shadow, reassign
     }
     console.log(color); // blue
     ```
@@ -155,8 +136,7 @@ For example:
     ```scss
     $color: red;
     .btn {
-      // Do not shadow, but assign
-      $^color: blue;
+      $!color: blue; // reassign the existing `color`, do not shadow
     }
     .box {
       color: $color; // blue
@@ -167,8 +147,7 @@ For example:
     ```scss
     $color: red;
     .btn {
-      // Do not shadow, but assign
-      $color: blue !global;
+      $color: blue !global; // Sass's !global
     }
     .box {
       color: $color; // blue

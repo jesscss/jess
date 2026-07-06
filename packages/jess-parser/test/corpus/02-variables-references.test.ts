@@ -73,15 +73,17 @@ describe('corpus/variables', () => {
     expect(varDeclSyntax('$x ?: 1;')).toBe('$x?: 1');
   });
 
-  it('global (non-shadowing) assign := ', () => {
-    // `$foo := bar` reassigns the existing outer binding rather than shadowing.
-    // `:=` must win over `:` + a `=`-led value (was a silent mis-parse). Eval
-    // semantics (non-shadowing) are deferred — parse + serialize only (see NOTES).
+  it('global (non-shadowing) assign := (core setDefined)', () => {
+    // `$foo := bar` reassigns the existing binding (resolved outward) rather than
+    // shadowing. It reuses core's existing `setDefined` (documented as `Jess:
+    // $foo := 1`), which already has eval — NOT a new AssignmentType. `:=` must
+    // win over `:` + a `=`-led value (was a silent mis-parse).
     expectAstContains('$foo := bar;', `
       (VarDeclaration
-          assign: ':='
+          setDefined: true
         name: 'foo'`, { showOptions: true });
-    // Round-trips SPACED — `$foo := bar` — the user's canonical spelling.
+    // Round-trips SPACED — `$foo := bar` — the user's canonical spelling. (`:=` is
+    // synthesized from setDefined in serialization; assign stays the default `:`.)
     expect(varDeclSyntax('$foo := bar;')).toBe('$foo := bar');
   });
 

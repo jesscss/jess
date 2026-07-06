@@ -89,7 +89,9 @@ Less-style variable declarations will be converted to Jess-style variable declar
 
 :::info
 
-The caret in Jess `^` is used to only look upwards for variables, not per scope. That's how Sass variable lookups work.
+The `$!` live-binding sigil in Jess reads the latest (live) value of a variable
+rather than its value at that point in the scope. That matches how Sass variable
+lookups behave.
 
 :::
 
@@ -101,7 +103,7 @@ The caret in Jess `^` is used to only look upwards for variables, not per scope.
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $^color;
+  value: $!color;
   ```
   </div>
 </div>
