@@ -609,7 +609,8 @@ function isInstructionVisibleForRoot(
     extendRoot?: Rules;
     fromReferenceScope: boolean;
   },
-  getCachedVisibleRoots?: (root: Rules) => Set<Rules>
+  getCachedVisibleRoots?: (root: Rules) => Set<Rules>,
+  isSameOrDescendant?: (rulesetRoot: Rules, extendRoot: Rules) => boolean
 ): boolean {
   if (!instruction.extendRoot) {
     return false;
@@ -623,7 +624,10 @@ function isInstructionVisibleForRoot(
   if (instruction.extendRoot === rootRules) {
     return true;
   }
-  if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
+  const sameOrDescendant = isSameOrDescendant
+    ? isSameOrDescendant(rootRules, instruction.extendRoot)
+    : context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot);
+  if (sameOrDescendant) {
     return true;
   }
   const visibleRoots = getCachedVisibleRoots
@@ -719,12 +723,34 @@ export function processExtends(context: Context): void {
       return cached;
     };
 
+    // The extend-root graph (childrenRoots/layerName/isProtected) is fully built
+    // during eval and STABLE for the whole processExtends pass, so
+    // isSameOrDescendantRoot(rootRules, extendRoot) is invariant here. It is the
+    // O(R × I × depth) driver — a recursive descendant walk run once per
+    // (root × extend-instruction) pair. Memoize it per (extendRoot, rootRules)
+    // for this pass. Pass-scoped: the cache is discarded when processExtends
+    // returns, so no cross-render staleness is possible.
+    const sameOrDescendantCache = new Map<Rules, Map<Rules, boolean>>();
+    const getCachedSameOrDescendant = (rulesetRoot: Rules, extendRoot: Rules): boolean => {
+      let byRuleset = sameOrDescendantCache.get(extendRoot);
+      if (!byRuleset) {
+        byRuleset = new Map<Rules, boolean>();
+        sameOrDescendantCache.set(extendRoot, byRuleset);
+      }
+      let cached = byRuleset.get(rulesetRoot);
+      if (cached === undefined) {
+        cached = context.extendRoots.isSameOrDescendantRoot(rulesetRoot, extendRoot);
+        byRuleset.set(rulesetRoot, cached);
+      }
+      return cached;
+    };
+
     for (const [rootRules, rulesetSet] of rulesetsByRoot) {
       if (!rootRules) {
         continue;
       }
       const visibleExtends = instructions.filter(instruction =>
-        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
+        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots, getCachedSameOrDescendant)
       );
       if (!visibleExtends.length) {
         continue;
