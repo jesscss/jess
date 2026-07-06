@@ -271,6 +271,21 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
       parser({ trivia: rw }, sequence(g.SelectorList, expect(literal(']'), ']')))
     )));
 
+  // ── `$apply` — selectors as mixins ───────────────────────────────────────────
+  // `$apply .rounded, .shadow;` — applies (calls) rulesets as mixins. Surface is
+  // `$apply <selector-list>` (space after `$apply`), NEVER `$|…` (adjudicated).
+  // Each listed selector lowers to a mixin CALL of the shape `$ > *[.sel]()` — a
+  // `Call` whose name is a base-less `type:'mixin'` Reference keyed by a selector
+  // capture (`$apply .foo` ≈ `$ > *[.foo]`). A comma list → one Call per selector.
+  const applyTargetPart = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
+  const applyTarget = parser({ trivia: rw }, oneOrMore(applyTargetPart));
+  const Apply = node('Apply',
+    parser({ trivia: rw }, sequence(
+      regex(/\$apply(?![-\w])/),
+      applyTarget, many(sequence(literal(','), applyTarget)),
+      optional(literal(';'))
+    )));
+
   // ── Anonymous mixins & functions ─────────────────────────────────────────────
   // A nameless Mixin in VALUE position, started with `@(` or `@{`. Four shapes:
   //   @() { … }          anon mixin (params, block body)
@@ -307,7 +322,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // ── Root + rule bodies (re-declared so Jess `rw`/`//` + `$` items apply) ─────
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
-      g.Extend, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
+      g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
       g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset
     ))));
 
@@ -315,7 +330,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}'))));
 
   const declarationList = parser({ trivia: rw }, many(choice(
-    g.Extend, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
+    g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
     g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
   )));
@@ -330,7 +345,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     elseClause, forRange,
     If, For, While,
     MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall,
-    AnonMixin, Extend, SelectorCapture,
+    AnonMixin, Extend, SelectorCapture, Apply,
     Stylesheet, Ruleset, declarationList
   };
 })]);

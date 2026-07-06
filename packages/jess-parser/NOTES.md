@@ -68,8 +68,13 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   ComplexSelector. Read from `children` (the comma-list array collapses to `""` in
   `spannedComponents`, so rawChildren is unusable for it).
 
-STILL TO BUILD (order: `$apply` → `@-` at-rules → docs):
-- `$apply <selector-list>` (adjudication #2) — `$apply .a, .b`, never `$|…`.
+- `$apply <selector-list>` — corpus 11. `$apply .a, .b` (never `$|…`,
+  adjudication #2); each selector lowers to a `$ > *[.sel]()` mixin Call (name is a
+  base-less `type:'mixin'` Reference keyed by a `SelectorCapture`). Comma list → a
+  List of Calls.
+
+STILL TO BUILD (order: `@-` at-rules → docs):
+- At-rules `@-compose` / `@-use` / `@-from` / `@-export` / `@-import` (see below).
 - `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
 - At-rules `@-compose` / `@-use` / `@-from` / `@-export` / `@-import`
   (`04-atrules.mdx`). `@-use` (Sass-module namespace form) and `@-from` (ESM

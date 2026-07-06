@@ -63,6 +63,7 @@ export class JessGrammar extends CssParser {
       case 'AnonMixin':      return this._buildJessAnonMixin(children, loc(span));
       case 'SelectorCapture': return this._buildJessSelectorCapture(children, rawChildren, loc(span));
       case 'Extend':         return this._buildJessExtend(children, rawChildren, loc(span));
+      case 'Apply':          return this._buildJessApply(rawChildren, loc(span));
       case 'Expression':     return this._buildJessExpression(children, loc(span));
       case 'Condition':      return this._buildJessCondition(children, loc(span));
       case 'JessKeyword':    return this._valueKeyword((children.find(isLeaf)?.value) ?? '', loc(span)) as unknown as Node;
@@ -799,6 +800,63 @@ export class JessGrammar extends CssParser {
       return makeExtend(targets[0] ?? { text: '' });
     }
     return new List(targets.map(makeExtend) as never, undefined, location) as unknown as Node;
+  }
+
+  // ── `$apply` — selectors as mixins ────────────────────────────────────────────
+  // `$apply .rounded, .shadow;` → one mixin CALL per listed selector, each of the
+  // shape `$ > *[.sel]()`: a `Call` whose name is a base-less `type:'mixin'`
+  // Reference keyed by a `SelectorCapture` of that selector (`$apply .foo` ≈
+  // `$ > *[.foo]`; adjudicated — surface is `$apply <list>`, never `$|…`). A single
+  // selector → the lone Call; a comma list → a List of Calls.
+  private _buildJessApply(rawChildren: ReadonlyArray<CSTLike>, location: LocationInfo): Node {
+    // Reassemble per-selector text from the leaf run, splitting on `,` (`$apply`
+    // and `;` dropped). Each selector is one apply target.
+    const selectors: string[] = [];
+    let cur = '';
+    for (const it of spannedComponents(rawChildren)) {
+      const c = it.comp;
+      if (typeof c !== 'string') {
+        continue;
+      }
+      if (c === '$apply' || c === ';') {
+        continue;
+      }
+      if (c === ',') {
+        if (cur) {
+          selectors.push(cur);
+        }
+        cur = '';
+        continue;
+      }
+      cur += c;
+    }
+    if (cur) {
+      selectors.push(cur);
+    }
+
+    const makeApplyCall = (sel: string): Node => {
+      const capture = new SelectorCapture(
+        new BasicSelector(sel, undefined, location) as never,
+        undefined,
+        location
+      );
+      const base = new Reference('', { type: 'variable' }, location);
+      const name = new Reference(
+        { target: base, key: capture } as unknown as ReferenceValue,
+        { type: 'mixin' },
+        location
+      );
+      return new Call(
+        { name, args: new List([], undefined, location) } as never,
+        undefined,
+        location
+      ) as unknown as Node;
+    };
+
+    if (selectors.length <= 1) {
+      return makeApplyCall(selectors[0] ?? '');
+    }
+    return new List(selectors.map(makeApplyCall) as never, undefined, location) as unknown as Node;
   }
 
   private _buildForPattern(bindingNames: string[], location: LocationInfo): ForPattern {
