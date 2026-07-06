@@ -572,3 +572,11 @@ block renders fully correct — fixture red ONLY on the `%()` lines now.
 Design settled on lowering (`%s`/`%d`/`%a`→bare interp; `%S/%D/%A`→escape-wrapped; args as Interpolated replacements =
 the `$(expr)` full-expression surface form, distinct from `$[key]` accessor). functions.less flips once `%` lands (if-boolean already in).
 IN FLIGHT: imports (bootstrap @import chain); comment-preservation (comments, comments2).
+
+## 2026-07-05 (alpha) — percent-lower MERGED → board 82/93 (core 2751/0)
+`%()` lowered to canonical Interpolated at PARSE (FormatCall production + _lowerFormatString): `%s`/`%d`/`%a`→bare
+replacement, `%S`/`%D`/`%A`→Call('escape',[arg]) URL-encode (new fns/escape.ts), `%%`→literal; deprecation warning;
+`%(?=\()` lookahead keeps `10 % 3` as mod; non-literal format → best-effort runtime `%` fallback + warning. functions GREEN.
+Remaining 11 (4 DEFERRED: extend x3, import-remote): comments, comments2, css-3, import-inline, import-interpolation,
+media, mixins-guards. IN FLIGHT: imports, comment-preservation, css-3.
+dev is ~5 behind (root-statement, rulesets, if-boolean, percent-lower + css-escapes-test) — batch-cherry-pick pending.
