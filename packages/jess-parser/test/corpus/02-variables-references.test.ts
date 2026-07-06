@@ -57,18 +57,21 @@ describe('corpus/variables', () => {
     // valid variable assignment and does not parse. (Less PROPERTY `+:` merge is a
     // separate feature on plain Declarations — see NOTES `legacyMerge` design.)
     expect(parseJessFn('$foo +: 1;', 'Stylesheet').errors.length).toBeGreaterThan(0);
-    // Variable compound-add is written explicitly as `$foo: $foo + value`.
+    // Variable compound-add is written explicitly as `$foo: $foo + value`. Because
+    // the RHS leads with a `$var`, the unwrapped arithmetic applies — `$n + 1`
+    // builds an Operation (see corpus 13). No `$(…)` wrapper needed.
     expectAstContains('$n: $n + 1;', `
       (VarDeclaration
         name: 'n'
         value:
-          [
-            (Reference
-              key: 'n'
-            )
-            ' +'
-            (Num 1)
-          ]
+          (Operation
+            left:
+              (Reference
+                key: 'n'
+              )
+            right:
+              (Num 1)
+          )
       )`);
   });
 

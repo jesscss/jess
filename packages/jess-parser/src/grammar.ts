@@ -124,6 +124,51 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const Expression = node('Expression',
     parser({ trivia: rw }, sequence(literal('$('), g.exprCompare, expect(literal(')'), ')'))));
 
+  // ── Unwrapped leading-`$var` arithmetic (value position) ─────────────────────
+  // A targeted relaxation of the double-`$` rule: in value position, arithmetic
+  // that LEADS with a `$var` may be written WITHOUT the `$(…)` wrapper — `$w + 1`
+  // builds the SAME `Operation` node as `$($w + 1)`. Reuses the wrapped operator
+  // precedence (`*` over `+ -`) and `_buildOperation` verbatim; the ONLY difference
+  // is the first operand must be a `Reference` (gates keyword arithmetic: `w + 1`
+  // does NOT trigger this, stays a literal list) and ≥1 operator is required (a
+  // bare `$w` falls through to the plain `g.Reference`).
+  //
+  // `/` is EXCLUDED (still needs the wrapper) — `font: 16px/1.5` slash ambiguity.
+  // Operators are STANDALONE tokens (whitespace both sides, baked into the op leaf):
+  // `$w - 1` → subtract; `$w -1` → the `-1` fuses into a signed `Num` (no standalone
+  // `-` token) so it stays a list — this falls out of tokenization, no heuristic.
+  const unwrapProdOp = regex(/[ \t\n\r\f]+[*][ \t\n\r\f]+/);
+  const unwrapSumOp = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
+  // Product level (leads with `$var`): mirrors `exprProduct` but `*`-only and the
+  // first operand is a `Reference` (the lead gate); rest operands are any atom.
+  // `collapse` passes a lone `$w` through, so this alone can't require an operator —
+  // the ≥1-operator requirement lives in `UnwrapArith` below.
+  const unwrapProductLead = node('Operation',
+    noTrivia(sequence(g.Reference, many(sequence(unwrapProdOp, exprAtom)))), undefined, { collapse: true });
+  // Chained products (after a `+`/`-`) may lead with any atom (`$w + 1 * 2`).
+  const unwrapProductRest = node('Operation',
+    noTrivia(sequence(exprAtom, many(sequence(unwrapProdOp, exprAtom)))), undefined, { collapse: true });
+  // Sum level: a `$var`-led product, then a REQUIRED tail of ≥1 (`+`/`-` product).
+  // Requiring the tail via `oneOrMore` means a bare `$w` (no operator) does NOT
+  // match — it falls through to the plain `g.Reference`. Nesting the product inside
+  // the sum gives `*`-over-`+`/`-` precedence for free (same as the wrapped path);
+  // `_buildOperation` folds each level left-assoc.
+  //
+  // But `$w * 2` (a `*` with NO `+`/`-`) must ALSO match — there the sum tail is
+  // empty, so we require the operator in EITHER level: the product-lead has ≥1 `*`,
+  // OR the sum tail has ≥1 `+`/`-`.
+  const unwrapSumTail = many(sequence(unwrapSumOp, g.unwrapProductRest));
+  const UnwrapArith = node('Operation',
+    noTrivia(choice(
+      // `$w * 2 [+ …]` — the lead product carries ≥1 `*`, sum tail optional.
+      sequence(
+        node('Operation', noTrivia(sequence(g.Reference, oneOrMore(sequence(unwrapProdOp, exprAtom)))), undefined, { collapse: true }),
+        unwrapSumTail
+      ),
+      // `$w + …` — no `*` at the lead; require ≥1 `+`/`-`.
+      sequence(g.unwrapProductLead, oneOrMore(sequence(unwrapSumOp, g.unwrapProductRest)))
+    )), undefined, { collapse: true });
+
   // ── Collections / maps: `{ key: value; nested: { … } }` ─────────────────────
   // A brace-delimited block of arbitrary key/value pairs → `Collection` node
   // (an anonymous-mixin-shaped Rules subclass holding Declarations). Keys are
@@ -369,7 +414,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
 
   // ── Values: prepend Jess `$` forms before the CSS value set ─────────────────
   const value = choice(
-    g.Expression, g.DollarInterp, g.AnonMixin, g.SelectorCapture, g.Reference,
+    g.Expression, g.UnwrapArith, g.DollarInterp, g.AnonMixin, g.SelectorCapture, g.Reference,
     g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue
   );
 
@@ -396,6 +441,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     Reference, DollarInterp, VarDeclaration, value,
     InterpolatedSelector, simpleSelector,
     Expression, exprProduct, exprSum, exprCompare, JessKeyword,
+    unwrapProductLead, unwrapProductRest, UnwrapArith,
     CollectionEntry, JessCollection,
     condNot, condPrimary, condCompare, condAnd, condOr,
     elseClause, forRange,

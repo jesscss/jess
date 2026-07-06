@@ -302,6 +302,17 @@ FOLLOW-UPS (out of the adjudicated scope; not yet built):
   `$(1+2)` / `$(5%2)` are NOT operations (that's Less — convert-Less spaces them
   out). `50%` glued = percent Dimension; `5 % 2` spaced = modulo. Bare ident
   inside `$()` = keyword literal; `$x` = reference.
+- **Unwrapped leading-`$var` arithmetic (value position)** — corpus 13. Targeted
+  relaxation of the double-`$`: value-position arithmetic that LEADS with a `$var`
+  needs no `$(…)` wrapper — `$w + 1` builds the SAME `Operation` as `$($w + 1)`.
+  Gated by: (a) leads with a `Reference`, (b) ≥1 STANDALONE `+`/`-`/`*` op. `/` is
+  EXCLUDED (still needs the wrapper — `font: 16px/1.5` ambiguity). Fused signs stay
+  a list: `$w -1`/`$w +1` → `[$w, -1]`/`[$w, +1]` (no standalone op — falls out of
+  tokenization, no whitespace heuristic). Keyword arith (`w + 1`, no `$`) stays a
+  literal list. Precedence (`*` over `+`/`-`) + `_buildOperation` reuse the wrapped
+  path verbatim (grammar `unwrapProductLead`/`unwrapProductRest`/`UnwrapArith`,
+  placed in `value` between `Expression` and `Reference`). Wrapped `$(…)` path and
+  normal CSS lists (`transition: a 1s, b 2s`) untouched.
 
 ## Core change made by this build
 - `reference.ts` `writeSyntax` `case 'variable'`: a variable lookup WITH a target
