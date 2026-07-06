@@ -811,7 +811,15 @@ export class CssParser {
       const seg = filledSegments[i]!;
       const segSpan: Span = { start: seg[0]!.span.start, end: seg[seg.length - 1]!.span.end };
       if (Array.isArray(v)) {
-        return v.map(c => typeof c === 'string' ? this._valueKeyword(c, loc) as unknown as Component : c);
+        const mapped = v.map(c => typeof c === 'string' ? this._valueKeyword(c, loc) as unknown as Component : c);
+        // Stamp the segment span on the raw space-group array so the coerced
+        // `Sequence` (see `coerceValueNode`) inherits it — lets the List serializer
+        // recover authored inter-item whitespace (e.g. a newline after a comma in a
+        // multi-token `box-shadow` value) from the trivia map via `spanStartOf`.
+        if (spanStartOf(mapped as unknown as object) === undefined) {
+          setSourceSpan(mapped as unknown as Node, segSpan);
+        }
+        return mapped as unknown as Component;
       }
       if (typeof v === 'string') {
         // Give the item its own segment span so the serializer can recover the

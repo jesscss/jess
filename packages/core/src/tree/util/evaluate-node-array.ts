@@ -2,6 +2,7 @@ import type { Context } from '../../context.js';
 import { Node } from '../node.js';
 import { keyword } from '../any.js';
 import { spaced } from '../sequence.js';
+import { sourceSpanOf, setSourceSpan } from './provenance.js';
 import { Dimension } from '../dimension.js';
 import { Color } from '../color.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -53,7 +54,15 @@ export function coerceValueNode(item: NodeArrayItem): Node {
   if (items.length === 1) {
     return coerceValueNode(items[0]!);
   }
-  return spaced(items.map(coerceValueNode));
+  const seq = spaced(items.map(coerceValueNode));
+  // A raw space-group array may carry the segment span stamped by the parser's
+  // value assembly; move it to the coerced Sequence so trivia lookup (which is
+  // keyed by node span) can recover the authored comma-item whitespace.
+  const span = sourceSpanOf(item as unknown as object);
+  if (span && sourceSpanOf(seq) === undefined) {
+    setSourceSpan(seq, span);
+  }
+  return seq;
 }
 
 /**
