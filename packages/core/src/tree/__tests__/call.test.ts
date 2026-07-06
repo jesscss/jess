@@ -253,6 +253,25 @@ describe('Call', () => {
     expect(writer.readbacks).toBe(0);
   });
 
+  it('does not double the separator when a space-group arg term already carries leading whitespace', () => {
+    // Repro of the `less` `modern` fixture: the parser bakes leading spaces into
+    // value keywords that follow a `)`-terminated term (e.g. `... calc(l - 0.1) c h`
+    // yields keyword terms `" c"` / `" h"`). The known-text fast path in
+    // `getKnownRenderedCallText` joined space-group terms with an unconditional
+    // space, so a term that already carried a leading space rendered doubled.
+    const rule = call({
+      name: 'fn',
+      args: list([
+        seq([
+          any('from'),
+          any(' c'),
+          any(' h')
+        ])
+      ])
+    });
+    expect(rule.render(context)).toBe('fn(from c h)');
+  });
+
   it('serializes escaped scalar list call source args without whole-call readback', () => {
     const writer = new CountingWriter();
     const rule = call({
