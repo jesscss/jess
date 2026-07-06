@@ -466,3 +466,12 @@ agent stalled by bundling eval + serialize-spacing; re-scoped to the single fn-c
 IN FLIGHT: media-prelude (media, namespacing-3 residual); serialize-whitespace (css-grid, whitespace, modern, rgba).
 Remaining after: guards (mixins-guards), nested-mixin (mixins-nested), css-escapes, functions, imports (inline/interp),
 rulesets, css-3. DEFER: extend x3, import-remote.
+
+## 2026-07-05 (alpha) — media-prelude MERGED → board 74/93
+Built `@var[key]` accessor + paren-math + escaped strings in at-rule preludes; escaped Quoted rebuilt via constructor
+(_options.escaped wasn't read — Quoted has readonly `escaped` field). namespacing-3 GREEN. media still red on 2 deferred:
+- **`@{var}` interpolation inside quoted strings — UNIMPLEMENTED generally** (less parser has no `_buildQuoted`
+  override running `getInterpolatedOrString`). Blocks media (`~'@{a}/@{b}'`) AND import-interpolation
+  (`@import "@{theme}.less"`). → HIGH-LEVERAGE, dispatched next.
+- leading comment dropped in `@media{ }` body — at-rule body trivia anchoring (separate).
+IN FLIGHT: serialize-whitespace (whitespace, css-grid, rgba, modern); interpolated-strings (@{var} in quoted strings).
