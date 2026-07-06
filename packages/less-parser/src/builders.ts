@@ -272,18 +272,23 @@ export class LessGrammar extends CssParser {
       if (accMatch) {
         const accText = accMatch[1]!.trim();
         const accessorKey = this._decodeAccessorKey(accText, loc);
+        // A numeric accessor key (`foo[2]` / `foo[]` → last, key -1) is an INDEX
+        // lookup; a variable dispatch would fail with `'-1' is not defined`.
+        const accessorRefOptions = typeof accessorKey === 'number'
+          ? { type: 'index' as const }
+          : {};
         if (grammarPartialAccessor) {
           // Fix in-place: replace the wrong key on the existing Reference wrapper
           rawValue = new Reference(
             { target: rv.target as any, key: accessorKey as any } as unknown as ReferenceValue,
-            {},
+            accessorRefOptions,
             loc
           ) as unknown as JessNode;
         } else {
           // No partial grammar accessor: wrap with new Reference
           rawValue = new Reference(
             { target: rawValue as any, key: accessorKey as any } as unknown as ReferenceValue,
-            {},
+            accessorRefOptions,
             loc
           ) as unknown as JessNode;
         }
@@ -2811,9 +2816,13 @@ export class LessGrammar extends CssParser {
           break;
         }
         const innerKey = this._decodeAccessorKey(c as JessNode, loc);
+        // A numeric accessor key (`foo[2]`, or `foo[]` → last, key -1) is an
+        // INDEX lookup, not a variable lookup. Dispatching it as `variable`
+        // sends `-1` through the variable resolver and fails with `'-1' is not
+        // defined`; `index` resolves it via `rules.at(-1)` (the last value).
         base = new Reference(
           { target: base as any, key: innerKey as any } as unknown as ReferenceValue,
-          { type: 'variable' as const }, loc
+          { type: typeof innerKey === 'number' ? 'index' as const : 'variable' as const }, loc
         ) as unknown as JessNode;
         i++;
       } else if (isJessNodeVal(c) && (c as any).type === 'Paren') {
