@@ -104,10 +104,28 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 
   static getBoolValue(node: ConditionResultValue, negated: boolean): boolean {
-    const value = typeof node === 'boolean'
-      ? node
-      : node instanceof Bool ? node.value : false;
+    let value: boolean;
+    if (typeof node === 'boolean') {
+      value = node;
+    } else if (node instanceof Bool) {
+      value = node.value;
+    } else {
+      // A keyword `true`/`false` read back from a declaration/namespace lookup
+      // (`#ns.opts[flag]` where `flag: true`) is a bare Keyword, not a Bool, but
+      // Less treats it as a boolean in guards. Any other value is falsy.
+      value = String(node.valueOf?.() ?? '') === 'true';
+    }
     return negated ? !value : value;
+  }
+
+  /**
+   * Whether a bare (non-Condition) guard's evaluated result passes. A guard body
+   * that is a single value — `when (true)`, `when (#ns.opts[flag])` — evaluates to
+   * a `Bool` or a keyword `true`/`false`; both are honoured (matching Less), where
+   * a strict `instanceof Bool` check would drop a keyword-valued lookup.
+   */
+  static resultPasses(node: Node | boolean): boolean {
+    return Condition.getBoolValue(node as ConditionResultValue, false);
   }
 
   static getResult(a: ConditionResultValue, b: ConditionResultValue, op: ConditionOperator): boolean {

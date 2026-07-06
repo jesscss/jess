@@ -219,7 +219,11 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // followed by an optional `<op> right`.
   const compareOp = regex(/>=|<=|=>|=<|=~|[<>=]/);
   // A single comparison operand (mirrors expressionSum's value role here).
-  const guardOperand = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.Call, g.Paren, g.anyValue);
+  // `NsAccessor` (`#ns.opts[key]`) is a valid guard operand — `when (#ns.opts[flag])`
+  // / `when (#ns.opts[flag] = true)` — so it must parse as ONE operand (ordered
+  // before Reference/Paren) rather than falling to the value-Paren, which would
+  // swallow `= true` into a Sequence instead of a comparison.
+  const guardOperand = choice(g.NsAccessor, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.Call, g.Paren, g.anyValue);
   const Comparison = node('Comparison',
     parser({ trivia: rw }, sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.anyValue))));
   const GuardDefault = node('GuardDefault',
