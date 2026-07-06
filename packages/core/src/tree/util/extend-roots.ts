@@ -1110,8 +1110,11 @@ export function processExtends(context: Context): void {
           return false;
         }
         return Array.from(rulesets).some((ruleset) => {
-          const sel = selectorOrUndefined(ruleset.selector);
-          return !!sel && wouldInstructionChangeSel(sel, instruction);
+          const selLike = selectorOrUndefined(ruleset.selector);
+          // Parser-delivered selectors may be string/array-backed. The extend
+          // engine's placement copy calls Node methods, so materialize to a
+          // Selector node first (mirrors the main classification path above).
+          return !!selLike && wouldInstructionChangeSel(asExtendSelectorNode(selLike), instruction);
         });
       });
       const diagnostic = (
