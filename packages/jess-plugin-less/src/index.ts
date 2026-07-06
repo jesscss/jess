@@ -186,16 +186,20 @@ export class LessPlugin extends AbstractPlugin {
     let tree: Rules | undefined;
 
     try {
-      const parseResult = this.parser.parse(source);
+      // Thread the file-bearing TreeContext through the parse and read it back
+      // out. Today it round-trips unchanged; it's the seam a future
+      // `@compose`/`@use` rule uses to set `context.opts.strict` during parse.
+      const parseResult = this.parser.parse(source, 'Stylesheet', { context });
       tree = parseResult.tree;
+      const parsedContext = parseResult.context ?? context;
 
-      // The functional Less parser is context-free: it never receives the
-      // file-bearing TreeContext, so the root Rules has no `_treeContext` and
-      // import base-dir resolution falls back to `process.cwd()`. Attach the
-      // context (built above) to the root so relative `@import` paths resolve
-      // against the importing file's directory (`context.ts` `currentDirectory`).
+      // The functional Less parser does not attach the TreeContext to nodes, so
+      // the root Rules has no `_treeContext` and import base-dir resolution falls
+      // back to `process.cwd()`. Attach the (threaded) context to the root so
+      // relative `@import` paths resolve against the importing file's directory
+      // (`context.ts` `currentDirectory`).
       if (tree) {
-        tree._treeContext = context;
+        tree._treeContext = parsedContext;
       }
 
       // Thread the parser's whitespace/comment trivia into the render context so

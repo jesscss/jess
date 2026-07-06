@@ -5,7 +5,7 @@
  * @jesscss/css-parser.
  */
 import type { Span } from 'parseman';
-import { nil, type MathMode, type Rules } from '@jesscss/core';
+import { nil, type MathMode, type Rules, type TreeContext } from '@jesscss/core';
 import {
   runFunctionalParse, toParseError, buildLazyTriviaMap,
   type FunctionalParseHost, type FunctionalParseResult
@@ -18,6 +18,16 @@ import { lessGrammar } from './grammar.js';
 // ---------------------------------------------------------------------------
 
 class BuilderHost extends LessGrammar implements FunctionalParseHost {
+  /**
+   * The TreeContext threaded in by the caller (the plugin's per-file context),
+   * held for the duration of one parse. Currently a pass-through: it's carried
+   * back out in the result so a caller can hand one context in and read it back.
+   * Grammar rules (e.g. a future `@compose`/`@use` rule) can read/mutate it —
+   * e.g. set `context.opts.strict` — and the mutation is visible to the caller
+   * since it's the same object.
+   */
+  context?: TreeContext;
+
   setSource(src: string) {
     this._source = src;
   }
@@ -49,19 +59,29 @@ class BuilderHost extends LessGrammar implements FunctionalParseHost {
 
 const host = new BuilderHost();
 
-export type LessFnParseResult = FunctionalParseResult;
+export type LessFnParseResult = FunctionalParseResult & {
+  /** The TreeContext the caller threaded in (if any), passed back out. */
+  context?: TreeContext;
+};
 
 // `rule` is a grammar rule name — the root `Stylesheet` by default, or any rule
 // (e.g. `Declaration`, `Guard`, `SelectorList`) to parse that fragment directly.
 export function parseLessFn(
   input: string,
   rule = 'Stylesheet',
-  mathMode: MathMode = 'parens-division'
+  mathMode: MathMode = 'parens-division',
+  context?: TreeContext
 ): LessFnParseResult {
   host.mathMode = mathMode;
+  host.context = context;
   const g = lessGrammar as Record<string, unknown>;
   // Less trivia includes `//` line comments, so trailing `//…` is not leftover.
-  return runFunctionalParse(input, g[rule], host, { trivia: g.rw });
+  const result = runFunctionalParse(input, g[rule], host, { trivia: g.rw });
+  // Carry the (possibly rule-mutated) context back out; clear the singleton's
+  // reference so it isn't retained across parses.
+  const threaded = host.context;
+  host.context = undefined;
+  return { ...result, context: threaded };
 }
 
 /**
@@ -102,7 +122,10 @@ export class LessParser {
   }
 
   // Arrow field so `const parse = parser.parse` (used in tests) keeps `this`.
-  parse = (text: string, rule = 'Stylesheet'): LessFnParseResult => {
+  // `options.context` threads a caller-owned TreeContext through the parse and
+  // is carried back out on the result (same object) — the seam a future
+  // `@compose`/`@use` rule uses to set `context.opts.strict`.
+  parse = (text: string, rule = 'Stylesheet', options?: { context?: TreeContext }): LessFnParseResult => {
     // Inline JavaScript (backticks) was removed in v5 — report it as a normal
     // parse error at the backtick, NOT by throwing (a parser must not throw).
     // Only a backtick in CODE position is inline JS: skip backticks inside line/
@@ -115,9 +138,10 @@ export class LessParser {
         errors: [toParseError('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead.', backtick, text)],
         warnings: [],
         trivia: buildLazyTriviaMap([], text),
-        liftedCommentRanges: []
+        liftedCommentRanges: [],
+        context: options?.context
       };
     }
-    return parseLessFn(text, rule, this._mathMode);
+    return parseLessFn(text, rule, this._mathMode, options?.context);
   };
 }
