@@ -543,3 +543,22 @@ IN FLIGHT: rulesets (.selector composition); functions (fns %/format); imports (
 also bootstrap's next blocker: import-chain resolution).
 Remaining 13 (4 DEFERRED: extend x3, import-remote): comments, comments2, css-3, functions, import-inline,
 import-interpolation, media, mixins-guards, rulesets.
+
+## 2026-07-05 (alpha) — rulesets MERGED → board 81/93 (core 2751/0)
+Grouped nested ruleset selector composition: a string child against a multi-item SelectorList parent hit a textual
+fast-path (`.a #x, .a #y`) instead of `:is()`-wrapping the group. Added composePushedSelector/composeParentSelector +
+promote string-child/array-parent so `_prependParent` wraps in `:is(...)`. rulesets GREEN.
+
+## PARKED DESIGN — `%()` string-format → `sprintf` (compat alias; canonical = interpolation)
+Less `%(fmt, args…)` printf-style string format has an ILLEGAL/ambiguous name (`%` = modulo op + percentage unit;
+`%(` disambiguated only by the immediate `(`). Design:
+- **Canonical Jess = string interpolation** (`"rgb(@{r}, @{g}, @{b})"`) — already supported (interpolated-strings
+  landed); `%()` is redundant in new Jess code.
+- **`%()` = Less-4-compat DEPRECATED ALIAS**, lowered AT PARSE to a real call so eval never sees `%` and the
+  operator/call ambiguity is resolved. Alias name = **`sprintf`** (printf-family — matches `%d`/`%s`/`%a`/`%%`
+  directives; legal identifier). **NOT `format`** — `format()` collides with CSS `@font-face src: url() format("woff2")`
+  (Less passes it through precisely because it has no `format` fn; a global `format` would mis-evaluate that token).
+- Deprecation via the compat-mode severity design: warning in Less-4-compat, `strict-violation` error under strict/@use.
+- fns implements ONE `sprintf`; parser lowers `%(…)` → `sprintf(…)`. CSS `format()` untouched.
+(The functions agent is making functions.less green with the underlying formatter now; the rename/lowering is this
+separate compat-pass refinement.)
