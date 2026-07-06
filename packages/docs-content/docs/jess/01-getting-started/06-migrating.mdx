@@ -110,7 +110,7 @@ lookups behave.
 
 ### Expressions
 
-Jess expressions are always `$(`...`)`. Plain `$var` is a variable reference.
+Jess expressions are always `$(`...`)`. Plain `$var` is a variable reference. Inside an expression, variables keep their `$` sigil — a bare identifier is a keyword, not a variable.
 
 Use:
 
@@ -130,8 +130,8 @@ Use:
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $(width + 1);
-  value: $(width / 2);
+  value: $($width + 1);
+  value: $($width / 2);
   ```
   </div>
 </div>
@@ -147,8 +147,8 @@ Use:
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $(^width + 1);
-  value: $(^width / 2);
+  value: $($!width + 1);
+  value: $($!width / 2);
   ```
   </div>
 </div>

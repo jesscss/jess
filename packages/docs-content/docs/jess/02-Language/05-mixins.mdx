@@ -298,18 +298,14 @@ max($a, $b) when ($a < $b) { width: $b }
 
 :::info
 
-Note that in Jess, any new "parentheses context" exits "expression mode". So parentheses in guards (like `when`) and control flow (like `if`) require `$` to start a new expression.
-
-These are equivalent:
+A `when` guard (or `$if`) condition is already an expression, so you write the comparison directly inside `(...)`: variables keep their `$` sigil, and there is no `$(...)` wrapper (that would be an expression inside an expression).
 
 ```less
 max($a, $b) when ($a > $b) { width: $a }
-max($a, $b) when $(a > b) { width: $a }
-
-// and 
-truth($a) when ($a = true)  { ... }
-truth($a) when $(a = ~true) { ... } // ~ for keyword literal inside an expression
+truth($a)  when ($a = true) { ... }
 ```
+
+Bare identifiers inside an expression are keywords, not variables — so `true` is already a keyword and needs no escaping.
 
 :::
 

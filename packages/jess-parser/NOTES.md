@@ -248,6 +248,36 @@ FOLLOW-UPS (out of the adjudicated scope; not yet built):
 
 ---
 
+## Docs-vs-parser audit findings (parser CORRECT; docs corrected)
+- **`$(…)` expression form is REJECTED in condition position.** A `when` guard /
+  `$if` / `$while` condition's `(…)` IS the expression, so a `$(…)` wrapper there is
+  an expression-inside-an-expression — the parser correctly errors ("Unexpected
+  input"). Conditions use plain `(…)` with `$`-prefixed variables (`($a > $b)`),
+  never `$(a > b)`. Verified: `when ($a > $b)` / `$if ($a > $b)` parse; `when $(a >
+  b)` / `$if $(a > b)` are rejected. Docs fixed: `05-mixins.mdx` `:::info` box (both
+  dirs) — removed the "equivalent" framing + all `$(…)`-in-condition + the `~true`
+  note.
+- **Inside a `$(…)` expression, a bare identifier is a KEYWORD, not a variable —
+  variables keep their `$`.** `$(width + 1)` does NOT reference `$width`; the correct
+  form is `$($width + 1)` (per the migrating doc's own "$($var) for a reference
+  inside an expression" rule). Docs fixed: `06-migrating.mdx` Expressions section
+  (both dirs) — `$(width + 1)`→`$($width + 1)`, `$(^width…)`→`$($!width…)` (`$^`
+  retired for `$!`); + `03-expressions.mdx` "Use with Jess variables" example
+  (`$(width + 10px)`→`$($width + 10px)`, both dirs).
+- **⚠️ MORE occurrences of the same bare-ident bug remain (NOT fixed here — flagged
+  for a follow-up sweep, out of this task's 2-file scope):**
+  - `05-mixins.mdx:367` — `mixin($value) when not default { padding: $(value / 5) }`
+    → `$($value / 5)`.
+  - `07-conditionals-iteration.mdx:~91` — `$for ($section, $i …) { … $(i * 20px) }`
+    → `$($i * 20px)` (and review the `$(section)` interpolation — likely `$[section]`).
+  - `04-Functions/07-logical.md:14,33,37` — `$(value > 10)` etc. → `$($value …)`.
+  - `03-expressions.mdx:~62,67` (mirror) — `$(color)`/`$(num + 1)` with `$color`/`$num`
+    declared → `$($color)` / `$($num + 1)`.
+  These are the identical "bare-ident-drops-the-`$`" error across ~4 more files;
+  each needs the same fix (both docs dirs) once greenlit.
+
+---
+
 ## Settled syntax decisions
 
 - **Base:** compose over `cssGrammar` (cleanest shapes), not Less/SCSS. Author
