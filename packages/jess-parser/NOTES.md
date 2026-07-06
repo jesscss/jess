@@ -14,6 +14,18 @@ serialized AST (`serializeTypes`). Run: `npx vitest --run test/corpus --root pac
 
 ## Deferred — must be done before the parser is "complete"
 
+### ⚠️ ENVIRONMENT BLOCKER (transient, not a Jess bug) — 2026-07-05 ~22:56
+- **parseman dist is mid-rebuild by the parent session and BROKEN.**
+  `~/git/oss/parser-thing/dist/index.js` (rebuilt 22:54 from uncommitted
+  `src/compiler/codegen.ts` changes) references `_hostReads` at line ~4047 but the
+  `needsHostReads` gate at ~4512 doesn't emit its declaration → every compiled
+  grammar throws `ReferenceError: _hostReads is not defined`. This breaks ALL four
+  parsers (css-parser 185 failed too — confirmed NOT jess-specific), so no corpus
+  can run until the parent finishes their codegen edit and rebuilds parseman.
+  Jess work committed BEFORE this (commits `eb6ec5c2b`/`0ecdbba1f`/`bddeb55ac`) was
+  green at commit time (mixins/anon/extend all 72/72). NOTHING to fix on the Jess
+  side — just re-run `npx vitest --run test/corpus` once parseman dist is healthy.
+
 ### Eval / semantics (not parseable-in-isolation; needs the evaluator)
 - **`.foo` member ambiguity warning.** `$theme.foo` (type `declaration`) can
   resolve to a `Declaration` *or* a `VarDeclaration`. When a collection declares
@@ -40,16 +52,22 @@ serialized AST (`serializeTypes`). Run: `npx vitest --run test/corpus --root pac
   (direct selector target, no capture) is unblocked — Extend already serializes
   `$extend …;` with the `$`.
 
-### Parser features still to build
-- Interpolation `$[key]` (ident interp) — DONE. `$*[…]` (selector capture) is
-  BLOCKED on the contradiction above; it also unlocks the `$theme["$[foo]"]`
-  dynamic-property key.
-- Collections / lists / maps (`$x: { … }`, comma lists).
-- Control flow `$if` / `$else` / `$for` / `$while`.
-- Mixins (defs, `$ >` calls, guards, anonymous) and functions (`@() > …`).
-- `$extend` (statement, `-> target`, namespacing — NOT `:extend()`). Core Extend
-  already serializes `$extend [sel ->] [ns|]target [!exact];` — buildable now for a
-  DIRECT selector target (`$extend .box;`). `$extend $captured;` waits on `$*[…]`.
+### Parser features — status
+DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
+- Interpolation `$[key]` (ident interp) — corpus 04.
+- Collections / lists / maps (`$x: { … }`, comma lists) — corpus 05.
+- Control flow `$if` / `$else` / `$for` / `$while` — corpus 06.
+- Mixins: defs, params (`$p[: default]`), guards (`when`), `$ >` calls + chains —
+  corpus 07 (`eb6ec5c2b`).
+- Anonymous mixins `@() {}` / `@{}` + functions `@() > { … }` / `@() > <expr>`
+  (single-expr normalised to a `return:` decl) — corpus 08 (`0ecdbba1f`).
+- `$extend` statement (`.sel`, `!exact`, `ns|sel`, comma list) — corpus 09
+  (`bddeb55ac`). Target wrapped in a `BasicSelector` (a bare string crashes
+  `Extend.writeSyntax`). `$extend $captured;` waits on `$*[…]`.
+
+STILL TO BUILD:
+- `$*[…]` (selector capture) — BLOCKED on the sigil contradiction above; also
+  unlocks the `$theme["$[foo]"]` dynamic-property key.
 - **`$apply` / `$|` — doc surface differs from the task-list.** `05-mixins.mdx`
   documents two apply forms: `$|.rounded;` (single, `$|` sigil, `()` optional) and
   `$apply .rounded, .shadow;` (multiple, comma list, `apply` keyword). The task-list

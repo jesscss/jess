@@ -20,10 +20,12 @@ import { expectAstContains, parse } from './_util.js';
  * `toTrimmedString`, which carries the `$extend`/`!exact`/`ns|` surface.) */
 function extendSyntax(src: string): string {
   const { tree } = parse(src);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ext = (tree as any).rules?.[0] ?? (tree as any).value?.[0];
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
-  return ext.toTrimmedString();
+  type Serializable = { toTrimmedString(): string };
+  type Holder = { rules?: Serializable[]; value?: Serializable[] };
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const holder = tree as unknown as Holder;
+  const ext = holder.rules?.[0] ?? holder.value?.[0];
+  return ext!.toTrimmedString();
 }
 
 describe('corpus/extend', () => {
