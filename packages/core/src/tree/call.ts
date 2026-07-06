@@ -87,6 +87,14 @@ function createImportantFlag(): Any<'flag'> {
   return new Any<'flag'>('!important', { role: 'flag' });
 }
 
+function startsWithWhitespace(text: string): boolean {
+  return text.length > 0 && /^[ \t\r\n\f]/u.test(text);
+}
+
+function endsWithWhitespace(text: string): boolean {
+  return text.length > 0 && /[ \t\r\n\f]$/u.test(text);
+}
+
 function emitCallArgSyntax(
   arg: Node,
   options: FinalPrintOptions,
@@ -282,7 +290,7 @@ function getKnownRenderedCallText(node: string | Node): string | undefined {
       if (text === undefined) {
         return undefined;
       }
-      if (i > 0) {
+      if (i > 0 && !endsWithWhitespace(out) && !startsWithWhitespace(text)) {
         out += ' ';
       }
       out += text;
