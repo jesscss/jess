@@ -32,7 +32,8 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaBetweenNodes, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
+import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaAfterOffset, emitCommentTriviaBetweenNodes, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
+import { fieldSpanAt } from './util/provenance.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -571,11 +572,24 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return;
     }
     const value = this.value;
-    const valueStart = value instanceof Node ? spanStartOf(value) : undefined;
+    // Upper bound of the name→`:` gap. Prefer the per-slot `value` fieldSpan
+    // start: the value *node*'s own span can be over-broad (a coerced List gets
+    // stamped with the whole declaration span, so its start collides with the
+    // name and the gap collapses to empty). The fieldSpan pins the authored
+    // value start. Fall back to the node's span start when no fieldSpan exists.
+    const valueStart = this._valueFieldSpanStart()
+      ?? (value instanceof Node ? spanStartOf(value) : undefined);
     const runs = commentRunsWithinSpan(options.trivia, spanStartOf(this), valueStart);
     if (runs.length > 0) {
       emitNextSpanComment(runs, 0, options);
     }
+  }
+
+  /** Start offset of the `value` field's per-slot span, or `undefined` when unset. */
+  private _valueFieldSpanStart(): number | undefined {
+    const valueIdx = (this.constructor as unknown as { childKeys?: readonly string[] })
+      .childKeys?.indexOf('value') ?? -1;
+    return valueIdx >= 0 ? fieldSpanAt(this, valueIdx)?.start : undefined;
   }
 
   constructor(
@@ -1173,8 +1187,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const triviaSource = important ?? value;
       if (triviaSource instanceof Node) {
         emitCommentTriviaAfterNode(triviaSource, options);
+      } else if (!important && typeof value === 'string') {
+        // Bare-string keyword value (`a: yes /* comment */`) carries no node
+        // identity, so recover its authored end from the per-slot `value`
+        // fieldSpan and emit any comment run keyed after it.
+        emitCommentTriviaAfterOffset(options.trivia, this._valueFieldSpanEnd(), options);
       }
     }
+  }
+
+  /** End offset of the `value` field's per-slot span, or `undefined` when unset. */
+  private _valueFieldSpanEnd(): number | undefined {
+    const valueIdx = (this.constructor as unknown as { childKeys?: readonly string[] })
+      .childKeys?.indexOf('value') ?? -1;
+    return valueIdx >= 0 ? fieldSpanAt(this, valueIdx)?.end : undefined;
   }
 
   private renderSpaceValueSyntax(value: Node[], options: PrintOptions): void {
@@ -1211,6 +1237,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const nameText = maybeDirectSyntheticDeclarationLeafText(this.name);
     const valueText = maybeDirectSyntheticDeclarationLeafText(this.value);
     if (nameText === undefined || valueText === undefined || nameText.startsWith('--')) {
+      return false;
+    }
+    // A bare-string value with a per-slot fieldSpan may carry an authored
+    // trailing comment (`a: yes /* comment */`); that lives in the trivia map,
+    // which this synthetic fast path does not consult — defer to the full path.
+    if (options.trivia && typeof this.value === 'string' && this._valueFieldSpanEnd() !== undefined) {
       return false;
     }
     const importantText = this.important === undefined

@@ -33,8 +33,10 @@ export {
   copySourceSpan,
   isSourceFree,
   fieldSpansOf,
+  fieldSpanAt,
   setFieldSpans,
   valueSpansOf,
+  valueSpanAt,
   setValueSpans,
   type SourceSpan
 } from './tree/util/provenance.js';

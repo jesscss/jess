@@ -79,8 +79,43 @@ function treeTrivia(node: Node): TriviaMap | undefined {
 }
 
 /**
+ * Strip `//` line comments (invalid in CSS output) from a trivia run while
+ * preserving block comments. A naive `/\/\/…/` replace mis-fires on the `//`
+ * that appears where two block comments abut (`… *//* …`), truncating the run —
+ * so scan block-comment-aware, only treating `//` as a line comment when it is
+ * NOT inside a `/* … *\/` block.
+ */
+function stripLineComments(text: string): string {
+  let out = '';
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    if (text.charCodeAt(i) === 47 /* / */ && text.charCodeAt(i + 1) === 42 /* * */) {
+      // Block comment: copy verbatim through its terminating `*\/`.
+      const end = text.indexOf('*/', i + 2);
+      const stop = end === -1 ? n : end + 2;
+      out += text.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (text.charCodeAt(i) === 47 /* / */ && text.charCodeAt(i + 1) === 47 /* / */) {
+      // Line comment: skip to (but keep) the next line break.
+      let j = i + 2;
+      while (j < n && text.charCodeAt(j) !== 10 && text.charCodeAt(j) !== 13) {
+        j++;
+      }
+      i = j;
+      continue;
+    }
+    out += text[i]!;
+    i++;
+  }
+  return out;
+}
+
+/**
  * The printable text of a run: its raw source slice, with `//` line comments
- * stripped when emitting in a compressed `context` (they cannot survive there).
+ * stripped when emitting in a `context` (they cannot survive in CSS output).
  * Pure — does not consume the run.
  */
 export function printableTriviaText(run: Trivia | undefined, context?: unknown): string {
@@ -88,7 +123,7 @@ export function printableTriviaText(run: Trivia | undefined, context?: unknown):
     return '';
   }
   const text = run.src.slice(run.start, run.end);
-  return context && run.hasComment ? text.replace(/\/\/[^\n\r]*/g, '') : text;
+  return context && run.hasComment ? stripLineComments(text) : text;
 }
 
 /** True if the run contains a block comment (`/* … *\/`), regardless of context. */
@@ -196,11 +231,20 @@ export function emitCommentTriviaAfterNode(
   node: Node,
   options: TriviaEmitOptions & Pick<PrintOptions, 'trivia'>
 ): void {
-  const trivia = (
-    options.trivia
-    ?? treeTrivia(node)
-  );
-  const offset = spanEndOf(node);
+  emitCommentTriviaAfterOffset(options.trivia ?? treeTrivia(node), spanEndOf(node), options);
+}
+
+/**
+ * Emit an authored comment run keyed `after` a source offset. The offset form of
+ * `emitCommentTriviaAfterNode`, for members that carry no node identity (a
+ * bare-string declaration value / selector-list member) whose end offset comes
+ * from a per-slot span. De-dupes on `emittedTrivia` like the node form.
+ */
+export function emitCommentTriviaAfterOffset(
+  trivia: TriviaMap | undefined,
+  offset: number | undefined,
+  options: TriviaEmitOptions
+): void {
   if (!trivia || offset === undefined) {
     return;
   }

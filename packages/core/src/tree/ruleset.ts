@@ -1,4 +1,4 @@
-import { sourceSpanOf } from './util/provenance.js';
+import { sourceSpanOf, valueSpansOf } from './util/provenance.js';
 import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
@@ -1689,7 +1689,18 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         if (typeof emitSelector === 'string') {
           options.writer.add(emitSelector);
         } else if (Array.isArray(emitSelector) || isNode(emitSelector, N.SelectorList)) {
-          emitSelectorListLike(emitSelector, options);
+          // The per-member spans are stamped on this Ruleset by the parser and
+          // describe `this.selector`. Only pass them through when we are emitting
+          // that exact uncomposed array (no nesting-prefix rewrote the offsets),
+          // so an authored comment between bare-string members round-trips.
+          // Per-member spans (stamped by the parser, carried across derivation)
+          // describe the authored source members. They stay valid under
+          // nesting-prefix composition because the trivia is looked up by
+          // absolute source offset, and `emitSelectorListItems` only uses them
+          // when the member count is unchanged (no `:is(...)` hoisting). Skip in
+          // the comparable-header (`withoutComments`) pass, which strips trivia.
+          const spans = withoutComments ? undefined : valueSpansOf(this);
+          emitSelectorListLike(emitSelector, options, false, spans);
         } else {
           emitSelector.writeSyntax(options);
         }
