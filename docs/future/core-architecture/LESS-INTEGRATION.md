@@ -593,3 +593,14 @@ so those tokens can't carry a provenance span through eval. Needs eval span-prov
 — materially beyond comment work, risks the green trivia suites. DEFERRED-with-rationale.
 Remaining 10 → 6 DEFERRED (extend x3, import-remote, comments, comments2). Tractable: css-3, import-inline,
 import-interpolation, mixins-guards. IN FLIGHT: imports, css-3. Target "green-modulo-deferred" = 87/93.
+
+## 2026-07-05 (alpha) — css-3 MERGED → board 84/93 (core 2753/0)
+4 fixes: pseudo functional args (:not(.one)) recovered in _buildLessPseudo; UnicodeRange grammar node (U+0???);
+Sequence.withValue preserves concrete class so QueryCondition keeps its function-attach writer (@-x-document
+url-prefix()); box-shadow comma-list authored newline (segment span → coerced Sequence). css-3 GREEN.
+Remaining 9 → 6 DEFERRED (extend x3, import-remote, comments, comments2). Tractable: import-inline, import-interpolation
+(imports IN FLIGHT), mixins-guards. Target green-modulo-deferred = 87/93.
+OPEN QUESTION (user): comments/comments2 deferral may be reversible — provenance.ts setValueSpans/setFieldSpans are
+NO-OPS but Parseman DOES compute per-slot member spans; re-enabling per-slot span storage (container-keyed array) would
+let render place comments adjacent to string selector-members / bare-keyword values. Awaiting design call (reverses the
+side-table-only/no-per-slot-arrays simplification; gate hard vs green trivia suites).
