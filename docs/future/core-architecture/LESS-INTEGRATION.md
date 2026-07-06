@@ -604,3 +604,14 @@ OPEN QUESTION (user): comments/comments2 deferral may be reversible — provenan
 NO-OPS but Parseman DOES compute per-slot member spans; re-enabling per-slot span storage (container-keyed array) would
 let render place comments adjacent to string selector-members / bare-keyword values. Awaiting design call (reverses the
 side-table-only/no-per-slot-arrays simplification; gate hard vs green trivia suites).
+
+## 2026-07-05 (alpha) — mixins-guards fixes MERGED (board 84/93, core 2755/0, 0 flip)
+2 real fixes: space-separated list mixin args coerce to space Sequence via coerceValueNode (was cast→comma List);
+value-term merge-guard predicate allows quote chars (`is "theme1"` spacing). No value-spacing regressions.
+**mixins-guards → DEFERRED (residuals C+D):**
+- C: `~"..."` (escaped-Quoted) as a guard comparison operand parses to a bare `Paren`, not a `Condition`, so `=` never
+  evaluates (less-parser guard-condition grammar — escaped-Quoted operand). Tractable parser fix BUT won't flip alone.
+- D: `#guarded-caller` namespace-accessor collecting multiple guarded RULESET overloads with wrong `guarded:` value +
+  reorder — deep namespace-overload mechanism. DEFERRED. (mixins-guards needs BOTH C+D → deferred.)
+IN FLIGHT: imports (bootstrap @import chain); perslot-spans (comments/comments2 un-defer via flag+WeakMap+flat array).
+Remaining tractable: import-inline, import-interpolation (imports), comments, comments2 (perslot-spans).
