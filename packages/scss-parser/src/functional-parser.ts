@@ -26,6 +26,7 @@ class BuilderHost extends ScssGrammar implements FunctionalParseHost {
   resetWarnings() {
     this._warnings = [];
     this._errors = [];
+    this._liftedCommentRanges = [];
   }
 
   getWarnings() {

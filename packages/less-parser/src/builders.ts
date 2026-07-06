@@ -2078,7 +2078,21 @@ export class LessGrammar extends CssParser {
     if (USE_NAMES.includes(name)) {
       return this._buildUseAtRuleFromPrelude(children, loc, name);
     }
-    const rawPreludeText = ls.slice(1).find(l => l.value !== '{' && l.value !== '}')?.value.trim();
+    // Reconstruct the prelude from source between the name keyword and the `{`,
+    // so a comment authored right after the name (`@keyframes /* c */ hover`) is
+    // kept — the prelude leaf itself starts at the first non-trivia token, past
+    // that comment. A trailing comment already sits inside the leaf. Falls back
+    // to the leaf value when spans are unavailable.
+    const nameSpan = (nameLf as unknown as { span?: Span })?.span;
+    const braceLf = ls.find(l => l.value === '{');
+    const braceStart = (braceLf as unknown as { span?: Span })?.span?.start;
+    let rawPreludeText: string | undefined;
+    if (nameSpan && typeof braceStart === 'number') {
+      const sliced = this._source.slice(nameSpan.end, braceStart).trim();
+      rawPreludeText = sliced.length > 0 ? sliced : undefined;
+    } else {
+      rawPreludeText = ls.slice(1).find(l => l.value !== '{' && l.value !== '}')?.value.trim();
+    }
     return this._buildAtRuleFromParts(name, rawPreludeText, nodeChildren(children), loc);
   }
 

@@ -337,6 +337,18 @@ export class CssParser {
   protected _strictEOF = false;
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
   protected _errors: Array<{ message: string; offset?: number }> = [];
+  /**
+   * Source ranges of comments lifted to standalone `Comment` nodes (see
+   * `_maybeEmitComment`). These comments round-trip through the tree, so the
+   * render-time trivia view must NOT also emit them (that would double-print).
+   * Inline comments — never lifted — stay in trivia and are placed by the
+   * serializers. Recorded per parse; read via `getLiftedCommentRanges()`.
+   */
+  protected _liftedCommentRanges: Array<[number, number]> = [];
+
+  getLiftedCommentRanges(): ReadonlyArray<readonly [number, number]> {
+    return this._liftedCommentRanges;
+  }
 
   protected _warn(message: string, deprecation?: string) {
     this._warnings.push(deprecation ? { message, deprecation } : { message });
@@ -430,7 +442,8 @@ export class CssParser {
     orderedRuleNodes: JessNode[],
     bodyStart: number,
     bodyEnd: number,
-    loc: LocationInfo
+    loc: LocationInfo,
+    atRoot = false
   ): JessNode[] {
     const src = this._source;
     const out: JessNode[] = [];
@@ -438,7 +451,10 @@ export class CssParser {
     for (const rule of orderedRuleNodes) {
       const nextStart = sourceSpanOf(rule)?.start;
       if (typeof nextStart === 'number' && nextStart >= gapStart) {
-        const followingIsNestedRule = (rule as { type?: string }).type === 'Ruleset';
+        // A same-line comment ahead of a nested ruleset is recovered from the
+        // trivia map at serialize time — but ONLY inside another rule's body.
+        // At the stylesheet root, eval drops that trivia, so lift there instead.
+        const followingIsNestedRule = !atRoot && (rule as { type?: string }).type === 'Ruleset';
         out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, followingIsNestedRule, loc));
         const nextEnd = sourceSpanOf(rule)?.end;
         gapStart = typeof nextEnd === 'number' ? nextEnd : nextStart;
@@ -519,6 +535,7 @@ export class CssParser {
     if (followingIsNestedRule && followingStart !== undefined && this._sameLine(src, end - 1, followingStart)) {
       return;
     }
+    this._liftedCommentRanges.push([start, end]);
     out.push(new Comment(src.slice(start, end), undefined, loc) as unknown as JessNode);
   }
 
@@ -541,7 +558,11 @@ export class CssParser {
 
   protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const nodes = nodeChildren(children);
-    const lifted = this._liftStandaloneComments(nodes, loc.start, loc.end, loc);
+    // The Stylesheet node's span ends at the last consumed statement, so trailing
+    // trivia (a comment on the last line) sits past `loc.end`. Scan to the true
+    // source end so a trailing standalone comment is lifted like any other.
+    const bodyEnd = Math.max(loc.end, this._source.length);
+    const lifted = this._liftStandaloneComments(nodes, loc.start, bodyEnd, loc, true);
     return new Rules(lifted, undefined, loc);
   }
 
