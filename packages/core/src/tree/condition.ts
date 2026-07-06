@@ -162,47 +162,64 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (typeof a === 'boolean' || typeof b === 'boolean') {
           return op === '=' && Condition.getBoolValue(a, false) === Condition.getBoolValue(b, false);
         }
-        // `cmp` is the raw ordering (<, >) from the node's own compare; equality
-        // (=, and the equal branch of <=/>=) is decided per DIALECT.
-        const cmp = a.compare(b);
-        const equal = Condition.equalUnder(a, b, cmp, equalityMode);
+        // The comparison itself is dialect-aware — each dialect ports the real
+        // algorithm of the engine it names (verified vs Less 4.6.3 + Dart Sass).
+        const cmp = Condition.compareUnder(a, b, equalityMode);
         switch (op) {
-          case '=': return equal;
+          case '=': return cmp === 0;
           case '<': return cmp === -1;
           case '>': return cmp === 1;
-          case '<=': return equal || cmp === -1;
-          case '>=': return equal || cmp === 1;
+          case '<=': return cmp === 0 || cmp === -1;
+          case '>=': return cmp === 0 || cmp === 1;
           default: return false;
         }
     }
   }
 
   /**
-   * Dialect equality verdict, given the node's raw compare result. Matches the
-   * upstream engines (verified against Less 4.6.3 + Dart Sass):
-   * - `less`: coercive compare, but quoted↔unquoted text never match
-   *   (`2px = 2` ✓, `a = "a"` ✗, `red = "red"` ✗).
-   * - `sass`: quote-insensitive string equality; otherwise same-type + equal
-   *   (`a == "a"` ✓, `2px == 2` ✗, `red == "red"` ✗).
-   * - `exact`: same node type + equal, no coercion.
+   * Dialect-aware three-way comparison (`0` equal, `-1`/`1` ordered, `undefined`
+   * incomparable). Each dialect ports the *actual* algorithm of the engine it
+   * names, not a curve-fit — verified against Less 4.6.3 and Dart Sass:
+   *
+   * - `less`: Less's own `Node.compare` dispatch. When one side is a `Quoted`,
+   *   the comparison is driven from the quoted side (a `toString()`/CSS-text
+   *   compare via {@link Quoted.compare}), so quoted↔unquoted text never coerces
+   *   — everything else uses the node's typed compare (numbers coerce
+   *   unit↔unitless, colors compare RGBA). `2px = 2` ✓, `a = "a"` ✗, `red = "red"` ✗.
+   * - `sass`: Dart Sass equality. Strings (`Quoted`/`Keyword`) compare
+   *   quote-insensitively by content; every other pairing requires the same node
+   *   kind, so `unit↔unitless` and cross-type never match. `a == "a"` ✓,
+   *   `2px == 2` ✗, `red == "red"` ✗.
+   * - `exact`: no coercion at all — operands must be the same node type.
    */
-  private static equalUnder(a: Node, b: Node, cmp: 0 | 1 | -1 | undefined, mode: EqualityMode): boolean {
-    const aStr = a.type === 'Quoted' || a.type === 'Keyword';
-    const bStr = b.type === 'Quoted' || b.type === 'Keyword';
+  private static compareUnder(a: Node, b: Node, mode: EqualityMode): 0 | 1 | -1 | undefined {
     switch (mode) {
-      case 'sass':
+      case 'sass': {
+        // Sass: `Quoted` and unquoted `Keyword` are both strings; compare by
+        // content, quote-insensitively. Anything else must share a node kind.
+        const aStr = a.type === 'Quoted' || a.type === 'Keyword';
+        const bStr = b.type === 'Quoted' || b.type === 'Keyword';
         if (aStr && bStr) {
-          return String(a.valueOf?.() ?? a) === String(b.valueOf?.() ?? b);
+          const l = String(a.valueOf?.() ?? a);
+          const r = String(b.valueOf?.() ?? b);
+          return l === r ? 0 : l > r ? 1 : -1;
         }
-        return cmp === 0 && a.type === b.type;
+        return a.type === b.type ? a.compare(b) : undefined;
+      }
       case 'exact':
-        return cmp === 0 && a.type === b.type;
+        return a.type === b.type ? a.compare(b) : undefined;
       case 'less':
-      default:
-        if ((a.type === 'Quoted') !== (b.type === 'Quoted')) {
-          return false;
+      default: {
+        // Less `Node.compare`: force the toCSS-based comparison of a `Quoted`
+        // when it's the right operand (`-b.compare(a)`), matching Less's
+        // "symmetric results" rule; otherwise use the left node's typed compare.
+        if (b.type === 'Quoted') {
+          const r = b.compare(a);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          return r === undefined ? undefined : (-r as 0 | 1 | -1);
         }
-        return cmp === 0;
+        return a.compare(b);
+      }
     }
   }
 
