@@ -3,6 +3,7 @@ import {
   Node,
   F_ALLOW_ROOT,
   F_STATIC,
+  F_NON_STATIC,
   defineType,
   type LocationInfo
 } from './node.js';
@@ -57,6 +58,26 @@ export const enum AssignmentType {
   /** Legacy Less flags */
   MergeList = '&,:',    // merge into a list if another prop exists with this flag
   MergeSequence = '&_:' // merge into a sequence if another prop exists with this flag
+}
+
+/**
+ * A declaration carries a MERGE indicator when its assignment merges into a
+ * sibling of the same property (`+:` / `&,:` / `&_:`) or was produced by merge
+ * normalization. Such a declaration needs structural COALESCING during the
+ * eval-order pass (`Rules._coalesceMergedDeclarations`) before it is renderable,
+ * so it is NOT directly renderable and must not carry `F_STATIC`.
+ */
+export function declarationOptionsMerge(options: DeclarationOptions | undefined): boolean {
+  if (options === undefined) {
+    return false;
+  }
+  if (options.normalizedFromAssign !== undefined) {
+    return true;
+  }
+  const assign = options.assign;
+  return assign === AssignmentType.Add
+    || assign === AssignmentType.MergeList
+    || assign === AssignmentType.MergeSequence;
 }
 
 export type DeclarationOptions = {
@@ -589,6 +610,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     this._treeContext = treeContext;
     // Declarations (and Custom/VarDeclaration subclasses) are valid statements.
     this.addFlag(F_ALLOW_ROOT);
+    // A merge declaration (`+:` / `&,:` / `&_:` or normalized-from-assign) needs
+    // structural coalescing during eval before it is renderable, so it is never
+    // render-direct. Mark it non-static up front: F_NON_STATIC is sticky, so no
+    // later static child can bubble F_STATIC onto this decl (or its container).
+    if (declarationOptionsMerge(options)) {
+      this.addFlag(F_NON_STATIC);
+    }
   }
 
   override* walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
