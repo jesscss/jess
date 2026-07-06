@@ -263,8 +263,20 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const ampToken = regex(/(?:[.#](?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*-)?&|&)[-_a-zA-Z0-9-￿]*/);
   const LessAmpersand = node('LessAmpersand',
     parser({ trivia: rw }, sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'))))));
+  // Selector interpolation: an ident/`.`/`#` run interleaved with `@{…}`, with at
+  // least one interpolation. Three dispatch heads so the compiled first-set routes
+  // every leading form (a single sequence starting with two empty-matchable runs
+  // never exposed `@` as a first token, so a bare/leading `@{…}` was unreachable):
+  //   • `.`/`#`-prefixed   → `.a-@{n}`, `.@{n}`, `#id-@{x}`
+  //   • ident-prefixed     → `div@{n}`, `a@{parent}` (interp right after a type sel)
+  //   • bare interpolation → `@{parent}` (interp is the whole simple selector)
+  const interpPart = choice(lessInterp, regex(/[-_a-zA-Z0-9]+/));
   const InterpolatedSelector = node('InterpolatedSelector',
-    parser({ trivia: rw }, sequence(optional(regex(/[.#]/)), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(choice(lessInterp, regex(/[-_a-zA-Z0-9]+/))))));
+    parser({ trivia: rw }, choice(
+      sequence(regex(/[.#]/), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(interpPart)),
+      sequence(oneOrMore(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(interpPart)),
+      sequence(lessInterp, many(interpPart))
+    )));
 
   // ── Selectors (Less: + ampersand/interp, relative combinator) ───────────────
   // `sel when …` is a guarded ruleset: the `when` KEYWORD is the guard boundary,
