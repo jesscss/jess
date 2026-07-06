@@ -4096,6 +4096,8 @@ export function applyExtensionAtLocation(
 /**
  * Recursively applies an extension at a specific path.
  * @param contextSelector - When wrapping inside a compound, the compound that will contain the :is(); used for element/ID conflict validation.
+ * @param enclosingPseudo - The PseudoSelector whose `arg` is `current`, threaded from the descent so composition does not read `current.parent`. Enables shared (non-reparented) selectors for B2.
+ * @param enclosingCompound - The CompoundSelector containing `enclosingPseudo`, threaded from the descent instead of reading `current.parent.parent`.
  */
 function applyExtensionAtPath(
   current: Selector,
@@ -4104,7 +4106,9 @@ function applyExtensionAtPath(
   extendWith: Selector,
   extensionType: 'replace' | 'append' | 'wrap',
   location?: ExtendLocation,
-  contextSelector?: Selector
+  contextSelector?: Selector,
+  enclosingPseudo?: PseudoSelector,
+  enclosingCompound?: CompoundSelector
 ): Selector | ExtendErrorType {
   // When at root compound with a contiguous slice to wrap, replace that slice with :is(matched, extendWith)
   if (path.length === 0 && isNode(current, N.CompoundSelector) && location?.contiguousCompoundRange) {
@@ -4185,12 +4189,12 @@ function applyExtensionAtPath(
         && itemSelector
         && isNode(itemSelector, N.SimpleSelector)
         && isNode(matchedNode, N.SimpleSelector)
-        && isNode(current.parent, N.PseudoSelector)
-        && current.parent.name === ':is'
-        && isNode(current.parent.parent, N.CompoundSelector)
+        && enclosingPseudo !== undefined
+        && enclosingPseudo.name === ':is'
+        && enclosingCompound !== undefined
       ) {
-        const parentCompound = current.parent.parent;
-        const pseudoIndex = parentCompound.value.findIndex(n => n === current.parent);
+        const parentCompound = enclosingCompound;
+        const pseudoIndex = parentCompound.value.findIndex(n => n === enclosingPseudo);
         const trailing = pseudoIndex >= 0 ? parentCompound.value.slice(pseudoIndex + 1) : [];
         // Only force append-to-:is() for pseudo tails like `:is(.a,.b):after`.
         // For structural tails like `.a:is(.b,.c).d`, preserve positional wrap semantics.
@@ -4280,7 +4284,7 @@ function applyExtensionAtPath(
       return current;
     }
     const compoundChild = applyExtensionAtPath(
-      targetChild, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext
+      targetChild, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext, undefined, current
     );
     if (typeof compoundChild === 'string') {
       return compoundChild;
@@ -4342,7 +4346,7 @@ function applyExtensionAtPath(
       return result;
     } else {
       // Navigate deeper into the argument
-      const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined);
+      const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined, current, enclosingCompound);
       if (typeof newArg === 'string') {
         return newArg;
       }
