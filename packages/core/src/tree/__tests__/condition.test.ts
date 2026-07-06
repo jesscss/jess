@@ -1,4 +1,4 @@
-import { any, Bool, bool, call, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Bool, bool, call, Condition, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
@@ -398,6 +398,42 @@ describe('Condition', () => {
       ]);
       let evald = await node.eval(context);
       expect(evald.render(context)).toBe('true');
+    });
+
+    // Regression (namespacing-7): a keyword `true`/`false` — e.g. read back from a
+    // namespace mixin lookup `#ns.opts[flag]` where `flag: true` — is a bare
+    // Keyword, not a Bool, but Less treats it as boolean in a bare guard.
+    it('treats a keyword true as a truthy bare guard', async () => {
+      let node = condition([any('true')]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('true');
+    });
+
+    it('treats a keyword false as a falsy bare guard', async () => {
+      let node = condition([any('false')]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('false');
+    });
+
+    it('treats any other keyword as falsy in a bare guard', async () => {
+      let node = condition([any('foo')]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('false');
+    });
+
+    it('compares a keyword true against a Bool as equal', async () => {
+      let node = condition([any('true'), '=', bool(true)]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('true');
+    });
+
+    // `Condition.resultPasses` is what a Ruleset uses for a non-Condition guard
+    // whose eval yields a bare value node.
+    it('resultPasses honours a keyword true/false result', () => {
+      expect(Condition.resultPasses(any('true'))).toBe(true);
+      expect(Condition.resultPasses(any('false'))).toBe(false);
+      expect(Condition.resultPasses(bool(true))).toBe(true);
+      expect(Condition.resultPasses(any('foo'))).toBe(false);
     });
   });
 });

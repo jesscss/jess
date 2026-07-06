@@ -870,7 +870,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       throw new TypeError('Expected nil-selector render guard copy to remain a Node');
     }
     const finishGuard = (guardResult: Node): MaybePromise<Rules | Nil> => {
-      const guardPasses = Boolean(guardResult instanceof Bool && guardResult.value === true);
+      const guardPasses = Condition.resultPasses(guardResult);
       return guardPasses ? this.evalNilSelectorBodyForRender(context) : new Nil();
     };
     const guardResult = ownedGuard.eval(context);
@@ -1988,9 +1988,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         : (guard as unknown as Node).eval(context);
       const finishGuard = (result: boolean | Node): Nil | undefined => {
-        const guardPasses = typeof result === 'boolean'
-          ? result
-          : Boolean(result instanceof Bool && result.value === true);
+        const guardPasses = Condition.resultPasses(result);
         if (!guardPasses) {
           const nil = createPublicNil();
           this.adopt(nil);
