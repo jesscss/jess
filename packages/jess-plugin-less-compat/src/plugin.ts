@@ -297,7 +297,21 @@ export class LessCompatPlugin extends AbstractPlugin {
       return;
     }
     for (const [name, fn] of Object.entries(functions)) {
-      jessRegistry.add(name.toLowerCase(), async (...args: unknown[]) => fn(...args));
+      // Evaluate node args in the current frame before crossing into the Deno
+      // worker. Legacy Less @plugin functions (registered without params
+      // metadata) otherwise receive unevaluated Reference/Operation nodes,
+      // which cannot be serialized meaningfully and fail inside the worker.
+      jessRegistry.add(name.toLowerCase(), async function(this: any, ...args: unknown[]) {
+        const context = this;
+        const evaluated = await Promise.all(args.map(async (arg) => {
+          if (arg instanceof Object && typeof (arg as any).eval === 'function' && (arg as any).evaluated !== true) {
+            const out = (arg as any).eval(context);
+            return isThenable(out) ? await out : out;
+          }
+          return arg;
+        }));
+        return fn(...evaluated);
+      });
     }
   }
 
