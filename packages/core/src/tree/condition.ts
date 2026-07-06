@@ -226,7 +226,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   evaluateBoolean(context: Context): MaybePromise<boolean> {
     const { left, operator: op, right } = this;
     const negated = this.negate;
-    const equalityMode: EqualityMode = context.opts?.equalityMode ?? this._treeContext?.equalityMode ?? 'less';
+    const equalityMode: EqualityMode = context.options.equalityMode;
     const leftResult = left.eval(context);
     if (isThenable(leftResult)) {
       return (leftResult as Promise<Node>).then((resolvedLeft) => {

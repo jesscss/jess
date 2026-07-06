@@ -858,7 +858,7 @@ export class Call extends Node<CallValue, CallOptions> {
               : await callWithContext(context, fn);
             return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
-            const functionMode = context?.opts?.functionMode ?? 'preserve';
+            const functionMode = context?.options.functionMode ?? 'preserve';
             if (functionMode === 'error') {
               throw error;
             }
@@ -1428,7 +1428,7 @@ export class Call extends Node<CallValue, CallOptions> {
                 if (
                   isMetadataFunction
                   || !this.options?.silentFail
-                  || (context?.opts?.functionMode ?? 'preserve') === 'error'
+                  || (context?.options.functionMode ?? 'preserve') === 'error'
                 ) {
                   throw error;
                 }
@@ -1934,7 +1934,7 @@ export class Call extends Node<CallValue, CallOptions> {
           // renders the call as-is (like an unknown CSS function) and warns —
           // but only for an optional (fallback) reference, i.e. a bare/global
           // call. A non-fallback reference (explicit import) always throws.
-          const functionMode = context?.opts?.functionMode ?? 'preserve';
+          const functionMode = context?.options.functionMode ?? 'preserve';
           if (!this._options?.silentFail || functionMode === 'error') {
             throw e;
           }

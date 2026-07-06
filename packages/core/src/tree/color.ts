@@ -638,7 +638,7 @@ export class Color extends Node<ColorData, ColorOptions> {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const bVal = isNode(b, N.Dimension) ? b.number : (b as unknown as { number: number }).number;
       const bUnit = isNode(b, N.Dimension) ? b.unit : '';
-      const unitMode = context?.opts?.unitMode ?? 'preserve';
+      const unitMode = context?.options.unitMode ?? 'preserve';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (bUnit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${b}" to a color`);

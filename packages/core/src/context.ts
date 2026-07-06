@@ -110,6 +110,58 @@ export interface ContextOptions {
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
 }
 
+/**
+ * The flat, fully-resolved option set read on the eval fast path. Every field is
+ * present (no `undefined`), so a read-site is a single property access —
+ * `context.options.equalityMode` — with no `?? treeContext ?? default` chain and
+ * no per-read merge. Resolved once and cached on {@link Context}; recomputed only
+ * when `context.treeContext` switches (see its setter), so crossing into an
+ * imported file is one recompute, not a cost paid on every option read.
+ */
+export interface ResolvedOptions {
+  mathMode: MathMode;
+  unitMode: UnitMode;
+  functionMode: FunctionMode;
+  equalityMode: EqualityMode;
+  leakyScope: boolean;
+  bubbleRootAtRules: boolean;
+}
+
+/**
+ * Ultimate fallbacks — used only when neither the compile config nor the tree
+ * context (plugin/language/file) supplied a value.
+ */
+const OPTION_DEFAULTS: ResolvedOptions = {
+  mathMode: 'parens-division',
+  unitMode: 'preserve',
+  functionMode: 'preserve',
+  equalityMode: 'less',
+  leakyScope: false,
+  bubbleRootAtRules: false
+};
+
+/**
+ * Resolve the option set with a SINGLE precedence: an explicit compile-level
+ * option wins, else the tree context's (plugin/language/file) value, else the
+ * hard default. This is the one place the precedence is defined — it replaces the
+ * three divergent `??` orders that used to live scattered across the read-sites
+ * (`compile ?? tree` in conditions, `tree`-only in lists, `tree ?? compile` for
+ * mathMode).
+ */
+export function resolveOptions(
+  compile: Partial<ResolvedOptions> | undefined,
+  tree: Partial<ResolvedOptions> | undefined
+): ResolvedOptions {
+  return {
+    mathMode: compile?.mathMode ?? tree?.mathMode ?? OPTION_DEFAULTS.mathMode,
+    unitMode: compile?.unitMode ?? tree?.unitMode ?? OPTION_DEFAULTS.unitMode,
+    functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
+    equalityMode: compile?.equalityMode ?? tree?.equalityMode ?? OPTION_DEFAULTS.equalityMode,
+    leakyScope: compile?.leakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.leakyScope,
+    bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules
+  };
+}
+
 export interface TreeContextOptions extends ContextOptions {
   inlineJavaScript?: boolean;
 
@@ -239,7 +291,42 @@ export class Context {
   readonly plugins: PluginInterface[];
   readonly opts: ContextOptions;
 
-  treeContext!: TreeContext;
+  private _treeContext!: TreeContext;
+  private _options: ResolvedOptions;
+
+  /**
+   * The active file's tree context. Assigning it (at import entry/exit and
+   * ruleset scope changes) recomputes the cached {@link options} once, so the
+   * fast-path reads that follow are plain field accesses.
+   */
+  get treeContext(): TreeContext {
+    return this._treeContext;
+  }
+
+  set treeContext(tc: TreeContext) {
+    this._treeContext = tc;
+    this._options = resolveOptions(this.opts, tc);
+  }
+
+  /**
+   * Flat, fully-resolved options for the currently-active tree context. Read
+   * these on the eval fast path (`context.options.unitMode`) — every field is
+   * present, so there is no `??` and no per-read merge. See {@link ResolvedOptions}.
+   */
+  get options(): ResolvedOptions {
+    return this._options;
+  }
+
+  /**
+   * Change a compile-level option and refresh the resolved-options cache. Prefer
+   * passing options at construction; this exists for dynamic reconfiguration (and
+   * tests) that need to change an option on a live context — mutating `opts`
+   * directly would leave {@link options} stale.
+   */
+  setOption<K extends keyof ResolvedOptions>(key: K, value: ResolvedOptions[K]): void {
+    this.opts[key] = value;
+    this._options = resolveOptions(this.opts, this._treeContext);
+  }
 
   /**
    * Collected errors during safeParse/safeRender.
@@ -459,26 +546,22 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  _leakyScope: boolean | undefined;
+  /** Thin accessors over the resolved option set (kept for existing callers). */
   get leakyScope() {
-    return this._leakyScope ?? this.treeContext?.leakyScope ?? false;
+    return this.options.leakyScope;
   }
 
-  _bubbleRootAtRules: boolean | undefined;
   get bubbleRootAtRules() {
-    return this._bubbleRootAtRules ?? this.treeContext?.bubbleRootAtRules ?? false;
+    return this.options.bubbleRootAtRules;
   }
 
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
+    // Seed resolved options from compile config (no tree context yet); the
+    // treeContext setter recomputes this once a file's context is active.
+    this._options = resolveOptions(opts, undefined);
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
-    if (opts.leakyScope !== undefined) {
-      this._leakyScope = opts.leakyScope;
-    }
-    if (opts.bubbleRootAtRules !== undefined) {
-      this._bubbleRootAtRules = opts.bubbleRootAtRules;
-    }
     if (opts.output?.compress !== undefined) {
       this.printState.compress = opts.output.compress;
     }
@@ -839,9 +922,7 @@ export class Context {
   }
 
   shouldOperate(op: Operator, left: Node, right: Node) {
-    const mathMode = this.treeContext?.mathMode
-      ?? this.opts?.mathMode
-      ?? 'parens-division';
+    const mathMode = this.options.mathMode;
     return shouldOperateWithMathFrames(
       {
         mathMode,
