@@ -509,3 +509,13 @@ does (delegate to an injected runtime via `loadLessPluginFileWithDeno`, throw ot
 — the duck-typed shape the handler searches for. So this is WIRING, not design/sandbox-building.
 IN FLIGHT: plugin-js-wire (add jsPlugin() to the plugin list; verify injection; probe bootstrap → does @plugin execute
 + render, or next blocker). This is the milestone-4 endgame (bootstrap.less → .css). Plus value-trivia, nested-mixin.
+
+## 2026-07-05 (alpha) — @plugin JS WORKS (no code change); bootstrap next wall = selector @{var} interp
+plugin-js-wire verdict: injection path works AS-IS. `new Compiler({compile:{plugins:[lessPlugin(),
+jsPlugin({jsReadRoot:'<dir>', runtimeApi:'less'}), lessCompatPlugin()]}})` → @plugin executes (proved
+`double(21)`→42; absent→gate throws). Deno 2.7.6 present. **This is the canonical bootstrap render recipe.**
+Bootstrap now fails EARLIER, at PARSE: `_text-emphasis.less:4:65` unexpected-token. Root cause (less-parser):
+interpolated-selector production rejects a bare/leading `@{var}` element and interpolation right after a type
+selector. Reductions: `@{parent}{}` FAIL, `div@{n}{}` FAIL, `.a-@{n}`/`.@{n}` OK. → next: less/selector-interp.
+Bootstrap→css is now a normal parser-fix chain (not a sandbox problem). @plugin cluster CLOSED (works via injection).
+IN FLIGHT: value-trivia, nested-mixin, selector-interp (bootstrap blocker).
