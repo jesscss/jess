@@ -145,6 +145,8 @@ export class LessGrammar extends CssParser {
       case 'AnonymousMixinDefinition': return this._buildAnonMixin(children, loc) as unknown as JessNode;
       case 'DetachedRuleset':     return this._buildDetachedRuleset(children, loc) as unknown as JessNode;
       case 'For':                 return this._buildEachFor(children, loc) as unknown as JessNode;
+      case 'BooleanCall':         return this._buildBooleanCall(children, loc);
+      case 'IfCall':              return this._buildIfCall(children, loc);
       case 'MixinOrQualifiedRule': return this._buildMixinOrQualified(children, loc);
       case 'Negative':            return new Negative(this._negativeOperand(children), undefined, loc) as unknown as JessNode;
       case 'OperationTop':        return this._buildOperation(children, loc, this.mathMode === 'always') as unknown as JessNode;
@@ -593,6 +595,31 @@ export class LessGrammar extends CssParser {
   /** guard: `when` guardOr — returns the single guardOr child. */
   private _buildGuard(children: ReadonlyArray<Child>, loc: LocationInfo) {
     return (nodeChildren(children)[0] ?? this._lessKeyword('', loc)) as unknown as JessNode;
+  }
+
+  /**
+   * `boolean(cond)` — the condition is a guard expression (GuardOr → Condition /
+   * Paren / keyword). Returns it directly: a Condition evaluates to a Bool, and a
+   * bare keyword `true`/`false` is honoured by `Condition.getBoolValue` at the
+   * consuming site. Wrapped in a Paren so the value renders as the evaluated bool
+   * (matching Less's `boolean()` returning a Keyword true/false).
+   */
+  private _buildBooleanCall(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const cond = nodeChildren(children)[0] ?? this._lessKeyword('', loc);
+    return new Paren(cond as any, {}, loc) as unknown as JessNode;
+  }
+
+  /**
+   * `if(cond, then[, else])` — the condition is a guard expression; the branches
+   * are ordinary values or detached rulesets. Build a `Call` to the registered
+   * `if` fn with `[cond, then?, else?]`, so the fn evaluates the condition (a
+   * Condition/Bool/keyword) and picks a branch.
+   */
+  private _buildIfCall(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode {
+    const args = nodeChildren(children);
+    const nameRef = new Reference('if', { type: 'function', fallbackValue: true } as any, loc);
+    const argList = new List(args as any, {}, loc);
+    return new Call({ name: nameRef as any, args: argList as any }, { silentFail: true } as any, loc) as unknown as JessNode;
   }
 
   private _buildInterpolatedSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
