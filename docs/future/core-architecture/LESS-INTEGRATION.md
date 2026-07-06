@@ -722,3 +722,14 @@ whose `@infix` resolves async (plugin-js/each) returns a Promise; F_MAY_ASYNC is
 so the sync path threw. Now promotes to a promise cleanly. bootstrap advances.
 Bootstrap next wall: `'value' is not defined` — `@{value}` interpolation reading the each loop var @value; interpolation
 eval frame lacks per-iteration bindings (same class as wall3's flagged residual). → dispatched wall8.
+
+## 2026-07-06 — 🎉 MILESTONE 4 (core): bootstrap.less → .css RENDERS (128,319 bytes, ~1.6s)
+bootstrap-wall8 MERGED: interpolated selector `.d@{infix}-@{value}` — the first slot `@infix` is an async compat-plugin
+call whose deferred rulesContext save/restore interleaved across the await and leaked a STALE scope (Ruleset[]) between
+slots, so `@value` resolved against it → 'value' not defined. Fix (interpolated.ts): capture the interpolation's entry
+`context.rulesContext` once and re-assert before each slot's eval. **BOOTSTRAP NOW COMPILES TO CSS.**
+Bootstrap wall chain COMPLETE (fatal): parse ✓ @plugin ✓ nested-import-scope ✓ empty-Condition ✓ var-scope ✓
+each-loop-vars ✓ @min-async-guard ✓ operate-on-Paren ✓ operate-on-Any ✓ compound-selector-async ✓ interp-slot-scope ✓
+→ RENDERS 128KB in ~1.6s (recipe: [lessPlugin(), jsPlugin({jsReadRoot, runtimeApi:'less'}), lessCompatPlugin()]).
+RESIDUAL (non-fatal, breakOnError:false swallows): 44 rejections — `-1` ×43 + `name` ×1 via evaluateNodeArrayRest.
+Render succeeds but 44 sub-expressions error → clean-compile follow-up (likely ONE systematic `-1` root cause).
