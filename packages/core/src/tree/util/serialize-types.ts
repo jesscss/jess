@@ -166,8 +166,12 @@ function serializeNodeChildFields(n: Node, depth: number, opts: Required<Seriali
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? n.shortType : n.type;
   const pad = indent(depth, opts.indentSize);
+  // `role` lives on an own field for some node types (e.g. `Any`) but is derived
+  // from `options.role` for others (`Reference` dropped the eager own field in
+  // the slim pass) — read the own field first, then fall back to the option.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const roleValue = 'role' in n ? (n as unknown as { role: unknown }).role : undefined;
+  const withRole = n as unknown as { role?: unknown; options?: { role?: unknown } };
+  const roleValue = withRole.role ?? withRole.options?.role;
   const role = typeof roleValue === 'string' ? roleValue : undefined;
   const meta = role ? ` [role=${role}]` : '';
   const open = `${pad}(${typeName}${meta}`;
