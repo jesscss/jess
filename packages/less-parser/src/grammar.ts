@@ -142,11 +142,14 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
   const refIndex = sequence(literal('['), parser({ trivia: rw }, sequence(optional(refKey), literal(']'))));
   const refCall = parser({ trivia: rw }, sequence(literal('('), optional(mixinArgsContent), literal(')')));
-  // varReference + lookupOrCall: a @variable glued to a chain of [accessor]/(call).
-  // noTrivia() forbids trivia (here: whitespace/comments) between the var and
-  // '[' / '(', keeping the chain contiguous (production's noSep()).
+  // varReference + lookupOrCall: a @variable OR $property glued to a chain of
+  // [accessor]/(call). `$color` is a bare property reference (read declaration
+  // `color`); `@a[k]` is a variable + accessor chain. noTrivia() forbids trivia
+  // (whitespace/comments) between the head and '[' / '(', keeping the chain
+  // contiguous (production's noSep()). The builder types `$`-headed refs as
+  // `property` and `@`-headed as `variable` (see _buildReference).
   const Reference = node('Reference',
-    noTrivia(sequence(lessVar, many(choice(refIndex, refCall)))));
+    noTrivia(sequence(choice(lessVar, propRef), many(choice(refIndex, refCall)))));
 
   // ── Detached-ruleset variable call ─────────────────────────────────────────
   // `@name(...)` (no `:`) is a variable CALL of a detached ruleset, not a var
@@ -435,7 +438,22 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // and anyValueTok excludes `{`, so this is the only rule that accepts it.
   const InterpValue = node('InterpValue',
     parser({ trivia: rw }, interpKey));
-  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  // A namespace INDEXED-accessor reference in value position: a `.`/`#` compound
+  // selector-path head (`#ns.options`, `.mixin`) glued (noTrivia) to a `[accessor]`
+  // and then any further `[accessor]`/`(call)` chain. This must parse as ONE value
+  // operand BEFORE arithmetic folding — otherwise `#ns.options[val1] + 5px` splits
+  // into the bare string `#ns.options` plus an Operation whose left operand is the
+  // lone `[val1]` SquareParen, so the accessor never binds to the namespace path.
+  // Ordered before SquareParen/anyValue in `value`. Requiring the FIRST segment be
+  // a `[` (not a `(`) keeps every call-headed form — `.mixin()`, `.mixin()[k]`,
+  // `#ns.x(.a[])[k]`, chained `.a() > .b()` — on the existing GluedParen /
+  // _tryParseNamespaceRef reassembly paths, which structure call args richly.
+  // The builder (_buildNsAccessor) reuses the same mixin-ruleset assembly as the
+  // declaration-value _assembleSegment path.
+  const nsHead = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)(?:[.#]-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)*/);
+  const NsAccessor = node('NsAccessor',
+    noTrivia(sequence(nsHead, refIndex, many(choice(refIndex, refCall)))));
+  const value = choice(g.InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -677,7 +695,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
-    valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, EscapedValue, NamedColor, Dimension, Url,
+    valueList, valueSequence, value, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
     parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
