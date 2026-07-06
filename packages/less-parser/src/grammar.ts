@@ -223,9 +223,13 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // / `when (#ns.opts[flag] = true)` — so it must parse as ONE operand (ordered
   // before Reference/Paren) rather than falling to the value-Paren, which would
   // swallow `= true` into a Sequence instead of a comparison.
-  const guardOperand = choice(g.NsAccessor, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.Call, g.Paren, g.anyValue);
+  // `EscapedValue` (`~"…"`, `~(…)`) is a valid comparison operand — `when (~"a" = @s)`
+  // — so it must parse as ONE operand (ordered before Quoted/anyValue), else the bare
+  // `Quoted` alt fails on the leading `~` and `anyValue` swallows `~"…" = @s` into a
+  // Sequence, dropping the comparison.
+  const guardOperand = choice(g.NsAccessor, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.Call, g.Paren, g.anyValue);
   const Comparison = node('Comparison',
-    parser({ trivia: rw }, sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.anyValue))));
+    parser({ trivia: rw }, sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.anyValue))));
   const GuardDefault = node('GuardDefault',
     parser({ trivia: rw }, regex(/default(?:[ \t\n\r\f]*\([ \t\n\r\f]*\))?(?![-\w])/)));
   // '(' guardOr ')' → Paren; or a bare default(). Wrapped in a Paren node.
