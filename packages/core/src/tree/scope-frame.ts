@@ -502,7 +502,14 @@ export function lookupScopeFrameVariable(
   let leakStart = options?.leakStart;
   const searchParents = options?.searchParents !== false;
   const includeFallbackFrames = options?.includeFallbackFrames !== false;
-  let fallbackFrame = includeFallbackFrames ? frame?.fallbackFrame : undefined;
+  // Every frame in the parent walk can carry its own import fallback (an inner
+  // mixin-body frame AND the root that holds the `@import`ed decls). Queue each
+  // one — an inner frame's fallback must not shadow an outer frame's, so a single
+  // first-wins slot dropped every import fallback above the innermost placement.
+  const fallbackQueue: ScopeFrame[] = [];
+  if (includeFallbackFrames && frame?.fallbackFrame) {
+    fallbackQueue.push(frame.fallbackFrame);
+  }
   let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
     while (f) {
@@ -630,8 +637,8 @@ export function lookupScopeFrameVariable(
       if (!searchParents) {
         return { kind: 'miss' };
       }
-      if (includeFallbackFrames) {
-        fallbackFrame ??= f.fallbackFrame;
+      if (includeFallbackFrames && f.fallbackFrame) {
+        fallbackQueue.push(f.fallbackFrame);
       }
       start = undefined;
       // A leak binding on the parent frame is source-order gated against where
@@ -645,20 +652,27 @@ export function lookupScopeFrameVariable(
       f = f.parent;
     }
 
-    if (!fallbackFrame) {
-      return { kind: 'miss' };
+    // Dequeue the next unvisited fallback head. A head already searched (its
+    // chain cycled back, or two frames shared a fallback) is skipped, not spun
+    // on — the `visitedFallbackFrames` set makes each parent walk total. When the
+    // queue drains, the symbol is genuinely absent.
+    let nextFallback: ScopeFrame | undefined;
+    while (fallbackQueue.length > 0) {
+      const candidate = fallbackQueue.shift()!;
+      if (!visitedFallbackFrames?.has(candidate)) {
+        nextFallback = candidate;
+        break;
+      }
     }
-    // If the next fallback head was already searched, the fallback chain has
-    // cycled — every remaining frame is visited, so the symbol is not here.
-    // Terminate (the inner `break` above only stops a single parent walk; this
-    // guard is what keeps a cyclic chain from spinning forever).
-    if (visitedFallbackFrames?.has(fallbackFrame)) {
+    if (!nextFallback) {
       return { kind: 'miss' };
     }
 
-    f = fallbackFrame;
+    f = nextFallback;
     visitedFallbackFrames ??= new Set();
-    fallbackFrame = fallbackFrame.fallbackFrame;
+    if (nextFallback.fallbackFrame) {
+      fallbackQueue.push(nextFallback.fallbackFrame);
+    }
     start = undefined;
   }
 }
