@@ -49,6 +49,7 @@ export const enum AssignmentType {
   // Multiply = '*:',      // math multiplication, like *= in JS
   // Divide = '/:',        // math division, like /= in JS
   CondAssign = '?:',       // assign only when no value is already defined
+  SetGlobal = ':=',        // non-shadowing/global: reassign the existing outer binding (eval TBD)
   // CondAdd = '?+:',      // add if defined, otherwise assign
   // CondSubtract = '?-:', // subtract if defined, otherwise assign
   // CondMultiply = '?*:', // multiply if defined, otherwise assign
@@ -57,6 +58,16 @@ export const enum AssignmentType {
   /** Legacy Less flags */
   MergeList = '&,:',    // merge into a list if another prop exists with this flag
   MergeSequence = '&_:' // merge into a sequence if another prop exists with this flag
+}
+
+/**
+ * Jess name-glued assignment operators — conditional-assign `$foo?:` and
+ * merge-assign `$list+:`. These render with the operator glued to the name (no
+ * leading space), matching the canonical authored form. Distinct from the Less
+ * forms (`:=` setDefined, `&,:` / `&_:` merge flags), which keep their spacing.
+ */
+function isJessGluedAssign(assign: string): boolean {
+  return assign === AssignmentType.CondAssign || assign === AssignmentType.Add;
 }
 
 export type DeclarationOptions = {
@@ -961,7 +972,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       ? AssignmentType.Default
       : assign;
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
-    let a = effAssign === ':' ? ':' : ` ${effAssign}`;
+    // Jess name-glued assignment ops (`$foo?:`, `$list+:`) render with NO space
+    // before the operator — the canonical authored form. `:` and the Less forms
+    // (`:=`, `&,:`, `&_:`) keep their existing spacing.
+    let a = effAssign === ':'
+      ? ':'
+      : isJessGluedAssign(effAssign) ? effAssign : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const nameText = nodeValueText(name);
     if (typeof name === 'string') {
@@ -1124,7 +1140,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     const w = options.writer!;
     w.add(nameText, this.name instanceof Node ? this.name : this);
-    w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
+    // Jess name-glued ops (`$foo?:`, `$list+:`) omit the leading space.
+    w.add(effAssign === ':'
+      ? ': '
+      : isJessGluedAssign(effAssign) ? `${effAssign} ` : ` ${effAssign} `);
     w.add(valueText, this.value instanceof Node ? this.value : this);
     if (importantText !== undefined) {
       w.add(` ${importantText}`, this.important instanceof Node ? this.important : this);

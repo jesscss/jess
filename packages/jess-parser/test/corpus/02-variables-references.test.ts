@@ -9,8 +9,20 @@
  *   $foo?              → optional reference (fallbackValue)
  *   +: / ?:            → assignment ops on VarDeclaration
  */
-import { describe, it } from 'vitest';
-import { expectAst, expectAstContains } from './_util.js';
+import { describe, it, expect } from 'vitest';
+import { expectAst, expectAstContains, parse } from './_util.js';
+
+/** Parse a top-level `$name…;` and return the VarDeclaration node's own
+ * serialization (a top-level VarDeclaration is invisible in full CSS output). */
+function varDeclSyntax(src: string): string {
+  const { tree } = parse(src);
+  type Serializable = { toTrimmedString(): string };
+  type Holder = { rules?: Serializable[]; value?: Serializable[] };
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const holder = tree as unknown as Holder;
+  const node = holder.rules?.[0] ?? holder.value?.[0];
+  return node!.toTrimmedString();
+}
 
 describe('corpus/variables', () => {
   it('variable declaration (keyword value)', () => {
@@ -46,11 +58,31 @@ describe('corpus/variables', () => {
         name: 'list'`, { showOptions: true });
   });
 
-  it('conditional-assign ?:', () => {
-    expectAstContains('$x ?: 1;', `
+  it('conditional-assign (default-assignment) $foo?:', () => {
+    // Canonical form: `?` glued to the name, directly before the colon (Jess's
+    // equivalent of SCSS `!default`, which is NOT Jess).
+    expectAstContains('$x?: 1;', `
       (VarDeclaration
           assign: '?:'
         name: 'x'`, { showOptions: true });
+    // The VarDeclaration round-trips to the canonical GLUED form (no space before
+    // the colon); the spaced authored form NORMALIZES to it too. (A top-level
+    // VarDeclaration is invisible in full CSS output, so assert the node's own
+    // serialization.)
+    expect(varDeclSyntax('$x?: 1;')).toBe('$x?: 1');
+    expect(varDeclSyntax('$x ?: 1;')).toBe('$x?: 1');
+  });
+
+  it('global (non-shadowing) assign := ', () => {
+    // `$foo := bar` reassigns the existing outer binding rather than shadowing.
+    // `:=` must win over `:` + a `=`-led value (was a silent mis-parse). Eval
+    // semantics (non-shadowing) are deferred — parse + serialize only (see NOTES).
+    expectAstContains('$foo := bar;', `
+      (VarDeclaration
+          assign: ':='
+        name: 'foo'`, { showOptions: true });
+    // Round-trips SPACED — `$foo := bar` — the user's canonical spelling.
+    expect(varDeclSyntax('$foo := bar;')).toBe('$foo := bar');
   });
 
   it('variable declaration with !important', () => {

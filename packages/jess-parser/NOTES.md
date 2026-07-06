@@ -129,6 +129,26 @@ Implementation:
 - Tests: `selector-capture-call.test.ts` (4) incl. a bracket-vs-dot divergence test.
   Core 2749/0; `$apply` unchanged.
 
+## Assignment operators (`?:` / `+:` / `:=`) — DONE (parse + serialize)
+- **`$foo?:` conditional / default-assignment** — Jess's equivalent of SCSS
+  `!default` (NOT Jess). Serialization normalized to the canonical GLUED form:
+  `$foo?: v` renders with NO space before the `:` (the spaced `$foo ?: v` authored
+  form normalizes to it). Same for merge-assign `$list+:`. Fix: `isJessGluedAssign`
+  in `declaration.ts` glues `CondAssign`/`Add` only; Less `:=`/`&,:`/`&_:` stay
+  spaced (kept `$one := three` test green).
+- **`$foo := bar` global (non-shadowing) assign** — reassigns the existing outer
+  binding rather than shadowing. New `AssignmentType.SetGlobal = ':='`; grammar
+  `assignOp` gains `:=` (BEFORE `:` so it wins over `:` + a `=`-led value — was a
+  silent mis-parse). Round-trips SPACED (`$foo := bar`, canonical). Builder sets
+  `assign: ':='` like `?:`/`+:`.
+- **`:=` eval semantics (non-shadowing / reassign-outer-binding) TBD** — parse +
+  serialize only for now.
+- **Reconcile `:=` with the doc's `$^foo:` linear-set.** `02-variables.mdx` §"Set
+  linearly" documents non-shadowing assignment as `$^color: blue` (the `^`
+  linear-set). The user settled `$foo := bar` as the operator spelling of the same
+  intent — the two overlap. Docs now cross-link them (an info box); the user should
+  decide whether `$^:` and `:=` coexist or one supersedes the other at eval time.
+
 FOLLOW-UPS (out of the adjudicated scope; not yet built):
 - `@-compose` option modifiers `(reference)` / `(protected)` / `(export)` +
   `set`/`with` config blocks (StyleImport importOptions.reference/mutable/... + the

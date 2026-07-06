@@ -280,7 +280,7 @@ export class JessGrammar extends CssParser {
     const rawName = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
     const name = rawName.replace(/^\$/, '');
 
-    const opIdx = items.findIndex(i => i.comp === ':' || i.comp === '+:' || i.comp === '?:');
+    const opIdx = items.findIndex(i => i.comp === ':' || i.comp === '+:' || i.comp === '?:' || i.comp === ':=');
     const op = items[opIdx]?.comp as string | undefined;
 
     let end = items.length;
@@ -320,7 +320,13 @@ export class JessGrammar extends CssParser {
       important = this._source.slice(bang.span.start, impEnd);
     }
 
-    const assign = op === '+:' ? AssignmentType.Add : op === '?:' ? AssignmentType.CondAssign : undefined;
+    const assign = op === '+:'
+      ? AssignmentType.Add
+      : op === '?:'
+        ? AssignmentType.CondAssign
+        : op === ':='
+          ? AssignmentType.SetGlobal
+          : undefined;
 
     return new VarDeclaration(
       { name, value, important } as never,

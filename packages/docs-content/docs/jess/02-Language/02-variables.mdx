@@ -24,6 +24,32 @@ $color: #06c; // normal declaration
 }
 ```
 
+## Assignment operators
+
+Jess variables support a few assignment operators, written glued to the variable
+name (except `:=`, which is spaced):
+
+| Operator | Name | Meaning |
+| --- | --- | --- |
+| `$foo: value` | assign | normal declaration (scoped) |
+| `$foo?: value` | default-assignment | assign only if `foo` is not already defined. This is Jess's equivalent of SCSS `!default` (which is not Jess). |
+| `$foo+: value` | merge-assign | merge into `foo` if it already exists (lists / sequences / collections) |
+| `$foo := value` | global (non-shadowing) assign | reassign the existing outer binding rather than creating a new shadowing local |
+
+```scss
+$foo?: 1;        // sets foo to 1 only if it wasn't already defined
+$list+: 1, 2;    // merges 1, 2 into the existing list
+$foo := bar;     // reassign the outer `foo`, do not shadow
+```
+
+:::info
+
+`$foo := bar` and the linear set `$^foo: bar` (see [Set linearly](#set-linearly))
+both write the existing outer binding instead of shadowing. `:=` is the direct
+operator spelling of that intent.
+
+:::
+
 ## Scoped variables
 
 Like CSS and Less, Jess variables have a value per scope. This is similar to how CSS custom properties work, but the scope is according to the stylesheet, instead of the DOM (as it is with CSS custom properties).
