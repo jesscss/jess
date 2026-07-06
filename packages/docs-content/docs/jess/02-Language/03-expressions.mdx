@@ -50,7 +50,7 @@ value: $(#222 / 2); // #111
 
 ```less
 $width: 10px;
-$height: $(width + 10px);
+$height: $($width + 10px);
 
 #header {
   width: $width;
@@ -72,6 +72,22 @@ value: $less.iscolor($color); // true
 $num: 10;
 value: $($num + 1); // 11
 ```
+
+### Unwrapped arithmetic when a value leads with `$var`
+
+To cut down on the double-`$`, arithmetic in a **value** that **leads with a `$variable`** may skip the `$(…)` wrapper. `$w + 1` is treated as `$($w + 1)`:
+
+```less
+width: $w + 1;    // same as $($w + 1)
+width: $w * 2;    // multiply
+width: $w * 2 + $h; // * binds tighter than +
+```
+
+Rules:
+
+- Only when the value **starts with a `$var`** — `w + 1` (a keyword) stays literal text, and you still need `$(w + 1)` (or a `$var`) for arithmetic there.
+- The operator must be **standalone** (spaces on both sides). `$w -1` is *not* subtraction — the `-1` is a signed number, so it stays a two-item list. Write `$w - 1` for subtraction.
+- `/` still requires the wrapper (`$($w / 2)`) — an unwrapped `$w / 2` stays a slash-separated list (so `font: 16px/1.5` keeps working).
 
 ## Other operators
 

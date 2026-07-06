@@ -77,30 +77,49 @@ describe('mixinArgList', () => {
     expect(out).toContainString('\'c\'');
   });
 
-  it('serializes semicolon-root mixin args as a semicolon List', () => {
+  // Less `;`-separated mixin args are LOWERED to the unified Jess representation:
+  // args comma-separated, any comma-list arg wrapped in `~(…)` (escaped Paren). So
+  // Less `;` and Jess `~(…)` produce the same AST (deferred-task-1 lowering).
+  it('lowers semicolon mixin args with SCALAR groups to a plain comma List', () => {
+    // `a; b; c` — each `;`-group is a scalar, so no comma-list to wrap: the outer
+    // List is just comma-separated (no `sep: ';'`, no Parens).
     const { errors, tree } = parse('.mixin(a; b; c)', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Reference [role=name]');
     expect(out).toContainString('type: \'mixin-ruleset\'');
     expect(out).toContainString('key: \'.mixin\'');
-    expect(out).toContainString('(List\n          sep: \';\'');
-    expect(out).toContainString('value:');
+    expect(out).not.toContainString('sep: \';\'');
+    expect(out).not.toContainString('(Paren');
     expect(out).toContainString('(Keyword [role=keyword]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
     expect(out).toContainString('\'c\'');
   });
 
-  it('preserves escaped nested comma values inside semicolon-root mixin args', () => {
-    const { errors, tree } = parse('.mixin(~(a, b); c)', 'MixinOrQualifiedRule');
+  it('lowers a comma-list mixin arg to an escaped Paren (`~(…)`)', () => {
+    // `.mixin(a, b; c)` — the first `;`-group is a comma-list, so it becomes an
+    // escaped Paren `~(a, b)`; `c` stays a scalar. Same AST as Jess `mixin(~(a, b), c)`.
+    const { errors, tree } = parse('.mixin(a, b; c)', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Reference [role=name]');
     expect(out).toContainString('key: \'.mixin\'');
-    expect(out).toContainString('(List\n          sep: \';\'');
+    expect(out).not.toContainString('sep: \';\'');
     expect(out).toContainString('(Paren\n              escaped: true');
     expect(out).toContainString('(Keyword [role=keyword]');
+    expect(out).toContainString('\'a\'');
+    expect(out).toContainString('\'b\'');
+    expect(out).toContainString('\'c\'');
+  });
+
+  it('an authored `~(…)` mixin arg round-trips to the same escaped Paren', () => {
+    // Less `~(a, b)` (authored escape) and the lowered `;`-arg converge on one AST.
+    const { errors, tree } = parse('.mixin(~(a, b); c)', 'MixinOrQualifiedRule');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).not.toContainString('sep: \';\'');
+    expect(out).toContainString('(Paren\n              escaped: true');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
     expect(out).toContainString('\'c\'');

@@ -71,6 +71,7 @@ export * from './selector-compound.js';
 export * from './selector-complex.js';
 export * from './selector-simple.js';
 export * from './selector-capture.js';
+export * from './apply.js';
 export * from './sequence.js';
 export * from './query-condition.js';
 export * from './comment.js';

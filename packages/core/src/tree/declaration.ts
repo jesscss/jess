@@ -46,11 +46,22 @@ function isIdentifierChar(value: string | undefined): boolean {
 
 export const enum AssignmentType {
   Default = ':',
-  Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
+  // `+:` — used for the Less PROPERTY merge on a plain `Declaration`
+  // (`background +: …`; the comma-merge `List` path, guarded by
+  // `this.type === 'Declaration'`). The Jess VARIABLE `$foo +: v` operator was
+  // REMOVED — the jess-parser no longer emits `Add` for a `VarDeclaration`;
+  // variable compound-add is written explicitly (`$foo: $foo + v`). The non-
+  // Declaration `else` branch of `case AssignmentType.Add` (a `+` Operation) stays
+  // for any other caller that constructs a var-typed `Add`. See NOTES for the
+  // deferred property-merge `legacyMerge` design.
+  Add = '+:',
   // Subtract = '-:',      // math subtraction, like -= in JS
   // Multiply = '*:',      // math multiplication, like *= in JS
   // Divide = '/:',        // math division, like /= in JS
   CondAssign = '?:',       // assign only when no value is already defined
+  // Note: `$foo := bar` (global/non-shadowing assign) is NOT an AssignmentType —
+  // it's core's `setDefined` option on the VarDeclaration (`:=` is synthesized in
+  // serialization from `setDefined && assign === ':'`).
   // CondAdd = '?+:',      // add if defined, otherwise assign
   // CondSubtract = '?-:', // subtract if defined, otherwise assign
   // CondMultiply = '?*:', // multiply if defined, otherwise assign
@@ -59,6 +70,16 @@ export const enum AssignmentType {
   /** Legacy Less flags */
   MergeList = '&,:',    // merge into a list if another prop exists with this flag
   MergeSequence = '&_:' // merge into a sequence if another prop exists with this flag
+}
+
+/**
+ * Jess name-glued assignment operators — conditional-assign `$foo?:` and
+ * merge-assign `$list+:`. These render with the operator glued to the name (no
+ * leading space), matching the canonical authored form. Distinct from the Less
+ * forms (`:=` setDefined, `&,:` / `&_:` merge flags), which keep their spacing.
+ */
+function isJessGluedAssign(assign: string): boolean {
+  return assign === AssignmentType.CondAssign || assign === AssignmentType.Add;
 }
 
 /**
@@ -94,13 +115,24 @@ export type DeclarationOptions = {
    */
   readonly?: boolean;
   /**
-   * Instead of implicitly declaring or overriding,
-   * requires a variable to previously be explicitly
-   * declared within scope.
+   * Instead of implicitly declaring or overriding, requires a variable to
+   * previously be explicitly declared within scope, and assigns THAT binding
+   * (the global / top one) — Sass `!global` semantics.
    *
-   * Used by SCSS (!global) and Jess's (^$foo:)
+   * Used by SCSS `!global`. NOT Jess `:=` — that is `nearestOuter` (below), a
+   * distinct nearest-enclosing-binding intent. (`setDefined` still renders `:=`.)
    */
   setDefined?: boolean;
+
+  /**
+   * Jess `$foo := bar` — NEAREST-OUTER non-shadowing assignment: reassign the
+   * nearest enclosing scope that already defines `$foo` (JS-block style), NOT the
+   * global/top binding. DISTINCT from `setDefined` (Sass `!global`). Renders `:=`.
+   *
+   * @todo eval — nearest-outer scope-walk + reassignment is NOT implemented; `:=`
+   * currently has no eval effect (preferable to wrong `!global` eval).
+   */
+  nearestOuter?: boolean;
 
   /** Used by SCSS (!default) and Jess (?:) */
   // setIfUndefined?: boolean
@@ -1073,13 +1105,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       customInterpolatedSource
       && getSingleInterpolatedDeclarationValue(value) === customInterpolatedSource
     );
-    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
-    // setDefined uses `:=` with default spacing rules.
+    const { assign = ':', normalizedFromAssign, setDefined, nearestOuter } = this._options ?? {};
+    // `:=` renders for both Sass `!global` (setDefined) and Jess nearest-outer
+    // (nearestOuter) — same surface, distinct semantics — with default spacing.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
       ? AssignmentType.Default
       : assign;
-    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
-    let a = effAssign === ':' ? ':' : ` ${effAssign}`;
+    const effAssign = ((setDefined || nearestOuter) && printedAssign === ':') ? ':=' : printedAssign;
+    // Jess name-glued assignment ops (`$foo?:`, `$list+:`) render with NO space
+    // before the operator — the canonical authored form. `:` and the Less forms
+    // (`:=`, `&,:`, `&_:`) keep their existing spacing.
+    let a = effAssign === ':'
+      ? ':'
+      : isJessGluedAssign(effAssign) ? effAssign : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const nameText = nodeValueText(name);
     if (typeof name === 'string') {
@@ -1279,12 +1317,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (this.important !== undefined && importantText === undefined) {
       return false;
     }
-    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
+    const { assign = ':', normalizedFromAssign, setDefined, nearestOuter } = this._options ?? {};
     const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
-    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
+    const effAssign = ((setDefined || nearestOuter) && printedAssign === ':') ? ':=' : printedAssign;
     const w = options.writer!;
     w.add(nameText, this.name instanceof Node ? this.name : this);
-    w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
+    // Jess name-glued ops (`$foo?:`, `$list+:`) omit the leading space.
+    w.add(effAssign === ':'
+      ? ': '
+      : isJessGluedAssign(effAssign) ? `${effAssign} ` : ` ${effAssign} `);
     w.add(valueText, this.value instanceof Node ? this.value : this);
     if (importantText !== undefined) {
       w.add(` ${importantText}`, this.important instanceof Node ? this.important : this);
@@ -1323,14 +1364,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (this.type !== 'Declaration') {
       const state = this.evalPreparedState(context);
-      return isThenable(state)
-        ? (state as Promise<DeclarationEvalState>).then(resolved => this.renderEvaluatedDeclaration(context, resolved, bufferOrOptions, options))
-        : this.renderEvaluatedDeclaration(context, state as DeclarationEvalState, bufferOrOptions, options);
+      return isThenable<DeclarationEvalState>(state)
+        ? state.then((resolved: DeclarationEvalState) => this.renderEvaluatedDeclaration(context, resolved, bufferOrOptions, options))
+        : this.renderEvaluatedDeclaration(context, state, bufferOrOptions, options);
     }
     const state = this.evalRenderState(context);
-    return isThenable(state)
-      ? (state as Promise<DeclarationRenderState>).then(resolved => this.renderDeclarationRenderState(context, resolved, bufferOrOptions, options))
-      : this.renderDeclarationRenderState(context, state as DeclarationRenderState, bufferOrOptions, options);
+    return isThenable<DeclarationRenderState>(state)
+      ? state.then((resolved: DeclarationRenderState) => this.renderDeclarationRenderState(context, resolved, bufferOrOptions, options))
+      : this.renderDeclarationRenderState(context, state, bufferOrOptions, options);
   }
 
   private renderEvaluatedDeclaration(
@@ -1414,16 +1455,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override resolve(context: Context): MaybePromise<Node> {
     const state = this.evalPreparedState(context);
-    return isThenable(state)
-      ? (state as Promise<DeclarationEvalState>).then(resolved => resolved.output)
-      : (state as DeclarationEvalState).output;
+    return isThenable<DeclarationEvalState>(state)
+      ? state.then((resolved: DeclarationEvalState) => resolved.output)
+      : state.output;
   }
 
   private evalRenderState(context: Context): MaybePromise<DeclarationRenderState> {
     const state = this._prepareDeclarationRegistrationState(context, { ownParts: false });
-    return isThenable(state)
-      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.evalRegistrationRenderState(context, resolved))
-      : this.evalRegistrationRenderState(context, state as DeclarationRegistrationState);
+    return isThenable<DeclarationRegistrationState>(state)
+      ? state.then((resolved: DeclarationRegistrationState) => this.evalRegistrationRenderState(context, resolved))
+      : this.evalRegistrationRenderState(context, state);
   }
 
   private evalRegistrationRenderState(
@@ -1443,15 +1484,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       let chain: Promise<void> | undefined;
       const evaluateItem = (item: Node): MaybePromise<void> => {
         const out = item.eval(context);
-        if (isThenable(out)) {
-          return (out as Promise<Node>).then((node) => {
+        if (isThenable<Node>(out)) {
+          return out.then((node: Node) => {
             if (!(node instanceof Nil)) {
               evaluated.push(node);
             }
           });
         }
         if (!(out instanceof Nil)) {
-          evaluated.push(out as Node);
+          evaluated.push(out);
         }
       };
       for (const item of state.renderAssignment?.items ?? []) {
@@ -1460,8 +1501,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           continue;
         }
         const out = evaluateItem(item);
-        if (isThenable(out)) {
-          chain = out as Promise<void>;
+        if (isThenable<void>(out)) {
+          chain = out;
         }
       }
       return chain ? chain.then(() => evaluated) : evaluated;
@@ -1503,13 +1544,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           context.inCustom = previousInCustom;
         }
       }
-      if (isThenable(maybeValue)) {
-        return (maybeValue as Promise<DeclarationRenderValue>).then(
-          (value) => {
+      if (isThenable<DeclarationRenderValue>(maybeValue)) {
+        return maybeValue.then(
+          (value: DeclarationRenderValue) => {
             context.inCustom = previousInCustom;
             return value;
           },
-          (error) => {
+          (error: unknown) => {
             context.inCustom = previousInCustom;
             throw error;
           }
@@ -1591,12 +1632,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let chain: Promise<void> | undefined;
     const evaluateReplacement = (replacement: Node, index: number): MaybePromise<void> => {
       const out = replacement.eval(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node>).then((evaluated) => {
+      if (isThenable<Node>(out)) {
+        return out.then((evaluated: Node) => {
           replacements[index] = evaluated;
         });
       }
-      replacements[index] = out as Node;
+      replacements[index] = out;
     };
     for (let index = 0; index < replacements.length; index++) {
       const replacement = replacements[index]!;
@@ -1605,8 +1646,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         continue;
       }
       const out = evaluateReplacement(replacement, index);
-      if (isThenable(out)) {
-        chain = out as Promise<void>;
+      if (isThenable<void>(out)) {
+        chain = out;
       }
     }
     const finish = (): CustomInterpolatedRenderValue => ({
@@ -1673,16 +1714,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         nil: output instanceof Nil
       };
     };
-    return isThenable(valueState)
-      ? (valueState as Promise<DeclarationValueState<this> | Nil>).then(finish)
-      : finish(valueState as DeclarationValueState<this> | Nil);
+    return isThenable<DeclarationValueState<this> | Nil>(valueState)
+      ? valueState.then(finish)
+      : finish(valueState);
   }
 
   private evalPreparedValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
     const node = this.prepareRegistration(context);
-    return isThenable(node)
-      ? (node as Promise<this>).then(prepared => prepared.evalValueState(context))
-      : (node as this).evalValueState(context);
+    return isThenable<this>(node)
+      ? node.then((prepared: this) => prepared.evalValueState(context))
+      : node.evalValueState(context);
   }
 
   override prepareRegistration(
@@ -1690,9 +1731,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options: DeclarationRegistrationOptions = {}
   ): MaybePromise<this> {
     const state = this._prepareDeclarationRegistrationState(context, options);
-    return isThenable(state)
-      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.materializeRegistrationState(resolved, options))
-      : this.materializeRegistrationState(state as DeclarationRegistrationState, options);
+    return isThenable<DeclarationRegistrationState>(state)
+      ? state.then((resolved: DeclarationRegistrationState) => this.materializeRegistrationState(resolved, options))
+      : this.materializeRegistrationState(state, options);
   }
 
   private createRegistrationState(
@@ -2161,9 +2202,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
     const state = this.evalValueState(context);
-    return isThenable(state)
-      ? (state as Promise<DeclarationValueState<this> | Nil>).then(resolved => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
-      : state instanceof Nil ? state : this.materializeValueState(state as DeclarationValueState<this>);
+    return isThenable<DeclarationValueState<this> | Nil>(state)
+      ? state.then((resolved: DeclarationValueState<this> | Nil) => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
+      : state instanceof Nil ? state : this.materializeValueState(state);
   }
 
   /** @todo - move to visitors */

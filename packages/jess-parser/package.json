@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@types/color-name": "^1.1.1",
-    "parseman": "^0.14.0"
+    "parseman": "^0.16.0"
   },
   "type": "module",
   "module": "lib/index.js"

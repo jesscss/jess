@@ -52,6 +52,7 @@ import { SelectorList, type SelectorListItem } from '../selector-list.js';
 import { selectorListItemForMatch } from './selector-match-core.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
+import { BasicSelector } from '../selector-basic.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
@@ -197,6 +198,13 @@ function decomposeFindUncached(find: Selector): FindSpec {
     for (const comp of find.value) {
       if (isCombinator(comp)) {
         combinators.push(combinatorValue(comp));
+      } else if (typeof comp === 'string') {
+        // Parser-delivered complex selectors can carry raw-string components
+        // (a combinator like `' '` handled above, or a simple/compound part
+        // like `'.ext8'`). A string simple-part must still open a position, or
+        // a descendant find like `.ext8 .ext9` decomposes to zero positions and
+        // the multi-position (crossing) path is silently skipped.
+        positions.push([new BasicSelector(comp)]);
       } else if (comp instanceof CompoundSelector) {
         positions.push(comp.value.filter((c): c is SimpleSelector => typeof c !== 'string'));
       } else if (isSelectorNode(comp)) {

@@ -14,6 +14,15 @@ import type { Context } from '../context.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
+  /**
+   * Live-binding ASSIGNMENT, written `$!foo: bar` — the `!` sigil right after `$`,
+   * mirroring the `$!foo` read form's `readMode: 'snapshot'`. Records the `$!`
+   * intent on the assignment node; it renders back as `$!name`.
+   *
+   * @todo eval — "assign through the live binding" is NOT implemented; the parser
+   * accepts `$!foo:` and warns.
+   */
+  liveBinding?: boolean;
 };
 
 /**
@@ -22,10 +31,14 @@ export type VarDeclarationOptions = DeclarationOptions & {
  *   Less: `@foo: 1`
  *   SCSS: `$foo: 1`
  *
- * @example `setDefined`
- *   Jess: `$foo := 1`
+ * @example `setDefined` — Sass `!global` / assign the global (top) binding
  *   SCSS: `$foo: 1 !global`
  *
+ * @example `nearestOuter` — Jess `:=` / reassign the nearest enclosing binding
+ *   Jess: `$foo := 1`  (nearest-outer non-shadowing; eval TODO)
+ *
+ * @example `liveBinding`
+ *   Jess: `$!foo: 1`  (live-binding assignment; eval TODO)
  *
  * @todo Support destructuring
  * e.g. `$(var1, var2): 1 2`
@@ -97,6 +110,10 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     }
     const w = options.writer;
     w.add('$', this);
+    // Live-binding assignment `$!foo: …` — emit the `!` sigil after `$`.
+    if (this._options?.liveBinding) {
+      w.add('!', this);
+    }
     const before = w.mark();
     const s = this.declTrimmedString(options);
     const emitted = w.getSince(before);
