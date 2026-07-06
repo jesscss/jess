@@ -2111,13 +2111,20 @@ export class LessGrammar extends CssParser {
       rest = rest.replace(/\bas\s+[^\s;(]+\s*/g, '');
       rest = rest.replace(/;\s*$/, '').trim();
       if (rest) {
-        mediaNode = this._lessKeyword(rest, loc) as unknown as Node;
+        // Parse the trailing media query as a real media prelude (feature
+        // conditions become Paren(Declaration) etc.) so it re-serializes with
+        // normalized spacing (`(min-width:600px)` → `(min-width: 600px)`),
+        // matching Less. A bare keyword tail (`screen`) round-trips unchanged.
+        mediaNode = this._buildAtRulePrelude(rest, loc) as unknown as Node;
       }
     }
     const pathMatch2 = /['"]([^'"]+)['"]/.exec(preludeText);
     const pathStr = pathMatch2 ? pathMatch2[1] : '';
     const isCssImport = pathStr ? LessGrammar._isCssUrl(pathStr, opts) : false;
-    if (isCssImport || opts.includes('css')) {
+    // `(inline)` wins over `(css)`: even `@import (inline, css) "x"` must inject
+    // the target's raw text verbatim (StyleImport inline path), never emit a
+    // passthrough CSS `@import`.
+    if (!opts.includes('inline') && (isCssImport || opts.includes('css'))) {
       const preludeItems: JessNode[] = [];
       const pathPrelude = (urlNode ?? pathNode) as unknown as JessNode | undefined;
       if (pathPrelude) {
