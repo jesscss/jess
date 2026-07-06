@@ -22,10 +22,18 @@ import {
 const QUERY_KEYWORDS = new Set(['not', 'and', 'or', 'only']);
 
 /**
+ * A CSS function-name identifier: begins with a letter, `-`, or `_` (not a digit).
+ * `url-prefix`/`regexp` qualify; a bare number token (`42`) does not, so it keeps
+ * the space before a following parenthesized group (`@unknown foo 42 (bar)`).
+ */
+const FUNCTION_NAME_RE = /^[-_a-zA-Z\u00a0-\uffff\\]/;
+
+/**
  * A `Paren` term attaches to the preceding identifier as a function-call form
  * (`url-prefix()`, `regexp("x")`) with no separating space — unless that
  * identifier is a logical query keyword (`not`/`and`/`or`/`only`), which takes
- * a space before its parenthesized group (`not (min-width: 5px)`).
+ * a space before its parenthesized group (`not (min-width: 5px)`), or is not a
+ * function-name identifier at all (e.g. a bare number).
  */
 function queryTermAttachesToPrev(prev: Node, node: Node): boolean {
   if (!(node instanceof Paren)) {
@@ -35,7 +43,7 @@ function queryTermAttachesToPrev(prev: Node, node: Node): boolean {
     return false;
   }
   const text = `${prev.valueOf()}`.trim().toLowerCase();
-  return text !== '' && !QUERY_KEYWORDS.has(text);
+  return text !== '' && FUNCTION_NAME_RE.test(text) && !QUERY_KEYWORDS.has(text);
 }
 
 function getKnownQueryConditionSourceText(node: Node | string): string | undefined {

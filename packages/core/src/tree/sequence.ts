@@ -117,7 +117,14 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private withValue(value: Node[]): Sequence {
-    return new Sequence(
+    // Preserve the concrete class (e.g. QueryCondition) across eval so its
+    // syntax writer — not the base Sequence one — renders the evaluated value.
+    const Ctor = this.constructor as new (
+      value: Node[],
+      options?: SequenceOptions,
+      location?: NodeLocation
+    ) => Sequence;
+    return new Ctor(
       value,
       this._options ? { ...this._options } : undefined,
       sourceSpanOf(this)
@@ -129,6 +136,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     for (let i = 0; i < this.value.length; i++) {
       values[i] = this.value[i]!.cloneForPlacement();
     }
+    // Addition output is always a plain space Sequence — no subclass identity to
+    // preserve — so construct the base directly (a subclass ctor here would defeat
+    // the "no source reconstruction" contract; see sequence.test.ts).
     return new Sequence(
       values,
       this._options ? { ...this._options } : undefined,

@@ -135,6 +135,7 @@ export class LessGrammar extends CssParser {
       case 'GuardAnd':            return this._buildGuardJoin(children, loc, 'and');
       case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
       case 'Guard':               return this._buildGuard(children, loc);
+      case 'UnicodeRange':        return this._lessKeyword(this._source.slice(span.start, span.end), loc) as unknown as JessNode;
       case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, loc);
       case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
       case 'VarCall':             return this._buildVarCall(children, raw, loc);
@@ -734,7 +735,31 @@ export class LessGrammar extends CssParser {
     // here — generic PseudoSelector is guarded against it (extendAhead). So this
     // builder only ever sees real CSS pseudo-classes/elements.
     const pseudo = super.buildNode(type, span, children, state, raw) as JessNode;
-    const pseudoArg = (pseudo as unknown as { arg?: unknown }).arg;
+    // `readPseudoArg` (css builder) only recognizes node/array args. Under the Less
+    // grammar an `nth` arg (`4n+1`) arrives as a leaf string and a single-member
+    // selector list collapses to a bare string — both of which it skips, leaving
+    // `arg` undefined (`:not(.one)` → `:not`). Recover the arg as the child that
+    // sits between the `(` and `)` leaves.
+    let pseudoArg = (pseudo as unknown as { arg?: unknown }).arg;
+    if (pseudoArg === undefined) {
+      const open = children.findIndex(c => (c as CSTLeaf)._tag === 'leaf' && (c as CSTLeaf).value === '(');
+      if (open >= 0) {
+        const inner = children[open + 1];
+        const isClose = (inner as CSTLeaf)?._tag === 'leaf' && (inner as CSTLeaf).value === ')';
+        if (inner !== undefined && !isClose) {
+          // A collapsed single-member selector list arrives as a bare string, an
+          // `nth` value as a leaf token; both wrap to a Keyword so the pseudo arg
+          // is an eval-able Node. A real node (multi-member list, etc.) passes through.
+          const recovered = typeof inner === 'string'
+            ? this._lessKeyword(inner, loc)
+            : (inner as CSTLeaf)._tag === 'leaf'
+              ? this._lessKeyword((inner as CSTLeaf).value, loc)
+              : (inner as unknown as JessNode);
+          (pseudo as unknown as { arg: unknown }).arg = recovered;
+          pseudoArg = recovered;
+        }
+      }
+    }
     if (Array.isArray(pseudoArg)) {
       // Unknown-pseudo: raw string array → Keyword[] for structured serialization.
       const keywordNodes = (pseudoArg as unknown[]).map(item =>
