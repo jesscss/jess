@@ -222,6 +222,11 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
+    // A component's asyncness can depend on runtime var resolution (an
+    // interpolated selector `@{v}` whose var resolves via an async plugin-js
+    // value), which `F_MAY_ASYNC` cannot statically predict. `evaluateComponents`
+    // stays sync-fast when nothing is async and only promotes to a promise when a
+    // component actually evaluates async, so route through it unconditionally.
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
       ? (evaluatedValue as Promise<Array<Selector | Nil | string>>).then(value => this.finalizeComponents(value, true))
