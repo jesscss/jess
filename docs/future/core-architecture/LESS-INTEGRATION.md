@@ -519,3 +519,17 @@ interpolated-selector production rejects a bare/leading `@{var}` element and int
 selector. Reductions: `@{parent}{}` FAIL, `div@{n}{}` FAIL, `.a-@{n}`/`.@{n}` OK. → next: less/selector-interp.
 Bootstrap→css is now a normal parser-fix chain (not a sandbox problem). @plugin cluster CLOSED (works via injection).
 IN FLIGHT: value-trivia, nested-mixin, selector-interp (bootstrap blocker).
+
+## 2026-07-05 (alpha) — BATCH MERGE → board 79/93 (core 2746/0)
+- value-trivia: per-item value-list spans (css-parser _assembleValue) + thread parser trivia through jess-plugin-less
+  + jess adoptSourceTrivia (whitespace-only, comments still via Comment nodes) + declaration.ts custom-prop/indent/
+  leading-newline. Flipped whitespace, css-grid, rgba + un-skipped mixins-interpolated, mixins-guards-default-func.
+- selector-interp: InterpolatedSelector split into concrete-first-set choice heads (`.`/`#`-prefixed, ident-prefixed,
+  bare `@{`) — leading/type-adjacent `@{var}` selectors parse. 0 all-less flip but **bootstrap parses fully now**
+  (all 31 mixin + 40 component files clean). Bootstrap→css blocker moves to IMPORT RESOLUTION (next integration step).
+- nested-mixin: shared body-child AST leaked call-1 scope into call-2; re-point frame per call (rules.ts
+  isRetainedOutputDefinitionParent tightened to frame.rulesNode===parent) + don't bake per-call values into canonical
+  template (ruleset.ts _deriveShell when _placementRepointed). mixins-nested green.
+Remaining 14 (4 DEFERRED: extend x3, import-remote): comments, comments2, css-3, css-escapes, functions, import-inline,
+import-interpolation, media, mixins-guards, rulesets.
+Bootstrap→css next: resolve @import chain (bootstrap.less is @import-driven) then render with jsPlugin() recipe.
