@@ -643,6 +643,23 @@ describe('Rule', () => {
     expect(composed.toTrimmedString()).toBe('.parent > .scope .item + .next');
   });
 
+  it('wraps a multi-item list parent in :is() when composing a string child', () => {
+    // Regression: `.a { #x, #y { .z { … } } }` — the grouped `#x, #y` frame is a
+    // SelectorList parent; composing the string-backed child `.z` textually would
+    // distribute it across the group (`#x, #y .z`). It must wrap in `:is()`.
+    const parent = sellist([sel([el('#x')]), sel([el('#y')])]);
+    const composed = Ruleset.composeSelector('.z', parent);
+    expect(composed.toString().trim()).toBe(':is(#x, #y) .z');
+  });
+
+  it('wraps a multi-item array parent in :is() when composing a string child', () => {
+    const composed = Ruleset.composeSelector('.z', [
+      sel([el('#x')]),
+      sel([el('#y')])
+    ]);
+    expect(composed.toString().trim()).toBe(':is(#x, #y) .z');
+  });
+
   it('renders an already-evaluated ruleset idempotently (re-eval is allowed)', async () => {
     // §2.7: render may re-enter eval (a canonical node is always a re-evaluable
     // template — `evaluated` no longer short-circuits render). The contract is
