@@ -34,19 +34,20 @@ serialized AST (`serializeTypes`). Run: `npx vitest --run test/corpus --root pac
   references; eval decides which namespace by the key node (a `Reference` key →
   variable space; an interpolated `Quoted` key → property space).
 
-### Syntax contradictions — need USER adjudication before building
-- **`$*[…]` selector-capture sigil (core AST ↔ docs conflict).** The docs specify
-  the Jess form `$*[.notice]` (`08-interpolation.mdx` §4, used to feed `$extend`).
-  But core's `SelectorCapture.writeSyntax` (`packages/core/src/tree/selector-capture.ts`)
-  emits `*[…]` **without** the `$` — the Less form. So a parser that builds a
-  `SelectorCapture` for `$*[.notice]` would round-trip to `*[.notice]`, losing the
-  sigil. Resolution options (user picks): (a) change core `SelectorCapture.writeSyntax`
-  to emit `$*[…]` (like Reference/Extend already carry their `$`); (b) wrap capture
-  in a Jess-specific node; (c) accept `*[…]` as the canonical serialized form and
-  update the doc. BLOCKS: `$*[…]` capture + `$extend $captured` end-to-end + the
-  `$theme["$[foo]"]` dynamic-property key that rides on capture. `$extend .sel;`
-  (direct selector target, no capture) is unblocked — Extend already serializes
-  `$extend …;` with the `$`.
+### Syntax contradictions — ADJUDICATED by the user 2026-07-05
+1. **Selector capture is `*[…]` — NO `$` sigil** (canonical = core's
+   `SelectorCapture.writeSyntax`). Do NOT add a `$` to core; the parser accepts
+   bare `*[.notice]`. The docs (which show `$*[…]`) are WRONG and get the `$`
+   dropped in the docs-update task. The `$extend`/dynamic-property forms that reuse
+   capture reconcile to bare `*[…]` too.
+2. **`$apply` — `$|…` is INVALID; drop the `$|`-glued shorthand entirely.** The
+   class-merge surface is `$apply <selector-list>` (space after `$apply`), incl.
+   comma-lists: `$apply .a, .b`. Lower it to whatever the earlier
+   "`$apply` ≈ `$ > *[.foo]`" description implies, but the SURFACE is never `$|…`.
+3. **`@-use` and `@-from` are DISTINCT constructs, not interchangeable aliases.**
+   "Sugar" only meant both can import namespaces. Keep two separate grammar rules;
+   they map to different core imports (namespace vs ESM-style). Both support
+   namespace import.
 
 ### Parser features — status
 DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
@@ -61,20 +62,15 @@ DONE (corpus green at commit time; see ENVIRONMENT BLOCKER above re running):
   (`bddeb55ac`). Target wrapped in a `BasicSelector` (a bare string crashes
   `Extend.writeSyntax`). `$extend $captured;` waits on `$*[…]`.
 
-STILL TO BUILD:
-- `$*[…]` (selector capture) — BLOCKED on the sigil contradiction above; also
-  unlocks the `$theme["$[foo]"]` dynamic-property key.
-- **`$apply` / `$|` — doc surface differs from the task-list.** `05-mixins.mdx`
-  documents two apply forms: `$|.rounded;` (single, `$|` sigil, `()` optional) and
-  `$apply .rounded, .shadow;` (multiple, comma list, `apply` keyword). The task-list
-  called it "sugar for `$ > *[sel]`, supports `ns|sel`" — reconcile which serialized
-  AST these lower to (a mixin-ruleset Call? an Extend? a `*`-apply Reference?) before
-  building; likely needs user input on the target node type.
+STILL TO BUILD (order: capture → `$apply` → `@-` at-rules → docs):
+- `*[…]` (selector capture, bare — see adjudication #1). Unlocks `$extend *[.sel]`
+  and the `$theme["$[foo]"]` dynamic-property key.
+- `$apply <selector-list>` (adjudication #2) — `$apply .a, .b`, never `$|…`.
 - At-rules `@-compose` / `@-use` / `@-from` / `@-export` / `@-import`
-  (`04-atrules.mdx`). Note `@-use` (Sass-module namespace form) and `@-from`
-  (ESM `import (x as y)` / `import * as ns`) are DISTINCT script-import forms, not
-  pure sugar for each other (task-list said "sugar for each other"). `@-compose`
-  has modifiers `(reference)` / `(protected)` / `(export)` and `set`/`with` blocks.
+  (`04-atrules.mdx`). `@-use` (Sass-module namespace form) and `@-from` (ESM
+  `import (x as y)` / `import * as ns`) are DISTINCT rules (adjudication #3).
+  `@-compose` has modifiers `(reference)` / `(protected)` / `(export)` and
+  `set`/`with` blocks.
   Map to core StyleImport / JsImport nodes.
 - Update canonical docs (`docs-content/docs/jess/**`) to the settled syntax.
 
