@@ -1913,6 +1913,33 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       }
 
       if ((evaluatedRules as unknown) !== this) {
+        // §2.7: the source-order eval already COW-derived a fresh body surface
+        // (`evaluatedRules`) rather than write into a canonical node. When `this` is
+        // that canonical template — a shared nesting/mixin body child re-used across
+        // calls — copying the evaluated rules BACK into `this` bakes per-call values
+        // (`width: @a` -> `width: 30`) into the shared template, so a SECOND call of
+        // the enclosing mixin reads the first call's values. Return a fresh Ruleset
+        // shell that shares the (re-evaluated) selector/guard and carries the derived
+        // body, leaving the canonical `this` untouched. A non-canonical `this` (a
+        // per-eval surface) owns its slots, so the in-place write stays correct.
+        const canonical = this.sourceNode === undefined || this.sourceNode === this;
+        const placementRepointed = this._placementRepointed;
+        this._placementRepointed = false;
+        if (canonical && placementRepointed) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const shell = this._deriveShell(sourceSpanOf(this)) as Ruleset;
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          (shell as unknown as { rules: Node[] }).rules = evaluatedRules.rules;
+          for (let i = 0; i < shell.rules.length; i++) {
+            shell.adopt(shell.rules[i]!);
+          }
+          shell.sourceNode = this;
+          shell.hoistToRoot = this.hoistToRoot;
+          if (!shell.hasVisibleRules()) {
+            shell.removeFlag(F_VISIBLE);
+          }
+          return shell;
+        }
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (this as unknown as { rules: Node[] }).rules = evaluatedRules.rules;
         for (let i = 0; i < this.rules.length; i++) {
