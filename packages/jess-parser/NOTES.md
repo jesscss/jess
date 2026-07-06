@@ -14,17 +14,13 @@ serialized AST (`serializeTypes`). Run: `npx vitest --run test/corpus --root pac
 
 ## Deferred — must be done before the parser is "complete"
 
-### ⚠️ ENVIRONMENT BLOCKER (transient, not a Jess bug) — 2026-07-05 ~22:56
-- **parseman dist is mid-rebuild by the parent session and BROKEN.**
-  `~/git/oss/parser-thing/dist/index.js` (rebuilt 22:54 from uncommitted
-  `src/compiler/codegen.ts` changes) references `_hostReads` at line ~4047 but the
-  `needsHostReads` gate at ~4512 doesn't emit its declaration → every compiled
-  grammar throws `ReferenceError: _hostReads is not defined`. This breaks ALL four
-  parsers (css-parser 185 failed too — confirmed NOT jess-specific), so no corpus
-  can run until the parent finishes their codegen edit and rebuilds parseman.
-  Jess work committed BEFORE this (commits `eb6ec5c2b`/`0ecdbba1f`/`bddeb55ac`) was
-  green at commit time (mixins/anon/extend all 72/72). NOTHING to fix on the Jess
-  side — just re-run `npx vitest --run test/corpus` once parseman dist is healthy.
+### parseman env-blocker — RESOLVED 2026-07-05 ~22:59
+- A ~3-minute window (22:54–22:59) where parseman's `dist/index.js`, mid-rebuilt by
+  the parent session, threw `ReferenceError: _hostReads is not defined` from every
+  compiled grammar (all four parsers, css-parser included — NOT jess-specific). The
+  parent rebuilt parseman to a healthy dist; corpus back to **72/72 green** and
+  `check:macro` clean (jess-parser 0 fallbacks). Recorded only as a reminder: if this
+  error reappears, it's a parseman/codegen issue, not a Jess grammar bug.
 
 ### Eval / semantics (not parseable-in-isolation; needs the evaluator)
 - **`.foo` member ambiguity warning.** `$theme.foo` (type `declaration`) can
