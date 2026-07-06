@@ -436,4 +436,31 @@ describe('Condition', () => {
       expect(Condition.resultPasses(any('foo'))).toBe(false);
     });
   });
+
+  describe('clone', () => {
+    it('preserves left/operator/right children (comparison)', () => {
+      const src = condition([num(1), '=', num(2)]);
+      const cloned = src.clone(n => n.clone());
+      expect(cloned).toBeInstanceOf(Condition);
+      expect(cloned.left).toBeInstanceOf(Node);
+      expect(cloned.operator).toBe('=');
+      expect(cloned.right).toBeInstanceOf(Node);
+      expect(cloned.toTrimmedString()).toBe('(1 = 2)');
+    });
+
+    it('preserves a bare (single-operand) condition', () => {
+      const src = condition([bool(true)]);
+      const cloned = src.clone(n => n.clone());
+      expect(cloned.left).toBeInstanceOf(Node);
+      expect(cloned.operator).toBeUndefined();
+      expect(cloned.right).toBeUndefined();
+    });
+
+    it('a placement clone still evaluates (children not dropped)', async () => {
+      const src = condition([num(1), '<', num(2)]);
+      const cloned = src.cloneForPlacement() as Condition;
+      const evald = await cloned.eval(context);
+      expect(evald.render(context)).toBe('true');
+    });
+  });
 });
