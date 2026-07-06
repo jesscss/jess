@@ -36,14 +36,19 @@ Authoritative status (supersedes the inline markers further down):
   **C1→C2→C3/C4** (the walk-fold line). Fan-out results (3 agents off dev, 2026-07-05):
   - **F_VISIBLE-cost (3b): DONE** — merged to dev (6e84441cb), `F_MERGE_SUPPRESSED` bit separates merge-
     suppression from by-type `F_VISIBLE`. See Focus D.1 3b.
-  - **C1: PARTIAL** — eval no longer writes Ruleset `hoistToRoot` (2e21baae1, merged). Remaining: hoisted
-    AtRule header off `AtRule.frames` — blocked (live serialize `inFrames` lacks the full ancestor chain;
-    needs serialize-walk rework). See C1 in the staged plan.
-  - **C2: BLOCKED on C1** — proven that `F_STATIC` can't replace the static-render scan (+27 failures); eval
-    does real composition even on static input. The top perf lever is gated behind finishing C1 (composition
-    out of eval). See C2 in the staged plan.
-  Net: the remaining walk-fold work is now a KNOWN dependency chain — the serialize walk must retain the full
-  selector-ancestor chain (unblocks the C1 AtRule half) before C2's "skip eval for static subtrees" is reachable.
+  - **C1: PARTIAL** — eval no longer writes Ruleset `hoistToRoot` (2e21baae1, merged). Remaining open half:
+    hoisted AtRule header off `AtRule.frames` — needs the serialize walk to retain the full selector-ancestor
+    chain (live `inFrames` lacks it). This open half IS C2 migration 1. See C1 in the staged plan.
+  - **C2: GATED ON 3 EVAL→SERIALIZE MIGRATIONS** (not one vague "C1") — proven that `F_STATIC` can't yet
+    replace the static-render scan (+27 failures) because eval still does STRUCTURAL work on static input.
+    Per the GOVERNING PRINCIPLE (eval = values; structure = serialize/render), the +27 decompose into 3
+    mostly-independent migrations: (1) serialize retains the ancestor chain [= C1's open half], (2) merge decls
+    not `F_STATIC` [independent, small], (3) at-rule/layer registration → serialize [independent, small].
+    Migrations 2 and 3 can run in parallel NOW; migration 1 is the larger serialize-walk rework. When all
+    three land, C2 is a one-line deletion. See C2 in the staged plan for the decomposition table.
+  Net: the remaining walk-fold work is a KNOWN 3-migration set, not a single dependency — 2 of the 3 are
+  independent small wins that can start immediately; the third (serialize ancestor-chain retention) is C1's
+  open half. Once all three land, `F_STATIC` alone gates the static render fast path.
 - **GENUINELY DEFERRED (correctly):** F-consolidate (hot-file churn, zero correctness value); F_VISIBLE-1b
   `renderNodeFull` (no consumer until language conversion lands).
 
@@ -230,6 +235,16 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
   part of the scope-identity rework, not before it (it would just re-encode the workaround).
 
 ## Focus C — Performance: collapse the walk count (ACTIVE — the perf drive)
+
+### ★ GOVERNING PRINCIPLE — eval evaluates VALUES; STRUCTURE belongs to serialize/render
+**Eval evaluates VALUES. Every STRUCTURAL transform — selector composition/collapse, declaration
+merge-coalescing, at-rule/layer registration — belongs in serialize/render, not eval.**
+
+Consequence: `F_STATIC` means "no dynamic VALUES." Today it is NOT a sufficient render-fast-path gate
+**only because eval still holds structural work it shouldn't own.** Once that work moves to serialize/
+render, `F_STATIC` (with correct flagging) becomes exactly "no eval work needed," and the render fast
+path (`canRenderStaticRulesDirectly`) collapses to a bare `F_STATIC` check — **C2 falls out for free.**
+This is the sharp form of the north-star below and the direct blocker-decomposition for C2.
 
 ### ⛔ STANDING PERF RULE — FAST V8 OBJECTS ONLY (hard-coded, non-negotiable)
 Hot-path objects MUST be **fixed-shape / monomorphic** so V8 keeps them in fast mode (stable hidden class +
@@ -448,8 +463,10 @@ reading a hoisted nested at-rule's captured `AtRule.frames` to recover its sever
 That flag only existed to name "`F_STATIC` but eval still holds collapse state." Remove the state from
 eval and `F_STATIC` alone is the eval-free signal; the scan collapses to a bare flag read.
 
-**North star: the FEWEST tree traversals for byte-identical output.** Not "1/2/3 walks by feature" —
-that's just the 4-pass pipeline reworded. End state = ONE driving traversal (the render/serialize walk):
+**North star: the FEWEST tree traversals for byte-identical output** — which follows directly from the
+GOVERNING PRINCIPLE above (eval = values only; structure = serialize/render). Not "1/2/3 walks by
+feature" — that's just the 4-pass pipeline reworded. End state = ONE driving traversal (the render/
+serialize walk):
 - **eval** is PULLED lazily by the render walk (memoized) when it hits a dynamic value — not a pre-pass.
 - **registration** is a CONSTRUCTION-TIME name index on each `Rules` node — not a runtime pass.
 - **extend** (the only non-local op) is gathered DURING the render walk; because a later `:extend` can
@@ -475,21 +492,33 @@ serialization/collapse state; no new visibility/eval-free flag.
   `if (collapseNesting) this.hoistToRoot = true` write in `Ruleset.evalNode`; the two collapse readers
   (`writeSyntax` bare-`&` gate, `composeHeaderSelector` structuralParent gate) now go through
   `isHoisted(options)` (`hoistToRoot ?? options.collapseNesting`) instead of the raw field. Eval no longer
-  writes Ruleset collapse state; byte-identical, 2737/0. **STILL OPEN — measured blocker:** moving the hoisted
-  AtRule HEADER recovery off eval-captured `AtRule.frames` (`at-rule.ts:1694`) onto the serialize walk. The
-  live serialize `inFrames` at a nested `@media` emit point carries only the immediate `.body`, NOT the full
-  `.card > .body` ancestor chain (the ancestor is folded into the header string and dropped from the frame
-  stack), so deriving the header from the live walk regresses deep-nested `@media` headers (`.card .body`
-  → `.body`, byte-diff confirmed). Needs the serialize walk to RETAIN the full ancestor chain — a bigger
-  rework than C1's scope. The `AtRule.frames` eval capture stays until then.
-- [ ] **C2 — trust the flag — BLOCKED on C1 (empirically proven, no-op reported, nothing committed).** A bare
-  `F_STATIC` check CANNOT replace the `canRenderStaticRulesDirectly` scan: substituting it gives **+27
-  failures** (ampersand/collapse-nesting composition, `+=`/`normalizedFromAssign` merge coalescing, nested
-  at-rule layer registration, interpolated-trivia lookup). Root cause: a static NESTED `Ruleset` propagates
-  `F_STATIC` UP to its parent, but the scan's `isPlainStaticRuleLeaf` rightly rejects nested-block/merge
-  containers because **eval still does the composition/coalescing/registration work even on fully-static
-  input**. `F_STATIC` = "no dynamic values" ≠ "eval is a no-op." So C2 is blocked on getting nesting-
-  composition out of eval — i.e. the OPEN half of C1 (and C3/C4). Not achievable as a standalone flag swap.
+  writes Ruleset collapse state; byte-identical, 2737/0. **STILL OPEN — this open half IS C2's migration 1
+  (see C2 below):** moving the hoisted AtRule HEADER recovery off eval-captured `AtRule.frames`
+  (`at-rule.ts:1694`) onto the serialize walk. The live serialize `inFrames` at a nested `@media` emit point
+  carries only the immediate `.body`, NOT the full `.card > .body` ancestor chain (the ancestor is folded
+  into the header string and dropped from the frame stack), so deriving the header from the live walk
+  regresses deep-nested `@media` headers (`.card .body` → `.body`, byte-diff confirmed). Fix = the serialize
+  walk RETAINS the full selector-ancestor chain — a bigger rework than C1's original scope, and it is
+  exactly the compose/collapse migration C2 needs. The `AtRule.frames` eval capture stays until then.
+- [ ] **C2 — trust the flag — GATED ON 3 EVAL→SERIALIZE MIGRATIONS (empirically proven, no-op reported,
+  nothing committed).** A bare `F_STATIC` check CANNOT *yet* replace the `canRenderStaticRulesDirectly` scan:
+  substituting it gives **+27 failures**. Root cause (per the GOVERNING PRINCIPLE): a static NESTED `Ruleset`
+  propagates `F_STATIC` UP to its parent, but `isPlainStaticRuleLeaf` rightly rejects nested-block/merge
+  containers because **eval still does structural work (composition / coalescing / registration) even on
+  fully-static input**. `F_STATIC` = "no dynamic values" ≠ "eval is a no-op." C2 is NOT blocked on one vague
+  "C1" — its real blocker is THREE mostly-independent migrations, each eliminating one measured class of the
+  +27 failures. When all three land, `isPlainStaticRuleLeaf`'s leaf-scan is redundant and C2 is a **one-line
+  deletion** (the scan collapses to a bare `F_STATIC` read):
+
+  | # | Migration | Kills | Independence |
+  |---|-----------|-------|--------------|
+  | 1 | **Serialize walk retains the full selector-ancestor chain** — drop serialize's dependency on eval-captured `AtRule.frames`; the live `inFrames` currently carries only the immediate ruleset, not the full `.card > .body` chain. | compose / collapse-nesting failures | **= C1's remaining open half** (see C1 above). Bigger; serialize-walk rework. |
+  | 2 | **Merge declarations must not be `F_STATIC`** — a `+:`/`+_:`/`normalizedFromAssign` decl needs structural coalescing but is currently marked value-static, and `isPlainStaticRuleLeaf` compensates with a redundant assign-check. Fix at flag time (or move coalescing to serialize). | merge-chain (`+=`/`normalizedFromAssign`) failures | **Fully independent, small.** Can run now, in parallel with 3. |
+  | 3 | **At-rule/layer registration → render/serialize** — it's an output-ordering concern, shouldn't force eval on static content. | nested at-rule / layer-registration failures | **Fully independent, small.** Can run now, in parallel with 2. |
+
+  Migrations 2 and 3 are disjoint from migration 1 and from each other — spawn them concurrently now.
+  Migration 1 is C1's open half and is the largest (serialize ancestor-chain retention). (The interpolated-
+  trivia lookup failure in the +27 rides along with these — no separate migration.)
 - [ ] **C3 — extend gathered-in-walk + buffered apply at walk-end.** → T3. Static subtrees register targets
   via a cheap construction-time signal, not eval. Overlaps at-rule work landing on feature/parseman — gate hardest.
 - [ ] **C4 (north star) — fold eval INTO the render walk as lazy pull.** Eliminate the eager evaluated tree
