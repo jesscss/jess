@@ -238,7 +238,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     ).inherit(this);
     // Eval-replacement: the new list SHARES the resolved children (no reparent),
     // but its child-derived flags must reflect THOSE children, not the source's.
-    // `inherit` copied the source's stale flags (e.g. F_MAY_ASYNC/F_NON_STATIC
+    // `inherit` copied the source's stale flags (e.g. F_NON_STATIC
     // from unevaluated children); recompute by crawling the resolved values.
     derived.flags &= ~F_CHILD_DERIVED;
     for (let i = 0; i < value.length; i++) {

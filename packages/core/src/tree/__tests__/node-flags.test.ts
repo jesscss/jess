@@ -1,7 +1,6 @@
 import {
   F_STATIC,
   F_NON_STATIC,
-  F_MAY_ASYNC,
   F_HAS_NODE_CHILD,
   any,
   dimension,
@@ -49,7 +48,6 @@ describe('Node Flags', () => {
       const node = any('hello');
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
       expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(false);
       expect(Object.getOwnPropertyDescriptor(node, '_options')?.value).toBeUndefined();
     });
@@ -58,7 +56,6 @@ describe('Node Flags', () => {
       const node = dimension([10, 'px']);
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
       expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(false);
     });
 
@@ -72,7 +69,6 @@ describe('Node Flags', () => {
       const node = color([255, 0, 0, 1]);
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
       expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(false);
     });
 
@@ -103,20 +99,18 @@ describe('Node Flags', () => {
   });
 
   describe('non-static node flag assignment', () => {
-    it('Reference should be F_NON_STATIC and F_MAY_ASYNC', () => {
+    it('Reference should be F_NON_STATIC', () => {
       const node = ref({ key: any('color') });
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
       expect(node.hasFlag(F_STATIC)).toBe(false);
     });
 
-    it('Interpolated should be F_NON_STATIC and F_MAY_ASYNC', () => {
+    it('Interpolated should be F_NON_STATIC', () => {
       const node = interpolated({
         source: 'hello%%',
         replacements: [ref({ key: any('name') })]
       });
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
       expect(node.hasFlag(F_STATIC)).toBe(false);
     });
 
@@ -126,10 +120,9 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_STATIC)).toBe(false);
     });
 
-    it('Call should be F_NON_STATIC and F_MAY_ASYNC', () => {
+    it('Call should be F_NON_STATIC', () => {
       const node = call({ name: 'rgb', args: list([num(255), num(0), num(0)]) });
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
       expect(node.hasFlag(F_STATIC)).toBe(false);
     });
   });
@@ -140,7 +133,6 @@ describe('Node Flags', () => {
       const node = list(items);
       expect(node.hasFlag(F_STATIC)).toBe(true);
       expect(node.hasFlag(F_NON_STATIC)).toBe(false);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(false);
       expect(node.hasFlag(F_HAS_NODE_CHILD)).toBe(true);
     });
 
@@ -149,12 +141,6 @@ describe('Node Flags', () => {
       const node = list(items);
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
       expect(node.hasFlag(F_STATIC)).toBe(false);
-    });
-
-    it('container with one async child should get F_MAY_ASYNC', () => {
-      const items: Parameters<typeof list>[0] = [any('hello'), ref({ key: any('name') })];
-      const node = list(items);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
 
     it('F_NON_STATIC takes precedence over F_STATIC', () => {
@@ -179,13 +165,6 @@ describe('Node Flags', () => {
       expect(outer.hasFlag(F_STATIC)).toBe(false);
     });
 
-    it('F_MAY_ASYNC should bubble through multiple levels', () => {
-      const r = ref({ key: any('x') });
-      const inner = list([r]);
-      const outer = paren(inner);
-      expect(outer.hasFlag(F_MAY_ASYNC)).toBe(true);
-    });
-
     it('expression is always F_NON_STATIC (needs unwrapping)', () => {
       const node = expr(any('hello'));
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
@@ -204,7 +183,6 @@ describe('Node Flags', () => {
       });
       expect(d.hasFlag(F_NON_STATIC)).toBe(true);
       expect(d.hasFlag(F_STATIC)).toBe(false);
-      expect(d.hasFlag(F_MAY_ASYNC)).toBe(false);
     });
 
     it('Declaration with direct static value (no expr) should be F_STATIC', () => {
@@ -226,7 +204,6 @@ describe('Node Flags', () => {
         value: expr(any('red'))
       });
       expect(d.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(d.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
 
     it('Declaration with non-static value should be F_NON_STATIC', () => {
@@ -235,7 +212,6 @@ describe('Node Flags', () => {
         value: expr(ref({ key: any('main-color') }))
       });
       expect(d.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(d.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
   });
 
@@ -271,7 +247,6 @@ describe('Node Flags', () => {
       });
       const node = quoted(interp);
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
   });
 
@@ -315,7 +290,6 @@ describe('Node Flags', () => {
     it('Paren with non-static child gets F_NON_STATIC', () => {
       const node = paren(ref({ key: any('x') }));
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
   });
 
@@ -345,10 +319,9 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
     });
 
-    it('Expression wrapping Reference is F_NON_STATIC and F_MAY_ASYNC', () => {
+    it('Expression wrapping Reference is F_NON_STATIC', () => {
       const node = expr(ref({ key: any('x') }));
       expect(node.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(node.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
   });
 
@@ -376,13 +349,12 @@ describe('Node Flags', () => {
       expect(node.hasFlag(F_STATIC)).toBe(false);
     });
 
-    it('Declaration wrapping expr(ref()) gets F_NON_STATIC and F_MAY_ASYNC', () => {
+    it('Declaration wrapping expr(ref()) gets F_NON_STATIC', () => {
       const d = decl({
         name: 'color',
         value: expr(ref({ key: any('main-color') }))
       });
       expect(d.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(d.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
 
     it('Declaration with static name and value (no expr wrapper) is F_STATIC', () => {
@@ -403,7 +375,6 @@ describe('Node Flags', () => {
       const inner = list([any('a'), ref({ key: any('x') })]);
       const outer = list([inner, any('c')]);
       expect(outer.hasFlag(F_NON_STATIC)).toBe(true);
-      expect(outer.hasFlag(F_MAY_ASYNC)).toBe(true);
     });
 
     it('paren(expr(static)) is F_NON_STATIC because of Expression', () => {

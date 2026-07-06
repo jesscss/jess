@@ -6,7 +6,6 @@ import {
   F_AMPERSAND,
   F_NON_STATIC,
   F_IMPLICIT_AMPERSAND,
-  F_MAY_ASYNC,
   type NodeLocation,
   type NodeOptions
 } from './node.js';
@@ -92,7 +91,7 @@ export class Extend extends Node<ExtendValue> {
     this.namespace = value.namespace;
     this.flag = value.flag;
     this.removeFlag(F_VISIBLE);
-    this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
+    this.addFlags(F_NON_STATIC);
   }
 
   override valueOf() {

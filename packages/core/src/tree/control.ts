@@ -1,5 +1,5 @@
 import { sourceSpanOf } from './util/provenance.js';
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type LocationInfo, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import { Rules } from './rules.js';
 import { Any } from './any.js';
@@ -497,7 +497,7 @@ export class If extends Rules<IfValue> {
     super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
     this.else = value.else;
-    this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
     this.adopt(this.condition);
     if (this.else) {
       this.adopt(this.else);
@@ -622,7 +622,7 @@ export class For extends Rules<StructuredLoopValue> {
     super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.pattern = value.pattern;
     this.iterable = value.iterable;
-    this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
     for (const decl of getBindingDeclarations(this.pattern)) {
       this.adopt(decl);
     }
@@ -833,7 +833,7 @@ export class While extends Rules<WhileValue> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
     super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
-    this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
     this.adopt(this.condition);
     makeDirectiveRulesPublic(this);
     // R2 single-frame: the While IS its own body (no `_passedRulesWrapper`) — own the

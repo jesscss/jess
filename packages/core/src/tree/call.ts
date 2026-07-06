@@ -1,5 +1,5 @@
 import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { coerceNodeArray } from './util/evaluate-node-array.js';
@@ -625,16 +625,6 @@ export class Call extends Node<CallValue, CallOptions> {
     // Coercing raw parser segments to nodes is itself a change — the returned
     // list must be rebuilt from `out`, not the original raw-valued `nodes`.
     let changed = source !== (nodes.value as unknown as Node[]);
-    const evalImmediate = (node: Node): Node => {
-      const evald = Node.evalStatic(node, context);
-      if (!(evald instanceof Node)) {
-        throw new TypeError('Expected sync node result.');
-      }
-      if (node !== evald) {
-        evald.inherit(node);
-      }
-      return evald;
-    };
     const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
       let evald = await first;
       out[startIndex] = evald === source[startIndex]!
@@ -644,11 +634,12 @@ export class Call extends Node<CallValue, CallOptions> {
       for (let i = startIndex + 1; i < source.length; i++) {
         const next = source[i]!;
         let nextEvald: Node;
-        if (
-          !next.hasFlag(F_MAY_ASYNC)
-          && next.eval === Node.prototype.eval
-        ) {
-          nextEvald = evalImmediate(next);
+        if (next.eval === Node.prototype.eval) {
+          const evaldStatic = await Node.evalStatic(next, context);
+          nextEvald = evaldStatic;
+          if (next !== nextEvald) {
+            nextEvald.inherit(next);
+          }
         } else {
           nextEvald = await next.eval(context) as Node;
         }
@@ -661,11 +652,15 @@ export class Call extends Node<CallValue, CallOptions> {
     };
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
-      if (
-        !node.hasFlag(F_MAY_ASYNC)
-        && node.eval === Node.prototype.eval
-      ) {
-        const evald = evalImmediate(node);
+      if (node.eval === Node.prototype.eval) {
+        const evaldStatic = Node.evalStatic(node, context);
+        if (isThenable(evaldStatic)) {
+          return continueAsync(i, evaldStatic as Promise<Node>);
+        }
+        const evald = evaldStatic as Node;
+        if (node !== evald) {
+          evald.inherit(node);
+        }
         out[i] = evald === node
           ? ownResults ? evald.cloneForPlacement() : evald
           : evald;
@@ -1549,8 +1544,8 @@ export class Call extends Node<CallValue, CallOptions> {
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
-    // Function calls are always non-static and may be async
-    this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    // Function calls are always non-static
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
   override toTrimmedString(rawOptions?: PrintOptions) {

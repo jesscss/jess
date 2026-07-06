@@ -1984,7 +1984,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           outputItems[i] = this.ownMergedAssignmentOutputItem(mergedItems[i]!);
         }
         // Eval-time derived container: SHARE the items (no reparent), but crawl
-        // them to bubble child flags (F_STATIC/F_MAY_ASYNC/…) so the merged value
+        // them to bubble child flags (F_STATIC/F_NON_STATIC/…) so the merged value
         // is classified correctly — a raw `new List` derives none on its own.
         const merged = new List(outputItems);
         for (let i = 0; i < outputItems.length; i++) {
