@@ -4013,8 +4013,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             const importPrelude = importRule.prelude;
             if (importPrelude && typeof importPrelude !== 'string' && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
-              if (!isThenable(maybePrelude)) {
-                importRule.prelude = maybePrelude as Node;
+              if (!isThenable<Node>(maybePrelude) && isNode(maybePrelude)) {
+                importRule.prelude = maybePrelude;
                 importRule.adopt(importRule.prelude);
               }
             }
@@ -5041,13 +5041,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           context.extendRoots.popExtendRoot();
         }
       };
-      if (isThenable(mp)) {
-        return (mp as Promise<this>)
-          .then((result) => {
+      if (isThenable<this>(mp)) {
+        return mp
+          .then((result: this) => {
             popNestableBody();
             return result;
           })
-          .catch((error) => {
+          .catch((error: unknown) => {
             rules._registrationPrepared = false;
             this._restoreRegistrationAfterError(context, saved);
             throw error;
@@ -5113,12 +5113,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     prepState: RegistrationPrepState
   ): MaybePromise<this> {
     const pendingResult = this._scanRegistrationNodes(rules, context, prepState);
-    if (isThenable(pendingResult)) {
-      return (pendingResult as Promise<RegistrationPrepState>).then(scanState =>
+    if (isThenable<RegistrationPrepState>(pendingResult)) {
+      return pendingResult.then((scanState: RegistrationPrepState) =>
         this._finishRegistrationPrep(rules, context, saved, scanState)
       );
     }
-    return this._finishRegistrationPrep(rules, context, saved, pendingResult as RegistrationPrepState);
+    return this._finishRegistrationPrep(rules, context, saved, pendingResult);
   }
 
   private _scanRegistrationNodes(
@@ -5200,8 +5200,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const finishAfterDeclarations = () => {
       return this._finishOrderedIdentityRegistrationPrep(rules, context, saved, prepState);
     };
-    if (isThenable(declarationResult)) {
-      return (declarationResult as Promise<void>).then(finishAfterDeclarations);
+    if (isThenable<void>(declarationResult)) {
+      return declarationResult.then(finishAfterDeclarations);
     }
     return finishAfterDeclarations();
   }
@@ -5414,8 +5414,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const finish = () => {
       this._applyResolvedRegistrationNodes(rules, pendingDeclarationNames.resolvedNodes);
     };
-    if (isThenable(result)) {
-      return (result as Promise<void>).then(finish);
+    if (isThenable<void>(result)) {
+      return result.then(finish);
     }
     return finish();
   }
@@ -5445,8 +5445,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this._restoreRegistrationContext(context, saved);
       return this;
     };
-    if (isThenable(orderedResult)) {
-      return (orderedResult as Promise<void>).then(finish);
+    if (isThenable<void>(orderedResult)) {
+      return orderedResult.then(finish);
     }
     return finish();
   }
@@ -5550,12 +5550,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         try {
           const result = node.prepareRegistration(context);
 
-          if (isThenable(result)) {
+          if (isThenable<Node>(result)) {
             const remaining: Node[] = [];
             for (let nextIndex = i + 1; nextIndex < unresolvedDeclarations.length; nextIndex++) {
               remaining.push(unresolvedDeclarations[nextIndex]!);
             }
-            return result.then((resolvedNode) => {
+            return result.then((resolvedNode: Node) => {
               if (handleResolvedNode(resolvedNode, node, stillUnresolved)) {
                 madeProgress = true;
               }
@@ -5572,7 +5572,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             });
           }
 
-          if (handleResolvedNode(result as Node, node, stillUnresolved)) {
+          if (handleResolvedNode(result, node, stillUnresolved)) {
             madeProgress = true;
           }
         } catch {
@@ -5606,12 +5606,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         try {
           const result = node.prepareRegistration(context);
 
-          if (isThenable(result)) {
+          if (isThenable<Node>(result)) {
             const remaining: Node[] = [];
             for (let nextIndex = i + 1; nextIndex < orderedIdentities.length; nextIndex++) {
               remaining.push(orderedIdentities[nextIndex]!);
             }
-            return result.then((resolvedNode) => {
+            return result.then((resolvedNode: Node) => {
               handleResolvedNode(resolvedNode, node, []);
               // Continue with remaining nodes
               orderedIdentities.length = 0;
@@ -5622,7 +5622,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             });
           }
 
-          handleResolvedNode(result as Node, node, []);
+          handleResolvedNode(result, node, []);
         } catch {
           // Can't resolve during registration prep — leave in place for eval.
         }
@@ -5804,17 +5804,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const result = (() => {
         try {
           const value = rule.eval(context);
-          return isThenable(value)
-            ? (value as Promise<Node>).catch(handleError)
+          return isThenable<Node>(value)
+            ? value.catch(handleError)
             : value;
         } catch (error) {
           return handleError(error);
         }
       })();
-      if (isThenable(result)) {
-        return (result as Promise<Node | undefined>).then(resolved => applyResult(idx, rule, resolved));
+      if (isThenable<Node | undefined>(result)) {
+        return result.then((resolved: Node | undefined) => applyResult(idx, rule, resolved));
       }
-      applyResult(idx, rule, result as Node | undefined);
+      applyResult(idx, rule, result);
     };
 
     // These are the two eval-owned side-effect lanes left after removing the
@@ -5853,8 +5853,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       };
       const drained = drainRest(0);
-      if (isThenable(drained) && allowRetry) {
-        return (drained as Promise<void>).then(() => drainPendingImports(false));
+      if (isThenable<void>(drained) && allowRetry) {
+        return drained.then(() => drainPendingImports(false));
       }
       return drained;
     };
@@ -5889,24 +5889,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             }
             return true;
           }, false);
-          if (isThenable(normal)) {
-            return (normal as Promise<void>).then(() => ({ output, rulesToHoist }));
+          if (isThenable<void>(normal)) {
+            return normal.then(() => ({ output, rulesToHoist }));
           }
           return { output, rulesToHoist };
         };
-        if (isThenable(calls)) {
-          return (calls as Promise<void>).then(afterCalls);
+        if (isThenable<void>(calls)) {
+          return calls.then(afterCalls);
         }
         return afterCalls();
       };
-      if (isThenable(importDrain)) {
-        return (importDrain as Promise<void>).then(afterImports);
+      if (isThenable<void>(importDrain)) {
+        return importDrain.then(afterImports);
       }
       return afterImports();
     };
 
-    if (isThenable(evaluateImports)) {
-      return (evaluateImports as Promise<void>).then(evaluateBody);
+    if (isThenable<void>(evaluateImports)) {
+      return evaluateImports.then(evaluateBody);
     }
     return evaluateBody();
   }
@@ -6339,12 +6339,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._ensureRootExtendStack(rules, context);
     this._assignRootDocumentOrder(rules, context);
     const evaluated = this._evaluateSourceOrder(rules, context, importsOnly);
-    if (isThenable(evaluated)) {
-      return (evaluated as Promise<{ output: Rules; rulesToHoist: boolean }>).then(({ output, rulesToHoist }) =>
+    if (isThenable<{ output: Rules; rulesToHoist: boolean }>(evaluated)) {
+      return evaluated.then(({ output, rulesToHoist }: { output: Rules; rulesToHoist: boolean }) =>
         this._finishSourceOrderEvaluation(output, rulesToHoist)
       );
     }
-    const { output, rulesToHoist } = evaluated as { output: Rules; rulesToHoist: boolean };
+    const { output, rulesToHoist } = evaluated;
     return this._finishSourceOrderEvaluation(output, rulesToHoist);
   }
 
@@ -6428,12 +6428,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       : undefined;
     this._setupContextForRules(context, this);
     const rulesAfterPrep = this._prepareRegistrationForEval(context);
-    if (isThenable(rulesAfterPrep)) {
-      return (rulesAfterPrep as Promise<Rules>).then(rules =>
+    if (isThenable<Rules>(rulesAfterPrep)) {
+      return rulesAfterPrep.then((rules: Rules) =>
         this._evalPreparedRules(rules, context, enclosingScope, importsOnly)
       );
     }
-    return this._evalPreparedRules(rulesAfterPrep as Rules, context, enclosingScope, importsOnly);
+    return this._evalPreparedRules(rulesAfterPrep, context, enclosingScope, importsOnly);
   }
 
   private _evalPreparedRules(
@@ -6517,8 +6517,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     // Eval owns registration prep. This step establishes lookup identities
     // before the source-order eval walk without evaluating rule bodies.
-    const result = this._prepareRegistrationOnce(context);
-    return isThenable(result) ? (result as Promise<Rules>) : result;
+    return this._prepareRegistrationOnce(context);
   }
 
   private _createRegistrationPrepState(): RegistrationPrepState {
