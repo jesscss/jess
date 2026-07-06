@@ -475,3 +475,11 @@ Built `@var[key]` accessor + paren-math + escaped strings in at-rule preludes; e
   (`@import "@{theme}.less"`). → HIGH-LEVERAGE, dispatched next.
 - leading comment dropped in `@media{ }` body — at-rule body trivia anchoring (separate).
 IN FLIGHT: serialize-whitespace (whitespace, css-grid, rgba, modern); interpolated-strings (@{var} in quoted strings).
+
+## 2026-07-05 (alpha) — interpolated-strings MERGED → board 74/93 (0 flip, foundational)
+`_buildQuoted` splits `@{var}` into the canonical `Interpolated` node (`{source with %% placeholders, replacements}`);
+import paths + escaped strings interpolate; eval already handled Interpolated. media + import-interpolation now
+interpolate correctly but fail DOWNSTREAM: media = comment-preservation in @media body; import-interpolation =
+cross-import variable hoisting (import scope-order). Both new residual clusters.
+Comment-preservation now blocks comments, comments2, media (do AFTER serialize-whitespace to avoid trivia-file overlap).
+IN FLIGHT: serialize-whitespace; guards (mixins-guards filtering).
