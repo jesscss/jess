@@ -31,6 +31,7 @@ import {
   For, type ForPattern,
   Interpolated, InterpolatedSelector, Sequence, CustomDeclaration,
   Color, Paren, Condition, type ConditionOperator,
+  Num, Dimension,
   Mixin, Expression, Operation, Negative,
   shouldOperateWithMathFrames, type MathMode,
   StyleImport,
@@ -1010,6 +1011,18 @@ export class LessGrammar extends CssParser {
     const inner = nodeChildren(children)[0];
     if (!inner) {
       return this._lessKeyword('', loc) as unknown as JessNode;
+    }
+    // Quoted keeps `escaped` as its own readonly instance field (render reads the
+    // field, not `_options`), so mutating `_options` alone would leave the field
+    // `false` and the string would print quoted. Rebuild the Quoted through its
+    // constructor so both the field and `_options` carry `escaped: true`. Paren
+    // (`~(…)`) reads `_options.escaped` directly, so the option merge suffices.
+    if (inner instanceof Quoted) {
+      return new Quoted(
+        inner.value,
+        { quote: inner.quote, escaped: true },
+        loc
+      ) as unknown as JessNode;
     }
     const n = inner as unknown as { _options?: Record<string, unknown> };
     n._options = { ...(n._options ?? {}), escaped: true };
@@ -2024,6 +2037,114 @@ export class LessGrammar extends CssParser {
       return this._lessKeyword(w, loc) as unknown as JessNode;
     };
 
+    // `@var[key]` accessor in value position → Reference(target=Reference(var), key).
+    // (Authoritative accessor shape: lookupOrCall in productions/guards.ts; mirrors
+    // the top-level `varAccRe` branch in buildItem below.)
+    const varAccRe = /^@(-?[_a-zA-Z\x80-￿][-_a-zA-Z0-9\x80-￿]*)\[([^\]]*)\]$/;
+    const buildAccessor = (varName: string, accInner: string): JessNode => {
+      const varBase = new Reference(
+        { key: varName } as unknown as ReferenceValue, {}, loc
+      ) as unknown as JessNode;
+      const inner = accInner.trim();
+      let accKey: JessNode | string | number;
+      let accType: 'variable' | 'index';
+      if (inner === '') {
+        accKey = -1;
+        accType = 'index';
+      } else if (inner.startsWith('@')) {
+        accKey = inner.slice(1);
+        accType = 'variable';
+      } else {
+        accKey = new Quoted(inner, {}, loc) as unknown as JessNode;
+        accType = 'index';
+      }
+      return new Reference(
+        { target: varBase as any, key: accKey as any } as unknown as ReferenceValue,
+        { type: accType }, loc
+      ) as unknown as JessNode;
+    };
+
+    // Operator token in a prelude math expression (`(@some-var + 1)`). Kept simple:
+    // a `+ - * /` surrounded by whitespace (bare `-`/`+` glued to a following number
+    // is a signed operand, not a binary op — matches the value grammar's sumOp gate).
+    const prodOps = new Set(['*', '/']);
+    const buildFeatureValue = (raw: string): JessNode => {
+      const propVal = raw.trim();
+      // `~"…"` escaped string, bare `@var`, or `@var[key]` accessor.
+      if (escapedStrRe.test(propVal) || singleVarRe.test(propVal)) {
+        return buildWord(propVal);
+      }
+      const vam = varAccRe.exec(propVal);
+      if (vam) {
+        return buildAccessor(vam[1]!, vam[2] ?? '');
+      }
+      // A parenthesized math expression `(<expr>)` — fold `left op right …` into a
+      // left-associative Operation over References/Dimensions/Nums so eval computes
+      // it (`(@some-var + 1)` → `61px`). `* /` bind tighter than `+ -`.
+      const paren = /^\(([\s\S]*)\)$/.exec(propVal);
+      if (paren) {
+        const op = buildMathExpr(paren[1]!.trim());
+        if (op) {
+          return new Expression(op as unknown as Node, { parens: true } as any, loc) as unknown as JessNode;
+        }
+      }
+      return this._lessKeyword(propVal, loc) as unknown as JessNode;
+    };
+
+    // Build a left-associative Operation tree from a flat `operand op operand …`
+    // math run, honoring `* /` over `+ -` precedence. Returns undefined if the run
+    // isn't a recognizable binary expression (caller falls back to a keyword).
+    const buildMathExpr = (expr: string): JessNode | undefined => {
+      // Split on whitespace; operators must be space-separated (`@some-var + 1`).
+      const parts = expr.split(/\s+/).filter(Boolean);
+      if (parts.length < 3 || parts.length % 2 === 0) {
+        return undefined;
+      }
+      const buildOperand = (t: string): JessNode | undefined => {
+        const es = escapedStrRe.exec(t);
+        if (es) {
+          return new Quoted(es[2]!, { quote: es[1] as '\'' | '"', escaped: true }, loc) as unknown as JessNode;
+        }
+        const mv = singleVarRe.exec(t);
+        if (mv) {
+          return new Reference(mv[1]!, { type: 'index' as const, role: 'ident' as const }, loc) as unknown as JessNode;
+        }
+        const va = varAccRe.exec(t);
+        if (va) {
+          return buildAccessor(va[1]!, va[2] ?? '');
+        }
+        const dim = /^([+-]?(?:\d*\.\d+|\d+))([_a-zA-Z%][-_a-zA-Z0-9%]*)?$/.exec(t);
+        if (dim) {
+          return dim[2]
+            ? new Dimension({ number: parseFloat(dim[1]!), unit: dim[2]! }, undefined, loc) as unknown as JessNode
+            : new Num(parseFloat(dim[1]!), undefined, loc) as unknown as JessNode;
+        }
+        return undefined;
+      };
+      // First fold `* /`, then `+ -`, over a flat operand/operator list.
+      const nodes: Array<JessNode | string | undefined> = parts.map((p, i) =>
+        i % 2 === 0 ? buildOperand(p) : (/^[-+*/]$/.test(p) ? p : undefined));
+      if (nodes.some(n => n === undefined)) {
+        return undefined;
+      }
+      const foldPass = (matchOp: (op: string) => boolean): boolean => {
+        for (let i = 1; i < nodes.length - 1; i += 2) {
+          const op = nodes[i] as string;
+          if (matchOp(op)) {
+            const left = nodes[i - 1] as JessNode;
+            const right = nodes[i + 1] as JessNode;
+            const combined = new Operation([left, op, right] as any, undefined, loc) as unknown as JessNode;
+            nodes.splice(i - 1, 3, combined);
+            return true;
+          }
+        }
+        return false;
+      };
+      while (foldPass(op => prodOps.has(op))) { /* fold products */ }
+      while (foldPass(op => op === '+' || op === '-')) { /* fold sums */ }
+      return nodes.length === 1 ? (nodes[0] as JessNode) : undefined;
+    };
+
     const buildParen = (inner: string): JessNode => {
       const trimmed = inner.trim();
       const colonIdx = trimmed.indexOf(':');
@@ -2031,11 +2152,11 @@ export class LessGrammar extends CssParser {
         const propName = trimmed.slice(0, colonIdx).trim();
         const propVal = trimmed.slice(colonIdx + 1).trim();
         const nameNode = propName;
-        // A bare `@var` value normalizes to an indexed Reference (→ `$[var]`),
-        // matching atRulePreludeBareVariableAs:'index' in productions/values.ts.
-        const valueNode = singleVarRe.test(propVal)
-          ? buildWord(propVal)
-          : this._lessKeyword(propVal, loc) as unknown as JessNode;
+        // The value may be a bare `@var` (→ indexed Reference, matching
+        // atRulePreludeBareVariableAs:'index'), a `@var[key]` accessor, a `~"…"`
+        // escaped string, or a parenthesized math expression — all evaluated so
+        // the prelude renders computed values (Less 4.x parity).
+        const valueNode = buildFeatureValue(propVal);
         const decl = new Declaration({ name: nameNode as any, value: valueNode as any }, undefined, loc);
         return new Paren(decl as any, undefined, loc) as unknown as JessNode;
       }
