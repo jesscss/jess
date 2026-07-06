@@ -9,6 +9,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { getDefaultGuardValue } from './util/default-guard.js';
+import { sourceSpanOf } from './util/provenance.js';
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -53,6 +54,30 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this._treeContext = treeContext;
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
+  }
+
+  /**
+   * The base `clone()` rebuilds a multi-field node's value as an object keyed by
+   * `childKeys`, but Condition's constructor takes the array form `[left, op, right]`
+   * and carries `operator` outside `childKeys`. Rebuild the array (mapping the child
+   * nodes) so a clone/placement-copy keeps its operands and operator instead of
+   * collapsing to an empty Condition.
+   */
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const map = cloneFn ?? ((n: Node) => n);
+    const value: ConditionValue = this.operator !== undefined && this.right !== undefined
+      ? [map(this.left), this.operator, map(this.right)]
+      : [map(this.left)];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const Ctor = this.constructor as new (
+      value: ConditionValue,
+      options?: ConditionOptions,
+      location?: NodeLocation,
+      treeContext?: Context['treeContext']
+    ) => this;
+    const cloned = new Ctor(value, { negate: this.negate }, sourceSpanOf(this), this._treeContext);
+    cloned.inherit(this);
+    return cloned;
   }
 
   /** @internal */
