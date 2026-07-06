@@ -29,10 +29,18 @@ recomputing (node-base.ts:~1154).
 | `F_MAY_ASYNC` | **DELETE — go reactive** (measured neutral-to-faster) | independent, ship now |
 | `F_HAS_NODE_CHILD` | **DELETE** — stale-prone cache, check `this.value` directly | independent, ship now |
 | `F_AMPERSAND` | **RE-SCOPE to selectors** — off the general node walk | independent, ship now |
-| `F_STATIC` / `F_NON_STATIC` | **remove readers, then delete** — several classes, one coupled to the single-render-pass rework | staged; last |
+| `F_STATIC` / `F_NON_STATIC` | **remove readers, then DELETE the flags outright** — no legitimate keep-reader survives | staged; last |
 
-Killing the first three empties the walk of everything except the static bit; killing the
-static readers finishes it.
+Killing the first three empties the walk of everything except the static bit; the static
+readers are all delete / relocate / value-check (none keeps the flag), so the flags AND the
+bubble both go.
+
+**ARCHITECTURAL INVARIANT (owner):** *nodes are ALWAYS shared.* A mixin renders by walking the
+shared body and looking up values against the current frame as it serializes — no node ever gets
+a private per-placement copy. Any code that decides "share vs clone" (the `!F_NON_STATIC` reuse
+gate, `cloneForPlacement`, the "owned surface" comment) is a **mistake / pre-live-binding
+remnant**, not a legitimate flag consumer. This is why `F_STATIC`/`F_NON_STATIC` has no
+keep-reader: the one place it looked load-bearing (reuse) is itself cruft to remove.
 
 ---
 
@@ -67,10 +75,10 @@ clears it. It's a cache of "does this node have node children," used ONLY in cop
 `node-base.ts:1170` (`canReuseAsLeaf`), `node-base.ts:1225`, `util/cloning.ts:15`
 (`canReuseLeaf`), `util/callable-binding.ts:8`.
 
-**Approach:** replace each read with a direct value inspection (does `this.value` contain a
-`Node` — an `instanceof Node` on the scalar case, or an array scan). These sites are cold
-(copy/clone), so the direct check is not a hot-path concern. Remove `F_HAS_NODE_CHILD` from
-`propagateFlagsFrom` (line 685) and `F_CHILD_DERIVED`.
+**Approach:** its readers are the clone/reuse gates being deleted in Stage 3b (nodes are always
+shared), so `F_HAS_NODE_CHILD` mostly deletes *with* them. Any residual reader outside the clone
+path becomes a direct value inspection (does `this.value` contain a `Node`). Remove
+`F_HAS_NODE_CHILD` from `propagateFlagsFrom` (line 685) and `F_CHILD_DERIVED`.
 
 **Gate:** byte-identical; copy/clone tests green.
 
@@ -106,11 +114,17 @@ Reader classes (full per-line table in `packages/core/perf/F_STATIC_AUDIT.md`):
    at-rule. **DELETE** — once F_MAY_ASYNC goes reactive, these just fall into the reactive eval,
    which returns a static value unchanged. (Exception: `sequence.ts:547` is NOT a pure skip — it
    preserves a single-item Sequence wrapper; needs a "keep wrapper" guard in the eval path first.)
-2. **Reuse/aliasing gates** — `canReuseAsLeaf`/`canReuseLeaf`/`callable-binding` use
-   `!F_NON_STATIC` to decide a node is safe to SHARE without cloning. **FLAG-ABUSE (owner ruling)**
-   — this is not a legitimate F_STATIC use; the no-clone reuse decision must be re-expressed with
-   a purpose-named signal (or folded into the copy-reduction model), not read off "static." OPEN
-   DECISION — see below.
+2. **Reuse/aliasing gates** — `canReuseAsLeaf` (node-base:1169) / `canReuseLeaf` (cloning.ts:12) /
+   `canReuseStaticScalarLeaf` (callable-binding:6) use `!F_NON_STATIC` to decide "share vs clone."
+   **DELETE — this whole decision is a mistake (owner invariant: nodes are ALWAYS shared).** The
+   gate exists to guard the pre-live-binding copy path (`reuseLeaf` freezes+shares a *static* leaf,
+   implying dynamic leaves get cloned instead). Under always-share, every source-free node is
+   shared and its value is looked up at render — dynamic leaves included. So delete the reuse gates
+   AND the clone/`cloneForPlacement`/"owned surface" machinery they guard; nothing needs to
+   re-express, because the share-vs-clone question shouldn't exist. (This deletion also removes the
+   sole readers of `F_HAS_NODE_CHILD` — see its section.) NOTE: verify the clone paths are actually
+   dead vs still-hit-for-correctness in today's half-migrated eval before ripping — the invariant is
+   the target; the tracing confirms how much copy-based eval remains.
 3. **Registration/identity gating** — `_isStatic`/`_hasStaticName` (rules.ts:5267/5383/5388) drive
    eager-vs-deferred name registration in `_prepareRegistrationOnce`. **RELOCATE** to a
    construction-time name index (the north-star "registration is a construction-time index").
@@ -146,29 +160,31 @@ INDEPENDENT (ship now, in parallel, gated byte-identical):
 
 COUPLED to the single-render-pass rework (larger, later):
   Stage 3a  registration gating → construction-time name index
-  Stage 3b  reuse/aliasing gates → purpose-named signal  [OPEN DECISION]
+  Stage 3b  reuse/aliasing gates + clone machinery → DELETE (always-share; no replacement signal)
   Stage 3c  callable-guard static semantics → guard-local property
   Stage 3d  render-direct fast-path → delete after Rules.evalNode structural work
             (composition/registration/extend/hoist) moves to the render walk
 
 FINAL:
-  Stage 4   delete F_STATIC / F_NON_STATIC, F_CHILD_DERIVED, and propagateFlagsFrom
+  Stage 4   delete F_STATIC / F_NON_STATIC (the flags themselves), F_CHILD_DERIVED, and propagateFlagsFrom
 ```
 
 After Stage 1+2, `propagateFlagsFrom` bubbles ONLY F_STATIC/F_NON_STATIC (for the Stage-3
-readers). After Stage 3, nothing reads them. Stage 4 is the deletion.
+readers). After Stage 3, nothing reads them — every reader deletes, relocates, or becomes a value
+check. Stage 4 deletes the flags and the walk entirely.
 
 ---
 
-## Open decision (needs an owner ruling before Stage 3b)
+## Resolved: no keep-reader (owner invariant "nodes are always shared")
 
-The no-clone reuse model currently decides "safe to share this node without cloning" by reading
-`!F_NON_STATIC`. If F_STATIC/F_NON_STATIC are deleted, that decision needs a replacement signal.
-Options: (a) a purpose-named `F_SHAREABLE`/`F_FROZEN`-style bit set by the same leaf constructors
-(cheaper than the bubble — a leaf knows its own shareability without crawling children); (b) fold
-shareability into the copy-reduction pass so it's decided at copy-time by inspecting the node, not
-a precomputed flag. (a) keeps a bit but kills the *bubble* (the walk is the cost, not the bit).
-This is the one place "delete the flag" and "delete the walk" diverge — resolve it explicitly.
+Earlier this was framed as an open decision — "if we delete F_STATIC, the reuse gate needs a
+replacement signal." That framing was wrong: the reuse gate is a **mistake**, not a need. Nodes are
+always shared and their values are looked up at render against the frame; there is no share-vs-clone
+decision. So the reuse gate + clone/owned-surface machinery are deleted (Stage 3b) with no
+replacement, and `F_STATIC`/`F_NON_STATIC` have no surviving keep-reader — the flags delete outright
+(Stage 4). The only caveat is empirical, not architectural: confirm how much copy-based eval remains
+in the half-migrated tree before ripping the clone paths, so the invariant is enforced without
+regressing a path that hasn't finished migrating to live bindings yet.
 
 ---
 
