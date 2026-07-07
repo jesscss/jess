@@ -98,15 +98,22 @@ to the inner/parent region is not a real match at this level" rule, enforced at 
   RESOLVED ∧ ¬find matches EMPTY`. Reproducible in-IR with ZERO node cloning (bitset subset tests over the
   lifted parent) — vs the oracle's two `selectorCompare` calls on fully-materialized `copySelectorTreeForExtend`
   clones. **Future-slim signal:** the oracle's per-amp double-clone+compare is heavier than the semantics need.
-- **A crossing does NOT always hoist — two gates the child/cross/parent+hoist model missed:**
-  1. **Relative-partial downgrade** (extend.ts:1594): when `partial` AND crossing reason is `resolved-only`
-     AND the subject is a combinator-led `ComplexSelector` (relative, e.g. `> &.child`), the crossing is
-     downgraded to IN-PLACE (`> :is(.parent.child, .ext)`), NOT hoisted. The SAME shape in FULL mode hoists.
-  2. **Simple-find parent-only → NOT_FOUND** (extend.ts:1589 full-skip + :1622 partial whole-location gate):
-     a simple find matching ONLY the parent portion (`&.bar` parent `.foo`, find `.foo`) collapses to
-     `NOT_FOUND` (both modes) — i.e. "parent-only" is `NOT_FOUND` for simple finds, not a plain drop.
-  So the refined `&` rule: crossing → hoist-to-root, EXCEPT (1) partial + resolved-only + relative subject →
-  in-place `:is()`; (2) simple-find parent-only → NOT_FOUND. These are REAL jess semantics, not model bugs.
+- **Gate 2 (STANDS) — simple-find parent-only → NOT_FOUND** (extend.ts:1589 full-skip + :1622 partial
+  whole-location gate): a simple find matching ONLY the parent portion (`&.bar` parent `.foo`, find `.foo`
+  — reachable from `.foo { &.bar {} }`) collapses to `NOT_FOUND` (both modes) — "parent-only" is `NOT_FOUND`
+  for simple finds, not a plain drop. Input is well-formed → real semantics.
+- **Gate 1 (WITHDRAWN — invalid-input artifact, do NOT encode).** The reported "relative-partial downgrade"
+  came from a hand-built subject `sel([co('>'), compound([&→.parent, .child])])` — a ComplexSelector STARTING
+  with a bare `>` combinator, i.e. a root-level leading-combinator selector, which is NOT a valid/reachable
+  shape (a real `.parent { > &.child }` composes to `.parent > .parent.child` or lives nested; it never
+  reaches extend as a dangling-`>` standalone). jess is lenient (renders root-level `> .child`), so the
+  malformed input produced output and the differential matched it — but it documents undefined behavior, not
+  a rule. Purge the case + its `gatedInPlace` handling.
+- **METHODOLOGY (load-bearing): differential inputs MUST be reachable + well-formed.** Hand-built `el()/sel()`
+  subjects are safe only for context-free shapes. For `&`/nesting/combinator cases, validity depends on
+  context, so DERIVE the subject from real Less source through parse→eval (the actual selector the engine
+  sees), never assemble a leading-combinator/detached subject by hand. Otherwise the oracle's behavior on an
+  unreachable input gets mistaken for spec (that is exactly what produced the withdrawn Gate 1).
 
 ## Rewrite (closed constructor ops — stays in the IR)
 Only three outcomes, all landing back in the algebra:
