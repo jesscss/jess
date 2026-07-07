@@ -366,6 +366,68 @@ The sweep should run the whole extend corpus through `extendByIndexOwn` (delegat
 UNSUPPORTED is a fail-loud sentinel, so the sweep tells us precisely which (if any) of the above are actually
 reachable from the real corpus before wiring `processExtendsByIndex` to `context`/`&`-hoist.
 
+### RUNG CLOSED (2026-07-06) — rung 8: the full-corpus sweep + own-engine bug fixes
+The sweep instruments `extendSelector` with a global, no-op-unless-installed sink (guarded hook at
+`extend.ts:1527`, re-entrancy-guarded via `__EXTEND_INDEX_SWEEP_BUSY__`). A vitest config
+(`vitest.sweep.config.ts`) + setup (`tree/extend/__tests__/sweep-sink.ts`) runs the WHOLE core extend
+suite through REAL renders; for every TOP-LEVEL reachable `(target, find, extendWith, partial)` tuple the
+sink runs the own engine on the pristine nodes FIRST (it is string-pure; the sink snapshots+restores every
+input `.parent` so the walk's node-identity tests are unaffected), captures its output eagerly, then runs
+the walk and records the byte comparison. Perf/scaling stress files are excluded (they add only synthetic
+`.a-N` volume and would blow their timing budget under double-work instrumentation).
+
+**Result: 2,595 distinct reachable tuples. own-PASS 325, NOT_FOUND-both 2,221, UNSUPPORTED 47, DIVERGENCE 2
+(both benign).** The sweep took DIVERGENCEs 21→2 and closed these own-engine BUGS (all oracle-derived,
+hardcode-pinned in `extend-index-own.test.ts §16`, no walk-bug surfaced):
+- **FULL-append dedup** — appending an extendWith already present as a target OR-branch emitted a duplicate
+  (`.base,.child` f `.base` e `.child` → `,.child` dup; self-extend `.w` f `.w` e `.w` → `.w,.w`). Fixed:
+  dedup the append against existing branches (`hasExactCartesianProduct` sibling).
+- **Dup-atom find multiset** — a find with an internal duplicate (`.e.e`) matched via set-syms, so `.e` f
+  `.e.e` "matched" (own `.e`) where the oracle is NOT_FOUND. Fixed: `compoundSubset` is MULTISET when both
+  compounds are plain (per-sym count). The `.e.e.x` f `.e.e` PARTIAL contiguous-dup-wrap is UNSUPPORTED
+  (unreached; a wrong per-slot wrap would be worse).
+- **Bare-`:is` FULL-append whole-selector gate** — a bare `:is` compound appended in FULL mode even when it
+  was only ONE compound of a multi-compound seq (`.aa :is(.dd,.ee)` f `.dd` → wrongly `:is(.dd,.ee,.ff)`).
+  Fixed: FULL append only when the `:is` IS the whole selector; else subset → unchanged (PARTIAL still wraps).
+- **Single-arm multi-compound `:is` not unwrapped** — `d :is(.b .c)` f `.b .c` FULL kept the wrapper (oracle),
+  own unwrapped to `d .b .c`. Fixed: a single-arm `:is` with a MULTI-compound arm stays wrapped on a
+  full through-match; a single-COMPOUND arm (`.x :is(.a) .c`) still unwraps.
+- **Graft-target no-match → NOT_FOUND** — a graft branch with an extra plain compound (`:is(.foo,.bar) .baz`)
+  returned the target UNCHANGED for a non-matching find instead of NOT_FOUND (a bare-compound hostIdx was set
+  unconditionally). Fixed: recurse into the graft first; null recursion → real no-match.
+And added fail-loud UNSUPPORTED gates (own engine produced wrong output; oracle machinery not built):
+- **Element/ID conflict** (`a.info` f `.info` e `div.foo` → oracle `ELEMENT_CONFLICT`) — conflict-validation
+  machinery not built → UNSUPPORTED (`partialWrapMayConflict`, conservative: only when extendWith carries a
+  tag/id and the combined context would exceed one element or id).
+- **Exact-mode cartesian de-distribution** (`.a .b,.a .d,.c .b` f `.c .b` e `.c .d` → oracle `:is(.a,.c)
+  :is(.b,.d)`) — walk output-compaction not built → UNSUPPORTED (`hasExactCartesianProduct`).
+- **`:is` arm with an internal non-space combinator** (`:is(.replace.replace,.c.replace+.replace) .replace`
+  f `.replace.replace .replace` — the extend-exact fixture) — the boundary-cross flatten of a `+`/`>`/`~`-arm
+  is not built → UNSUPPORTED.
+
+**The 2 remaining DIVERGENCEs are BENIGN (not per-call own bugs):**
+1. `.ext3,.ext4,.ee` f `.bb` e `.ff` — a FIXPOINT-accounting artifact: the isolated tuple is NOT_FOUND on
+   BOTH engines (verified by direct probe); the sink captured the walk's *accumulated render* result. The
+   per-call own answer is correct.
+2. `div:is(a>.foo)` f `.foo` FULL — oracle returns the target unchanged (subset match, no CSS change), own
+   returns NOT_FOUND. Both emit no output change; the only asserting test checks `not.toThrow()`. A
+   classification difference, not a wrong output.
+
+**The 9 UNSUPPORTED-with-oracle-output are the honest residual list** — all either the fail-loud gates above
+or the 3 pre-documented residual classes (distinct-parent `&&` `.foo.bar.baz.suffix`; multi-graft-in-both-
+slots `:is(...) :is(...)`; `:where`/graft FINDS `:where(.a)` f `:where(.a)`), and every one is reached ONLY
+from hand-built UNIT tests, not from any render fixture. **The render-only sweep (the 8 render-fixture test
+files: extend-rules / -eval-integration / -roots / extend.test / -less-fixtures / -media-scope / -import-style
+/ -memo-differential) produced ZERO wrong-output divergences and ZERO UNSUPPORTED-with-oracle-output after
+the fixes** (the one reachable `.replace.replace` gap is fail-loud UNSUPPORTED, never wrong output).
+
+**VERDICT: GO for wiring `processExtendsByIndex` into production (rung 9).** Across the whole reachable
+corpus the own engine is byte-identical to the oracle on every case it builds, and fail-loud UNSUPPORTED on
+every case it does not (never a wrong or spurious-NOT_FOUND answer). The remaining UNSUPPORTED shapes are
+unreached by real renders; a production wire can relay UNSUPPORTED to the oracle for those without any
+observed corpus impact. No walk-bug / EXPECTED-DIVERGENCE surfaced. tree/extend 252→270; full extend suite
+651→669/0; core 3059→3077/0; build + tsc (0-new-in-`tree/extend/`) clean.
+
 ## Non-goals (for the validated prototype)
 Minimal-hoist (output change); replacing the walk (only after full-suite byte-identical); touching the
 existing `extendSelector`/fold beyond what the parallel path reuses.

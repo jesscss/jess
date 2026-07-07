@@ -653,4 +653,80 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
       pin(sel([el('div'), co('+'), compound([el('.a'), el('.c'), el('.b')]), co('>'), compound([el('.y'), el('.x')])]), sel([compound([el('.a'), el('.b')]), co('>'), el('.x')]), sellist([el('.d'), el('.e')]), true, 'div+:is(.a.c.b>.y.x,.d,.e)');
     });
   });
+
+  // RUNG 8 — closed by the full-corpus sweep (differential vs the oracle over the whole reachable
+  // extend suite). Each case is a real divergence the sweep surfaced; the fix is pinned here.
+  describe('16. full-corpus sweep (rung 8)', () => {
+    // FULL-mode append DEDUPES: extendWith already a target branch → no duplicate OR-branch.
+    it('.base,.child f .base e .child → .base,.child (dedup, no dup branch)', () => {
+      pin(sellist([sel([el('.base')]), sel([el('.child')])]), el('.base'), el('.child'), false, '.base,.child');
+    });
+    it('.x,.y,.z f .z e .x → .x,.y,.z (dedup, .x already present)', () => {
+      pin(sellist([sel([el('.x')]), sel([el('.y')]), sel([el('.z')])]), el('.z'), el('.x'), false, '.x,.y,.z');
+    });
+    it('.w f .w e .w → .w (FULL self-extend no-op)', () => {
+      pin(sel([el('.w')]), el('.w'), el('.w'), false, '.w');
+    });
+    it('.btn:hover f .btn:hover e .btn:hover → .btn:hover (FULL self-extend no-op)', () => {
+      pin(sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), false, '.btn:hover');
+    });
+    // Control: extendWith NOT present → append fires normally.
+    it('.a,.b f .b e .c → .a,.b,.c (control, append fires)', () => {
+      pin(sellist([sel([el('.a')]), sel([el('.b')])]), el('.b'), el('.c'), false, '.a,.b,.c');
+    });
+
+    // DUP-FIND multiset: `.e.e` (2 atoms, 1 sym) needs the target to carry `.e` twice.
+    it('.e f .e.e e .dbl FULL → NOT_FOUND (target has one .e, find needs two)', () => {
+      pin(sel([el('.e')]), compound([el('.e'), el('.e')]), el('.dbl'), false, 'NOT_FOUND');
+    });
+    it('.e f .e.e e .dbl PARTIAL → NOT_FOUND', () => {
+      pin(sel([el('.e')]), compound([el('.e'), el('.e')]), el('.dbl'), true, 'NOT_FOUND');
+    });
+    it('.e.e f .e.e e .dbl FULL → .e.e,.dbl (target supplies both .e)', () => {
+      pin(compound([el('.e'), el('.e')]), compound([el('.e'), el('.e')]), el('.dbl'), false, '.e.e,.dbl');
+    });
+
+    // FULL-mode bare-`:is` graft appends ONLY when it is the WHOLE selector.
+    it(':is(.dd,.ee) f .dd e .ff FULL → :is(.dd,.ee,.ff) (whole selector → append)', () => {
+      pin(sel([is(sellist([sel([el('.dd')]), sel([el('.ee')])]))]), el('.dd'), el('.ff'), false, ':is(.dd,.ee,.ff)');
+    });
+    it('.aa :is(.dd,.ee) f .dd e .ff FULL → .aa :is(.dd,.ee) (graft not whole selector → unchanged)', () => {
+      pin(sel([el('.aa'), co(' '), is(sellist([sel([el('.dd')]), sel([el('.ee')])]))]), el('.dd'), el('.ff'), false, '.aa :is(.dd,.ee)');
+    });
+    it('.aa :is(.dd,.ee) f .dd e .ff PARTIAL → .aa :is(.dd,.ee,.ff) (partial still wraps)', () => {
+      pin(sel([el('.aa'), co(' '), is(sellist([sel([el('.dd')]), sel([el('.ee')])]))]), el('.dd'), el('.ff'), true, '.aa :is(.dd,.ee,.ff)');
+    });
+
+    // Single-arm `:is` with a MULTI-compound arm is kept wrapped on a full through-match.
+    it('d :is(.b .c) f .b .c e .a FULL → d :is(.b .c) (multi-compound arm not unwrapped)', () => {
+      pin(sel([el('d'), co(' '), is(sellist([sel([el('.b'), co(' '), el('.c')])]))]), sel([el('.b'), co(' '), el('.c')]), el('.a'), false, 'd :is(.b .c)');
+    });
+
+    // Graft target, find matches NOTHING → NOT_FOUND (not the unchanged target).
+    it(':is(.foo,.bar) .baz f .aa FULL → NOT_FOUND (no match anywhere)', () => {
+      pin(sel([is(sellist([sel([el('.foo')]), sel([el('.bar')])])), co(' '), el('.baz')]), el('.aa'), el('.cc'), false, 'NOT_FOUND');
+    });
+
+    // Element/ID conflict → UNSUPPORTED (fail-loud; own engine does not build conflict validation).
+    it('a.info f .info e div.foo PARTIAL → UNSUPPORTED (element conflict)', () => {
+      pin(compound([el('a'), el('.info')]), el('.info'), compound([el('div'), el('.foo')]), true, 'UNSUPPORTED');
+    });
+    it('#main.info f .info e #other.foo PARTIAL → UNSUPPORTED (id conflict)', () => {
+      pin(compound([el('#main'), el('.info')]), el('.info'), compound([el('#other'), el('.foo')]), true, 'UNSUPPORTED');
+    });
+    // Control: same element type → no conflict, wrap builds.
+    it('a.info f .info e a.foo PARTIAL → a:is(.info,a.foo) (same element, no conflict)', () => {
+      pin(compound([el('a'), el('.info')]), el('.info'), compound([el('a'), el('.foo')]), true, 'a:is(.info,a.foo)');
+    });
+
+    // Exact-mode cartesian de-distribution (oracle compacts to :is()) → UNSUPPORTED (not built).
+    it('.a .b,.a .d,.c .b f .c .b e .c .d FULL → UNSUPPORTED (cartesian de-distribution)', () => {
+      pin(sellist([sel([el('.a'), co(' '), el('.b')]), sel([el('.a'), co(' '), el('.d')]), sel([el('.c'), co(' '), el('.b')])]), sel([el('.c'), co(' '), el('.b')]), sel([el('.c'), co(' '), el('.d')]), false, 'UNSUPPORTED');
+    });
+
+    // Graft arm with an INTERNAL non-space combinator → UNSUPPORTED (flatten not built).
+    it(':is(.p+.q) .r f .p .r e .x FULL → UNSUPPORTED (arm has + combinator)', () => {
+      pin(sel([is(sellist([sel([el('.p'), co('+'), el('.q')])])), co(' '), el('.r')]), sel([el('.p'), co(' '), el('.r')]), el('.x'), false, 'UNSUPPORTED');
+    });
+  });
 });

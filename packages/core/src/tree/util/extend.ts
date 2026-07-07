@@ -1524,6 +1524,31 @@ export function extendSelector(
   if (process.env.PROBE_EXTEND) {
     console.error('[PROBE enter]', JSON.stringify({ target: target.valueOf(), find: find.valueOf(), partial }));
   }
+  // Sweep instrumentation (rung 8): when a differential sweep installs the global sink, capture
+  // every TOP-LEVEL reachable tuple (the calls a production `processExtendsByIndex` wire replaces —
+  // `skipAmpersandCheck`/`hasMoreAfterIs` are the internal recursive calls). No-op unless installed.
+  // The own engine (which the sink runs) is pure w.r.t. its inputs, so the sink runs it FIRST on the
+  // pristine nodes; the walk body then runs on those same still-pristine nodes and its result is fed
+  // back to the sink to record the byte-for-byte comparison. Re-entrancy guarded via the BUSY flag.
+  const sweepGlobal = globalThis as {
+    __EXTEND_INDEX_SWEEP__?: (
+      t: ExtendSelectorSurface, f: Selector, e: Selector, p: boolean,
+      oracleThunk: () => ExtendSelectorSurface | ExtendErrorType
+    ) => ExtendSelectorSurface | ExtendErrorType;
+    __EXTEND_INDEX_SWEEP_BUSY__?: boolean;
+  };
+  const sweepSink = sweepGlobal.__EXTEND_INDEX_SWEEP__;
+  if (sweepSink && !sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ && !skipAmpersandCheck && !hasMoreAfterIs) {
+    sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ = true;
+    try {
+      // The sink runs the (pure) own engine on these pristine nodes FIRST, captures its string,
+      // then invokes this thunk to run the real walk on the same nodes, and records the comparison.
+      return sweepSink(target, find, extendWith, partial,
+        () => extendSelector(target, find, extendWith, partial, skipAmpersandCheck, hasMoreAfterIs));
+    } finally {
+      sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ = false;
+    }
+  }
   if (partial && find.valueOf() === extendWith.valueOf()) {
     return target;
   }

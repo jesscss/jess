@@ -388,7 +388,31 @@ function compoundSubset(find: IrCompound, target: IrCompound): boolean {
   if (compoundHasConstructorAtom(find)) {
     return false;
   }
-  // Target-side `:is()`/`&` are grafted via reachableSyms (the :is() seam).
+  // When BOTH compounds are plain (no `:is`/`&` graft), containment is MULTISET: a find atom that
+  // repeats (`.e.e`) needs the target to carry it at least as many times. The oracle treats an
+  // internal find duplicate as multiset (`.e` find `.e.e` → NOT_FOUND; `.e.e` find `.e.e` → match).
+  // A pure set test would let `.e.e` "match" `.e`, producing a spurious location.
+  if (!compoundHasConstructorAtom(target)) {
+    const targetCounts = new Map<number, number>();
+    for (const a of target.atoms) {
+      if (a.kind === 'id') {
+        targetCounts.set(a.sym, (targetCounts.get(a.sym) ?? 0) + 1);
+      }
+    }
+    const findCounts = new Map<number, number>();
+    for (const a of find.atoms) {
+      if (a.kind === 'id') {
+        findCounts.set(a.sym, (findCounts.get(a.sym) ?? 0) + 1);
+      }
+    }
+    for (const [s, n] of findCounts) {
+      if ((targetCounts.get(s) ?? 0) < n) {
+        return false;
+      }
+    }
+    return true;
+  }
+  // Target-side `:is()`/`&` are grafted via reachableSyms (the :is() seam) — set-based reach.
   const available = reachableSyms(target);
   for (const s of find.syms) {
     if (!available.has(s)) {
@@ -721,6 +745,56 @@ function hasGraftTarget(target: Selector, _find: Selector): boolean {
   return nodeHasPseudoWithSelectorArg(target);
 }
 
+/** Collect lowercase element-type and id values from a selector subtree (BasicSelector leaves). */
+function collectTagsAndIds(node: unknown, tags: Set<string>, ids: Set<string>): void {
+  if (typeof node === 'string' || node === null || node === undefined) {
+    return;
+  }
+  if (isNode(node, N.BasicSelector)) {
+    const b = node as { isTag?: boolean; isId?: boolean; value: string };
+    if (b.isTag) {
+      tags.add(b.value.toLowerCase());
+    }
+    if (b.isId) {
+      ids.add(b.value);
+    }
+    return;
+  }
+  const container = node as { value?: unknown; arg?: unknown };
+  if (Array.isArray(container.value)) {
+    for (const child of container.value) {
+      collectTagsAndIds(child, tags, ids);
+    }
+  } else if (container.value !== undefined) {
+    collectTagsAndIds(container.value, tags, ids);
+  }
+}
+
+/**
+ * Whether a partial `:is`-wrap of `find` inside `target` with `extendWith` would trip the oracle's
+ * element/id conflict validation (`ELEMENT_CONFLICT`/`ID_CONFLICT`). Conservative: fires only when
+ * `extendWith` itself carries a tag or id (the oracle's own `extendWithNeedsConflictValidation`
+ * precondition) AND the combined tag/id set of the matched target compounds + extendWith would hold
+ * more than one distinct element type or id. The own engine does not build the conflict-validated
+ * output, so a hit routes to UNSUPPORTED (never a wrong `:is(.info,div.foo)`).
+ */
+function partialWrapMayConflict(target: Selector, find: Selector, extendWith: Selector): boolean {
+  const extTags = new Set<string>();
+  const extIds = new Set<string>();
+  collectTagsAndIds(extendWith, extTags, extIds);
+  if (extTags.size === 0 && extIds.size === 0) {
+    return false; // extendWith has no element/id → no conflict possible (matches oracle precondition)
+  }
+  // Combined element/id set across the whole target + extendWith. If wrapping would place >1
+  // distinct element or >1 distinct id into one compound context, the oracle refuses.
+  const tags = new Set(extTags);
+  const ids = new Set(extIds);
+  collectTagsAndIds(target, tags, ids);
+  // Conservative gate: conflict when the combined context would hold >1 distinct element type or id.
+  void find;
+  return tags.size > 1 || ids.size > 1;
+}
+
 function nodeHasPseudoWithSelectorArg(node: unknown): boolean {
   if (typeof node === 'string' || node === null || node === undefined) {
     return false;
@@ -1009,7 +1083,15 @@ function buildPartialBranch(
     // find `.z` → both `.z` compounds become `:is(.z, …)`; `.foo.foo` find `.foo` → each `.foo`
     // atom slot wrapped).
     const matchStarts = new Set(m.starts);
-    const findSyms = find[0]!.compound.syms;
+    const findCompound = find[0]!.compound;
+    const findSyms = findCompound.syms;
+    // A find compound with an INTERNAL duplicate atom (`.e.e`: 2 atoms, 1 sym) must wrap the two
+    // matched slots as ONE `:is(.e.e, ext)` (oracle: `.e.e.x` f `.e.e` → `:is(.e.e,.dbl).x`), not
+    // one `:is` per slot. The own engine doesn't build the contiguous multi-occurrence wrap — gate
+    // to UNSUPPORTED (fail-loud). Unreached by the real corpus; a wrong per-slot wrap would be worse.
+    if (findCompound.atoms.length > findSyms.size) {
+      return UNSUPPORTED;
+    }
     for (let i = 0; i < targetSeq.length; i++) {
       const step = targetSeq[i]!;
       if (i > 0) {
@@ -1369,7 +1451,8 @@ function buildGraftCompound(
   findSyms: Set<number>,
   find: Selector,
   extendWith: Selector,
-  partial: boolean
+  partial: boolean,
+  wholeSelector: boolean
 ): Selector | MatchedUnchanged | MatchedFullAppend | null | UnsupportedResult {
   const atoms = compoundStep.compound.atoms;
   const plainSyms = new Set<number>();
@@ -1468,9 +1551,10 @@ function buildGraftCompound(
     return null; // no graft hosts the find
   }
 
+  // FULL mode, find reaches a graft INSIDE a larger compound (`.x:is(.a,.b)` find `.a`) → the graft
+  // reach was verified above (hostIdx via reachableSymsOfGraft), so this is a genuine subset match,
+  // not full → the compound stays unchanged.
   if (!partial && !isBareCompound) {
-    // FULL mode, find only reaches a graft inside a larger compound → subset match, not full →
-    // unchanged (e.g. `.x:is(.a,.b)` find `.a` full → `.x:is(.a,.b)`).
     return MATCHED_UNCHANGED;
   }
 
@@ -1480,7 +1564,14 @@ function buildGraftCompound(
     return UNSUPPORTED;
   }
   if (rebuilt === null) {
-    return null;
+    return null; // the find does not actually match inside the bare graft → no match
+  }
+  // FULL mode, bare `:is` graft that is only ONE compound of a MULTI-compound seq (`.aa :is(.dd,.ee)`
+  // / `.aa>:is(.dd,.ee)` find `.dd`): the find reaches the graft (rebuilt is non-null) but it is NOT
+  // the whole selector, so a FULL match cannot fire — the compound stays unchanged; only PARTIAL
+  // wraps it in place. A bare `:is` that IS the whole selector (`:is(.dd,.ee)` f `.dd`) appends below.
+  if (!partial && !wholeSelector) {
+    return MATCHED_UNCHANGED;
   }
   // Reassemble the compound with the rewritten graft in place.
   if (isBareCompound) {
@@ -1723,7 +1814,7 @@ function buildGraftBranch(
       rebuiltParts.push(makeCombinator(step.comb));
     }
     const built = compoundHasGraftAtom(step.compound)
-      ? buildGraftCompound(step, findSyms, find, extendWith, partial)
+      ? buildGraftCompound(step, findSyms, find, extendWith, partial, targetSeq.length === 1)
       : matchPlainCompound(step, findSyms, find, extendWith, partial);
     if (built === UNSUPPORTED) {
       return UNSUPPORTED;
@@ -1895,6 +1986,7 @@ function tryMultiGraftExpand(
   // extendWith once (like rung 4). A SINGLE-arm `:is(.a)` expands to one plain branch and behaves
   // exactly like plain `.a` — no through-graft append (`.x :is(.a) .c` f `.a .c` FULL → `.x .a .c`).
   let anyMultiArmGraft = false;
+  let anyMultiCompoundArm = false;
   const expandedBranches: IrSeq[] = [];
   for (const tb of irTarget.branches) {
     const bareIs = bareIsStepIndices(tb);
@@ -1917,8 +2009,27 @@ function tryMultiGraftExpand(
     }
     anyExpand = true;
     const graftAtom = tb[bareIs[0]!]!.compound.atoms[0] as Extract<Atom, { kind: 'is' }>;
+    // A graft arm with an INTERNAL non-space combinator (`.c.replace+.replace`, `a>.foo`) is not
+    // spliced correctly by the own expand+flatten machinery (rung 5 handles only space-combinator
+    // arms). The oracle produces a full boundary-cross flatten (`:is(.replace.replace,.c.replace+
+    // .replace) .replace` f `.replace.replace .replace` → nested `:is`); the own engine over-expands.
+    // Gate to UNSUPPORTED (fail-loud) — this is a reachable residual (extend-exact fixture).
+    for (const br of graftAtom.sel.branches) {
+      for (let bi = 1; bi < br.length; bi++) {
+        const c = br[bi]!.comb;
+        if (c !== '' && c !== ' ') {
+          return UNSUPPORTED;
+        }
+      }
+    }
     if (graftAtom.sel.branches.length >= 2) {
       anyMultiArmGraft = true;
+    }
+    // A single-arm `:is` whose sole arm is a MULTI-compound complex selector (`:is(.b .c)`) is NOT
+    // unwrapped by the oracle on a full through-match (`d :is(.b .c)` f `.b .c` FULL → unchanged),
+    // unlike a single-compound arm (`:is(.a)` → plain `.a`, which the oracle unwraps).
+    if (graftAtom.sel.branches.some(br => br.length >= 2)) {
+      anyMultiCompoundArm = true;
     }
     for (const eb of expandBareIsStep(tb, bareIs[0]!)) {
       expandedBranches.push(eb);
@@ -1955,8 +2066,23 @@ function tryMultiGraftExpand(
     return 'NOT_FOUND';
   }
   // A single-arm `:is(.a)` expansion is plain `.a`: full mode leaves it unchanged (no through-graft
-  // append). Only a multi-arm graft crossing yields the append.
+  // append). Only a multi-arm graft crossing yields the append. If the probe produced NO effective
+  // change (the expanded form is byte-identical to itself, i.e. the find matched only a proper
+  // suffix/substring), return the ORIGINAL target — the oracle keeps the authored `:is` wrapper
+  // (`d :is(.b .c)` f `.b .c` FULL → `d :is(.b .c)`, NOT the unwrapped `d .b .c`).
   if (!anyMultiArmGraft) {
+    // A single-arm `:is` with a MULTI-compound arm (`d :is(.b .c)`) is kept wrapped when the find
+    // matched only a proper suffix/substring (no effective rewrite) — the oracle does not unwrap it.
+    // A single-COMPOUND arm (`.x :is(.a) .c`) IS unwrapped to plain (`.x .a .c`) — return the probe.
+    if (anyMultiCompoundArm) {
+      const probeStr = Array.isArray(probe)
+        ? probe.map(p => String(p.valueOf())).join(',')
+        : String((probe as Selector).valueOf());
+      const expandedStr = String(expandedList.valueOf());
+      if (probeStr === expandedStr) {
+        return targetSel;
+      }
+    }
     return probe;
   }
   const out: Selector[] = [...expandedBranches.map(seqToSelector), ...extendWithBranches(extendWith)];
@@ -2685,6 +2811,14 @@ export function extendByIndexOwn(
     return extendGraftTarget(targetSel, find, extendWith, partial);
   }
 
+  // PARTIAL element/id CONFLICT: a partial `:is`-wrap that would combine the matched compound's
+  // element/id with a DIFFERENT element/id from extendWith is an ELEMENT_CONFLICT/ID_CONFLICT the
+  // oracle refuses (returns a conflict sentinel, `a.info` f `.info` e `div.foo` → ELEMENT_CONFLICT).
+  // The own engine does not build the conflict-validated output — gate to UNSUPPORTED (fail-loud).
+  if (partial && partialWrapMayConflict(targetSel, find, extendWith)) {
+    return UNSUPPORTED;
+  }
+
   const syms = new SymbolTable();
   const irTarget = liftSel(targetSel, syms);
   const irFind = liftSel(find, syms);
@@ -2778,8 +2912,15 @@ export function extendByIndexOwn(
     }
   }
   if (anyFull) {
+    // FULL-mode append DEDUPES against branches already present in the target list: the oracle does
+    // not emit a duplicate OR-branch when the appended extendWith selector is already a branch
+    // (`.base,.child` f `.base` e `.child` → `.base,.child`, and self-extend `.w` f `.w` e `.w` → `.w`).
+    const present = new Set(outBranches.map(b => String(b.valueOf())));
     for (const eb of extendBranches) {
-      outBranches.push(eb);
+      if (!present.has(String(eb.valueOf()))) {
+        outBranches.push(eb);
+        present.add(String(eb.valueOf()));
+      }
     }
   }
   for (const s of siblingBranches) {
@@ -2793,7 +2934,64 @@ export function extendByIndexOwn(
   if (outBranches.length === 1) {
     return outBranches[0]!;
   }
+  // EXACT-MODE CARTESIAN DE-DISTRIBUTION: in FULL mode the oracle collapses a complete cross-product
+  // of `left <comb> right` branches into `:is(left...) <comb> :is(right...)` (`.a .b,.a .d,.c .b` f
+  // `.c .b` e `.c .d` → `:is(.a,.c) :is(.b,.d)`). The own engine emits the flat list. Not built —
+  // gate to UNSUPPORTED (fail-loud) when the assembled branches contain such a full cross-product.
+  if (anyFull && hasExactCartesianProduct(outBranches)) {
+    return UNSUPPORTED;
+  }
   return sellist(outBranches);
+}
+
+/**
+ * True when `branches` contains a COMPLETE cartesian product of `left <comb> right` complex selectors
+ * sharing one combinator (≥2 distinct lefts × ≥2 distinct rights, every combination present) — the
+ * shape the oracle de-distributes into `:is(...) <comb> :is(...)`.
+ */
+function hasExactCartesianProduct(branches: Selector[]): boolean {
+  const byComb = new Map<string, Array<{ left: string; right: string }>>();
+  for (const b of branches) {
+    if (!isNode(b, N.ComplexSelector)) {
+      continue;
+    }
+    const parts = (b as ComplexSelector).value;
+    if (parts.length !== 3) {
+      continue;
+    }
+    const first = parts[0];
+    const second = parts[1];
+    const third = parts[2];
+    if (!isSelectorNode(first) || !isCombinator(second) || !isSelectorNode(third)) {
+      continue;
+    }
+    // `second` is a Combinator (guarded above); its `.valueOf()` is the combinator string — mirrors
+    // the oracle's grouping key (`second.valueOf()`), avoiding a non-narrowing `combinatorValue` call.
+    const key = String((second as { valueOf(): unknown }).valueOf());
+    if (!byComb.has(key)) {
+      byComb.set(key, []);
+    }
+    byComb.get(key)!.push({ left: String(first.valueOf()), right: String(third.valueOf()) });
+  }
+  for (const pairs of byComb.values()) {
+    const lefts = new Set(pairs.map(p => p.left));
+    const rights = new Set(pairs.map(p => p.right));
+    if (lefts.size >= 2 && rights.size >= 2 && pairs.length === lefts.size * rights.size) {
+      const seen = new Set(pairs.map(p => `${p.left}|${p.right}`));
+      let complete = true;
+      for (const l of lefts) {
+        for (const r of rights) {
+          if (!seen.has(`${l}|${r}`)) {
+            complete = false;
+          }
+        }
+      }
+      if (complete) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /** Rebuild a lifted seq as a Selector, reusing authored nodes (no rewrite). */
