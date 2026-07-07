@@ -3263,11 +3263,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     keys: string[],
     options: CallableFindOptions = {},
     pathStart = 0,
-    // When a same-named mixin namespace also exists, the walk normally defers to
-    // the mixin path (returns undefined). Set this to still resolve the ruleset
-    // prefix defs so findMixinPath can UNION ruleset + mixin namespace results
-    // (`#g when(…) {…} #g() {…}` — both contribute).
-    resolvePrefixesDespiteMixinNamespace = false
+    // When the head namespace also exists in mixin form the walk defers to the
+    // mixin path (returns undefined). Passing a collector captures the ruleset-form
+    // prefix defs in the SAME pass so findMixinPath can UNION ruleset + mixin
+    // namespace results (`#g when(…) {…} #g() {…}` — both contribute) without a
+    // second full frame walk.
+    despiteMixinNamespaceOut?: { entries?: MixinEntry[] }
   ): MixinEntry[] | undefined {
     if (keys.length - pathStart < 2) {
       return undefined;
@@ -3439,7 +3440,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           searchParents
         }).length > 0;
       }
-      if (hasMixinNamespace && !(resolvePrefixesDespiteMixinNamespace && prefixMatches.length > 0)) {
+      const captureDespiteMixinNamespace = hasMixinNamespace
+        && despiteMixinNamespaceOut !== undefined
+        && prefixMatches.length > 0;
+      if (hasMixinNamespace && !captureDespiteMixinNamespace) {
         return undefined;
       }
 
@@ -3638,6 +3642,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       }
 
+      if (captureDespiteMixinNamespace) {
+        if (accumulated !== undefined && accumulated.length > 0) {
+          despiteMixinNamespaceOut!.entries = accumulated;
+        }
+        return undefined;
+      }
       if (accumulated !== undefined && accumulated.length > 0) {
         return accumulated;
       }
@@ -4046,19 +4056,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let mixinNamespaceFast: MixinEntry[] | undefined;
     let rulesetNamespaceUnion: MixinEntry[] | undefined;
     if (mixinFilterType !== 'Mixin') {
-      const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
+      // For an emitting call the head namespace may also exist in mixin form; the
+      // ruleset walk then defers (returns undefined) but the collector captures its
+      // ruleset-form prefix defs in the SAME pass so they union with the mixin path
+      // below — same-named ruleset and mixin namespaces both contribute their
+      // descendant output. Value lookups keep override semantics (no collector).
+      const despiteMixinNamespaceOut: { entries?: MixinEntry[] } | undefined =
+        options.mixinCall === true ? {} : undefined;
+      const rulesetNamespaceFast = this.findRulesetNamespacePathFast(
+        keys,
+        options,
+        0,
+        despiteMixinNamespaceOut
+      );
       if (rulesetNamespaceFast !== undefined) {
         return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
       }
-      // For an emitting call, the head namespace may also exist in mixin form
-      // (rnf deferred). Resolve its ruleset-form defs so they union with the
-      // mixin path below — same-named ruleset and mixin namespaces both
-      // contribute their descendant output. Value lookups keep override semantics.
-      if (options.mixinCall === true) {
-        const rulesetDespiteMixin = this.findRulesetNamespacePathFast(keys, options, 0, true);
-        if (rulesetDespiteMixin !== undefined && rulesetDespiteMixin.length > 0) {
-          rulesetNamespaceUnion = rulesetDespiteMixin;
-        }
+      if (despiteMixinNamespaceOut?.entries !== undefined && despiteMixinNamespaceOut.entries.length > 0) {
+        rulesetNamespaceUnion = despiteMixinNamespaceOut.entries;
       }
       let namespaceMixins: MixinEntry[] | undefined;
       let namespaceMixinMissCovered = false;
