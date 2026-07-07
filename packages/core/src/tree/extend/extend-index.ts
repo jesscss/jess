@@ -32,7 +32,7 @@
 import type { Selector } from '../selector.js';
 import { type CompoundSelector, compound } from '../selector-compound.js';
 import { ComplexSelector, type ComplexSelectorComponent, sel } from '../selector-complex.js';
-import { PseudoSelector, is } from '../selector-pseudo.js';
+import { PseudoSelector, is, pseudo } from '../selector-pseudo.js';
 import { SelectorList, sellist } from '../selector-list.js';
 import { Ampersand } from '../ampersand.js';
 import { isNode } from '../util/is-node.js';
@@ -55,7 +55,11 @@ type ExtendOutput = ReturnType<typeof extendSelector>;
 
 type Atom =
   | { kind: 'id'; sym: number; node: Selector | string; raw: string }
-  | { kind: 'is'; sel: IrSel; node: PseudoSelector }
+  // A pseudo carrying a selector argument: `:is(...)`, `:not(...)`, `:where(...)`, `:has(...)`.
+  // `pseudoName` distinguishes `:is` (the ONLY graft that boundary-crosses into an outer compound
+  // match — design line 94) from the rest (recursion-only). `kind:'is'` is kept as the tag for
+  // back-compat with the delegating engine's discovery paths (reachableSyms/matchSeqInSeq).
+  | { kind: 'is'; sel: IrSel; node: PseudoSelector; pseudoName: string }
   | { kind: 'amp'; node: Ampersand; resolved: IrSel | null };
 
 function isSelectorNode(value: unknown): value is Selector {
@@ -109,8 +113,8 @@ function liftCompoundComponent(
   if (typeof comp === 'string') {
     return { kind: 'id', sym: syms.intern(comp), node: comp, raw: comp };
   }
-  if (isNode(comp, N.PseudoSelector) && comp.name === ':is' && comp.arg && isSelectorNode(comp.arg)) {
-    return { kind: 'is', sel: liftSel(comp.arg, syms), node: comp };
+  if (isNode(comp, N.PseudoSelector) && comp.arg && isSelectorNode(comp.arg)) {
+    return { kind: 'is', sel: liftSel(comp.arg, syms), node: comp, pseudoName: comp.name };
   }
   if (isNode(comp, N.Ampersand)) {
     const resolved = comp.getResolvedSelector();
@@ -228,7 +232,10 @@ class CompoundSetTrie {
 function reachableSyms(c: IrCompound): Set<number> {
   const out = new Set<number>(c.syms);
   for (const a of c.atoms) {
-    if (a.kind === 'is') {
+    // Only `:is()` boundary-crosses — a find can match THROUGH an `:is` graft into an outer
+    // compound match. `:not`/`:where`/`:has` are recursion-only (extend recurses INTO their arg
+    // but a find does not "reach through" them), so they must NOT contribute reachable syms.
+    if (a.kind === 'is' && a.pseudoName === ':is') {
       for (const branch of a.sel.branches) {
         if (branch.length >= 1) {
           for (const s of reachableSyms(branch[0]!.compound)) {
@@ -772,6 +779,23 @@ function nodeHasPseudoWithSelectorArg(node: unknown): boolean {
 export const UNSUPPORTED = 'UNSUPPORTED' as const;
 export type UnsupportedResult = typeof UNSUPPORTED;
 
+/**
+ * Internal sentinel: a find MATCHED as a proper subset in FULL mode (e.g. `.info` in
+ * `:is(a).info`, `.foo` in `.x:not(.foo)`). The location is real but full mode does not extend
+ * it, so the compound/branch is left UNCHANGED — distinct from "no match" (which would route the
+ * whole call to NOT_FOUND when no other branch matches).
+ */
+const MATCHED_UNCHANGED = 'MATCHED_UNCHANGED' as const;
+type MatchedUnchanged = typeof MATCHED_UNCHANGED;
+
+/**
+ * Internal sentinel: a find FULLY matched a whole graft-bearing compound (e.g. `.a.c` matches
+ * `:is(.a,.b).c` — `.a` via the `:is` branch head, `.c` plain, all atoms consumed). The compound
+ * stays unchanged and the caller APPENDS extendWith as a sibling branch.
+ */
+const MATCHED_FULL_APPEND = 'MATCHED_FULL_APPEND' as const;
+type MatchedFullAppend = typeof MATCHED_FULL_APPEND;
+
 /** A resolved match of `find` inside one target branch. */
 interface OwnMatch {
   /** whole branch matched exactly (set-equal AND ordered-count-equal, full span, combinators aligned) */
@@ -1056,6 +1080,478 @@ function buildContiguousWrap(
   return compound(finalParts as Parameters<typeof compound>[0]);
 }
 
+/* ============================================================================
+ * GRAFT-INTO-TARGET (extending INTO a `:is()` / `:not()` / pseudo-arg graft)
+ * ============================================================================
+ * A pseudo carrying a selector argument is a RECURSIVE extend point: extend recurses
+ * INTO the argument and rewrites there, then rewraps in the SAME pseudo. Verified against
+ * the oracle (differential probes, 2026-07-06):
+ *
+ *   :is(.a,.b)   find .a full/partial  → :is(.a,.b,.c)            (whole inner branch → append)
+ *   :not(.foo)   find .foo full/partial→ :not(.foo,.bar)         (recursion, any pseudo)
+ *   :is(.a.b)    find .a partial       → :is(:is(.a,.q).b)       (inner subset → wrap in place)
+ *   :is(.a.b)    find .a full          → :is(.a.b)               (full: no inner subset match)
+ *   .x:not(.foo) find .foo partial     → .x:not(.foo,.q)         (graft passenger recurses)
+ *   .x:not(.foo) find .foo full        → .x:not(.foo)            (full: subset of compound → skip)
+ *   .x:is(.a,.b) find .a partial       → .x:is(.a,.b,.q)
+ *
+ * Only `:is()` boundary-crosses into an OUTER compound match (design line 94); `:not/:where/:has`
+ * do not contribute reachable syms (handled in `reachableSyms`). The recursion mode passed inward
+ * is the OUTER `partial` flag — that reproduces the full/partial split above.
+ *
+ * Rebuild the pseudo cloning-free: `:is` via the `is()` builder, others via `pseudo({name, arg})`,
+ * reusing authored inner nodes; only the freshly-substituted spans are new.
+ */
+
+/** True when the compound carries any graft atom (`:is`/`:not`/`:where`/`:has` with a selector arg). */
+function compoundHasGraftAtom(c: IrCompound): boolean {
+  return c.atoms.some(a => a.kind === 'is');
+}
+
+/** Rebuild a graft pseudo with a new argument selector, preserving its name. */
+function rebuildGraft(atom: Extract<Atom, { kind: 'is' }>, newArg: Selector): PseudoSelector {
+  if (atom.pseudoName === ':is') {
+    return is(newArg);
+  }
+  return pseudo({ name: atom.pseudoName, arg: newArg });
+}
+
+/**
+ * Wrap a recursion result (Selector | Selector[] | list) back into a single Selector arg for a
+ * graft pseudo. A multi-branch (append) result becomes a SelectorList argument.
+ */
+function graftArgFromResult(result: Selector | Selector[]): Selector {
+  if (Array.isArray(result)) {
+    return result.length === 1 ? result[0]! : sellist(result);
+  }
+  return result;
+}
+
+/**
+ * Recurse INTO a single graft atom's argument and rebuild the pseudo. Returns the rebuilt
+ * pseudo (extend applied inside), null (find did not match inside → no change), or UNSUPPORTED.
+ * `innerPartial` is the outer partial flag (verified: it reproduces the full/partial split).
+ */
+function extendIntoGraft(
+  atom: Extract<Atom, { kind: 'is' }>,
+  find: Selector,
+  extendWith: Selector,
+  innerPartial: boolean
+): PseudoSelector | null | UnsupportedResult {
+  const arg = atom.node.arg;
+  if (!arg || !isSelectorNode(arg)) {
+    return UNSUPPORTED;
+  }
+  const inner = extendByIndexOwn(arg, find, extendWith, innerPartial);
+  if (inner === UNSUPPORTED) {
+    return UNSUPPORTED;
+  }
+  if (inner === 'NOT_FOUND') {
+    return null;
+  }
+  return rebuildGraft(atom, graftArgFromResult(inner));
+}
+
+/**
+ * Graft-aware construction for a SINGLE-compound find against ONE target compound that carries
+ * graft atom(s). Returns the rebuilt compound Selector, null (no match here), or UNSUPPORTED.
+ *
+ * Classification (single-compound find, findSyms = the find's simple ids):
+ *  - find satisfied by the compound's PLAIN atoms alone → grafts are passengers; wrap the plain
+ *    atoms (partial) / whole-compound append is handled by the caller (full). We only own the
+ *    partial plain-wrap-with-graft-passenger case here.
+ *  - find reaches into exactly ONE graft (its syms ⊆ that graft's reachable syms, not the plain
+ *    atoms): PARTIAL → recurse into that graft; FULL of a NON-bare compound → subset → unchanged;
+ *    FULL of a BARE graft compound → recurse (whole compound IS the graft).
+ *  - find spans BOTH plain atoms AND an `:is` graft (`:is(.a,.b).c` find `.a.c`): boundary-cross
+ *    flatten — NOT built yet → UNSUPPORTED.
+ */
+function buildGraftCompound(
+  compoundStep: IrStep,
+  findSyms: Set<number>,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | MatchedUnchanged | MatchedFullAppend | null | UnsupportedResult {
+  const atoms = compoundStep.compound.atoms;
+  const plainSyms = new Set<number>();
+  for (const a of atoms) {
+    if (a.kind === 'id') {
+      plainSyms.add(a.sym);
+    }
+  }
+  const graftAtomIdx: number[] = [];
+  for (let i = 0; i < atoms.length; i++) {
+    if (atoms[i]!.kind === 'is') {
+      graftAtomIdx.push(i);
+    }
+  }
+  const isBareCompound = atoms.length === 1;
+
+  const findInPlain = [...findSyms].every(s => plainSyms.has(s));
+  if (findInPlain) {
+    // Grafts are passengers; the plain atoms carry the match. FULL of the whole compound is the
+    // caller's append job; here we only build the PARTIAL wrap of plain atoms (grafts untouched).
+    if (!partial) {
+      // Full mode: `.info` in `:is(a).info` is a proper SUBSET of the compound → matched but not
+      // extended → the compound stays UNCHANGED (distinct from no-match).
+      return MATCHED_UNCHANGED;
+    }
+    const wrapAt = new Set<number>();
+    for (let i = 0; i < atoms.length; i++) {
+      const at = atoms[i]!;
+      if (at.kind === 'id' && findSyms.has(at.sym)) {
+        wrapAt.add(i);
+      }
+    }
+    const extendBranches = extendWithBranches(extendWith);
+    if (findSyms.size > 1) {
+      return buildContiguousWrap(atoms, wrapAt, extendBranches);
+    }
+    return buildCompoundWithWraps(atoms, wrapAt, extendBranches);
+  }
+
+  // find reaches into a graft. It must be satisfiable by a SINGLE graft and NOT require plain
+  // atoms (mixed plain+graft is an `:is` boundary case).
+  const needsPlain = [...findSyms].some(s => plainSyms.has(s));
+  if (needsPlain) {
+    // The find spans BOTH plain atoms AND an `:is` graft (e.g. `:is(.a,.b).c` find `.a.c`).
+    //  - FULL mode + WHOLE-compound consume (each find sym maps to a distinct plain atom or an
+    //    `:is` graft, and every compound atom is consumed) → this is a full match of the compound;
+    //    the caller appends extendWith as a sibling and the compound stays unchanged.
+    //  - anything else (partial, or not a whole consume) → boundary-cross flatten, not built yet.
+    if (!partial && graftFullCompoundConsume(atoms, plainSyms, findSyms)) {
+      return MATCHED_FULL_APPEND; // whole-compound full match → caller appends extendWith
+    }
+    return UNSUPPORTED;
+  }
+  let hostIdx = -1;
+  if (isBareCompound && graftAtomIdx.length === 1) {
+    // The whole compound IS a single graft (`:is(...)`, `:not(...)`): recurse into it and let the
+    // recursion decide match — the find may live anywhere inside (not just a branch head), so we
+    // do NOT gate on head-reachableSyms here.
+    hostIdx = graftAtomIdx[0]!;
+  } else {
+    for (const gi of graftAtomIdx) {
+      const g = atoms[gi] as Extract<Atom, { kind: 'is' }>;
+      const reach = reachableSymsOfGraft(g);
+      if ([...findSyms].every(s => reach.has(s))) {
+        if (hostIdx !== -1) {
+          return UNSUPPORTED; // ambiguous — more than one graft could host
+        }
+        hostIdx = gi;
+      }
+    }
+  }
+  if (hostIdx === -1) {
+    return null; // no graft hosts the find
+  }
+
+  if (!partial && !isBareCompound) {
+    // FULL mode, find only reaches a graft inside a larger compound → subset match, not full →
+    // unchanged (e.g. `.x:is(.a,.b)` find `.a` full → `.x:is(.a,.b)`).
+    return MATCHED_UNCHANGED;
+  }
+
+  const host = atoms[hostIdx] as Extract<Atom, { kind: 'is' }>;
+  const rebuilt = extendIntoGraft(host, find, extendWith, partial);
+  if (rebuilt === UNSUPPORTED) {
+    return UNSUPPORTED;
+  }
+  if (rebuilt === null) {
+    return null;
+  }
+  // Reassemble the compound with the rewritten graft in place.
+  if (isBareCompound) {
+    return rebuilt;
+  }
+  const parts: (Selector | string)[] = [];
+  for (let i = 0; i < atoms.length; i++) {
+    if (i === hostIdx) {
+      parts.push(rebuilt);
+    } else {
+      const a = atoms[i]!;
+      parts.push(a.kind === 'id' ? (typeof a.node === 'string' ? a.node : a.node) : (a.node as Selector));
+    }
+  }
+  return compound(parts as Parameters<typeof compound>[0]);
+}
+
+/** Reachable simple-id syms available for matching through a single graft atom (only `:is` reaches). */
+function reachableSymsOfGraft(g: Extract<Atom, { kind: 'is' }>): Set<number> {
+  const out = new Set<number>();
+  if (g.pseudoName !== ':is') {
+    // :not/:where/:has do not reach for OUTER matching, but the find can still be extended INTO
+    // them (recursion). For hosting decisions we still need to know if the find lives inside, so
+    // union the inner branch head syms here (used only to route recursion, not outer reachability).
+    for (const branch of g.sel.branches) {
+      if (branch.length >= 1) {
+        for (const s of reachableSyms(branch[0]!.compound)) {
+          out.add(s);
+        }
+      }
+    }
+    return out;
+  }
+  for (const branch of g.sel.branches) {
+    if (branch.length >= 1) {
+      for (const s of reachableSyms(branch[0]!.compound)) {
+        out.add(s);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * WHOLE-COMPOUND full consume for a graft-bearing compound (`:is(...)` boundary reach): every
+ * compound atom must be consumed by exactly one find sym — a plain atom by an equal find sym, an
+ * `:is` graft atom by a find sym reaching one of its branch heads — and no find sym left over.
+ * (Only `:is` reaches; `:not/:where/:has` never contribute to an outer full match.) This is the
+ * multiset "side-to-side full match" over the compound, e.g. `:is(.a,.b).c` find `.a.c` → full.
+ */
+function graftFullCompoundConsume(
+  atoms: Atom[],
+  plainSyms: Set<number>,
+  findSyms: Set<number>
+): boolean {
+  // Each compound atom consumes exactly one distinct find sym; count must match (multiset).
+  if (atoms.length !== findSyms.size) {
+    return false;
+  }
+  const remaining = new Set<number>(findSyms);
+  for (const a of atoms) {
+    if (a.kind === 'id') {
+      if (!remaining.delete(a.sym)) {
+        return false;
+      }
+    } else if (a.kind === 'is' && a.pseudoName === ':is') {
+      const reach = reachableSymsOfGraft(a);
+      let consumed = -1;
+      for (const s of remaining) {
+        if (reach.has(s)) {
+          consumed = s;
+          break;
+        }
+      }
+      if (consumed === -1) {
+        return false;
+      }
+      remaining.delete(consumed);
+    } else {
+      return false; // a non-:is graft cannot participate in an outer full match
+    }
+  }
+  return remaining.size === 0 && plainSyms.size <= findSyms.size;
+}
+
+/**
+ * Graft-aware per-branch construction. Handles a target branch (seq) where at least one compound
+ * carries a graft atom, for a SINGLE-compound find. Returns the built Selector, null (no match in
+ * this branch), or UNSUPPORTED.
+ */
+interface GraftBranchResult {
+  node: Selector;
+  /** an extend was actually applied (rewrite produced) */
+  effective: boolean;
+  /** a match location was found (even if full-mode-subset → unchanged) */
+  found: boolean;
+  /** a whole-compound full match through an `:is` boundary → caller appends extendWith */
+  appendFull: boolean;
+}
+
+function buildGraftBranch(
+  targetSeq: IrSeq,
+  findSeq: IrSeq,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): GraftBranchResult | UnsupportedResult {
+  if (findSeq.length !== 1) {
+    return UNSUPPORTED; // multi-compound find against a graft-bearing target: not built yet
+  }
+  const findSyms = findSeq[0]!.compound.syms;
+
+  const rebuiltParts: (Selector | string)[] = [];
+  let effective = false;
+  let found = false;
+  let appendFull = false;
+  for (let i = 0; i < targetSeq.length; i++) {
+    const step = targetSeq[i]!;
+    if (i > 0) {
+      rebuiltParts.push(makeCombinator(step.comb));
+    }
+    const built = compoundHasGraftAtom(step.compound)
+      ? buildGraftCompound(step, findSyms, find, extendWith, partial)
+      : matchPlainCompound(step, findSyms, find, extendWith, partial);
+    if (built === UNSUPPORTED) {
+      return UNSUPPORTED;
+    }
+    if (built === null) {
+      rebuiltParts.push(compoundStepNode(step));
+    } else if (built === MATCHED_UNCHANGED) {
+      rebuiltParts.push(compoundStepNode(step));
+      found = true;
+    } else if (built === MATCHED_FULL_APPEND) {
+      // Only a SINGLE-compound branch can be a whole-branch full match through an `:is` boundary.
+      if (targetSeq.length !== 1) {
+        return UNSUPPORTED;
+      }
+      rebuiltParts.push(compoundStepNode(step));
+      found = true;
+      appendFull = true;
+    } else {
+      rebuiltParts.push(built);
+      effective = true;
+      found = true;
+    }
+  }
+  const node =
+    rebuiltParts.length === 1 && typeof rebuiltParts[0] !== 'string'
+      ? (rebuiltParts[0] as Selector)
+      : sel(rebuiltParts as ComplexSelectorComponent[]);
+  return { node, effective, found, appendFull };
+}
+
+/** The authored node for a whole compound step (reused, no clone). */
+function compoundStepNode(step: IrStep): Selector | string {
+  const n = step.compound.node;
+  return typeof n === 'string' ? n : (n as Selector);
+}
+
+/**
+ * Ordinary single-compound match against a PLAIN target compound (no grafts), returning the
+ * rewritten compound (partial wrap), null (no match / full-subset skip), or UNSUPPORTED.
+ * This mirrors the plain-path logic for one compound so a graft-bearing branch can still extend
+ * its plain compounds (e.g. `:is(.foo,.a) .bar` find `.bar` → the `.bar` compound is plain).
+ */
+function matchPlainCompound(
+  step: IrStep,
+  findSyms: Set<number>,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | MatchedUnchanged | null | UnsupportedResult {
+  const available = step.compound.syms;
+  if (![...findSyms].every(s => available.has(s))) {
+    return null;
+  }
+  if (!partial) {
+    // Full match of a whole plain compound only when multiset-equal; a graft-bearing branch is
+    // never a whole-branch full match for a single-compound find, so full-mode plain compounds
+    // in this path are subset matches → unchanged (found, but not extended).
+    return MATCHED_UNCHANGED;
+  }
+  const atoms = step.compound.atoms;
+  const wrapAt = new Set<number>();
+  for (let i = 0; i < atoms.length; i++) {
+    const at = atoms[i]!;
+    if (at.kind === 'id' && findSyms.has(at.sym)) {
+      wrapAt.add(i);
+    }
+  }
+  const extendBranches = extendWithBranches(extendWith);
+  if (findSyms.size > 1) {
+    return buildContiguousWrap(atoms, wrapAt, extendBranches);
+  }
+  return buildCompoundWithWraps(atoms, wrapAt, extendBranches);
+}
+
+/**
+ * Graft-into-target entry: the target carries a graft atom. Handle it via graft-aware
+ * per-branch construction; returns the assembled output or UNSUPPORTED. Full-mode append
+ * (bare `:is` whole-branch match handled inside buildGraftBranch by recursion) and partial
+ * rewrites are both covered.
+ */
+function extendGraftTarget(
+  targetSel: Selector,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | Selector[] | 'NOT_FOUND' | UnsupportedResult {
+  const syms = new SymbolTable();
+  const irTarget = liftSel(targetSel, syms);
+  const irFind = liftSel(find, syms);
+  if (irFind.branches.length !== 1) {
+    return UNSUPPORTED;
+  }
+  const findSeq = irFind.branches[0]!;
+
+  const outBranches: Selector[] = [];
+  const appendBranches: Selector[] = [];
+  let anyEffective = false;
+  let anyFound = false;
+  for (const tb of irTarget.branches) {
+    if (branchHasGraft(tb)) {
+      const built = buildGraftBranch(tb, findSeq, find, extendWith, partial);
+      if (built === UNSUPPORTED) {
+        return UNSUPPORTED;
+      }
+      outBranches.push(built.node);
+      if (built.effective) {
+        anyEffective = true;
+      }
+      if (built.found) {
+        anyFound = true;
+      }
+      if (built.appendFull) {
+        anyEffective = true;
+        for (const eb of extendWithBranches(extendWith)) {
+          appendBranches.push(eb);
+        }
+      }
+      continue;
+    }
+    // Plain branch inside a graft-bearing target list (e.g. `:is(.a), .z`): use the plain locate.
+    const loc = locateFind(tb, findSeq);
+    if (loc === UNSUPPORTED) {
+      return UNSUPPORTED;
+    }
+    if (loc === null) {
+      outBranches.push(seqToSelector(tb));
+      continue;
+    }
+    anyFound = true;
+    if (loc.full) {
+      // full match on a plain branch → append extendWith after all branches
+      outBranches.push(seqToSelector(tb));
+      anyEffective = true;
+      for (const eb of extendWithBranches(extendWith)) {
+        appendBranches.push(eb);
+      }
+    } else if (partial) {
+      const built = buildPartialBranch(tb, loc, findSeq, extendWithBranches(extendWith));
+      if (built === UNSUPPORTED) {
+        return UNSUPPORTED;
+      }
+      outBranches.push(built);
+      anyEffective = true;
+    } else {
+      // full mode, proper-subset match → unchanged branch (found, not extended)
+      outBranches.push(seqToSelector(tb));
+    }
+  }
+
+  if (!anyFound) {
+    return 'NOT_FOUND';
+  }
+  for (const eb of appendBranches) {
+    outBranches.push(eb);
+  }
+  if (!anyEffective) {
+    // Matched only as a proper subset (full mode) → target returned unchanged.
+    return targetSel;
+  }
+  if (outBranches.length === 1) {
+    return outBranches[0]!;
+  }
+  return sellist(outBranches);
+}
+
+function branchHasGraft(seq: IrSeq): boolean {
+  return seq.some(step => compoundHasGraftAtom(step.compound));
+}
+
 /**
  * PUBLIC ENTRY (own construction). Same contract as `extendSelector`, but never delegates:
  * it either builds the output itself (byte-identical to the oracle on covered shapes) or
@@ -1075,14 +1571,21 @@ export function extendByIndexOwn(
     return targetSel;
   }
 
-  // `&`, constructor-atom finds, and graft-bearing targets (`:is(...)` / a pseudo carrying a
-  // selector arg like `:not(.foo)`) are not built by the own engine yet — extending INTO those
-  // needs graft-aware construction. Gate them to UNSUPPORTED (never a wrong/NOT_FOUND answer).
-  if (
-    hasAmpersand(targetSel) || hasAmpersand(find) || hasConstructorAtoms(find)
-    || hasGraftTarget(targetSel, find)
-  ) {
+  // `&` and constructor-atom FINDS are not built by the own engine yet. Gate to UNSUPPORTED
+  // (never a wrong/NOT_FOUND answer). A `:not`/`:where`/`:has` FIND (pseudo-arg on the find side)
+  // is caught by the node-level `findHasPseudoWithSelectorArg` guard below.
+  if (hasAmpersand(targetSel) || hasAmpersand(find) || hasConstructorAtoms(find)) {
     return UNSUPPORTED;
+  }
+  if (nodeHasPseudoWithSelectorArg(find)) {
+    return UNSUPPORTED; // find is/contains a `:is`/`:not`/pseudo-arg graft — not built yet
+  }
+
+  // GRAFT-INTO-TARGET: the target is or contains a `:is(...)`/`:not(...)`/pseudo-with-selector-arg.
+  // Extend recurses INTO the graft (own construction), byte-identical to the oracle on the covered
+  // shapes; boundary-cross flatten (`:is(.a,.b).c` find `.a.c` partial) stays UNSUPPORTED.
+  if (hasGraftTarget(targetSel, find)) {
+    return extendGraftTarget(targetSel, find, extendWith, partial);
   }
 
   const syms = new SymbolTable();

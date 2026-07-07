@@ -8,9 +8,25 @@
  * we skip the byte-compare and record the frontier), never a silent delegation.
  */
 import { describe, it, expect } from 'vitest';
-import { el, sel, sellist, compound, is, co, type Selector } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
 import { extendSelector } from '../../util/extend.js';
 import { extendByIndexOwn, UNSUPPORTED } from '../extend-index.js';
+
+const not = (arg: Selector): Selector => pseudo({ name: ':not', arg }) as unknown as Selector;
+const where = (arg: Selector): Selector => pseudo({ name: ':where', arg }) as unknown as Selector;
+const has = (arg: Selector): Selector => pseudo({ name: ':has', arg }) as unknown as Selector;
+
+/** Hardcoded-pin helper: assert own-engine output is EXACTLY `expected` (independent of oracle). */
+function pin(
+  target: Input,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean,
+  expected: string
+): void {
+  const r = extendByIndexOwn(target, find, extendWith, partial);
+  expect(r === UNSUPPORTED ? 'UNSUPPORTED' : str(r)).toBe(expected);
+}
 
 type Input = Parameters<typeof extendSelector>[0];
 type Result = ReturnType<typeof extendSelector>;
@@ -298,6 +314,95 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
         extendWith: el('.c'),
         partial: false
       }));
+    });
+  });
+
+  /**
+   * GRAFT-INTO-TARGET — extending INTO a `:is(...)` / `:not(...)` / pseudo-arg graft.
+   * A pseudo carrying a selector arg is a recursive extend point: recurse into the arg, rewrap.
+   * Only `:is()` boundary-crosses into an outer compound match; `:not`/`:where`/`:has` recurse only.
+   * These are HARDCODED pins (independent of the oracle) so a regression is caught here directly,
+   * plus `same()` byte-compares to the oracle for the same shapes.
+   */
+  describe('10. graft-into-target (:is/:not/:where/:has)', () => {
+    it('bare :is(.a,.b) find .a full → :is(.a,.b,.c) (append into arg)', () => {
+      pin(is(sellist([el('.a'), el('.b')])), el('.a'), el('.c'), false, ':is(.a,.b,.c)');
+      same(() => ({ target: is(sellist([el('.a'), el('.b')])), find: el('.a'), extendWith: el('.c'), partial: false }));
+    });
+    it('bare :is(.a,.b) find .a partial → :is(.a,.b,.c) (same as full for whole-branch)', () => {
+      pin(is(sellist([el('.a'), el('.b')])), el('.a'), el('.c'), true, ':is(.a,.b,.c)');
+    });
+    it('bare :is(.foo) find .foo full → :is(.foo,.ext)', () => {
+      pin(is(el('.foo')), el('.foo'), el('.ext'), false, ':is(.foo,.ext)');
+    });
+    it(':not(.foo) find .foo full → :not(.foo,.bar) (recursion, not append/boundary)', () => {
+      pin(not(el('.foo')), el('.foo'), el('.bar'), false, ':not(.foo,.bar)');
+      same(() => ({ target: not(el('.foo')), find: el('.foo'), extendWith: el('.bar'), partial: false }));
+    });
+    it(':where(.a,.b) find .a full → :where(.a,.b,.c)', () => {
+      pin(where(sellist([el('.a'), el('.b')])), el('.a'), el('.c'), false, ':where(.a,.b,.c)');
+    });
+    it(':has(.a) find .a full → :has(.a,.q)', () => {
+      pin(has(el('.a')), el('.a'), el('.q'), false, ':has(.a,.q)');
+    });
+    it('bare :is(.a.b) find .a partial → :is(:is(.a,.q).b) (inner subset wrap)', () => {
+      pin(is(compound([el('.a'), el('.b')])), el('.a'), el('.q'), true, ':is(:is(.a,.q).b)');
+    });
+    it('bare :is(.a.b) find .a full → :is(.a.b) (full: no inner subset)', () => {
+      pin(is(compound([el('.a'), el('.b')])), el('.a'), el('.q'), false, ':is(.a.b)');
+    });
+    it(':is(.a.b,.x) find .a partial → :is(:is(.a,.q).b,.x)', () => {
+      pin(is(sellist([compound([el('.a'), el('.b')]), el('.x')])), el('.a'), el('.q'), true, ':is(:is(.a,.q).b,.x)');
+    });
+    it(':is(.foo .bar,.baz) find .bar partial → :is(.foo :is(.bar,.q),.baz) (complex inner branch)', () => {
+      pin(
+        is(sellist([sel([el('.foo'), co(' '), el('.bar')]), el('.baz')])),
+        el('.bar'), el('.q'), true, ':is(.foo :is(.bar,.q),.baz)'
+      );
+    });
+
+    // Graft as PASSENGER in a larger compound (match/no-match on other atoms).
+    it('.x:not(.foo) find .foo partial → .x:not(.foo,.q) (recurse graft passenger)', () => {
+      pin(compound([el('.x'), not(el('.foo'))]), el('.foo'), el('.q'), true, '.x:not(.foo,.q)');
+    });
+    it('.x:not(.foo) find .foo full → .x:not(.foo) (subset, unchanged)', () => {
+      pin(compound([el('.x'), not(el('.foo'))]), el('.foo'), el('.q'), false, '.x:not(.foo)');
+    });
+    it('.x:not(.foo) find .x partial → :is(.x,.q):not(.foo) (wrap plain, graft passenger)', () => {
+      pin(compound([el('.x'), not(el('.foo'))]), el('.x'), el('.q'), true, ':is(.x,.q):not(.foo)');
+    });
+    it('.x:is(.a,.b) find .a partial → .x:is(.a,.b,.q)', () => {
+      pin(compound([el('.x'), is(sellist([el('.a'), el('.b')]))]), el('.a'), el('.q'), true, '.x:is(.a,.b,.q)');
+    });
+    it('.x:is(.a,.b) find .a full → .x:is(.a,.b) (subset, unchanged)', () => {
+      pin(compound([el('.x'), is(sellist([el('.a'), el('.b')]))]), el('.a'), el('.q'), false, '.x:is(.a,.b)');
+    });
+    it(':is(a).info find .info full → :is(a).info (plain subset with graft passenger, unchanged)', () => {
+      pin(compound([is(el('a')), el('.info')]), el('.info'), compound([el('div'), el('.foo')]), false, ':is(a).info');
+    });
+
+    // `:is()` boundary-cross into an OUTER full compound match → append sibling.
+    it(':is(.a,.b).c find .a.c full → :is(.a,.b).c,.d (:is boundary reach, whole-compound full)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), false, ':is(.a,.b).c,.d');
+    });
+    it(':is(.a,.b).c find .b.c full → :is(.a,.b).c,.d (other :is branch)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.b'), el('.c')]), el('.d'), false, ':is(.a,.b).c,.d');
+    });
+    it(':is(.a,.b).c find .a full → :is(.a,.b).c (subset, unchanged)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), el('.a'), el('.d'), false, ':is(.a,.b).c');
+    });
+
+    // Graft in one compound, plain match in a DIFFERENT compound of a complex selector.
+    it(':is(.foo,.a) .bar find .bar partial → :is(.foo,.a) :is(.bar,.ext) (graft untouched)', () => {
+      pin(sel([is(sellist([el('.foo'), el('.a')])), co(' '), el('.bar')]), el('.bar'), el('.ext'), true, ':is(.foo,.a) :is(.bar,.ext)');
+    });
+
+    // No-match / gate.
+    it('bare :is(.a,.b) find .z → NOT_FOUND', () => {
+      pin(is(sellist([el('.a'), el('.b')])), el('.z'), el('.c'), false, 'NOT_FOUND');
+    });
+    it(':is(.a,.b).c find .a.c PARTIAL → UNSUPPORTED (boundary-cross flatten, not built yet)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, 'UNSUPPORTED');
     });
   });
 });

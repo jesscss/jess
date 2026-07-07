@@ -213,22 +213,36 @@ stays in `util/`). Not exported → bundle-excluded.
   shapes return an exported `UNSUPPORTED` sentinel (fail-loud, never silent delegation).
 - **Real-corpus proof (delegation off):** copies of the existing extend suites drive `extendByIndexOwn`,
   byte-compared to the `extendSelector` oracle (`corpus-harness.ts`, throws on any MISMATCH). Own-engine PASS:
-  simplified 12/13, algorithm 25/35, combinator 7/7; 132 tests green across `tree/extend/`, full extend
-  suite 529 pass / 0 fail (no regressions). **The thin cloning-free construction reproduces the walk
-  byte-identically on every covered case** — the core validation of the whole idea, for the non-graft set.
+  simplified 13/13, algorithm 33/35, combinator 7/7, where-cases 4/4; 159 tests green across `tree/extend/`,
+  full extend suite 558 pass / 0 fail (no regressions). **The thin cloning-free construction reproduces the walk
+  byte-identically on every covered case** — including the graft-into-target set (see RUNG CLOSED below).
 - **`processExtendsByIndex`** (design + core prototyped): lift scoped selectors → IR worklist fixpoint
   (fire-once, chained/transitive) → materialize once; differential-tested vs `applyExtendsToSelector` 8/8
   incl. `.a→.b→.c→.d`. Scope = bucketing precondition. Not yet wired to `context`/`&`-hoist (honest: own
   construction doesn't build `&`/`:is`-graft outputs yet, so wiring would just relay `UNSUPPORTED`).
 
+### RUNG CLOSED (2026-07-06) — extending INTO a graft target
+Own construction now builds INTO `:is(...)` / `:not(...)` / `:where(...)` / `:has(...)` targets, byte-identical
+to the oracle. A pseudo-with-selector-arg is a **recursive extend point**: recurse `extendByIndexOwn(arg, find,
+extendWith, partial)` and rewrap in the SAME pseudo (`is()` builder for `:is`, `pseudo({name,arg})` otherwise) —
+cloning-free, reusing authored inner nodes. Key rules (all differential-probed + hardcoded-pinned):
+- Whole inner branch matched → append extendWith into the arg list (`:is(.a,.b)` f `.a` → `:is(.a,.b,.c)`).
+- Inner subset matched (partial) → wrap in place (`:is(.a.b)` f `.a` → `:is(:is(.a,.q).b)`).
+- The recursion mode passed inward is the OUTER `partial` flag (reproduces full/partial split).
+- **Only `:is` boundary-crosses** into an outer compound match — `reachableSyms` excludes `:not/:where/:has`;
+  `:is(.a,.b).c` f `.a.c` full → whole-compound consume → append sibling (`:is(.a,.b).c,.d`).
+- Graft-as-passenger: a match on OTHER atoms leaves the graft untouched (`.x:not(.foo)` f `.x` → `:is(.x,.q):not(.foo)`);
+  a full-mode subset that only reaches the graft is unchanged, NOT NOT_FOUND (`.info` in `:is(a).info`).
+Coverage: algorithm own-PASS 25→33, simplified 12→13, + new `corpus-where-cases` 4/4. Frontier: graft-into-target
+UNSUPPORTED 8→0. 159 tests green across `tree/extend/`; full extend suite 558 pass / 0 fail (no regressions).
+
 ### NEXT RUNG — the UNSUPPORTED frontier (why each is gated, not wrong)
-1. **Extending INTO a graft target** — `find`/target is `:is(...)`/`:not(...)`/pseudo-with-selector-arg;
-   needs graft-aware recursion INTO the branch (the discovery already recurses for `:is` on the subject
-   side; this is the extend-INTO side).
-2. **Remainder-splitting** — `.a>.b.c` find `.a>.b` partial → oracle emits `.a>.b.c, .c.d`; the own
-   construction doesn't yet split the unmatched remainder into a sibling.
-Both gate cleanly to `UNSUPPORTED`. Closing them + wiring `processExtendsByIndex` to `context`/`&`-hoist is
-the path to full corpus coverage and the end-to-end cloning-free win.
+1. **Remainder-splitting** — `.a>.b.c` f `.a>.b` partial → oracle `.a>.b.c,.c.d`; `div+.a.c.b>.y.x` f `.a.b>.x`
+   → `div+:is(.a.c.b>.y.x,.q)`. The own construction doesn't yet split an unmatched multi-compound remainder
+   into a sibling. (2 cases left on the algorithm corpus — the ONLY remaining own-engine UNSUPPORTED.)
+2. **`:is` boundary-cross flatten (PARTIAL)** — `:is(.a,.b).c` f `.a.c` PARTIAL → `:is(.a.c,.d)` (distributes the
+   sibling `.c` INTO each `:is` branch). Full mode is done; partial-flatten stays `UNSUPPORTED`.
+Closing these + wiring `processExtendsByIndex` to `context`/`&`-hoist is the path to full corpus coverage.
 
 ## Non-goals (for the validated prototype)
 Minimal-hoist (output change); replacing the walk (only after full-suite byte-identical); touching the
