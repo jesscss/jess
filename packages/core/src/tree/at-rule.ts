@@ -87,7 +87,6 @@ type AtRuleBodyRegistrationContext = {
 
 export type AtRuleBodyOutputState = {
   hoistToRoot?: boolean;
-  frames?: AtRule['frames'];
 };
 
 type AtRuleBodyEvalRecord = {
@@ -405,16 +404,6 @@ function runAtRuleBodyRulesEval<T>(
   }
 }
 
-function setAtRuleBodyEvalOutput(
-  record: AtRuleBodyEvalRecord,
-  output: AtRuleBodyOutputState
-): void {
-  record.output = {
-    ...record.output,
-    ...output
-  };
-}
-
 function setAtRuleBodyEvalPrelude(
   record: AtRuleBodyEvalRecord,
   prelude: Node
@@ -465,8 +454,7 @@ function createAtRuleEvalResultNode(
     && record.evaluatedBody.rules !== source.rules
   );
   const ownsOutput = Boolean(
-    (record.output?.hoistToRoot !== undefined && record.output.hoistToRoot !== source.hoistToRoot)
-    || (record.output?.frames !== undefined && record.output.frames !== source.frames)
+    record.output?.hoistToRoot !== undefined && record.output.hoistToRoot !== source.hoistToRoot
   );
   if (!ownsEvaluatedPrelude && !ownsEvaluatedBody && !ownsOutput) {
     return source;
@@ -615,9 +603,6 @@ function applyAtRuleBodyPublicResultState(
     if (record.output.hoistToRoot !== undefined) {
       node.hoistToRoot = record.output.hoistToRoot;
     }
-    if (record.output.frames !== undefined) {
-      node.frames = record.output.frames;
-    }
   }
   return node;
 }
@@ -667,8 +652,6 @@ export type AtRuleOptions = NodeOptions;
  */
 export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   static override childKeys = ['name', 'prelude', 'rules'] as const;
-
-  frames: (Ruleset | AtRule)[] | undefined;
 
   _valueOf: string | undefined;
   name: AtRuleParts['name'];
@@ -733,7 +716,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
 
   private applyDerivedMetadata(node: AtRule): AtRule {
     node.hoistToRoot = this.hoistToRoot;
-    node.frames = this.frames ? [...this.frames] : undefined;
     return node;
   }
 
@@ -813,13 +795,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   isHoisted(opts: { collapseNesting?: boolean }) {
-    return this.getRenderFrames() !== undefined && this.isNestable()
-      ? true
-      : (this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable()));
-  }
-
-  getRenderFrames(): AtRule['frames'] {
-    return this.frames;
+    return this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -990,8 +966,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     options?: PrintOptions,
     evaluatedPrelude?: Node,
     evaluatedBody?: Rules,
-    runtimeHoist?: boolean,
-    runtimeFrames?: (Ruleset | AtRule)[]
+    runtimeHoist?: boolean
   ): string {
     const printState = isRenderBuffer(bufferOrOptions)
       ? prepareBufferPrintState(context, options)
@@ -1002,8 +977,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const priorBodyOverride = printState.atRuleBodyOverride;
     const priorHoistNode = printState.atRuleHoistNode;
     const priorHoistOverride = printState.atRuleHoistOverride;
-    const priorFrameNode = printState.atRuleFrameNode;
-    const priorFrameOverride = printState.atRuleFrameOverride;
     if (evaluatedPrelude) {
       printState.atRuleHeaderNode = node;
       printState.atRuleHeaderPrelude = evaluatedPrelude;
@@ -1015,10 +988,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     if (runtimeHoist !== undefined) {
       printState.atRuleHoistNode = node;
       printState.atRuleHoistOverride = runtimeHoist;
-    }
-    if (runtimeFrames !== undefined) {
-      printState.atRuleFrameNode = node;
-      printState.atRuleFrameOverride = runtimeFrames;
     }
     try {
       const rendered = serializeRulesContainer(node, printState);
@@ -1032,8 +1001,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       printState.atRuleBodyOverride = priorBodyOverride;
       printState.atRuleHoistNode = priorHoistNode;
       printState.atRuleHoistOverride = priorHoistOverride;
-      printState.atRuleFrameNode = priorFrameNode;
-      printState.atRuleFrameOverride = priorFrameOverride;
     }
   }
 
@@ -1050,9 +1017,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const runtimeHoist = record.output?.hoistToRoot !== this.hoistToRoot
       ? record.output?.hoistToRoot
       : undefined;
-    const runtimeFrames = record.output?.frames !== this.frames
-      ? record.output?.frames
-      : undefined;
     return this.serializeAtRule(
       this,
       context,
@@ -1060,8 +1024,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       options,
       record.evaluatedPrelude,
       evaluatedBody && evaluatedBody.rules !== this.rules ? evaluatedBody : undefined,
-      runtimeHoist,
-      runtimeFrames
+      runtimeHoist
     );
   }
 
@@ -1079,11 +1042,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         node,
         context,
         bufferOrOptions,
-        options,
-        undefined,
-        undefined,
-        undefined,
-        node === this ? node.getRenderFrames() : undefined
+        options
       );
     }
     if (isAtRuleBodyEvalRecordResult(node)) {
@@ -1688,14 +1647,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const atName = getAtRuleSourceIdentityText(node.name);
     if (atName === '@plugin' && node.visible) {
       throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
-    }
-
-    // Store frames snapshot for hoisting serialization
-    if (context.opts.output?.collapseNesting || node.hoistToRoot) {
-      const frames = [...context.frames];
-      setAtRuleBodyEvalOutput(bodyEvalRecord, {
-        frames
-      });
     }
 
     const finishVisibility = (): AtRule => {

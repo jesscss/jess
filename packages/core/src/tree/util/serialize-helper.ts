@@ -372,13 +372,6 @@ export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
 
-/**
- * Frame-stack snapshots for at-rules rendered from a directly-built tree (no eval).
- * Eval stores frames on the node; direct render captures the live frame stack at
- * container entry so a hoisted at-rule can still find its parent selector.
- */
-const directRenderFrames = new WeakMap<AtRule, (Ruleset | AtRule)[]>();
-
 // The comparable header a frame emitted the LAST time it was written directly.
 // A hoisted (flat) ruleset shared across call sites keeps a single canonical
 // frame identity, so `currentFrame === priorFrame` can't tell two emissions of
@@ -388,10 +381,6 @@ const directRenderFrames = new WeakMap<AtRule, (Ruleset | AtRule)[]>();
 // against the header ACTUALLY emitted last keeps the blocks separate.
 const lastEmittedComparableHeader = new WeakMap<AtRule | Ruleset, string>();
 
-function directRenderFramesOf(atRule: AtRule): (Ruleset | AtRule)[] | undefined {
-  return directRenderFrames.get(atRule);
-}
-
 function getHoistedParent(
   node: AtRule | Ruleset,
   options: FinalPrintOptions
@@ -400,45 +389,34 @@ function getHoistedParent(
     return undefined;
   }
   const atRule = node as AtRule;
-  const runtimeFrames = options.atRuleFrameNode === atRule
-    ? options.atRuleFrameOverride
-    : undefined;
   const runtimeHoist = options.atRuleHoistNode === atRule
     ? options.atRuleHoistOverride
     : undefined;
-  const hoisted = runtimeFrames !== undefined && atRule.isNestable()
-    ? true
-    : (runtimeHoist ?? atRule.isHoisted(options));
+  const hoisted = runtimeHoist ?? atRule.isHoisted(options);
   if (!atRule.isNestable() || atRule.isRootOnly() || !hoisted) {
     return undefined;
   }
-  // Eval populates `frames`; a directly-rendered tree does not, so fall back to
-  // the frame stack snapshot captured when this at-rule's container was entered.
-  const renderFrames = runtimeFrames ?? atRule.getRenderFrames() ?? directRenderFramesOf(atRule);
-  let frame: Ruleset | undefined;
-  let parentSelector: SelectorLike | undefined;
-  const frameCount = renderFrames?.length ?? 0;
-  for (let i = 0; i < frameCount; i++) {
-    const currentFrame = renderFrames![i]!;
-    if (!isNode(currentFrame, N.Ruleset)) {
-      continue;
-    }
-    frame = currentFrame;
-    const currentSelector = currentFrame.selector;
-    if (!currentSelector || currentSelector instanceof Nil) {
-      continue;
-    }
-    // A frame selector is a string (strings-not-nodes model), a Selector node,
-    // or a selector-list array — all are SelectorLike.
-    const nextSelector = currentSelector as SelectorLike;
-    parentSelector = parentSelector
-      ? Ruleset.composeSelector(nextSelector, parentSelector)
-      : nextSelector;
-  }
-  if (!frame) {
+  // The render walk already descends THROUGH every enclosing ruleset before it
+  // reaches this hoisted at-rule, composing each into `composedSelectorStack`.
+  // Its top entry IS the full severed selector-ancestor chain (`.card .body`),
+  // so the hoisted at-rule recovers its parent selector directly from the live
+  // walk — no eval-captured frame snapshot needed.
+  const parentSelector = options.composedSelectorStack?.at(-1);
+  if (!parentSelector) {
     return undefined;
   }
-  return parentSelector ? { frame, selector: parentSelector } : undefined;
+  // The identity key for the frame-diff loop: the nearest enclosing ruleset in
+  // structural context. Under collapse every ruleset ancestor is folded into the
+  // composed selector and dropped from the live frame stack, so recover it from
+  // the at-rule's structural parent chain.
+  let frameCandidate: Node | undefined = atRule.parent;
+  while (frameCandidate && !isNode(frameCandidate, N.Ruleset)) {
+    frameCandidate = frameCandidate.parent;
+  }
+  if (!frameCandidate) {
+    return undefined;
+  }
+  return { frame: frameCandidate as Ruleset, selector: parentSelector as SelectorLike };
 }
 
 /**
@@ -504,20 +482,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
   if (isNode(node, N.Ruleset) && (node as Ruleset).selector instanceof Nil) {
     return '';
-  }
-  // Capture the live frame stack for a directly-rendered nestable at-rule that
-  // carries no eval-populated frames, so a hoisted parent selector can still be
-  // recovered from the enclosing rulesets when it wraps bare declarations.
-  if (
-    options.collapseNesting
-    && isNode(node, N.AtRule)
-    && (node as AtRule).isNestable()
-    && (node as AtRule).getRenderFrames() === undefined
-    && options.atRuleFrameNode !== node
-    && !directRenderFrames.has(node as AtRule)
-    && inFrames.length > 0
-  ) {
-    directRenderFrames.set(node as AtRule, [...inFrames]);
   }
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
   // getHeaderString normally handles this, but cached frame headers skip it.
@@ -666,11 +630,9 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
     }
 
-    const hoisted = isNode(node, N.AtRule) && options.atRuleFrameNode === node
-      ? true
-      : isNode(node, N.AtRule) && options.atRuleHoistNode === node
-        ? (options.atRuleHoistOverride ?? node.isHoisted(options))
-        : node.isHoisted(options);
+    const hoisted = isNode(node, N.AtRule) && options.atRuleHoistNode === node
+      ? (options.atRuleHoistOverride ?? node.isHoisted(options))
+      : node.isHoisted(options);
     // const isRuleset = isNode(node, 'Ruleset');
     const treeFrames = options.treeFrames!;
     const renderRulesBody = () => {
@@ -1104,11 +1066,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     runResult = runWithCurrentComposedStack();
   }
   restorePrintState(options, saved);
-  if (isNode(node, N.AtRule)) {
-    // Scope the captured frame snapshot to this render pass so a reused node
-    // instance recaptures against its current parent context next time.
-    directRenderFrames.delete(node as AtRule);
-  }
   return runResult;
 }
 
