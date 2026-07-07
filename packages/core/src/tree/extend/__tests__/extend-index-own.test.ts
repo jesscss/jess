@@ -405,4 +405,52 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
       pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, 'UNSUPPORTED');
     });
   });
+
+  describe('11. remainder-splitting (multi-compound partial with an unmatched remainder)', () => {
+    // WHOLE span → SIBLING-SPLIT: original branch unchanged + one sibling built from the LAST
+    // spanned compound's remainder merged into extendWith's head compound.
+    it('.a>.b.c find .a>.b partial → .a>.b.c,.c.d (sibling, last-compound remainder)', () => {
+      pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), el('.d'), true, '.a>.b.c,.c.d');
+    });
+    it('.a>.b.c find .a>.b ext .d.e → .a>.b.c,.c.d.e (remainder into ext head compound)', () => {
+      pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), compound([el('.d'), el('.e')]), true, '.a>.b.c,.c.d.e');
+    });
+    it('.a>.b.c find .a>.b ext .d>.e → .a>.b.c,.c.d>.e (remainder into ext HEAD, >.e kept)', () => {
+      pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), sel([el('.d'), co('>'), el('.e')]), true, '.a>.b.c,.c.d>.e');
+    });
+    it('.a>.b.c.x find .a>.b → .a>.b.c.x,.c.x.d (multi-atom remainder)', () => {
+      pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c'), el('.x')])]), sel([el('.a'), co('>'), el('.b')]), el('.d'), true, '.a>.b.c.x,.c.x.d');
+    });
+    it('.a.x>.b find .a>.b → .a.x>.b,.x.d (remainder on FIRST compound, last fully matched)', () => {
+      pin(sel([compound([el('.a'), el('.x')]), co('>'), el('.b')]), sel([el('.a'), co('>'), el('.b')]), el('.d'), true, '.a.x>.b,.x.d');
+    });
+    it('.a.x>.b.y find .a>.b → .a.x>.b.y,.y.d (rem in first AND last → only the LAST)', () => {
+      pin(sel([compound([el('.a'), el('.x')]), co('>'), compound([el('.b'), el('.y')])]), sel([el('.a'), co('>'), el('.b')]), el('.d'), true, '.a.x>.b.y,.y.d');
+    });
+    it('.a.m>.b.n>.c find .a>.b>.c → .a.m>.b.n>.c,.n.d (middle-remainder → last spanned rem compound)', () => {
+      pin(sel([compound([el('.a'), el('.m')]), co('>'), compound([el('.b'), el('.n')]), co('>'), el('.c')]), sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]), el('.d'), true, '.a.m>.b.n>.c,.n.d');
+    });
+    it('.a .b.c find .a .b → .a .b.c,.c.d (descendant combinator; sibling bare, no combinator)', () => {
+      pin(sel([el('.a'), co(' '), compound([el('.b'), el('.c')])]), sel([el('.a'), co(' '), el('.b')]), el('.d'), true, '.a .b.c,.c.d');
+    });
+    // extendWith LIST: remainder merges into FIRST branch only; remaining branches appended verbatim.
+    it('.a>.b.c find .a>.b ext (.d,.e) → .a>.b.c,.c.d,.e', () => {
+      pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), sellist([el('.d'), el('.e')]), true, '.a>.b.c,.c.d,.e');
+    });
+    it('.a>.b.c find .a>.b ext (.d>.f,.e) → .a>.b.c,.c.d>.f,.e', () => {
+      pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), sellist([sel([el('.d'), co('>'), el('.f')]), el('.e')]), true, '.a>.b.c,.c.d>.f,.e');
+    });
+    // extendWith :is(...) is NOT flattened into the sibling: `.c:is(.d,.e)`.
+    it('.a>.b.c find .a>.b ext :is(.d,.e) → .a>.b.c,.c:is(.d,.e)', () => {
+      pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), is(sellist([el('.d'), el('.e')])), true, '.a>.b.c,.c:is(.d,.e)');
+    });
+
+    // PROPER-SUBSTRING span → :is()-WRAP (compound before the span kept, span wrapped as-authored).
+    it('div+.a.c.b>.y.x find .a.b>.x → div+:is(.a.c.b>.y.x,.q) (substring → :is-wrap)', () => {
+      pin(sel([el('div'), co('+'), compound([el('.a'), el('.c'), el('.b')]), co('>'), compound([el('.y'), el('.x')])]), sel([compound([el('.a'), el('.b')]), co('>'), el('.x')]), el('.q'), true, 'div+:is(.a.c.b>.y.x,.q)');
+    });
+    it('div+.a.c.b>.y.x find .a.b>.x ext (.d,.e) → div+:is(.a.c.b>.y.x,.d,.e) (list flattens into :is arg)', () => {
+      pin(sel([el('div'), co('+'), compound([el('.a'), el('.c'), el('.b')]), co('>'), compound([el('.y'), el('.x')])]), sel([compound([el('.a'), el('.b')]), co('>'), el('.x')]), sellist([el('.d'), el('.e')]), true, 'div+:is(.a.c.b>.y.x,.d,.e)');
+    });
+  });
 });

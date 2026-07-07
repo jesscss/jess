@@ -804,6 +804,21 @@ interface OwnMatch {
   starts: number[];
   /** number of compounds the find spans (P) */
   span: number;
+  /**
+   * Set when a multi-compound span leaves an unmatched atom remainder in some spanned compound.
+   * `wholeSpan` = the span covers positions `0..T-1` (the ENTIRE target seq); then the oracle emits
+   * a SIBLING-SPLIT (original branch unchanged + one sibling). When NOT wholeSpan (compounds exist
+   * before and/or after the span) the oracle `:is()`-WRAPs the span (the existing multi-compound
+   * `buildPartialBranch` path). `remStart` = the index (within the target seq) of the LAST spanned
+   * compound that has a non-empty remainder (the only one that contributes the sibling).
+   */
+  remainderSplit?: {
+    wholeSpan: boolean;
+    /** index in the target seq of the last spanned compound carrying a remainder */
+    remStart: number;
+    /** the first matched span start (span occupies [spanStart .. spanStart+span-1]) */
+    spanStart: number;
+  };
 }
 
 /**
@@ -847,10 +862,12 @@ function locateFind(targetSeq: IrSeq, findSeq: IrSeq): OwnMatch | null | Unsuppo
   const starts: number[] = [];
   let full = false;
   let unsupported = false;
+  let remainderSplit: OwnMatch['remainderSplit'];
   for (let start = 0; start + P <= T; start++) {
     let ok = true;
     let allFull = true;
-    let spanHasPartialCompound = false;
+    // index (in target seq) of the LAST spanned compound with a non-empty atom remainder.
+    let lastRemStart = -1;
     for (let k = 0; k < P; k++) {
       const fs = findSeq[k]!;
       const ts = targetSeq[start + k]!;
@@ -866,10 +883,10 @@ function locateFind(targetSeq: IrSeq, findSeq: IrSeq): OwnMatch | null | Unsuppo
       if (!compoundFullEligible(fs.compound, ts.compound)) {
         allFull = false;
       }
-      // A spanned compound that is a proper SUBSET (deduped syms differ) triggers the oracle's
-      // remainder-splitting shape (multi-compound only).
+      // A spanned compound that is a proper SUBSET (deduped syms differ) leaves a remainder —
+      // the oracle's remainder-splitting shape (multi-compound only).
       if (fs.compound.syms.size !== ts.compound.syms.size) {
-        spanHasPartialCompound = true;
+        lastRemStart = start + k;
       }
       if (k > 0) {
         const fcomb = fs.comb || ' ';
@@ -882,10 +899,14 @@ function locateFind(targetSeq: IrSeq, findSeq: IrSeq): OwnMatch | null | Unsuppo
     }
     if (ok) {
       // A multi-compound span where a spanned compound is only a PROPER SUBSET of its target
-      // compound triggers the oracle's remainder-splitting shape (e.g. `.a>.b.c` find `.a>.b`
-      // partial → `.a>.b.c,.c.d`), which the own engine does not build yet.
-      if (P >= 2 && spanHasPartialCompound) {
-        return UNSUPPORTED;
+      // compound triggers the oracle's remainder-splitting shape. Two sub-cases, discriminated by
+      // whether the span is the WHOLE target seq (sibling-split) or a proper substring (`:is`-wrap):
+      //   whole span   `.a>.b.c` f `.a>.b`         → `.a>.b.c,.c.d`         (SIBLING-SPLIT)
+      //   substring    `div+.a.c.b>.y.x` f `.a.b>.x` → `div+:is(.a.c.b>.y.x,.q)` (existing `:is`-wrap)
+      // Both are now built (was UNSUPPORTED). Only the FIRST span is remainder-split; if a later
+      // span also matches we keep the first (the oracle rewrites the first location).
+      if (P >= 2 && lastRemStart !== -1 && !remainderSplit) {
+        remainderSplit = { wholeSpan: start === 0 && P === T, remStart: lastRemStart, spanStart: start };
       }
       starts.push(start);
       if (P === T && allFull) {
@@ -899,7 +920,7 @@ function locateFind(targetSeq: IrSeq, findSeq: IrSeq): OwnMatch | null | Unsuppo
   if (starts.length === 0) {
     return null;
   }
-  return { full, starts, span: P };
+  return { full, starts, span: P, remainderSplit };
 }
 
 /** Build the OR-branches contributed by `extendWith`: a `:is()` flattens, else one branch. */
@@ -1017,11 +1038,11 @@ function buildPartialBranch(
     return sel(parts as ComplexSelectorComponent[]);
   }
   // Multi-compound span: collapse compounds [start..start+span) into one :is(span, ext).
-  const m_start = m.starts[0]!;
-  const spanSel = spanSelector(targetSeq, m_start, m.span);
-  const isNode_ = is(sellist([spanSel, ...extendBranches]));
+  const mStart = m.starts[0]!;
+  const spanSel = spanSelector(targetSeq, mStart, m.span);
+  const isSel = is(sellist([spanSel, ...extendBranches]));
   for (let i = 0; i < targetSeq.length; i++) {
-    if (i < m_start || i >= m_start + m.span) {
+    if (i < mStart || i >= mStart + m.span) {
       const step = targetSeq[i]!;
       if (i > 0) {
         parts.push(makeCombinator(step.comb));
@@ -1030,15 +1051,104 @@ function buildPartialBranch(
       parts.push(typeof n === 'string' ? n : n);
       continue;
     }
-    if (i === m_start) {
+    if (i === mStart) {
       if (i > 0) {
         parts.push(makeCombinator(targetSeq[i]!.comb));
       }
-      parts.push(isNode_);
+      parts.push(isSel);
     }
     // compounds inside the span (i>start) are subsumed by the :is()
   }
   return sel(parts as ComplexSelectorComponent[]);
+}
+
+/**
+ * extendWith OR-branches for a SIBLING-SPLIT, WITHOUT flattening a `:is()` extendWith. A
+ * `SelectorList` extendWith fans out to its items; a `:is(.d,.e)` stays ONE branch (the whole
+ * `:is` atom — the oracle keeps `.c:is(.d,.e)`, it does NOT distribute `.c` into each `:is` arm);
+ * anything else is one branch. Contrast `extendWithBranches`, which flattens `:is` for FULL append.
+ */
+function extendWithBranchesUnflat(extendWith: Selector): Selector[] {
+  if (isNode(extendWith, N.SelectorList)) {
+    return extendWith.value.map(v => (typeof v === 'string' ? wrapString(v) : (v as Selector)));
+  }
+  return [extendWith];
+}
+
+/** The (combinator, compound) steps of an extendWith branch selector, lifted for reassembly. */
+function branchSteps(branch: Selector): IrSeq {
+  return liftSeq(branch, new SymbolTable());
+}
+
+/**
+ * SIBLING-SPLIT construction (WHOLE-span multi-compound partial with a remainder). The original
+ * target branch is emitted UNCHANGED by the caller; this builds the ONE sibling branch:
+ *   sibling = <remainder atoms of the last spanned compound with a remainder>
+ *             merged into the HEAD compound of extendWith's FIRST branch, keeping that branch's
+ *             rest-of-seq; extendWith's remaining branches follow as separate OR siblings.
+ * The target's combinator structure is DROPPED — the sibling starts as a bare compound.
+ *
+ *   `.a>.b.c` f `.a>.b` ext `.d`      → sibling `.c.d`
+ *   `.a>.b.c` f `.a>.b` ext `.d.e`    → sibling `.c.d.e`
+ *   `.a>.b.c` f `.a>.b` ext `.d>.e`   → sibling `.c.d>.e`
+ *   `.a>.b.c` f `.a>.b` ext (.d,.e)   → siblings `.c.d` , `.e`
+ *   `.a>.b.c` f `.a>.b` ext :is(.d,.e)→ sibling `.c:is(.d,.e)`
+ */
+function buildRemainderSiblings(
+  targetSeq: IrSeq,
+  m: OwnMatch,
+  findSeq: IrSeq,
+  extendWith: Selector
+): Selector[] {
+  const rs = m.remainderSplit!;
+  const remStep = targetSeq[rs.remStart]!;
+  // Atoms of the remainder compound the aligned find compound did NOT consume.
+  const findCompound = findSeq[rs.remStart - rs.spanStart]!.compound;
+  const remainderNodes: (Selector | string)[] = [];
+  for (const a of remStep.compound.atoms) {
+    if (a.kind === 'id' && !findCompound.syms.has(a.sym)) {
+      remainderNodes.push(typeof a.node === 'string' ? a.node : a.node);
+    }
+  }
+
+  const branches = extendWithBranchesUnflat(extendWith);
+  const out: Selector[] = [];
+  for (let bi = 0; bi < branches.length; bi++) {
+    if (bi > 0) {
+      // Later extendWith branches follow verbatim as bare OR siblings.
+      out.push(branches[bi]!);
+      continue;
+    }
+    const steps = branchSteps(branches[bi]!);
+    // Merge the remainder atoms into the HEAD compound of this branch, keeping the rest of the seq.
+    const parts: (Selector | string)[] = [];
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i]!;
+      if (i > 0) {
+        parts.push(makeCombinator(step.comb));
+      }
+      if (i === 0) {
+        const headAtoms: (Selector | string)[] = [...remainderNodes];
+        for (const a of step.compound.atoms) {
+          headAtoms.push(a.kind === 'id' ? (typeof a.node === 'string' ? a.node : a.node) : (a.node as Selector));
+        }
+        parts.push(
+          headAtoms.length === 1 && typeof headAtoms[0] !== 'string'
+            ? (headAtoms[0] as Selector)
+            : compound(headAtoms as Parameters<typeof compound>[0])
+        );
+      } else {
+        const n = compoundNodeOf(step);
+        parts.push(typeof n === 'string' ? n : n);
+      }
+    }
+    out.push(
+      parts.length === 1 && typeof parts[0] !== 'string'
+        ? (parts[0] as Selector)
+        : sel(parts as ComplexSelectorComponent[])
+    );
+  }
+  return out;
 }
 
 /**
@@ -1599,7 +1709,13 @@ export function extendByIndexOwn(
   const extendBranches = extendWithBranches(extendWith);
 
   // Per-branch match + construction.
-  const branchResults: Array<{ node: Selector; matchedFull: boolean; matchedPartial: boolean }> = [];
+  const branchResults: Array<{
+    node: Selector;
+    matchedFull: boolean;
+    matchedPartial: boolean;
+    /** SIBLING-SPLIT: siblings appended after all original branches (branch node stays unchanged). */
+    siblings?: Selector[];
+  }> = [];
   let anyMatch = false;
   for (const tb of irTarget.branches) {
     const loc = locateFind(tb, findSeq);
@@ -1622,6 +1738,11 @@ export function extendByIndexOwn(
       if (loc.full) {
         // Partial + full-branch match: still an append (whole selector equals find).
         branchResults.push({ node: seqToSelector(tb), matchedFull: true, matchedPartial: false });
+      } else if (loc.remainderSplit?.wholeSpan) {
+        // WHOLE-span multi-compound partial with a remainder → SIBLING-SPLIT: original branch
+        // stays unchanged, one sibling (+ extendWith list tail) is appended after all branches.
+        const siblings = buildRemainderSiblings(tb, loc, findSeq, extendWith);
+        branchResults.push({ node: seqToSelector(tb), matchedFull: false, matchedPartial: true, siblings });
       } else {
         const built = buildPartialBranch(tb, loc, findSeq, extendBranches);
         if (built === UNSUPPORTED) {
@@ -1637,8 +1758,10 @@ export function extendByIndexOwn(
   }
 
   // Assemble output. Partial rewrites are IN PLACE (matched branch replaced by its rewrite);
-  // full matches APPEND extendWith branches after all original branches.
+  // full matches APPEND extendWith branches after all original branches; sibling-splits append
+  // their sibling branch(es) after all original branches (branch node itself unchanged).
   const outBranches: Selector[] = [];
+  const siblingBranches: Selector[] = [];
   let anyFull = false;
   let anyEffective = false;
   for (const br of branchResults) {
@@ -1650,11 +1773,19 @@ export function extendByIndexOwn(
     if (br.matchedPartial) {
       anyEffective = true;
     }
+    if (br.siblings) {
+      for (const s of br.siblings) {
+        siblingBranches.push(s);
+      }
+    }
   }
   if (anyFull) {
     for (const eb of extendBranches) {
       outBranches.push(eb);
     }
+  }
+  for (const s of siblingBranches) {
+    outBranches.push(s);
   }
   if (!anyEffective) {
     // Matched only as a proper subset in non-partial mode → unchanged target.
