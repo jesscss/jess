@@ -362,16 +362,22 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
      per-placement arg identity (`cloneBoundValue`). Removing them corrupts the shared tree / aliases dynamic args.
   **Revised path to C4 (delete `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`propagateFlagsFrom`) — retire ALL of:**
   (1) class-2 reuse gates [needs the reparent / dynamic-leaf-share rework]; (2) the container static short-circuits
-  [need reactive fall-through byte-identical + render fast-paths relocated — Phase D]; (3) the C4-prereq
-  name/selector-local `isInterpolated`/`nameIsStatic` predicate [retires class-3 + `rules.ts:5656`]; (4)
-  callable-guard static → guard-local (`callable-guard.ts`, `callable-candidate-execution.ts:72`); (5) type-guard
-  value-checks (`scope-frame.ts:491`, `reference.ts:194/2577`). `F_HAS_NODE_CHILD` falls with (1).
+  [need reactive fall-through byte-identical + render fast-paths relocated — Phase D]; **(3) DONE** (dev `d32300e76`) —
+  name/selector-local predicate: `hasStaticName()`/`ownStaticFlag()`/`structuralStaticFlag()` on the Node base
+  reproduce the ctor+bubble decision structurally, so registration's `_isStatic`/`_hasStaticName` name reads + the
+  `rules.ts:5679` selector branch no longer read `hasFlag(F_STATIC)`; one raw-parser static-`[attr]` divergence
+  disclosed + proven output-neutral (eager where the stale flag deferred; deferral is a safe superset). **(4) DONE**
+  (dev `37c094541`) — callable-guard `F_STATIC` reads → one guard-owned `isConstantGuard` (`callable-guard-constant.ts`).
+  **(5) DONE** (dev `130fc825e`) — `scope-frame.ts`/`reference.ts:194` static reads → `instanceof Interpolated` value
+  tests; `reference.ts:2577` LEFT (genuine container static-ness, falls with class-2, not a type-guard). `F_HAS_NODE_CHILD` falls with (1).
   **VERDICT: C4 is gated on the DEEP single-render-pass / reparent / dynamic-leaf-share rework — twice-investigated
   (inherit REJECTED, now class-2 BLOCKED) and reprofiled as <1% self-time.** Items (3)(4)(5) are landable now as
   reader-retirement (shrink the set, code-health), but do NOT reach C4 alone. (1)+(2) are the multi-slice coupled
-  piece. **DECISION POINT (owner):** land the incremental reader-retirements (3/4/5) + bank Phase D's completed
-  relocations (hoist/composition/D2), and PARK the flag deletion behind the single-render-pass project — OR commit
-  to that deep rework now (high-regression, not a perf lever).
+  piece. **OWNER DECISION (do 1 AND 2):** reader-retirements (3/4/5) — ALL LANDED; Phase D relocations
+  (hoist/composition/D2) banked. Now committed to the deep rework too — the `SINGLE-RENDER-PASS-PLAN.md` slice
+  sequence is the executable path, starting with the **A0 provenance spike** (gates the riskiest slice A2s by
+  measuring whether the residual is the ~10-site flag-only record the plan hypothesizes). Only populations (1)+(2)
+  remain between here and C4; both reduce to sub-problem B (dynamic-leaf per-frame lookup vs copy).
   - Also: `getFullComposedForm` (`extend-roots.ts:320`) re-walks the parent chain inside extend instead of sharing
     the walk's `composedSelectorStack` — a candidate for the extend track.
 
