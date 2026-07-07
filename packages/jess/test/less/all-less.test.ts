@@ -177,11 +177,11 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/permissive-parse/permissive-parse.less', 'renders but permissive-parse output differs (Unexpected token)'],
 
   // Previously-uncategorized hard failures — render but mismatch Less.
-  ['tests-unit/extend/extend.less', 'grouped-selector :extend not applied (extend-matcher gap)'],
+  // (extend.less + mixins-guards.less GRADUATED — the dev-merge extend/mixin-namespace
+  //  fixes made them render byte-identical to Less; they're real passes now.)
   ['tests-unit/extend-nest/extend-nest.less', 'nested :extend output differs from Less (extend-matcher gap)'],
   ['tests-unit/extend-selector/extend-selector.less', 'selector :extend output differs from Less (extend-matcher gap)'],
-  ['tests-unit/import/import-remote.less', 'renders but throws (n.hasNodeChild is not a function)'],
-  ['tests-unit/mixins-guards/mixins-guards.less', 'renders but guard-branch selection differs from Less']
+  ['tests-unit/import/import-remote.less', 'renders but throws (n.hasNodeChild is not a function)']
 ]);
 
 // Allow specific fixtures even when they are listed in shared invalidLess.
