@@ -282,6 +282,25 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
 
 ## PROGRESS LOG
 
+### Phase D (single render pass) — slices landing off dev, one at a time (LATEST)
+- **Slice 1 — DONE** (dev `9405044f1`). Deleted `AtRule.frames`: a hoisted nested `@media` recovers its severed
+  parent selector from the serialize walk's `options.composedSelectorStack` (the walk already descended through
+  the ancestor rulesets) + frame identity from `atRule.parent`→nearest Ruleset, instead of the eval-captured
+  snapshot. Removed `getRenderFrames`, the `directRenderFrames` WeakMap, `atRuleFrameNode/Override` PrintOptions,
+  `FrameMetadataNode` deep-copy. Net −158 lines. Byte-identical (all-less 90/3), core 2937/0, bench neutral.
+  (Salvaged from a crashed agent — the partial work was sound.)
+- **Slice 2 (relocate Ruleset `hoistToRoot`) — WON'T-DO / not a crutch.** `ruleset.ts:1949`'s
+  `if (sel.hoistToRoot) node.hoistToRoot = true` is NOT a collapse-mode decision (that already lives in the walk
+  via `isHoisted`'s `?? (collapseNesting && isNestable())` fallback). It carries the AMPERSAND PARENT-REPLACEMENT
+  fact set by `Ampersand.evalNode` (bare `&`/`&-X` absorbing its parent — `&-1` under `.body` → `.body-1`; "already
+  contains parent, don't re-prepend"), read at `ruleset.ts:1500/1595/351`. Decided during ampersand EVAL, NOT
+  reconstructible from collapse+nestability+ancestry → INTRINSIC eval output (like the composed selector itself),
+  not flag-walk state. Empirically load-bearing: disabling the stamp → 4 core regressions incl. the
+  `.body { @media print { &-1 } }` collapse fixtures. **LEAVE IT.** (Agent stopped + proved it; nothing changed.)
+- **Next candidate:** AtRule ROOT_ONLY hoist stamp (`at-rule.ts:925/1621`, `output:{hoistToRoot:true}`, guarded by
+  `bubbleRootAtRules && isRootOnly() && hasRulesetFrame`). Two guards are walk-visible; only `hasRulesetFrame` is
+  eval-only, but the walk owns the ancestor chain → likely reconstructible. Investigate before touching it.
+
 - **Phase A1 — DONE** (dev `6de3c0cc7`). `F_MAY_ASYNC` deleted entirely (bit `0b10` freed); sync/async
   guards → reactive attempt-sync/isThenable-bail; dead sync-twin helpers removed. Byte-identical,
   bench-neutral, core 2744/0 (−2 = deleted flag-only tests). Net −395 lines.
