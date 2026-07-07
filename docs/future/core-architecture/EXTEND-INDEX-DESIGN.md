@@ -236,12 +236,21 @@ cloning-free, reusing authored inner nodes. Key rules (all differential-probed +
 Coverage: algorithm own-PASS 25→33, simplified 12→13, + new `corpus-where-cases` 4/4. Frontier: graft-into-target
 UNSUPPORTED 8→0. 159 tests green across `tree/extend/`; full extend suite 558 pass / 0 fail (no regressions).
 
+### RUNG CLOSED (2026-07-06) — remainder-splitting (dev `f6f19651c`)
+A whole-span partial match with an unmatched remainder now splits correctly (own construction, byte-identical to
+the oracle). Discriminator: **whole span** (find matches every compound of the target seq, positions `0..T-1`) →
+**sibling-split** (original branch unchanged + one sibling = the LAST spanned compound's remainder atoms merged
+into extendWith's head compound; earlier remainders ignored; target combinators dropped); **proper-substring
+span** → the existing `:is()`-wrap. Open edges resolved from the oracle: extendWith LIST merges into the first
+branch only (`.c.d,.e`), extendWith `:is(...)` is NOT flattened in sibling-split (`.c:is(.d,.e)` via
+`extendWithBranchesUnflat`), list flattens into the `:is` arg in the wrap case. algorithm own-PASS 33→35,
+UNSUPPORTED 2→0; extend-index 159→172; full extend suite 571/0; no walk-bugs surfaced.
+
 ### NEXT RUNG — the UNSUPPORTED frontier (why each is gated, not wrong)
-1. **Remainder-splitting** — `.a>.b.c` f `.a>.b` partial → oracle `.a>.b.c,.c.d`; `div+.a.c.b>.y.x` f `.a.b>.x`
-   → `div+:is(.a.c.b>.y.x,.q)`. The own construction doesn't yet split an unmatched multi-compound remainder
-   into a sibling. (2 cases left on the algorithm corpus — the ONLY remaining own-engine UNSUPPORTED.)
-2. **`:is` boundary-cross flatten (PARTIAL)** — `:is(.a,.b).c` f `.a.c` PARTIAL → `:is(.a.c,.d)` (distributes the
-   sibling `.c` INTO each `:is` branch). Full mode is done; partial-flatten stays `UNSUPPORTED`.
+1. **`:is` boundary-cross flatten (PARTIAL)** — `:is(.a,.b).c` f `.a.c` PARTIAL → `:is(.a.c,.d)` (distributes the
+   sibling `.c` INTO each `:is` branch). Full mode is done; partial-flatten stays `UNSUPPORTED` (`buildGraftCompound`).
+2. **`&`/ampersand targets, constructor-atom / OR finds** — still gated in `extendByIndexOwn`.
+3. **Multi-compound find against a graft-bearing target** — `buildGraftBranch` currently requires a single-compound find.
 Closing these + wiring `processExtendsByIndex` to `context`/`&`-hoist is the path to full corpus coverage.
 
 ## Non-goals (for the validated prototype)
