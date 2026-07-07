@@ -283,12 +283,43 @@ Four classes closed, all oracle-derived + hardcode-pinned; no walk-bugs. extend-
 - **Multi-compound find vs graft target — clean whole-span side-by-side full ONLY** (`:is(.a,.b) .c f .a .c` → `,.d`);
   substring/remainder/expansion variants stay UNSUPPORTED (need the multi-compound `:is`-graft flatten machinery).
 
-### NEXT RUNG — the remaining reachable frontier (per rung-4 report)
-1. **`&`/ampersand targets AND finds** — still gated. The graft model + `&`-hoist wiring is the big remaining piece.
-2. **Multi-compound `:is`-graft expansion (substring / remainder / find-compound-on-graft)** — oracle emits full
-   boundary-cross expansion (`.x :is(.a .c,.d),.x .b .c`); needs the multi-compound `:is`-graft flatten machinery.
-3. **Constructor-atom finds** (`.a:is(.b)`, `.a:not(.b)` on the FIND side) — find-side graft normalization; distinct machinery.
-Closing #1 + #2 is the gate to rung 5 (full-corpus sweep) then wiring `processExtendsByIndex` to `context`/`&`-hoist.
+### RUNG CLOSED (2026-07-06) — rung 5: multi-compound `:is`-graft EXPANSION
+A MULTI-compound find crossing a BARE single-`:is` compound (`:is(.a,.b)` in its own slot), where the
+alignment is NOT the clean rung-4 whole-span-full, now builds via own construction, byte-identical to
+the oracle. The rung-4 report's hypothesis (`.x :is(.a .c,.d),.x .b .c` — distribute-into-arms) was
+WRONG; the oracle takes a simpler **expand-then-per-arm-extend** path (derived by direct probe):
+- **Rule:** expand the `:is` into one sibling branch per arm (splice the arm's compounds into the graft
+  slot, `expandComplexSelectorWithIs` semantics), then run the plain multi-compound extend on each
+  expanded (now-plain) branch. The expanded branches are plain → the plain engine reproduces every
+  per-arm shape for free.
+- **PARTIAL:** recurse into the plain engine on the expanded `SelectorList` — byte-identical (matching
+  arm gets the rung-3 substring `:is`-wrap in place, or the rung-4 whole-span remainder sibling-split
+  hoisted to the tail; non-matching arms unchanged). `.x :is(.a,.b) .c` f `.a .c` → `.x :is(.a .c,.d),.x .b .c`.
+- **FULL:** expanded branches emitted UNCHANGED (find is a proper substring → no plain full match) +
+  extendWith appended ONCE **iff the graft was MULTI-arm** (a single-arm `:is(.a)` is plain `.a` — no
+  through-graft append: `.x :is(.a) .c` f `.a .c` FULL → `.x .a .c`, no `.d`). `.x :is(.a,.b) .c` f `.a .c`
+  FULL → `.x .a .c,.x .b .c,.d`. Multi-compound arms splice (`:is(.a .m,.b) .c` f `.a .m .c` → `.a .m .c,.b .c,.d`);
+  `>` combinators preserved (`.x>:is(.a,.b)>.c` f `.a>.c` → `.x>.a>.c,.x>.b>.c,.d`).
+- **Scope (fail-loud):** exactly ONE bare-`:is` compound per branch; a 2nd graft the find must cross is
+  the oracle's `.x :is(.a,.b) :is(.p,.q)` NOT_FOUND shape → UNSUPPORTED (proving NOT_FOUND needs the
+  expand-then-fail machinery; prefer fail-loud). Embedded grafts (`.m:is(.a,.b)` f `.a .c` → oracle
+  NOT_FOUND) and non-bare graft compounds (`:is(.a,.b).q .c` → oracle NOT_FOUND) do NOT expand → the
+  path returns null and the per-branch graft path (→ UNSUPPORTED) handles them.
+No walk-bug / EXPECTED-DIVERGENCE surfaced. Pre-existing plain-path note (NOT this rung): the own
+engine's MULTI-compound substring `:is`-wrap flattens a `:is(...)` extendWith (`.x :is(.a .c,.d,.e)`)
+where the oracle keeps it nested (`.x :is(.a .c,:is(.d,.e))`) — this divergence exists on dev's plain
+path independent of the graft, unreached by the real corpus; out of scope here.
+extend-index 204→221; full extend suite 603→620/0; core 3011→3028/0.
+
+### NEXT RUNG — the remaining reachable frontier
+1. **`&`/ampersand targets AND finds** — still gated (own construction never builds `&` output). The graft
+   model + `&`-hoist OUTPUT wiring is now the SOLE remaining large reachable frontier before the full-corpus
+   sweep. `classifyAmpersand` already reproduces the two-probe crossing differential in-IR, but the
+   hoist/in-place output construction is not built (the delegating `extendByIndex` relays it to the oracle).
+2. **Constructor-atom finds** (`.a:is(.b)`, `.a:not(.b)` on the FIND side) — find-side graft normalization;
+   distinct, smaller-surface machinery.
+With rung 5 closed, `&` (#1) is the only large reachable gap; closing it gates rung 6 (full-corpus sweep)
+then wiring `processExtendsByIndex` to `context`/`&`-hoist.
 
 ## Non-goals (for the validated prototype)
 Minimal-hoist (output change); replacing the walk (only after full-suite byte-identical); touching the
