@@ -1263,6 +1263,93 @@ function extendIntoGraft(
 }
 
 /**
+ * `:is` BOUNDARY-CROSS FLATTEN (PARTIAL) — the matched span (find) crossing an `:is` boundary.
+ *
+ * Fires only in PARTIAL mode. Attempts to align the find's atoms LEFT-TO-RIGHT onto the target
+ * compound's atom positions (a strictly-increasing positional subsequence), where a find atom is
+ * consumed by either a plain target atom of the same sym or an `:is` graft whose branch-head reaches
+ * that sym. The alignment must cross the `:is` boundary: at least one find atom lands on an `:is`
+ * graft AND at least one lands on a plain atom. When it aligns, build:
+ *   `:is(<find-as-written>, <extendWith-branches>)`  placed FIRST in the compound,
+ *   followed by the UNMATCHED plain atoms in their original relative order.
+ * Returns the built compound Selector, or null (not a positional boundary-cross → caller decides).
+ *
+ * Only `:is` boundary-crosses (design line 94); a `:not/:where/:has` graft never consumes a find
+ * atom for an OUTER match, so an alignment that would need one returns null (→ not a flatten).
+ */
+function tryBoundaryFlatten(
+  targetAtoms: Atom[],
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | null {
+  if (!partial) {
+    return null; // flatten is a PARTIAL-mode outcome; full mode appends via graftFullCompoundConsume
+  }
+  // Lift the find in a FRESH symbol table (its syms are NOT comparable to the target atoms' syms,
+  // which were interned in the caller's table) — so alignment matches by the atom's raw string.
+  const findSeq = liftSeq(find, new SymbolTable());
+  if (findSeq.length !== 1) {
+    return null;
+  }
+  const findAtoms = findSeq[0]!.compound.atoms;
+  if (findAtoms.some(a => a.kind !== 'id')) {
+    return null; // a constructor atom on the find side is not this rung
+  }
+
+  // Align each find atom (in order) to an increasing target position; a find atom is consumed by a
+  // plain atom (equal raw) or an `:is` graft whose branch head carries that raw. Track the crossing.
+  const matchedTargetIdx = new Set<number>();
+  let cursor = 0;
+  let touchedGraft = false;
+  for (const fa of findAtoms) {
+    if (fa.kind !== 'id') {
+      return null;
+    }
+    let placed = -1;
+    for (let ti = cursor; ti < targetAtoms.length; ti++) {
+      const ta = targetAtoms[ti]!;
+      if (ta.kind === 'id' && ta.raw === fa.raw) {
+        placed = ti;
+        break;
+      }
+      if (ta.kind === 'is' && ta.pseudoName === ':is' && graftHeadHasRaw(ta, fa.raw)) {
+        placed = ti;
+        touchedGraft = true;
+        break;
+      }
+    }
+    if (placed === -1) {
+      return null; // find atom cannot be placed in position order → not a positional flatten
+    }
+    matchedTargetIdx.add(placed);
+    cursor = placed + 1;
+  }
+  // Must genuinely cross an `:is` boundary and span ≥2 distinct target positions (a single-position
+  // match is an ordinary in-graft or plain match handled elsewhere). The crossing may be plain+graft
+  // (`:is(.a,.b).c` f `.a.c`) OR graft+graft (`:is(.a,.b):is(.x,.y)` f `.a.x`).
+  if (!touchedGraft || matchedTargetIdx.size < 2) {
+    return null;
+  }
+
+  // Build `:is(<find>, <extendWith-branches>)` first, then the unmatched plain atoms in order.
+  const extendBranches = extendWithBranches(extendWith);
+  const isSel = is(sellist([find, ...extendBranches]));
+  const parts: (Selector | string)[] = [isSel];
+  for (let ti = 0; ti < targetAtoms.length; ti++) {
+    if (matchedTargetIdx.has(ti)) {
+      continue;
+    }
+    const ta = targetAtoms[ti]!;
+    parts.push(ta.kind === 'id' ? (typeof ta.node === 'string' ? ta.node : ta.node) : (ta.node as Selector));
+  }
+  if (parts.length === 1) {
+    return isSel;
+  }
+  return compound(parts as Parameters<typeof compound>[0]);
+}
+
+/**
  * Graft-aware construction for a SINGLE-compound find against ONE target compound that carries
  * graft atom(s). Returns the rebuilt compound Selector, null (no match here), or UNSUPPORTED.
  *
@@ -1273,8 +1360,9 @@ function extendIntoGraft(
  *  - find reaches into exactly ONE graft (its syms ⊆ that graft's reachable syms, not the plain
  *    atoms): PARTIAL → recurse into that graft; FULL of a NON-bare compound → subset → unchanged;
  *    FULL of a BARE graft compound → recurse (whole compound IS the graft).
- *  - find spans BOTH plain atoms AND an `:is` graft (`:is(.a,.b).c` find `.a.c`): boundary-cross
- *    flatten — NOT built yet → UNSUPPORTED.
+ *  - find crosses an `:is` boundary positionally (`:is(.a,.b).c` find `.a.c`, or graft+graft
+ *    `:is(.a,.b):is(.x,.y)` find `.a.x`): PARTIAL → boundary-cross flatten (`tryBoundaryFlatten`);
+ *    a non-positional whole-consume (`:is(.a,.b).c` find `.c.a`) → caller appends extendWith.
  */
 function buildGraftCompound(
   compoundStep: IrStep,
@@ -1297,6 +1385,16 @@ function buildGraftCompound(
     }
   }
   const isBareCompound = atoms.length === 1;
+
+  // `:is` BOUNDARY-CROSS FLATTEN (partial): a multi-atom find that aligns positionally across the
+  // compound, crossing at least one `:is` graft (plain+graft OR graft+graft). Try first — it wins
+  // over both the plain-wrap and single-graft-host paths when it applies.
+  if (partial && findSyms.size > 1) {
+    const flat = tryBoundaryFlatten(atoms, find, extendWith, partial);
+    if (flat !== null) {
+      return flat;
+    }
+  }
 
   const findInPlain = [...findSyms].every(s => plainSyms.has(s));
   if (findInPlain) {
@@ -1321,17 +1419,17 @@ function buildGraftCompound(
     return buildCompoundWithWraps(atoms, wrapAt, extendBranches);
   }
 
-  // find reaches into a graft. It must be satisfiable by a SINGLE graft and NOT require plain
-  // atoms (mixed plain+graft is an `:is` boundary case).
+  // find reaches into a graft AND requires some plain atom, but did NOT align as a positional
+  // boundary-cross flatten above (e.g. `:is(.a,.b).c` f `.c.a` — the find atoms are out of target
+  // position order). Two outcomes:
+  //   • whole-compound consume (every target atom consumed, order-free) → the compound stays
+  //     unchanged and the caller APPENDS extendWith as a sibling (`:is(.a,.b).c,.d`), full or partial;
+  //   • anything else → not built → UNSUPPORTED.
+  // (The POSITIONAL boundary-cross flatten `:is(.a.c,.d)` was handled by `tryBoundaryFlatten` above.)
   const needsPlain = [...findSyms].some(s => plainSyms.has(s));
   if (needsPlain) {
-    // The find spans BOTH plain atoms AND an `:is` graft (e.g. `:is(.a,.b).c` find `.a.c`).
-    //  - FULL mode + WHOLE-compound consume (each find sym maps to a distinct plain atom or an
-    //    `:is` graft, and every compound atom is consumed) → this is a full match of the compound;
-    //    the caller appends extendWith as a sibling and the compound stays unchanged.
-    //  - anything else (partial, or not a whole consume) → boundary-cross flatten, not built yet.
-    if (!partial && graftFullCompoundConsume(atoms, plainSyms, findSyms)) {
-      return MATCHED_FULL_APPEND; // whole-compound full match → caller appends extendWith
+    if (graftFullCompoundConsume(atoms, plainSyms, findSyms)) {
+      return MATCHED_FULL_APPEND; // whole-compound consume, non-positional → caller appends
     }
     return UNSUPPORTED;
   }
@@ -1387,6 +1485,44 @@ function buildGraftCompound(
   return compound(parts as Parameters<typeof compound>[0]);
 }
 
+/**
+ * True when some branch of the `:is` graft is EXACTLY the single-atom compound `raw`. Boundary-cross
+ * flatten replaces the whole `:is` in the flattened arm with the find atom, so the find atom must
+ * correspond to a COMPLETE `:is` branch — a partial-of-a-branch (`.a` inside branch `.a.z`) does NOT
+ * cross (`:is(.a.z,.b).c` f `.a.c` → NOT_FOUND, matching the oracle). Raw-keyed (not sym-keyed) so it
+ * works across independently-interned symbol tables — the find is lifted in a fresh table.
+ */
+function graftHeadHasRaw(g: Extract<Atom, { kind: 'is' }>, raw: string): boolean {
+  for (const branch of g.sel.branches) {
+    if (branch.length === 1) {
+      const b = branch[0]!.compound;
+      if (b.atoms.length === 1 && b.atoms[0]!.kind === 'id' && b.atoms[0]!.raw === raw) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Syms of the graft's COMPLETE single-atom branches (a branch that is exactly one plain-id atom).
+ * These are the only branches a find atom can consume in an outer whole-compound match — a
+ * partial-of-a-branch (`.a` inside `.a.z`) does not. Sym-keyed: the graft's inner selector was
+ * lifted in the SAME symbol table as the caller's find syms, so the ints are comparable here.
+ */
+function wholeBranchSymsOfGraft(g: Extract<Atom, { kind: 'is' }>): Set<number> {
+  const out = new Set<number>();
+  for (const branch of g.sel.branches) {
+    if (branch.length === 1) {
+      const b = branch[0]!.compound;
+      if (b.atoms.length === 1 && b.atoms[0]!.kind === 'id') {
+        out.add(b.atoms[0]!.sym);
+      }
+    }
+  }
+  return out;
+}
+
 /** Reachable simple-id syms available for matching through a single graft atom (only `:is` reaches). */
 function reachableSymsOfGraft(g: Extract<Atom, { kind: 'is' }>): Set<number> {
   const out = new Set<number>();
@@ -1436,10 +1572,12 @@ function graftFullCompoundConsume(
         return false;
       }
     } else if (a.kind === 'is' && a.pseudoName === ':is') {
-      const reach = reachableSymsOfGraft(a);
+      // A whole-compound consume through `:is` requires the find sym to equal a COMPLETE single-atom
+      // `:is` branch (not a partial-of-a-branch — `.a` inside branch `.a.z` does NOT consume).
+      const wholeBranchSyms = wholeBranchSymsOfGraft(a);
       let consumed = -1;
       for (const s of remaining) {
-        if (reach.has(s)) {
+        if (wholeBranchSyms.has(s)) {
           consumed = s;
           break;
         }

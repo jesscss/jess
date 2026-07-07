@@ -401,8 +401,55 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     it('bare :is(.a,.b) find .z → NOT_FOUND', () => {
       pin(is(sellist([el('.a'), el('.b')])), el('.z'), el('.c'), false, 'NOT_FOUND');
     });
-    it(':is(.a,.b).c find .a.c PARTIAL → UNSUPPORTED (boundary-cross flatten, not built yet)', () => {
-      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, 'UNSUPPORTED');
+  });
+
+  // RUNG CLOSED: `:is` boundary-cross flatten (PARTIAL). A multi-atom find that aligns POSITIONALLY
+  // across a graft-bearing compound, crossing at least one `:is` boundary, collapses the matched span
+  // into `:is(<find-as-written>, <extendWith>)` placed first, with the UNMATCHED plain atoms trailing
+  // in original order. A find whose atoms are NOT in target position order is a non-positional whole
+  // consume → append. All pins are HARDCODED (independent of the oracle).
+  describe('12. :is boundary-cross flatten (PARTIAL)', () => {
+    it(':is(.a,.b).c find .a.c → :is(.a.c,.d)  (canonical: matched span → :is, `.b` arm dropped)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, ':is(.a.c,.d)');
+    });
+    it(':is(.a,.b).c.x find .a.c → :is(.a.c,.d).x  (unmatched `.x` trails)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c'), el('.x')]), compound([el('.a'), el('.c')]), el('.d'), true, ':is(.a.c,.d).x');
+    });
+    it(':is(.a,.b).x.c find .a.c → :is(.a.c,.d).x  (positional skip over `.x`)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.x'), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, ':is(.a.c,.d).x');
+    });
+    it('.m:is(.a,.b).c find .a.c → :is(.a.c,.d).m  (`:is` hoists to front, unmatched `.m` trails)', () => {
+      pin(compound([el('.m'), is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, ':is(.a.c,.d).m');
+    });
+    it('.x:is(.a,.b).y.c find .a.c → :is(.a.c,.d).x.y  (two unmatched, order preserved)', () => {
+      pin(compound([el('.x'), is(sellist([el('.a'), el('.b')])), el('.y'), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, ':is(.a.c,.d).x.y');
+    });
+    it('.c:is(.a,.b) find .c.a → :is(.c.a,.d)  (graft second, positional flatten)', () => {
+      pin(compound([el('.c'), is(sellist([el('.a'), el('.b')]))]), compound([el('.c'), el('.a')]), el('.d'), true, ':is(.c.a,.d)');
+    });
+    it(':is(.a,.b):is(.x,.y) find .a.x → :is(.a.x,.d)  (graft+graft crossing)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), is(sellist([el('.x'), el('.y')]))]), compound([el('.a'), el('.x')]), el('.d'), true, ':is(.a.x,.d)');
+    });
+    it(':is(.a,.b).c find .c.a → :is(.a,.b).c,.d  (NON-positional whole consume → append, NOT flatten)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.c'), el('.a')]), el('.d'), true, ':is(.a,.b).c,.d');
+    });
+    it('extendWith list: find .a.c ext (.d,.e) → :is(.a.c,.d,.e)  (list flattens into `:is`)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), sellist([el('.d'), el('.e')]), true, ':is(.a.c,.d,.e)');
+    });
+    it('extendWith :is: find .a.c ext :is(.d,.e) → :is(.a.c,.d,.e)  (`:is` ext flattens)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), is(sellist([el('.d'), el('.e')])), true, ':is(.a.c,.d,.e)');
+    });
+    it('extendWith combinator: find .a.c ext .d>.e → :is(.a.c,.d>.e)  (combinator kept)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), sel([el('.d'), co('>'), el('.e')]), true, ':is(.a.c,.d>.e)');
+    });
+    it('.z :is(.a,.b).c find .a.c → .z :is(.a.c,.d)  (flatten in a complex seq position)', () => {
+      pin(sel([el('.z'), co(' '), compound([is(sellist([el('.a'), el('.b')])), el('.c')])]), compound([el('.a'), el('.c')]), el('.d'), true, '.z :is(.a.c,.d)');
+    });
+    it('list target :is(.a,.b).c,.q find .a.c → :is(.a.c,.d),.q  (only the graft branch flattens)', () => {
+      pin(sellist([compound([is(sellist([el('.a'), el('.b')])), el('.c')]), el('.q')]), compound([el('.a'), el('.c')]), el('.d'), true, ':is(.a.c,.d),.q');
+    });
+    it(':is(.a.z,.b).c find .a.c → UNSUPPORTED  (`.a` is partial-of-branch `.a.z`, not a whole branch)', () => {
+      pin(compound([is(sellist([compound([el('.a'), el('.z')]), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, 'UNSUPPORTED');
     });
   });
 

@@ -246,11 +246,39 @@ branch only (`.c.d,.e`), extendWith `:is(...)` is NOT flattened in sibling-split
 `extendWithBranchesUnflat`), list flattens into the `:is` arg in the wrap case. algorithm own-PASS 33→35,
 UNSUPPORTED 2→0; extend-index 159→172; full extend suite 571/0; no walk-bugs surfaced.
 
+### RUNG CLOSED (2026-07-06) — `:is` boundary-cross flatten (PARTIAL)
+Own construction now builds the PARTIAL `:is` boundary-cross flatten, byte-identical to the oracle. The
+matched span is derived by aligning the find's atoms LEFT-TO-RIGHT onto the target compound's atom
+positions (a strictly-increasing positional subsequence), where a find atom is consumed by a plain atom
+(equal) or a COMPLETE single-atom `:is` branch. Derived rules (differential-probed + hardcoded-pinned):
+- **Which atoms flatten:** the matched span collapses to `:is(<find-as-written>, <extendWith-branches>)`
+  placed FIRST in the compound; the `.b` (non-matched) `:is` arm is DROPPED, NOT distributed. (The doc's
+  earlier "distributes `.c` into each arm" phrasing was wrong — the oracle takes the PARTIAL `:is`-wrap
+  path, not `detectAndHandleBoundaryCrossing` which only runs in FULL mode. The `:is` first arg is the
+  FIND verbatim, e.g. `:is(.a,.b).c` f `.a.c` → `:is(.a.c,.d)`, `.c.a` → `:is(.c.a,.d)`.)
+- **Original branch disposition:** REPLACED in place (no separate original branch), unlike full mode which
+  appends a sibling (`:is(.a,.b).c,.d`).
+- **Unmatched atoms:** all target plain atoms NOT on the aligned path trail the `:is()` in original order
+  (`:is(.a,.b).c.x` f `.a.c` → `:is(.a.c,.d).x`; `.m:is(.a,.b).c` f `.a.c` → `:is(.a.c,.d).m` — the `:is`
+  hoists to front regardless of the graft's original slot).
+- **Leading atoms handled:** `.c:is(.a,.b)` f `.c.a` → `:is(.c.a,.d)` (graft second).
+- **graft+graft crossing:** `:is(.a,.b):is(.x,.y)` f `.a.x` → `:is(.a.x,.d)` (was a WRONG NOT_FOUND before).
+- **extendWith:** list/`:is` FLATTEN into the `:is` arg (`(.d,.e)`/`:is(.d,.e)` → `:is(.a.c,.d,.e)`),
+  compound/combinator kept as one branch (`.d.e` → `:is(.a.c,.d.e)`, `.d>.e` → `:is(.a.c,.d>.e)`).
+- **Non-positional whole consume → APPEND, not flatten:** `:is(.a,.b).c` f `.c.a` (find atoms out of target
+  position order) → `:is(.a,.b).c,.d`. This is the sole discriminator between flatten and full-append.
+- **Partial-of-a-branch does NOT cross:** `:is(.a.z,.b).c` f `.a.c` (find `.a` is only part of branch `.a.z`)
+  → oracle NOT_FOUND; own returns UNSUPPORTED (fail-loud, was UNSUPPORTED before — no regression).
+No walk-bug / EXPECTED-DIVERGENCE surfaced. extend-index 172→185; full extend suite 571→584/0; no regressions.
+
 ### NEXT RUNG — the UNSUPPORTED frontier (why each is gated, not wrong)
-1. **`:is` boundary-cross flatten (PARTIAL)** — `:is(.a,.b).c` f `.a.c` PARTIAL → `:is(.a.c,.d)` (distributes the
-   sibling `.c` INTO each `:is` branch). Full mode is done; partial-flatten stays `UNSUPPORTED` (`buildGraftCompound`).
-2. **`&`/ampersand targets, constructor-atom / OR finds** — still gated in `extendByIndexOwn`.
-3. **Multi-compound find against a graft-bearing target** — `buildGraftBranch` currently requires a single-compound find.
+1. **`:is` partial-of-branch → NOT_FOUND vs UNSUPPORTED** — `:is(.a.z,.b).c` f `.a.c` correctly does NOT
+   flatten, but the own engine emits UNSUPPORTED where the oracle emits NOT_FOUND (a compound `:is` branch
+   the find only partially reaches). Fail-loud-safe, but a clean NOT_FOUND classification is the next tighten.
+2. **`:is` boundary-cross flatten (FULL, with an unmatched trailing atom)** — `:is(.a,.b).c.x` f `.a.c` FULL
+   → oracle unchanged (`:is(.a,.b).c.x`); own returns UNSUPPORTED (proper-subset-in-full through a graft).
+3. **`&`/ampersand targets, constructor-atom / OR finds** — still gated in `extendByIndexOwn`.
+4. **Multi-compound find against a graft-bearing target** — `buildGraftBranch` currently requires a single-compound find.
 Closing these + wiring `processExtendsByIndex` to `context`/`&`-hoist is the path to full corpus coverage.
 
 ## Non-goals (for the validated prototype)
