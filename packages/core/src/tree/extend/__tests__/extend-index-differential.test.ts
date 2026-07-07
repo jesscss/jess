@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { el, sel, sellist, compound, is, co, type Selector } from '../../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { F_IMPLICIT_AMPERSAND } from '../../node.js';
-import { extendSelector } from '../extend.js';
+import { extendSelector } from '../../util/extend.js';
 import { extendByIndex } from '../extend-index.js';
 
 /** Ampersand whose parent-reference (graft target) is `parent`; `implicit` sets the nesting flag. */
@@ -307,27 +307,11 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
       }));
     });
 
-    // RELATIVE-PARTIAL GATE (surfaced finding — NOT in the doc's model): a crossing IS
-    // detected (find matches parent-grafted, not empty), but `partial && subject is a complex
-    // selector led by a combinator (> &.child)` DOWNGRADES it to in-place — NO hoist:
-    // `> :is(.parent.child, .ext)`.
-    it('(gate: relative partial) > &.child[.parent] find .parent.child partial → in-place, NO hoist', () => {
-      assertSame(() => ({
-        target: sel([co('>'), compound([ampWith(el('.parent')), el('.child')])]),
-        find: compound([el('.parent'), el('.child')]),
-        extendWith: el('.ext'),
-        partial: true
-      }));
-    });
-    // Same shape FULL → the gate requires `partial`, so it hoists: `> .parent.child` [hoist].
-    it('(gate off in full) > &.child[.parent] find .parent.child FULL → hoist', () => {
-      assertSame(() => ({
-        target: sel([co('>'), compound([ampWith(el('.parent')), el('.child')])]),
-        find: compound([el('.parent'), el('.child')]),
-        extendWith: el('.ext'),
-        partial: false
-      }));
-    });
+    // NOTE: the former "relative-partial gate" cases (a hand-built `> &.child` subject — a
+    // root-level leading-`>` ComplexSelector) were PURGED: that is not a reachable/well-formed
+    // input (a real `.parent { > &.child }` composes to `.parent > .parent.child` or lives
+    // nested; a dangling-`>` standalone never reaches extend). See EXTEND-INDEX-DESIGN.md
+    // "Gate 1 (WITHDRAWN)" + the reachable-inputs METHODOLOGY note.
 
     // IMPLICIT `& .b` (parent .a): crossing (find .a .b matches only grafted form) → hoist.
     it('(cross) implicit & .b[.a] find .a .b partial → hoist', () => {

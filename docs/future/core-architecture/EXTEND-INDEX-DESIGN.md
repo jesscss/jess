@@ -42,6 +42,12 @@ exactly what matching wants.** Oracle-verify: a find with its OWN dupe (`.b.b`) 
 as `{b}` (set semantics) — confirm. And `all`-substitution when the found atom appears twice (`.b.b.c` find
 `.b`) — which occurrence(s) get replaced — is oracle-defined; pin it, don't invent.
 
+**SURFACED (differential-probed, 2026-07-06): full-match dup eligibility is ASYMMETRIC** — the doc's
+"set-containment" model did NOT predict this. `.b.b.c` find `.b.c` → **FULL** (append), but `.foo.foo`
+find `.foo` → **NOT full** (unchanged). Pinned exactly: `full ⟺ deduped-set-equal AND (atom counts equal
+OR ≥2 distinct classes)`. Encoded in `compoundFullEligible`. Real oracle semantics, flagged as a surfaced
+asymmetry — whether it's PRINCIPLED or accreted is an owner judgment (the prototype makes it testable).
+
 ## Representation lifecycle — a cached PROJECTION, not the parse-time primary rep
 The IR is DERIVED and transient — computed lazily (at latest, when extend lifts the scoped set) and cached
 on the selector. It is NOT the selector's primary representation, and should NOT be built at parse time as
@@ -180,6 +186,31 @@ flow and re-validate against full-render output (`all-less` byte-identical).
   `extend-selector-algorithm.test.ts`, `extend-combinator-handling.test.ts`,
   `extend-ampersand-boundary.test.ts`, `find-extendable-locations.test.ts`.
 - Gate: differential test green for each landed case; core suite unaffected (new files only). No push.
+
+## PROTOTYPE STATUS (2026-07-06) — own-construction validated, delegation OFF
+All prototype files live in `packages/core/src/tree/extend/` (sibling to `util/`; the real extend engine
+stays in `util/`). Not exported → bundle-excluded.
+- **`extendByIndexOwn` CONSTRUCTS output itself** — no `extendSelector`/`applyExtendsToSelector` fallback;
+  cloning-free (no `.clone()`/`composeSelector`/`copySelectorTreeForExtend`/`selectorCompare`). Unbuildable
+  shapes return an exported `UNSUPPORTED` sentinel (fail-loud, never silent delegation).
+- **Real-corpus proof (delegation off):** copies of the existing extend suites drive `extendByIndexOwn`,
+  byte-compared to the `extendSelector` oracle (`corpus-harness.ts`, throws on any MISMATCH). Own-engine PASS:
+  simplified 12/13, algorithm 25/35, combinator 7/7; 132 tests green across `tree/extend/`, full extend
+  suite 529 pass / 0 fail (no regressions). **The thin cloning-free construction reproduces the walk
+  byte-identically on every covered case** — the core validation of the whole idea, for the non-graft set.
+- **`processExtendsByIndex`** (design + core prototyped): lift scoped selectors → IR worklist fixpoint
+  (fire-once, chained/transitive) → materialize once; differential-tested vs `applyExtendsToSelector` 8/8
+  incl. `.a→.b→.c→.d`. Scope = bucketing precondition. Not yet wired to `context`/`&`-hoist (honest: own
+  construction doesn't build `&`/`:is`-graft outputs yet, so wiring would just relay `UNSUPPORTED`).
+
+### NEXT RUNG — the UNSUPPORTED frontier (why each is gated, not wrong)
+1. **Extending INTO a graft target** — `find`/target is `:is(...)`/`:not(...)`/pseudo-with-selector-arg;
+   needs graft-aware recursion INTO the branch (the discovery already recurses for `:is` on the subject
+   side; this is the extend-INTO side).
+2. **Remainder-splitting** — `.a>.b.c` find `.a>.b` partial → oracle emits `.a>.b.c, .c.d`; the own
+   construction doesn't yet split the unmatched remainder into a sibling.
+Both gate cleanly to `UNSUPPORTED`. Closing them + wiring `processExtendsByIndex` to `context`/`&`-hoist is
+the path to full corpus coverage and the end-to-end cloning-free win.
 
 ## Non-goals (for the validated prototype)
 Minimal-hoist (output change); replacing the walk (only after full-suite byte-identical); touching the
