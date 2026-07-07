@@ -42,11 +42,22 @@ exactly what matching wants.** Oracle-verify: a find with its OWN dupe (`.b.b`) 
 as `{b}` (set semantics) — confirm. And `all`-substitution when the found atom appears twice (`.b.b.c` find
 `.b`) — which occurrence(s) get replaced — is oracle-defined; pin it, don't invent.
 
-**SURFACED (differential-probed, 2026-07-06): full-match dup eligibility is ASYMMETRIC** — the doc's
-"set-containment" model did NOT predict this. `.b.b.c` find `.b.c` → **FULL** (append), but `.foo.foo`
-find `.foo` → **NOT full** (unchanged). Pinned exactly: `full ⟺ deduped-set-equal AND (atom counts equal
-OR ≥2 distinct classes)`. Encoded in `compoundFullEligible`. Real oracle semantics, flagged as a surfaced
-asymmetry — whether it's PRINCIPLED or accreted is an owner judgment (the prototype makes it testable).
+**DUP FULL-MATCH — OWNER-RULED: the walk is BUGGY here; do NOT enshrine it.** Two matching questions,
+two semantics: PARTIAL/`all` = set-containment (dedup fine — "is the find INSIDE the target"); FULL/exact =
+**consume-all / multiset** ("is the find EXACTLY the target — every target atom consumed"). A leftover dup
+means NOT full. So `.b.b.c` find `.b.c` → **NOT_FOUND** (the 2nd `.b` is stranded) and `.foo.foo` find
+`.foo` → **NOT_FOUND** (2nd `.foo` stranded). The current walk (`extendSelector`) gets `.foo.foo` right but
+`.b.b.c` WRONG (returns FULL via a set-dedup shortcut that drops the stranded atom). The extend-corpus agent
+faithfully reverse-engineered that quirk into `compoundFullEligible` (`full ⟺ dedup-set-equal AND (counts
+equal OR ≥2 distinct classes)`) — **that is reproducing a bug and must be REPLACED** with the correct rule:
+`full ⟺ target atoms all consumed (multiset-equal)`. The prototype should DELIBERATELY DIVERGE from the walk
+on `.b.b.c` find `.b.c`, and `extend.ts` (the walk) has a real dup-full bug to fix separately.
+
+**METHODOLOGY (load-bearing — the walk is NOT ground truth):** byte-identical-to-`extendSelector` is the
+gate for REAL cases, but where the walk is wrong, matching it reproduces the bug. So a prototype↔walk
+divergence is OWNER-ARBITRATED: usually "fix the prototype," sometimes "the walk is wrong — prototype does
+the correct thing, walk gets fixed." Track those as `EXPECTED-DIVERGENCE` cases (prototype asserts the
+CORRECT output, not the walk's) + a walk-bug list. This makes the prototype a walk-bug FINDER, not a replica.
 
 ## Representation lifecycle — a cached PROJECTION, not the parse-time primary rep
 The IR is DERIVED and transient — computed lazily (at latest, when extend lifts the scoped set) and cached
