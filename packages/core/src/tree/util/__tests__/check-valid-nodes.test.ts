@@ -50,4 +50,17 @@ describe('checkValidNodes', () => {
     expect(() => checkValidNodes([])).not.toThrow();
     expect(() => checkValidNodes(undefined)).not.toThrow();
   });
+
+  it('throws property-in-root for a Declaration hoisted to the root via a call-output block', () => {
+    // A mixin / detached-ruleset call at the top level wraps its declarations in a
+    // Rules block; isRoot + inRootBlock marks a Declaration reached through one.
+    const decl = new Declaration({ name: 'prop', value: '1' });
+    expect(() => checkValidNodes([decl], undefined, true, true))
+      .toThrow(/Properties must be inside selector blocks/i);
+  });
+
+  it('does not flag a bare root Declaration (nil-selector stream, not call output)', () => {
+    const decl = new Declaration({ name: 'prop', value: '1' });
+    expect(() => checkValidNodes([decl], undefined, true, false)).not.toThrow();
+  });
 });
