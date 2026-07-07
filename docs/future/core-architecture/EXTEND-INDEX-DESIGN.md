@@ -52,6 +52,13 @@ faithfully reverse-engineered that quirk into `compoundFullEligible` (`full ⟺ 
 equal OR ≥2 distinct classes)`) — **that is reproducing a bug and must be REPLACED** with the correct rule:
 `full ⟺ target atoms all consumed (multiset-equal)`. The prototype should DELIBERATELY DIVERGE from the walk
 on `.b.b.c` find `.b.c`, and `extend.ts` (the walk) has a real dup-full bug to fix separately.
+**CONFIRMED (direct probe): `extendSelector(.b.b.c, .b.c, .ext, full)` → `.b.b.c,.ext`** (should be unchanged);
+owner-verified as a **Less 4.x incompatibility** ("a full match must go side-to-side on one OR path").
+**LOCATED:** `findExtendableLocations` (via `matchSelectors`, `selector-match-core.ts:2066`) mis-classifies
+the compound location as FULL — the deduped keyset can't see the extra `.b`, so the stranded atom isn't
+recorded as a remainder. Fix: a full compound match must CONSUME ALL target simples (count/multiset), else
+partial-with-remainder (`areCompoundSelectorsEquivalent` already has the length check; this location-
+classification path bypasses it). Output-changing → surface any test/golden baking in `.b.b.c,.ext` for review.
 
 **METHODOLOGY (load-bearing — the walk is NOT ground truth):** byte-identical-to-`extendSelector` is the
 gate for REAL cases, but where the walk is wrong, matching it reproduces the bug. So a prototype↔walk
