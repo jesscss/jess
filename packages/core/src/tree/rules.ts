@@ -3614,26 +3614,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             ...options,
             searchParents: false
           };
-          resolved = ruleset.findRulesetNamespacePathFast(
+          resolved = ruleset.resolveNamespaceRemainder(
             path,
+            remainderStart,
             nestedOptions,
-            remainderStart
+            terminalFilterType
           );
-          if (resolved === undefined) {
-            resolved = ruleset.findMixinNamespacePathFast(
-              path,
-              undefined,
-              nestedOptions,
-              remainderStart
-            );
-          }
-          if (resolved === undefined) {
-            resolved = ruleset.findMixin(
-              collectKeyRemainder(path, remainderStart),
-              terminalFilterType,
-              nestedOptions
-            );
-          }
         }
         if (resolved?.length) {
           if (!accumulate) {
@@ -3702,26 +3688,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (remainderLength === 1) {
         resolved = ruleset.findMixin(keys[consumed.length]!, terminalFilterType, nestedOptions);
       } else {
-        resolved = ruleset.findRulesetNamespacePathFast(
+        resolved = ruleset.resolveNamespaceRemainder(
           keys,
+          consumed.length,
           nestedOptions,
-          consumed.length
+          terminalFilterType
         );
-        if (resolved === undefined) {
-          resolved = ruleset.findMixinNamespacePathFast(
-            keys,
-            undefined,
-            nestedOptions,
-            consumed.length
-          );
-        }
-        if (resolved === undefined) {
-          resolved = ruleset.findMixin(
-            collectKeyRemainder(keys, consumed.length),
-            terminalFilterType,
-            nestedOptions
-          );
-        }
       }
       if (resolved?.length) {
         return { entries: resolved, owned: false };
@@ -3841,22 +3813,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         remainder ??= keys[1]!;
         nested = entryRules.findMixin(remainder, terminalFilterType, nestedOptions);
       } else if (nested === undefined) {
-        nested = entryRules.findRulesetNamespacePathFast(
+        nested = entryRules.resolveNamespaceRemainder(
           keys,
+          1,
           nestedOptions,
-          1
+          terminalFilterType
         );
-        if (nested === undefined) {
-          nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
-        }
-        if (nested === undefined) {
-          remainder ??= collectKeyRemainder(keys, 1);
-          nested = entryRules.findMixin(
-            remainder,
-            terminalFilterType,
-            nestedOptions
-          );
-        }
       }
       if (nested?.length) {
         if (resolved === undefined) {
@@ -4038,6 +4000,33 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return this.findMixinPath(keys, filterType, options);
     }
     return undefined;
+  }
+
+  /**
+   * Resolve the tail of a namespace path (everything after a consumed prefix or
+   * a matched head namespace) uniformly: a namespace is a namespace, so ruleset-
+   * form and mixin-form segments resolve through the same ordered fallthrough
+   * (ruleset-form path, then mixin-form path, then the generic key lookup). This
+   * is the single remainder resolver the three namespace walks all delegate to.
+   */
+  private resolveNamespaceRemainder(
+    path: string[],
+    offset: number,
+    nestedOptions: CallableFindOptions,
+    terminalFilterType: 'Mixin' | undefined
+  ): MixinEntry[] | undefined {
+    let resolved = this.findRulesetNamespacePathFast(path, nestedOptions, offset);
+    if (resolved === undefined) {
+      resolved = this.findMixinNamespacePathFast(path, undefined, nestedOptions, offset);
+    }
+    if (resolved === undefined) {
+      resolved = this.findMixin(
+        collectKeyRemainder(path, offset),
+        terminalFilterType,
+        nestedOptions
+      );
+    }
+    return resolved;
   }
 
   /**
