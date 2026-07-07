@@ -79,7 +79,6 @@ import {
   type RulesEntryLike
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
-import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
@@ -4722,9 +4721,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private evalForRender(context: Context, sourceWasRoot: boolean): MaybePromise<RulesRenderState> {
-    if (canRenderStaticRulesDirectly(this)) {
-      return createRulesRenderState(this, this, sourceWasRoot);
-    }
     if (this.registrationPrepared) {
       const output = this.eval(context);
       const toState = (rules: Rules): RulesRenderState => createRulesRenderState(this, rules, sourceWasRoot);

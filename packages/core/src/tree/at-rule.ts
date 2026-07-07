@@ -22,7 +22,6 @@ import {
 } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, copyWithReusableLeavesPreservingComments, reuseLeaf, copyNodesForOwnership } from './util/cloning.js';
 import { withRulesContext } from './util/context.js';
-import { canRenderStaticRuleArrayDirectly } from './util/static-rules.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -90,7 +89,6 @@ type AtRuleBodyEvalRecord = {
   evalFrame: AtRule;
   resultNode?: AtRule | Nil;
   bodyRules?: Rules;
-  renderSourceBody?: boolean;
   clearRulesetFrames: boolean;
   restoreRulesetFrames: () => void;
   registration?: AtRuleBodyRegistrationState;
@@ -890,7 +888,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     }
   ): AtRuleBodyEvalRecord {
     const evalFrame = this;
-    const sourceRules = this;
     let hasRulesetFrame = false;
     for (let i = 0; i < context.frames.length; i++) {
       if (isNode(context.frames[i], N.Ruleset)) {
@@ -909,19 +906,10 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const hasHoistedRulesetParent = context.bubbleRootAtRules
       && this.isRootOnly()
       && hasRulesetFrame;
-    const renderSourceBody = Boolean(
-      sourceRules
-      && canRenderStaticRuleArrayDirectly(sourceRules.rules)
-      && !context.opts.output?.collapseNesting
-      && !hasHoistedRulesetParent
-    );
-    const bodyRules = renderSourceBody
-      ? undefined
-      : createAtRuleBodyEvalSurface(this, context);
+    const bodyRules = createAtRuleBodyEvalSurface(this, context);
     return {
       source: this,
       evalFrame,
-      ...(renderSourceBody ? { renderSourceBody } : undefined),
       ...(bodyRules ? { bodyRules } : undefined),
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
@@ -1650,9 +1638,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       return node;
     };
     const finishBodyEval = (): MaybePromise<AtRule> => {
-      if (bodyEvalRecord.renderSourceBody) {
-        return finishVisibility();
-      }
       let rules = bodyEvalRecord.bodyRules ?? createAtRuleBodyEvalSurface(node, context);
       if (rules) {
         const out = source.runBodyEvalInvocation(context, bodyEvalRecord, node, (restoreBodyEvalContext) => {

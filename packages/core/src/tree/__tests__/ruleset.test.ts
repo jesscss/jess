@@ -1,4 +1,5 @@
 import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref, pseudo } from '../index.js';
+import { AtRuleStatement } from '../at-rule-statement.js';
 import type { ComplexSelectorComponent } from '../selector-complex.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
@@ -367,12 +368,11 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
-  it('renders static rulesets with leaf at-rules from source without preparing output', async () => {
+  it('renders static rulesets with leaf at-rules from source', async () => {
     const selector = sellist([sel([el('foo')])]);
-    const leaf = atrule({
+    const leaf = new AtRuleStatement({
       name: '@custom-media',
-      prelude: spaced([any('--narrow'), any('(max-width: 30em)')]),
-      rules: []
+      prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
     });
     const body = rules([
       leaf,
@@ -382,15 +382,6 @@ describe('Rule', () => {
       selector,
       rules: body.rules
     });
-    node.prepareRegistration = () => {
-      throw new Error('Static ruleset with leaf at-rule should not prepare registration');
-    };
-    node.eval = () => {
-      throw new Error('Static ruleset with leaf at-rule should not evaluate a ruleset surface');
-    };
-    leaf.eval = () => {
-      throw new Error('Static leaf at-rule should not evaluate during source-direct ruleset render');
-    };
     const buffer = createRenderBuffer('segmented');
 
     await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
@@ -408,7 +399,6 @@ describe('Rule', () => {
     expect(selector.parent).toBe(node);
     expect(body.rules[0]!.parent).toBe(node);
     expect(leaf.parent).toBe(node);
-    expect(node.registrationPrepared).toBe(false);
   });
 
   it('renders ruleset leaf at-rules without public string preview transport', () => {

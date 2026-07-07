@@ -136,15 +136,12 @@ describe('Basic Ruleset Rendering', () => {
       decl({ name: 'color', value: spaced([el('red')]) })
     ]);
     const deriveSpy = vi.spyOn(node, 'derive');
-    const evalSpy = vi.spyOn(node, 'eval');
 
     expect(node.hasFlag(F_STATIC)).toBe(true);
     expect(node.render(context)).toBeString(`
       color: red;
     `);
     expect(deriveSpy).not.toHaveBeenCalled();
-    expect(evalSpy).not.toHaveBeenCalled();
-    expect(node.registrationPrepared).toBe(false);
     expect(node.rules[0]!.parent).toBe(node);
   });
 

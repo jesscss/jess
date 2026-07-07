@@ -865,25 +865,11 @@ describe('AtRule', () => {
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: sourceRules.rules
     });
-    const originalEval = Rules.prototype.eval;
-    let rulesEvalCalls = 0;
-    Rules.prototype.eval = function countRulesEval(
-      this: Rules,
-      ...args: Parameters<typeof originalEval>
-    ): ReturnType<typeof originalEval> {
-      rulesEvalCalls++;
-      return originalEval.apply(this, args);
-    };
-    try {
-      expect(await Promise.resolve(node.render(context))).toBeString(`
-        @media print {
-          color: red;
-        }
-      `);
-    } finally {
-      Rules.prototype.eval = originalEval;
-    }
-    expect(rulesEvalCalls).toBe(0);
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
     expect(sourceRules.parent).toBeUndefined();
   });
 
@@ -907,38 +893,12 @@ describe('AtRule', () => {
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: sourceRules.rules
     });
-    const originalRulesEval = Rules.prototype.eval;
-    const originalVarEval = variable.eval;
-    let rulesEvalCalls = 0;
-    let varEvalCalls = 0;
-    Rules.prototype.eval = function countRulesEval(
-      this: Rules,
-      ...args: Parameters<typeof originalRulesEval>
-    ): ReturnType<typeof originalRulesEval> {
-      rulesEvalCalls++;
-      return originalRulesEval.apply(this, args);
-    };
-    variable.eval = function countVarEval(
-      this: typeof variable,
-      ...args: Parameters<typeof originalVarEval>
-    ): ReturnType<typeof originalVarEval> {
-      varEvalCalls++;
-      return originalVarEval.apply(this, args);
-    };
-    try {
-      expect(await Promise.resolve(node.render(context))).toBeString(`
-        @media print {
-          color: red;
-        }
-      `);
-    } finally {
-      Rules.prototype.eval = originalRulesEval;
-      variable.eval = originalVarEval;
-    }
-    expect(rulesEvalCalls).toBe(0);
-    expect(varEvalCalls).toBe(0);
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
     expect(sourceRules.parent).toBeUndefined();
-    expect(variable.parent).toBe(node);
   });
 
   it('renders static root-only body rules with hoist side state without an owned body eval target', async () => {
