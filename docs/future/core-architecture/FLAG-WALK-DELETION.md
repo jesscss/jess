@@ -297,9 +297,20 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
   reconstructible from collapse+nestability+ancestry → INTRINSIC eval output (like the composed selector itself),
   not flag-walk state. Empirically load-bearing: disabling the stamp → 4 core regressions incl. the
   `.body { @media print { &-1 } }` collapse fixtures. **LEAVE IT.** (Agent stopped + proved it; nothing changed.)
-- **Next candidate:** AtRule ROOT_ONLY hoist stamp (`at-rule.ts:925/1621`, `output:{hoistToRoot:true}`, guarded by
-  `bubbleRootAtRules && isRootOnly() && hasRulesetFrame`). Two guards are walk-visible; only `hasRulesetFrame` is
-  eval-only, but the walk owns the ancestor chain → likely reconstructible. Investigate before touching it.
+- **Slice 3 (AtRule ROOT_ONLY hoist stamp) — DONE** (dev `ef23a7c5a`). RELOCATED like Slice 1. `AtRule.isHoisted`
+  now derives the root-only case from serialize-visible state (`bubbleRootAtRules` via `options.context`,
+  `isRootOnly()` node method, `hasRulesetAncestor()` = nearest-Ruleset walk of `node.parent`) instead of the
+  eval-captured `output.hoistToRoot`. Deleted the dead plumbing: `AtRuleBodyOutputState`, the record `output`
+  field, `ownsOutput` (+ its forced `withParts` copy), the `record.output` bake, `runtimeHoist`, and
+  `atRuleHoistNode`/`atRuleHoistOverride` in PrintOptions. `clearRulesetFrames` (same guard) is genuine eval-time
+  frame-clearing, NOT the hoist decision — left intact. Net −22 source lines. Byte-identical across 15,607 lines
+  (all 4 collapse×bubble combos), core 2979/0, bench neutral. **Root at-rule hoisting is now fully off eval —
+  both AtRule.frames (Slice 1) and the hoist stamp (Slice 3) relocated to the walk.**
+- **Next candidates (the remaining `_prepareForEval` structural work — the big, coupled D1 pieces):** (a) selector
+  composition (`&` substitution) → ruleset-enter + deferred selector slot; (b) extend-gather → in-walk (COUPLES
+  with the extend engine — serialize against the extend-index rung work); (c) registration/lookup-identity →
+  construction-time name index (`_isStatic`/`_hasStaticName`, `_prepareRegistrationOnce`). Each is
+  investigate-first (feasibility + scoped design, not a blind rewrite), one render-walk slice at a time.
 
 - **Phase A1 — DONE** (dev `6de3c0cc7`). `F_MAY_ASYNC` deleted entirely (bit `0b10` freed); sync/async
   guards → reactive attempt-sync/isThenable-bail; dead sync-twin helpers removed. Byte-identical,
