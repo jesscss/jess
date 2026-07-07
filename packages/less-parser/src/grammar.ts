@@ -369,7 +369,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const extendBody = sepBy(g.ExtendTarget, literal(','));
   // `:extend(` body `)` — the in-selector pseudo form (selectors.ts `extend`).
   const ExtendPseudo = node('ExtendPseudo',
-    parser({ trivia: rw }, sequence(pseudoColon, literal('extend'), literal('('), extendBody, expect(literal(')'), ')'))));
+    parser({ trivia: rw }, sequence(pseudoColon, literal('extend'), literal('('), extendBody, expect(literal(')')))));
   // `&:extend(...)` statement, terminated by `;` (selectors.ts `ampersandExtend`).
   // The leading `&` is REQUIRED: the reference's `ampersandExtend` does an
   // unconditional `$.CONSUME(T.Ampersand)`, so a bare `:extend(...)` is NOT a valid
@@ -382,7 +382,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
 
   // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
   const Ruleset = node('Ruleset',
-    parser({ trivia: rw }, sequence(g.SelectorList, optional(g.Guard), literal('{'), g.declarationList, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(g.SelectorList, optional(g.Guard), literal('{'), g.declarationList, expect(literal('}')))));
   // A nested mixin DEFINITION inside a rule body: `.name(args) [guard] { … }`.
   // Strict — requires the `()` arg list AND a `{}` body, so it never matches a
   // plain declaration or a `.name { }` ruleset. (declarationList only had MixinCall,
@@ -438,9 +438,9 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const cpInnerContent = regex(/(?:\\[^\n]|[^(){}[\]'"\/\\])+|\/(?!\*)/);
   const cpOuterContent = regex(/(?:\\[^\n]|[^(){}[\];'"\/\\])+|\/(?!\*)/);
   const cpInner = many(choice(cpInnerContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr));
-  const cpParen = sequence(literal('('), g.cpInner, expect(literal(')'), ')'));
-  const cpSquare = sequence(literal('['), g.cpInner, expect(literal(']'), ']'));
-  const cpCurly = sequence(literal('{'), g.cpInner, expect(literal('}'), '}'));
+  const cpParen = sequence(literal('('), g.cpInner, expect(literal(')')));
+  const cpSquare = sequence(literal('['), g.cpInner, expect(literal(']')));
+  const cpCurly = sequence(literal('{'), g.cpInner, expect(literal('}')));
   const cpValue = noTrivia(many(choice(cpOuterContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr)));
   const CustomDeclaration = node('CustomDeclaration',
     parser({ trivia: rw }, sequence(choice(customPropInterp, customProp), literal(':'),
@@ -572,14 +572,14 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const namespaceAhead = regex('(?=[.#]-?[_a-zA-Z\\u0080-\\uffff])');
   const parenItem = choice(sequence(namespaceAhead, g.valueSequence), parenExpr);
   const parenExprList = parser({ trivia: rw }, sequence(parenItem, many(sequence(literal(','), parenItem))));
-  const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.parenExprList, many(sequence(literal(';'), optional(g.parenExprList))))), expect(literal(')'), ')')));
+  const parenBody = parser({ trivia: rw }, sequence(optional(sequence(g.parenExprList, many(sequence(literal(';'), optional(g.parenExprList))))), expect(literal(')'))));
   // Permissive paren body (the pre-expression valueList form). Used ONLY by
   // GluedParen — a `(` glued (no space) to a preceding selector/accessor token,
   // i.e. mixin-reference ARGS (`.mixin1(@foo: bar)`, `#ns.x(.valToGet[])`), which
   // hold arbitrary named args / accessor chains, not arithmetic. A `(` with space
   // before it (or at value start) is a real value paren and takes the strict
   // single-expression `parenBody` above, so `(12 (13))` still errors.
-  const permissiveParenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), expect(literal(')'), ')')));
+  const permissiveParenBody = parser({ trivia: rw }, sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), expect(literal(')'))));
   // A bare detached ruleset `{ … }` in value / function-argument position → a Mixin.
   const DetachedRuleset = node('DetachedRuleset', parser({ trivia: rw }, sequence(literal('{'), g.declarationList, literal('}'))));
   // Function-call arguments are their OWN production (parity with the Chevrotain
@@ -635,7 +635,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(calcProduct, many(sequence(sumOp, calcProduct)))), undefined, { collapse: true });
   const calcSequence = parser({ trivia: rw }, oneOrMore(calcSum));
   const calcList = parser({ trivia: rw }, sequence(calcSequence, many(sequence(literal(','), calcSequence))));
-  const calcBody = parser({ trivia: rw }, sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')'), ')')));
+  const calcBody = parser({ trivia: rw }, sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')'))));
   // `CalcCall` (calc(…)) and the plain value-position `Paren` come from the shared
   // `parenRules` fragment (spread below); they defer to g.calcBody / g.parenBody here.
   const Call = node('Call', parser({ trivia: rw }, sequence(ident, literal('('), functionCallArgs)));
@@ -678,13 +678,13 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // `value` so the keyword routes here; every other name falls to `Call`.
   const BooleanCall = node('BooleanCall',
     parser({ trivia: rw }, sequence(
-      regex(/boolean(?![-\w])/i), literal('('), g.CondOr, expect(literal(')'), ')')
+      regex(/boolean(?![-\w])/i), literal('('), g.CondOr, expect(literal(')'))
     )));
   const IfCall = node('IfCall',
     parser({ trivia: rw }, sequence(
       regex(/if(?![-\w])/i), literal('('), g.CondOr,
       optional(sequence(literal(','), callArgSeq, optional(sequence(literal(','), callArgSeq)))),
-      expect(literal(')'), ')')
+      expect(literal(')'))
     )));
 
   // ── Deprecated Less `%()` string-format function ─────────────────────────────
@@ -718,10 +718,10 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // brace via `expect`), so it stays here and reads `g.queryPrelude` from the fragment.
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node('QueryAtRuleBlock',
-    parser({ trivia: rw }, sequence(queryAtKeyword, g.queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(queryAtKeyword, g.queryPrelude, expect(literal('{')), g.atRuleBody, expect(literal('}')))));
 
   const AtRuleBlock = node('AtRuleBlock',
-    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}')))));
 
   // ── Structured, committed import statement (@import / @-import / @-export) ────
   // The flat `atPrelude` also swallows a bare ident before the path, so
@@ -739,7 +739,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(
       importKeyword, optional(importOptionsParen),
       expect(choice(g.Url, g.Quoted), 'import path'),
-      optional(importMedia), expect(literal(';'), ';')
+      optional(importMedia), expect(literal(';'))
     )));
 
   const AtRuleStatement = node('AtRuleStatement',

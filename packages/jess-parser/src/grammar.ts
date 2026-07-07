@@ -56,7 +56,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // position. Renders back as `$[foo]` / `$['foo']`.
   const interpKey = regex(/'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const DollarInterp = node('DollarInterp',
-    noTrivia(sequence(literal('$'), literal('['), parser({ trivia: rw }, sequence(interpKey, expect(literal(']'), ']'))))));
+    noTrivia(sequence(literal('$'), literal('['), parser({ trivia: rw }, sequence(interpKey, expect(literal(']')))))));
 
   // ── Interpolation in SELECTORS ───────────────────────────────────────────────
   // `.widget-$[side]` → InterpolatedSelector wrapping an Interpolated (source with
@@ -122,7 +122,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const exprCompare = node('Condition',
     noTrivia(sequence(g.exprSum, optional(sequence(compareOp, g.exprSum)))), undefined, { collapse: true });
   const Expression = node('Expression',
-    parser({ trivia: rw }, sequence(literal('$('), g.exprCompare, expect(literal(')'), ')'))));
+    parser({ trivia: rw }, sequence(literal('$('), g.exprCompare, expect(literal(')')))));
 
   // ── Unwrapped leading-`$var` arithmetic (value position) ─────────────────────
   // A targeted relaxation of the double-`$` rule: in value position, arithmetic
@@ -182,7 +182,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
       collKey, literal(':'), choice(g.JessCollection, g.valueList), optional(literal(';'))
     )));
   const JessCollection = node('Collection',
-    parser({ trivia: rw }, sequence(literal('{'), many(g.CollectionEntry), expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(literal('{'), many(g.CollectionEntry), expect(literal('}')))));
 
   // ── Control flow: `$if` / `$else` / `$for` / `$while` ────────────────────────
   // Control-flow keywords start with `$`, but the parenthesised header EXITS
@@ -197,7 +197,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const condKeyword = node('JessKeyword', regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/));
   const condAtom = choice(g.Reference, g.Dimension, g.Num, g.Color, g.Quoted, condKeyword);
   const condNot = node('Condition',
-    parser({ trivia: rw }, sequence(regex(/not(?![-\w])/), literal('('), g.condOr, expect(literal(')'), ')'))));
+    parser({ trivia: rw }, sequence(regex(/not(?![-\w])/), literal('('), g.condOr, expect(literal(')')))));
   const condPrimary = choice(
     g.condNot,
     parser({ trivia: rw }, sequence(literal('('), g.condOr, literal(')'))),
@@ -212,19 +212,19 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const condOr = node('Condition',
     parser({ trivia: rw }, sequence(g.condAnd, many(sequence(regex(/or(?![-\w])/), g.condAnd)))),
     undefined, { collapse: true });
-  const controlBody = parser({ trivia: rw }, sequence(literal('{'), g.declarationList, expect(literal('}'), '}')));
+  const controlBody = parser({ trivia: rw }, sequence(literal('{'), g.declarationList, expect(literal('}'))));
 
   // `$if (cond) { … } [$else if (cond) { … }]* [$else { … }]`
   const elseClause = parser({ trivia: rw }, sequence(regex(/\$else(?![-\w])/),
-    choice(sequence(regex(/if(?![-\w])/), literal('('), g.condOr, expect(literal(')'), ')'), controlBody), controlBody)));
+    choice(sequence(regex(/if(?![-\w])/), literal('('), g.condOr, expect(literal(')')), controlBody), controlBody)));
   const If = node('If',
     parser({ trivia: rw }, sequence(
-      regex(/\$if(?![-\w])/), literal('('), g.condOr, expect(literal(')'), ')'), controlBody, many(g.elseClause)
+      regex(/\$if(?![-\w])/), literal('('), g.condOr, expect(literal(')')), controlBody, many(g.elseClause)
     )));
 
   // `$while (cond) { … }`
   const While = node('While',
-    parser({ trivia: rw }, sequence(regex(/\$while(?![-\w])/), literal('('), g.condOr, expect(literal(')'), ')'), controlBody)));
+    parser({ trivia: rw }, sequence(regex(/\$while(?![-\w])/), literal('('), g.condOr, expect(literal(')')), controlBody)));
 
   // `$for (<binding> of <iterable>) { … }`
   //   binding : `$x` | `$x, $i` | `[$k, $v]`  (destructure)
@@ -247,7 +247,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(
       regex(/\$for(?![-\w])/), literal('('),
       forBinding, regex(/of(?![-\w])/), choice(g.forRange, g.Reference, g.value),
-      expect(literal(')'), ')'), controlBody
+      expect(literal(')')), controlBody
     )));
 
   // ── Mixins ───────────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(
       mixinName, literal('('), mixinParams, literal(')'),
       optional(g.mixinGuard),
-      literal('{'), g.declarationList, expect(literal('}'), '}')
+      literal('{'), g.declarationList, expect(literal('}'))
     )));
 
   // CALL: `$ > <chain>(args)`. The call operator is `$ >` ONLY. A chain step is a
@@ -285,7 +285,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(
       literal('$'), literal('>'),
       callStep, many(sequence(literal('>'), callStep)),
-      literal('('), callArgs, expect(literal(')'), ')'),
+      literal('('), callArgs, expect(literal(')')),
       optional(literal(';'))
     )));
 
@@ -321,10 +321,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // The inner is a selector list; the builder coerces the (possibly string) inner
   // selector to a proper Selector node so writeSyntax/eval have a real node.
   const SelectorCapture = node('SelectorCapture',
-    noTrivia(sequence(
-      literal('*'), literal('['),
-      parser({ trivia: rw }, sequence(g.SelectorList, expect(literal(']'), ']')))
-    )));
+    sequence(literal('*['), g.SelectorList, expect(literal(']'))));
 
   // ── `$apply` — selectors as mixins ───────────────────────────────────────────
   // `$apply .rounded, .shadow;` — applies (calls) rulesets as mixins. Surface is
@@ -402,13 +399,13 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
         sequence(
           literal('('), mixinParams, literal(')'),
           choice(
-            sequence(literal('>'), literal('{'), g.declarationList, expect(literal('}'), '}')),
+            sequence(literal('>'), literal('{'), g.declarationList, expect(literal('}'))),
             sequence(literal('>'), g.valueSequence),
-            sequence(literal('{'), g.declarationList, expect(literal('}'), '}'))
+            sequence(literal('{'), g.declarationList, expect(literal('}')))
           )
         ),
         // `@{ body }` — no params
-        sequence(literal('{'), g.declarationList, expect(literal('}'), '}'))
+        sequence(literal('{'), g.declarationList, expect(literal('}')))
       )
     )));
 
@@ -427,7 +424,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     ))));
 
   const Ruleset = node('Ruleset',
-    parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}')))));
 
   const declarationList = parser({ trivia: rw }, many(choice(
     g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,

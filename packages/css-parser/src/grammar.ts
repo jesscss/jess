@@ -65,7 +65,7 @@ export const cssGrammar = rules((g: any) => {
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
   const Ruleset = node('Ruleset',
-    parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}')))));
 
   // ── Selectors ──────────────────────────────────────────────────────────────
   const SelectorList = node('SelectorList',
@@ -164,7 +164,7 @@ export const cssGrammar = rules((g: any) => {
   const sumOp = regex(/[-+](?![0-9.])|(?<=\S)[-+](?=[0-9.])/);
   // A math operand is a value whose nested parens fold (calcParen), unlike the
   // general permissive `Paren`. Everything else matches the ordinary value set.
-  const calcParen = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.mathSum, expect(literal(')'), ')'))));
+  const calcParen = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.mathSum, expect(literal(')')))));
   const calcValue = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, calcParen, g.Quoted, g.anyValue);
   const mathProduct = node('Operation',
     parser({ trivia: rw }, sequence(calcValue, many(sequence(prodOp, calcValue)))), undefined, { collapse: true });
@@ -188,7 +188,7 @@ export const cssGrammar = rules((g: any) => {
   // `calc(…)` body is ONE math expression (folded in the grammar) — the only place
   // plain CSS folds operators. Matched before the generic `Call` so `calc(` routes
   // here; other math functions (min/max/clamp) stay generic Calls with list args.
-  const calcBody = parser({ trivia: rw }, sequence(g.mathSum, expect(literal(')'), ')')));
+  const calcBody = parser({ trivia: rw }, sequence(g.mathSum, expect(literal(')'))));
   // `CalcCall` (calc(…)) and the general value-position `Paren` come from the shared
   // `parenRules` fragment (spread below) — they defer to g.calcBody / g.parenBody here.
   // `Quoted` likewise comes from the `stringRules` fragment.
@@ -203,7 +203,7 @@ export const cssGrammar = rules((g: any) => {
   // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node('QueryAtRuleBlock',
-    parser({ trivia: rw }, sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.atRuleBody, expect(literal('}')))));
 
   // ── At-rules ───────────────────────────────────────────────────────────────
   /**
@@ -230,7 +230,7 @@ export const cssGrammar = rules((g: any) => {
   // falling through to the opaque unknown-at-rule rule.
   const knownBlockAtKeyword = regex(/@(?:media|container|supports|layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
   const AtRuleBlock = node('AtRuleBlock',
-    parser({ trivia: rw }, sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}')))));
   const opaqueAtBody = scanTo(literal('}'), { skip: [balanced('{', '}'), singleStr, doubleStr, comment] });
   const UnknownAtRuleBlock = node('UnknownAtRuleBlock',
     parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), opaqueAtBody, literal('}'))));

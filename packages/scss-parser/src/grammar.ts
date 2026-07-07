@@ -56,7 +56,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const important = sequence(literal('!'), literal('important'));
 
   const ScssInterpBare = node('ScssInterpBare',
-    parser({ trivia: rw }, sequence(literal('#'), literal('{'), g.valueSequence, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(literal('#'), literal('{'), g.valueSequence, expect(literal('}')))));
 
   const InterpValue = node('InterpValue',
     parser({ trivia: rw }, scssInterpKey));
@@ -76,7 +76,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       ScssMapPair,
       many(sequence(literal(','), ScssMapPair)),
       optional(literal(',')),
-      expect(literal(')'), ')')
+      expect(literal(')'))
     )));
   const scssHashName = regex(/#-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const ScssIdentValue = node('ScssIdentValue',
@@ -85,10 +85,10 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       optional(choice(
         sequence(
           literal('.'), literal('\\'), choice(scssHashName, dotName),
-          literal('('), optional(g.ScssCallArgsInner), expect(literal(')'), ')')
+          literal('('), optional(g.ScssCallArgsInner), expect(literal(')'))
         ),
         sequence(literal('.'), scssVar),
-        sequence(dotName, literal('('), optional(g.ScssCallArgsInner), expect(literal(')'), ')'))
+        sequence(dotName, literal('('), optional(g.ScssCallArgsInner), expect(literal(')')))
       ))
     )));
 
@@ -161,7 +161,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(
       literal('{'),
       many(ScssNestedDecl),
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
 
   const Declaration = node('Declaration',
@@ -213,7 +213,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
 
   // A `{ … }` block body → Rules (statements come from atRuleBody).
   const ScssRules = node('ScssRules',
-    parser({ trivia: rw }, sequence(literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(literal('{'), g.atRuleBody, expect(literal('}')))));
 
   const ifKw = regex(/@if(?![-\w])/i);
   const elseKw = regex(/@else(?![-\w])/i);
@@ -282,7 +282,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       many(sequence(literal(','), optional(g.ScssCallArg)))
     ))));
   const optionalCallParens = optional(sequence(
-    literal('('), g.ScssCallArgsInner, expect(literal(')'), ')')
+    literal('('), g.ScssCallArgsInner, expect(literal(')'))
   ));
 
   // Mixin parameter: `...$rest`, `$rest...`, `$a: default`, or bare `$a`.
@@ -299,7 +299,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
         g.ScssMixinParam,
         many(sequence(literal(','), optional(g.ScssMixinParam)))
       )),
-      expect(literal(')'), ')')
+      expect(literal(')'))
     )));
 
   // Mixin/include name: `foo`, module-qualified `ns.foo`, or `foo-#{$bar}`.
@@ -312,7 +312,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     )));
 
   const ScssDeclBody = node('ScssDeclBody',
-    parser({ trivia: rw }, sequence(literal('{'), g.declarationList, expect(literal('}'), '}'))));
+    parser({ trivia: rw }, sequence(literal('{'), g.declarationList, expect(literal('}')))));
 
   const ScssMixin = node('ScssMixin',
     parser({ trivia: rw }, sequence(
@@ -321,7 +321,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
 
   const ScssIncludeUsing = node('ScssIncludeUsing',
     parser({ trivia: rw }, sequence(
-      usingKw, literal('('), sepBy(scssVar, literal(',')), expect(literal(')'), ')')
+      usingKw, literal('('), sepBy(scssVar, literal(',')), expect(literal(')'))
     )));
 
   const ScssInclude = node('ScssInclude',
@@ -343,7 +343,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     )));
 
   const ScssReturn = node('ScssReturn',
-    parser({ trivia: rw }, sequence(returnKw, g.valueList, expect(literal(';'), ';'))));
+    parser({ trivia: rw }, sequence(returnKw, g.valueList, expect(literal(';')))));
 
   // ── @use / @forward / @import / @extend ───────────────────────────────────
   // Faithful ports of scssUseAtRule / scssForwardAtRule / importAtRule /
@@ -373,7 +373,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(
       literal('('),
       optional(sepBy(ScssWithConfigEntry, literal(','))),
-      expect(literal(')'), ')')
+      expect(literal(')'))
     )));
 
   const ScssUseAs = node('ScssUseAs',
@@ -384,7 +384,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       useKw, g.Quoted,
       optional(ScssUseAs),
       optional(sequence(kwWith, ScssWithConfig)),
-      expect(literal(';'), ';')
+      expect(literal(';'))
     )));
 
   const forwardExtra = optional(scanTo(
@@ -396,7 +396,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       forwardKw, g.Quoted,
       forwardExtra,
       optional(sequence(kwWith, ScssWithConfig)),
-      expect(literal(';'), ';')
+      expect(literal(';'))
     )));
 
   const scssPlaceholder = regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -412,7 +412,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(
       extendKw, ScssExtendTarget,
       optional(extendOptional),
-      expect(literal(';'), ';')
+      expect(literal(';'))
     )));
 
   const importOptionsParen = sequence(
@@ -431,7 +431,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       importKw,
       optional(importOptionsParen),
       sepBy(ScssImportItem, literal(',')),
-      expect(literal(';'), ';')
+      expect(literal(';'))
     )));
 
   const atRootKw = regex(/@at-root(?![-\w])/i);
@@ -443,7 +443,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     parser({ trivia: rw }, sequence(
       choice(debugKw, warnKw, errorKw),
       g.valueSequence,
-      expect(literal(';'), ';')
+      expect(literal(';'))
     )));
 
   const ScssAtRootFilter = node('ScssAtRootFilter',
@@ -492,16 +492,16 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       optional(g.Guard),
       literal('{'),
       declarationList,
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node('QueryAtRuleBlock',
     parser({ trivia: rw }, sequence(
       queryAtKeyword,
       scssPermissivePrelude,
-      expect(literal('{'), '{'),
+      expect(literal('{')),
       atRuleBody,
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
   const scopeKw = regex(/@scope(?![-\w])/i);
   const ScssScopeBlock = node('ScssScopeBlock',
@@ -510,7 +510,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       scssPermissivePrelude,
       literal('{'),
       atRuleBody,
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
   const layerKw = regex(/@layer(?![-\w])/i);
   const ScssLayerBlock = node('ScssLayerBlock',
@@ -519,7 +519,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       optional(ScssInterpolatedName),
       literal('{'),
       atRuleBody,
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
   const Stylesheet = node('Stylesheet',
     parser({ trivia: rw }, many(choice(
