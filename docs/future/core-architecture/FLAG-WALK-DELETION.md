@@ -343,6 +343,35 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
     `:5670` selector branch ask the node, not a bubbled flag. Overlaps `selector-*.ts` → serialize against the
     extend/selector track.
   - **class 2 reuse gates + extend-gather → in-walk** remain the deep single-render-pass pieces (dynamic-leaf-share).
+
+- **Slice — class-2 reuse-gate deletion — INVESTIGATED, verdict (c) BLOCKED by the deep rework** (no code; read-only).
+  Two corrections to the endgame framing above:
+  1. **Class-2 is NOT the last bubbled reader** — the "only class-2 remains" premise was WRONG. The gates
+     (`canReuseAsLeaf` node-base:1171, `canReuseLeaf` cloning.ts:12, `canReuseStaticScalarLeaf` callable-binding:5)
+     read `!F_NON_STATIC`/`F_STATIC` **and** `!F_HAS_NODE_CHILD` (both bubbled). `F_HAS_NODE_CHILD`'s ONLY readers
+     are these three gates → it deletes precisely WITH class-2 (doc was right there). BUT there is a THIRD bubbled
+     population the plan mis-filed under class-1: **container-type static short-circuits** in `evalNode`/`resolve`/
+     `render` — List/Sequence/AtRule/AtRuleStatement/QueryCondition/SelectorCapture/Declaration/Rules do NOT set
+     `F_STATIC` in their constructors, so their `this.hasFlag(F_STATIC)` reads are BUBBLED and live
+     (`sequence.ts:360/459`, `list.ts:303/383`, `at-rule.ts:842/1755`, `at-rule-statement.ts:76/134`,
+     `query-condition.ts:301/424`, `selector-capture.ts:88`, `declaration.ts:1474/2012`, `rules.ts:6956` +
+     selector/value branches `rules.ts:5540/5656/5661`). A3's scope-correction already flagged these survive to C4.
+  2. **Class-2 copies are still load-bearing** (not dead-under-always-share): the SHARE branch is freeze-safe, but
+     the COPY branch is forced by placement that MUTATES the node — `inherit`'s unconditional source-span +
+     `F_VISIBLE/F_EXTENDED/F_GENERATED` writes (collapse-survivor `selector-complex.ts:367`, extend `:3467`) and
+     per-placement arg identity (`cloneBoundValue`). Removing them corrupts the shared tree / aliases dynamic args.
+  **Revised path to C4 (delete `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`propagateFlagsFrom`) — retire ALL of:**
+  (1) class-2 reuse gates [needs the reparent / dynamic-leaf-share rework]; (2) the container static short-circuits
+  [need reactive fall-through byte-identical + render fast-paths relocated — Phase D]; (3) the C4-prereq
+  name/selector-local `isInterpolated`/`nameIsStatic` predicate [retires class-3 + `rules.ts:5656`]; (4)
+  callable-guard static → guard-local (`callable-guard.ts`, `callable-candidate-execution.ts:72`); (5) type-guard
+  value-checks (`scope-frame.ts:491`, `reference.ts:194/2577`). `F_HAS_NODE_CHILD` falls with (1).
+  **VERDICT: C4 is gated on the DEEP single-render-pass / reparent / dynamic-leaf-share rework — twice-investigated
+  (inherit REJECTED, now class-2 BLOCKED) and reprofiled as <1% self-time.** Items (3)(4)(5) are landable now as
+  reader-retirement (shrink the set, code-health), but do NOT reach C4 alone. (1)+(2) are the multi-slice coupled
+  piece. **DECISION POINT (owner):** land the incremental reader-retirements (3/4/5) + bank Phase D's completed
+  relocations (hoist/composition/D2), and PARK the flag deletion behind the single-render-pass project — OR commit
+  to that deep rework now (high-regression, not a perf lever).
   - Also: `getFullComposedForm` (`extend-roots.ts:320`) re-walks the parent chain inside extend instead of sharing
     the walk's `composedSelectorStack` — a candidate for the extend track.
 
