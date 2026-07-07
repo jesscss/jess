@@ -783,26 +783,19 @@ interface OwnMatch {
 }
 
 /**
- * Full-match eligibility for a compound (oracle-pinned; see corpus probes):
- * full ⟺ deduped SET-equal AND (atom counts equal OR ≥2 distinct classes).
+ * Full-match eligibility for a compound: a FULL (exact) compound match must CONSUME ALL
+ * target atoms — i.e. the target and find compounds are MULTISET-equal. Any stranded
+ * target atom the find does not replicate (including a target-side duplicate) makes the
+ * match PARTIAL-with-remainder, not full. `compoundSubset` has already established set
+ * containment at the call site, so multiset equality reduces to equal atom counts.
  *
- * The dup edge is subtle and oracle-defined:
- *   `.b.c`  find `.b.c`  → full   (equal counts)
- *   `.b.b.c` find `.b.c` → FULL   (set-equal, 2 distinct classes; extra `.b` is a dup)
- *   `.b.b`  find `.b.b`  → full   (equal counts)
- *   `.foo.foo` find `.foo` → NOT full  (set-equal but 1 class AND find has fewer atoms)
- * i.e. a single-class compound with a target-side duplicate the find does not replicate is a
- * PARTIAL match, but a multi-class compound tolerates target-side dups for full match. This is
- * a surfaced oracle asymmetry (reported in the frontier), reproduced here exactly — not invented.
+ *   `.b.c`   find `.b.c` → full   (all target atoms consumed)
+ *   `.b.b`   find `.b.b` → full   (all target atoms consumed)
+ *   `.b.b.c` find `.b.c` → NOT full (extra `.b` stranded → partial-with-remainder)
+ *   `.foo.foo` find `.foo` → NOT full (extra `.foo` stranded)
  */
 function compoundFullEligible(find: IrCompound, target: IrCompound): boolean {
-  if (find.syms.size !== target.syms.size) {
-    return false;
-  }
-  if (find.atoms.length === target.atoms.length) {
-    return true;
-  }
-  return target.syms.size >= 2;
+  return find.atoms.length === target.atoms.length;
 }
 
 /**

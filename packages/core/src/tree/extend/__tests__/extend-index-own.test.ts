@@ -85,7 +85,7 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
   });
 
   describe('1c. duplicate atoms', () => {
-    it('.b.b.c find .b.c full → matches (dup ignored by bitset)', () => {
+    it('.b.b.c find .b.c full → unchanged (stranded .b → not a full match)', () => {
       same(() => ({
         target: compound([el('.b'), el('.b'), el('.c')]),
         find: compound([el('.b'), el('.c')]),

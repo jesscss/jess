@@ -1250,12 +1250,24 @@ function trySmallCompoundExtendMatch(
         }
       }
 
-      // Calculate remainder after removing matched value
-      const remainderComponents = target.value.filter(targetComp =>
-        typeof targetComp !== 'string' && !find.value.some(findComp =>
-          typeof findComp !== 'string' && compoundComponentMatches(findComp, targetComp)
-        )
-      );
+      // Calculate remainder as a MULTISET difference: each find atom consumes exactly
+      // ONE distinct target atom. Target atoms the find does not consume (including
+      // extra duplicates) are the remainder. A stranded leftover — e.g. the second
+      // `.b` in `.b.b.c` find `.b.c` — makes this a PARTIAL match, not a full one.
+      const consumed = new Array<boolean>(target.value.length).fill(false);
+      for (const findComp of find.value) {
+        if (typeof findComp === 'string') {
+          continue;
+        }
+        for (let ti = 0; ti < target.value.length; ti++) {
+          const targetComp = target.value[ti]!;
+          if (!consumed[ti] && typeof targetComp !== 'string' && compoundComponentMatches(findComp, targetComp)) {
+            consumed[ti] = true;
+            break;
+          }
+        }
+      }
+      const remainderComponents = target.value.filter((_, ti) => !consumed[ti]);
 
       const selectorRemainders = remainderComponents.filter((c): c is SimpleSelector => typeof c !== 'string');
       const remainders: Selector[] = selectorRemainders.length === 0

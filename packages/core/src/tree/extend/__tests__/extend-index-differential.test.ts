@@ -105,11 +105,12 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
     });
   });
 
-  // ── Case 1c: DUPLICATES — ordered list keeps dupes, match-bitset dedupes ──
-  // Matching is set-CONTAINMENT (not multiset): .b.b.c matches exactly the finds .b.c does.
-  // Output must round-trip dupes verbatim; the substitution slot rule is oracle-defined.
-  describe('1c. duplicate atoms (set-containment match, dup-preserving output)', () => {
-    it('(match) .b.b.c find .b.c full → matches (dupe in target ignored by bitset)', () => {
+  // ── Case 1c: DUPLICATES — a FULL match must consume ALL target atoms ──
+  // A full (exact) compound match is MULTISET-equal: every target atom is consumed by the
+  // find. A stranded duplicate (the extra `.b` in `.b.b.c` find `.b.c`) is NOT a full match.
+  // Partial mode is still set-CONTAINMENT (`.b.b.c` contains `.b.c`).
+  describe('1c. duplicate atoms (full match consumes all target atoms)', () => {
+    it('(no full match) .b.b.c find .b.c full → unchanged (stranded .b → not full)', () => {
       assertSame(() => ({
         target: compound([el('.b'), el('.b'), el('.c')]),
         find: compound([el('.b'), el('.c')]),
