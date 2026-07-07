@@ -389,10 +389,7 @@ function getHoistedParent(
     return undefined;
   }
   const atRule = node as AtRule;
-  const runtimeHoist = options.atRuleHoistNode === atRule
-    ? options.atRuleHoistOverride
-    : undefined;
-  const hoisted = runtimeHoist ?? atRule.isHoisted(options);
+  const hoisted = atRule.isHoisted(options);
   if (!atRule.isNestable() || atRule.isRootOnly() || !hoisted) {
     return undefined;
   }
@@ -630,9 +627,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
     }
 
-    const hoisted = isNode(node, N.AtRule) && options.atRuleHoistNode === node
-      ? (options.atRuleHoistOverride ?? node.isHoisted(options))
-      : node.isHoisted(options);
+    const hoisted = node.isHoisted(options);
     // const isRuleset = isNode(node, 'Ruleset');
     const treeFrames = options.treeFrames!;
     const renderRulesBody = () => {

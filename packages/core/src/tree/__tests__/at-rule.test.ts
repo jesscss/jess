@@ -1057,34 +1057,31 @@ describe('AtRule', () => {
     expect(node.getRenderRules()).toBe(node.rules);
   });
 
-  it('returns an owned at-rule when body eval changes hoist output', async () => {
-    const parentFrame = ruleset({
-      selector: el('.parent'),
-      rules: []
-    });
+  it('hoists a root-only at-rule out of a ruleset at serialize time without an eval-baked flag', async () => {
     context = new Context({ bubbleRootAtRules: true });
-    context.frames = [parentFrame];
-    const node = atrule({
-      name: '@font-face',
-      rules: [
-        decl({ name: 'font-family', value: any('Jess') })
-      ]
-    });
+    const node = rules([
+      ruleset({
+        selector: el('.parent'),
+        rules: [
+          atrule({
+            name: '@font-face',
+            rules: [
+              decl({ name: 'font-family', value: any('Jess') })
+            ]
+          }),
+          decl({ name: 'color', value: any('red') })
+        ]
+      })
+    ]);
 
-    const evaluated = await Promise.resolve(node.eval(context));
+    const css = await renderNodeToString(node, context, { context });
 
-    expect(evaluated).toBeInstanceOf(AtRule);
-    expect(evaluated).not.toBe(node);
-    expect(node.hoistToRoot).toBeUndefined();
-    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
-    if (!(evaluated instanceof AtRule)) {
-      throw new Error('Expected AtRule eval result');
-    }
-    expect(evaluated.hoistToRoot).toBe(true);
-    expect(evaluated.isHoisted({ collapseNesting: false })).toBe(true);
-    expect(evaluated.toTrimmedString()).toBeString(`
+    expect(css).toBeString(`
       @font-face {
         font-family: Jess;
+      }
+      .parent {
+        color: red;
       }
     `);
   });
@@ -1590,8 +1587,7 @@ describe('AtRule', () => {
     expect(resolved).not.toBe(node);
     expect(resolved.rules).not.toBe(sourceRules.rules);
     expect(resolved.getRenderRules()).toBe(resolved.rules);
-    expect(resolved.hoistToRoot).toBe(true);
-    expect(resolved.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(resolved.hoistToRoot).toBeUndefined();
     expect(resolved.toTrimmedString()).toBeString(`
       @keyframes spin {
         to {

@@ -85,10 +85,6 @@ type AtRuleBodyRegistrationContext = {
   savedRulesetFrames: Context['rulesetFrames'] | undefined;
 };
 
-export type AtRuleBodyOutputState = {
-  hoistToRoot?: boolean;
-};
-
 type AtRuleBodyEvalRecord = {
   source: AtRule;
   evalFrame: AtRule;
@@ -100,7 +96,6 @@ type AtRuleBodyEvalRecord = {
   registration?: AtRuleBodyRegistrationState;
   evaluatedPrelude?: Node;
   evaluatedBody?: Rules;
-  output?: AtRuleBodyOutputState;
   visible?: boolean;
   layerName?: string;
   frameCount: number;
@@ -352,14 +347,12 @@ function createAtRuleBodyEvalRecordState(
   context: Context,
   options: {
     evaluatedPrelude?: Node;
-    output?: AtRuleBodyOutputState;
     writeEvaluatedPrelude?: boolean;
     writeVisibility?: boolean;
   } = {}
 ): Pick<
   AtRuleBodyEvalRecord,
   | 'evaluatedPrelude'
-  | 'output'
   | 'frameCount'
   | 'extendRootStackLength'
   | 'writeEvaluatedPrelude'
@@ -367,7 +360,6 @@ function createAtRuleBodyEvalRecordState(
 > {
   return {
     evaluatedPrelude: options.evaluatedPrelude,
-    output: options.output,
     frameCount: context.frames.length,
     extendRootStackLength: context.extendRoots.extendRootStack.length,
     writeEvaluatedPrelude: options.writeEvaluatedPrelude ?? true,
@@ -453,10 +445,7 @@ function createAtRuleEvalResultNode(
     record.evaluatedBody
     && record.evaluatedBody.rules !== source.rules
   );
-  const ownsOutput = Boolean(
-    record.output?.hoistToRoot !== undefined && record.output.hoistToRoot !== source.hoistToRoot
-  );
-  if (!ownsEvaluatedPrelude && !ownsEvaluatedBody && !ownsOutput) {
+  if (!ownsEvaluatedPrelude && !ownsEvaluatedBody) {
     return source;
   }
   return applyAtRuleBodyPublicResultState(
@@ -466,7 +455,7 @@ function createAtRuleEvalResultNode(
       rules: source.rules
     }),
     record,
-    ownsEvaluatedBody || ownsOutput ? record.evaluatedBody : undefined
+    ownsEvaluatedBody ? record.evaluatedBody : undefined
   );
 }
 
@@ -598,11 +587,6 @@ function applyAtRuleBodyPublicResultState(
   }
   if (record.visible === false) {
     node.removeFlag(F_VISIBLE);
-  }
-  if (record.output) {
-    if (record.output.hoistToRoot !== undefined) {
-      node.hoistToRoot = record.output.hoistToRoot;
-    }
   }
   return node;
 }
@@ -794,8 +778,29 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     return false;
   }
 
-  isHoisted(opts: { collapseNesting?: boolean }) {
-    return this.hoistToRoot ?? Boolean(opts.collapseNesting && this.isNestable());
+  private hasRulesetAncestor(): boolean {
+    let ancestor = this.parent;
+    while (ancestor) {
+      if (isNode(ancestor, N.Ruleset)) {
+        return true;
+      }
+      ancestor = ancestor.parent;
+    }
+    return false;
+  }
+
+  isHoisted(opts: { collapseNesting?: boolean; context?: Context }) {
+    if (this.hoistToRoot !== undefined) {
+      return this.hoistToRoot;
+    }
+    if (
+      opts.context?.bubbleRootAtRules
+      && this.isRootOnly()
+      && this.hasRulesetAncestor()
+    ) {
+      return true;
+    }
+    return Boolean(opts.collapseNesting && this.isNestable());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -922,7 +927,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       restoreRulesetFrames: () => undefined,
       ...createAtRuleBodyEvalRecordState(context, {
         evaluatedPrelude,
-        output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined,
         writeEvaluatedPrelude: options.writeEvaluatedPrelude,
         writeVisibility: options.writeVisibility
       })
@@ -965,8 +969,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions,
     evaluatedPrelude?: Node,
-    evaluatedBody?: Rules,
-    runtimeHoist?: boolean
+    evaluatedBody?: Rules
   ): string {
     const printState = isRenderBuffer(bufferOrOptions)
       ? prepareBufferPrintState(context, options)
@@ -975,8 +978,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const priorHeaderPrelude = printState.atRuleHeaderPrelude;
     const priorBodyNode = printState.atRuleBodyNode;
     const priorBodyOverride = printState.atRuleBodyOverride;
-    const priorHoistNode = printState.atRuleHoistNode;
-    const priorHoistOverride = printState.atRuleHoistOverride;
     if (evaluatedPrelude) {
       printState.atRuleHeaderNode = node;
       printState.atRuleHeaderPrelude = evaluatedPrelude;
@@ -984,10 +985,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     if (evaluatedBody !== undefined) {
       printState.atRuleBodyNode = node;
       printState.atRuleBodyOverride = evaluatedBody;
-    }
-    if (runtimeHoist !== undefined) {
-      printState.atRuleHoistNode = node;
-      printState.atRuleHoistOverride = runtimeHoist;
     }
     try {
       const rendered = serializeRulesContainer(node, printState);
@@ -999,8 +996,6 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       printState.atRuleHeaderPrelude = priorHeaderPrelude;
       printState.atRuleBodyNode = priorBodyNode;
       printState.atRuleBodyOverride = priorBodyOverride;
-      printState.atRuleHoistNode = priorHoistNode;
-      printState.atRuleHoistOverride = priorHoistOverride;
     }
   }
 
@@ -1014,17 +1009,13 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     const evaluatedBody = resultNode instanceof Nil
       ? undefined
       : record.evaluatedBody;
-    const runtimeHoist = record.output?.hoistToRoot !== this.hoistToRoot
-      ? record.output?.hoistToRoot
-      : undefined;
     return this.serializeAtRule(
       this,
       context,
       bufferOrOptions,
       options,
       record.evaluatedPrelude,
-      evaluatedBody && evaluatedBody.rules !== this.rules ? evaluatedBody : undefined,
-      runtimeHoist
+      evaluatedBody && evaluatedBody.rules !== this.rules ? evaluatedBody : undefined
     );
   }
 
@@ -1617,8 +1608,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         // back onto it would poison later evaluations of the same node (e.g. a
         // mixin called twice with different args). The evaluated prelude is
         // carried on the record and applied to the fresh output copy instead.
-        writeEvaluatedPrelude: false,
-        output: hasHoistedRulesetParent ? { hoistToRoot: true } : undefined
+        writeEvaluatedPrelude: false
       })
     };
     const out = this.evalBodyNode(context, record);
