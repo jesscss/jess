@@ -11,8 +11,23 @@
  */
 import { describe, it, expect } from 'vitest';
 import { el, sel, sellist, compound, is, co, type Selector } from '../../../index.js';
+import { Ampersand } from '../../ampersand.js';
+import { F_IMPLICIT_AMPERSAND } from '../../node.js';
 import { extendSelector } from '../extend.js';
 import { extendByIndex } from '../extend-index.js';
+
+/** Ampersand whose parent-reference (graft target) is `parent`; `implicit` sets the nesting flag. */
+function ampWith(parent: Selector, implicit = false): Ampersand {
+  const created = Ampersand.create({ selectorContainer: { selector: parent } });
+  if (!(created instanceof Ampersand)) {
+    throw new Error('expected Ampersand');
+  }
+  if (implicit) {
+    created.generated = true;
+    created.addFlag(F_IMPLICIT_AMPERSAND);
+  }
+  return created;
+}
 
 type Input = Parameters<typeof extendSelector>[0];
 type Result = ReturnType<typeof extendSelector>;
@@ -249,12 +264,113 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
   });
 
   // ── Case 6: & seams (child-only / crossing→hoist / parent-only→drop) ────
+  // extendByIndex OWNS the classification: a two-probe IR differential (find matches the
+  // parent-grafted RESOLVED form ∧ NOT the amp-dropped EMPTY form ⇒ crossing) plus the
+  // decision gates surfaced by PROBE (see extend-index.ts §`&` SEAM and the report).
   describe('6. ampersand seam', () => {
     it('.a > .b > .c find .a > .c NOT contiguous → :is span or NOT_FOUND (oracle-defined)', () => {
       assertSame(() => ({
         target: sel([el('.a'), co('>'), el('.b'), co('>'), el('.c')]),
         find: sel([el('.a'), co('>'), el('.c')]),
         extendWith: el('.q'),
+        partial: true
+      }));
+    });
+
+    // CROSSING → HOIST: &.bar (parent .foo), find .foo.bar → the find matches only the
+    // parent-grafted form ⇒ hoist to root: `.foo.bar,\n.a`.
+    it('(cross) &.bar[.foo] find .foo.bar partial → hoist', () => {
+      assertSame(() => ({
+        target: compound([ampWith(el('.foo')), el('.bar')]),
+        find: compound([el('.foo'), el('.bar')]),
+        extendWith: el('.a'),
+        partial: true
+      }));
+    });
+    it('(cross) &.bar[.foo] find .foo.bar FULL → hoist', () => {
+      assertSame(() => ({
+        target: compound([ampWith(el('.foo')), el('.bar')]),
+        find: compound([el('.foo'), el('.bar')]),
+        extendWith: el('.a'),
+        partial: false
+      }));
+    });
+
+    // CHILD-ONLY → in-place: find matches the amp-dropped form (.bar) ⇒ extend the child
+    // material only, amp preserved: `.foo:is(.bar, .a)` (amp renders as its resolved value).
+    it('(child) &.bar[.foo] find .bar partial → in-place :is()', () => {
+      assertSame(() => ({
+        target: compound([ampWith(el('.foo')), el('.bar')]),
+        find: el('.bar'),
+        extendWith: el('.a'),
+        partial: true
+      }));
+    });
+
+    // RELATIVE-PARTIAL GATE (surfaced finding — NOT in the doc's model): a crossing IS
+    // detected (find matches parent-grafted, not empty), but `partial && subject is a complex
+    // selector led by a combinator (> &.child)` DOWNGRADES it to in-place — NO hoist:
+    // `> :is(.parent.child, .ext)`.
+    it('(gate: relative partial) > &.child[.parent] find .parent.child partial → in-place, NO hoist', () => {
+      assertSame(() => ({
+        target: sel([co('>'), compound([ampWith(el('.parent')), el('.child')])]),
+        find: compound([el('.parent'), el('.child')]),
+        extendWith: el('.ext'),
+        partial: true
+      }));
+    });
+    // Same shape FULL → the gate requires `partial`, so it hoists: `> .parent.child` [hoist].
+    it('(gate off in full) > &.child[.parent] find .parent.child FULL → hoist', () => {
+      assertSame(() => ({
+        target: sel([co('>'), compound([ampWith(el('.parent')), el('.child')])]),
+        find: compound([el('.parent'), el('.child')]),
+        extendWith: el('.ext'),
+        partial: false
+      }));
+    });
+
+    // IMPLICIT `& .b` (parent .a): crossing (find .a .b matches only grafted form) → hoist.
+    it('(cross) implicit & .b[.a] find .a .b partial → hoist', () => {
+      assertSame(() => ({
+        target: sel([ampWith(el('.a'), true), co(' '), el('.b')]),
+        find: sel([el('.a'), co(' '), el('.b')]),
+        extendWith: el('.ext'),
+        partial: true
+      }));
+    });
+    it('(cross) implicit & .b[.a] find .a .b FULL → hoist', () => {
+      assertSame(() => ({
+        target: sel([ampWith(el('.a'), true), co(' '), el('.b')]),
+        find: sel([el('.a'), co(' '), el('.b')]),
+        extendWith: el('.ext'),
+        partial: false
+      }));
+    });
+    // IMPLICIT `& .b` child-only: find .b matches the amp-dropped form → in-place: `.a :is(.b, .ext)`.
+    it('(child) implicit & .b[.a] find .b partial → in-place', () => {
+      assertSame(() => ({
+        target: sel([ampWith(el('.a'), true), co(' '), el('.b')]),
+        find: el('.b'),
+        extendWith: el('.ext'),
+        partial: true
+      }));
+    });
+
+    // PARENT-ONLY GATE: &.bar[.foo] find .foo — find matches ONLY the parent, not child .bar.
+    // Simple-find full & partial-no-whole-location both collapse to NOT_FOUND (parent carries it).
+    it('(parent-only) &.bar[.foo] find .foo full → NOT_FOUND', () => {
+      assertSame(() => ({
+        target: compound([ampWith(el('.foo')), el('.bar')]),
+        find: el('.foo'),
+        extendWith: el('.ext'),
+        partial: false
+      }));
+    });
+    it('(parent-only) &.bar[.foo] find .foo partial → NOT_FOUND', () => {
+      assertSame(() => ({
+        target: compound([ampWith(el('.foo')), el('.bar')]),
+        find: el('.foo'),
+        extendWith: el('.ext'),
         partial: true
       }));
     });

@@ -89,6 +89,25 @@ to the inner/parent region is not a real match at this level" rule, enforced at 
   needs owner sign-off, out of scope for the oracle-validated build. Model it as: rewrite output carries a
   `placement` target; today it's binary {this-level, root}, minimal-hoist would make it level-indexed.)
 
+### `&` crossing — VERIFIED representation + TWO extra gates (differential-probed, 2026-07-06)
+- **Representation confirmed:** post-eval `&` is NOT flattened — it stays an `Ampersand` node holding a
+  parent REFERENCE (`_selectorContainer.selector`, read via `getResolvedSelector()`); composition is on
+  demand. The doc's graft model is correct. The oracle classifies crossing via a **two-probe differential**
+  (`checkAmpersandCrossingDuringExtension`, extend.ts:3384): build the RESOLVED form (graft parent at the `&`
+  position) and the EMPTY form (drop `&` + trailing implicit-space combinator); `crossed ⇔ find matches
+  RESOLVED ∧ ¬find matches EMPTY`. Reproducible in-IR with ZERO node cloning (bitset subset tests over the
+  lifted parent) — vs the oracle's two `selectorCompare` calls on fully-materialized `copySelectorTreeForExtend`
+  clones. **Future-slim signal:** the oracle's per-amp double-clone+compare is heavier than the semantics need.
+- **A crossing does NOT always hoist — two gates the child/cross/parent+hoist model missed:**
+  1. **Relative-partial downgrade** (extend.ts:1594): when `partial` AND crossing reason is `resolved-only`
+     AND the subject is a combinator-led `ComplexSelector` (relative, e.g. `> &.child`), the crossing is
+     downgraded to IN-PLACE (`> :is(.parent.child, .ext)`), NOT hoisted. The SAME shape in FULL mode hoists.
+  2. **Simple-find parent-only → NOT_FOUND** (extend.ts:1589 full-skip + :1622 partial whole-location gate):
+     a simple find matching ONLY the parent portion (`&.bar` parent `.foo`, find `.foo`) collapses to
+     `NOT_FOUND` (both modes) — i.e. "parent-only" is `NOT_FOUND` for simple finds, not a plain drop.
+  So the refined `&` rule: crossing → hoist-to-root, EXCEPT (1) partial + resolved-only + relative subject →
+  in-place `:is()`; (2) simple-find parent-only → NOT_FOUND. These are REAL jess semantics, not model bugs.
+
 ## Rewrite (closed constructor ops — stays in the IR)
 Only three outcomes, all landing back in the algebra:
 1. add an OR-branch (`Or` gains a `Seq`);

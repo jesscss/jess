@@ -396,6 +396,229 @@ function compoundHasConstructorAtom(c: IrCompound): boolean {
 }
 
 /**
+ * ── THE `&` (AMPERSAND) SEAM — discovery OWNS the classification ────────────
+ *
+ * INVESTIGATION FINDING (verified against extend.ts + ampersand.ts, PROBE-traced):
+ *
+ * Post-eval, `&` is NOT flattened into the concrete selector. It stays an `Ampersand`
+ * node holding a REFERENCE to the parent (`_selectorContainer.selector`, via
+ * `getResolvedSelector()`); the composed/substituted form is produced ON DEMAND. So the
+ * graft model of the design doc is correct: `&` is a first-class graft atom carrying its
+ * parent. (An amp compound `valueOf()`s as its resolved form, e.g. `&.bar` → `.foo.bar`,
+ * but that is on-demand composition, not a flattened tree.)
+ *
+ * The oracle (`checkAmpersandCrossingDuringExtension`) classifies a match by a TWO-PROBE
+ * differential over the WHOLE subject selector, per amp node with a resolved parent:
+ *   • RESOLVED form  — graft the parent at the `&` position    (`replaceAmpersandWithItsValue`)
+ *   • EMPTY form     — drop `&` (+ trailing implicit-space combinator) (`replaceAmpersandWithEmpty`)
+ * Then: `crossed` ⇔ (find matches RESOLVED) ∧ ¬(find matches EMPTY).
+ *   • crossed        → HOIST to root  (`handleAmpersandBoundaryCrossing`)
+ *   • empty matches  → CHILD-only     → in-place extend on the child material (`&:is(...)`)
+ *   • neither        → no match at this amp
+ *
+ * DECISION GATES beyond the doc's child/cross/parent + hoist model (surfaced by PROBE —
+ * see the report). A detected crossing does NOT always hoist:
+ *   • SIMPLE-FIND FULL boundary skip: `!partial && reason==='resolved-only' && find is a
+ *     SimpleSelector` → NOT a hoist; parent-only match → NOT_FOUND.
+ *   • RELATIVE PARTIAL boundary skip: `partial && reason==='resolved-only' && subject is a
+ *     ComplexSelector whose first component is a combinator (e.g. `> &.child`)` → NOT a
+ *     hoist; extend in-place on the amp-resolved subject (`> :is(.parent.child, .ext)`).
+ *   • PARTIAL WHOLE-LOCATION gate: a partial crossing with NO whole-selector location →
+ *     NOT_FOUND (parent-level processing carries it).
+ *
+ * `classifyAmpersand` reproduces the two-probe differential in the IR (this is OURS), so a
+ * misclassification diverges from the oracle. Construction of the crossed/child output is
+ * REUSED from extend.ts (its fold + hoist machinery), per the design's discovery/rewrite split.
+ */
+
+type AmpClass = 'crossing' | 'child-only' | 'none';
+
+interface AmpVerdict {
+  cls: AmpClass;
+  /** true when a detected crossing is DOWNGRADED to in-place by a decision gate. */
+  gatedInPlace: boolean;
+  /** true when a detected crossing collapses to NOT_FOUND (parent-only / whole-location gate). */
+  gatedNotFound: boolean;
+}
+
+/** Locate the amp node's step index within a lifted seq (first amp step or amp-carrying compound). */
+function findAmpStep(seq: IrSeq): { step: number; atom: number } | null {
+  for (let i = 0; i < seq.length; i++) {
+    const atoms = seq[i]!.compound.atoms;
+    for (let j = 0; j < atoms.length; j++) {
+      if (atoms[j]!.kind === 'amp') {
+        return { step: i, atom: j };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Build the RESOLVED-form seq: graft the amp's parent Seq at the amp position. A head-only
+ * amp step (implicit `& .b`) prepends the parent's steps; an amp embedded in a compound
+ * (`&.bar`, `> &.child`) merges the parent's LAST compound's simple-id syms into that
+ * compound and prepends the parent's earlier steps ahead of it.
+ */
+function resolvedFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq | null {
+  const ampAtom = seq[at.step]!.compound.atoms[at.atom]!;
+  if (ampAtom.kind !== 'amp' || !ampAtom.resolved) {
+    return null;
+  }
+  const parentBranches = ampAtom.resolved.branches;
+  // The single-parent common case (a resolved parent that is not itself an OR).
+  if (parentBranches.length !== 1) {
+    return null; // list-parent grafts are constructed by the reused oracle path
+  }
+  const parent = parentBranches[0]!;
+  const out: IrStep[] = [];
+  for (let i = 0; i < seq.length; i++) {
+    if (i !== at.step) {
+      out.push(seq[i]!);
+      continue;
+    }
+    const otherAtoms = seq[i]!.compound.atoms.filter((_, j) => j !== at.atom);
+    if (otherAtoms.length === 0) {
+      // amp is its OWN step (implicit `& .b`): splice parent's steps in at this position,
+      // dropping the amp step's own leading combinator; parent keeps its head-comb.
+      for (let p = 0; p < parent.length; p++) {
+        const ps = parent[p]!;
+        out.push(p === 0 ? { comb: seq[i]!.comb, compound: ps.compound } : ps);
+      }
+    } else {
+      // amp embedded in a compound: prepend parent's earlier steps, then a merged compound
+      // (parent's LAST compound's syms ∪ the compound's other atoms) at this position.
+      for (let p = 0; p < parent.length - 1; p++) {
+        out.push(p === 0 ? { comb: seq[i]!.comb, compound: parent[p]!.compound } : parent[p]!);
+      }
+      const parentTail = parent[parent.length - 1]!;
+      const mergedSyms = new Set<number>(parentTail.compound.syms);
+      for (const a of otherAtoms) {
+        if (a.kind === 'id') {
+          mergedSyms.add(a.sym);
+        }
+      }
+      const merged: IrCompound = {
+        atoms: [...parentTail.compound.atoms, ...otherAtoms],
+        syms: mergedSyms,
+        node: seq[i]!.compound.node,
+        raw: seq[i]!.compound.raw
+      };
+      out.push({
+        comb: parent.length === 1 ? seq[i]!.comb : parentTail.comb,
+        compound: merged
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Build the EMPTY-form seq: drop the amp atom. If the amp was its own step, also drop that
+ * step's trailing implicit-space combinator (mirrors `replaceAmpersandWithEmpty`, which
+ * removes a following `' '` combinator when it removes a leading amp).
+ */
+function emptyFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq {
+  const out: IrStep[] = [];
+  for (let i = 0; i < seq.length; i++) {
+    if (i !== at.step) {
+      out.push(seq[i]!);
+      continue;
+    }
+    const otherAtoms = seq[i]!.compound.atoms.filter((_, j) => j !== at.atom);
+    if (otherAtoms.length === 0) {
+      // Whole step was the amp: drop it entirely. When the dropped amp was the head, the new
+      // head step must lose its leading (implicit-space) combinator — fixed up after the loop.
+      continue;
+    }
+    const otherSyms = new Set<number>();
+    for (const a of otherAtoms) {
+      if (a.kind === 'id') {
+        otherSyms.add(a.sym);
+      }
+    }
+    out.push({
+      comb: i === 0 ? '' : seq[i]!.comb,
+      compound: { atoms: otherAtoms, syms: otherSyms, node: seq[i]!.compound.node, raw: seq[i]!.compound.raw }
+    });
+  }
+  // If the head step was a lone amp we dropped, the new head step must lose its leading combinator.
+  if (out.length > 0 && at.step === 0 && seq[0]!.compound.atoms.length === 1) {
+    out[0] = { comb: '', compound: out[0]!.compound };
+  }
+  return out;
+}
+
+function seqMatchesFind(subjectSeq: IrSeq, irFind: IrSel): boolean {
+  for (const fb of irFind.branches) {
+    if (matchSeqInSeq(subjectSeq, fb)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * OWNED `&` classification: reproduce the oracle's two-probe differential in the IR, then
+ * apply the decision gates. Returns 'none' when this module cannot authoritatively decide
+ * (list-parent graft, amp inside `:is()`, etc.) so the caller defers construction to the oracle.
+ */
+function classifyAmpersand(
+  subject: Selector,
+  find: Selector,
+  partial: boolean
+): AmpVerdict {
+  const syms = new SymbolTable();
+  const irSubject = liftSel(subject, syms);
+  const irFind = liftSel(find, syms);
+
+  // Only the single-branch subject/find common case is modeled here; OR-subjects with amp
+  // are deferred (cls 'none').
+  if (irSubject.branches.length !== 1) {
+    return { cls: 'none', gatedInPlace: false, gatedNotFound: false };
+  }
+  const subjectSeq = irSubject.branches[0]!;
+  const at = findAmpStep(subjectSeq);
+  if (!at) {
+    return { cls: 'none', gatedInPlace: false, gatedNotFound: false };
+  }
+  const ampAtom = subjectSeq[at.step]!.compound.atoms[at.atom]!;
+  if (ampAtom.kind !== 'amp' || !ampAtom.resolved) {
+    return { cls: 'none', gatedInPlace: false, gatedNotFound: false };
+  }
+
+  const resolved = resolvedFormSeq(subjectSeq, at);
+  if (!resolved) {
+    return { cls: 'none', gatedInPlace: false, gatedNotFound: false };
+  }
+  const empty = emptyFormSeq(subjectSeq, at);
+
+  const resolvedMatch = seqMatchesFind(resolved, irFind);
+  const emptyMatch = seqMatchesFind(empty, irFind);
+
+  if (resolvedMatch && !emptyMatch) {
+    // Crossing detected. Apply the decision gates surfaced by PROBE.
+    const findIsSimple = isNode(find, N.SimpleSelector);
+    const subjectIsRelativeComplex =
+      isNode(subject, N.ComplexSelector) && isCombinator(subject.value[0]);
+
+    if (!partial && findIsSimple) {
+      // SIMPLE-FIND FULL boundary skip → parent-only match → NOT_FOUND (no hoist).
+      return { cls: 'crossing', gatedInPlace: false, gatedNotFound: true };
+    }
+    if (partial && subjectIsRelativeComplex) {
+      // RELATIVE PARTIAL boundary skip → extend in-place on the amp-resolved subject.
+      return { cls: 'crossing', gatedInPlace: true, gatedNotFound: false };
+    }
+    return { cls: 'crossing', gatedInPlace: false, gatedNotFound: false };
+  }
+  if (emptyMatch) {
+    return { cls: 'child-only', gatedInPlace: false, gatedNotFound: false };
+  }
+  return { cls: 'none', gatedInPlace: false, gatedNotFound: false };
+}
+
+/**
  * ── PUBLIC ENTRY ──────────────────────────────────────────────────────────
  * Same contract as `extendSelector`. The prototype's OWNED contribution is the
  * index-driven discovery gate; the closed rewrite/materialize is REUSED from
@@ -416,14 +639,32 @@ export function extendByIndex(
     return targetSel;
   }
 
+  // `&` SEAM: discovery OWNS the classification. When the subject carries a resolved amp we
+  // reproduce the oracle's two-probe differential + decision gates HERE; a misclassification
+  // diverges from the oracle. Construction (hoist / in-place fold) is reused from extend.ts.
+  if (hasAmpersand(targetSel)) {
+    const verdict = classifyAmpersand(targetSel, find, partial);
+    if (verdict.cls === 'crossing' || verdict.cls === 'child-only') {
+      if (verdict.gatedNotFound) {
+        return 'NOT_FOUND';
+      }
+      // crossing (→ hoist), gated-in-place, and child-only all resolve to a real extend; the
+      // reused fold + `handleAmpersandBoundaryCrossing` build the exact (hoisted/in-place) output.
+      return extendSelector(target, find, extendWith, partial);
+    }
+    if (verdict.cls === 'none') {
+      // We could not authoritatively classify (list-parent graft, amp-in-`:is()`, unmodeled
+      // shape). Fall back to the oracle for BOTH the decision and construction.
+      return extendSelector(target, find, extendWith, partial);
+    }
+  }
+
   const discovery = discover(targetSel, find, partial);
   if (!discovery.matched) {
-    // Discovery says no match. It is AUTHORITATIVE (may short-circuit to NOT_FOUND) when
-    // the selectors carry no `&` — `:is()` grafting is modeled soundly in reachableSyms,
-    // but `&` crossing/hoist semantics are delegated, so an `&` present means discovery's
-    // "no plain/:is() match" is not the final word (a parent-graft match could exist).
-    // A find carrying its own constructor atom is likewise delegated.
-    if (!hasAmpersand(targetSel) && !hasConstructorAtoms(find)) {
+    // Discovery says no match. With no `&` in play the index is AUTHORITATIVE: `:is()`
+    // grafting is modeled soundly in reachableSyms. A find carrying its own constructor
+    // atom is delegated (extendWith `:is()` extraction lives in the oracle fold).
+    if (!hasConstructorAtoms(find)) {
       return 'NOT_FOUND';
     }
   }
