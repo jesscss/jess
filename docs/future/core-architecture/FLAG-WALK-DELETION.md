@@ -329,10 +329,15 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
 - **RE-AIMED endgame (post hoist/composition/registration investigations): the bubbled `F_STATIC` has TWO real
   consumers — class 4 (render-direct fast-path, `static-rules.ts`) and class 2 (reuse/aliasing gates). Registration
   (class 3) and the leaf eval-skips (class 1, A3) do NOT read the bubble.** So the path to C4 is:
-  - **D2 — render-direct fast-path (`canRenderStaticRulesDirectly`/`isPlainStaticRuleLeaf`/`static-rules.ts`):** its
-    stated blocker ("delete once eval's structural work relocates") is NOW satisfied — hoist + composition are both
-    off eval. Investigate whether the normal eval+serialize path is byte-identical for the cases the fast-path
-    handles (measure the bench — it may still be a load-bearing perf shortcut, not just a flag reader).
+  - **D2 — render-direct fast-path — DONE / DELETED** (dev `93fb51fb2`). Confirmed `canRenderStaticRulesDirectly`
+    reads the BUBBLED `F_STATIC` (Rules has no F_STATIC-setting constructor; it only bubbles from all-static children
+    via `propagateFlagsFrom`) → genuine class-4 consumer. With hoist+composition off eval, the normal eval+serialize
+    path is byte-identical for every case the shortcut handled (proven across collapse:true/false + dynamic), and
+    the bench is neutral-to-FASTER even on the fully-static workload (the per-render `every(isPlainStaticRuleLeaf)`
+    scan cost more than the now-cheap eval it skipped). Deleted `static-rules.ts` + all call sites
+    (`ruleset.ts` `canRenderSourceDirectly`/nil-selector-direct, `at-rule.ts` `renderSourceBody`), net −186 lines.
+    Core 2992/0, all-less 90/3. **Class-4 is gone — the ONLY remaining bubbled-`F_STATIC` consumer is class-2 (the
+    reuse/aliasing gates).**
   - **C4-prereq — a name/selector-local `isInterpolated`/`nameIsStatic` predicate** owned by the name- and
     selector-carrying node types (parallels the Phase A2 `F_AMPERSAND` selector-scope move), so reader-class 3 and the
     `:5670` selector branch ask the node, not a bubbled flag. Overlaps `selector-*.ts` → serialize against the
