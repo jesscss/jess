@@ -113,8 +113,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   declare readonly rules: Node[];
   guard: RulesetValue['guard'];
   selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
-  /** Legacy canonical composed selector slot still used by extend post-processing. */
-  declare _composedSelector?: Selector;
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
   declare _selectorCacheOwner?: Ruleset;
 
@@ -718,7 +716,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    */
   invalidateSelectorValueCache(nextSelector?: Selector | Nil): void {
     this._valueOf = undefined;
-    this._composedSelector = undefined;
     if (nextSelector === undefined) {
       const sel = this.selector;
       nextSelector = typeof sel === 'string' ? undefined : sel;
@@ -729,7 +726,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return;
     }
 
-    cacheOwner._composedSelector = undefined;
     if (nextSelector instanceof Nil) {
       cacheOwner._valueOf = '';
       return;
