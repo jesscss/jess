@@ -33,8 +33,8 @@ const acceptedDivergences = new Map<string, string>([
   // (property-in-root / property-in-root2 / detached-ruleset-3 GRADUATED — they
   //  now error via checkValidNodes' root property-in-root check.)
   ['tests-error/eval/property-interp-not-defined.less', 'GAP: undefined @var in a property-name interpolation should error'],
-  ['tests-error/eval/detached-ruleset-1.less', 'GAP: detached ruleset used on a property should error'],
-  ['tests-error/eval/detached-ruleset-2.less', 'GAP: @a() detached call without [...] lookup should error'],
+  // detached-ruleset-1/-2 GRADUATED — a detached ruleset (Mixin/Rules) used as a
+  // property value now throws eval/ruleset-on-property (declaration.ts).
   ['tests-error/eval/css-guard-default-func.less', 'GAP: default() in a non-mixin CSS guard should error'],
   ['tests-error/eval/multiple-guards-on-css-selectors.less', 'GAP: a guard on a multi-selector rule should error'],
   ['tests-error/eval/multiple-guards-on-css-selectors2.less', 'GAP: a guard on a multi-selector rule should error'],
