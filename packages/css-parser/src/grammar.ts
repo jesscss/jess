@@ -249,7 +249,10 @@ export const cssGrammar = rules((g: any) => {
   const Quoted = node('Quoted', choice(singleStr, doubleStr));
   // bare number; the not()-lookahead is folded into the regex → one match, one leaf.
   const numTok = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?![a-zA-Z\u0080-\uffff%])/);
-  const colorHex = regex(/#[0-9a-fA-F]{3,8}(?![0-9a-fA-F])/);
+  // Only the four valid hex-color lengths (3/4/6/8). Longest-first so a 5- or
+  // 7-digit run (`#fffff`) can't partial-match — the trailing lookahead then
+  // rejects it, making it a parse error (matches Less).
+  const colorHex = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
   const Num = node('Num', numTok);
   const Color = node('Color', colorHex);
   const Paren = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.parenBody)));

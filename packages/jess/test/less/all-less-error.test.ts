@@ -41,7 +41,7 @@ const acceptedDivergences = new Map<string, string>([
   ['tests-error/eval/root-func-undefined-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
   ['tests-error/eval/ampersand-merge-template-invalid.less', 'GAP: invalid ampersand merge template should error'],
   ['tests-error/eval/mixin-not-visible-in-scope-1.less', 'GAP: mixin not visible across sibling & scopes should error'],
-  ['tests-error/parse/invalid-color-with-comment.less', 'GAP: malformed hex color (#fffff) should be a parse error'],
+  // invalid-color-with-comment GRADUATED — colorHex now only matches 3/4/6/8-digit hex.
   ['tests-error/parse/mixins-guards-cond-expected.less', 'GAP: guard without a parenthesized condition should be a parse error']
 ]);
 
