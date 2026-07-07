@@ -306,11 +306,23 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
   frame-clearing, NOT the hoist decision — left intact. Net −22 source lines. Byte-identical across 15,607 lines
   (all 4 collapse×bubble combos), core 2979/0, bench neutral. **Root at-rule hoisting is now fully off eval —
   both AtRule.frames (Slice 1) and the hoist stamp (Slice 3) relocated to the walk.**
-- **Next candidates (the remaining `_prepareForEval` structural work — the big, coupled D1 pieces):** (a) selector
-  composition (`&` substitution) → ruleset-enter + deferred selector slot; (b) extend-gather → in-walk (COUPLES
-  with the extend engine — serialize against the extend-index rung work); (c) registration/lookup-identity →
-  construction-time name index (`_isStatic`/`_hasStaticName`, `_prepareRegistrationOnce`). Each is
-  investigate-first (feasibility + scoped design, not a blind rewrite), one render-walk slice at a time.
+- **Slice 4 (selector composition → walk) — DONE / already-in-walk** (dev `7327f8094`). INVESTIGATION verdict:
+  composition is ALREADY on the serialize walk, not eval — `Ruleset.composeSelector`/`composeHeaderSelector`/
+  `composePushedSelector` all run from the serialize path reading `options.composedSelectorStack`;
+  `Ruleset.evalNode` does ZERO parent composition (it only resolves the selector's OWN interpolated value, which is
+  intrinsic value-eval, correctly on eval). The only residual was a dead write-only `_composedSelector` slot
+  (written at `extend-roots.ts:967/1114` alongside load-bearing assigns, read NOWHERE in production; two tests
+  asserted it stayed `undefined`). Deleted the slot + 2 clears + 2 write-only assigns + 2 stale test assertions
+  (3 files, −8 lines). Core 2979/0, byte-identical 90/3, bench neutral. **Composition + root at-rule hoisting are
+  both fully off eval now.**
+- **Next candidates (the remaining `_prepareForEval` structural work — narrowing):** (b) extend-gather → in-walk
+  (`processExtends`, `rules.ts:6863`; COUPLES with the extend engine + `rules.ts` — serialize against registration);
+  (c) registration/lookup-identity → construction-time name index (`_prepareRegistrationOnce`, `rules.ts:6825`,
+  `_isStatic`/`_hasStaticName`). Both touch `rules.ts` → one at a time. Then D2 (delete `static-rules.ts`
+  render-direct fast-path), D3 (collapse the eval-then-render split), C4 (delete `F_STATIC`/`F_NON_STATIC` +
+  `propagateFlagsFrom` — the /goal endpoint). Each investigate-first (composition + hoist both turned out
+  mostly-already-done — verify before rewriting). Also: `getFullComposedForm` (`extend-roots.ts:320`) re-walks the
+  parent chain inside extend instead of sharing the walk's `composedSelectorStack` — a candidate for the extend track.
 
 - **Phase A1 — DONE** (dev `6de3c0cc7`). `F_MAY_ASYNC` deleted entirely (bit `0b10` freed); sync/async
   guards → reactive attempt-sync/isThenable-bail; dead sync-twin helpers removed. Byte-identical,

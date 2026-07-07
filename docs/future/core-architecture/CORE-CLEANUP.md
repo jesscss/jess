@@ -351,8 +351,9 @@ provenance-inline (LANDED, killed the WeakMap) took the easy path — all 6 fiel
 right fix depends on **how granular span tracking needs to be**, and the consumer evidence is decisive:
 - `_spanStart`/`_spanEnd` (node-level) — used by BOTH sourcemaps (`sourceSegmentFor`, print.ts:197 uses ONLY
   `spanStart`) and trivia. **KEEP on base** (cheap, universal).
-- `_cstState`/`_cstChildren` — **DEAD** (0 readers/writers/callers of `cstStateOf`/`cstChildrenOf` anywhere) →
-  **DELETE fields + accessors.** They're the vestige of a CST-side edit representation that doesn't exist yet.
+- `_cstState`/`_cstChildren` — **DONE (deleted, cc9888e2).** Were the vestige of a CST-side edit representation
+  that doesn't exist yet; fields + accessors + re-exports removed (own-key 31→29 ×~39k nodes). Zero residual refs
+  anywhere in `packages/**`. (Matches line ~380's LANDED entry.)
 - `_fieldSpans`/`_valueSpans` (SUB-NODE granularity) — consumed by **exactly one thing: authored-trivia
   round-trip serialization** (selector-*/at-rule/declaration read them to emit whitespace BETWEEN sub-components
   and look up the `TriviaMap` by offset). Sourcemaps DON'T use them; plain CSS render DOESN'T use them; no edit
