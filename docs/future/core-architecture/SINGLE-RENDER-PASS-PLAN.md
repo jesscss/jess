@@ -173,6 +173,24 @@ shows a flag whose value genuinely differs per-placement of the same shared node
 cannot key (the extend-registry-reuse case), that flag stays on an intrinsic copy and A shrinks to
 "visibility + generated only" — still progress, but re-scope C1 accordingly.
 
+**A0 RESULT — VERDICT: HYPOTHESIS HOLDS. GO for A2s.** (spike done, throwaway instrumentation reverted,
+tree clean, output-neutral: all-less 90/3 with A0 on/off.) Measured across 10 workloads (collapse both
+modes, dynamic, all 7 extend fixtures) via an `A0_SPIKE`-gated recorder hooked at `Node.visible`/
+`.generated`/`.hasFlag` inside the serialize walk:
+- **Residual is flag-only** — span is read off `this` at ~40 `writer.add` sites (`print.ts:200`→`spanStartOf`)
+  on a frameless path, exactly what B's source-tree descent removes; the serialize *flag* reads are a
+  distinct **~20-site / 3-file cluster** (`serialize-helper.ts` visibility gating; `ruleset.ts`/
+  `selector-list.ts` extend/reference filtering) — the "~10-site" claim, confirmed materially smaller than
+  the 40-site span pervasion.
+- **Position-derivable — CONFIRMED:** 0 inconsistent (node,flag) pairs across all 10 workloads (object-identity
+  keying is a clean function); read-stream + CSS stable across 2 renders for all 10.
+- **The one placement-varying flag is `F_EXTENDED`/`F_EXTEND_TARGET`**, only in the extend multi-placement
+  fan-out (`extend-chaining`: 1 authored selector → 5 placement objects, 1 true/4 false) — and those ride
+  distinct intrinsic `copySelectorForExtend` copies (NOT class-2; survive to C4), so A2s does NOT need to
+  position-key them. `F_VISIBLE`/`F_GENERATED`/`F_IMPLICIT_AMPERSAND` are deterministic-per-node everywhere.
+- **A2s scope refinement:** the position-keyed record needs to cover visibility only; extend-fan-out flags
+  stay on the intrinsic copy. No case found where a flag can't be keyed by walk position.
+
 **Slice A1s — collapse-survivor fresh-shell (this is INHERIT doc's I2; independently landable NOW,
 does not need A0).** Make `selector-complex.ts:367` hand `inherit` a **fresh** shell with B2
 `shareChildren` frozen children instead of a shared `only`. After this, `inherit` only ever mutates
