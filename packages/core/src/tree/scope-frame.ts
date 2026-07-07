@@ -17,7 +17,8 @@
  * @see docs/archive/PERFORMANCE-HANDOFF.md
  */
 
-import { F_STATIC, Node } from './node.js';
+import { Node } from './node.js';
+import { Interpolated } from './interpolated.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { CallableLookupEntry } from './util/callable-entry.js';
 
@@ -488,7 +489,7 @@ function pendingDeclarationMayAffectName(
 ): boolean {
   for (let i = 0; i < pendingDeclarationNames.length; i++) {
     const declName = pendingDeclarationNames[i]!.name;
-    if (declName instanceof Node && !declName.hasFlag(F_STATIC)) {
+    if (declName instanceof Interpolated) {
       return true;
     }
     if (`${declName.valueOf()}` === name) {

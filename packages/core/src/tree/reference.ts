@@ -15,7 +15,7 @@ import { Dimension } from './dimension.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Rules } from './rules.js';
-import type { Interpolated } from './interpolated.js';
+import { Interpolated } from './interpolated.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { JsArray } from './js-array.js';
@@ -191,7 +191,7 @@ function promoteResolvedPendingVarDecls(
     }
 
     const declName = decl.name;
-    const isStaticName = !(declName instanceof Node) || declName.hasFlag(F_STATIC);
+    const isStaticName = !(declName instanceof Interpolated);
     if (!isStaticName) {
       remaining.push(decl);
       continue;
