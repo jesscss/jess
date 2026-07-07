@@ -271,15 +271,24 @@ positions (a strictly-increasing positional subsequence), where a find atom is c
   → oracle NOT_FOUND; own returns UNSUPPORTED (fail-loud, was UNSUPPORTED before — no regression).
 No walk-bug / EXPECTED-DIVERGENCE surfaced. extend-index 172→185; full extend suite 571→584/0; no regressions.
 
-### NEXT RUNG — the UNSUPPORTED frontier (why each is gated, not wrong)
-1. **`:is` partial-of-branch → NOT_FOUND vs UNSUPPORTED** — `:is(.a.z,.b).c` f `.a.c` correctly does NOT
-   flatten, but the own engine emits UNSUPPORTED where the oracle emits NOT_FOUND (a compound `:is` branch
-   the find only partially reaches). Fail-loud-safe, but a clean NOT_FOUND classification is the next tighten.
-2. **`:is` boundary-cross flatten (FULL, with an unmatched trailing atom)** — `:is(.a,.b).c.x` f `.a.c` FULL
-   → oracle unchanged (`:is(.a,.b).c.x`); own returns UNSUPPORTED (proper-subset-in-full through a graft).
-3. **`&`/ampersand targets, constructor-atom / OR finds** — still gated in `extendByIndexOwn`.
-4. **Multi-compound find against a graft-bearing target** — `buildGraftBranch` currently requires a single-compound find.
-Closing these + wiring `processExtendsByIndex` to `context`/`&`-hoist is the path to full corpus coverage.
+### RUNG CLOSED (2026-07-06) — rung 4: partial-of-branch, subset-in-full, OR-finds, clean multi-compound graft (dev `028accefb`)
+Four classes closed, all oracle-derived + hardcode-pinned; no walk-bugs. extend-index 185→204; full extend suite 584→603/0; core 3011/0.
+- **`:is` partial-of-branch → NOT_FOUND** (was UNSUPPORTED). Broader than hypothesized: ANY find whose sym reaches only a
+  *multi-atom* `:is` branch head (`.a` in `.a.z`), or is absent from the target, never matches → NOT_FOUND in BOTH modes.
+  New `graftCompoundSubsetSatisfiable` (each find sym = plain atom or a *complete single-atom* `:is` branch).
+- **Proper-subset-in-full through a graft with a stranded trailing atom** — `:is(.a,.b).c.x` f `.a.c` FULL → unchanged
+  (`.x` stranded → not full) → `MATCHED_UNCHANGED`. (The PARTIAL remainder-split-through-graft variant stays UNSUPPORTED.)
+- **OR-finds (`sellist`)** — per-target-branch FIRST-match (corrected a wrong "accumulate all branches" hypothesis);
+  extendWith appended once overall. `.a.x,.b.y f (.a,.b)` → `:is(.a,.d).x,:is(.b,.d).y`.
+- **Multi-compound find vs graft target — clean whole-span side-by-side full ONLY** (`:is(.a,.b) .c f .a .c` → `,.d`);
+  substring/remainder/expansion variants stay UNSUPPORTED (need the multi-compound `:is`-graft flatten machinery).
+
+### NEXT RUNG — the remaining reachable frontier (per rung-4 report)
+1. **`&`/ampersand targets AND finds** — still gated. The graft model + `&`-hoist wiring is the big remaining piece.
+2. **Multi-compound `:is`-graft expansion (substring / remainder / find-compound-on-graft)** — oracle emits full
+   boundary-cross expansion (`.x :is(.a .c,.d),.x .b .c`); needs the multi-compound `:is`-graft flatten machinery.
+3. **Constructor-atom finds** (`.a:is(.b)`, `.a:not(.b)` on the FIND side) — find-side graft normalization; distinct machinery.
+Closing #1 + #2 is the gate to rung 5 (full-corpus sweep) then wiring `processExtendsByIndex` to `context`/`&`-hoist.
 
 ## Non-goals (for the validated prototype)
 Minimal-hoist (output change); replacing the walk (only after full-suite byte-identical); touching the
