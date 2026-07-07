@@ -93,6 +93,12 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
         partial: false
       }));
     });
+    it('.b.b.c find .b.c full → unchanged (HARDCODED pin — pre-fix returned .b.b.c,.x)', () => {
+      // `same()` above only asserts prototype==oracle; before the dup-full fix BOTH engines
+      // agreed on the WRONG answer (.b.b.c,.x), so it caught nothing. This pins the CORRECT output.
+      const r = extendByIndexOwn(compound([el('.b'), el('.b'), el('.c')]), compound([el('.b'), el('.c')]), el('.x'), false);
+      expect(r === UNSUPPORTED ? 'UNSUPPORTED' : str(r)).toBe('.b.b.c');
+    });
     it('.b.b.c find .b partial → :is(.b,.x):is(.b,.x).c (each occurrence)', () => {
       same(() => ({
         target: compound([el('.b'), el('.b'), el('.c')]),
