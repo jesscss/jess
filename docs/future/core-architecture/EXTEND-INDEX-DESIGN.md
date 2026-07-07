@@ -311,15 +311,60 @@ where the oracle keeps it nested (`.x :is(.a .c,:is(.d,.e))`) — this divergenc
 path independent of the graft, unreached by the real corpus; out of scope here.
 extend-index 204→221; full extend suite 603→620/0; core 3011→3028/0.
 
+### RUNG CLOSED — rung 6: `&` (ampersand) TARGETS (own construction, dev `4d758a309`)
+Own construction now builds `&`-target output (child-only / crossing / parent-only / `&&` same-parent),
+byte-identical to the oracle, via `extendAmpersandTarget`: reproduce the oracle's two/three-probe
+classification in-IR (resolved / empty / parent-alone forms), then recurse `extendByIndexOwn` on the
+cloning-free RESOLVED form (`resolvedFormSeq` + `resolveAllAmps`) at the original `partial` flag, with a
+parent-only → NOT_FOUND gate. `hoistToRoot` is a placement flag that does not change the byte output, so
+the crossing-append shape (`.foo.bar,.a`) is reproduced by the plain resolved-form recursion. Left
+UNSUPPORTED: leading-combinator relative `&` (closed in rung 7 below), distinct-parent `&&` passenger
+merge-ordering, list-parent grafts.
+
+### RUNG CLOSED (2026-07-06) — rung 7: leading-combinator relative `&`
+A NESTED RELATIVE rule (`.parent { > &.child {} }`) composes post-eval to a ComplexSelector whose
+FIRST component is a combinator (`> &.child`). Rung 6 left this UNSUPPORTED (its plain resolved-form
+recursion drops the combinator + uses the wrong wrap-span). The oracle takes its
+`shouldSkipRelativePartialBoundary` path (`extend.ts:1594`): re-target on the amp-RESOLVED form via
+`replaceAmpersandWithItsValue` (KEEPING the leading combinator), then run the normal in-place `:is`-wrap.
+Own construction now builds this byte-identical (`extendRelativeAmpersandTarget`), all shapes
+differential-probed on reachable parse-shaped inputs + hardcode-pinned in `corpus-ampersand-cases.test.ts`.
+Let the amp sit in `ampCompound`; `parentAtoms` = the amp's (single-branch) resolved atoms, `childAtoms`
+= the OTHER atoms of `ampCompound`. Derived rules:
+- **NOT_FOUND gate (BOTH modes) — a match confined to the parent of an EMBEDDED amp** (`ampCompound`
+  also carries child atoms): find touches SOME-but-not-ALL `parentAtoms` (proper-subset-of-parent), OR
+  find is a SIMPLE selector consuming exactly all `parentAtoms` with no child atom. A LONE amp (its own
+  compound, no fused child) has NO parent gate — `.parent` there is a plain step (`> & .b` f `.parent`
+  → `>:is(.parent,.x) .b`, not NOT_FOUND). Mechanism (probe-traced): proper-subset finds fail the
+  UNRESOLVED `findExtendableLocations`; the all-parent-simple-embedded case (`> &.child` f `.parent`)
+  hits the amp-component-in-compound gate (`extend.ts:1651/1662`).
+- **FULL mode (not gated) → resolved form UNCHANGED** (a relative selector is never a whole selector to
+  append to): `> &.child` f `.parent.child` FULL → `>.parent.child`.
+- **PARTIAL mode (not gated) → in-place `:is`-wrap, span by match kind** (combinator preserved):
+  multi-step whole-selector span → wrap whole seq minus lead-comb (`> & .b` f `.parent .b` →
+  `>:is(.parent .b,.x)`); single simple find matching ONE atom → wrap that atom (`> &.child` f `.child`
+  → `>.parent:is(.child,.new)`); find EQUALS the amp's resolved value → wrap `parentAtoms` in place
+  (`> &(.p1.p2).c` f `.p1.p2` → `>:is(.p1.p2,.new).c`); any other single-compound find → wrap the WHOLE
+  compound (`> &.child` f `.parent.child` → `>:is(.parent.child,.new)` — the shape the sweep hits).
+`+`/`~`/` ` leading combinators all preserved. No walk-bug / EXPECTED-DIVERGENCE surfaced.
+extend-index 238→252 tests green across `tree/extend/`; full extend suite 637→651/0; core 3045→3059/0.
+Frontier: leading-combinator relative-`&` UNSUPPORTED 1→0.
+
 ### NEXT RUNG — the remaining reachable frontier
-1. **`&`/ampersand targets AND finds** — still gated (own construction never builds `&` output). The graft
-   model + `&`-hoist OUTPUT wiring is now the SOLE remaining large reachable frontier before the full-corpus
-   sweep. `classifyAmpersand` already reproduces the two-probe crossing differential in-IR, but the
-   hoist/in-place output construction is not built (the delegating `extendByIndex` relays it to the oracle).
-2. **Constructor-atom finds** (`.a:is(.b)`, `.a:not(.b)` on the FIND side) — find-side graft normalization;
-   distinct, smaller-surface machinery.
-With rung 5 closed, `&` (#1) is the only large reachable gap; closing it gates rung 6 (full-corpus sweep)
-then wiring `processExtendsByIndex` to `context`/`&`-hoist.
+With rungs 6+7 closed, `&` TARGETS are built for every reachable shape probed (child-only / crossing /
+parent-only / `&&` same-parent / leading-combinator relative). The remaining UNSUPPORTED gaps are all
+NON-reachable-common or find-side, so the engine is READY for a full-corpus sweep (rung "8") gated by
+fail-loud on the tail below:
+1. **Distinct-parent `&&` passenger merge-ordering** — `&(.foo.bar)&(.baz).suffix` (two amps, DIFFERENT
+   parents, one compound). `extendAmpersandTarget` bails at `ampResolvedValues.size > 1`; the merge order
+   of distinct parents is not modeled → UNSUPPORTED (fail-loud). Small-surface; needs the merge-order rule.
+2. **List-parent grafts / amp-in-`:is()` / OR-subjects** — `resolvedFormSeq`/`resolvedRelSeq` return null
+   for a multi-branch parent (`&` under a `.a, .b` parent) → UNSUPPORTED.
+3. **`&`/constructor-atom FINDS** (`&.x` / `.a:is(.b)` / `.a:not(.b)` on the FIND side) — find-side graft
+   normalization; distinct, smaller-surface machinery. Gated to UNSUPPORTED at the `extendByIndexOwn` entry.
+The sweep should run the whole extend corpus through `extendByIndexOwn` (delegation off); every remaining
+UNSUPPORTED is a fail-loud sentinel, so the sweep tells us precisely which (if any) of the above are actually
+reachable from the real corpus before wiring `processExtendsByIndex` to `context`/`&`-hoist.
 
 ## Non-goals (for the validated prototype)
 Minimal-hoist (output change); replacing the walk (only after full-suite byte-identical); touching the
