@@ -448,8 +448,88 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     it('list target :is(.a,.b).c,.q find .a.c → :is(.a.c,.d),.q  (only the graft branch flattens)', () => {
       pin(sellist([compound([is(sellist([el('.a'), el('.b')])), el('.c')]), el('.q')]), compound([el('.a'), el('.c')]), el('.d'), true, ':is(.a.c,.d),.q');
     });
-    it(':is(.a.z,.b).c find .a.c → UNSUPPORTED  (`.a` is partial-of-branch `.a.z`, not a whole branch)', () => {
-      pin(compound([is(sellist([compound([el('.a'), el('.z')]), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, 'UNSUPPORTED');
+  });
+
+  describe('12b. graft partial-of-branch → NOT_FOUND (rung 4, class 1)', () => {
+    // `.a` reaches only PART of the multi-atom `:is` branch `.a.z` — partial-of-a-branch never
+    // matches, so the whole find fails to match. The oracle returns NOT_FOUND (no extend). Own now
+    // returns NOT_FOUND (was UNSUPPORTED) — a clean "no match", not a fail-loud gate.
+    it(':is(.a.z,.b).c find .a.c partial → NOT_FOUND  (`.a` partial-of-branch `.a.z`)', () => {
+      pin(compound([is(sellist([compound([el('.a'), el('.z')]), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, 'NOT_FOUND');
+    });
+    it(':is(.a.z,.b).c find .a.c FULL → NOT_FOUND', () => {
+      pin(compound([is(sellist([compound([el('.a'), el('.z')]), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), false, 'NOT_FOUND');
+    });
+    it(':is(.a.z,.b).c find .a.z.c FULL → NOT_FOUND  (branch fully covered but still no whole-branch consume)', () => {
+      pin(compound([is(sellist([compound([el('.a'), el('.z')]), el('.b')])), el('.c')]), compound([el('.a'), el('.z'), el('.c')]), el('.d'), false, 'NOT_FOUND');
+    });
+    it(':is(.a,.b).c find .a.c.x FULL → NOT_FOUND  (find atom `.x` absent from target)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c'), el('.x')]), el('.d'), false, 'NOT_FOUND');
+    });
+  });
+
+  describe('12c. graft proper-subset-in-full with trailing atom → unchanged (rung 4, class 2)', () => {
+    // FULL mode, the find matches the graft + a plain atom as a SUBSET but a trailing `.x` is
+    // stranded → not a full match → the target is UNCHANGED (oracle-verified). Own now builds this
+    // (was UNSUPPORTED).
+    it(':is(.a,.b).c.x find .a.c FULL → :is(.a,.b).c.x  (unchanged; `.x` stranded)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c'), el('.x')]), compound([el('.a'), el('.c')]), el('.d'), false, ':is(.a,.b).c.x');
+    });
+    it('.m:is(.a,.b).c.x find .a.c FULL → .m:is(.a,.b).c.x  (leading plain atom, still unchanged)', () => {
+      pin(compound([el('.m'), is(sellist([el('.a'), el('.b')])), el('.c'), el('.x')]), compound([el('.a'), el('.c')]), el('.d'), false, '.m:is(.a,.b).c.x');
+    });
+    it(':is(.a,.b).c.x find .c.a FULL → :is(.a,.b).c.x  (out-of-order find, unchanged)', () => {
+      pin(compound([is(sellist([el('.a'), el('.b')])), el('.c'), el('.x')]), compound([el('.c'), el('.a')]), el('.d'), false, ':is(.a,.b).c.x');
+    });
+  });
+
+  describe('13. OR-find (selector-list find) — rung 4, class 3', () => {
+    // A `sellist` find matches a target branch via the FIRST find branch that matches THAT branch
+    // (oracle-verified). extendWith is appended ONCE overall for full matches, never per find branch.
+    it('.a.b find (.a,.b) partial → :is(.a,.d).b  (first find branch `.a` fires; `.b` ignored)', () => {
+      pin(compound([el('.a'), el('.b')]), sellist([el('.a'), el('.b')]), el('.d'), true, ':is(.a,.d).b');
+    });
+    it('.a.b find (.a,.b) FULL → .a.b  (neither find branch is a whole-compound match)', () => {
+      pin(compound([el('.a'), el('.b')]), sellist([el('.a'), el('.b')]), el('.d'), false, '.a.b');
+    });
+    it('.a find (.q,.a) FULL → .a,.d  (non-matching branch skipped, `.a` fires)', () => {
+      pin(el('.a'), sellist([el('.q'), el('.a')]), el('.d'), false, '.a,.d');
+    });
+    it('.a,.z find (.a,.z) FULL → .a,.z,.d  (both target branches full-match; extendWith appended once)', () => {
+      pin(sellist([el('.a'), el('.z')]), sellist([el('.a'), el('.z')]), el('.d'), false, '.a,.z,.d');
+    });
+    it('.a.x,.b.y find (.a,.b) partial → :is(.a,.d).x,:is(.b,.d).y  (per-branch first-match wrap)', () => {
+      pin(sellist([compound([el('.a'), el('.x')]), compound([el('.b'), el('.y')])]), sellist([el('.a'), el('.b')]), el('.d'), true, ':is(.a,.d).x,:is(.b,.d).y');
+    });
+    it('.a .b find (.a,.b) partial → :is(.a,.d) .b  (complex seq, first branch `.a`)', () => {
+      pin(sel([el('.a'), co(' '), el('.b')]), sellist([el('.a'), el('.b')]), el('.d'), true, ':is(.a,.d) .b');
+    });
+    it('.x find (.a,.b) partial → NOT_FOUND  (no find branch matches)', () => {
+      pin(el('.x'), sellist([el('.a'), el('.b')]), el('.d'), true, 'NOT_FOUND');
+    });
+  });
+
+  describe('14. multi-compound find against a graft-bearing target — rung 4, class 4', () => {
+    // Clean WHOLE-span side-by-side match: each find compound fully consumes its aligned target
+    // compound (plain multiset-equal, or a single find atom = a whole BARE `:is` branch), combinators
+    // match → target branch UNCHANGED, extendWith appended as a sibling (both modes, oracle-verified).
+    it(':is(.a,.b) .c find .a .c partial → :is(.a,.b) .c,.d', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), el('.c')]), sel([el('.a'), co(' '), el('.c')]), el('.d'), true, ':is(.a,.b) .c,.d');
+    });
+    it(':is(.a,.b) .c find .a .c FULL → :is(.a,.b) .c,.d', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), el('.c')]), sel([el('.a'), co(' '), el('.c')]), el('.d'), false, ':is(.a,.b) .c,.d');
+    });
+    it('.x :is(.a,.b) find .x .a partial → .x :is(.a,.b),.d  (graft at tail)', () => {
+      pin(sel([el('.x'), co(' '), is(sellist([el('.a'), el('.b')]))]), sel([el('.x'), co(' '), el('.a')]), el('.d'), true, '.x :is(.a,.b),.d');
+    });
+    it(':is(.a,.b) .c find .b .c partial → :is(.a,.b) .c,.d  (matches the OTHER branch `.b`)', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), el('.c')]), sel([el('.b'), co(' '), el('.c')]), el('.d'), true, ':is(.a,.b) .c,.d');
+    });
+    it(':is(.a,.b)>.c find .a>.c partial → :is(.a,.b)>.c,.d  (child combinator preserved)', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co('>'), el('.c')]), sel([el('.a'), co('>'), el('.c')]), el('.d'), true, ':is(.a,.b)>.c,.d');
+    });
+    it(':is(.a,.b) .c find .a .c FULL ext (.d,.e) → :is(.a,.b) .c,.d,.e  (extendWith list appended)', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), el('.c')]), sel([el('.a'), co(' '), el('.c')]), sellist([el('.d'), el('.e')]), false, ':is(.a,.b) .c,.d,.e');
     });
   });
 

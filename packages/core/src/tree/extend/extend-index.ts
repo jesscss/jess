@@ -1431,7 +1431,20 @@ function buildGraftCompound(
     if (graftFullCompoundConsume(atoms, plainSyms, findSyms)) {
       return MATCHED_FULL_APPEND; // whole-compound consume, non-positional → caller appends
     }
-    return UNSUPPORTED;
+    // Not a whole-compound consume. Two oracle-verified outcomes (probe-derived):
+    //   • the find is NOT satisfiable as a subset (a find sym reaches only a MULTI-atom `:is` branch
+    //     head — `.a` in `.a.z` — or is absent) → the find never matches → NOT_FOUND (return null; the
+    //     caller reports NOT_FOUND when no branch matched). e.g. `:is(.a.z,.b).c` f `.a.c`, `.a.z.c`.
+    //   • the find IS satisfiable as a subset but the compound has leftover atoms (`:is(.a,.b).c.x`
+    //     f `.a.c` → `.x` stranded): FULL mode → subset match, not full → UNCHANGED. (PARTIAL mode
+    //     with a stranded remainder is a remainder-split-through-graft — not built here → UNSUPPORTED.)
+    if (!graftCompoundSubsetSatisfiable(atoms, findSyms)) {
+      return null; // partial-of-branch / absent find sym → NOT_FOUND at the caller
+    }
+    if (!partial) {
+      return MATCHED_UNCHANGED; // subset match with stranded atom(s) → compound unchanged
+    }
+    return UNSUPPORTED; // partial subset-with-remainder through a graft — remainder-split not built
   }
   let hostIdx = -1;
   if (isBareCompound && graftAtomIdx.length === 1) {
@@ -1594,6 +1607,35 @@ function graftFullCompoundConsume(
 }
 
 /**
+ * SUBSET satisfiability for a graft-bearing compound: is EVERY find sym consumable by this
+ * compound — a plain atom of the same sym, or a COMPLETE single-atom `:is` branch? (A find sym
+ * that only reaches a MULTI-atom `:is` branch head — `.a` inside branch `.a.z` — is NOT consumable:
+ * partial-of-a-branch never matches, so the whole find fails to match → NOT_FOUND, not a subset.)
+ * This is order-free set containment: it distinguishes a real (subset) match with leftover target
+ * atoms (`:is(.a,.b).c.x` f `.a.c` → subset, `.x` stranded) from NO match at all (`:is(.a.z,.b).c`
+ * f `.a.c` → `.a` unconsumable → NOT_FOUND).
+ */
+function graftCompoundSubsetSatisfiable(atoms: Atom[], findSyms: Set<number>): boolean {
+  const plain = new Set<number>();
+  const branchSyms = new Set<number>();
+  for (const a of atoms) {
+    if (a.kind === 'id') {
+      plain.add(a.sym);
+    } else if (a.kind === 'is' && a.pseudoName === ':is') {
+      for (const s of wholeBranchSymsOfGraft(a)) {
+        branchSyms.add(s);
+      }
+    }
+  }
+  for (const s of findSyms) {
+    if (!plain.has(s) && !branchSyms.has(s)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Graft-aware per-branch construction. Handles a target branch (seq) where at least one compound
  * carries a graft atom, for a SINGLE-compound find. Returns the built Selector, null (no match in
  * this branch), or UNSUPPORTED.
@@ -1608,6 +1650,45 @@ interface GraftBranchResult {
   appendFull: boolean;
 }
 
+/**
+ * CLEAN whole-span match test for a MULTI-compound find against a graft-bearing target seq (class 4).
+ * True iff the find spans the WHOLE target seq side-by-side and every find compound FULLY consumes its
+ * aligned target compound with matching combinators — a plain target compound consumed by a
+ * multiset-equal find compound, or a BARE single-`:is` target compound whose whole branch a single
+ * find atom equals. On true the caller leaves the branch unchanged and appends extendWith as a sibling.
+ * Deliberately narrow: any partial/remainder/substring/non-bare-graft alignment returns false (→ the
+ * caller reports UNSUPPORTED, never a wrong NOT_FOUND).
+ */
+function multiCompoundGraftWholeSpanFull(targetSeq: IrSeq, findSeq: IrSeq): boolean {
+  if (findSeq.length !== targetSeq.length) {
+    return false; // whole-span only (substring alignment is a future rung)
+  }
+  for (let i = 0; i < findSeq.length; i++) {
+    const fc = findSeq[i]!;
+    const tc = targetSeq[i]!;
+    if (i > 0 && (fc.comb || ' ') !== (tc.comb || ' ')) {
+      return false;
+    }
+    if (compoundHasGraftAtom(tc.compound)) {
+      // The find compound must be a single plain atom equal to a WHOLE bare `:is` branch, consuming
+      // the entire target compound (so the compound stays unchanged and we merely append).
+      const fa = fc.compound.atoms;
+      if (fa.length !== 1 || fa[0]!.kind !== 'id') {
+        return false;
+      }
+      if (!graftFullCompoundConsume(tc.compound.atoms, new Set<number>(), fc.compound.syms)) {
+        return false;
+      }
+    } else {
+      // Plain target compound: a FULL match requires multiset equality (whole compound consumed).
+      if (!compoundSubset(fc.compound, tc.compound) || !compoundFullEligible(fc.compound, tc.compound)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function buildGraftBranch(
   targetSeq: IrSeq,
   findSeq: IrSeq,
@@ -1616,7 +1697,19 @@ function buildGraftBranch(
   partial: boolean
 ): GraftBranchResult | UnsupportedResult {
   if (findSeq.length !== 1) {
-    return UNSUPPORTED; // multi-compound find against a graft-bearing target: not built yet
+    // MULTI-COMPOUND find against a graft-bearing target branch. The own engine builds ONLY the
+    // clean whole-span side-by-side match (rung 4, class 4): the find spans the WHOLE target seq,
+    // each find compound FULLY consumes its aligned target compound (a plain compound multiset-equal,
+    // or a BARE `:is` graft compound whose whole branch the single find atom equals), and combinators
+    // match. That is a whole-branch match → the target branch is UNCHANGED and extendWith is APPENDED
+    // as a sibling (probe-verified: `:is(.a,.b) .c` f `.a .c` → `:is(.a,.b) .c,.d`, both modes).
+    // Anything else (substring match, a compound remainder, a non-bare graft compound, a multi-atom
+    // find compound landing on a graft) needs the full multi-compound boundary-cross machinery →
+    // UNSUPPORTED (fail-loud; never a wrong NOT_FOUND).
+    if (multiCompoundGraftWholeSpanFull(targetSeq, findSeq)) {
+      return { node: seqToSelector(targetSeq), effective: true, found: true, appendFull: true };
+    }
+    return UNSUPPORTED;
   }
   const findSyms = findSeq[0]!.compound.syms;
 
@@ -1839,10 +1932,7 @@ export function extendByIndexOwn(
   const syms = new SymbolTable();
   const irTarget = liftSel(targetSel, syms);
   const irFind = liftSel(find, syms);
-  if (irFind.branches.length !== 1) {
-    return UNSUPPORTED; // OR-find not modeled
-  }
-  const findSeq = irFind.branches[0]!;
+  const findSeqs = irFind.branches;
 
   const extendBranches = extendWithBranches(extendWith);
 
@@ -1856,14 +1946,28 @@ export function extendByIndexOwn(
   }> = [];
   let anyMatch = false;
   for (const tb of irTarget.branches) {
-    const loc = locateFind(tb, findSeq);
-    if (loc === UNSUPPORTED) {
-      return UNSUPPORTED;
+    // OR-find: a target branch matches if it matches ANY find branch. The oracle uses the FIRST
+    // find branch that matches this target branch (probe-verified: `.a.b` f `(.a,.b)` → `:is(.a,.d).b`
+    // — only `.a` fires; and per-target-branch application `.a.x,.b.y` f `(.a,.b)` → both wrap).
+    // extendWith is still appended ONCE overall for full matches (anyFull below), never per branch.
+    let loc: OwnMatch | null = null;
+    let matchedFindSeq = findSeqs[0]!;
+    for (const fs of findSeqs) {
+      const l = locateFind(tb, fs);
+      if (l === UNSUPPORTED) {
+        return UNSUPPORTED;
+      }
+      if (l !== null) {
+        loc = l;
+        matchedFindSeq = fs;
+        break;
+      }
     }
     if (loc === null) {
       branchResults.push({ node: seqToSelector(tb), matchedFull: false, matchedPartial: false });
       continue;
     }
+    const findSeq = matchedFindSeq;
     anyMatch = true;
     if (!partial) {
       if (!loc.full) {
