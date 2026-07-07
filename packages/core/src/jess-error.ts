@@ -27,6 +27,7 @@ export type JessErrorCode =
   | 'eval/type-mismatch'
   | 'eval/invalid-statement'
   | 'eval/property-in-root'
+  | 'eval/ruleset-on-property'
   | 'extend/protected-boundary'
   | 'extend/not-found'
   | 'extend/not-accessible'
@@ -223,6 +224,12 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Properties must be inside selector blocks. They cannot be in the root',
     reason: 'The property "${what}" was evaluated at the root — most often a mixin or detached ruleset call that dropped its declarations into the top level.',
     fix: 'Put the property inside a selector block (e.g. call the mixin/detached ruleset from within a ruleset).'
+  }],
+
+  ['eval/ruleset-on-property', {
+    summary: 'Rulesets cannot be evaluated on a property',
+    reason: 'The value of "${what}" evaluated to a detached ruleset; a detached ruleset can only be called (e.g. `@dr();` inside a block), not used as a property value.',
+    fix: 'Call the detached ruleset in statement position instead of assigning it to a property.'
   }],
 
   // Extend
