@@ -2066,6 +2066,195 @@ function branchHasGraft(seq: IrSeq): boolean {
   return seq.some(step => compoundHasGraftAtom(step.compound));
 }
 
+/* ============================================================================
+ * `&` (AMPERSAND) OWN-CONSTRUCTION (rung 6)
+ * ============================================================================
+ * DERIVED RULE (probe-verified against the oracle on reachable parse-shaped `&` inputs):
+ * the extend OUTPUT for an `&` target is BYTE-IDENTICAL to extending the amp's RESOLVED FORM
+ * (the `&` replaced by its parent, cloning-free from the amp IR) at the ORIGINAL `partial` flag,
+ * with ONE exception — the parent-only NOT_FOUND gate:
+ *
+ *   • child-only   (find matches the child material with `&` DROPPED)   → in-place extend
+ *   • crossing     (find matches resolved, not empty, not parent-alone) → HOIST (append sibling)
+ *   • parent-only  (find matches the PARENT-alone form, `&`-child dropped) → NOT_FOUND
+ *   • no match     (find matches none of the forms)                     → NOT_FOUND
+ *
+ * The resolved-form recursion produces the correct child-in-place (`.foo:is(.bar,.x)`) AND the
+ * crossing-append (`.foo.bar,.a` — hoistToRoot is a placement flag that does NOT change the
+ * string, so byte-comparison is satisfied) shapes; it is WRONG only for parent-only (where it
+ * would extend the parent portion) — so parent-only is intercepted → NOT_FOUND before recursing.
+ *
+ * SCOPE (fail-loud → UNSUPPORTED, never a guessed NOT_FOUND):
+ *   • single-branch subject + a single resolved amp with a single-branch parent (`resolvedFormSeq`
+ *     returns null / cls 'none' otherwise — list-parent grafts, amp-in-`:is()`, OR subjects);
+ *   • the subject must NOT lead with a combinator (`> &.child`): a leading-combinator relative
+ *     subject takes the oracle's `shouldSkipRelativePartialBoundary` in-place path
+ *     (`>:is(.parent.child,.new)` — keeps the combinator, wraps rather than appends), which the
+ *     plain resolved-form recursion drops — left UNSUPPORTED for a future rung.
+ */
+
+/** Serialize a lifted seq that carries NO amp atoms back to a Selector, reusing authored nodes. */
+function irSeqToSelectorReusing(seq: IrSeq): Selector {
+  if (seq.length === 1 && seq[0]!.comb === '') {
+    return compoundFromAtoms(seq[0]!.compound.atoms);
+  }
+  const parts: (Selector | string)[] = [];
+  for (let i = 0; i < seq.length; i++) {
+    const step = seq[i]!;
+    if (i > 0) {
+      parts.push(makeCombinator(step.comb));
+    }
+    parts.push(compoundFromAtoms(step.compound.atoms));
+  }
+  return sel(parts as ComplexSelectorComponent[]);
+}
+
+/** A compound Selector rebuilt from atom nodes (reused, no clone). Single atom stays bare. */
+function compoundFromAtoms(atoms: Atom[]): Selector {
+  const parts: (Selector | string)[] = [];
+  for (const a of atoms) {
+    if (a.kind === 'id') {
+      parts.push(typeof a.node === 'string' ? a.node : a.node);
+    } else if (a.kind === 'is') {
+      parts.push(a.node);
+    } else {
+      // an amp atom must not appear in a resolved/empty/parent-alone form
+      parts.push(a.node);
+    }
+  }
+  if (parts.length === 1 && typeof parts[0] !== 'string') {
+    return parts[0] as Selector;
+  }
+  return compound(parts as Parameters<typeof compound>[0]);
+}
+
+/**
+ * Build the PARENT-ALONE form seq: graft the amp's parent at the `&` position but DROP the child
+ * material (the compound's other atoms, and any trailing steps if the amp is its own head step).
+ * A find matching this form (but NOT the empty/child form) is a PARENT-ONLY match → NOT_FOUND.
+ * Modeled only for the leading-`&` common case (amp at step 0); returns null otherwise.
+ */
+function parentAloneFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq | null {
+  const ampAtom = seq[at.step]!.compound.atoms[at.atom]!;
+  if (ampAtom.kind !== 'amp' || !ampAtom.resolved || ampAtom.resolved.branches.length !== 1) {
+    return null;
+  }
+  const parent = ampAtom.resolved.branches[0]!;
+  // The parent's OWN content, with no child/sibling material — a find matching this alone is
+  // parent-only. The parent seq is used verbatim (its head loses any leading combinator).
+  return parent.map((ps, p) => (p === 0 ? { comb: '', compound: ps.compound } : ps));
+}
+
+/**
+ * Iteratively resolve EVERY amp atom remaining in a seq (each replaced by its single-branch parent,
+ * cloning-free), so a double/repeated `&` (`&&` → `.e.e`) fully lowers to a plain seq. Returns null
+ * when any residual amp has a list-parent / no resolved value (not modeled → caller UNSUPPORTED),
+ * or the input seq was null. Bounded by the (finite) count of amp atoms.
+ */
+function resolveAllAmps(seq: IrSeq | null): IrSeq | null {
+  if (!seq) {
+    return null;
+  }
+  let current = seq;
+  for (let guard = 0; guard < 64; guard++) {
+    const next = findAmpStep(current);
+    if (!next) {
+      return current;
+    }
+    const resolved = resolvedFormSeq(current, next);
+    if (!resolved) {
+      return null; // list-parent / unmodeled amp
+    }
+    current = resolved;
+  }
+  return null;
+}
+
+/** True when the subject's first component is a combinator (relative nested selector, `> &.child`). */
+function subjectLeadsWithCombinator(subject: Selector): boolean {
+  if (!isNode(subject, N.ComplexSelector)) {
+    return false;
+  }
+  const first = subject.value[0];
+  return isCombinator(first) || isNode(first, N.Combinator);
+}
+
+/**
+ * `&` OWN-CONSTRUCTION entry. Reproduces the oracle's two/three-probe classification in the IR,
+ * then either recurses `extendByIndexOwn` on the cloning-free RESOLVED form (child-in-place /
+ * crossing-append), returns NOT_FOUND (parent-only / no match), or UNSUPPORTED (unmodeled shape).
+ */
+function extendAmpersandTarget(
+  subject: Selector,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | Selector[] | 'NOT_FOUND' | UnsupportedResult {
+  const syms = new SymbolTable();
+  const irSubject = liftSel(subject, syms);
+  const irFind = liftSel(find, syms);
+  if (irSubject.branches.length !== 1) {
+    return UNSUPPORTED; // OR-subject with amp — not modeled
+  }
+  const subjectSeq = irSubject.branches[0]!;
+  const at = findAmpStep(subjectSeq);
+  if (!at) {
+    return UNSUPPORTED;
+  }
+  // More than one amp atom is fine ONLY when they share the same resolved parent (`&&`); a second
+  // amp with a different parent, or amps at different steps, is not modeled → UNSUPPORTED.
+  const ampAtom = subjectSeq[at.step]!.compound.atoms[at.atom]!;
+  if (ampAtom.kind !== 'amp' || !ampAtom.resolved) {
+    return UNSUPPORTED;
+  }
+  // Leading-combinator relative subject (`> &.child`) → oracle's in-place `:is`-wrap path. Not built.
+  if (subjectLeadsWithCombinator(subject)) {
+    return UNSUPPORTED;
+  }
+  // Multiple amps with DIFFERENT resolved parents (`&&` where each `&` has a distinct parent) — the
+  // iterative resolution's merge order is not modeled for distinct parents → UNSUPPORTED (fail-loud).
+  // Same-parent repeats (`&&` → `.e.e`) resolve identically regardless of order and ARE supported.
+  const ampResolvedValues = new Set<string>();
+  for (const step of subjectSeq) {
+    for (const a of step.compound.atoms) {
+      if (a.kind === 'amp') {
+        ampResolvedValues.add(a.node.getResolvedSelector()?.valueOf() ?? '');
+      }
+    }
+  }
+  if (ampResolvedValues.size > 1) {
+    return UNSUPPORTED;
+  }
+
+  const resolvedSeq = resolveAllAmps(resolvedFormSeq(subjectSeq, at));
+  if (!resolvedSeq) {
+    return UNSUPPORTED; // list-parent graft / multi-step-amb — not modeled
+  }
+  const emptySeq = resolveAllAmps(emptyFormSeq(subjectSeq, at));
+  const parentAloneSeqRaw = parentAloneFormSeq(subjectSeq, at);
+  const parentAloneSeq = parentAloneSeqRaw ? resolveAllAmps(parentAloneSeqRaw) : null;
+  if (!resolvedSeq || !emptySeq || (parentAloneSeqRaw && !parentAloneSeq)) {
+    return UNSUPPORTED; // residual amp could not be fully resolved (list-parent nested amp)
+  }
+
+  const resolvedMatch = seqMatchesFind(resolvedSeq, irFind);
+  if (!resolvedMatch) {
+    return 'NOT_FOUND';
+  }
+  const emptyMatch = seqMatchesFind(emptySeq, irFind);
+  if (emptyMatch) {
+    // child-only → in-place extend on the resolved form (byte-identical to the oracle).
+    return extendByIndexOwn(irSeqToSelectorReusing(resolvedSeq), find, extendWith, partial);
+  }
+  // crossing vs parent-only: a find matching the PARENT-alone form (child dropped) is parent-only.
+  if (parentAloneSeq && seqMatchesFind(parentAloneSeq, irFind)) {
+    return 'NOT_FOUND';
+  }
+  // crossing → hoist (append). The resolved-form recursion produces the append shape; the
+  // hoistToRoot placement flag does not affect the byte output the differential compares.
+  return extendByIndexOwn(irSeqToSelectorReusing(resolvedSeq), find, extendWith, partial);
+}
+
 /**
  * PUBLIC ENTRY (own construction). Same contract as `extendSelector`, but never delegates:
  * it either builds the output itself (byte-identical to the oracle on covered shapes) or
@@ -2085,14 +2274,20 @@ export function extendByIndexOwn(
     return targetSel;
   }
 
-  // `&` and constructor-atom FINDS are not built by the own engine yet. Gate to UNSUPPORTED
+  // Constructor-atom / `&` FINDS are not built by the own engine yet. Gate to UNSUPPORTED
   // (never a wrong/NOT_FOUND answer). A `:not`/`:where`/`:has` FIND (pseudo-arg on the find side)
-  // is caught by the node-level `findHasPseudoWithSelectorArg` guard below.
-  if (hasAmpersand(targetSel) || hasAmpersand(find) || hasConstructorAtoms(find)) {
+  // is caught by the node-level `nodeHasPseudoWithSelectorArg` guard below.
+  if (hasAmpersand(find) || hasConstructorAtoms(find)) {
     return UNSUPPORTED;
   }
   if (nodeHasPseudoWithSelectorArg(find)) {
     return UNSUPPORTED; // find is/contains a `:is`/`:not`/pseudo-arg graft — not built yet
+  }
+
+  // `&` TARGET: own construction reproduces the crossing/child/parent-only classification in-IR and
+  // recurses on the cloning-free resolved form (rung 6). Unmodeled amp shapes → UNSUPPORTED.
+  if (hasAmpersand(targetSel)) {
+    return extendAmpersandTarget(targetSel, find, extendWith, partial);
   }
 
   // GRAFT-INTO-TARGET: the target is or contains a `:is(...)`/`:not(...)`/pseudo-with-selector-arg.
