@@ -18,12 +18,45 @@ one of a few constructors of the algebra, so once lifted into the IR you never l
 ```
 Sel      = Or [Seq]                     -- SelectorList (OR branches)
 Seq      = [ (Combinator, Compound) ]   -- ComplexSelector (positional; combinator precedes each compound)
-Compound = Set<Atom>                    -- CompoundSelector (unordered)
+Compound = List<Atom>                   -- CompoundSelector: ORDERED list, keeps dups; a SET only for MATCHING
 Atom     = SimpleId                     -- interned .foo/#id/[attr]/::el/&-ref  (int)
          | Is Sel                       -- PseudoSelector(:is) — recursive, first-class
 ```
-Interning reuses `keySetLibrary`/`selectorBits`. A compound is a bitset over SimpleIds (plus any `Is`
-atoms). `Is` is a *constructor*, not an escape hatch — the algebra closes on itself.
+Interning reuses `keySetLibrary`/`selectorBits`. `Is` is a *constructor*, not an escape hatch — the
+algebra closes on itself.
+
+**Compound = DUAL representation (load-bearing).** A compound is a SET (order-independent): `.a.b` matches
+`.b.a` — matching must never depend on atom order, and a bitset gives that for free (`(find & cand) === find`).
+BUT a pure bitset loses order, and OUTPUT must be byte-identical to the oracle: `.b.a` must serialize as
+`.b.a` (not re-sorted to `.a.b`), and `all`-mode substitution must put the extender in the MATCHED atom's
+slot (`.b.a.c` find `.a` → `.b.x.c`, not `.x.b.c`). So a compound carries BOTH: a **match-bitset** (order-free
+subset tests, the discovery hot path) AND an **ordered atom list** (used by rewrite + materialization to
+preserve original order and substitution position). Matching reads the bitset; rewrite/output reads the list.
+
+**DUPLICATES: the ordered list is a LIST, not a set — never dedupe it.** `.b.b.c` → list `[b,b,c]` (the
+duplicate is syntactically real and must round-trip verbatim), match-bitset `{b,c}` (deduped — CORRECT,
+because extend matching is set-containment not multiset: `.b.b.c` matches exactly the finds `.b.c` does).
+Do NOT build `Compound` as a JS `Set` — that eats the dupe and breaks output. Whole principle in one line:
+**the ordered list is the truth; the match-bitset is a lossy fingerprint (deduped + unordered) that is
+exactly what matching wants.** Oracle-verify: a find with its OWN dupe (`.b.b`) is almost certainly treated
+as `{b}` (set semantics) — confirm. And `all`-substitution when the found atom appears twice (`.b.b.c` find
+`.b`) — which occurrence(s) get replaced — is oracle-defined; pin it, don't invent.
+
+## Representation lifecycle — a cached PROJECTION, not the parse-time primary rep
+The IR is DERIVED and transient — computed lazily (at latest, when extend lifts the scoped set) and cached
+on the selector. It is NOT the selector's primary representation, and should NOT be built at parse time as
+the sole shape. Why the node tree stays primary:
+- **Selectors aren't concrete until eval** — `.@{name}` interpolation has no interned id at parse, only after
+  eval. Extend runs post-eval, so lifting there sees concrete selectors for free.
+- **The node tree serves consumers the IR deliberately discards**: authored trivia/comments (round-trip),
+  source spans (sourcemaps), interpolation placeholders, casing, plugin/visitor walks, positioned errors.
+- So: node = primary; IR = lazily-computed **cached projection** — which is what `keySetLibrary`/`selectorBits`
+  already is (the match-bitset half already lives on the node). Compute once, reuse across every extend
+  iteration, ignore for other consumers.
+
+Serialization is HYBRID: extend-**generated** selectors (no authored trivia) serialize straight from the IR
+catamorphism; **original** selectors serialize from their node (trivia-faithful). Future (measure-gated only):
+pre-intern the static-only fingerprint at parse and finalize at eval — pursue ONLY if the lift shows up hot.
 
 ## Matching is a GRAPH, not tree recursion (seams)
 A selector compiles to a match-graph (NFA): compound positions = states, combinators = transitions,
@@ -63,6 +96,13 @@ Only three outcomes, all landing back in the algebra:
 3. hoist (emit a `Seq` into the ROOT `Or` instead of this level) — routing, still a `Seq`→`Or`.
 So the fixpoint runs entirely on the IR.
 
+## Target index — many rules, one target (where the index BEATS the walk)
+The index node for a find-pattern holds a **bucket** of `(extendWith, mode)`, not one. `.x:extend(.btn)`,
+`.y:extend(.btn)`, `.z:extend(.btn)` → the `.btn` leaf = `[.x, .y, .z]`; one match against a `.btn`-satisfying
+compound fires all three in a single lookup and fans out to three OR-branches. The walk re-scans the corpus
+once per instruction (M passes); the index inverts it — group by target, one pass, fan out per match. This is
+the indexed generalization of `applyExtendsToSelector`'s existing same-target batch.
+
 ## Fixpoint
 Worklist: seed with all Seqs; a produced/changed Seq (including an `Is` payload) is pushed and queried
 once against only the targets its content routes to (Set-Trie). Transitive closure by dataflow — no full
@@ -71,6 +111,25 @@ re-scan per round (this is the principled form of the landed "pass-scoped memo +
 ## Materialize once
 Catamorphism `Sel → SelectorNode → string`, reusing the existing generated-`:is()` unwrap + placement
 formatting. Only step that touches nodes.
+
+## Global flow — lift once, fixpoint in IR, materialize once (integration with `processExtends`)
+The per-call `extendByIndex` contract (below) is for DIFFERENTIAL VALIDATION only (one selector × one find ×
+one extendWith, vs the oracle). The real integration — what actually delivers "stay in the IR until done" —
+is a global flow that replaces `processExtends`'s **apply** loop (the **gather** of which extends exist +
+their scope stays):
+1. **Lift once** — at `processExtends` entry (post-eval; selectors concrete), lift every in-scope selector
+   into IR. The ONLY node→IR crossing.
+2. **Build the target index once** — all extend rules → Set-Trie/automaton, each node a bucket of
+   `(extendWith, mode)` (see Target index).
+3. **Scope-bucket** — partition selectors × targets by scope (media / import / `&`-boundary) so a target only
+   queries in-scope selectors; scope becomes a bucketing precondition, OFF the per-match hot path.
+4. **Worklist fixpoint, entirely in IR** — drain the queue: match → rewrite (new / hoisted Seqs) → push
+   changed Seqs → repeat. Same-target fan-out, chained extends, and "all extends applied in a row" are ALL
+   just the queue draining. Zero node allocation per round.
+5. **Materialize once** — fold each rule's IR `Or`-set → nodes → strings (hybrid, per Representation lifecycle).
+
+Validation order: prove per-call parity on the case ladder FIRST (the current build); THEN wire this global
+flow and re-validate against full-render output (`all-less` byte-identical).
 
 ## Build plan (parallel + oracle-validated)
 - New module `packages/core/src/tree/util/extend-index.ts` exposing
@@ -81,6 +140,8 @@ formatting. Only step that touches nodes.
   (`.valueOf()`), using the existing builders (`el`, `sel`, `sellist`, `compound`, `is`, `co`).
 - **Case ladder** (add one at a time; each new case tells you which layer is missing):
   1. exact single compound — `extendSelector(el('.a'), el('.a'), el('.b'), false)` → `(.a, .b)`
+  1b. **compound is a SET** — `.a.b` find `.b.a` MUST match (order-free); and output must PRESERVE order:
+      corpus `.b.a` stays `.b.a`, and `all` substitution keeps the slot (`.b.a.c` find `.a` → `.b.x.c`)
   2. subset in a compound (`all`) — `.b.c` find `.b` → `.b.c, <ext>.c`
   3. position in a sequence — `.x .b` find `.b`
   4. multi-compound sequence find — `.x .b` find `.x .b`
