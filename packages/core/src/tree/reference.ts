@@ -3710,6 +3710,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
+  }
+
   override valueOf() {
     return '';
   }

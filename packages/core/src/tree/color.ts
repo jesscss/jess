@@ -159,6 +159,10 @@ export class Color extends Node<ColorData, ColorOptions> {
     this.addFlag(F_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
   // A Color's state lives on the channel fields (`_rgbChannels` / `_hslChannels`
   // / `_alphaValue`) and `node`, not on `value` — a Color built from `rgba(...)`
   // has `node === undefined` and channels only. The base `clone()` rebuilds from

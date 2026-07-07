@@ -90,7 +90,6 @@ const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
-type FlagLikeNode = { hasFlag(flag: number): boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 type RulesRenderContextSnapshot = {
   rulesContext: Context['rulesContext'];
@@ -653,11 +652,11 @@ function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && (error as PathResolutionError)._isPathResolutionError === true;
 }
 
-function hasFlagMethod(value: unknown): value is FlagLikeNode {
+function hasStaticNameMethod(value: unknown): value is { hasStaticName(): boolean } {
   return typeof value === 'object'
     && value !== null
-    && 'hasFlag' in value
-    && typeof value.hasFlag === 'function';
+    && 'hasStaticName' in value
+    && typeof (value as { hasStaticName?: unknown }).hasStaticName === 'function';
 }
 
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
@@ -5548,11 +5547,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   /**
-   * Helper to check if a value is static (either a Node with F_STATIC flag or a primitive value)
+   * Does a name/path value resolve to a fixed identifier at construction time?
+   * A primitive (bare string) always does; a name/path Node answers from its own
+   * structure (`hasStaticName`) rather than the bubbled `F_STATIC` flag.
    */
   private _isStatic(value: unknown): boolean {
-    if (hasFlagMethod(value)) {
-      return value.hasFlag(F_STATIC);
+    if (hasStaticNameMethod(value)) {
+      return value.hasStaticName();
     }
     // Primitive values (strings, numbers, etc.) are considered static
     return true;
@@ -5666,9 +5667,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (node.registrationPrepared) {
         return true;
       }
-      // Check F_STATIC flag for other selector types.
-      if (hasFlagMethod(selector)) {
-        return selector.hasFlag(F_STATIC);
+      // Other selector types (Interpolated/Ampersand/Attribute/Pseudo): ask the
+      // selector whether its identity is fixed at construction, from structure.
+      if (hasStaticNameMethod(selector)) {
+        return selector.hasStaticName();
       }
       return false;
     }

@@ -74,6 +74,10 @@ export class Dimension extends Node<DimensionValue> {
     this.addFlag(F_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
   override clone(): this {
     const newNode = new Dimension(
       { number: this.number, unit: this.unit },

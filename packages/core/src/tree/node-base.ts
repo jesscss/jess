@@ -696,6 +696,90 @@ export abstract class Node<
   }
 
   /**
+   * Used as a Declaration/Mixin/Func name or a StyleImport path: does this node
+   * resolve to a fixed identifier at construction (no interpolation to eval)?
+   * Answered from the node's OWN structure so registration need not read the
+   * bubbled `F_STATIC`. The base default matches the leaf ctors that set no
+   * static flag (e.g. `Url`) — never a fixed name → deferred registration.
+   */
+  hasStaticName(): boolean {
+    return false;
+  }
+
+  /**
+   * This node's OWN construction-time static contribution — the flag its
+   * constructor sets before children bubble: `F_STATIC`, `F_NON_STATIC`, or `0`
+   * for a pure container that only inherits its children's state.
+   */
+  protected ownStaticFlag(): number {
+    return 0;
+  }
+
+  /**
+   * Recompute the bubbled `F_STATIC` bit from structure: fold `ownStaticFlag`
+   * with the direct child Nodes reached by the same childKeys crawl `adopt`
+   * uses, under the exact `propagateFlagsFrom` precedence (a non-static child is
+   * sticky and wins; else static iff own-or-any child is static). Lets selector
+   * registration ask the node instead of reading `hasFlag(F_STATIC)`.
+   */
+  structuralStaticFlag(): boolean {
+    return this._staticState() === F_STATIC;
+  }
+
+  private _staticState(): number {
+    let state = this.ownStaticFlag();
+    if (state === F_NON_STATIC) {
+      return F_NON_STATIC;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const childKeys = (this.constructor as typeof Node).childKeys;
+    if (childKeys === null) {
+      return state;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const fields = this as unknown as Record<string, unknown>;
+    for (let i = 0; i < childKeys.length; i++) {
+      const folded = this._foldChildStatic(fields[childKeys[i]!]);
+      if (folded === F_NON_STATIC) {
+        return F_NON_STATIC;
+      }
+      state |= folded;
+    }
+    return state;
+  }
+
+  private _foldChildStatic(value: unknown): number {
+    if (isArray(value)) {
+      let acc = 0;
+      for (const val of value) {
+        if (val instanceof Node) {
+          const child = val._staticState();
+          if (child === F_NON_STATIC) {
+            return F_NON_STATIC;
+          }
+          acc |= child;
+        }
+      }
+      return acc;
+    }
+    if (isPlainObject(value)) {
+      let acc = 0;
+      for (const k in value) {
+        const inner = this._foldChildStatic(value[k]);
+        if (inner === F_NON_STATIC) {
+          return F_NON_STATIC;
+        }
+        acc |= inner;
+      }
+      return acc;
+    }
+    if (value instanceof Node) {
+      return value._staticState();
+    }
+    return 0;
+  }
+
+  /**
    * OR a single direct child's propagated flags upward onto this node. This is
    * the FLAG concern only — NO reparenting. Separate from `adopt` (which also
    * sets `.parent`, canonical-only) so derived/eval nodes can recompute their

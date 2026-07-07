@@ -156,6 +156,10 @@ export class Operation extends Node<OperationValue> {
     }
   }
 
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
+  }
+
   // Operation's value is a positional `[left, op, right]` tuple, so the base's
   // childKeys object-rebuild doesn't fit — own the clone (invariant 7).
   override clone(cloneFn?: (n: Node) => Node): this {

@@ -130,6 +130,10 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     }
   }
 
+  protected override ownStaticFlag(): number {
+    return this._options?.escaped ? F_NON_STATIC : 0;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     if (!printOptions.trivia) {

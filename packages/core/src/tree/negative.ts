@@ -38,6 +38,10 @@ export class Negative extends Node<Node> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
+  }
+
   override toTrimmedString(rawOptions?: PrintOptions): string {
     const options = getPrintOptions(rawOptions);
     const node = this.value;
