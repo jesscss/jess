@@ -533,6 +533,79 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     });
   });
 
+  describe('15. multi-compound :is-graft EXPANSION — rung 5', () => {
+    // A MULTI-compound find crossing a BARE single-`:is` compound (`:is(.a,.b)` in its own slot),
+    // where the alignment is NOT the clean rung-4 whole-span-full. The oracle expands the `:is` into
+    // one sibling branch per arm (splicing the arm's compounds into the slot), then runs the plain
+    // multi-compound extend per expanded branch. PARTIAL folds per arm (substring `:is`-wrap or
+    // whole-span remainder sibling-split, hoisted to the tail); FULL emits expanded branches unchanged
+    // and appends extendWith ONCE iff the graft was multi-arm. All oracle-derived + pinned.
+    const t = (): Selector => sel([el('.x'), co(' '), is(sellist([el('.a'), el('.b')])), co(' '), el('.c')]);
+    const fac = (): Selector => sel([el('.a'), co(' '), el('.c')]);
+
+    it('.x :is(.a,.b) .c f .a .c FULL → expand + append', () => {
+      pin(t(), fac(), el('.d'), false, '.x .a .c,.x .b .c,.d');
+    });
+    it('.x :is(.a,.b) .c f .a .c PARTIAL → matching arm :is-wrapped in place', () => {
+      pin(t(), fac(), el('.d'), true, '.x :is(.a .c,.d),.x .b .c');
+    });
+    it('.x :is(.a,.b) .c f .b .c PARTIAL → SECOND arm wrapped (order preserved)', () => {
+      pin(t(), sel([el('.b'), co(' '), el('.c')]), el('.d'), true, '.x .a .c,.x :is(.b .c,.d)');
+    });
+    it('.x :is(.a,.b) .c f .q .c → NOT_FOUND (neither arm matches)', () => {
+      pin(t(), sel([el('.q'), co(' '), el('.c')]), el('.d'), false, 'NOT_FOUND');
+      pin(t(), sel([el('.q'), co(' '), el('.c')]), el('.d'), true, 'NOT_FOUND');
+    });
+    it('.x :is(.a) .c f .a .c FULL → single-arm expands, NO through-graft append', () => {
+      pin(sel([el('.x'), co(' '), is(sellist([el('.a')])), co(' '), el('.c')]), fac(), el('.d'), false, '.x .a .c');
+    });
+    it('.x :is(.a) .c f .a .c PARTIAL → single-arm :is-wrap', () => {
+      pin(sel([el('.x'), co(' '), is(sellist([el('.a')])), co(' '), el('.c')]), fac(), el('.d'), true, '.x :is(.a .c,.d)');
+    });
+    it('.x :is(.a,.b,.e) .c f .a .c FULL → 3-arm expand + append', () => {
+      pin(sel([el('.x'), co(' '), is(sellist([el('.a'), el('.b'), el('.e')])), co(' '), el('.c')]), fac(), el('.d'), false, '.x .a .c,.x .b .c,.x .e .c,.d');
+    });
+    it('.x :is(.a,.b,.e) .c f .a .c PARTIAL → first arm wrapped, rest unchanged', () => {
+      pin(sel([el('.x'), co(' '), is(sellist([el('.a'), el('.b'), el('.e')])), co(' '), el('.c')]), fac(), el('.d'), true, '.x :is(.a .c,.d),.x .b .c,.x .e .c');
+    });
+    it(':is(.a,.b) .c.x f .a .c FULL → remainder tail, expand + append', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), compound([el('.c'), el('.x')])]), fac(), el('.d'), false, '.a .c.x,.b .c.x,.d');
+    });
+    it(':is(.a,.b) .c.x f .a .c PARTIAL → per-arm sibling-split, sibling hoisted to tail', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), compound([el('.c'), el('.x')])]), fac(), el('.d'), true, '.a .c.x,.b .c.x,.x.d');
+    });
+    it('.p :is(.a,.b) .c.x f .a .c PARTIAL → substring :is-wrap absorbs remainder', () => {
+      pin(sel([el('.p'), co(' '), is(sellist([el('.a'), el('.b')])), co(' '), compound([el('.c'), el('.x')])]), fac(), el('.d'), true, '.p :is(.a .c.x,.d),.p .b .c.x');
+    });
+    it(':is(.a .m,.b) .c f .a .m .c → multi-compound arm splices', () => {
+      const tgt = (): Selector => sel([is(sellist([sel([el('.a'), co(' '), el('.m')]), el('.b')])), co(' '), el('.c')]);
+      const f = (): Selector => sel([el('.a'), co(' '), el('.m'), co(' '), el('.c')]);
+      pin(tgt(), f(), el('.d'), false, '.a .m .c,.b .c,.d');
+      pin(tgt(), f(), el('.d'), true, '.a .m .c,.b .c,.d');
+    });
+    it('.x>:is(.a,.b)>.c f .a>.c → child combinators preserved through expansion', () => {
+      const tgt = (): Selector => sel([el('.x'), co('>'), is(sellist([el('.a'), el('.b')])), co('>'), el('.c')]);
+      const f = (): Selector => sel([el('.a'), co('>'), el('.c')]);
+      pin(tgt(), f(), el('.d'), false, '.x>.a>.c,.x>.b>.c,.d');
+      pin(tgt(), f(), el('.d'), true, '.x>:is(.a>.c,.d),.x>.b>.c');
+    });
+    it('.x :is(.a,.b) .c .z f .a .c PARTIAL → mid-substring wrap in matching arm', () => {
+      pin(sel([el('.x'), co(' '), is(sellist([el('.a'), el('.b')])), co(' '), el('.c'), co(' '), el('.z')]), fac(), el('.d'), true, '.x :is(.a .c,.d) .z,.x .b .c .z');
+    });
+    it('ext list .x :is(.a,.b) .c f .a .c FULL → all ext branches appended', () => {
+      pin(t(), fac(), sellist([el('.d'), el('.e')]), false, '.x .a .c,.x .b .c,.d,.e');
+    });
+    it('ext list .x :is(.a,.b) .c f .a .c PARTIAL → ext folds into matching arm :is', () => {
+      pin(t(), fac(), sellist([el('.d'), el('.e')]), true, '.x :is(.a .c,.d,.e),.x .b .c');
+    });
+
+    // SCOPE (fail-loud / distinct paths): a 2nd graft the find must cross → UNSUPPORTED (oracle
+    // NOT_FOUND, but proving it needs the expansion-then-fail machinery → prefer fail-loud).
+    it('.x :is(.a,.b) :is(.p,.q) f .a .p → UNSUPPORTED (2nd graft in span)', () => {
+      pin(sel([el('.x'), co(' '), is(sellist([el('.a'), el('.b')])), co(' '), is(sellist([el('.p'), el('.q')]))]), sel([el('.a'), co(' '), el('.p')]), el('.d'), false, 'UNSUPPORTED');
+    });
+  });
+
   describe('11. remainder-splitting (multi-compound partial with an unmatched remainder)', () => {
     // WHOLE span → SIBLING-SPLIT: original branch unchanged + one sibling built from the LAST
     // spanned compound's remainder merged into extendWith's head compound.

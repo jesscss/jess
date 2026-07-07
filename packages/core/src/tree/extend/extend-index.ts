@@ -1799,6 +1799,171 @@ function matchPlainCompound(
 }
 
 /**
+ * MULTI-COMPOUND `:is`-GRAFT EXPANSION (rung 5). When a MULTI-compound find crosses a bare
+ * single-`:is` compound (the graft sits in its own compound slot, `:is(.a,.b)` — NOT embedded
+ * like `.m:is(.a,.b)`), and the alignment is NOT the clean rung-4 whole-span-full, the oracle
+ * EXPANDS the `:is` into one sibling branch per arm (`expandComplexSelectorWithIs` semantics:
+ * splice the arm's compounds into the graft slot) and then runs the plain multi-compound extend
+ * on each expanded (now-plain) branch. Verified against the oracle (differential-probed, 2026-07-06):
+ *   `.x :is(.a,.b) .c` f `.a .c` FULL    → `.x .a .c,.x .b .c,.d`   (expand + full-append once)
+ *   `.x :is(.a,.b) .c` f `.a .c` PARTIAL → `.x :is(.a .c,.d),.x .b .c` (expand + per-arm partial fold)
+ *   `:is(.a,.b) .c.x`  f `.a .c` PARTIAL → `.a .c.x,.b .c.x,.x.d`   (per-arm sibling-split, tail hoisted)
+ *   `:is(.a .m,.b) .c` f `.a .m .c`      → `.a .m .c,.b .c,.d`      (multi-compound arm splices)
+ *   `.x>:is(.a,.b)>.c` f `.a>.c`         → `.x>.a>.c,.x>.b>.c,.d`   (`>` combinators preserved)
+ *
+ * The expanded branches are PLAIN, so the plain `extendByIndexOwn` reproduces every per-arm shape
+ * (substring `:is`-wrap, whole-span remainder sibling-split, unchanged non-matching arms) BYTE-
+ * IDENTICALLY in PARTIAL mode. FULL mode differs: no expanded branch is a whole-selector full match
+ * (the find is a proper substring), so the plain loop appends nothing — but the oracle appends
+ * extendWith ONCE (the find fully matched THROUGH the graft in the original). So FULL mode is built
+ * directly here: expanded branches emitted unchanged + extendWith appended once iff the find matched.
+ *
+ * SCOPE (fail-loud elsewhere): exactly ONE bare-`:is` compound in the branch (a 2nd graft in the
+ * spanned range is the oracle's NOT_FOUND `.x :is(.a,.b) :is(.p,.q)` shape — left UNSUPPORTED, never
+ * a guessed NOT_FOUND); embedded grafts (`.m:is(.a,.b)`) and non-bare graft compounds (`:is(.a,.b).q`)
+ * do NOT expand (oracle NOT_FOUND / single-compound-passenger paths) — this returns null there.
+ */
+
+/** Bare single-`:is` compound step indices in a seq (a `:is` occupying its whole compound slot). */
+function bareIsStepIndices(seq: IrSeq): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < seq.length; i++) {
+    const atoms = seq[i]!.compound.atoms;
+    if (atoms.length === 1 && atoms[0]!.kind === 'is' && atoms[0]!.pseudoName === ':is') {
+      out.push(i);
+    }
+  }
+  return out;
+}
+
+/**
+ * Expand a seq's single bare-`:is` compound (at `isStep`) into one seq per arm, splicing each arm's
+ * compounds into the graft slot (`expandComplexSelectorWithIs`). The graft-slot's leading combinator
+ * is kept on the arm's head compound; a multi-compound arm keeps its own internal combinators.
+ * Reuses authored arm/compound nodes (cloning-free).
+ */
+function expandBareIsStep(seq: IrSeq, isStep: number): IrSeq[] {
+  const graftAtom = seq[isStep]!.compound.atoms[0] as Extract<Atom, { kind: 'is' }>;
+  const out: IrSeq[] = [];
+  for (const arm of graftAtom.sel.branches) {
+    const expanded: IrStep[] = [];
+    for (let i = 0; i < seq.length; i++) {
+      if (i !== isStep) {
+        expanded.push(seq[i]!);
+        continue;
+      }
+      // Splice the arm's compounds in at the graft slot; the slot's leading combinator prefixes
+      // the arm's head, the arm's own internal combinators follow.
+      for (let a = 0; a < arm.length; a++) {
+        const armStep = arm[a]!;
+        expanded.push(a === 0 ? { comb: seq[isStep]!.comb, compound: armStep.compound } : armStep);
+      }
+    }
+    out.push(expanded);
+  }
+  return out;
+}
+
+/**
+ * Attempt the multi-compound `:is`-graft expansion for the whole target. Returns the built output,
+ * null (this path does not apply — caller falls through to per-branch graft construction), or
+ * UNSUPPORTED. Fires only for a MULTI-compound find. Each target branch that carries a graft the
+ * find spans (and is not the clean rung-4 whole-span) is expanded; branches with no graft, or whose
+ * graft the find does not cross, pass through to the per-branch path (→ return null, don't expand).
+ */
+function tryMultiGraftExpand(
+  targetSel: Selector,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | Selector[] | 'NOT_FOUND' | null | UnsupportedResult {
+  const syms = new SymbolTable();
+  const irTarget = liftSel(targetSel, syms);
+  const irFind = liftSel(find, syms);
+  if (irFind.branches.length !== 1) {
+    return null;
+  }
+  const findSeq = irFind.branches[0]!;
+  if (findSeq.length < 2) {
+    return null; // single-compound find is not this rung
+  }
+
+  // Decide whether ANY branch needs expansion. A branch qualifies when it carries a bare-`:is`
+  // compound AND the find does not clean-whole-span-full match it (rung 4 owns that shape).
+  let anyExpand = false;
+  // A MULTI-arm `:is` expansion marks the match as a "through-graft" match: FULL mode appends
+  // extendWith once (like rung 4). A SINGLE-arm `:is(.a)` expands to one plain branch and behaves
+  // exactly like plain `.a` — no through-graft append (`.x :is(.a) .c` f `.a .c` FULL → `.x .a .c`).
+  let anyMultiArmGraft = false;
+  const expandedBranches: IrSeq[] = [];
+  for (const tb of irTarget.branches) {
+    const bareIs = bareIsStepIndices(tb);
+    const needsExpand =
+      bareIs.length > 0 && branchHasGraft(tb) && !multiCompoundGraftWholeSpanFull(tb, findSeq);
+    if (!needsExpand) {
+      expandedBranches.push(tb);
+      continue;
+    }
+    if (bareIs.length !== 1) {
+      // >1 bare-`:is` in the branch: the oracle expands only the first and then fails to align the
+      // rest (NOT_FOUND). Fail-loud rather than guess.
+      return UNSUPPORTED;
+    }
+    // A non-bare graft compound (`:is(.a,.b).q`) elsewhere in the branch is not expandable here.
+    for (let i = 0; i < tb.length; i++) {
+      if (i !== bareIs[0] && compoundHasGraftAtom(tb[i]!.compound)) {
+        return UNSUPPORTED;
+      }
+    }
+    anyExpand = true;
+    const graftAtom = tb[bareIs[0]!]!.compound.atoms[0] as Extract<Atom, { kind: 'is' }>;
+    if (graftAtom.sel.branches.length >= 2) {
+      anyMultiArmGraft = true;
+    }
+    for (const eb of expandBareIsStep(tb, bareIs[0]!)) {
+      expandedBranches.push(eb);
+    }
+  }
+  if (!anyExpand) {
+    return null; // no graft the find crosses → per-branch graft path handles it
+  }
+
+  // Any expanded branch still carrying a graft means a 2nd graft the find would have to cross —
+  // the oracle NOT_FOUND shape. Fail-loud.
+  for (const eb of expandedBranches) {
+    if (branchHasGraft(eb)) {
+      return UNSUPPORTED;
+    }
+  }
+
+  const expandedList = sellist(expandedBranches.map(seqToSelector));
+
+  if (partial) {
+    // Plain multi-branch target reproduces every per-arm partial shape byte-identically (substring
+    // `:is`-wrap in place, whole-span remainder sibling-split hoisted to the tail, unchanged arms).
+    return extendByIndexOwn(expandedList, find, extendWith, partial);
+  }
+
+  // FULL mode: expanded branches never whole-selector-full-match (proper substring), so emit them
+  // unchanged and append extendWith ONCE iff the find matched through a MULTI-arm graft. Detect the
+  // match by whether the plain engine found anything (NOT_FOUND ⟺ no match anywhere).
+  const probe = extendByIndexOwn(expandedList, find, extendWith, false);
+  if (probe === UNSUPPORTED) {
+    return UNSUPPORTED;
+  }
+  if (probe === 'NOT_FOUND') {
+    return 'NOT_FOUND';
+  }
+  // A single-arm `:is(.a)` expansion is plain `.a`: full mode leaves it unchanged (no through-graft
+  // append). Only a multi-arm graft crossing yields the append.
+  if (!anyMultiArmGraft) {
+    return probe;
+  }
+  const out: Selector[] = [...expandedBranches.map(seqToSelector), ...extendWithBranches(extendWith)];
+  return out.length === 1 ? out[0]! : sellist(out);
+}
+
+/**
  * Graft-into-target entry: the target carries a graft atom. Handle it via graft-aware
  * per-branch construction; returns the assembled output or UNSUPPORTED. Full-mode append
  * (bare `:is` whole-branch match handled inside buildGraftBranch by recursion) and partial
@@ -1817,6 +1982,14 @@ function extendGraftTarget(
     return UNSUPPORTED;
   }
   const findSeq = irFind.branches[0]!;
+
+  // RUNG 5: multi-compound find crossing a bare-`:is` graft → expand + per-arm extend.
+  if (findSeq.length >= 2) {
+    const expanded = tryMultiGraftExpand(targetSel, find, extendWith, partial);
+    if (expanded !== null) {
+      return expanded;
+    }
+  }
 
   const outBranches: Selector[] = [];
   const appendBranches: Selector[] = [];
