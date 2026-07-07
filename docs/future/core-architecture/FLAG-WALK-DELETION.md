@@ -315,14 +315,31 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
   asserted it stayed `undefined`). Deleted the slot + 2 clears + 2 write-only assigns + 2 stale test assertions
   (3 files, −8 lines). Core 2979/0, byte-identical 90/3, bench neutral. **Composition + root at-rule hoisting are
   both fully off eval now.**
-- **Next candidates (the remaining `_prepareForEval` structural work — narrowing):** (b) extend-gather → in-walk
-  (`processExtends`, `rules.ts:6863`; COUPLES with the extend engine + `rules.ts` — serialize against registration);
-  (c) registration/lookup-identity → construction-time name index (`_prepareRegistrationOnce`, `rules.ts:6825`,
-  `_isStatic`/`_hasStaticName`). Both touch `rules.ts` → one at a time. Then D2 (delete `static-rules.ts`
-  render-direct fast-path), D3 (collapse the eval-then-render split), C4 (delete `F_STATIC`/`F_NON_STATIC` +
-  `propagateFlagsFrom` — the /goal endpoint). Each investigate-first (composition + hoist both turned out
-  mostly-already-done — verify before rewriting). Also: `getFullComposedForm` (`extend-roots.ts:320`) re-walks the
-  parent chain inside extend instead of sharing the walk's `composedSelectorStack` — a candidate for the extend track.
+- **Slice 5 (registration → construction-time index) — INVESTIGATED, do-NOT-relocate** (no code; Slice-2/A3-class
+  verdict). Registration timing is **eval-bound** and is NOT the lever. Decisive finding: `_isStatic`/`_hasStaticName`
+  (F_STATIC reader-class 3) reads a **leaf-local, construction-time** F_STATIC on the NAME node (set by Quoted's
+  `:77/79` / Interpolated's `:198` constructor = "does this name contain interpolation") — **NOT the
+  `propagateFlagsFrom`-bubbled body flag**. So registration never gated the bubble deletion. The only genuinely
+  *bubbled* read here is the Ruleset selector branch (`rules.ts:5670`, `selector.hasFlag(F_STATIC)`), reached only
+  for Interpolated/Ampersand-bearing selectors (Basic/Compound/Complex/List short-circuit to static at `:5657`).
+  The real construction-time index is blocked not by the flag but by eval-bound machinery (Context-keyed
+  invalidation, reference-import wiring, the interpolated-name retry loop, live-binding per-placement scopes) — the
+  same multi-slice single-render-pass coupling the ENDGAME VERDICT flagged. Registration prep touched **no `rules.ts`
+  regions** (clean), so the next `rules.ts` slice is unblocked.
+- **RE-AIMED endgame (post hoist/composition/registration investigations): the bubbled `F_STATIC` has TWO real
+  consumers — class 4 (render-direct fast-path, `static-rules.ts`) and class 2 (reuse/aliasing gates). Registration
+  (class 3) and the leaf eval-skips (class 1, A3) do NOT read the bubble.** So the path to C4 is:
+  - **D2 — render-direct fast-path (`canRenderStaticRulesDirectly`/`isPlainStaticRuleLeaf`/`static-rules.ts`):** its
+    stated blocker ("delete once eval's structural work relocates") is NOW satisfied — hoist + composition are both
+    off eval. Investigate whether the normal eval+serialize path is byte-identical for the cases the fast-path
+    handles (measure the bench — it may still be a load-bearing perf shortcut, not just a flag reader).
+  - **C4-prereq — a name/selector-local `isInterpolated`/`nameIsStatic` predicate** owned by the name- and
+    selector-carrying node types (parallels the Phase A2 `F_AMPERSAND` selector-scope move), so reader-class 3 and the
+    `:5670` selector branch ask the node, not a bubbled flag. Overlaps `selector-*.ts` → serialize against the
+    extend/selector track.
+  - **class 2 reuse gates + extend-gather → in-walk** remain the deep single-render-pass pieces (dynamic-leaf-share).
+  - Also: `getFullComposedForm` (`extend-roots.ts:320`) re-walks the parent chain inside extend instead of sharing
+    the walk's `composedSelectorStack` — a candidate for the extend track.
 
 - **Phase A1 — DONE** (dev `6de3c0cc7`). `F_MAY_ASYNC` deleted entirely (bit `0b10` freed); sync/async
   guards → reactive attempt-sync/isThenable-bail; dead sync-twin helpers removed. Byte-identical,
