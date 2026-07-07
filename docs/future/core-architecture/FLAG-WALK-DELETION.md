@@ -282,6 +282,99 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
 
 ## PROGRESS LOG
 
+### Phase D (single render pass) — slices landing off dev, one at a time (LATEST)
+- **Slice 1 — DONE** (dev `9405044f1`). Deleted `AtRule.frames`: a hoisted nested `@media` recovers its severed
+  parent selector from the serialize walk's `options.composedSelectorStack` (the walk already descended through
+  the ancestor rulesets) + frame identity from `atRule.parent`→nearest Ruleset, instead of the eval-captured
+  snapshot. Removed `getRenderFrames`, the `directRenderFrames` WeakMap, `atRuleFrameNode/Override` PrintOptions,
+  `FrameMetadataNode` deep-copy. Net −158 lines. Byte-identical (all-less 90/3), core 2937/0, bench neutral.
+  (Salvaged from a crashed agent — the partial work was sound.)
+- **Slice 2 (relocate Ruleset `hoistToRoot`) — WON'T-DO / not a crutch.** `ruleset.ts:1949`'s
+  `if (sel.hoistToRoot) node.hoistToRoot = true` is NOT a collapse-mode decision (that already lives in the walk
+  via `isHoisted`'s `?? (collapseNesting && isNestable())` fallback). It carries the AMPERSAND PARENT-REPLACEMENT
+  fact set by `Ampersand.evalNode` (bare `&`/`&-X` absorbing its parent — `&-1` under `.body` → `.body-1`; "already
+  contains parent, don't re-prepend"), read at `ruleset.ts:1500/1595/351`. Decided during ampersand EVAL, NOT
+  reconstructible from collapse+nestability+ancestry → INTRINSIC eval output (like the composed selector itself),
+  not flag-walk state. Empirically load-bearing: disabling the stamp → 4 core regressions incl. the
+  `.body { @media print { &-1 } }` collapse fixtures. **LEAVE IT.** (Agent stopped + proved it; nothing changed.)
+- **Slice 3 (AtRule ROOT_ONLY hoist stamp) — DONE** (dev `ef23a7c5a`). RELOCATED like Slice 1. `AtRule.isHoisted`
+  now derives the root-only case from serialize-visible state (`bubbleRootAtRules` via `options.context`,
+  `isRootOnly()` node method, `hasRulesetAncestor()` = nearest-Ruleset walk of `node.parent`) instead of the
+  eval-captured `output.hoistToRoot`. Deleted the dead plumbing: `AtRuleBodyOutputState`, the record `output`
+  field, `ownsOutput` (+ its forced `withParts` copy), the `record.output` bake, `runtimeHoist`, and
+  `atRuleHoistNode`/`atRuleHoistOverride` in PrintOptions. `clearRulesetFrames` (same guard) is genuine eval-time
+  frame-clearing, NOT the hoist decision — left intact. Net −22 source lines. Byte-identical across 15,607 lines
+  (all 4 collapse×bubble combos), core 2979/0, bench neutral. **Root at-rule hoisting is now fully off eval —
+  both AtRule.frames (Slice 1) and the hoist stamp (Slice 3) relocated to the walk.**
+- **Slice 4 (selector composition → walk) — DONE / already-in-walk** (dev `7327f8094`). INVESTIGATION verdict:
+  composition is ALREADY on the serialize walk, not eval — `Ruleset.composeSelector`/`composeHeaderSelector`/
+  `composePushedSelector` all run from the serialize path reading `options.composedSelectorStack`;
+  `Ruleset.evalNode` does ZERO parent composition (it only resolves the selector's OWN interpolated value, which is
+  intrinsic value-eval, correctly on eval). The only residual was a dead write-only `_composedSelector` slot
+  (written at `extend-roots.ts:967/1114` alongside load-bearing assigns, read NOWHERE in production; two tests
+  asserted it stayed `undefined`). Deleted the slot + 2 clears + 2 write-only assigns + 2 stale test assertions
+  (3 files, −8 lines). Core 2979/0, byte-identical 90/3, bench neutral. **Composition + root at-rule hoisting are
+  both fully off eval now.**
+- **Slice 5 (registration → construction-time index) — INVESTIGATED, do-NOT-relocate** (no code; Slice-2/A3-class
+  verdict). Registration timing is **eval-bound** and is NOT the lever. Decisive finding: `_isStatic`/`_hasStaticName`
+  (F_STATIC reader-class 3) reads a **leaf-local, construction-time** F_STATIC on the NAME node (set by Quoted's
+  `:77/79` / Interpolated's `:198` constructor = "does this name contain interpolation") — **NOT the
+  `propagateFlagsFrom`-bubbled body flag**. So registration never gated the bubble deletion. The only genuinely
+  *bubbled* read here is the Ruleset selector branch (`rules.ts:5670`, `selector.hasFlag(F_STATIC)`), reached only
+  for Interpolated/Ampersand-bearing selectors (Basic/Compound/Complex/List short-circuit to static at `:5657`).
+  The real construction-time index is blocked not by the flag but by eval-bound machinery (Context-keyed
+  invalidation, reference-import wiring, the interpolated-name retry loop, live-binding per-placement scopes) — the
+  same multi-slice single-render-pass coupling the ENDGAME VERDICT flagged. Registration prep touched **no `rules.ts`
+  regions** (clean), so the next `rules.ts` slice is unblocked.
+- **RE-AIMED endgame (post hoist/composition/registration investigations): the bubbled `F_STATIC` has TWO real
+  consumers — class 4 (render-direct fast-path, `static-rules.ts`) and class 2 (reuse/aliasing gates). Registration
+  (class 3) and the leaf eval-skips (class 1, A3) do NOT read the bubble.** So the path to C4 is:
+  - **D2 — render-direct fast-path — DONE / DELETED** (dev `93fb51fb2`). Confirmed `canRenderStaticRulesDirectly`
+    reads the BUBBLED `F_STATIC` (Rules has no F_STATIC-setting constructor; it only bubbles from all-static children
+    via `propagateFlagsFrom`) → genuine class-4 consumer. With hoist+composition off eval, the normal eval+serialize
+    path is byte-identical for every case the shortcut handled (proven across collapse:true/false + dynamic), and
+    the bench is neutral-to-FASTER even on the fully-static workload (the per-render `every(isPlainStaticRuleLeaf)`
+    scan cost more than the now-cheap eval it skipped). Deleted `static-rules.ts` + all call sites
+    (`ruleset.ts` `canRenderSourceDirectly`/nil-selector-direct, `at-rule.ts` `renderSourceBody`), net −186 lines.
+    Core 2992/0, all-less 90/3. **Class-4 is gone — the ONLY remaining bubbled-`F_STATIC` consumer is class-2 (the
+    reuse/aliasing gates).**
+  - **C4-prereq — a name/selector-local `isInterpolated`/`nameIsStatic` predicate** owned by the name- and
+    selector-carrying node types (parallels the Phase A2 `F_AMPERSAND` selector-scope move), so reader-class 3 and the
+    `:5670` selector branch ask the node, not a bubbled flag. Overlaps `selector-*.ts` → serialize against the
+    extend/selector track.
+  - **class 2 reuse gates + extend-gather → in-walk** remain the deep single-render-pass pieces (dynamic-leaf-share).
+
+- **Slice — class-2 reuse-gate deletion — INVESTIGATED, verdict (c) BLOCKED by the deep rework** (no code; read-only).
+  Two corrections to the endgame framing above:
+  1. **Class-2 is NOT the last bubbled reader** — the "only class-2 remains" premise was WRONG. The gates
+     (`canReuseAsLeaf` node-base:1171, `canReuseLeaf` cloning.ts:12, `canReuseStaticScalarLeaf` callable-binding:5)
+     read `!F_NON_STATIC`/`F_STATIC` **and** `!F_HAS_NODE_CHILD` (both bubbled). `F_HAS_NODE_CHILD`'s ONLY readers
+     are these three gates → it deletes precisely WITH class-2 (doc was right there). BUT there is a THIRD bubbled
+     population the plan mis-filed under class-1: **container-type static short-circuits** in `evalNode`/`resolve`/
+     `render` — List/Sequence/AtRule/AtRuleStatement/QueryCondition/SelectorCapture/Declaration/Rules do NOT set
+     `F_STATIC` in their constructors, so their `this.hasFlag(F_STATIC)` reads are BUBBLED and live
+     (`sequence.ts:360/459`, `list.ts:303/383`, `at-rule.ts:842/1755`, `at-rule-statement.ts:76/134`,
+     `query-condition.ts:301/424`, `selector-capture.ts:88`, `declaration.ts:1474/2012`, `rules.ts:6956` +
+     selector/value branches `rules.ts:5540/5656/5661`). A3's scope-correction already flagged these survive to C4.
+  2. **Class-2 copies are still load-bearing** (not dead-under-always-share): the SHARE branch is freeze-safe, but
+     the COPY branch is forced by placement that MUTATES the node — `inherit`'s unconditional source-span +
+     `F_VISIBLE/F_EXTENDED/F_GENERATED` writes (collapse-survivor `selector-complex.ts:367`, extend `:3467`) and
+     per-placement arg identity (`cloneBoundValue`). Removing them corrupts the shared tree / aliases dynamic args.
+  **Revised path to C4 (delete `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`propagateFlagsFrom`) — retire ALL of:**
+  (1) class-2 reuse gates [needs the reparent / dynamic-leaf-share rework]; (2) the container static short-circuits
+  [need reactive fall-through byte-identical + render fast-paths relocated — Phase D]; (3) the C4-prereq
+  name/selector-local `isInterpolated`/`nameIsStatic` predicate [retires class-3 + `rules.ts:5656`]; (4)
+  callable-guard static → guard-local (`callable-guard.ts`, `callable-candidate-execution.ts:72`); (5) type-guard
+  value-checks (`scope-frame.ts:491`, `reference.ts:194/2577`). `F_HAS_NODE_CHILD` falls with (1).
+  **VERDICT: C4 is gated on the DEEP single-render-pass / reparent / dynamic-leaf-share rework — twice-investigated
+  (inherit REJECTED, now class-2 BLOCKED) and reprofiled as <1% self-time.** Items (3)(4)(5) are landable now as
+  reader-retirement (shrink the set, code-health), but do NOT reach C4 alone. (1)+(2) are the multi-slice coupled
+  piece. **DECISION POINT (owner):** land the incremental reader-retirements (3/4/5) + bank Phase D's completed
+  relocations (hoist/composition/D2), and PARK the flag deletion behind the single-render-pass project — OR commit
+  to that deep rework now (high-regression, not a perf lever).
+  - Also: `getFullComposedForm` (`extend-roots.ts:320`) re-walks the parent chain inside extend instead of sharing
+    the walk's `composedSelectorStack` — a candidate for the extend track.
+
 - **Phase A1 — DONE** (dev `6de3c0cc7`). `F_MAY_ASYNC` deleted entirely (bit `0b10` freed); sync/async
   guards → reactive attempt-sync/isThenable-bail; dead sync-twin helpers removed. Byte-identical,
   bench-neutral, core 2744/0 (−2 = deleted flag-only tests). Net −395 lines.

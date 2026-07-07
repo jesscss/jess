@@ -130,10 +130,6 @@ function isRulesNode(node: Node | { type?: string } | undefined): node is Rules 
   return node instanceof Node && (node.nodeType & nodeTypeBits.Rules!) !== 0;
 }
 
-function hasFrameMetadata(node: Node): node is FrameMetadataNode {
-  return 'frames' in node;
-}
-
 function sourceRootOf(node: Node): Rules | undefined {
   if (isRulesNode(node)) {
     return node;
@@ -159,9 +155,6 @@ function sourceRootOf(node: Node): Rules | undefined {
 type TreeVisitMethod = (node: Node, ctx?: unknown) => NodeVisitReturn;
 type VisitMethod = (node: Node) => Node;
 type TypeVisitMethod = (node: Node) => NodeVisitReturn;
-type FrameMetadataNode = Node & {
-  frames?: unknown;
-};
 
 function getTreeVisitMethod(visitor: unknown): TreeVisitMethod | undefined {
   if (typeof visitor !== 'object' || visitor === null) {
@@ -1190,20 +1183,6 @@ export abstract class Node<
 
   private _copyPlacementMetadataTo(target: Node): void {
     target.hoistToRoot = this.hoistToRoot;
-    if (!hasFrameMetadata(this)) {
-      return;
-    }
-    const self = this as FrameMetadataNode;
-    const frames = self.frames;
-    if (Array.isArray(frames)) {
-      const frameCopy = new Array<unknown>(frames.length);
-      for (let i = 0; i < frames.length; i++) {
-        frameCopy[i] = frames[i];
-      }
-      (target as FrameMetadataNode).frames = frameCopy;
-      return;
-    }
-    (target as FrameMetadataNode).frames = undefined;
   }
 
   /**

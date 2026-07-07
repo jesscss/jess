@@ -964,7 +964,6 @@ export function processExtends(context: Context): void {
           }
           assignLocalSelector(ruleset, newSelectorSurface);
           if (typeof newSelectorSurface !== 'string' && !Array.isArray(newSelectorSurface)) {
-            ruleset._composedSelector = newSelectorSurface;
             newSelectorSurface.hoistToRoot = true;
           }
           ruleset.hoistToRoot = true;
@@ -1111,7 +1110,6 @@ export function processExtends(context: Context): void {
             }
           }
           assignLocalSelector(ruleset, newSelector);
-          ruleset._composedSelector = newSelector;
           if (newSelector.hoistToRoot) {
             ruleset.hoistToRoot = true;
           }

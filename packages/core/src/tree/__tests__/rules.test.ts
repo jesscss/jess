@@ -315,8 +315,8 @@ describe('Rules', () => {
     const first = node.render(context);
     const second = node.render(context);
 
-    expect(first).toBe('color: red;');
-    expect(second).toBe('color: red;');
+    expect(first).toBe('color: red;\n');
+    expect(second).toBe('color: red;\n');
     expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 

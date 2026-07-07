@@ -31,11 +31,33 @@ type GeneratedPseudoPlacementOverrideState = {
   omitWrapperForSingleSelectorList?: boolean;
 };
 
+/**
+ * PseudoSelector-local flag bits. Live in their own int (not base `flags`) so
+ * the shared cross-node flag read isn't widened by pseudo-only state.
+ * `F_PSEUDO_PLACEMENT_OVERRIDE` marks a generated `:is()` placement override
+ * (the old truthy `generatedPseudoPlacementOverride` object); `F_PSEUDO_OMIT_WRAPPER`
+ * carries the single `omitWrapperForSingleSelectorList` boolean that object held.
+ */
+const F_PSEUDO_PLACEMENT_OVERRIDE = 0b1;
+const F_PSEUDO_OMIT_WRAPPER = 0b10;
+
+// The override object held exactly one boolean and was never mutated after
+// creation, so two frozen singletons cover every value — the getter hands one
+// back instead of allocating a fresh object per generated `:is()`.
+const PLACEMENT_OVERRIDE_OMIT: GeneratedPseudoPlacementOverrideState = Object.freeze({ omitWrapperForSingleSelectorList: true });
+const PLACEMENT_OVERRIDE_KEEP: GeneratedPseudoPlacementOverrideState = Object.freeze({ omitWrapperForSingleSelectorList: false });
+
 function setGeneratedPseudoPlacementOverride(
   source: PseudoSelector,
   override: GeneratedPseudoPlacementOverrideState
 ): void {
-  source.generatedPseudoPlacementOverride = override;
+  let flags = (source.pseudoFlags ?? 0) | F_PSEUDO_PLACEMENT_OVERRIDE;
+  if (override.omitWrapperForSingleSelectorList === true) {
+    flags |= F_PSEUDO_OMIT_WRAPPER;
+  } else {
+    flags &= ~F_PSEUDO_OMIT_WRAPPER;
+  }
+  source.pseudoFlags = flags;
 }
 
 function createEvaluatedPseudoSelector(
@@ -76,7 +98,22 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
    * `:focus`, ...) carries NO own slot for it — the eager `= undefined` used to add
    * a hidden-class slot to every one of ~3000 instances in the collapse census.
    */
-  declare generatedPseudoPlacementOverride?: GeneratedPseudoPlacementOverrideState;
+  declare pseudoFlags?: number;
+
+  /**
+   * Back-compat view of the old rare `{ omitWrapperForSingleSelectorList }` field,
+   * now packed into `pseudoFlags`. Returns a shared frozen singleton (no per-read
+   * alloc) so the external structural read in `selector-analysis.ts` keeps working.
+   */
+  get generatedPseudoPlacementOverride(): GeneratedPseudoPlacementOverrideState | undefined {
+    const flags = this.pseudoFlags;
+    if (flags === undefined || (flags & F_PSEUDO_PLACEMENT_OVERRIDE) === 0) {
+      return undefined;
+    }
+    return (flags & F_PSEUDO_OMIT_WRAPPER) !== 0
+      ? PLACEMENT_OVERRIDE_OMIT
+      : PLACEMENT_OVERRIDE_KEEP;
+  }
 
   constructor(
     value: PseudoSelectorValue,
@@ -89,7 +126,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     this.name = value.name;
     this.arg = value.arg;
     if (value.generatedPseudoPlacementOverride !== undefined) {
-      this.generatedPseudoPlacementOverride = value.generatedPseudoPlacementOverride;
+      setGeneratedPseudoPlacementOverride(this, value.generatedPseudoPlacementOverride);
     }
   }
 
@@ -100,12 +137,12 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const { arg } = this;
     const mark = w.mark();
     const selectorArg = isSelectorNode(arg) ? arg : undefined;
-    if (this.generated && name === ':is' && selectorArg && this.generatedPseudoPlacementOverride) {
-      const generatedOverride = this.generatedPseudoPlacementOverride;
+    const pseudoFlags = this.pseudoFlags ?? 0;
+    if (this.generated && name === ':is' && selectorArg && (pseudoFlags & F_PSEUDO_PLACEMENT_OVERRIDE) !== 0) {
       if (this.keySetLibrary) {
         attachSelectorBitLibrary(selectorArg, this.keySetLibrary);
       }
-      const omitGeneratedWrapper = generatedOverride.omitWrapperForSingleSelectorList === true
+      const omitGeneratedWrapper = (pseudoFlags & F_PSEUDO_OMIT_WRAPPER) !== 0
         && (!isNode(selectorArg, N.SelectorList) || selectorArg.value.length === 1);
       if (omitGeneratedWrapper) {
         selectorArg.toString(options);

@@ -79,7 +79,6 @@ import {
   type RulesEntryLike
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
-import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
@@ -985,6 +984,7 @@ const R_BODY_EVALUATED = 1 << 7;
 const R_HAS_EXTENDS = 1 << 8;
 const R_HAS_REFERENCE_IMPORTS = 1 << 9;
 const R_REGISTRATION_PREPARED = 1 << 10;
+const R_PLACEMENT_REPOINTED = 1 << 11;
 /** Bits reset by `resetDerivedState` (child-derived surfaces + extend/reference-import). */
 const R_DERIVED_STATE_MASK =
   R_HAS_DIRECT_CHILD_RULE_SURFACE
@@ -997,18 +997,87 @@ const R_DERIVED_STATE_MASK =
   | R_HAS_EXTENDS
   | R_HAS_REFERENCE_IMPORTS;
 
+/**
+ * Cold, rarely-allocated callable/function/child-rule lookup state, moved OFF the
+ * per-instance `Rules` shape into one lazily-allocated fixed-shape struct. A leaf
+ * declaration-only Ruleset (the majority of the ~12k instances) never runs a
+ * multi-kind lookup, so it carries ONE `undefined` `_lookup` slot instead of the
+ * ~12 fields below. Only a WRITE allocates the struct; reads see `undefined` and
+ * fall back to the neutral value (undefined map / `0` version).
+ *
+ * FAST-V8: every field is declared up-front so V8 keeps a single monomorphic
+ * hidden class. No dynamic attach / `Object.assign` / `defineProperty` / `delete`.
+ */
+class RulesLookupState {
+  functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
+  callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
+  directChildRuleEntries: Array<RulesEntryLike> | null | undefined = undefined;
+  directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined = undefined;
+  directDeclarationsByName: Map<string, Declaration[] | null> | undefined = undefined;
+  directDeclarationLookupCache: Map<string, {
+    readonly optionalMatch: DirectDeclarationOccurrence | undefined;
+    readonly publicMatch: DirectDeclarationOccurrence | undefined;
+    readonly readonly: boolean;
+  }> | undefined = undefined;
+
+  declarationLookupVersionsByName: Map<string, number> | undefined = undefined;
+  functionLookupVersionsByName: Map<string, number> | undefined = undefined;
+  _closureScope: Rules | undefined = undefined;
+  callableLookupVersion = 0;
+  functionLookupVersion = 0;
+  declarationLookupVersion = 0;
+}
+
 export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
   static override childKeys: readonly string[] = ['rules'] as const;
 
   readonly rules: Node[];
 
-  functionsByName: Map<string, JsFunction | Func> | undefined;
   /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
   varsByName: Map<string, BindingEntry[]> | undefined;
-  /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
-  callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined;
-  directChildRuleEntries: Array<RulesEntryLike> | null | undefined;
-  directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined;
+  /**
+   * Cold callable/function/child-rule lookup state (see `RulesLookupState`). One
+   * slot instead of ~12 eager fields; lazily allocated on first WRITE by
+   * `ensureLookup()`. Reads go through the property getters below (never allocate).
+   */
+  private _lookup: RulesLookupState | undefined = undefined;
+
+  private ensureLookup(): RulesLookupState {
+    return this._lookup ??= new RulesLookupState();
+  }
+
+  get functionsByName(): Map<string, JsFunction | Func> | undefined {
+    return this._lookup?.functionsByName;
+  }
+
+  set functionsByName(value: Map<string, JsFunction | Func> | undefined) {
+    this.ensureLookup().functionsByName = value;
+  }
+
+  get callableLookupCache(): Map<string, CallableLookupEntry[] | null> | undefined {
+    return this._lookup?.callableLookupCache;
+  }
+
+  set callableLookupCache(value: Map<string, CallableLookupEntry[] | null> | undefined) {
+    this.ensureLookup().callableLookupCache = value;
+  }
+
+  get directChildRuleEntries(): Array<RulesEntryLike> | null | undefined {
+    return this._lookup?.directChildRuleEntries;
+  }
+
+  set directChildRuleEntries(value: Array<RulesEntryLike> | null | undefined) {
+    this.ensureLookup().directChildRuleEntries = value;
+  }
+
+  get directDeclarationChildEntries(): Array<RulesEntryLike> | null | undefined {
+    return this._lookup?.directDeclarationChildEntries;
+  }
+
+  set directDeclarationChildEntries(value: Array<RulesEntryLike> | null | undefined) {
+    this.ensureLookup().directDeclarationChildEntries = value;
+  }
+
   /**
    * Rules-only packed boolean state (11 formerly-per-instance booleans). One int
    * slot instead of eleven `false`/`false`… fields keeps the Rules shape narrow
@@ -1101,19 +1170,72 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
-  directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
-  directDeclarationLookupCache: Map<string, {
+  get directDeclarationsByName(): Map<string, Declaration[] | null> | undefined {
+    return this._lookup?.directDeclarationsByName;
+  }
+
+  set directDeclarationsByName(value: Map<string, Declaration[] | null> | undefined) {
+    this.ensureLookup().directDeclarationsByName = value;
+  }
+
+  get directDeclarationLookupCache(): Map<string, {
     readonly optionalMatch: DirectDeclarationOccurrence | undefined;
     readonly publicMatch: DirectDeclarationOccurrence | undefined;
     readonly readonly: boolean;
-  }> | undefined;
+  }> | undefined {
+    return this._lookup?.directDeclarationLookupCache;
+  }
+
+  set directDeclarationLookupCache(value: Map<string, {
+    readonly optionalMatch: DirectDeclarationOccurrence | undefined;
+    readonly publicMatch: DirectDeclarationOccurrence | undefined;
+    readonly readonly: boolean;
+  }> | undefined) {
+    this.ensureLookup().directDeclarationLookupCache = value;
+  }
 
   lookupVersion = 0;
-  declarationLookupVersion = 0;
-  declarationLookupVersionsByName: Map<string, number> | undefined;
-  callableLookupVersion = 0;
-  functionLookupVersion = 0;
-  functionLookupVersionsByName: Map<string, number> | undefined;
+
+  get declarationLookupVersion(): number {
+    return this._lookup?.declarationLookupVersion ?? 0;
+  }
+
+  set declarationLookupVersion(value: number) {
+    this.ensureLookup().declarationLookupVersion = value;
+  }
+
+  get declarationLookupVersionsByName(): Map<string, number> | undefined {
+    return this._lookup?.declarationLookupVersionsByName;
+  }
+
+  set declarationLookupVersionsByName(value: Map<string, number> | undefined) {
+    this.ensureLookup().declarationLookupVersionsByName = value;
+  }
+
+  get callableLookupVersion(): number {
+    return this._lookup?.callableLookupVersion ?? 0;
+  }
+
+  set callableLookupVersion(value: number) {
+    this.ensureLookup().callableLookupVersion = value;
+  }
+
+  get functionLookupVersion(): number {
+    return this._lookup?.functionLookupVersion ?? 0;
+  }
+
+  set functionLookupVersion(value: number) {
+    this.ensureLookup().functionLookupVersion = value;
+  }
+
+  get functionLookupVersionsByName(): Map<string, number> | undefined {
+    return this._lookup?.functionLookupVersionsByName;
+  }
+
+  set functionLookupVersionsByName(value: Map<string, number> | undefined) {
+    this.ensureLookup().functionLookupVersionsByName = value;
+  }
+
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
   /**
@@ -1123,7 +1245,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * be baked back into the shared template (Ruleset.finishEvaluatedRules reads +
    * clears it), so a second call of the enclosing mixin re-evaluates cleanly.
    */
-  _placementRepointed = false;
+  get _placementRepointed(): boolean {
+    return (this.rulesFlags & R_PLACEMENT_REPOINTED) !== 0;
+  }
+
+  set _placementRepointed(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_PLACEMENT_REPOINTED;
+    } else {
+      this.rulesFlags &= ~R_PLACEMENT_REPOINTED;
+    }
+  }
+
   /**
    * Set once this Rules' body has been evaluated (even a lazy mixin body, when it
    * IS evaluated). Narrow §2.7 eval-state signal — the replacement for the deleted
@@ -1151,7 +1284,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * not its canonical `sourceNode.parent` (which lacks them). See
    * parseman-wrapper-is-scope-identity.
    */
-  _closureScope: Rules | undefined;
+  get _closureScope(): Rules | undefined {
+    return this._lookup?._closureScope;
+  }
+
+  set _closureScope(value: Rules | undefined) {
+    this.ensureLookup()._closureScope = value;
+  }
+
   /**
    * Track whether this Rules subtree contains extend instructions.
    * Prep work for Track 5 segmented render selection.
@@ -1209,9 +1349,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // back-refs; they are derived, non-tree data, so drop them too.
     const json = super.toJSON();
     delete json._scopeFrame;
-    delete json.callableLookupCache;
-    delete json.directDeclarationLookupCache;
-    delete json.functionLookupCache;
+    // The cold lookup fields now live on `_lookup` (a nested struct). Drop the raw
+    // struct and re-emit only the non-cyclic, non-cache subset at top level so the
+    // serialized shape matches the pre-slim behavior (functions + child-entry
+    // surfaces + version counters kept; `callableLookupCache` /
+    // `directDeclarationLookupCache` / `_closureScope` back-ref dropped).
+    delete json._lookup;
+    const lookup = this._lookup;
+    if (lookup) {
+      json.functionsByName = lookup.functionsByName;
+      json.functionLookupVersion = lookup.functionLookupVersion;
+      json.functionLookupVersionsByName = lookup.functionLookupVersionsByName;
+      json.directChildRuleEntries = lookup.directChildRuleEntries;
+      json.directDeclarationChildEntries = lookup.directDeclarationChildEntries;
+      json.directDeclarationsByName = lookup.directDeclarationsByName;
+      json.declarationLookupVersion = lookup.declarationLookupVersion;
+      json.declarationLookupVersionsByName = lookup.declarationLookupVersionsByName;
+      json.callableLookupVersion = lookup.callableLookupVersion;
+    }
     return json;
   }
 
@@ -1270,38 +1425,30 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private resetDerivedState(source: Rules): void {
-    // Only preserve explicit function bindings across clones. This supports
-    // Less plugin compat without reusing derived declaration/callable lookup
-    // state, which must be rebuilt from AST nodes via lazy indexing.
+    // IMPORTANT: cloned Rules must rebuild their derived lookup state. Otherwise a
+    // clone can inherit empty/incorrect lookup maps, causing lookup misses (e.g. @c
+    // in detached-rulesets). The derive shell starts with `_lookup === undefined`
+    // (all cold lookup fields at their neutral value), so the only thing to carry
+    // across is the explicit function-binding subset below — everything else is
+    // already cleared by virtue of the struct being unallocated.
+    //
+    // Only preserve explicit function bindings across clones. This supports Less
+    // plugin compat without reusing derived declaration/callable lookup state,
+    // which must be rebuilt from AST nodes via lazy indexing.
     if (source.functionsByName) {
-      this.functionsByName = new Map(source.functionsByName);
-      this.functionLookupVersion = source.functionLookupVersion;
-      this.functionLookupVersionsByName = source.functionLookupVersionsByName
+      const lookup = this.ensureLookup();
+      lookup.functionsByName = new Map(source.functionsByName);
+      lookup.functionLookupVersion = source.functionLookupVersion;
+      lookup.functionLookupVersionsByName = source.functionLookupVersionsByName
         ? new Map(source.functionLookupVersionsByName)
         : undefined;
-    } else {
-      this.functionsByName = undefined;
-      this.functionLookupVersion = 0;
-      this.functionLookupVersionsByName = undefined;
     }
-
-    // IMPORTANT: cloned Rules must rebuild their derived lookup state.
-    // Otherwise, a clone can inherit empty/incorrect lookup maps, causing
-    // lookup misses (e.g. @c in detached-rulesets).
     this.varsByName = undefined;
-    this.callableLookupCache = undefined;
-    this.directChildRuleEntries = undefined;
-    this.directDeclarationChildEntries = undefined;
     // Clear all child-derived surface bits + _hasExtends/_hasReferenceImports in
     // one masked write. Deliberately leaves _bodyEvaluated and _registrationPrepared
     // untouched, matching the prior per-field resets (which did not reset those).
     this.rulesFlags &= ~R_DERIVED_STATE_MASK;
-    this.directDeclarationsByName = undefined;
-    this.directDeclarationLookupCache = undefined;
     this.lookupVersion = 0;
-    this.declarationLookupVersion = 0;
-    this.declarationLookupVersionsByName = undefined;
-    this.callableLookupVersion = 0;
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
@@ -3116,11 +3263,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     keys: string[],
     options: CallableFindOptions = {},
     pathStart = 0,
-    // When a same-named mixin namespace also exists, the walk normally defers to
-    // the mixin path (returns undefined). Set this to still resolve the ruleset
-    // prefix defs so findMixinPath can UNION ruleset + mixin namespace results
-    // (`#g when(…) {…} #g() {…}` — both contribute).
-    resolvePrefixesDespiteMixinNamespace = false
+    // When the head namespace also exists in mixin form the walk defers to the
+    // mixin path (returns undefined). Passing a collector captures the ruleset-form
+    // prefix defs in the SAME pass so findMixinPath can UNION ruleset + mixin
+    // namespace results (`#g when(…) {…} #g() {…}` — both contribute) without a
+    // second full frame walk.
+    despiteMixinNamespaceOut?: { entries?: MixinEntry[] }
   ): MixinEntry[] | undefined {
     if (keys.length - pathStart < 2) {
       return undefined;
@@ -3292,7 +3440,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           searchParents
         }).length > 0;
       }
-      if (hasMixinNamespace && !(resolvePrefixesDespiteMixinNamespace && prefixMatches.length > 0)) {
+      const captureDespiteMixinNamespace = hasMixinNamespace
+        && despiteMixinNamespaceOut !== undefined
+        && prefixMatches.length > 0;
+      if (hasMixinNamespace && !captureDespiteMixinNamespace) {
         return undefined;
       }
 
@@ -3466,26 +3617,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             ...options,
             searchParents: false
           };
-          resolved = ruleset.findRulesetNamespacePathFast(
+          resolved = ruleset.resolveNamespaceRemainder(
             path,
+            remainderStart,
             nestedOptions,
-            remainderStart
+            terminalFilterType
           );
-          if (resolved === undefined) {
-            resolved = ruleset.findMixinNamespacePathFast(
-              path,
-              undefined,
-              nestedOptions,
-              remainderStart
-            );
-          }
-          if (resolved === undefined) {
-            resolved = ruleset.findMixin(
-              collectKeyRemainder(path, remainderStart),
-              terminalFilterType,
-              nestedOptions
-            );
-          }
         }
         if (resolved?.length) {
           if (!accumulate) {
@@ -3505,6 +3642,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       }
 
+      if (captureDespiteMixinNamespace) {
+        if (accumulated !== undefined && accumulated.length > 0) {
+          despiteMixinNamespaceOut!.entries = accumulated;
+        }
+        return undefined;
+      }
       if (accumulated !== undefined && accumulated.length > 0) {
         return accumulated;
       }
@@ -3554,26 +3697,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (remainderLength === 1) {
         resolved = ruleset.findMixin(keys[consumed.length]!, terminalFilterType, nestedOptions);
       } else {
-        resolved = ruleset.findRulesetNamespacePathFast(
+        resolved = ruleset.resolveNamespaceRemainder(
           keys,
+          consumed.length,
           nestedOptions,
-          consumed.length
+          terminalFilterType
         );
-        if (resolved === undefined) {
-          resolved = ruleset.findMixinNamespacePathFast(
-            keys,
-            undefined,
-            nestedOptions,
-            consumed.length
-          );
-        }
-        if (resolved === undefined) {
-          resolved = ruleset.findMixin(
-            collectKeyRemainder(keys, consumed.length),
-            terminalFilterType,
-            nestedOptions
-          );
-        }
       }
       if (resolved?.length) {
         return { entries: resolved, owned: false };
@@ -3693,22 +3822,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         remainder ??= keys[1]!;
         nested = entryRules.findMixin(remainder, terminalFilterType, nestedOptions);
       } else if (nested === undefined) {
-        nested = entryRules.findRulesetNamespacePathFast(
+        nested = entryRules.resolveNamespaceRemainder(
           keys,
+          1,
           nestedOptions,
-          1
+          terminalFilterType
         );
-        if (nested === undefined) {
-          nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
-        }
-        if (nested === undefined) {
-          remainder ??= collectKeyRemainder(keys, 1);
-          nested = entryRules.findMixin(
-            remainder,
-            terminalFilterType,
-            nestedOptions
-          );
-        }
       }
       if (nested?.length) {
         if (resolved === undefined) {
@@ -3893,6 +4012,33 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   /**
+   * Resolve the tail of a namespace path (everything after a consumed prefix or
+   * a matched head namespace) uniformly: a namespace is a namespace, so ruleset-
+   * form and mixin-form segments resolve through the same ordered fallthrough
+   * (ruleset-form path, then mixin-form path, then the generic key lookup). This
+   * is the single remainder resolver the three namespace walks all delegate to.
+   */
+  private resolveNamespaceRemainder(
+    path: string[],
+    offset: number,
+    nestedOptions: CallableFindOptions,
+    terminalFilterType: 'Mixin' | undefined
+  ): MixinEntry[] | undefined {
+    let resolved = this.findRulesetNamespacePathFast(path, nestedOptions, offset);
+    if (resolved === undefined) {
+      resolved = this.findMixinNamespacePathFast(path, undefined, nestedOptions, offset);
+    }
+    if (resolved === undefined) {
+      resolved = this.findMixin(
+        collectKeyRemainder(path, offset),
+        terminalFilterType,
+        nestedOptions
+      );
+    }
+    return resolved;
+  }
+
+  /**
    * Resolve a multi-segment namespace path (`#theme > .dark > .colors`) via the
    * frame fast path. Leads with `findRulesetNamespacePathFast`, which walks the
    * scope-frame chain to the frame that owns the head namespace — so a single
@@ -3910,19 +4056,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let mixinNamespaceFast: MixinEntry[] | undefined;
     let rulesetNamespaceUnion: MixinEntry[] | undefined;
     if (mixinFilterType !== 'Mixin') {
-      const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
+      // For an emitting call the head namespace may also exist in mixin form; the
+      // ruleset walk then defers (returns undefined) but the collector captures its
+      // ruleset-form prefix defs in the SAME pass so they union with the mixin path
+      // below — same-named ruleset and mixin namespaces both contribute their
+      // descendant output. Value lookups keep override semantics (no collector).
+      const despiteMixinNamespaceOut: { entries?: MixinEntry[] } | undefined =
+        options.mixinCall === true ? {} : undefined;
+      const rulesetNamespaceFast = this.findRulesetNamespacePathFast(
+        keys,
+        options,
+        0,
+        despiteMixinNamespaceOut
+      );
       if (rulesetNamespaceFast !== undefined) {
         return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
       }
-      // For an emitting call, the head namespace may also exist in mixin form
-      // (rnf deferred). Resolve its ruleset-form defs so they union with the
-      // mixin path below — same-named ruleset and mixin namespaces both
-      // contribute their descendant output. Value lookups keep override semantics.
-      if (options.mixinCall === true) {
-        const rulesetDespiteMixin = this.findRulesetNamespacePathFast(keys, options, 0, true);
-        if (rulesetDespiteMixin !== undefined && rulesetDespiteMixin.length > 0) {
-          rulesetNamespaceUnion = rulesetDespiteMixin;
-        }
+      if (despiteMixinNamespaceOut?.entries !== undefined && despiteMixinNamespaceOut.entries.length > 0) {
+        rulesetNamespaceUnion = despiteMixinNamespaceOut.entries;
       }
       let namespaceMixins: MixinEntry[] | undefined;
       let namespaceMixinMissCovered = false;
@@ -4585,9 +4736,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private evalForRender(context: Context, sourceWasRoot: boolean): MaybePromise<RulesRenderState> {
-    if (canRenderStaticRulesDirectly(this)) {
-      return createRulesRenderState(this, this, sourceWasRoot);
-    }
     if (this.registrationPrepared) {
       const output = this.eval(context);
       const toState = (rules: Rules): RulesRenderState => createRulesRenderState(this, rules, sourceWasRoot);

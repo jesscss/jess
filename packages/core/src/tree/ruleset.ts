@@ -1,5 +1,5 @@
 import { sourceSpanOf, valueSpansOf } from './util/provenance.js';
-import { Node, F_STATIC, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, defineType, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, F_VISIBLE, F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
@@ -35,13 +35,11 @@ import {
 } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
-import { AtRuleStatement } from './at-rule-statement.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
 import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership } from './util/cloning.js';
-import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 
 export type RulesetValue = {
@@ -108,14 +106,11 @@ type RulesetOptions = NodeOptions & {
 export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   static override childKeys = ['selector', 'rules', 'guard', 'selectorBeforeExtend'] as const;
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
-  frames: (Ruleset | AtRule)[] | undefined;
   /** Stored as delivered: string, node, or plain array (an array IS a selector list). */
   selector: SelectorLike | Nil | undefined;
   declare readonly rules: Node[];
   guard: RulesetValue['guard'];
   selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
-  /** Legacy canonical composed selector slot still used by extend post-processing. */
-  declare _composedSelector?: Selector;
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
   declare _selectorCacheOwner?: Ruleset;
 
@@ -276,7 +271,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.sourceRoot?._treeContext
     ).inherit(this);
     node.hoistToRoot = this.hoistToRoot;
-    node.frames = this.frames ? [...this.frames] : undefined;
     return node;
   }
 
@@ -720,7 +714,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    */
   invalidateSelectorValueCache(nextSelector?: Selector | Nil): void {
     this._valueOf = undefined;
-    this._composedSelector = undefined;
     if (nextSelector === undefined) {
       const sel = this.selector;
       nextSelector = typeof sel === 'string' ? undefined : sel;
@@ -731,7 +724,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return;
     }
 
-    cacheOwner._composedSelector = undefined;
     if (nextSelector instanceof Nil) {
       cacheOwner._valueOf = '';
       return;
@@ -765,68 +757,8 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     serializeRulesContainer(this, options);
   }
 
-  private canSourceRenderStaticRule(rule: Node, context: Context): boolean {
-    if (isNode(rule, N.Comment) || isNode(rule, N.Nil)) {
-      return true;
-    }
-    if (rule instanceof AtRuleStatement && rule.hasFlag(F_STATIC)) {
-      return true;
-    }
-    if (isNode(rule, N.Declaration) && rule.hasFlag(F_STATIC)) {
-      return true;
-    }
-    if (isNode(rule, N.VarDeclaration) && rule.hasFlag(F_STATIC) && !rule.visible) {
-      return true;
-    }
-    if (!isNode(rule, N.AtRule)) {
-      return false;
-    }
-    if (!rule.hasFlag(F_STATIC)) {
-      return false;
-    }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const atRule = rule as AtRule;
-    if (atRule.getRenderRules().length === 0) {
-      return true;
-    }
-    return !context.opts.output?.collapseNesting
-      && !context.options.bubbleRootAtRules
-      && atRule.isRootOnly();
-  }
-
-  private canRenderSourceDirectly(context: Context): boolean {
-    if (this.registrationPrepared || this.guard) {
-      return false;
-    }
-    const { selector } = this;
-    if (typeof selector === 'string') {
-      return !this.guard
-        && !this.registrationPrepared
-        && this.hasFlag(F_STATIC)
-        && canRenderStaticRulesDirectly(this);
-    }
-    if (selector === undefined) {
-      return false;
-    }
-    if (selector instanceof Nil || !selector.hasFlag(F_STATIC) || !this.hasFlag(F_STATIC)) {
-      return false;
-    }
-    for (let i = 0; i < this.rules.length; i++) {
-      if (!this.canSourceRenderStaticRule(this.rules[i]!, context)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   private evalNilSelectorBodyForRender(context: Context): MaybePromise<Rules | Nil> {
     return this.createNilSelectorOutputRules().eval(context);
-  }
-
-  private canRenderNilSelectorBodyDirectly(): boolean {
-    return !this.guard
-      && !this.registrationPrepared
-      && canRenderStaticRulesDirectly(this);
   }
 
   private createNilSelectorOutputRules(): Rules {
@@ -860,9 +792,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private evalNilSelectorForRender(context: Context): MaybePromise<Rules | Nil> {
-    if (this.canRenderNilSelectorBodyDirectly()) {
-      return this.createNilSelectorOutputRules();
-    }
     const { guard } = this;
     if (!guard) {
       return this.evalNilSelectorBodyForRender(context);
@@ -905,15 +834,6 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       }
       return `${rendered}\n`;
     };
-    const renderNilSelectorBodyDirectly = (): MaybePromise<string> => {
-      const output = this.createNilSelectorOutputRules();
-      const rendered = isRenderBuffer(bufferOrOptions)
-        ? output.render(context, bufferOrOptions, options)
-        : output.render(context, bufferOrOptions);
-      return isThenable(rendered)
-        ? rendered.then(finishNilSelectorBodyRender)
-        : finishNilSelectorBodyRender(rendered);
-    };
     const renderEvaluatedRuleset = (node: Ruleset) => {
       if (isRenderBuffer(bufferOrOptions)) {
         return writeRenderText(
@@ -935,8 +855,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         : node.render(context, bufferOrOptions);
       // A Nil-selector ruleset renders its body directly. The body Rules is
       // rendered as a nested fragment (sourceWasRoot=false → trailing newline
-      // trimmed), so re-apply the nil-body newline finish — matching the
-      // canRenderNilSelectorBodyDirectly() fast path above.
+      // trimmed), so re-apply the nil-body newline finish.
       if (this.selector instanceof Nil) {
         return isThenable(rendered)
           ? rendered.then(finishNilSelectorBodyRender)
@@ -944,16 +863,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       }
       return rendered;
     };
-    if (
-      this.selector instanceof Nil
-      && this.canRenderNilSelectorBodyDirectly()
-    ) {
-      return renderNilSelectorBodyDirectly();
-    }
     const evalForRender = (): MaybePromise<Node> => {
-      if (this.canRenderSourceDirectly(context)) {
-        return this;
-      }
       if (
         this.selector instanceof Nil
         && !this.registrationPrepared

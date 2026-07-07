@@ -341,6 +341,18 @@ describe('Extend Selector Tests', () => {
       expect(result.valueOf()).toBe('.foo.foo');
     });
 
+    it('full match must consume ALL target simples — .b.b.c find .b.c full → unchanged', () => {
+      // .b.c cannot consume the 2nd `.b` (stranded) → NOT a full match (Less 4.x parity).
+      // Pre-fix BUG returned '.b.b.c,.ext' (set-based remainder dropped the stranded `.b`).
+      const result = extendSelector(compound([el('.b'), el('.b'), el('.c')]), compound([el('.b'), el('.c')]), el('.ext'), false);
+      expect(result.valueOf()).toBe('.b.b.c');
+    });
+
+    it('normal full match still extends — .b.c find .b.c full → .b.c,.ext', () => {
+      const result = extendSelector(compound([el('.b'), el('.c')]), compound([el('.b'), el('.c')]), el('.ext'), false);
+      expect(result.valueOf()).toBe('.b.c,.ext');
+    });
+
     it('should extend simple selector with complex extension - example 7', () => {
       // Selector: .a > .b, Target: .b (partial), Extend with: .d > .e
       // Result: .a > :is(.b, .d > .e)

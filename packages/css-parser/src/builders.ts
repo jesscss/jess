@@ -228,13 +228,52 @@ export function selectorListSpansFor(value: unknown): Span[] | undefined {
   return value && typeof value === 'object' ? selectorListSpans.get(value) : undefined;
 }
 
-export function setFieldSpan(node: JessNode, fieldIndex: number, _fieldCount: number, span: Span) {
+/**
+ * True if `src[start,end)` MAY contain a comment (`/*` or `//`). A deliberate
+ * SUPERSET of "contains a real comment": a `//` inside a url/string yields a
+ * harmless false-positive (an unnecessary stamp), but any real comment — which
+ * always begins `/*` or `//` — is never missed. Per-slot spans exist SOLELY to
+ * place comments in a node's sub-component gaps, so when no comment can be in
+ * the node's span the stamp is provably unread and is skipped — the overwhelming
+ * comment-free common case pays nothing (no WeakMap write, no packed array).
+ */
+function spanMayContainComment(src: string, start: number, end: number): boolean {
+  const limit = Math.min(end, src.length) - 1;
+  for (let i = Math.max(0, start); i < limit; i++) {
+    if (src.charCodeAt(i) === 47 /* '/' */) {
+      const next = src.charCodeAt(i + 1);
+      if (next === 42 /* '*' */ || next === 47 /* '/' */) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function setFieldSpan(node: JessNode, fieldIndex: number, _fieldCount: number, span: Span, src?: string) {
+  if (src !== undefined) {
+    // Field comments live in gaps adjacent to a field (e.g. a trailing
+    // `a: yes /* c */`), so gate on the whole node's span, not just this field.
+    const nodeSpan = sourceSpanOf(node);
+    const start = nodeSpan ? nodeSpan.start : span.start;
+    const end = nodeSpan ? nodeSpan.end : span.end;
+    if (!spanMayContainComment(src, start, end)) {
+      return;
+    }
+  }
   const spans: (SourceSpan | undefined)[] = (fieldSpansOf(node) ?? []).slice();
   spans[fieldIndex] = { start: span.start, end: span.end };
   setNodeFieldSpans(node, spans);
 }
 
-export function setValueSpans(node: JessNode, spans: ReadonlyArray<Span>) {
+export function setValueSpans(node: JessNode, spans: ReadonlyArray<Span>, src?: string) {
+  if (src !== undefined && spans.length > 0) {
+    // Inter-member comments lie between the first member's start and the last
+    // member's end — the only region the per-slot value spans are read for.
+    if (!spanMayContainComment(src, spans[0]!.start, spans[spans.length - 1]!.end)) {
+      return;
+    }
+  }
   setNodeValueSpans(node, spans.map(s => ({ start: s.start, end: s.end })));
 }
 
@@ -603,13 +642,13 @@ export class CssParser {
     if (selectorSpan) {
       const { index, count } = fieldIndexOf(node as unknown as JessNode, 'selector');
       if (index >= 0) {
-        setFieldSpan(node as unknown as JessNode, index, count, selectorSpan);
+        setFieldSpan(node as unknown as JessNode, index, count, selectorSpan, this._source);
       }
     }
     if (Array.isArray(selector)) {
       const memberSpans = selectorListSpans.get(selector) ?? selectorListMemberSpans(rawChildren);
       if (memberSpans && memberSpans.length === selector.length) {
-        setValueSpans(node as unknown as JessNode, memberSpans);
+        setValueSpans(node as unknown as JessNode, memberSpans, this._source);
       }
     }
     return node;
@@ -651,7 +690,7 @@ export class CssParser {
       items.map(i => i.comp) as unknown as ComplexSelectorValue,
       undefined, loc
     );
-    setValueSpans(node as unknown as JessNode, items.map(i => i.span));
+    setValueSpans(node as unknown as JessNode, items.map(i => i.span), this._source);
     return node;
   }
 
@@ -679,7 +718,7 @@ export class CssParser {
           undefined,
           spanToLocation({ start, end })
         );
-        setValueSpans(compound as unknown as JessNode, group.map(g => g.span));
+        setValueSpans(compound as unknown as JessNode, group.map(g => g.span), this._source);
         parts.push(compound as unknown as JessNode);
         partSpans.push({ start, end });
       }
@@ -710,7 +749,7 @@ export class CssParser {
       return parts[0]! as unknown as JessNode;
     }
     const node = new ComplexSelector(parts as unknown as ComplexSelectorValue, undefined, loc);
-    setValueSpans(node as unknown as JessNode, partSpans);
+    setValueSpans(node as unknown as JessNode, partSpans, this._source);
     return node;
   }
 
@@ -749,7 +788,7 @@ export class CssParser {
       loc
     );
     if (memberSpans) {
-      setValueSpans(node as unknown as JessNode, memberSpans);
+      setValueSpans(node as unknown as JessNode, memberSpans, this._source);
     } else if (valueSpans) {
       setNodeValueSpans(node, valueSpans);
     }
@@ -795,11 +834,11 @@ export class CssParser {
     const jn = node as unknown as JessNode;
     const { index: nameIdx, count } = fieldIndexOf(jn, 'name');
     if (nameItem && nameIdx >= 0) {
-      setFieldSpan(jn, nameIdx, count, nameItem.span);
+      setFieldSpan(jn, nameIdx, count, nameItem.span, this._source);
     }
     const valueIdx = fieldIndexOf(jn, 'value').index;
     if (valueSpan && valueIdx >= 0) {
-      setFieldSpan(jn, valueIdx, count, valueSpan);
+      setFieldSpan(jn, valueIdx, count, valueSpan, this._source);
     }
     return node;
   }
@@ -1116,7 +1155,7 @@ export class CssParser {
       setValueSpans(list as unknown as JessNode, nonEmpty.map(seg => ({
         start: seg[0]!.span.start,
         end: seg[seg.length - 1]!.span.end
-      })));
+      })), this._source);
     }
     return list;
   }
@@ -1195,7 +1234,7 @@ export class CssParser {
     }
     const { index, count } = fieldIndexOf(node, 'name');
     if (index >= 0) {
-      setFieldSpan(node, index, count, span);
+      setFieldSpan(node, index, count, span, this._source);
     }
   }
 

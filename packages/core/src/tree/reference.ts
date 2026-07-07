@@ -2659,6 +2659,17 @@ function createRulesLikeReferenceSurface(directValue: MixinEntry | Node): MixinE
   if (options && typeof options === 'object') {
     surfaceOptions._options = { ...options };
   }
+  // Same discipline for a `Rules._lookup` struct: the key-copy above shared the
+  // source's struct object, so a surface-local lookup write would leak into the
+  // source. Give the surface its own shallow struct clone (still sharing the inner
+  // Maps by reference, matching the pre-slim per-field copy). Fixed shape — the
+  // struct is a plain class, so `{ ...struct }`-style field copy keeps it fast.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const surfaceLookup = preservedValue as unknown as { _lookup: object | undefined };
+  const lookup = surfaceLookup._lookup;
+  if (lookup && typeof lookup === 'object') {
+    surfaceLookup._lookup = Object.assign(Object.create(Object.getPrototypeOf(lookup)), lookup);
+  }
   const sourceNode: Node | undefined = directNode?.sourceNode instanceof Node
     ? directNode.sourceNode
     : directNode;
@@ -3034,7 +3045,6 @@ function finalizeDeclarationReferenceResult(
     referenceNode.options?.preserveRulesLike === true
     && isNode(declarationValue, N.Rules | N.Collection)
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const preservedValue = createRulesLikeReferenceSurface(declarationValue as Node);
     context.popReference();
     return preservedValue;
@@ -3089,7 +3099,6 @@ function finalizeDeclarationReferenceResult(
       return new Any(String(declarationValue), { role: referenceNode.options.role });
     }
     if (useDeclOwnerScope) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       context.rulesContext = declOwner as Rules;
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
