@@ -209,7 +209,68 @@ function isSpineEligibleContainer(node: Node): boolean {
   if (selectorHasAmpersandAppend(ruleset.selector)) {
     return false;
   }
+  // ANCESTOR RE-WRAP on at-rule HOIST (a scoped frontier). A conditional-group
+  // at-rule nested inside THIS ruleset hoists to root; its content that is NOT a
+  // plain-selector child ruleset must be RE-WRAPPED in this ruleset's (composed)
+  // selector — a DIRECT declaration (`html { @supports { d: v } }` → `@supports {
+  // html { d: v } }`) or a bare-`&` / `&`-collapsing child ruleset (`.c { @media {
+  // & { … } } }` → `@media { .c { … } }`). The spine hoist does not yet reproduce
+  // that ancestor re-wrap; it drops the wrapper and emits the content bare. Plain-
+  // selector child rulesets (`.card { @media { .inner { … } } }` → `.card .inner`)
+  // DO compose correctly. So exclude this ruleset when it holds a hoisting at-rule
+  // whose body needs re-wrapping (`atRuleBodyNeedsAncestorRewrap`).
+  if (bodyHasAtRuleNeedingAncestorRewrap(ruleset.rules)) {
+    return false;
+  }
   return isSpineEligibleBody(ruleset.rules);
+}
+
+/**
+ * True if any direct child of `body` is a hoisting conditional-group at-rule whose
+ * own body would need the enclosing ruleset's selector re-wrapped around it on
+ * hoist — i.e. it has a DIRECT declaration/comment leaf or an `&`-bearing child
+ * ruleset. An at-rule whose children are ALL plain-selector rulesets composes
+ * correctly through the spine hoist and does NOT force exclusion.
+ */
+function bodyHasAtRuleNeedingAncestorRewrap(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (
+      isNode(child, N.AtRule)
+      && typeof (child as { name?: unknown }).name === 'string'
+      && SPINE_ELIGIBLE_AT_RULES.has((child as { name: string }).name)
+      && isNode(child, N.Rules)
+      && atRuleBodyNeedsAncestorRewrap((child as unknown as Rules).rules)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True if a (hoisting) at-rule body contains anything the enclosing ruleset's
+ * selector must be re-wrapped around: a direct declaration/non-ruleset leaf, or a
+ * child ruleset whose selector carries `&`. A body of only plain-selector rulesets
+ * returns false (composes correctly through the hoist).
+ */
+function atRuleBodyNeedsAncestorRewrap(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isNode(child, N.Ruleset)) {
+      if (selectorHasAmpersand((child as Ruleset).selector)) {
+        return true;
+      }
+      continue;
+    }
+    // A nested at-rule child is itself gated by `isSpineEligibleAtRule` on descent.
+    if (isNode(child, N.AtRule)) {
+      continue;
+    }
+    // A direct declaration/comment/other leaf needs the ancestor wrapper on hoist.
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -247,7 +308,58 @@ function isSpineEligibleAtRule(node: Node): boolean {
   if (!SPINE_ELIGIBLE_AT_RULES.has(atRule.name)) {
     return false;
   }
+  // Nested conditional-group at-rules HOIST to root; when their body contains a
+  // ruleset whose selector carries an `&`, the hoist must RE-MATERIALIZE the
+  // ancestor selector around the (possibly `&`-collapsed) child — e.g.
+  // `.c { @media { & { … } } }` → `@media { .c { … } }`, and `.top { .inside & {
+  // @supports { … } } }` → `@supports { .inside .top { … } }`. The spine's hoist
+  // does not yet reproduce that ancestor re-wrap for `&`-bearing inner selectors
+  // (it drops the wrapper, emitting the leaf bare). Plain-selector inner rulesets
+  // (`.card { @media { .inner { … } } }` → `.card .inner`) ARE correct and stay
+  // eligible. So exclude an at-rule whose body has an `&`-bearing child ruleset —
+  // a scoped frontier (the `&`-through-hoist re-wrap), NOT a safety fallback.
+  if (atRuleBodyHasAmpersandRuleset(atRule.rules)) {
+    return false;
+  }
   return isSpineEligibleBody(atRule.rules);
+}
+
+/** True if `selector` contains any Ampersand node (bare `&`, `&.x`, `.x &`, …). */
+function selectorHasAmpersand(selector: unknown): boolean {
+  if (!selector || typeof selector === 'string') {
+    return false;
+  }
+  if (Array.isArray(selector)) {
+    return selector.some(item => selectorHasAmpersand(item));
+  }
+  if (!(selector instanceof Node)) {
+    return false;
+  }
+  if (isNode(selector, N.Ampersand)) {
+    return true;
+  }
+  for (const descendant of selector.walk(true)) {
+    if (isNode(descendant, N.Ampersand)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True if any child of a (hoisting) at-rule body is a Ruleset whose selector
+ * carries an `&` — the shape whose ancestor-selector re-wrap the spine hoist does
+ * not yet reproduce (see `isSpineEligibleAtRule`). Direct children only: a deeper
+ * nested at-rule is itself gated by `isSpineEligibleAtRule` when descended.
+ */
+function atRuleBodyHasAmpersandRuleset(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isNode(child, N.Ruleset) && selectorHasAmpersand((child as Ruleset).selector)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -488,21 +600,60 @@ export function renderRootViaSpine(
   root.getScopeFrame();
   const savedRoot = context.root;
   const savedTreeRoot = context.treeRoot;
+  const savedTreeContext = context.treeContext;
   context.root ??= root;
+  // Establish the per-file TREE CONTEXT the eval path sets via
+  // `_setupContextForRules`: `treeContext.file.path` is the current file, which
+  // relative-asset resolution (`data-uri('image.svg')` → `readAsset` →
+  // `resolveAssetPath`) and math/leaky-rules mode read. The spine skips eval, so
+  // without this a relative `data-uri` resolves against `process.cwd()` and falls
+  // back to a bare `url(...)`. Mirror the eval path: point treeContext/treeRoot at
+  // the SOURCE root's own tree context (only when it carries one).
   if (root._treeContext) {
     context.treeRoot = root;
+    if (context.treeContext !== root._treeContext) {
+      context.allRoots.push(root);
+      context.treeContext = root._treeContext;
+    }
   }
+  // Value-frame push for the WHOLE root descent. This must be popped only AFTER
+  // the body's bytes are in the buffer — NOT via `withValueFrame`'s synchronous
+  // `finally`, which pops the instant `toRenderString` RETURNS. When any leaf
+  // resolves ASYNC (e.g. `alpha(@var)` — an async less-compat function whose arg
+  // reads a variable), that leaf's value resolution runs in a later microtask; a
+  // synchronous root pop would clobber `context.rulesContext` (setting it back to
+  // the pre-root value, undefined) BEFORE the pending arg lookup runs, so the arg
+  // ref resolves against no frame and throws "not defined". This is the root-level
+  // form of the B1s invariant (design §2.3): the value frame stays live until the
+  // async descent settles, mirroring `serializeSpineFrameContainer`'s chained
+  // restore. Nested containers already chain their own restore on the body promise.
+  const savedRulesContext = context.rulesContext;
   const finish = (body: string): string => {
+    context.rulesContext = savedRulesContext;
     context.root = savedRoot;
     context.treeRoot = savedTreeRoot;
+    context.treeContext = savedTreeContext;
     const trimmed = body.trimEnd();
     return trimmed ? `${trimmed}\n` : '';
+  };
+  const fail = (error: unknown): never => {
+    context.rulesContext = savedRulesContext;
+    context.root = savedRoot;
+    context.treeRoot = savedTreeRoot;
+    context.treeContext = savedTreeContext;
+    throw error;
   };
   // Descend the SOURCE root's body ONCE in render mode: the statement-framing
   // machinery (separators, `;`, trivia, indentation) is the kept structural
   // serializer (design §7 "survives"); the value resolution happens against the
   // live frame threaded here. `toRenderString` runs `_emitRulesBody('render')`,
   // which for each leaf resolves via `node.render(context)` at its emit moment.
-  const step = withValueFrame(context, root, () => root.toRenderString(options));
-  return isThenable(step) ? step.then(finish) : finish(step);
+  context.rulesContext = root;
+  let step: MaybePromise<string>;
+  try {
+    step = root.toRenderString(options);
+  } catch (error) {
+    return fail(error);
+  }
+  return isThenable(step) ? step.then(finish, fail) : finish(step);
 }

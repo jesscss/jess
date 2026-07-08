@@ -99,13 +99,50 @@ function captureNodeTrivia(
  * dropped after serialization. Replaces static `writeSyntax` (which would print
  * `$w`, not the resolved value).
  */
+/**
+ * Fire the registered generic EMIT-visitor `enter` hooks (design §6) on a
+ * resolved output node, threading the shape: `shape = enter(shape) ?? shape`. A
+ * `void` return leaves the node unchanged; a `Node` return re-seats it for the
+ * next visitor and becomes what is serialized (§6.5). ZERO-cost fast path: with
+ * no registered visitors (`spineVisitors` undefined/empty) the node is returned
+ * as-is with no iteration — the §4.0-style "pay only for real work" gate.
+ *
+ * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §6.
+ */
+function applySpineVisitorsEnter(
+  node: Node,
+  context: FinalPrintOptions['context']
+): Node {
+  const visitors = context?.spineVisitors;
+  if (!visitors || visitors.length === 0) {
+    return node;
+  }
+  let shape = node;
+  for (let i = 0; i < visitors.length; i++) {
+    const replaced = visitors[i]!.enter(shape);
+    if (replaced) {
+      shape = replaced;
+    }
+  }
+  return shape;
+}
+
 function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
   const serialize = (resolved: Node | Nil | undefined): string => {
     if (!resolved || resolved instanceof Nil) {
       return '';
     }
+    // Generic EMIT visitor hook (design §6): fire the registered `(node)=>Node|
+    // void` enter hooks on the RESOLVED output node at its emit moment. ZERO-cost
+    // when nothing is registered — `applySpineVisitorsEnter` returns the node
+    // untouched if `context.spineVisitors` is empty. A visitor may REPLACE the
+    // node (fresh transient), which is what gets serialized here.
+    const hooked = applySpineVisitorsEnter(resolved, options.context);
+    if (!hooked || hooked instanceof Nil) {
+      return '';
+    }
     const writer = new OutputWriter();
-    resolved.toString(getPrintOptions({ ...options, writer }));
+    hooked.toString(getPrintOptions({ ...options, writer }));
     return writer.toString();
   };
   // `+:`/`+_:` merge (P1): a suppressed member emits nothing; the anchor emits
@@ -695,14 +732,43 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       const declProp = node.name.valueOf();
       declarationCountsByProp.set(declProp, (declarationCountsByProp.get(declProp) ?? 0) + 1);
     }
-    for (let i = rulesToRender.length - 1; i >= 0; i--) {
-      const node = rulesToRender[i]!.node;
-      if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
-        continue;
-      }
-      const declProp = node.name.valueOf();
-      if ((declarationCountsByProp.get(declProp) ?? 0) < 2) {
-        continue;
+    // Per-declaration dedup KEY. Eval path: the static `writeSyntax` of the
+    // already-resolved node IS its final bytes. Spine path: the value is still
+    // UNRESOLVED at this point, so `writeSyntax` emits opaque `$??(…)` placeholders
+    // that collapse distinct calls (e.g. `rgb(var(--x))` vs `hsla(var(--x))`) to
+    // one key and would wrongly dedupe them. In spine mode the key must be the
+    // LIVE-resolved bytes (`resolveSpineLeafText`, MaybePromise), computed against
+    // the frame the container descent pushed — the same resolution the emit uses.
+    const computeDeclKey = (node: Node): MaybePromise<string> => {
+      if (options.spineMode && options.context) {
+        // Isolate trivia CONSUMPTION for the throwaway key resolution: `resolve`
+        // → `.toString` calls `consumeTrivia`, which marks runs in
+        // `options.emittedTrivia` so each comment prints ONCE. Without a scratch
+        // Set the key resolution would consume the declaration's field-gap
+        // comment (e.g. `color/*c*/:red`), and the REAL emit would then find it
+        // already consumed and drop it. Swap in a scratch Set for the whole
+        // resolution (including the async `.then` serialize) and restore after —
+        // an async-safe form of `withScratchEmittedTrivia` (whose sync `finally`
+        // would restore before the awaited serialize runs).
+        const savedEmitted = options.emittedTrivia;
+        options.emittedTrivia = new Set();
+        const restore = (): void => { options.emittedTrivia = savedEmitted; };
+        const withSemi = (text: string): string => `${text}${node.requiredSemi ? ';' : ''}`;
+        let resolved: MaybePromise<string>;
+        try {
+          resolved = resolveSpineLeafText(node, options);
+        } catch (error) {
+          restore();
+          throw error;
+        }
+        if (isThenable(resolved)) {
+          return resolved.then(
+            (text: string) => { restore(); return withSemi(text); },
+            (error: unknown) => { restore(); throw error; }
+          );
+        }
+        restore();
+        return withSemi(resolved);
       }
       const declWriter = options.writer;
       const declMark = declWriter.mark();
@@ -717,12 +783,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       const declOut = declWriter.getSince(declMark);
       declWriter.restore(declMark);
       restorePrintState(options, declSaved);
-      const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
+      return `${declOut}${node.requiredSemi ? ';' : ''}`;
+    };
+    const recordDeclKey = (i: number, declProp: string, declKey: string): void => {
       let seenValues = seenDeclarationsByProp.get(declProp);
       if (!seenValues) {
         seenValues = new Set<string>();
         seenDeclarationsByProp.set(declProp, seenValues);
       }
+      const node = rulesToRender[i]!.node;
       if (
         seenValues.has(declKey)
         && !originatesFromCall(node)
@@ -734,8 +803,33 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       } else {
         seenValues.add(declKey);
       }
-    }
+    };
+    const runDedupPass = (): MaybePromise<void> => {
+      const stepFrom = (i: number): MaybePromise<void> => {
+        for (let idx = i; idx >= 0; idx--) {
+          const node = rulesToRender[idx]!.node;
+          if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+            continue;
+          }
+          const declProp = node.name.valueOf();
+          if ((declarationCountsByProp.get(declProp) ?? 0) < 2) {
+            continue;
+          }
+          const key = computeDeclKey(node);
+          if (isThenable(key)) {
+            return key.then((resolvedKey: string) => {
+              recordDeclKey(idx, declProp, resolvedKey);
+              return stepFrom(idx - 1);
+            });
+          }
+          recordDeclKey(idx, declProp, key);
+        }
+        return undefined;
+      };
+      return stepFrom(rulesToRender.length - 1);
+    };
 
+    const proceed = (): MaybePromise<string> => {
     const hoisted = node.isHoisted(options);
     // const isRuleset = isNode(node, 'Ruleset');
     const treeFrames = options.treeFrames!;
@@ -1169,6 +1263,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return isThenable(out) ? out.then(restoreFrames) : restoreFrames(out);
     }
     return renderRulesBody();
+    };
+    // The duplicate-declaration dedup pass may resolve keys ASYNC in spine mode
+    // (live value resolution); the body render must wait for the skip set to be
+    // populated. Eval path stays fully sync (keys are static `writeSyntax`).
+    const dedup = runDedupPass();
+    return isThenable(dedup) ? dedup.then(proceed) : proceed();
   };
 
   const saved = savePrintState(options, [
@@ -1256,7 +1356,16 @@ function serializeSpineFrameContainer(
   // declaration buckets carry source indices (re-declared / `snapshot` reads
   // resolve against the binding at their position). See `assignSpineChildIndices`.
   assignSpineChildIndices(node);
-  node.getScopeFrame();
+  // Link this container's scope frame to the ENCLOSING live frame explicitly.
+  // The lexical parent is `savedRulesContext` (the frame live at container-enter
+  // — the root or an outer ruleset). `getScopeFrame`'s default parent discovery
+  // walks `node.parent`, but a PARSED source ruleset carries no `.parent` back-
+  // pointer (only the eval pass, which the spine replaces, established those), so
+  // the walk finds no enclosing `Rules` and the frame is orphaned — a var read
+  // then can't see an ancestor-scope (e.g. root-level) binding. Passing the live
+  // enclosing frame reproduces the eval-path lexical chain without `.parent`.
+  const enclosingFrame = savedRulesContext?.getScopeFrame();
+  node.getScopeFrame(enclosingFrame);
   context.rulesContext = node;
   const rulesetFrameBaseline = context.rulesetFrames.length;
   const restore = (text: string): string => {

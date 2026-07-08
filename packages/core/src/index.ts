@@ -9,7 +9,15 @@ import '@ungap/set-methods';
  */
 export * from './tree/index.js';
 
-export { Context, TreeContext, type ContextOptions, type TreeContextOptions } from './context.js';
+export {
+  Context,
+  TreeContext,
+  type ContextOptions,
+  type TreeContextOptions,
+  type SpineVisitor,
+  type SpineVisitorEnter,
+  type SpineVisitorExit
+} from './context.js';
 export { logger, type Logger } from './logger.js';
 export * from './logger/deprecation-processing.js';
 export * from './plugin.js';
@@ -18,6 +26,11 @@ export * from './deprecation.js';
 export * from './define-function.js';
 
 export { isNode } from './tree/util/is-node.js';
+// Single-pass spine (cutover P1/P2): the pass-count RATCHET counter + the static
+// eligibility predicate. Exported so PRODUCTION-path tests (the jess Compiler)
+// can assert real spine routing (≥N corpus roots) and that the eval two-walk is
+// not entered for a wired extend-free eligible root.
+export { spineRenderCounter, isSpineEligibleRoot } from './tree/util/emit-walk.js';
 export { type Operator } from './tree/util/calculate.js';
 export {
   shouldOperateWithMathFrames,

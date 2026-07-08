@@ -1051,6 +1051,32 @@ export class Compiler {
     return current;
   }
 
+  /**
+   * True iff some registered plugin exposes a real pre-render visitor
+   * (`preRenderVisitor`/`postEvalVisitor` that passes `isVisitor`). Mirrors the
+   * per-plugin hook selection in `applyPreRenderVisitors` EXACTLY, so the
+   * `preSerializeRoot` hook is set precisely when that method would do work and
+   * left unset (freeing a spine-eligible root to the single pass, §4.0/§6.9)
+   * when it would be a no-op. Contract: pure predicate over `context.plugins`;
+   * no eval, no tree mutation.
+   */
+  private hasPreRenderVisitor(context: Context): boolean {
+    if (!context.plugins?.length) {
+      return false;
+    }
+    for (const plugin of context.plugins) {
+      const hooks = [
+        plugin.preRenderVisitor,
+        plugin.postEvalVisitor
+      ].filter((hook): hook is NonNullable<typeof hook> => Boolean(hook));
+      const visitors = hooks.flatMap(hook => Array.isArray(hook) ? hook : [hook]);
+      if (visitors.some(visitor => isVisitor(visitor))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private applyPreRenderVisitors(context: Context, tree: Rules): Rules {
     if (!tree || !context.plugins?.length) {
       return tree;
@@ -1214,17 +1240,37 @@ export class Compiler {
   }
 
   private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
+    // P2 gate refinement (§4.0 extend-work gate / §6.9 gated pre-eval): the
+    // single-pass spine (`renderRootViaSpine`) engages only when
+    // `preSerializeRoot` is UNSET (`rules.ts` spine gate). `preSerializeRoot`'s
+    // sole job is to run `applyPreRenderVisitors` — a NO-OP unless some plugin
+    // registers a `preRenderVisitor`/`postEvalVisitor`. Setting it
+    // unconditionally kept every spine-eligible root pinned to the eval path
+    // (the P1 finding: 0% of real renders routed through the live spine).
+    //
+    // We now set the hook ONLY when a real pre-render visitor exists. When none
+    // does, the hook is genuinely absent, so a spine-eligible extend-free
+    // root routes through the live single pass in production. Roots that need
+    // extend or visitor work are still fully covered: extend-bearing / import-
+    // bearing roots are not spine-eligible (`isSpineEligibleRoot` rejects
+    // `:extend` selectors and top-level `@import` at-rules), and a registered
+    // visitor re-arms `preSerializeRoot`, forcing the eval path. No dual dormant
+    // path — this is the wire-in, not a parallel spine.
+    const hasPreRenderVisitor = this.hasPreRenderVisitor(context);
     const printOptions: PrintOptions = {
       collapseNesting: context.opts.output?.collapseNesting,
       context,
       // D3: `render()` is the sole eval driver. `tree` enters unevaluated; render
       // evaluates it, then fires this hook on the evaluated root so post-eval /
       // pre-render plugin visitors transform it before serialization — the role
-      // the removed separate `tree.eval()` pre-pass used to serve.
-      preSerializeRoot: evaluatedRoot =>
-        measureProfileSync(profile, 'applyPreRenderVisitors', () =>
-          this.applyPreRenderVisitors(context, evaluatedRoot)
-        )
+      // the removed separate `tree.eval()` pre-pass used to serve. Set only when
+      // a real visitor is registered (see gate note above).
+      preSerializeRoot: hasPreRenderVisitor
+        ? evaluatedRoot =>
+            measureProfileSync(profile, 'applyPreRenderVisitors', () =>
+              this.applyPreRenderVisitors(context, evaluatedRoot)
+            )
+        : undefined
     };
 
     let css = await measureProfileAsync(profile, 'render', async () => {
