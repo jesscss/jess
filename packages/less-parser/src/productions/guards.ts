@@ -7,7 +7,7 @@ import type { RuleContext } from '../lessRecursiveParser.js';
 import type { TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
 import { NoViableAltException } from 'chevrotain';
-import { productions as cssProductions } from '@jesscss/css-parser';
+import { productions as cssProductions } from '@jesscss/css-parser/jess';
 import {
   type LocationInfo,
   Node,

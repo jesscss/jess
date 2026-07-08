@@ -48,11 +48,30 @@ function readPackageVersion(packageJsonPath: string): string | undefined {
   return undefined;
 }
 
+function resolvePackageJsonFromEntrypoint(packageName: string): string | undefined {
+  try {
+    let current = path.dirname(require.resolve(packageName));
+    while (true) {
+      const candidate = path.join(current, 'package.json');
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return undefined;
+      }
+      current = parent;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
 const lessVersion: string = (() => {
   const candidates = [
-    require.resolve('less/package.json'),
+    resolvePackageJsonFromEntrypoint('less'),
     path.resolve(testDir, '../../../node_modules/less/package.json')
-  ];
+  ].filter((candidate): candidate is string => Boolean(candidate));
   for (const packageJsonPath of candidates) {
     const version = readPackageVersion(packageJsonPath);
     if (version) {

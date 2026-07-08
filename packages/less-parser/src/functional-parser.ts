@@ -4,12 +4,12 @@
  * The grammar itself lives in ./grammar.ts; the shared driver is reused from
  * @jesscss/css-parser.
  */
-import type { Span } from 'parseman';
+import type { FieldMap, Span } from 'parseman';
 import { nil, type MathMode, type Rules, type TreeContext } from '@jesscss/core';
 import {
   runFunctionalParse, toParseError, buildLazyTriviaMap,
   type FunctionalParseHost, type FunctionalParseResult
-} from '@jesscss/css-parser';
+} from '@jesscss/css-parser/jess';
 import { LessGrammar } from './builders.js';
 import { lessGrammar } from './grammar.js';
 
@@ -48,11 +48,15 @@ class BuilderHost extends LessGrammar implements FunctionalParseHost {
 
   /** `ctx.build` host: every structural `node(type, …)` builds through this,
    * reusing LessGrammar's (Less + inherited CSS) `buildNode` verbatim. */
-  build(type: string, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>, span: { start: number; end: number }): unknown {
+  captureTriviaForNode(type: string) {
+    return type === 'CompoundSelector';
+  }
+
+  build(type: string, children: ReadonlyArray<unknown>, fields: FieldMap | undefined, span: { start: number; end: number }, rawChildren: ReadonlyArray<unknown>, triviaLog: readonly number[]): unknown {
     /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
     return (this as unknown as {
-      buildNode(t: string, s: Span, c: ReadonlyArray<unknown>, st: unknown, r: ReadonlyArray<unknown>): unknown;
-    }).buildNode(type, { start: span.start, end: span.end } as Span, children, undefined, rawChildren);
+      buildNode(t: string, s: Span, c: ReadonlyArray<unknown>, st: unknown, r: ReadonlyArray<unknown>, f?: FieldMap, tl?: readonly number[]): unknown;
+    }).buildNode(type, { start: span.start, end: span.end } as Span, children, undefined, rawChildren, fields, triviaLog);
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
   }
 }
@@ -96,19 +100,27 @@ export function parseLessFn(
 function firstInlineJsBacktick(text: string): number {
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (c === '`') return i;
+    if (c === '`') {
+      return i;
+    }
     if (c === '/' && text[i + 1] === '/') {
       const nl = text.indexOf('\n', i + 2);
-      if (nl === -1) return -1;
+      if (nl === -1) {
+        return -1;
+      }
       i = nl;
     } else if (c === '/' && text[i + 1] === '*') {
       const end = text.indexOf('*/', i + 2);
-      if (end === -1) return -1;
+      if (end === -1) {
+        return -1;
+      }
       i = end + 1;
-    } else if (c === '"' || c === "'") {
+    } else if (c === '"' || c === '\'') {
       i++;
       while (i < text.length && text[i] !== c) {
-        if (text[i] === '\\') i++;
+        if (text[i] === '\\') {
+          i++;
+        }
         i++;
       }
     }

@@ -15,7 +15,7 @@ import {
 } from '@jesscss/core';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import * as lessFunctions from '@jesscss/fns';
-import { Parser } from '@jesscss/less-parser';
+import { Parser } from '@jesscss/less-parser/jess';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';

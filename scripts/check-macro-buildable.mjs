@@ -15,7 +15,7 @@
  *
  * Run: `node scripts/check-macro-buildable.mjs`  (wired as `pnpm check:macro`).
  */
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -29,25 +29,26 @@ let failed = false;
 
 for (const pkg of PARSERS) {
   const name = `@jesscss/${pkg}`;
-  let stderr = '';
-  try {
-    execFileSync('pnpm', ['--filter', name, 'build'], {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'ignore', 'pipe']
-    });
-  } catch (e) {
-    stderr += String(e.stderr ?? '') + String(e.stdout ?? '');
-    console.error(`✗ ${name}: build FAILED\n${stderr}`);
+  let output = '';
+  const result = spawnSync('pnpm', ['--filter', name, 'build'], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  output = String(result.stdout ?? '') + String(result.stderr ?? '');
+  if (result.status !== 0) {
+    console.error(`✗ ${name}: build FAILED\n${output}`);
     failed = true;
     continue;
   }
 
   // A `[parseman] … falling back to runtime` warning means a whole grammar (or a
   // compose arg) didn't compile — a hard regression.
-  const composeWarn = /\[parseman\].*(falling back to runtime|isn't a build-resolvable)/i.exec(stderr);
+  const composeWarn = /\[parseman\].*(falling back to runtime|isn't a build-resolvable)/i.exec(output);
 
-  const bundle = readFileSync(resolve(root, 'packages', pkg, 'lib', 'index.js'), 'utf8');
+  const bundle = ['index.js', 'grammar.js', 'jess.js']
+    .map(file => readFileSync(resolve(root, 'packages', pkg, 'lib', file), 'utf8'))
+    .join('\n');
   const interp = (bundle.match(/_rp\[\d+\]\.parse\(/g) ?? []).length;
   const regexExec = (bundle.match(/\.exec\(input\)/g) ?? []).length;
 

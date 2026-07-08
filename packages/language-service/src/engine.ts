@@ -1,6 +1,6 @@
-import { CssParserChevrotain as CssParser } from '@jesscss/css-parser';
-import { Parser as LessParser } from '@jesscss/less-parser';
-import { Parser as ScssParser } from '@jesscss/scss-parser';
+import { CssParserChevrotain as CssParser } from '@jesscss/css-parser/jess';
+import { Parser as LessParser } from '@jesscss/less-parser/jess';
+import { Parser as ScssParser } from '@jesscss/scss-parser/jess';
 import type { IParseResult, Rules, Node } from '@jesscss/core';
 import { getErrorFromParser, toDiagnostic, isNode } from '@jesscss/core';
 import { createRequire } from 'node:module';

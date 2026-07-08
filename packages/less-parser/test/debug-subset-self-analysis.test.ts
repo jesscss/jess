@@ -1,10 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- Chevrotain parser self-analysis harness: token-map / rule-factory casts are inherent framework integration. */
 import { describe, expect, it } from 'vitest';
 import {
-  CssRecursiveParser,
-  productions as cssProductions,
   createLexerDefinition
 } from '@jesscss/css-parser';
+import {
+  CssRecursiveParser,
+  productions as cssProductions
+} from '@jesscss/css-parser/jess';
 
 import { lessFragments, lessTokens } from '../src/lessTokens.js';
 import type { TokenMap as LessTokenMap } from '../src/lessRecursiveParser.js';
@@ -59,7 +61,6 @@ function createParser(enabledOverrides: readonly string[]) {
 // performSelfAnalysis is a protected chevrotain method; expose it for the
 // debug harness without widening the parser class itself.
 function runSelfAnalysis(parser: SubsetLessParser): void {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   (parser as unknown as { performSelfAnalysis(): void }).performSelfAnalysis();
 }
 

@@ -1,5 +1,5 @@
 import { test } from 'vitest';
-import { CssParserChevrotain as CssParser } from '../src/index.js';
+import { CssParserChevrotain as CssParser } from '../src/jess.js';
 test('nesting', () => {
   const p = new CssParser();
   try {

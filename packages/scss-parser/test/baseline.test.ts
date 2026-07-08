@@ -1,5 +1,5 @@
 import { describe, expect } from 'vitest';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { isNode, N, serializeTypes, Condition, TreeContext } from '@jesscss/core';
 import { functionalIt, normalizeOutput, trimmedStylesheet } from './parse-helpers.js';
 

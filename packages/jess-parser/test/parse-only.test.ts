@@ -3,7 +3,7 @@
 // not yet complete — it lacks node parenting (assertValidTree) and some Jess
 // grammar (dollar exprs, @-compose/@-from, etc.). Un-skip as task #7 lands.
 import { describe, expect, it } from 'vitest';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 
 const parser = new Parser();
 

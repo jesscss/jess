@@ -1,4 +1,4 @@
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { Ampersand, Context, serializeTypes, TreeContext, N, isNode, type Node, type Selector } from '@jesscss/core';
 
 const parser = new Parser();

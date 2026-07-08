@@ -1,4 +1,4 @@
-import { Parser, type LessParserConfig } from '../src/index.js';
+import { Parser, type LessParserConfig } from '../src/jess.js';
 import { serializeTypes } from '@jesscss/core';
 
 const parser = new Parser();

@@ -10,7 +10,7 @@ import {
   type RuleContext as CssRuleContext,
   type CssTokenType,
   productions as cssProductions
-} from '@jesscss/css-parser';
+} from '@jesscss/css-parser/jess';
 
 import {
   Reference,

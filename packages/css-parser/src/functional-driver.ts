@@ -8,7 +8,7 @@
  * building the trivia map. Every functional grammar reuses it, so their
  * `{ tree, errors, warnings, trivia }` output is identical in shape and semantics.
  */
-import { run } from 'parseman';
+import { run, type FieldMap } from 'parseman';
 import { Node, Rules, nil, makeJessError, type TriviaMap, type JessError } from '@jesscss/core';
 import { buildLazyTriviaMap } from './builders.js';
 
@@ -33,12 +33,15 @@ export interface FunctionalParseHost {
   getWarnings(): Array<{ message: string; deprecation?: string }>;
   getErrors(): Array<{ message: string; offset?: number }>;
   getLiftedCommentRanges(): ReadonlyArray<readonly [number, number]>;
+  captureTriviaForNode?(type: string): boolean;
   /** `ctx.build` host: construct the AST node for a structural `node(type, …)`. */
   build(
     type: string,
     children: ReadonlyArray<unknown>,
-    rawChildren: ReadonlyArray<unknown>,
+    fields: FieldMap | undefined,
     span: { start: number; end: number },
+    rawChildren: ReadonlyArray<unknown>,
+    triviaLog: readonly number[],
   ): unknown;
 }
 
@@ -99,8 +102,15 @@ export function runFunctionalParse(
   // (a rule fn or combinator); loosely typing them keeps the call sites a plain
   // widening cast rather than an unsafe one here.
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+  const build = Object.assign(
+    (type: string, children: ReadonlyArray<unknown>, fields: FieldMap | undefined, span: { start: number; end: number }, rawChildren: ReadonlyArray<unknown>, triviaLog: readonly number[]) =>
+      host.build(type, children, fields, span, rawChildren, triviaLog),
+    host.captureTriviaForNode ? { _parsemanCaptureTrivia: host.captureTriviaForNode.bind(host) } : {}
+  );
+
+  const triviaKindLabels = (options.trivia as { _meta?: { triviaKindLabels?: readonly string[] } } | undefined)?._meta?.triviaKindLabels;
   const res = run(entry as Entry, input, {
-    build: host.build.bind(host),
+    build,
     trivia: options.trivia ? (options.trivia as Entry) : undefined
   });
   /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
@@ -141,7 +151,7 @@ export function runFunctionalParse(
     tree,
     errors,
     warnings: host.getWarnings(),
-    trivia: buildLazyTriviaMap(res.triviaLog, input),
+    trivia: buildLazyTriviaMap(res.triviaLog, input, triviaKindLabels),
     liftedCommentRanges: host.getLiftedCommentRanges()
   };
 }

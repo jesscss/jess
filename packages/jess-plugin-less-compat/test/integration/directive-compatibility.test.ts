@@ -6,14 +6,16 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Parser } from '@jesscss/less-parser';
+import { Parser } from '@jesscss/less-parser/jess';
 import { lessCompatPlugin } from '../../src/index.js';
 import { LessTreeConstructors } from '../../src/less-compat-structures.js';
 import type { Visitor } from '@jesscss/core';
 
 // Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
 function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {
-  if (!visitor) return undefined;
+  if (!visitor) {
+    return undefined;
+  }
   if (Array.isArray(visitor)) {
     // If array, use the first visitor (or create a composite if needed)
     // For now, just use the first one

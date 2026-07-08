@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- test inspects parser tree internals structurally. */
 import { Context, serializeTypes, N, isNode, type Node } from '@jesscss/core';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { resolveLessTestDataRoot } from './test-data.js';
 
 function atRulePrelude(n: Node | string | undefined): any {

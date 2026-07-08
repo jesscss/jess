@@ -12,11 +12,11 @@
  *   node --expose-gc -r tsx/cjs test/bench.ts --memory
  */
 import { execSync } from 'child_process';
-import { createRequire } from 'module';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
+import { resolveLessTestDataRoot } from './test-data.js';
 
 const INVALID_LESS = new Set([
   'tests-unit/permissive-parse/permissive-parse.less',
@@ -36,7 +36,6 @@ const INVALID_LESS = new Set([
   'tests-unit/javascript/javascript.less'
 ]);
 
-const require = createRequire(import.meta.url);
 const thisFile = fileURLToPath(import.meta.url);
 const thisDir = path.dirname(thisFile);
 const RESULTS_DIR = path.join(thisDir, 'bench-results');
@@ -63,9 +62,10 @@ function collectTestLess(): { name: string; less: string }[] {
 
   let testDataRoot: string;
   try {
-    testDataRoot = path.dirname(require.resolve('@less/test-data'));
-  } catch {
-    testDataRoot = path.resolve(thisDir, '../../../node_modules/@less/test-data');
+    testDataRoot = resolveLessTestDataRoot();
+  } catch (error) {
+    console.warn(error instanceof Error ? error.message : String(error));
+    return files;
   }
 
   if (testDataRoot && fs.existsSync(testDataRoot)) {
