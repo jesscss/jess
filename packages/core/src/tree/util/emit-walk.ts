@@ -151,18 +151,15 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
   if (!isNode(node, N.Call)) {
     return false;
   }
-  // INCREMENT 3: POSITIONAL args admitted. Each arg must be a plain positional
-  // value node — NOT a named arg (`@c: red`, a `VarDeclaration`) and NOT a
-  // detached-ruleset / content block. Named args + `...` rest are later rungs of
-  // the ladder (deferred). `matchCallableParams` binds positional args into the
-  // surface's param live-cells, which the frame-threaded descent (increment 2)
-  // already resolves — so positional binding needs only this eligibility widening.
+  // INCREMENT 3/5: POSITIONAL (`.m(red, 10px)`) and NAMED (`.m(@c: red)`) args
+  // admitted. `matchCallableParams` binds both — positional by index, named by
+  // matching a `VarDeclaration` arg to a same-named param — into the surface's
+  // param live-cells, which the frame-threaded descent (increment 2) resolves.
+  // DEFERRED: a detached-ruleset / content-block arg (needs the block bound as a
+  // callable-body value — a later rung).
   if (node.args) {
     for (let i = 0; i < node.args.value.length; i++) {
       const arg = node.args.value[i]!;
-      if (isNode(arg, N.VarDeclaration)) {
-        return false; // named arg — deferred
-      }
       if (isNode(arg, N.Rules | N.Ruleset | N.AtRule | N.Mixin)) {
         return false; // detached-ruleset / block arg — deferred
       }
@@ -713,18 +710,19 @@ function isSpineEligibleBody(children: readonly Node[]): boolean {
 
 /**
  * A mixin DEFINITION whose calls the spine may fold — a static string name, no
- * `when` guard, and (INCREMENT 3) a POSITIONAL-only parameter list. Its body need
- * NOT be statically simple here (a call's runtime gate `isSpineSimpleMixinSurface`
+ * `when` guard, and (INCREMENT 3/4) a NAMED-parameter list. Its body need NOT be
+ * statically simple here (a call's runtime gate `isSpineSimpleMixinSurface`
  * decides fold-vs-fallback), but a definition that can't be admitted at all forces
  * the enclosing body off the spine.
  *
- * INCREMENT 3 admits positional params: every param is a plain named `VarDeclaration`
- * (`.m(@a, @b)`) with NO DEFAULT value (a `Nil` value — a required positional).
- * `matchCallableParams` binds the call's positional args into these params' live
- * cells, resolved by the frame-threaded descent. DEFERRED (still off the spine):
- * DEFAULTS (a non-Nil param value — next rung), REST (`...`), and PATTERN-MATCH
- * literal params (`.m(dark, @c)` — a non-VarDeclaration value guard); a guard
- * (`when`); an interpolated name.
+ * Admitted: each param is a plain named `VarDeclaration` — NO default (a `Nil`
+ * value, a required positional — increment 3) OR a DEFAULT value (`@c: red` —
+ * increment 4) — OR a REST param (`...` / `@rest...` — increment 6).
+ * `matchCallableParams` binds the call's positional/named args into the params'
+ * live cells, fills a missing param from its default, and collects the tail into
+ * the rest param; the frame-threaded descent resolves them all. DEFERRED (still off
+ * the spine): PATTERN-MATCH literal params (`.m(dark, @c)` — a non-VarDeclaration,
+ * non-Rest value guard); a `when` guard; an interpolated name.
  */
 function isSpineEligibleMixinDefinition(node: Node): boolean {
   if (!isNode(node, N.Mixin)) {
@@ -739,13 +737,10 @@ function isSpineEligibleMixinDefinition(node: Node): boolean {
   }
   for (let i = 0; i < params.value.length; i++) {
     const param = params.value[i]!;
-    // Only a plain named param with NO default (required positional). A default
-    // (non-Nil value), a Rest, or a pattern-match literal defers.
-    if (!isNode(param, N.VarDeclaration)) {
+    // A named param (required OR default) or a Rest param. A pattern-match literal
+    // (a value guard — neither a VarDeclaration nor a Rest) defers.
+    if (!isNode(param, N.VarDeclaration) && param.type !== 'Rest') {
       return false;
-    }
-    if (!(param.value instanceof Nil)) {
-      return false; // has a default — deferred to the defaults rung
     }
   }
   return true;
@@ -1007,7 +1002,40 @@ export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   if (treeHasMixinCall(root) && treeHasNestedMixinDefinition(root)) {
     return false;
   }
+  // INCREMENT 4 cross-check: a mixin DEFINITION whose body contains NESTED
+  // CONTAINERS (a Ruleset/AtRule — `.mix() { .inner { … } }`) can't fold: the
+  // runtime surface gate rejects a non-leaf body, so the call eval-falls-back, but
+  // the eval fallback's output is a resolved TREE that the spine then re-descends —
+  // losing the eval-time frame for any DEEPLY-NESTED mixin call (`.mix-inner((@a*2))`
+  // reads `@a` from the surface frame the re-descent doesn't carry), dropping its
+  // output. Keep such a tree on the eval path entirely. DEFERRED: nested-container
+  // mixin bodies (needs the eval-fallback output rendered as-is, not re-spine-
+  // descended — a later mechanism). Flat (leaf-only) mixin bodies still fold.
+  if (treeHasMixinCall(root) && treeHasContainerBodyMixinDefinition(root)) {
+    return false;
+  }
   return isSpineEligibleBody(root.rules);
+}
+
+/**
+ * True if the tree has a Mixin definition whose body (deep) contains a nested
+ * container (Ruleset/AtRule) — the non-leaf mixin body whose eval-fallback the
+ * spine cannot faithfully re-descend (see `isSpineEligibleRoot`). Direct body
+ * children only need checking, but a container anywhere in the body qualifies.
+ */
+function treeHasContainerBodyMixinDefinition(root: Node): boolean {
+  for (const node of root.walk(true)) {
+    if (!isNode(node, N.Mixin)) {
+      continue;
+    }
+    const body = node.rules;
+    for (let i = 0; i < body.length; i++) {
+      if (isNode(body[i]!, N.Ruleset | N.AtRule)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

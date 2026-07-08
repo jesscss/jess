@@ -210,12 +210,46 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('does NOT route a DEFAULT-param mixin definition through the spine (deferred — the defaults rung)', async () => {
+  it('INCREMENT 4/5/6: folds DEFAULT / NAMED / REST-arg Less mixin calls through the spine (no derive)', async () => {
+    const cases: Array<{ src: string; expect: string[] }> = [
+      // default used when omitted
+      { src: `.m(@c: red, @w: 5px) { color: @c; width: @w; }\n.a { .m(); }`, expect: ['color: red', 'width: 5px'] },
+      // named args, order-independent
+      { src: `.m(@c: red, @w: 5px) { color: @c; width: @w; }\n.a { .m(@w: 9px, @c: blue); }`, expect: ['color: blue', 'width: 9px'] },
+      // rest collects the tail
+      { src: `.m(@a, @rest...) { a: @a; r: @rest; }\n.x { .m(1, 2, 3); }`, expect: ['a: 1', 'r: 2 3'] }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before);
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0);
+        for (const frag of c.expect) {
+          expect(css, `output ${frag}: ${c.src}`).toContain(frag);
+        }
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
+  });
+
+  it('does NOT route a NESTED-CONTAINER-body mixin through the spine (eval-fallback re-descent gap → eval path)', async () => {
+    // `.mix() { .inner { … } }` — a non-leaf body; the eval-fallback's resolved tree
+    // can't be re-spine-descended without losing the surface frame for deeply-nested
+    // calls, so the whole tree stays on the eval path (byte-identical).
     const compiler = makeCompiler();
-    const src = `.m(@c: red) {\n  color: @c;\n}\n.a {\n  .m();\n}`;
+    const src = `.mi(@v) { border-width: @v; }\n.mix(@a: 10) { .inner { height: (@a * 10); .innest { .mi((@a * 2)); } } }\n.class { .mix(30); }`;
     const before = spineRenderCounter.rootRenders;
     const css = await compiler.renderString(src, { language: 'less' });
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    expect(css).toContain('color: red');
+    expect(css).toContain('border-width: 60'); // the deeply-nested call still emits
   });
 });

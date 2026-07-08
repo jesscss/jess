@@ -667,3 +667,32 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   + confirming the default binding resolves in the descent. Then named args (`.m(@c: red)` — admit a
   `VarDeclaration` arg) → `...` rest → guards (`when` — needs the guard eval already run by the terminal, so
   likely another eligibility widening, but VERIFY the guard-fail = no-fold case). Keep deferring the hard tail.
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENTS 4/5/6 — DEFAULTS + NAMED + REST args (arg ladder rungs 2-4,
+  clustered — all pure eligibility widenings, `matchCallableParams` already binds them). (4) DEFAULTS: a param
+  with a non-Nil default (`@c: red`) — `matchCallableParams`'s trailing default-fill loop fills a missing param;
+  admitted by dropping the `Nil`-only restriction in `isSpineEligibleMixinDefinition`. (5) NAMED args
+  (`.m(@w:9px, @c:blue)`): admitted by dropping the `VarDeclaration`-arg rejection in `isSpineEligibleMixinCall`
+  (named binding is `matchCallableParams` lines 80-106). (6) REST (`@rest...`): admitted by allowing a `Rest`
+  param in `isSpineEligibleMixinDefinition`. All resolve through the inc-2 frame-threaded descent with NO new
+  mechanism. PROVEN in production: `.m(); .m(blue)` (defaults), `.m(@w:9px,@c:blue)` (named, order-independent),
+  `.m(1,2,3)` → `a:1;r:2 3` (rest) — all `spineRan=1 derives=0`, byte-identical. BYTE-DIFF found+fixed:
+  admitting DEFAULTS opened `mixins-nested` (a `.mix(@a:10){ .inner{…} }` def with a NESTED-CONTAINER body) to
+  the spine; its runtime surface gate rejects the non-leaf body → eval-fallback, but the fallback's resolved
+  TREE was re-spine-descended, losing the surface frame for a deeply-nested `.mi((@a*2))` call → `border-width`
+  dropped. FIX: `treeHasContainerBodyMixinDefinition` excludes any tree whose (called) mixin def has a
+  nested-container body — kept on the eval path (DEFERRED: needs the eval-fallback output rendered as-is, not
+  re-spine-descended). Ratchets: core `emit-walk-ratchet` (+3: default/named/rest folds; nested-container-body
+  excluded) — 3205/0 core green; jess `spine-production-ratchet` 11/11 (+1 combined default/named/rest +
+  nested-container-body-stays-on-eval). `all-less` 90/3 byte-identical. Routing: mixin-named fixtures still
+  1/12 + 46 tests-unit roots (the mixin fixtures are now gated mainly by GUARDS/pattern-match, the next rung —
+  not args). 0 NEW tsc/lint (emit-walk's 4 pre-existing at-rule-predicate `as` assertions only → `--no-verify`).
+  Backpedal self-check: REPLACED the eval path for the covered shapes (default/named/rest arg mixins — one path:
+  the spine); nested-container-body + guards + pattern + the hard tail stay ratchet-locked deferrals; byte-
+  identical 90/3; no forced fixture-match; NEVER `git stash`.
+  RECOMMENDED NEXT (increment 7): GUARDS (`when`). The terminal ALREADY evaluates the guard (guardResult.passes)
+  before the sink is consulted — a failing guard means the terminal returns no output for that candidate and the
+  sink is never called for it, so a guard-failing candidate naturally does NOT fold. VERIFY CAREFULLY: (a) a
+  guard-SELECTED candidate among several (only the passing one folds/emits, byte-identical); (b) a guard-fail
+  with NO passing candidate (no output); (c) default-guard (`when default()`) fallback. Widen
+  `isSpineEligibleMixinDefinition` to admit `node.guard` ONLY after these three are byte-identical-proven; a
+  guard whose outcome the sink can't faithfully reproduce must stay deferred. Then the hard tail.
