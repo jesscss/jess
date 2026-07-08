@@ -10,8 +10,27 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
+      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
+    },
+    "./cst": {
+      "types": "./lib/cst.d.ts",
+      "source": "./src/cst.ts",
+      "import": "./lib/cst.js",
+      "require": "./lib/cst.cjs"
+    },
+    "./grammar": {
+      "types": "./lib/grammar.d.ts",
+      "source": "./src/grammar.ts",
+      "import": "./lib/grammar.js",
+      "require": "./lib/grammar.cjs"
+    },
+    "./jess": {
+      "types": "./lib/jess.d.ts",
+      "source": "./src/jess.ts",
+      "import": "./lib/jess.js",
+      "require": "./lib/jess.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -33,13 +52,21 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
     "chevrotain": "^12.0.0"
   },
+  "peerDependencies": {
+    "@jesscss/core": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@jesscss/core": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "parseman": "^0.16.0",
+    "@jesscss/core": "workspace:*",
+    "parseman": "link:/Users/matthew/git/oss/parser-thing",
     "sass-spec": "github:sass/sass-spec"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

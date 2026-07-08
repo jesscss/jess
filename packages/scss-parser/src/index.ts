@@ -14,3 +14,8 @@ export type { ScssRules, SyntacticContentAssistSuggestion } from './scssParser.j
 export { ScssParser as ScssParserChevrotain } from './scssParser.js';
 
 export const Parser = ScssParser;
+export { scssGrammar } from './grammar.js';
+export { parseScssCst } from './cst.js';
+export type {
+  ScssCstChild, ScssCstError, ScssCstLeaf, ScssCstNode, ScssCstParseResult, ScssCstType
+} from './cst.js';

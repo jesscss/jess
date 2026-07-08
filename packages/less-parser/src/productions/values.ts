@@ -6,7 +6,7 @@
 // Converted from Chevrotain-based productions.ts (lines 2060-3015)
 import type { RuleContext, TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
-import { productions as cssProductions } from '@jesscss/css-parser';
+import { productions as cssProductions } from '@jesscss/css-parser/jess';
 import {
   type LocationInfo,
   type TreeContext,

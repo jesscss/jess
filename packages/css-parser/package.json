@@ -11,8 +11,27 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
+      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
+    },
+    "./cst": {
+      "types": "./lib/cst-css.d.ts",
+      "source": "./src/cst-css.ts",
+      "import": "./lib/cst.js",
+      "require": "./lib/cst.cjs"
+    },
+    "./grammar": {
+      "types": "./lib/grammar.d.ts",
+      "source": "./src/grammar.ts",
+      "import": "./lib/grammar.js",
+      "require": "./lib/grammar.cjs"
+    },
+    "./jess": {
+      "types": "./lib/jess.d.ts",
+      "source": "./src/jess.ts",
+      "import": "./lib/jess.js",
+      "require": "./lib/jess.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -34,18 +53,26 @@
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:*",
     "chevrotain": "^12.0.0",
     "color-name": "~2.0.0",
     "lodash-es": "~4.17.21",
     "xregexp": "^5.1.1"
   },
+  "peerDependencies": {
+    "@jesscss/core": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@jesscss/core": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@jesscss/core": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "parseman": "^0.16.0",
     "@types/color-name": "^1.1.1",
     "@types/lodash-es": "~4.17.8",
     "@types/xregexp": "^4.4.0",
+    "parseman": "link:/Users/matthew/git/oss/parser-thing",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

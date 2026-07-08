@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { TreeContext } from '@jesscss/core';
 import { PENDING_FUNCTIONAL } from './parse-helpers.js';
 

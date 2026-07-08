@@ -10,7 +10,7 @@
  * The functional parse host (`BuilderHost`) in ./functional-parser.ts extends this
  * class, so `this._source` / `this._warnings` / `this._errors` come from CssParser.
  */
-import { CssParser, spannedComponents, type Spanned } from '@jesscss/css-parser';
+import { CssParser, spannedComponents, type Spanned } from '@jesscss/css-parser/jess';
 import {
   type Node, type LocationInfo,
   Reference, type ReferenceOptions, type ReferenceValue,
@@ -25,7 +25,7 @@ import {
   StyleImport, JsImport,
   type ForPattern, type ForIterable
 } from '@jesscss/core';
-import type { Span } from 'parseman';
+import type { FieldMap, Span } from 'parseman';
 
 type CSTLeaf = { _tag: 'leaf'; value: string };
 type CSTLike = { _tag: string };
@@ -46,7 +46,9 @@ export class JessGrammar extends CssParser {
     span: Span,
     children: ReadonlyArray<Node | CSTLike>,
     state: unknown,
-    rawChildren: ReadonlyArray<CSTLike>
+    rawChildren: ReadonlyArray<CSTLike>,
+    fields?: FieldMap,
+    triviaLog: readonly number[] = []
   ) {
     switch (type) {
       case 'Reference':      return this._buildJessReference(children, loc(span));
@@ -74,7 +76,7 @@ export class JessGrammar extends CssParser {
       case 'Condition':      return this._buildJessCondition(children, loc(span));
       case 'JessKeyword':    return this._valueKeyword((children.find(isLeaf)?.value) ?? '', loc(span)) as unknown as Node;
       default:
-        return super.buildNode(type, span, children as never, state, rawChildren);
+        return super.buildNode(type, span, children as never, state, rawChildren, fields, triviaLog);
     }
   }
 

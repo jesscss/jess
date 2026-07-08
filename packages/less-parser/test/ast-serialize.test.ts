@@ -1,4 +1,4 @@
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { serializeTypes, N, isNode, type Node } from '@jesscss/core';
 
 // Tests walk the parsed AST structurally; these views cover the fields they read.

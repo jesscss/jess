@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { serializeTypes, N, isNode, type Node } from '@jesscss/core';
 
 const parser = new Parser();

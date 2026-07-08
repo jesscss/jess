@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 
 type HrxFile = { filePath: string; sectionPath: string; contents: string };
 type CachedManifest = {

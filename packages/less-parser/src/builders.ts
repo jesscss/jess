@@ -7,12 +7,12 @@
  * Extends CssParser to inherit the shared CSS builder methods.
  */
 
-import type { Span } from 'parseman';
+import type { FieldMap, Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import {
   CssParser,
   spannedComponents, type Spanned, type Component
-} from '@jesscss/css-parser';
+} from '@jesscss/css-parser/jess';
 import { getInterpolatedOrString, getInterpolatedNode, createInterpolatedReference } from './utils.js';
 
 import {
@@ -103,7 +103,9 @@ export class LessGrammar extends CssParser {
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
     _state: unknown,
-    _rawChildren: ReadonlyArray<{ _tag: string }>
+    _rawChildren: ReadonlyArray<{ _tag: string }>,
+    fields?: FieldMap,
+    triviaLog: readonly number[] = []
   ): JessNode {
     const loc = spanToLocation(span);
     const raw = _rawChildren;
@@ -136,7 +138,7 @@ export class LessGrammar extends CssParser {
       case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
       case 'Guard':               return this._buildGuard(children, loc);
       case 'UnicodeRange':        return this._lessKeyword(this._source.slice(span.start, span.end), loc) as unknown as JessNode;
-      case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, loc);
+      case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, fields, triviaLog, loc);
       case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
       case 'VarCall':             return this._buildVarCall(children, raw, loc);
       case 'MixinCall':           return this._buildMixinCall(children, raw, loc);
@@ -159,7 +161,7 @@ export class LessGrammar extends CssParser {
       case 'ExtendTarget':        return this._buildExtendTarget(children, raw, loc);
       case 'ExtendPseudo':        return this._buildExtendPseudo(children, loc);
       case 'ExtendStatement':     return this._buildExtendStatement(children, raw, loc);
-      default:                    return super.buildNode(type, span, children, _state, raw) as unknown as JessNode;
+      default:                    return super.buildNode(type, span, children, _state, raw, fields, triviaLog) as unknown as JessNode;
     }
   }
 
@@ -338,15 +340,15 @@ export class LessGrammar extends CssParser {
     const isProp = varName.startsWith('$');
     let base: JessNode = isProp
       ? new Reference(
-          { key: new Quoted(varName.slice(1), { quote: '\'' }, loc) as any } as unknown as ReferenceValue,
-          { type: 'index' },
-          loc
-        ) as unknown as JessNode
+        { key: new Quoted(varName.slice(1), { quote: '\'' }, loc) as any } as unknown as ReferenceValue,
+        { type: 'index' },
+        loc
+      ) as unknown as JessNode
       : new Reference(
-          isVar ? varName.slice(1) : varName,
-          isVar ? { type: 'variable' as const } : {},
-          loc
-        ) as unknown as JessNode;
+        isVar ? varName.slice(1) : varName,
+        isVar ? { type: 'variable' as const } : {},
+        loc
+      ) as unknown as JessNode;
     let i = 1;
     while (i < ls.length) {
       const tok = ls[i]!.value;
@@ -507,7 +509,7 @@ export class LessGrammar extends CssParser {
    * keyword nodes (their guard truthiness is decided at eval by `Condition`).
    */
   private _guardComparison(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo):
-    { left: Node; op?: ConditionOperator; right?: Node } {
+  { left: Node; op?: ConditionOperator; right?: Node } {
     const items = spannedComponents(raw);
     let op: ConditionOperator | undefined;
     const operands: Node[] = [];
@@ -734,12 +736,12 @@ export class LessGrammar extends CssParser {
   private _buildLessPseudo(
     type: string, span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
-    state: unknown, raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo
+    state: unknown, raw: ReadonlyArray<{ _tag: string }>, fields: FieldMap | undefined, triviaLog: readonly number[], loc: LocationInfo
   ): JessNode {
     // `:extend(...)` is parsed by the dedicated ExtendPseudo grammar rule, never
     // here — generic PseudoSelector is guarded against it (extendAhead). So this
     // builder only ever sees real CSS pseudo-classes/elements.
-    const pseudo = super.buildNode(type, span, children, state, raw) as JessNode;
+    const pseudo = super.buildNode(type, span, children, state, raw, fields, triviaLog) as JessNode;
     // `readPseudoArg` (css builder) only recognizes node/array args. Under the Less
     // grammar an `nth` arg (`4n+1`) arrives as a leaf string and a single-member
     // selector list collapses to a bare string — both of which it skips, leaving
@@ -758,8 +760,8 @@ export class LessGrammar extends CssParser {
           const recovered = typeof inner === 'string'
             ? this._lessKeyword(inner, loc)
             : (inner as CSTLeaf)._tag === 'leaf'
-              ? this._lessKeyword((inner as CSTLeaf).value, loc)
-              : (inner as unknown as JessNode);
+                ? this._lessKeyword((inner as CSTLeaf).value, loc)
+                : (inner as unknown as JessNode);
           (pseudo as unknown as { arg: unknown }).arg = recovered;
           pseudoArg = recovered;
         }
@@ -2720,7 +2722,7 @@ export class LessGrammar extends CssParser {
           const nameAny = varName;
           const valNode = seqItems[j + 2]!;
           const valueNode = this._isKeywordLike(valNode)
-            ? valNode
+            ? this._lessKeyword(String((valNode as any).value ?? '').trim(), loc) as unknown as JessNode
             : this._lessKeyword(String((valNode as any).value ?? ''), loc) as unknown as JessNode;
           const vd = new VarDeclaration(
             { name: nameAny as any, value: valueNode } as any,

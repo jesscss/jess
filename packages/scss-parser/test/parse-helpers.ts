@@ -1,5 +1,5 @@
 import { expect, it as vitestIt } from 'vitest';
-import { Parser, type ScssParserChevrotain } from '../src/index.js';
+import { Parser, type ScssParserChevrotain } from '../src/jess.js';
 import type { IParseResult, Rules, TreeContext } from '@jesscss/core';
 
 export const parser = new Parser();

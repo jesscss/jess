@@ -1,4 +1,4 @@
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { describe, it, expect } from 'vitest';
 
 const parser: any = new Parser();

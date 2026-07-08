@@ -4,12 +4,12 @@
  * The grammar itself lives in ./grammar.ts; the shared driver is reused from
  * @jesscss/css-parser.
  */
-import type { Span } from 'parseman';
-import { nil, type MathMode, type Rules } from '@jesscss/core';
+import type { FieldMap, Span } from 'parseman';
+import { nil, type MathMode, type Rules, type TreeContext } from '@jesscss/core';
 import {
   runFunctionalParse, toParseError, buildLazyTriviaMap,
   type FunctionalParseHost, type FunctionalParseResult
-} from '@jesscss/css-parser';
+} from '@jesscss/css-parser/jess';
 import { LessGrammar } from './builders.js';
 import { lessGrammar } from './grammar.js';
 
@@ -18,6 +18,16 @@ import { lessGrammar } from './grammar.js';
 // ---------------------------------------------------------------------------
 
 class BuilderHost extends LessGrammar implements FunctionalParseHost {
+  /**
+   * The TreeContext threaded in by the caller (the plugin's per-file context),
+   * held for the duration of one parse. Currently a pass-through: it's carried
+   * back out in the result so a caller can hand one context in and read it back.
+   * Grammar rules (e.g. a future `@compose`/`@use` rule) can read/mutate it —
+   * e.g. set `context.opts.strict` — and the mutation is visible to the caller
+   * since it's the same object.
+   */
+  context?: TreeContext;
+
   setSource(src: string) {
     this._source = src;
   }
@@ -38,30 +48,47 @@ class BuilderHost extends LessGrammar implements FunctionalParseHost {
 
   /** `ctx.build` host: every structural `node(type, …)` builds through this,
    * reusing LessGrammar's (Less + inherited CSS) `buildNode` verbatim. */
-  build(type: string, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>, span: { start: number; end: number }): unknown {
+  captureTriviaForNode(type: string) {
+    return type === 'CompoundSelector';
+  }
+
+  build(type: string, children: ReadonlyArray<unknown>, fields: FieldMap | undefined, span: { start: number; end: number }, rawChildren: ReadonlyArray<unknown>, triviaLog: readonly number[]): unknown {
     /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
     return (this as unknown as {
-      buildNode(t: string, s: Span, c: ReadonlyArray<unknown>, st: unknown, r: ReadonlyArray<unknown>): unknown;
-    }).buildNode(type, { start: span.start, end: span.end } as Span, children, undefined, rawChildren);
+      buildNode(t: string, s: Span, c: ReadonlyArray<unknown>, st: unknown, r: ReadonlyArray<unknown>, f?: FieldMap, tl?: readonly number[]): unknown;
+    }).buildNode(type, { start: span.start, end: span.end } as Span, children, undefined, rawChildren, fields, triviaLog);
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
   }
 }
 
 const host = new BuilderHost();
 
-export type LessFnParseResult = FunctionalParseResult;
+export type LessFnParseResult = FunctionalParseResult & {
+  /** The TreeContext the caller threaded in (if any), passed back out. */
+  context?: TreeContext;
+};
 
 // `rule` is a grammar rule name — the root `Stylesheet` by default, or any rule
 // (e.g. `Declaration`, `Guard`, `SelectorList`) to parse that fragment directly.
 export function parseLessFn(
   input: string,
   rule = 'Stylesheet',
-  mathMode: MathMode = 'parens-division'
+  mathMode: MathMode = 'parens-division',
+  context?: TreeContext
 ): LessFnParseResult {
-  host.mathMode = mathMode;
+  // mathMode comes from the threaded context when present (the caller's per-file
+  // TreeContext carries it, alongside every other option); the `mathMode` param
+  // is only the context-less fallback for bare `parseLessFn(src)` callers.
+  host.mathMode = context?.options.mathMode ?? mathMode;
+  host.context = context;
   const g = lessGrammar as Record<string, unknown>;
   // Less trivia includes `//` line comments, so trailing `//…` is not leftover.
-  return runFunctionalParse(input, g[rule], host, { trivia: g.rw });
+  const result = runFunctionalParse(input, g[rule], host, { trivia: g.rw });
+  // Carry the (possibly rule-mutated) context back out; clear the singleton's
+  // reference so it isn't retained across parses.
+  const threaded = host.context;
+  host.context = undefined;
+  return { ...result, context: threaded };
 }
 
 /**
@@ -73,19 +100,27 @@ export function parseLessFn(
 function firstInlineJsBacktick(text: string): number {
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (c === '`') return i;
+    if (c === '`') {
+      return i;
+    }
     if (c === '/' && text[i + 1] === '/') {
       const nl = text.indexOf('\n', i + 2);
-      if (nl === -1) return -1;
+      if (nl === -1) {
+        return -1;
+      }
       i = nl;
     } else if (c === '/' && text[i + 1] === '*') {
       const end = text.indexOf('*/', i + 2);
-      if (end === -1) return -1;
+      if (end === -1) {
+        return -1;
+      }
       i = end + 1;
-    } else if (c === '"' || c === "'") {
+    } else if (c === '"' || c === '\'') {
       i++;
       while (i < text.length && text[i] !== c) {
-        if (text[i] === '\\') i++;
+        if (text[i] === '\\') {
+          i++;
+        }
         i++;
       }
     }
@@ -102,7 +137,10 @@ export class LessParser {
   }
 
   // Arrow field so `const parse = parser.parse` (used in tests) keeps `this`.
-  parse = (text: string, rule = 'Stylesheet'): LessFnParseResult => {
+  // `options.context` threads a caller-owned TreeContext through the parse and
+  // is carried back out on the result (same object) — the seam a future
+  // `@compose`/`@use` rule uses to set `context.opts.strict`.
+  parse = (text: string, rule = 'Stylesheet', options?: { context?: TreeContext }): LessFnParseResult => {
     // Inline JavaScript (backticks) was removed in v5 — report it as a normal
     // parse error at the backtick, NOT by throwing (a parser must not throw).
     // Only a backtick in CODE position is inline JS: skip backticks inside line/
@@ -115,9 +153,10 @@ export class LessParser {
         errors: [toParseError('Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead.', backtick, text)],
         warnings: [],
         trivia: buildLazyTriviaMap([], text),
-        liftedCommentRanges: []
+        liftedCommentRanges: [],
+        context: options?.context
       };
     }
-    return parseLessFn(text, rule, this._mathMode);
+    return parseLessFn(text, rule, this._mathMode, options?.context);
   };
 }
