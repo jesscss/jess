@@ -42,11 +42,14 @@ expected to change.
 3. `&`-crossing folds into EMIT (one system, not a pre-apply side-channel).
 4. OQ-5 folds into (B) placement; no third axis, no stored own-selector field. The extender's
    contribution is its COMPOSED selector.
-5. **EMIT is a per-node inline pipeline (owner-resolved, §6):** per node — produce shape (reuse
-   canonical untouched if unchanged; fresh transient only if eval changed it) → run visitors inline
-   on that node (the less-compat / plugin hook point, receiving node + frame) → serialize immediately
-   → release. The node intermediate survives only TRANSIENTLY and LOCALLY at each emit position, never
-   as a persistent output tree, never as a separate visitor or serialize pass.
+5. **EMIT is a per-node inline pipeline carrying a FIRST-CLASS GENERIC VISITOR (owner-resolved, §6):**
+   per node — produce shape (reuse canonical untouched if unchanged; fresh transient only if eval
+   changed it) → invoke registered visitors inline on that node (a generic `(node, ctx) => Node | void`
+   hook owned by `@jesscss/core`, Less-agnostic; less-compat is just ONE downstream consumer, §6.7) →
+   serialize immediately → release. The node intermediate survives only TRANSIENTLY and LOCALLY at each
+   emit position, never as a persistent output tree, never as a separate visitor or serialize pass. The
+   pass IS the traversal, so a visitor needs no traversal of its own — this is what lets the whole-tree
+   `Visitor`/`TreeVisitor` framework and the `preSerializeRoot` seam collapse to a per-node hook.
 6. Bookkeeping minimal — per-branch (B) annotations + carried provenance obey the ≤5 class-unique
    field budget (`CORE-CLEANUP.md`).
 7. **No test expectation is sacred.** This is in-development v5; any current `.css` / warning / unit
@@ -583,84 +586,260 @@ for owner decision, do not special-case the pass to emit the expanded form. This
 
 ---
 
-## 6. The settled EMIT + visitor model — a per-node inline pipeline (ruling 5, OWNER-RESOLVED)
+## 6. The generic Jess visitor model — a first-class per-node hook on the unified pass (ruling 5, OWNER-RESOLVED)
 
-**Owner resolution (settled).** There is NO eval-stage → visitor-stage → serialize-stage sequence.
-Those three whole-tree passes collapse into ONE per-node inline pipeline. The node intermediate
-SURVIVES, but only TRANSIENTLY and LOCALLY at each emit position — never as a persistent materialized
-output tree, never as a separate pass. This is how EMIT satisfies the visitor / less-compat consumer
-without a second tree walk and without double-eval.
+**Owner resolution (settled).** A Jess visitor is a FIRST-CLASS, GENERIC capability of the unified
+pass — NOT a hook shaped around any one consumer. The definition is deliberately minimal:
 
-### 6.1 The three inline steps, per node, as the traversal reaches it
+> **A visitor is a registered function `(node, ctx) => Node | void | REMOVE` that the pass invokes on
+> each node directly AFTER that node's eval/emit shape is produced and directly BEFORE the node is
+> serialized. Returning a node replaces it; returning nothing leaves it unchanged; returning `REMOVE`
+> drops it from output.**
 
-As the unified traversal (§1, §2) reaches each source node, it runs three steps back-to-back and then
-moves on — nothing is retained past step 3:
+less-compat is ONE downstream consumer of this generic hook (§6.7), not a special case the pass knows
+about. The pass does not import, mention, or depend on less-compat; it only invokes whatever visitors
+are registered. There is NO eval-stage → visitor-stage → serialize-stage sequence and no whole-tree
+visitor walk: the pass IS the traversal, so a visitor is a per-node callback with no traversal of its
+own. The node intermediate SURVIVES only TRANSIENTLY and LOCALLY at each emit position — never a
+persistent materialized output tree, never a separate pass.
 
-1. **Produce the node's SHAPE.**
-   - If eval did NOT change the node (static / unchanged) → reuse the **canonical node untouched**.
-     No new object is allocated; the shared canonical node IS the shape, with any live-bound values
-     swapped in via the threaded value-frame (§2) at read time. This is the no-copy principle: "emit
-     straight from the shared canonical node unless it's canonical-changed."
-   - If eval DID change it (dynamic value resolved, selector composed, extend-modified, hoisted,
-     collapsed) → create a **FRESH TRANSIENT shape** for this emit position only. You cannot mutate
-     the shared canonical, so a change always yields a fresh local object. This transient shape is the
-     home of the per-branch extend annotations (§4.3) and any composed/resolved form — it is exactly
-     the "changed-node" object, scoped to this position, released after step 3.
+### 6.1 The visitor contract (generic, core-owned, Less-agnostic)
 
-2. **Run visitors against THAT node, right there — just-in-time.** At the moment the shape is
-   produced and BEFORE it is serialized, plugin visitors (including the less-compat visitor) are
-   invoked on it. Visitors are **per-node hooks invoked inline by the pass, NOT tree-walkers.** A
-   visitor receives:
-   - **the node** (the shape from step 1 — canonical-shared or fresh-transient), presented in the
-     shape the consumer expects (for less-compat, the `less.tree`-compat view — see §6.2), and
-   - **the frame context** (the live value-frame + structural stack at this position), so a visitor
-     or custom function that needs to resolve a value / inspect scope has the same live bindings the
-     leaf resolution uses.
-   If a visitor TRANSFORMS the node, it yields/uses a **fresh shape** (again, the shared canonical is
-   never mutated). That visitor-produced fresh shape simply becomes the node that flows into step 3 —
-   no separate re-walk, no re-eval; the transform is local and immediate.
+The contract lives in `@jesscss/core` and is complete and testable with zero Less knowledge.
 
-3. **Serialize the resulting node immediately** to string/buffer (with the source node as the
-   sourcemap origin, §2.4), then **release it.** The transient shape (if any) is now garbage; the
-   canonical node is untouched and reusable for its next placement.
+**Signature.** `type NodeVisitor = (node: Node, ctx: VisitContext) => NodeVisitReturn`, where
+`NodeVisitReturn = void | Node | symbol` — this is the EXISTING core type (`node-base.ts:66`) and the
+existing `REMOVE`/`ABORT` symbols (`node-base.ts:64-65`), reused verbatim. No new return vocabulary is
+invented.
 
-So the visitor architecture ITSELF changes: the old "walk the whole evaluated tree with a visitor
-pass" becomes "the pass calls each registered visitor hook once, inline, at each node's emit moment."
-There is no `preSerializeRoot` whole-tree hook doing a separate visitor walk; that seam is replaced by
-the inline per-node hook. (The current `preSerializeRoot` at `rules.ts:4778` is the vestige of the
-old separate-pass model — under this resolution it dissolves into the inline step 2.)
+**Return semantics** (exactly the semantics core's `Visitor._visit` already implements at
+`visitor/index.ts:144-150`, `fn.call(this, n, ctx) ?? n`):
+- **`void` / `undefined`** → node unchanged; the same shape flows to serialize. (Output-invisible
+  in-place annotation of the node is separately governed by ruling 1 — see §6.5.)
+- **a `Node`** → REPLACEMENT; the returned node is what serializes (and what the next visitor in the
+  chain sees, §6.4).
+- **`REMOVE`** → the node is dropped from output (nothing serialized for it, children included). This
+  is the drop signal Less visitors express by returning `undefined` under `isReplacing` — core already
+  has the `REMOVE` symbol for it; the pass simply skips serialization on `REMOVE`.
+- **`ABORT`** (already in core) → stop descending into this node's children but keep the node itself;
+  the pass emits the node's own bytes and does not visit its subtree. This is the inline-pass
+  equivalent of Less's `visitDeeper = false`.
 
-### 6.2 less-compat under the inline model (OQ-F resolved)
+**Context.** `VisitContext` is the MINIMAL bundle a visitor needs to make a decision at this position,
+and nothing more:
+- the live **value-frame** (top of the §2 stack) — so a visitor, or a custom function it calls, can
+  resolve a value / inspect scope against the SAME bindings leaf resolution uses;
+- the **structural stack** (ancestry + `composedSelectorStack`, §2) — so a visitor can see the
+  composed placement/selector context of the node;
+- the **output writer/buffer** handle (§4.4) — so a visitor that needs to emit directly (rare) can,
+  though the normal path is return-a-node;
+- a `visitDeeper`-style descent flag defaulted true (mirrors the existing `VisitorContext` at
+  `visitor/index.ts:19-21`), which `ABORT` sets false.
 
-The less-compat consumer is satisfied by step 2, not by a persistent tree. What it needs:
-- **`less.tree` node view** — at the hook point, the node handed to a 4.x visitor/function is
-  presented as its compat shape. Because the hook fires per-node on a transient (or canonical) shape
-  that already exists at that instant, the compat view is a LOCAL adaptation of one node, not a
-  materialization of a whole subtree into a compat tree. A 4.x visitor that inspects children sees
-  them lazily/adapted as the pass reaches them, in the same inline discipline.
-- **`less.functions` registry** — a 4.x custom function called during value resolution runs in step 2
-  (or during leaf resolution in §2) with the frame context available, so it resolves against the live
-  bindings.
-- **plugin/visitor hook** — the per-node hook point (post-shape, pre-serialize) IS the plugin visitor
-  surface; a plugin registers a hook rather than a tree-walker.
+The context deliberately carries NO Less-specific view, NO `less.tree`/`less.functions` shape, and no
+consumer identity. It is the same `(value-frame, structural-stack, writer)` the pass already threads
+(§2, §4.4) — a visitor is handed the state the pass already has, not a new subsystem.
 
-This resolves OQ-F's "what/when": the protected surface is the **per-node hook receiving (node,
-frame) post-shape/pre-serialize**, firing in traversal order — i.e. AFTER a node's own
-eval/compose/extend shape is produced (so a visitor sees resolved values + composed selectors +
-extend contributions for THAT node) and BEFORE its bytes are written. There is no "before extend vs
-after extend" whole-tree choice to make, because there is no whole-tree visitor pass — each node is
-visited once, at its own settled shape.
+### 6.2 Hook point(s) — ENTER and EXIT, mapping cleanly onto the 4.x visitX/visitXOut split
 
-### 6.3 Sourcemaps under the inline model
+The owner's "after eval AND before serialize" is, in the unified pass, a per-node WINDOW with two
+edges, because eval+serialize of a subtree is one nested traversal:
+
+- **ENTER (pre-children)** — the node's own shape is produced (value resolved, selector composed,
+  extend contributions projected) but its children are not yet serialized. A visitor sees the node
+  with its settled own-shape and can replace/remove/abort it before its subtree is walked.
+- **EXIT (post-children, pre-close)** — after the node's children have been serialized, before the
+  node's closing bytes are written. A visitor can act on the fully-emitted subtree form.
+
+This is the SAME enter/exit split core's `Visitor` already exposes as per-type `foo` / `fooExit`
+(`visitor/index.ts:38-122`) and as the `enter`/`exit` bookends (`:31-36`), and it is EXACTLY what the
+Less 4.x `visitX` (enter) / `visitXOut` (exit) callback pair needs. Mapping:
+
+- A generic Jess visitor registers `enter(node, ctx)` and/or `exit(node, ctx)`. Most visitors only
+  need `enter`. `exit` exists solely so the pass can carry consumers (like 4.x) that distinguish the
+  two edges; if a visitor registers no `exit`, the pass invokes nothing at the exit edge (zero cost).
+- **4.x per-type dispatch (`visitRuleset`, `visitDeclaration`, …) is a CONSUMER concern, not a core
+  one.** Core invokes ONE generic `enter`/`exit` per node keyed on nothing. The `type → visitX`
+  fan-out is a thin dispatch the CONSUMER does inside its own `enter` (switch on `node.type`), which
+  is precisely what core's own `Visitor.getMethod`/`_visit` does today (`visitor/index.ts:130-150`)
+  and what the less-compat bridge does today (`less-compat-structures.ts:70` builds
+  `visit${nodeType}`). Core does not owe consumers a per-type registration table; it owes them the
+  node + the enter/exit edge, and they dispatch.
+
+So: **two hook edges (enter/exit), one generic signature each, per-type dispatch pushed to the
+consumer.** That is the least surface that still carries the 4.x enter/exit + per-type surface.
+
+### 6.3 Strengthen or SIMPLIFY — the verdict: SIMPLIFY (drop the walk framework; keep a two-edge hook)
+
+The load-bearing insight: **today Less runs visitors as their OWN whole-tree walk(s)** — that is what
+core's `TreeVisitor` (`visitor/index.ts:192-263`) is (an auto-walk that calls `n.walk(...)`,
+tracks `visitedNodes`, honors `accept()`), and what the `preSerializeRoot` seam
+(`rules.ts:4795-4809`, `print.ts:69`) triggers: a `(evaluatedRoot: Rules) => Rules | void` hook run
+ONCE over the whole evaluated tree, whose whole job is to give plugin visitors a tree to walk. **In
+the unified pass the walk already happens.** A visitor therefore needs no traversal, no
+`visitedNodes` bookkeeping, no `accept()` recursion, no separate root hook.
+
+**What the pass makes UNNECESSARY (delete):**
+- **`TreeVisitor`** (`visitor/index.ts:192-263`) — the entire auto-walk / `visitChildren` /
+  `visitedNodes` / `accept()`-recursion machinery. The pass supplies the traversal; a visitor is a
+  callback fired at each node. This is the bulk of the current visitor code.
+- **The `preSerializeRoot` whole-tree seam** (`rules.ts:4795-4809`, `print.ts:69`,
+  referenced by ruling-5 note) — the "run post-eval plugin visitors over the evaluated root" hook. Its
+  sole reason to exist is to hand plugins a materialized tree to walk after a separate eval; with
+  eval+emit unified, the hole it plugged is gone. It dissolves into the per-node enter/exit invocation.
+- **The standalone `Visitor.visit(n): Node` entry** (`visitor/index.ts:162-182`) as a
+  driver — it self-rebinds `this.visit` to descend; under the pass there is no self-driven descent, so
+  the driver collapses to "core calls your `enter`/`exit`."
+
+**What SURVIVES as the minimal core (keep):**
+- The **`(node, ctx) => NodeVisitReturn` shape** and the `void|Node|REMOVE|ABORT` semantics — already
+  in core (`node-base.ts:64-66`, `visitor/index.ts:144-150`).
+- The **enter/exit two-edge invocation** (§6.2) — already in core as `foo`/`fooExit` + `enter`/`exit`.
+- A **registration + ordering list** (§6.4) — a small ordered array of registered visitors the pass
+  iterates per node. This is the ONE genuinely new (but tiny) piece: a registry, because today
+  visitors are handed in ad hoc via `preSerializeRoot`, not registered.
+
+**Verdict:** this is a NET SIMPLIFICATION. The generic model is "a registered `(node,ctx)` callback
+the pass fires at two edges," and it is strictly SMALLER than today's `Visitor`+`TreeVisitor`+
+`preSerializeRoot` trio — we delete the whole-tree walker and the root seam and add only a registry.
+It is expressive enough to carry the full 4.x compat surface (proof: §6.7), so no heavyweight framework
+is reintroduced. Under the package-boundary constraint (§6.6) the core surface is smaller STILL,
+because it carries no Less semantics — just node + edge + return.
+
+### 6.4 Multiple visitors — registration, ordering, chaining
+
+- **Registration.** `@jesscss/core` exposes a registration API (e.g. `registerVisitor(v, { order? })`)
+  that appends to an ordered list held on the render/compile context. No auto-registration of anything;
+  the list is empty unless a caller registers.
+- **Ordering.** Deterministic registration order (with an optional integer `order` for priority),
+  mirroring the Less pre/post ordering a consumer may need. The pass iterates the list in that order at
+  each node.
+- **Chaining.** Visitor N sees visitor N−1's RESULT: at a node, the pass threads the current shape
+  through the list — `shape = visitorK.enter(shape, ctx) ?? shape` for each K in order; a `Node`
+  return re-seats `shape` for the next visitor; `REMOVE` short-circuits the chain and drops the node;
+  `ABORT` stops child descent but continues the remaining visitors on this node. The shape that exits
+  the chain is what serializes (step 3). Exit edges fire in the same order (or reverse, if a consumer
+  needs LIFO — a registry option, not a core default). This is exactly how the less-compat bridge
+  already chains multiple Less visitors over one node (`plugin.ts:1210-1242`, the iterator loop
+  re-seating `result` and returning `REMOVE` on `undefined`).
+- **Flow into serialize.** The final chained shape is the node step 3 writes. A replacement produced by
+  a visitor is treated identically to an eval-produced fresh transient (§6.5): it is an
+  output-affecting change, so it is a fresh local object, serialized then released.
+
+### 6.5 Interaction with the shape / canonical-mutation model (ruling 1)
+
+Two distinct visitor effects map onto the two sides of the loosened invariant (ruling 1):
+
+- **A visitor that RETURNS A NEW NODE** is an OUTPUT-AFFECTING change → it takes the
+  fresh-transient-shape path (step 1 / §6.1). The visitor MUST NOT mutate the shared canonical node in
+  a way that changes its bytes or its reuse; it produces a fresh local object for this emit position,
+  which serializes and is released. This is identical to eval producing a fresh transient — a
+  visitor replacement and an eval-changed node are the same category of thing (a per-position
+  output-differing shape).
+- **A visitor that returns VOID but annotates the node output-invisibly** (a cached projection, a
+  bookkeeping flag) MAY mutate the canonical node in place, per ruling 1 (loosened 2026-07-08), PROVIDED
+  the annotation changes neither the canonical node's re-serialization nor its reuse elsewhere. So a
+  visitor that merely reads/tags without changing output needs no transient.
+
+The rule of thumb the visitor author sees: **change the output ⇒ return a new node (transient);
+observe or invisibly-cache ⇒ return void (canonical mutation allowed).** This is the same discipline
+the rest of the pass follows; visitors introduce no new invariant.
+
+### 6.6 Package boundary — core owns the generic API, `less` owns the compat consumer
+
+This boundary is load-bearing and baked into the design:
+
+- **The generic visitor registration API lives in `@jesscss/core`** and is complete and testable with
+  ZERO Less knowledge. Core defines: the `(node, ctx) => NodeVisitReturn` contract (§6.1), the
+  enter/exit edges (§6.2), the registry + chaining (§6.4). Native Jess visitors (a jess plugin, an
+  internal transform) use this with no Less present. Core exposes ONLY general capabilities — node +
+  context (value-frame, structural stack, writer) + replace/return — and MUST NOT expose a
+  Less-specific hook or bake in `less.tree` / `less.functions` shapes.
+- **The less-compat visitor is registered by the `less` package** (the Less-4.x-compat facade that
+  depends on jess) — NOT by `jess`/core. For jess, less-compat is an OPTIONAL SIDE DEPENDENCY: jess
+  never imports, depends on, or auto-registers it. The visitor story stands entirely on its own for
+  native jess visitors with zero less-compat present.
+- If the compat bridge needs a core capability (e.g. a per-node "view" of the shape it can adapt to a
+  4.x node), that capability is framed as a GENERAL `VisitContext` affordance — access to the node and
+  its live frame — that less-compat HAPPENS to use to build a `less.tree` adapter on its own side. It
+  is never a Less-branded API in core. The 4.x-mapping analysis (§6.2, §6.7) validates that the generic
+  core API is expressive enough, but that analysis lives BEHIND the `less` package, not in core.
+
+### 6.7 less-compat as ONE downstream consumer (OQ-F resolved)
+
+less-compat is satisfied entirely by registering a single generic Jess visitor whose `enter`/`exit`
+bridge to the Less 4.x plugin visitors — which is EXACTLY what the bridge already is today: the
+compat plugin implements a jess `Visitor` whose `visit(node)` converts the node to a Less view
+(`toLessNode`, `plugin.ts:1194`), runs the registered Less visitors over it (`plugin.ts:1210-1242`),
+and converts any replacement back (`fromLessNode`, `plugin.ts:1247`). It already returns `REMOVE`
+when a replacing Less visitor returns `undefined` (`plugin.ts:1234-1236`) and already chains multiple
+Less visitors via an iterator (`plugin.ts:1211`). Under the unified pass:
+
+- **`less.tree` node view** — built by the `less` package inside its `enter`, adapting the ONE node
+  handed to it (`toLessNode`) at that instant. It is a LOCAL adaptation of a single node, not a
+  materialization of a whole subtree; a 4.x visitor that inspects children sees them adapted lazily as
+  the pass reaches them (the same inline discipline the current `LessAdapterBase` accept/visitArgs
+  handling in `less-compat-structures.ts:60,121` already assumes). Core knows nothing of this view.
+- **`less.functions` registry** — a 4.x custom function called during value resolution runs with the
+  `VisitContext` value-frame available (§6.1), so it resolves against the live bindings, exactly as a
+  native leaf resolution does (§2). The registry lives in the `less` package.
+- **per-type `visitRuleset`/`visitDeclaration`/… dispatch** — done inside the compat `enter` by
+  switching on `node.type` (the `visit${nodeType}` build at `less-compat-structures.ts:70`), including
+  the v2 `Directive→AtRule` / `Rule→Declaration` aliases (`:76-91`). Core never sees per-type methods.
+- **`isReplacing` / `visitDeeper`** — map to core's return semantics: replacing → return the new node;
+  non-replacing → mutate-and-return-void (or return the same node); `visitDeeper:false` → `ABORT`.
+
+So OQ-F's "what/when" resolves to: the protected surface is the **generic per-node enter/exit hook
+receiving (node, ctx) post-shape/pre-serialize**, firing in traversal order — AFTER a node's own
+eval/compose/extend shape is produced (a consumer sees resolved values + composed selectors + extend
+contributions for THAT node) and BEFORE its bytes are written. There is no "before extend vs after
+extend" whole-tree choice, because there is no whole-tree visitor pass — each node is visited once, at
+its own settled shape.
+
+### 6.8 Pre-eval visitors — a GENUINE GAP needing an owner call
+
+Less 4.x lets a plugin flag a visitor `isPreEvalVisitor` so it runs BEFORE eval (over the parsed,
+un-evaluated tree) rather than post-eval. **Jess already HAS a pre-eval path today, and it is a
+separate whole-tree pre-pass** — `PluginInterface.beforeEvalVisitor` / `beforeEvalVisitorForTree`
+(`packages/core/src/plugin.ts`), driven by `applyBeforeEvalVisitors` (`packages/jess/src/index.ts`
+~`:1007`), which walks the parsed tree via `visitBeforeEvalNode` BEFORE eval runs. (The post-eval side
+is `preRenderVisitor` / `postEvalVisitor`, driven by `applyPreRenderVisitors` through the
+`preSerializeRoot` hook — the seam §6.3 deletes.)
+
+The unified pass cleanly subsumes the POST-eval side (that is all of §6.1–§6.7). It does NOT subsume
+the PRE-eval side by construction: the pass resolves-and-emits in one downward step, so there is no
+"un-evaluated whole tree" moment mid-pass for a pre-eval visitor to observe or rewrite. A pre-eval
+visitor MUST see the tree before values/selectors resolve.
+
+This is the one place the generic story cannot fold into the single pass. It is NOT a gap in
+capability (the capability exists today) — it is a decision about whether pre-eval STAYS a separate
+pre-pass or is dropped:
+1. **Keep the pre-eval pre-pass as-is, outside the unified pass** (RECOMMENDED). It is already a
+   distinct, cheap, structural pre-walk over the un-evaluated tree — orthogonal to the eval/emit fold
+   and unaffected by it. The unified pass owns POST-eval visitors; the pre-pass owns PRE-eval
+   visitors; both feed the SAME core-owned registry contract (§6.1), just at different lifecycle
+   points. This keeps "one eval-emit pass" honest — the pre-pass does not eval or emit, it only lets
+   pre-eval consumers rewrite the source tree first — while preserving the existing 4.x pre-eval
+   surface (`beforeEvalVisitor`).
+2. **Drop pre-eval visitor support in v5.** Cleaner (one hook lifecycle), but a compat regression if
+   any 4.x plugin relies on `isPreEvalVisitor`.
+
+**Recommendation:** option 1 — retain the existing pre-eval pre-pass unchanged, register pre-eval
+visitors through the same generic contract, and let the unified pass own only the post-eval hook.
+**Flag for owner decision** whether pre-eval compat is worth keeping the extra pre-pass; this is the
+residual open item of the visitor design. Everything on the post-eval side is settled.
+
+### 6.9 Sourcemaps under the inline model
 
 Unchanged from §2.4: the writer needs a source ORIGIN per emitted chunk, not a retained node. Step 3
 attributes each chunk to the source node the traversal stands on (canonical for static, or the
-transient's `_sourceRoot`-carried origin for changed nodes). Sourcemaps do not force a persistent
-output tree — they force the origin to travel with the emit position, which it does.
+transient's `_sourceRoot`-carried origin for changed/visitor-replaced nodes). Sourcemaps do not force a
+persistent output tree — they force the origin to travel with the emit position, which it does.
 
-**Net:** EMIT writes bytes, per node, with a transient node shape living only across steps 1→3 at each
-position. No retained second tree, no separate visitor pass, no double-eval. The "surviving node
-crossing" is this transient-shape window, not a boundary tree.
+**Net:** EMIT writes bytes, per node, with a transient node shape living only across the enter →
+children → exit → serialize → release window at each position. No retained second tree, no separate
+visitor pass, no whole-tree walker, no double-eval. Visitors are a generic core-owned per-node hook;
+less-compat is one downstream consumer of it; the only residual open item is pre-eval (§6.8).
 
 ---
 
@@ -675,9 +854,16 @@ crossing" is this transient-shape window, not a boundary tree.
 - The ScopeFrame model (`scope-frame.ts`) — its lexical-chain design is exactly right; the change is
   its LIFETIME (kept live through emit) not its shape.
 - `+:` decl-merge and `$while` counter state (not copies).
-- The less-compat consumer's NEEDS (`less.tree` node view, `less.functions` registry, a plugin hook)
-  — satisfied by the inline per-node hook (§6), so the CAPABILITY survives even though its mechanism
-  changes.
+- The GENERIC visitor CONTRACT and its semantics — `(node, ctx) => void|Node|REMOVE|ABORT`
+  (`node-base.ts:64-66`, `visitor/index.ts:144-150`) and the enter/exit two-edge split (`foo`/`fooExit`,
+  `enter`/`exit`) — survive as the core-owned per-node hook (§6.1–§6.2); only their INVOCATION changes
+  (fired by the pass, not self-driven).
+- The pre-eval visitor pre-pass (`beforeEvalVisitor` / `applyBeforeEvalVisitors`) — retained as a
+  separate structural pre-walk outside the unified pass (§6.8, owner decision pending).
+- The less-compat consumer's NEEDS (`less.tree` node view, `less.functions` registry, per-type
+  dispatch, `isReplacing`/`visitDeeper`) — satisfied by registering ONE generic Jess visitor from the
+  `less` package (§6.7); the CAPABILITY survives even though core no longer owns any Less-specific
+  surface.
 
 **Replaced / deleted:**
 - The separate eval walk that materializes `state.output` (`evalForRender`→`eval`→`serialize` two-walk
@@ -692,8 +878,12 @@ crossing" is this transient-shape window, not a boundary tree.
 - The container static short-circuits (population 2) → reactive fall-through.
 - `extendSelector` node→node API + `processExtends` walk-end pass → SOLVE folded into the traversal.
 - `ownSelector`/`analyzeNonPartialExtends` cascade → composed-contribution derived from the stack.
-- The separate visitor PASS + the `preSerializeRoot` whole-tree hook (`rules.ts:4778`) → inline
-  per-node visitor hooks fired at each node's emit moment (§6). Visitors stop being tree-walkers.
+- The whole-tree visitor WALK framework — `TreeVisitor` (`visitor/index.ts:192-263`, auto-walk /
+  `visitChildren` / `visitedNodes` / `accept()`-recursion) + the `preSerializeRoot` root seam
+  (`rules.ts:4795-4809`, `print.ts:69`) + the self-driven `Visitor.visit` driver
+  (`visitor/index.ts:162-182`) + the `applyPreRenderVisitors` post-eval pass — all → a single
+  core-owned per-node hook fired by the pass at each node's enter/exit edges (§6). Visitors stop being
+  tree-walkers; the pass IS the walk. (The pre-eval `beforeEvalVisitor` pre-pass is NOT deleted — §6.8.)
 - Finally: `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`F_CHILD_DERIVED`/`propagateFlagsFrom` (C4) —
   their only surviving readers are the reuse gates + container short-circuits, both deleted above.
 
@@ -767,13 +957,18 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
 - **OQ-C — is the migration incremental or a coordinated cutover?** See §10 — this is the honest big
   one.
 
-- **OQ-F — RESOLVED (§6).** The less-compat / visitor surface is the per-node inline hook
-  (post-shape, pre-serialize), receiving (node, frame), firing in traversal order at each node's own
-  settled shape. No whole-tree visitor pass, no before-vs-after-extend whole-tree choice. What
-  remains genuinely open is narrow: whether any 4.x visitor relies on MUTATING-then-observing a
-  sibling/ancestor across the whole tree (a pattern the inline per-node model cannot serve, since it
-  visits each node once and releases it). If such a plugin exists in the compat corpus it needs an
-  owner ruling; the common cases (per-node inspect/transform, custom-function value resolution) are
+- **OQ-F — RESOLVED (§6).** The visitor surface is a FIRST-CLASS GENERIC core-owned per-node hook —
+  `(node, ctx) => void|Node|REMOVE|ABORT`, fired at enter/exit edges post-shape/pre-serialize in
+  traversal order (§6.1–§6.4). less-compat is demoted to ONE downstream consumer registered by the
+  `less` package (§6.7), never a core-known special case; core carries no Less semantics (§6.6). The
+  model is a NET SIMPLIFICATION: the whole-tree `TreeVisitor` walker + `preSerializeRoot` seam are
+  deleted because the pass already walks (§6.3). Two RESIDUAL items for the owner, both narrow: (1)
+  **pre-eval visitors** — the existing `beforeEvalVisitor` pre-pass cannot fold into the single pass;
+  keep it as a separate structural pre-walk (recommended) or drop v5 pre-eval compat (§6.8); (2) the
+  whole-tree **mutate-then-observe** plugin pattern (a plugin that rewrites a sibling/ancestor and
+  observes the effect across the tree) — the per-node model visits each node once and releases it, so
+  such a plugin is unserved. None is registered in the compat corpus today; if one appears it needs an
+  owner ruling. The common cases (per-node inspect/transform, custom-function value resolution) are
   fully served.
 
 - **OQ-D — confluence / batch-equals-sequential (carried from extend doc OQ-4).** SOLVE's
@@ -834,9 +1029,10 @@ remains.
 **Bottom line:** the architecture is coherent and settled in shape — one downward traversal carrying
 two decoupled stacks (value-frame threaded live for leaf resolution, structural stack for
 composition/collapse/hoist) plus the document extend model (PLAN precompute → SOLVE selector-graph
-fixpoint → EMIT projection), emitted through a per-node inline pipeline (produce shape → inline
-visitor hook → serialize → release), so a node shape exists only transiently at each emit position —
-never a persistent output tree, never a separate visitor or serialize pass. It is READY for review.
+fixpoint → EMIT projection), emitted through a per-node inline pipeline (produce shape → generic
+core-owned visitor hook, of which less-compat is one downstream consumer → serialize → release), so a
+node shape exists only transiently at each emit position — never a persistent output tree, never a
+separate whole-tree visitor or serialize pass. It is READY for review.
 It is NOT ready to implement
 until OQ-A (selector-value entanglement) is arbitrated, because that determines whether the pass is
 genuinely single or needs a bounded selector-value sub-pass — and it must land as a coordinated
