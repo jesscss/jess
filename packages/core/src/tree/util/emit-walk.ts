@@ -40,6 +40,7 @@ import { Ruleset } from '../ruleset.js';
 import type { AtRule } from '../at-rule.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './print.js';
+import { engageExtendLayer } from '../extend/spine-extend.js';
 
 /**
  * Assign source-order indices to a scope's body children — the PER-POSITION
@@ -1191,6 +1192,25 @@ export function renderRootViaSpine(
   options: FinalPrintOptions
 ): MaybePromise<string> {
   spineRenderCounter.rootRenders++;
+  // EXTEND-WORK GATE (design §4.0). Decide ONCE, here, whether this render must
+  // engage the extend layer (PLAN / SOLVE / buffer-then-flush) or stays a pure
+  // streaming spine. When the tree carries no `:extend`, `engageExtendLayer`
+  // returns false and the pass streams headers inline with ZERO extend cost — the
+  // common case. When it returns true, the reaching subjects defer their headers
+  // (later increments). Increment 0: only extend-FREE roots reach the spine (the
+  // upstream `isSpineEligibleRoot`/`hasExtendedTopLevelSelector` gate keeps
+  // extend-bearing roots on the eval path), so this is false on every wired render
+  // today; the call is the SEAM later increments hook, and the zero-extend
+  // invariant it names is locked by the extend-layer ratchet.
+  if (engageExtendLayer(root)) {
+    // Later increments engage PLAN/SOLVE/buffer-then-flush here for the reaching
+    // subjects. Increment 0 reaches this branch only if a future eligibility change
+    // admits an extend-bearing root before the layer is built — fail loud rather
+    // than silently mis-render, since the streaming path below cannot apply extends.
+    throw new Error(
+      'spine extend layer not yet wired (P3): an extend-bearing root reached renderRootViaSpine'
+    );
+  }
   // Mark the whole descent spine mode: nested containers render via the
   // structural serializer against a live frame (no eval, no output tree) and
   // leaves resolve live — see serialize-helper `spineMode` + Ruleset.render.
