@@ -47,32 +47,61 @@ Provenance (source spans) already lives in a side-table read via free fns
 
 **`frozen`** (node-base.ts:562) is a plain boolean on EVERY node → flag-bit candidate.
 
-### `Rules` (rules.ts:893) — ~27 eager own fields; the fat base
+### `Rules` (rules.ts:1031) — current base shape after the first slim pass
 
-Booleans (all eager `= false`, own slot on all 12000 Rulesets):
-- `hasDirectChildRuleSurface` (905)
-- `hasDeclarationChildSurface` (906)
-- `hasVarDeclarationChildSurface` (907)
-- `hasReferenceImportChildSurface` (908)
-- `hasExactCallableChildSurface` (909)
-- `hasExactMixinChildSurface` (910)
-- `hasExactRulesetChildSurface` (911)
-- `_bodyEvaluated` (934)
-- `_hasExtends` (948)
-- `_hasReferenceImports` (954)
-- `_registrationPrepared` (956)
+2026-07-08 follow-up: the original `~27 eager own fields` assessment was true
+when written, but `Rules` has since been partially slimmed. The current own
+instance shape paid by every `Ruleset` is:
 
-Integer versions (eager `= 0`):
-- `lookupVersion` (919), `declarationLookupVersion` (920),
-  `callableLookupVersion` (922), `functionLookupVersion` (923)
+| slot | kind | current evidence | verdict |
+|------|------|------------------|---------|
+| `rules` | structural child array | required child slot (`Rules.childKeys = ['rules']`) | keep |
+| `varsByName` | static variable declaration index | eager field declaration; populated by `prepareScopeFrameDeclarationIndex()` before frame construction | suspicious but hot-path sensitive |
+| `_lookup` | lazy lookup-state struct pointer | one eager pointer to `RulesLookupState`; reads do not allocate, writes allocate | keep; this is the good cut |
+| `rulesFlags` | packed Rules-only booleans | 12 bits now cover child-surface flags, exact callable/mixin/ruleset surfaces, `_bodyEvaluated`, `_hasExtends`, `_hasReferenceImports`, `_registrationPrepared`, `_placementRepointed` | keep; do not split back out |
+| `lookupVersion` | eager global lookup invalidation counter | only incremented in `reference.ts` pending var promotion and `rules.ts` invalidation; fallback for non-string/general lookup handles | cut candidate #1 |
+| `_scopeFrame` | runtime frame cache | eagerly-shaped pointer; built lazily by `getScopeFrame()` and then read by variable/callable/direct lookup fast paths | cut candidate #2, but benchmark-gated |
 
-Lazy Maps / refs (undefined until used — already OK, low-frequency):
-- `functionsByName`, `varsByName`, `callableLookupCache`,
-  `directChildRuleEntries`, `directDeclarationChildEntries`,
-  `directDeclarationsByName`, `directDeclarationLookupCache`,
-  `declarationLookupVersionsByName`, `functionLookupVersionsByName`,
-  `_scopeFrame`, `_closureScope`
-- child slot: `rules` (896)
+The lazy `RulesLookupState` currently holds the cold fields that used to fatten
+every `Rules` instance:
+
+- callable/function/direct declaration maps and caches:
+  `functionsByName`, `callableLookupCache`, `directChildRuleEntries`,
+  `directDeclarationChildEntries`, `directDeclarationsByName`,
+  `directDeclarationLookupCache`
+- per-name/version state: `declarationLookupVersionsByName`,
+  `functionLookupVersionsByName`, `callableLookupVersion`,
+  `functionLookupVersion`, `declarationLookupVersion`
+- detached ruleset closure state: `_closureScope`
+
+That struct is the right direction: a leaf declaration-only `Ruleset` pays one
+`_lookup === undefined` slot instead of all those maps/counters. Do not inline
+those fields back onto `Rules` for API neatness.
+
+Remaining `Rules` suspects, ranked:
+
+1. **`lookupVersion`** — still the ugliest leftover. It is an eager integer on
+   every `Ruleset`, while the more specific declaration/callable/function
+   versions already moved into `_lookup`. Audit whether the fallback
+   non-string/general lookup handle actually needs a direct slot. If not, move it
+   into the lazy lookup state or fold it into an existing invalidation epoch.
+   Gate on reference/mixin lookup tests and the scope/profile benchmark; do not
+   replace one eager int with more maps or a side table.
+2. **`_scopeFrame`** — one eager pointer on every `Ruleset` for a runtime cache
+   many parsed rulesets may never build. This is the next big shape suspect, but
+   it sits on the current fast path (`getScopeFrame()`,
+   `lookupScopeFrameVariable()`, callable lookup coverage, inline-import fallback
+   frames). Any cut needs measured proof that the extra indirection does not slow
+   Bootstrap/reference lookup. Prefer a structural split or placement/runtime
+   state owned by evaluated surfaces; do not add a `WeakMap`.
+3. **`varsByName`** — also an eager pointer on every `Ruleset`, but it is the
+   input index for scope-frame construction and variable lookup. Moving it behind
+   `_lookup` may save one slot while adding the exact indirection the hottest
+   path does not want. Treat as a measured follow-up only after `lookupVersion`
+   and `_scopeFrame`.
+4. **Ruleset-only optional fields** (`guard`, `selectorBeforeExtend`,
+   `_selectorCacheOwner`) are still subtype/lazy-shape candidates, but they are
+   not the shared `Rules` base. Do them after the base suspects above.
 
 ### `Selector` (selector.ts:71) — value + 3, one pure-waste
 `value` (74, real), `isSelector = true` (82 — **eager own boolean, always true**,
@@ -86,18 +115,21 @@ Buckets: (a) boolean→flag-bit, (b) rare/optional→subtype, (c) derivable→co
 (d) dead, (e) genuinely needed on common shape.
 
 ### Rules / Ruleset
-- 11 booleans (rules.ts:905-911, 934, 948, 954, 956): **(a) flag-bit.** All are
-  binary state. They are *Rules-specific*, so pack into a NEW `rulesFlags` integer
-  on `Rules` (NOT the base `flags`, which every leaf node shares — adding
-  Rules-only bits there would widen a field read by non-Rules nodes; keep base
-  `flags` for cross-cutting concerns). 11 bits → one int, saving ~10 slots × 12000.
-- 4 lookupVersion ints (919-923): **(e) needed**, but candidates to fold into
-  fewer counters — several always reset together in `resetDerivedState`
-  (1048-1051). Could collapse `lookupVersion`/`declarationLookupVersion`/
-  `callableLookupVersion`/`functionLookupVersion` into a small struct only
-  allocated when lookups actually run (most leaf-heavy Rulesets never do multi-kind
-  lookup). Lower confidence — verify against lookup hot path first.
-- lazy Maps/refs: **(e) needed**, already `undefined`-default (good). No action.
+- `rulesFlags`: **done.** The formerly eager Rules booleans are now packed into
+  one Rules-only int. Note that the current bitset has 12 bits, not the original
+  11, because `_placementRepointed` was added to the same packed state.
+- `_lookup`: **done.** Callable/function/direct-declaration lookup maps, cold
+  child-entry arrays, closure scope, and the specific version counters are now
+  behind one lazily allocated `RulesLookupState`.
+- `lookupVersion`: **(e) needed today, but still suspicious.** It remains an
+  eager int on the shared base even though the other version counters moved into
+  `_lookup`. It is used as the fallback invalidation version for general lookup
+  handles, so any move must prove the reference/mixin hot path stays fast.
+- `_scopeFrame`: **(e)/(b) runtime cache.** The value is lazy, but the pointer is
+  still paid by every `Ruleset`. High potential, high risk because variable and
+  callable lookup now consult scope frames directly.
+- `varsByName`: **(e)/(b) variable index.** Also an eager pointer. Candidate only
+  if measured; it feeds scope-frame construction and variable lookup.
 - Ruleset own (`frames`, `guard`, `selectorBeforeExtend`, `_composedSelector`,
   `_selectorCacheOwner`, ruleset.ts:116-125): `_composedSelector` and
   `_selectorCacheOwner` are `declare`d optional (lazy) — OK. `guard`/
@@ -129,28 +161,31 @@ Buckets: (a) boolean→flag-bit, (b) rare/optional→subtype, (c) derivable→co
 
 ## Ranked slimming targets  (rank = field_count × instance_frequency)
 
-1. **`Rules` boolean pack → `rulesFlags` int** (12000 instances × 11 bools).
-   Biggest win. Add `rulesFlags = 0`, convert the 11 `has*`/`_hasExtends`/
-   `_hasReferenceImports`/`_bodyEvaluated`/`_registrationPrepared` reads/writes to
-   bit ops, update `resetDerivedState` (rules.ts:1039-1053) to one `rulesFlags = 0`.
-   DX: internal getters/setters can preserve the property names (like the base
-   already does for `generated`/`hoistToRoot`), so external call sites are
-   unchanged — DX-neutral.
+1. **Cut or fold `Rules.lookupVersion`** (12000 instances × 1 eager int).
+   Highest-confidence remaining `Rules` cleanup because the specific counters are
+   already lazy. Prove whether the fallback general lookup handle still needs a
+   direct slot; if it does not, move it behind `_lookup` or fold it into an
+   existing epoch. Benchmark reference/mixin lookup before accepting.
 
-2. **Drop `Selector.isSelector`** (12000 instances × 1 dead bool).
+2. **Move/split `Rules._scopeFrame` without slowing frame lookup**
+   (12000 instances × 1 eager pointer). This is a real shape tax, but the cached
+   value is hot after eval. Try only with a profile-backed design such as
+   evaluated-surface state or a structural split, not a side table.
+
+3. **Audit `Rules.varsByName` placement** (12000 instances × 1 eager pointer).
+   Possible slot win, but likely worse if it adds indirection to variable lookup.
+   Treat as a measured follow-up after `lookupVersion`/`_scopeFrame`.
+
+4. **Drop `Selector.isSelector`** (12000 instances × 1 dead bool).
    Replace with `instanceof Selector` / nodeType bit at the handful of call sites.
    DX: minor — swap `.isSelector` checks for `instanceof`. Very high confidence.
 
-3. **`Node.frozen` → base `flags` bit** (~39k instances × 1 bool).
+5. **`Node.frozen` → base `flags` bit** (~39k instances × 1 bool).
    One bit; getter/setter keeps the name. DX-neutral.
 
-4. **PseudoSelector `omitWrapperForSingleSelectorList` → flag-bit; move
+6. **PseudoSelector `omitWrapperForSingleSelectorList` → flag-bit; move
    `generatedPseudoPlacementOverride` to a subtype/lazy** (3000 instances).
    Lower priority; the override is already `| undefined`.
-
-5. **(lower confidence) collapse Rules lookupVersion counters** (12000 × 4 ints).
-   Only if the lookup hot path tolerates a lazily-allocated version struct; must
-   measure — do NOT downgrade the lookup fast path for a slot count.
 
 ### Notes on the rule's constraints
 - Every proposed change keeps rare data on a **subtype or a flag bit** — no
