@@ -1092,7 +1092,8 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   serialize the coupled spine.
 
 - **OQ-F — RESOLVED + PRUNED (§6).** The visitor surface is the pruned-minimum core-owned per-node
-  hook — `(node, ctx: { frame }) => Node | void` (replace / unchanged only), fired at an always-on
+  hook — `(node) => Node | void` (replace / unchanged only; NO `ctx`/`frame` — the node passed is the
+  resolved output node, so a visitor never resolves against a frame), fired at an always-on
   **enter** edge plus an OPTIONAL **exit** edge, post-shape/pre-serialize, in traversal order
   (§6.1–§6.5). less-compat is ONE downstream consumer registered by the `less` package (§6.7), never a
   core-known special case; core carries no Less semantics (§6.8). Scoped to what REAL published plugins
