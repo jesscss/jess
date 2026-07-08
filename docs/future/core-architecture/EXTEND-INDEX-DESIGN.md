@@ -428,6 +428,45 @@ unreached by real renders; a production wire can relay UNSUPPORTED to the oracle
 observed corpus impact. No walk-bug / EXPECTED-DIVERGENCE surfaced. tree/extend 252→270; full extend suite
 651→669/0; core 3059→3077/0; build + tsc (0-new-in-`tree/extend/`) clean.
 
+### RUNG CLOSED (2026-07-07) — rung 9: residual UNSUPPORTED-with-output classes
+The rung-8 sweep left 10 UNSUPPORTED-with-oracle-output tuples (all unit-test-only, never a render). Three
+of the pre-documented residual CLASSES are now closed by own construction, byte-identical to the oracle
+(differential-probed on the exact sweep tuples + hardcode-pinned in `extend-index-own.test.ts §17`); the
+remaining 7 are the genuinely-intractable fail-loud gates that a wire-in relays to the oracle. No walk-bug /
+EXPECTED-DIVERGENCE surfaced. UNSUPPORTED-with-output 10→7; tree/extend 270→283; full extend suite 669→682/0;
+core 3077→3095/0; build + tsc (0-new-in-`tree/extend/`) clean.
+
+1. **Distinct-parent `&&` passenger** (`&(.foo.bar)&(.baz).suffix` f `.suffix` → `.foo.bar.baz:is(.suffix,
+   .extended)`). `extendAmpersandTarget` bailed at `ampResolvedValues.size > 1` (merge order of distinct
+   parents not modeled). Rule derived + closed: a **CHILD-ONLY** match — find confined to the compound's
+   genuinely-child atoms, DISJOINT from every resolved-parent sym — is order-independent (the parents ride
+   as fixed passengers), so recurse the resolved form. **Any parent contact (crossing / parent-only) →
+   NOT_FOUND** (the oracle's answer on every reachable distinct-parent tuple: `f .baz`, `f .foo`, and
+   crossing `f .foo.suffix` are all NOT_FOUND). Also FIXED a related order bug in `resolvedFormSeq`: an
+   embedded amp's parent-tail atoms are now spliced **AT the amp's position** in the atom list (not
+   prepended), so distinct-parent order is faithful (`.foo.bar` then `.baz` then `.suffix`, not `.baz.foo.
+   bar…`). Single-amp head-position behavior is unchanged (splice at position 0 == prepend).
+2. **Find-side graft, whole-selector match** (`:where(.a)` f `:where(.a)` e `.b` → `:where(.a),.b` — the ONE
+   reachable find-side sweep tuple). A find carrying a `:where`/`:not`/`:has`/multi-arm-`:is` graft that
+   structurally EQUALS a whole target OR-branch → append extendWith (deduped), original branches verbatim
+   (`extendFindSideGraftWholeMatch`, gated before the blanket find-graft UNSUPPORTED). Works in BOTH modes.
+   **Left UNSUPPORTED (unreached, wire-in oracle-falls-back):** single-arm `:is` finds (`.a:is(.b)` →
+   oracle UNWRAPS to `.a.b`; the unwrap-on-append is not built → never a wrong non-unwrapped output), and
+   non-whole-branch shapes (proper subset `:where(.a).c` f `:where(.a)`, partial-wrap, mismatched arg).
+3. **Multi-graft-in-both-slots, find wholly absent** (`:is(.foo,…) :is(.bar,…)` f `.ext8 .ext9` → oracle
+   NOT_FOUND). Was UNSUPPORTED (the `bareIs.length !== 1` multi-graft fail-loud). Added a **definite-NOT_FOUND
+   fast-reject** at `tryMultiGraftExpand` entry: if any find sym is absent from the target's FULL sym superset
+   (`allSymsInSeq` — every id everywhere, INCLUDING inside every graft arg + resolved amp parent), the find
+   cannot match anywhere → the correct NOT_FOUND, WITHOUT the expand-then-fail machinery. (Per-call this is
+   byte-identical; in the accumulating render-sweep it now shows as a BENIGN fixpoint-accounting divergence,
+   same class as the 2 pre-existing ones — the isolated tuple is NOT_FOUND on BOTH engines, verified by probe.)
+
+**The 7 remaining UNSUPPORTED-with-output are the irreducible fail-loud set** (wire-in relays to the oracle,
+never a wrong output): element/id CONFLICT validation (`a.info` f `.info` e `div.foo` → `ELEMENT_CONFLICT`;
+×2 element, ×2 id shapes), exact-mode cartesian de-distribution (`.a .b,.a .d,.c .b` f `.c .b` e `.c .d` →
+`:is(.a,.c) :is(.b,.d)`), and the `:is`-arm-internal-`+`-combinator boundary-cross flatten (`.replace.replace`
+extend-exact fixture). All three need oracle machinery the own engine deliberately does not build.
+
 ## Non-goals (for the validated prototype)
 Minimal-hoist (output change); replacing the walk (only after full-suite byte-identical); touching the
 existing `extendSelector`/fold beyond what the parallel path reuses.

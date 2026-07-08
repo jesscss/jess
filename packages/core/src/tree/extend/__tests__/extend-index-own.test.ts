@@ -9,12 +9,15 @@
  */
 import { describe, it, expect } from 'vitest';
 import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
+import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../../util/extend.js';
 import { extendByIndexOwn, UNSUPPORTED } from '../extend-index.js';
 
 const not = (arg: Selector): Selector => pseudo({ name: ':not', arg }) as unknown as Selector;
 const where = (arg: Selector): Selector => pseudo({ name: ':where', arg }) as unknown as Selector;
 const has = (arg: Selector): Selector => pseudo({ name: ':has', arg }) as unknown as Selector;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ampWith = (selector: any): any => Ampersand.create({ selectorContainer: { selector } });
 
 /** Hardcoded-pin helper: assert own-engine output is EXACTLY `expected` (independent of oracle). */
 function pin(
@@ -727,6 +730,63 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     // Graft arm with an INTERNAL non-space combinator → UNSUPPORTED (flatten not built).
     it(':is(.p+.q) .r f .p .r e .x FULL → UNSUPPORTED (arm has + combinator)', () => {
       pin(sel([is(sellist([sel([el('.p'), co('+'), el('.q')])])), co(' '), el('.r')]), sel([el('.p'), co(' '), el('.r')]), el('.x'), false, 'UNSUPPORTED');
+    });
+  });
+
+  // RUNG 9 residuals — the last own-engine UNSUPPORTED-with-oracle-output classes the rung-8 sweep
+  // enumerated (reached only from synthetic unit tests, never a real render). Each derived from the
+  // oracle on the exact sweep tuples + hardcode-pinned. See EXTEND-INDEX-DESIGN.md rung 9.
+  describe('17. rung-9 residual classes', () => {
+    // (1) DISTINCT-PARENT `&&` passenger — two amps with DIFFERENT resolved parents in one compound.
+    // A CHILD-ONLY match (find confined to the compound's genuinely-child atom, disjoint from every
+    // resolved parent) is order-independent: recurse the resolved form (parents ride as passengers,
+    // spliced AT their `&` positions so order is faithful). Any parent contact → NOT_FOUND.
+    const ampAmp = (): Selector => compound([ampWith(compound([el('.foo'), el('.bar')])), ampWith(el('.baz')), el('.suffix')]);
+    it('&(.foo.bar)&(.baz).suffix f .suffix e .extended PARTIAL → .foo.bar.baz:is(.suffix,.extended)', () => {
+      pin(ampAmp(), el('.suffix'), el('.extended'), true, '.foo.bar.baz:is(.suffix,.extended)');
+    });
+    it('&(.foo.bar)&(.baz).suffix f .suffix e .extended FULL → .foo.bar.baz.suffix (subset → unchanged)', () => {
+      pin(ampAmp(), el('.suffix'), el('.extended'), false, '.foo.bar.baz.suffix');
+    });
+    it('&(.foo.bar)&(.baz).suffix f .baz e .extended PARTIAL → NOT_FOUND (parent-only)', () => {
+      pin(ampAmp(), el('.baz'), el('.extended'), true, 'NOT_FOUND');
+    });
+    it('&(.foo.bar)&(.baz).suffix f .foo e .extended PARTIAL → NOT_FOUND (parent-only)', () => {
+      pin(ampAmp(), el('.foo'), el('.extended'), true, 'NOT_FOUND');
+    });
+    it('&(.foo.bar)&(.baz).suffix f .foo.suffix e .extended PARTIAL → NOT_FOUND (crossing)', () => {
+      pin(ampAmp(), compound([el('.foo'), el('.suffix')]), el('.extended'), true, 'NOT_FOUND');
+    });
+
+    // (2) FIND-SIDE GRAFT, WHOLE-SELECTOR match — a find carrying a `:where`/`:not`/`:has`/multi-arm
+    // `:is` graft equal to a whole target branch → append extendWith (deduped). Single-arm `:is`
+    // (needs the oracle's unwrap on output) and non-whole-branch shapes stay UNSUPPORTED (unreached).
+    it(':where(.a) f :where(.a) e .b FULL → :where(.a),.b (the reachable sweep tuple)', () => {
+      pin(where(el('.a')), where(el('.a')), el('.b'), false, ':where(.a),.b');
+    });
+    it(':where(.a) f :where(.a) e .b PARTIAL → :where(.a),.b (whole-match append in both modes)', () => {
+      pin(where(el('.a')), where(el('.a')), el('.b'), true, ':where(.a),.b');
+    });
+    it(':where(.a,.b) f :where(.a,.b) e .c FULL → :where(.a,.b),.c (multi-arm)', () => {
+      pin(where(sellist([el('.a'), el('.b')])), where(sellist([el('.a'), el('.b')])), el('.c'), false, ':where(.a,.b),.c');
+    });
+    it('.a:not(.b) f .a:not(.b) e .c FULL → .a:not(.b),.c', () => {
+      pin(compound([el('.a'), not(el('.b'))]), compound([el('.a'), not(el('.b'))]), el('.c'), false, '.a:not(.b),.c');
+    });
+    it(':is(.b,.d) f :is(.b,.d) e .c FULL → :is(.b,.d),.c (multi-arm is, no unwrap)', () => {
+      pin(is(sellist([el('.b'), el('.d')])), is(sellist([el('.b'), el('.d')])), el('.c'), false, ':is(.b,.d),.c');
+    });
+    it(':where(.a) f :where(.a) e :where(.a) FULL → :where(.a) (self-extend dedupes)', () => {
+      pin(where(el('.a')), where(el('.a')), where(el('.a')), false, ':where(.a)');
+    });
+    it('.a:is(.b) f .a:is(.b) e .c FULL → UNSUPPORTED (single-arm :is unwrap not built)', () => {
+      pin(compound([el('.a'), is(sellist([el('.b')]))]), compound([el('.a'), is(sellist([el('.b')]))]), el('.c'), false, 'UNSUPPORTED');
+    });
+
+    // (3) MULTI-GRAFT-IN-BOTH-SLOTS, find wholly absent → definite NOT_FOUND (find sym absent from the
+    // target's full sym superset). Was UNSUPPORTED (multi-graft fail-loud); now the correct NOT_FOUND.
+    it(':is(.a,.b) :is(.p,.q) f .x .y e .d PARTIAL → NOT_FOUND (find absent everywhere)', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), is(sellist([el('.p'), el('.q')]))]), sel([el('.x'), co(' '), el('.y')]), el('.d'), true, 'NOT_FOUND');
     });
   });
 });
