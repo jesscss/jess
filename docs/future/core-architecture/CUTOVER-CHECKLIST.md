@@ -61,10 +61,21 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       actually surfaces (proven: `margin: 20px`). The spine-frame pop chains on the promise (never a sync
       `finally` that would pop before an async leaf resolves — the B1s bug). Ratchet updated: admits
       calc/Operation + asserts sync-Operation stays sync.
+      **AT-RULE CONTAINERS DONE (`@media`/`@supports`/`@container`).** `serializeSpineFrameAtRule` (at-rule
+      analogue of `serializeSpineFrameContainer`) resolves the PRELUDE against the ENCLOSING live frame at
+      at-rule-enter and installs it via the existing `atRuleHeaderNode`/`atRuleHeaderPrelude` render-local
+      override (NOT canonical mutation), pushes the at-rule body frame, descends. `@media`→root HOISTING +
+      the root-only composed-stack reset are the KEPT walk machinery reused unchanged (§7). `AtRule.render`
+      got a spineMode branch (skip `_evalForAtRuleRender`). Proven: nested `@media screen { .a { width:@w } }`
+      → concrete, `eval=0 derives=0`; hoist `.card { @media { .inner {…} } }` → `@media screen { .card
+      .inner {…} }` at root, `eval=0 derives=0`. Both collapse modes. Ratchets added: at-rule-through-spine
+      + @media-hoist-through-spine. `@layer` EXCLUDED (nested layer-NAME registration is an eval-pass side
+      effect the spine doesn't replicate); `@scope` EXCLUDED (special `(start)`/`(end)` prelude + scoped
+      body); root-only (`@font-face`/`@keyframes`/…) excluded.
       **Exact boundary — still eval path (scoped frontier):** `&`-selectors (ampersand compose),
-      `+:`/conditional/`setDefined` decls (merge), re-declared vars (source-order),
-      guarded/extend/at-rule/mixin/reference containers, charset/import. Interpolated selectors are NOW
-      folded (item 3, done). **Next push:** at-rule containers, then ampersand compose.
+      `+:`/conditional/`setDefined` decls (merge), re-declared vars (source-order), `@layer`/`@scope`/
+      root-only + interpolated-name at-rules, guarded/extend/mixin/reference containers, charset/import.
+      Interpolated selectors (item 3) + conditional-group at-rules NOW folded. **Next push:** `&`-composition.
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
       **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
@@ -150,7 +161,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail) AND interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A). Ampersand / at-rule shapes still 2 (eval path) — scoped frontier, not fallback. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), AND conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting). Ampersand / `@layer`/`@scope` / hard-decl shapes still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -268,3 +279,26 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   Backpedal self-check: override is a MODE-scoped transient on the KEPT serializer (no canonical mutation,
   no dual path); the eval path serves only not-yet-covered shapes; the frame pop chains on the async
   promise (never a sync `finally` — B1s guard preserved).
+- 2026-07-08 · P1 · AT-RULE CONTAINERS landed (`@media`/`@supports`/`@container`). Added
+  `serializeSpineFrameAtRule` (at-rule analogue of `serializeSpineFrameContainer`): resolves the PRELUDE
+  against the ENCLOSING live frame at at-rule-enter (a `@media (@w)` prelude reads the enclosing scope, so
+  eval BEFORE pushing the at-rule's own frame — mirrors `liftedAtRulePreludeRulesContext` intent), installs
+  it via the EXISTING `atRuleHeaderNode`/`atRuleHeaderPrelude` render-local override (NOT canonical
+  mutation), pushes the at-rule body value-frame, descends. `@media`→root HOISTING + the root-only
+  composed-stack reset are the KEPT walk machinery in `serializeRulesContainerInternal` (`runContainer` +
+  the `hoisted` branch), reused UNCHANGED (§7). `AtRule.render` gained a spineMode branch that serializes
+  the SOURCE at-rule directly (skip `_evalForAtRuleRender`). New `PrintOptions.spineAtRuleNode` marker
+  (re-entry guard + "frame pushed"). `isSpineEligibleAtRule` admits the conditional-group at-rules by NAME
+  (`SPINE_ELIGIBLE_AT_RULES`). Proven: nested `@media` → concrete `eval=0 derives=0`; hoist
+  `.card { @media { .inner {…} } }` → `@media screen { .card .inner {…} }` at root, `eval=0 derives=0`;
+  both collapse modes. Found via core-suite delta: `@layer` needs eval-pass nested layer-NAME registration
+  (3 tests) → EXCLUDED with precise reason; `@scope` excluded (special prelude/body); root-only excluded.
+  RATCHET: at-rule-through-spine + @media-hoist-through-spine assertions. Core suite GREEN 3183/0/15. tsc:
+  ZERO new errors (pre-existing at-rule implicit-any + serialize-helper canMerge lines only; my spine hunks
+  verified clean). DOCUMENTATION STANDARD: `spineAtRuleNode` + `serializeSpineFrameAtRule` + `AtRule.render`
+  spine branch carry contract + invariant + `@see §4/§7`. NEVER used `git stash` (`git show HEAD:path`).
+  NEXT: `&`-composition (ampersand resolves at ruleset-enter from the live structural stack). Backpedal
+  self-check: prelude override is a MODE-scoped transient on the KEPT serializer (no canonical mutation, no
+  dual path — conditional-group at-rules have one path now: the spine); hoist machinery REUSED not
+  reimplemented; frame pop chains on the async promise (B1s guard). Stopped at the at-rule boundary
+  (ampersand is its own increment — the structural-stack `&` substitution is a distinct surface).

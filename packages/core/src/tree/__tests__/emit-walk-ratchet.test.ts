@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
@@ -180,6 +180,80 @@ describe('emit-walk wire-in ratchet (P1)', () => {
       expect(deriveCalls).toBe(0); // no output tree
       expect(css).toContain('[data="foo"]'); // interpolation resolved concrete
       expect(css).not.toContain('@{'); // raw template gone
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('renders a nested @media AT-RULE through the spine (no eval, no output tree)', () => {
+    const root = rules([
+      vardecl({ name: 'w', value: spaced([el('10px')]) }),
+      atrule({
+        name: '@media',
+        prelude: any('screen'),
+        rules: [
+          ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'width', value: ref({ key: 'w' }, { type: 'variable' }) })] })
+        ]
+      })
+    ]);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(context) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0); // no output tree
+      expect(css).toContain('@media screen');
+      expect(css).toContain('width: 10px'); // prelude+leaf resolved live in one pass
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('HOISTS a @media nested in a ruleset to root through the spine (no eval/derive)', () => {
+    // `.card { @media screen { .inner { color: red } } }` → @media hoists to root
+    // with the composed selector `.card .inner` inside — reusing the KEPT hoist
+    // machinery on the walk, with NO eval pass and NO output tree.
+    const root = rules([
+      ruleset({
+        selector: sel([el('.card')]),
+        rules: [
+          decl({ name: 'padding', value: spaced([el('1rem')]) }),
+          atrule({
+            name: '@media',
+            prelude: any('screen'),
+            rules: [
+              ruleset({ selector: sel([el('.inner')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
+            ]
+          })
+        ]
+      })
+    ]);
+    const hoistContext = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(root, hoistContext)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(hoistContext) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0);
+      expect(css).toContain('@media screen');
+      expect(css).toContain('.card .inner'); // hoisted + composed selector
+      // The @media block is hoisted OUT of `.card` (root-level), so `.card`'s own
+      // block closes before the @media opens.
+      expect(css.indexOf('padding: 1rem')).toBeLessThan(css.indexOf('@media'));
     } finally {
       Rules.prototype.derive = original;
     }

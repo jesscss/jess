@@ -1,5 +1,5 @@
 import { spanStartOf, spanEndOf } from './provenance.js';
-import type { AtRule } from '../at-rule.js';
+import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_EXTENDED, Node } from '../node.js';
@@ -508,16 +508,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     return '';
   }
 
-  // Spine mode (P1 §2): the resolved value-frame + interpolated-selector setup
-  // must be live BEFORE header composition below (`composePushedSelector` reads
-  // the effective selector). If this container is a spine-mode Ruleset, resolve
-  // the interpolated selector against the live frame and continue through
-  // `serializeSpineFrameContainer`, which pushes the frame + override for the
-  // whole descent and restores on exit (chaining on the async path — never a
-  // sync `finally`, which would pop before an async leaf resolves, the B1s bug).
+  // Spine mode (P1 §2): the resolved value-frame + header override (selector for a
+  // Ruleset, prelude for an AtRule) must be live BEFORE header composition below.
+  // Route through the per-kind setup, which pushes the frame + override for the
+  // whole descent and restores on exit (chaining on the async path — never a sync
+  // `finally`, which would pop before an async leaf resolves, the B1s bug). The
+  // `!== node` guards break the re-entry (the marker doubles as "frame pushed").
   const spineCtx = options.spineMode ? options.context : undefined;
   if (spineCtx && node instanceof Ruleset && isNode(node, N.Rules) && options.spineSelectorNode !== node) {
     return serializeSpineFrameContainer(node, options, closeFramesOnExit, spineCtx);
+  }
+  if (spineCtx && isNode(node, N.AtRule) && isNode(node, N.Rules) && options.spineAtRuleNode !== node) {
+    return serializeSpineFrameAtRule(node, options, closeFramesOnExit, spineCtx);
   }
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
   // getHeaderString normally handles this, but cached frame headers skip it.
@@ -1200,6 +1202,66 @@ function serializeSpineFrameContainer(
   try {
     if (rawSelector instanceof Selector) {
       const resolved = rawSelector.eval(context);
+      return isThenable(resolved) ? resolved.then(descend) : descend(resolved);
+    }
+    return descend(undefined);
+  } catch (error) {
+    restore('');
+    throw error;
+  }
+}
+
+/**
+ * Spine-mode AT-RULE setup (P1 §4/§7): the at-rule analogue of
+ * `serializeSpineFrameContainer`. Resolve the prelude against the ENCLOSING live
+ * frame (a `@media (@w)` prelude reads the enclosing scope, not the at-rule's own
+ * body scope — so eval BEFORE pushing this at-rule's frame), install it as the
+ * render-local header override (`atRuleHeaderNode`/`atRuleHeaderPrelude`, the
+ * existing prelude-override the header write already consults), push the at-rule
+ * body value-frame, then descend. The hoist / root-only composed-stack reset /
+ * body machinery is the KEPT walk machinery (§7) — `serializeRulesContainerInternal`
+ * already handles `@media`→root hoisting via `runContainer` + the `hoisted`
+ * branch. Frame + override restored on the outbound edge (chaining on the async
+ * path, never a sync `finally` — the B1s early-pop guard).
+ */
+function serializeSpineFrameAtRule(
+  node: AtRule,
+  options: FinalPrintOptions,
+  closeFramesOnExit: boolean,
+  context: NonNullable<FinalPrintOptions['context']>
+): MaybePromise<string> {
+  const savedRulesContext = context.rulesContext;
+  const savedAtRuleNode = options.spineAtRuleNode;
+  const savedHeaderNode = options.atRuleHeaderNode;
+  const savedHeaderPrelude = options.atRuleHeaderPrelude;
+  const restore = (text: string): string => {
+    context.rulesContext = savedRulesContext;
+    options.spineAtRuleNode = savedAtRuleNode;
+    options.atRuleHeaderNode = savedHeaderNode;
+    options.atRuleHeaderPrelude = savedHeaderPrelude;
+    return text;
+  };
+  // Descend with the marker + prelude override set. The marker (`spineAtRuleNode`)
+  // breaks re-entry; the prelude override feeds the header write. Push the at-rule
+  // body frame AFTER the prelude is resolved against the enclosing scope.
+  const descend = (resolvedPrelude: AtRulePrelude | undefined): MaybePromise<string> => {
+    options.spineAtRuleNode = node;
+    if (resolvedPrelude !== undefined) {
+      options.atRuleHeaderNode = node;
+      options.atRuleHeaderPrelude = resolvedPrelude;
+    }
+    node.getScopeFrame();
+    context.rulesContext = node;
+    const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
+    return isThenable(out) ? out.then(restore) : restore(out);
+  };
+  const rawPrelude = node.prelude;
+  try {
+    // Resolve the prelude against the ENCLOSING frame (current rulesContext), not
+    // the at-rule's own — mirrors `liftedAtRulePreludeRulesContext` intent. Only a
+    // Node prelude carries interpolation; string/undefined pass through unchanged.
+    if (rawPrelude instanceof Node) {
+      const resolved = rawPrelude.eval(context);
       return isThenable(resolved) ? resolved.then(descend) : descend(resolved);
     }
     return descend(undefined);

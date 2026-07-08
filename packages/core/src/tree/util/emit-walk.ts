@@ -131,6 +131,9 @@ function selectorHasAmpersand(selector: unknown): boolean {
  * spine has not folded in yet.
  */
 function isSpineEligibleContainer(node: Node): boolean {
+  if (isNode(node, N.AtRule)) {
+    return isSpineEligibleAtRule(node);
+  }
   if (!isNode(node, N.Ruleset)) {
     return false;
   }
@@ -159,6 +162,44 @@ function isSpineEligibleContainer(node: Node): boolean {
   // `serializeSpineFrameContainer`) so the header composes from the CONCRETE form
   // (OQ-A: extend sees the resolved selector).
   return isSpineEligibleBody(ruleset.rules);
+}
+
+/**
+ * The conditional-group at-rules THIS phase folds through the spine: pure
+ * "wrap + (maybe) hoist" containers with no extra eval-pass side effects on
+ * their name or body binding.
+ */
+const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container']);
+
+/**
+ * A nested AT-RULE child THIS phase can descend through the spine: a
+ * conditional-group block at-rule (`@media`/`@supports`/`@container`) with a
+ * string name (not interpolated — an interpolated at-rule NAME is not folded
+ * yet) and a spine-eligible body. The prelude is resolved-at-enter by
+ * `serializeSpineFrameAtRule`; `@media`→root hoisting and the root-only
+ * composed-stack reset are the KEPT walk machinery (§7).
+ *
+ * EXCLUDED (still eval path, precise reasons): `@layer` — nested layer-NAME
+ * registration (`@layer a.b`) is an eval-pass side effect the spine does not
+ * replicate; `@scope` — special `(start)`/`(end)` prelude + scoped-body binding;
+ * root-only at-rules (`@font-face`/`@keyframes`/…) and non-nestable forms.
+ */
+function isSpineEligibleAtRule(node: Node): boolean {
+  if (!isNode(node, N.AtRule) || !isNode(node, N.Rules)) {
+    return false;
+  }
+  const atRule = node;
+  if (typeof atRule.name !== 'string') {
+    return false;
+  }
+  const options = atRule.options as { referenceMode?: boolean } | undefined;
+  if (options?.referenceMode === true) {
+    return false;
+  }
+  if (!SPINE_ELIGIBLE_AT_RULES.has(atRule.name)) {
+    return false;
+  }
+  return isSpineEligibleBody(atRule.rules);
 }
 
 /** A body (ordered child list) is spine-eligible when every child is. */

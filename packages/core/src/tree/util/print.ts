@@ -57,6 +57,14 @@ export type PrintOptions = {
    */
   spineSelectorNode?: Ruleset;
   spineSelector?: Selector | Nil;
+  /**
+   * Spine-mode at-rule marker (P1 §4/§7). When `spineAtRuleNode === this` at-rule,
+   * its value-frame has already been pushed by `serializeSpineFrameAtRule` and its
+   * prelude resolved-at-enter (handed to the header via the existing
+   * `atRuleHeaderNode`/`atRuleHeaderPrelude` override). Doubles as the re-entry
+   * guard so the spine setup runs once per at-rule, then the descent proceeds.
+   */
+  spineAtRuleNode?: AtRule;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
