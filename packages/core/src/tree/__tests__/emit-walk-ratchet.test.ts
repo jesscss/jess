@@ -376,4 +376,38 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     ]);
     expect(isSpineEligibleRoot(condRoot, context)).toBe(false);
   });
+
+  it('EXCLUDES conditional `?:` + scope-mutating `setDefined`/`nearestOuter` (the frontier, correctness-gated)', () => {
+    // `?:` (assign-if-undefined), `setDefined` (Sass !global), `nearestOuter`
+    // (Jess :=) all need eval/registration-time BINDING-WRITE semantics — a
+    // conditional or outer-scope cell write keyed on the frame state AT the
+    // assign's position — that the spine's upfront-frame + position-gated-READ
+    // model does not yet perform (it would need a read-time side table threaded
+    // into `lookupScopeFrameVariable`, or incremental binding-writes during
+    // descent). Admitting them WITHOUT that regresses (a `@x ?: v` after `@x: u`
+    // wrongly resolves to `v` — last-wins — instead of keeping `u`). Locked here
+    // so a future change can't silently admit them and regress.
+    const condVar = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        vardecl({ name: 'x', value: any('red') }),
+        vardecl({ name: 'x', value: any('blue') }, { assign: '?:' }),
+        decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(condVar, context)).toBe(false);
+
+    const globalAssign = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        vardecl({ name: 'x', value: any('red') }, { setDefined: true })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(globalAssign, context)).toBe(false);
+
+    const nearestOuter = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        vardecl({ name: 'x', value: any('red') }, { nearestOuter: true })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(nearestOuter, context)).toBe(false);
+  });
 });

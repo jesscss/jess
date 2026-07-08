@@ -297,9 +297,12 @@ function isSimpleSpineLeaf(node: Node): boolean {
   if (isNode(node, N.Declaration)) {
     const options = node.options as { assign?: string; setDefined?: boolean; nearestOuter?: boolean } | undefined;
     const assign = options?.assign ?? ':';
-    // `:` (plain) and the property-MERGE assigns (`+:`/`+_:`/`&,:`/`&_:`) are
-    // folded — merge coalesces in the spine descent (`planBodyMerges`). Still
-    // excluded: conditional `?:` and scope-mutating `setDefined`/`nearestOuter`.
+    // Folded: `:` (plain) and the property-MERGE assigns (`+:`/`+_:`/`&,:`/`&_:`,
+    // coalesced by `planBodyMerges`). Still excluded (a scoped frontier): the
+    // conditional/scope-mutating assigns `?:` / `setDefined` (Sass `!global`) /
+    // `nearestOuter` (Jess `:=`) — all three depend on eval/registration-time
+    // binding-write semantics (conditional-bind-if-undefined; write a binding
+    // cell in an OUTER scope) that the spine does not yet replicate in-descent.
     if (assign !== ':' && !MERGE_ASSIGNS.has(assign)) {
       return false;
     }

@@ -108,10 +108,28 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       `+:` merge, conditional (`?:`)/`setDefined` decls, interpolated-var-NAME decls, `@layer`/`@scope`/
       root-only + interpolated-name at-rules, guarded/extend/mixin/reference containers, charset/import.
       Interpolated selectors, conditional-group at-rules, plain `&`, per-position var-binding, AND `+:`/`+_:`
-      merge NOW folded. **Next push (recommended order):** (1) conditional (`?:`)/`setDefined` scope-mutating
-      assigns; (2) `@layer`/`@scope` at-rules (fold their eval-pass name/scope semantics; ampersand-APPEND
-      folds alongside the hoist work); (3) `inherit` in-place span attribution (narrowest — the last
-      transient-leaf sourcemap-span carry).
+      merge NOW folded.
+      **Conditional/scope-mutating assigns (`?:`/`setDefined`/`nearestOuter`): INVESTIGATED, DEFERRED with a
+      precise blocker (locked by an exclusion ratchet).** These need eval/registration-time BINDING-WRITE
+      semantics keyed on the frame state AT the assign's position: `?:` = bind-if-not-already-bound (a
+      `@x ?: v` after `@x: u` must keep `u`); `setDefined`/`nearestOuter` = write a binding cell in an OUTER
+      scope. The spine's model (upfront frame + position-gated READ) does NOT support a conditional/outer
+      binding WRITE. Confirmed empirically: eval-path `@x:red; @x?:blue; color:@x` → `red`; the spine → `blue`
+      (last-wins). A speculative shared-eval fix (carry the CondAssign fallback-ref's `index` to
+      position-gate it) did NOT fix it (the binding cell's value resolves too late) and was REVERTED — no
+      speculative change to shared `declaration.ts` eval. The real mechanism needed: either a read-time
+      side-table threaded into `lookupScopeFrameVariable` (mirroring the `+:` plan, but for variable READS),
+      or incremental binding-writes during descent with save/restore. Both are a NEW mechanism, riskier than
+      the value increments; these are rare Jess-native shapes (`?:`/`:=` — near-zero in the Less corpus).
+      Locked EXCLUDED by `emit-walk-ratchet.test.ts` so a future change can't silently admit + regress.
+      **Next push (recommended order):** (1) `@layer`/`@scope` at-rules (fold their eval-pass name/scope
+      semantics; ampersand-APPEND folds alongside the hoist work) — higher corpus payoff; (2) the
+      conditional/scope-mutating assigns via the read-time-side-table OR incremental-binding-write mechanism
+      above; (3) `inherit` in-place span attribution (narrowest — the last transient-leaf sourcemap-span carry).
+      **MILESTONE FLAG:** every COMMON shape (containers, at-rules, `&`, all value shapes incl. per-position
+      binding + `+:` merge) is now folded — this is the point to MEASURE all-less (both collapse modes) to
+      size the real gap and hand off to P2 (visitor hook) / P3 (extend), with the residual (above) as
+      known scoped exclusions on the eval path.
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
       **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
@@ -431,3 +449,31 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   is set only on the per-emit TRANSIENT. No dual path for the covered subset (in-body `+:`/`+_:` has one
   path: the spine); root-level `+:` is a precise coverage gap, not a safety fallback. Stopped at the merge
   boundary as directed.
+- 2026-07-08 · P1 · conditional/scope-mutating assigns (`?:`/`setDefined`/`nearestOuter`) — INVESTIGATED,
+  DEFERRED with a precise blocker + exclusion ratchet (NO functional spine change this increment; a
+  doc-comment sharpen on `isSimpleSpineLeaf` + a locking ratchet only). Findings: `?:` = bind-if-undefined
+  ("`@x ?: v` after `@x: u` keeps `u`"); `setDefined` (Sass `!global`) / `nearestOuter` (Jess `:=`) = write
+  a binding cell in an OUTER scope at eval/registration time. The spine's upfront-frame + position-gated
+  READ model supports neither a conditional NOR an outer-scope binding WRITE. Confirmed empirically:
+  eval-path `@x:red; @x?:blue; color:@x` → `red`; spine → `blue` (last-wins). Tried the minimal shared-eval
+  fix — carry the CondAssign fallback-ref's `index` so its read position-gates to the prior — it did NOT
+  work (the binding cell's ref value resolves too late in the spine's all-bindings-present model) and was
+  REVERTED (no speculative change to shared `declaration.ts` eval, per no-defensive-slowdowns/leanest-path
+  discipline). REAL mechanism needed (spec for the follow-up): either (a) a read-time SIDE-TABLE threaded
+  into `lookupScopeFrameVariable` for variable reads (mirroring the `+:` merge plan, but on the read side),
+  or (b) incremental binding-WRITES during descent with save/restore (the walk resolves+writes the `?:`/
+  `setDefined` cell when it reaches the assign). Both are a NEW mechanism, riskier than the value
+  increments; `?:`/`:=` are rare Jess-native shapes (near-zero in the Less corpus). LOCKED excluded by
+  `emit-walk-ratchet.test.ts` (conditional-`?:`-var + `setDefined` + `nearestOuter` all assert
+  `isSpineEligibleRoot === false`) so a future change can't silently admit + regress. Core suite GREEN
+  3187/0/15. NEVER used `git stash`; reverted the speculative edit via `git checkout -- declaration.ts`
+  (only my own uncommitted edit, verified nothing else lost).
+  MILESTONE: every COMMON shape is folded (containers, at-rules `@media`/`@supports`/`@container`, plain
+  `&`, ALL value shapes incl. per-position binding + `+:`/`+_:` merge). RECOMMENDATION: this is the point to
+  MEASURE all-less (both collapse modes) to size the real gap, then hand to P2 (visitor hook) / P3 (extend)
+  — with the residual (`?:`/`setDefined`/`nearestOuter`, `@layer`/`@scope`, ampersand-append, `inherit`
+  span) as known scoped eval-path exclusions. Recommended residual order: `@layer`/`@scope` (+ append
+  hoist) FIRST (corpus payoff), then the conditional assigns (needs the new mechanism), then `inherit` span.
+  Backpedal self-check: did NOT force a risky partial `?:` fix or speculatively mutate shared eval; the
+  exclusion is a correctness-gated scoped frontier locked by a ratchet, not a silent gap. No dual path
+  introduced.
