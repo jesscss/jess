@@ -544,10 +544,10 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     }
   });
 
-  it('EXCLUDES the Less `mixin-ruleset` dot-call (deferred to increment 2 — frame-threaded descent)', () => {
-    // `type: 'mixin-ruleset'` can match a same-named ruleset-as-mixin and captures
-    // a closure — its body must descend under its OWN value-frame, not the
-    // increment-1 splice-into-enclosing-frame. Stays on the eval path.
+  it('INCREMENT 2: folds the Less `mixin-ruleset` dot-call over a Mixin def through the spine', async () => {
+    // `type: 'mixin-ruleset'` (the Less `.m()` dot-call) resolving to a MIXIN
+    // definition now folds via the frame-threaded descent — the first shape the
+    // Less corpus actually exercises. (A ruleset-as-mixin candidate still defers.)
     const root = rules([
       mixin({ name: '.m', rules: [decl({ name: 'color', value: spaced([el('red')]) })] }),
       ruleset({
@@ -555,7 +555,34 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
         rules: [call({ name: ref({ key: '.m' }, { type: 'mixin-ruleset' }) })]
       })
     ]);
-    expect(isSpineEligibleRoot(root, context)).toBe(false);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1);
+    expect(css).toContain('.a');
+    expect(css).toContain('color: red');
+  });
+
+  it('INCREMENT 2: folds a VAR-READING mixin body (frame-threaded descent — resolves the definition scope)', async () => {
+    // The body reads a variable bound in the DEFINITION scope (root). Increment 2
+    // descends the bound surface under its own value-frame, so `@c` resolves to
+    // `blue` (the closure/lexical binding) — NOT last-wins against the caller. This
+    // is the shape increment 1 excluded (literal-only) and inc 2 unlocks; it is the
+    // fix for the `'var' is not defined` failures inc 1 catalogued.
+    const root = rules([
+      vardecl({ name: 'c', value: spaced([el('blue')]) }),
+      mixin({ name: '.m', rules: [decl({ name: 'color', value: ref({ key: 'c' }, { type: 'variable' }) })] }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }) })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const css = await root.render(context);
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('.m(');
   });
 
   it('EXCLUDES a parametric mixin definition (deferred — arg binding is a later increment)', () => {

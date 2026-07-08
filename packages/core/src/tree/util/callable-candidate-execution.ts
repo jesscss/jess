@@ -1,6 +1,8 @@
 import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
 import type { List } from '../list.js';
+import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 import { isConstantGuard } from './callable-guard-constant.js';
 import type { Rules } from '../rules.js';
 import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
@@ -187,7 +189,8 @@ export async function executeCallableCandidate({
     candidateIndex: candidate.index,
     rules,
     sourceRules,
-    restrictMixinOutputLookup
+    restrictMixinOutputLookup,
+    candidateIsMixin: isNode(candidate, N.Mixin)
   });
 
   return {

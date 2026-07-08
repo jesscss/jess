@@ -302,7 +302,7 @@ export class Context {
    * dies in P4). Scoped save/restore around the drive — undefined on the eval path
    * so the terminal is unchanged there.
    */
-  spineMixinSurfaceSink?: (boundSurface: Rules, sourceRules: Rules) => boolean;
+  spineMixinSurfaceSink?: (boundSurface: Rules, sourceRules: Rules, candidateIsMixin: boolean) => boolean;
 
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;

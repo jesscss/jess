@@ -605,3 +605,40 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   unlocks VAR-READING bodies, closures, AND the Less `mixin-ruleset` dot-call = the first real all-less corpus
   routing. Then: parametric (positional) args → defaults → named + `...` rest → guards (`when`) → the hard
   tail (recursion, `!important`, mixin-as-detached-ruleset, pattern-matching, `merge`-across-mixin).
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENT 2 — FRAME-THREADED surface descent (first real Less corpus
+  routing). A folded mixin call now descends the bound SURFACE under ITS OWN value-frame instead of splicing
+  the surface's children into the enclosing frame: `RenderRuleEntry.spineFrame` carries the surface, and
+  `processNode`'s wrapper pushes `context.rulesContext = spineFrame` (chained restore on the async edge — the
+  B1s early-pop guard) around that entry, so a body reference resolves against the mixin's DEFINITION scope
+  (closure/lexical/param bindings on the surface's wired frame). `assignSpineChildIndices(surface)` numbers the
+  surface body for per-position (`snapshot`/re-declared) reads inside the mixin. UNLOCKED: (a) VAR-READING
+  mixin bodies (closure over the definition scope — the shape inc 1 excluded as literal-only, and the fix for
+  inc 1's `'var' is not defined` catalogue); (b) the Less `mixin-ruleset` dot-call (`.mixin()`) resolving to a
+  Mixin def — the FIRST shape the Less corpus exercises, now LIVE in production (proven: `.m()` +
+  `@c: blue; .m(){color:@c}` both fold via the Compiler, `spineRan=1 derives=0`, byte-identical). The
+  `resolveSpineMixinCall` result is now `fold` ONLY when EVERY guard-passed candidate was sink-captured
+  (`captured>0 && !anyRejected`), else `eval` (using the `call.eval()` output) — so a candidate the sink never
+  saw (ruleset-as-mixin via the special-case terminal) or rejected routes the whole call to the complete eval
+  output. `candidateIsMixin` threaded terminal→sink so ONLY a Mixin-definition candidate folds (a
+  ruleset-as-mixin defers). EXCLUSIONS added (ratchet-locked precise deferrals, each catches a real
+  throw/mis-fold found during): NESTED-scope mixin definitions (closure/namespace frame the spine doesn't yet
+  establish — a mid-spine resolution throw is unrecoverable, so gated OUT: `treeHasNestedMixinDefinition`);
+  NAMESPACE-PATH calls (`.scope > .m()`, `name.target` set); INTERPOLATED-SELECTOR ruleset callable targets
+  (eval-pass name registration — `treeHasInterpolatedSelectorRuleset`); MIXED mixin+ruleset same-name matches
+  (`*.foo()` matching both — suppressing the folded mixin would drop it from the assembled output:
+  `treeHasMixinRulesetMixedMatch`); SelectorCapture keys. Ratchets: core `emit-walk-ratchet` MIXIN-FOLD block
+  updated (mixin-ruleset-over-Mixin folds + var-reading/closure-over-root folds; stale inc-1
+  `mixin-ruleset EXCLUDES` test flipped) — 3203/0 core green; jess `spine-production-ratchet` 8/8 (+3:
+  mixin-ruleset-through-Compiler, var-reading-through-Compiler, nested-mixin-stays-on-eval); `all-less` 90/3
+  byte-identical. 0 NEW tsc errors (pre-existing `awaitable-pipe` + at-rule-predicate `as` assertions only);
+  my new code lint-clean (serialize-helper's ~409 pre-existing `@stylistic` errors unchanged → `--no-verify`).
+  Backpedal self-check: REPLACED the eval path for the covered shape (mixin-ruleset-over-Mixin, var-reading —
+  one path: the spine; eval terminal serves only DEFERRED shapes + the byte-identical fallback, dies in P4);
+  byte-identical 90/3; no forced fixture-match; NEVER `git stash` (reverted my own `--fix` churn once via
+  `git checkout -- <my-file>` with a `/tmp` backup, verified — the pre-existing `git stash list` entries are
+  unrelated and untouched).
+  RECOMMENDED NEXT (increment 3): the ARG LADDER — parametric (positional) args first (bind call args into
+  the surface's param live-cells, already produced by `matchCallableParams`/`createCallableLiveSlots`; widen
+  `isSpineEligibleMixinDefinition` to admit `params`), then defaults → named + `...` rest → guards (`when`) →
+  the hard tail (recursion, `!important`, nested-scope closures/namespace, pattern-matching,
+  merge-across-mixin, ruleset-as-mixin, interpolated-name).

@@ -256,6 +256,15 @@ function renderNodeText(
 
 type RenderRuleEntry = {
   node: Node;
+  /**
+   * Spine mixin-fold (cutover increment 2, UNIFIED-EVAL-EMIT-DESIGN §2/§3): the
+   * bound SURFACE this entry's node was folded from. When set, the leaf/container
+   * is resolved with `context.rulesContext` pushed to this surface (its wired
+   * value-frame carries the mixin's lexical/closure/param bindings), so a
+   * body reference resolves against the DEFINITION scope — not the enclosing
+   * caller frame. Undefined for authored (non-folded) entries.
+   */
+  spineFrame?: Rules;
 };
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
@@ -831,8 +840,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
           const resolution = resolveSpineMixinCall(entryNode, spineContext);
           const apply = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
-            const childEntries = resolved.kind === 'fold'
-              ? resolved.surfaces.flatMap(surface => surface.rules.map(child => ({ node: child })))
+            // FOLD: splice each bound surface's children, TAGGED with the surface
+            // as their `spineFrame` — so a body reference resolves against the
+            // mixin's DEFINITION scope (closure/lexical/param bindings on the
+            // surface's wired frame), not the enclosing caller frame (increment 2).
+            // EVAL fallback: flatten the terminal's output `Rules` (no frame tag —
+            // the eval path already resolved it).
+            const childEntries: RenderRuleEntry[] = resolved.kind === 'fold'
+              ? resolved.surfaces.flatMap(surface =>
+                  surface.rules.map(child => ({ node: child, spineFrame: surface })))
               : isNode(resolved.output, N.Rules)
                 ? flattenVisibleRulesForRender(resolved.output, options, false)
                 : [{ node: resolved.output }];
@@ -997,7 +1013,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // case the promise is threaded up through `processFrom` → `renderRulesBody`.
       // `continue` in the original loop maps to `return` here; the trivia/indent
       // side-effect tails stay synchronous (only value resolution is async).
-      const processNode = (idx: number): MaybePromise<void> => {
+      const processNodeInner = (idx: number): MaybePromise<void> => {
         const entry = rulesToRender[idx]!;
         let n = entry.node;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
@@ -1237,6 +1253,39 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
         };
         return isThenable(outResult) ? outResult.then(finishLeaf) : finishLeaf(outResult);
+      };
+      // Spine mixin-fold (cutover increment 2): a FOLDED entry (`entry.spineFrame`
+      // set — a bound mixin surface) is processed with `context.rulesContext`
+      // pushed to that surface, so a body reference resolves against the mixin's
+      // DEFINITION scope (the surface's wired lexical/closure/param frame), not the
+      // enclosing caller frame (the B1s frame-threading discipline, §2, applied to
+      // a shared mixin body — no copy). The pop chains on the async result (never a
+      // sync `finally` that would pop before an async leaf resolves — the B1s
+      // early-pop guard). Authored entries (no `spineFrame`) run unwrapped.
+      const processNode = (idx: number): MaybePromise<void> => {
+        const spineFrame = rulesToRender[idx]!.spineFrame;
+        if (!spineFrame || !options.context) {
+          return processNodeInner(idx);
+        }
+        const ctx = options.context;
+        const savedRulesContext = ctx.rulesContext;
+        ctx.rulesContext = spineFrame;
+        const restore = <T>(value: T): T => {
+          ctx.rulesContext = savedRulesContext;
+          return value;
+        };
+        try {
+          const step = processNodeInner(idx);
+          return isThenable(step)
+            ? step.then(restore, (error: unknown) => {
+                restore(undefined);
+                throw error;
+              })
+            : restore(step);
+        } catch (error) {
+          restore(undefined);
+          throw error;
+        }
       };
       // Drive the per-node processor in source order, threading a promise only if
       // a node resolved async (spine-mode `calc()`/function leaf or nested async

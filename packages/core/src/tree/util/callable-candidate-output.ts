@@ -13,6 +13,8 @@ type EvaluateCallableCandidateOutputOptions = {
   rules: Rules;
   sourceRules: Rules;
   restrictMixinOutputLookup: boolean;
+  /** True when the resolved candidate is a Mixin DEFINITION (not a ruleset-as-mixin). */
+  candidateIsMixin?: boolean;
 };
 
 export async function evaluateCallableCandidateOutput({
@@ -23,7 +25,8 @@ export async function evaluateCallableCandidateOutput({
   candidateIndex,
   rules,
   sourceRules,
-  restrictMixinOutputLookup
+  restrictMixinOutputLookup,
+  candidateIsMixin
 }: EvaluateCallableCandidateOutputOptions): Promise<Rules | undefined> {
   if (currentCall && context.callMap.add(currentCall, getParamsSignature())) {
     return undefined;
@@ -41,7 +44,11 @@ export async function evaluateCallableCandidateOutput({
     // eval terminal dies in P4).
     candidateParent.adopt(rules);
     const sink = context.spineMixinSurfaceSink;
-    if (sink && sink(rules, sourceRules)) {
+    // The sink is consulted for EVERY guard-passed candidate so `resolveSpineMixin
+    // Call` sees each one; it returns false (→ eval this candidate) for a
+    // ruleset-as-mixin (`!candidateIsMixin`) or a non-simple surface, and true
+    // (→ fold, skip the output tree) only for a spine-simple Mixin-definition body.
+    if (sink && sink(rules, sourceRules, candidateIsMixin === true)) {
       return undefined;
     }
     const newRules = await rules.eval(context);
