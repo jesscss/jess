@@ -32,8 +32,11 @@ expected to change.
 3. `&`-crossing folds into EMIT (one system, not a pre-apply side-channel).
 4. OQ-5 folds into (B) placement; no third axis, no stored own-selector field. The extender's
    contribution is its COMPOSED selector.
-5. EMIT targets direct string/buffer. A node intermediate survives ONLY where a real consumer needs
-   it (sourcemaps; the less-compat CONSUMER — reasoned about, not preserved verbatim; §6/OQ-F).
+5. **EMIT is a per-node inline pipeline (owner-resolved, §6):** per node — produce shape (reuse
+   canonical untouched if unchanged; fresh transient only if eval changed it) → run visitors inline
+   on that node (the less-compat / plugin hook point, receiving node + frame) → serialize immediately
+   → release. The node intermediate survives only TRANSIENTLY and LOCALLY at each emit position, never
+   as a persistent output tree, never as a separate visitor or serialize pass.
 6. Bookkeeping minimal — per-branch (B) annotations + carried provenance obey the ≤5 class-unique
    field budget (`CORE-CLEANUP.md`).
 7. **No test expectation is sacred.** This is in-development v5; any current `.css` / warning / unit
@@ -83,8 +86,10 @@ render(root)  ──►  ONE downward traversal of the SOURCE tree
                    ├─ at a Rules/Ruleset enter:  push value-frame + structural-frame;
                    │                              compose header selector from the stack;
                    │                              seed reachable extend work for its subject branches
-                   ├─ at a Declaration/leaf:      resolve value AGAINST THE CURRENT VALUE-FRAME,
-                   │                              write bytes (+ sourcemap origin) immediately
+                   ├─ at a Declaration/leaf:      resolve value AGAINST THE CURRENT VALUE-FRAME;
+                   │                              produce shape (canonical if unchanged, else fresh
+                   │                              transient) → run visitors inline (§6) → write bytes
+                   │                              (+ sourcemap origin) → release
                    ├─ at an at-rule:              hoist decision from structural stack (already relocated)
                    ├─ at a mixin/loop/$for/$if:   bind params/counter into a NEW value-frame,
                    │                              descend the SHARED body under it (no copy)
@@ -333,34 +338,84 @@ for owner decision, do not special-case the pass to emit the expanded form. This
 
 ---
 
-## 6. Where a node crossing survives (ruling 5)
+## 6. The settled EMIT + visitor model — a per-node inline pipeline (ruling 5, OWNER-RESOLVED)
 
-EMIT targets the buffer directly. A node intermediate plausibly survives at two consumer boundaries.
-The less-compat one is NOT a fixed surface to preserve verbatim — it is a CONSUMER to reason about;
-its exact protected surface is owner-pending (OQ-F).
+**Owner resolution (settled).** There is NO eval-stage → visitor-stage → serialize-stage sequence.
+Those three whole-tree passes collapse into ONE per-node inline pipeline. The node intermediate
+SURVIVES, but only TRANSIENTLY and LOCALLY at each emit position — never as a persistent materialized
+output tree, never as a separate pass. This is how EMIT satisfies the visitor / less-compat consumer
+without a second tree walk and without double-eval.
 
-1. **The less-compat consumer (owner-pending surface).** The purpose of the bridge is to let external
-   **Less-4.x plugins/custom-functions run against jess**. Reasoning about what such a consumer needs
-   from the pass: (a) `less.tree` node CONSTRUCTORS — a 4.x plugin builds/inspects `less.tree`-shaped
-   nodes, so the bridge must expose jess nodes AS compat nodes at the point a visitor/function runs;
-   (b) the `less.functions` registry — custom functions registered 4.x-style must be callable during
-   value resolution; (c) a plugin/visitor SURFACE — a hook where an external visitor walks a
-   node-shaped view of the tree. This is the strongest reason a node intermediate might survive:
-   EMIT is byte-oriented, but a 4.x visitor is node-oriented, so the bridge point must materialize the
-   subtree it hands to a visitor into compat nodes — a LOCAL crossing at the plugin boundary, not a
-   global output tree. Today that runs at the `preSerializeRoot` hook (`rules.ts:4778`), the existing
-   post-eval / pre-render plugin-visitor seam. **Owner-pending:** the exact protected surface (which
-   of tree-constructors / functions-registry / visitor-hook is contractual) is being clarified; the
-   unified pass must keep SOME node-materialization seam for a 4.x visitor, but its precise shape and
-   WHEN it fires relative to extend/collapse is an owner ruling (OQ-F), not a fixed thing to
-   reproduce.
-2. **Sourcemaps.** The writer needs a source ORIGIN per emitted chunk, not a node — and §2.4 shows
-   the origin is the source node the walk stands on. So sourcemaps do NOT force an output-node
-   crossing; they force the walk to carry the source origin, which it does. (This is the
-   highest-risk byte-identity surface — §8 — but it is an origin-attribution risk, not a node-tree
-   requirement.)
+### 6.1 The three inline steps, per node, as the traversal reaches it
 
-Everywhere else, EMIT writes bytes. No retained second tree.
+As the unified traversal (§1, §2) reaches each source node, it runs three steps back-to-back and then
+moves on — nothing is retained past step 3:
+
+1. **Produce the node's SHAPE.**
+   - If eval did NOT change the node (static / unchanged) → reuse the **canonical node untouched**.
+     No new object is allocated; the shared canonical node IS the shape, with any live-bound values
+     swapped in via the threaded value-frame (§2) at read time. This is the no-copy principle: "emit
+     straight from the shared canonical node unless it's canonical-changed."
+   - If eval DID change it (dynamic value resolved, selector composed, extend-modified, hoisted,
+     collapsed) → create a **FRESH TRANSIENT shape** for this emit position only. You cannot mutate
+     the shared canonical, so a change always yields a fresh local object. This transient shape is the
+     home of the per-branch extend annotations (§4.3) and any composed/resolved form — it is exactly
+     the "changed-node" object, scoped to this position, released after step 3.
+
+2. **Run visitors against THAT node, right there — just-in-time.** At the moment the shape is
+   produced and BEFORE it is serialized, plugin visitors (including the less-compat visitor) are
+   invoked on it. Visitors are **per-node hooks invoked inline by the pass, NOT tree-walkers.** A
+   visitor receives:
+   - **the node** (the shape from step 1 — canonical-shared or fresh-transient), presented in the
+     shape the consumer expects (for less-compat, the `less.tree`-compat view — see §6.2), and
+   - **the frame context** (the live value-frame + structural stack at this position), so a visitor
+     or custom function that needs to resolve a value / inspect scope has the same live bindings the
+     leaf resolution uses.
+   If a visitor TRANSFORMS the node, it yields/uses a **fresh shape** (again, the shared canonical is
+   never mutated). That visitor-produced fresh shape simply becomes the node that flows into step 3 —
+   no separate re-walk, no re-eval; the transform is local and immediate.
+
+3. **Serialize the resulting node immediately** to string/buffer (with the source node as the
+   sourcemap origin, §2.4), then **release it.** The transient shape (if any) is now garbage; the
+   canonical node is untouched and reusable for its next placement.
+
+So the visitor architecture ITSELF changes: the old "walk the whole evaluated tree with a visitor
+pass" becomes "the pass calls each registered visitor hook once, inline, at each node's emit moment."
+There is no `preSerializeRoot` whole-tree hook doing a separate visitor walk; that seam is replaced by
+the inline per-node hook. (The current `preSerializeRoot` at `rules.ts:4778` is the vestige of the
+old separate-pass model — under this resolution it dissolves into the inline step 2.)
+
+### 6.2 less-compat under the inline model (OQ-F resolved)
+
+The less-compat consumer is satisfied by step 2, not by a persistent tree. What it needs:
+- **`less.tree` node view** — at the hook point, the node handed to a 4.x visitor/function is
+  presented as its compat shape. Because the hook fires per-node on a transient (or canonical) shape
+  that already exists at that instant, the compat view is a LOCAL adaptation of one node, not a
+  materialization of a whole subtree into a compat tree. A 4.x visitor that inspects children sees
+  them lazily/adapted as the pass reaches them, in the same inline discipline.
+- **`less.functions` registry** — a 4.x custom function called during value resolution runs in step 2
+  (or during leaf resolution in §2) with the frame context available, so it resolves against the live
+  bindings.
+- **plugin/visitor hook** — the per-node hook point (post-shape, pre-serialize) IS the plugin visitor
+  surface; a plugin registers a hook rather than a tree-walker.
+
+This resolves OQ-F's "what/when": the protected surface is the **per-node hook receiving (node,
+frame) post-shape/pre-serialize**, firing in traversal order — i.e. AFTER a node's own
+eval/compose/extend shape is produced (so a visitor sees resolved values + composed selectors +
+extend contributions for THAT node) and BEFORE its bytes are written. There is no "before extend vs
+after extend" whole-tree choice to make, because there is no whole-tree visitor pass — each node is
+visited once, at its own settled shape.
+
+### 6.3 Sourcemaps under the inline model
+
+Unchanged from §2.4: the writer needs a source ORIGIN per emitted chunk, not a retained node. Step 3
+attributes each chunk to the source node the traversal stands on (canonical for static, or the
+transient's `_sourceRoot`-carried origin for changed nodes). Sourcemaps do not force a persistent
+output tree — they force the origin to travel with the emit position, which it does.
+
+**Net:** EMIT writes bytes, per node, with a transient node shape living only across steps 1→3 at each
+position. No retained second tree, no separate visitor pass, no double-eval. The "surviving node
+crossing" is this transient-shape window, not a boundary tree.
 
 ---
 
@@ -375,7 +430,9 @@ Everywhere else, EMIT writes bytes. No retained second tree.
 - The ScopeFrame model (`scope-frame.ts`) — its lexical-chain design is exactly right; the change is
   its LIFETIME (kept live through emit) not its shape.
 - `+:` decl-merge and `$while` counter state (not copies).
-- The `preSerializeRoot` hook as the less-compat crossing point.
+- The less-compat consumer's NEEDS (`less.tree` node view, `less.functions` registry, a plugin hook)
+  — satisfied by the inline per-node hook (§6), so the CAPABILITY survives even though its mechanism
+  changes.
 
 **Replaced / deleted:**
 - The separate eval walk that materializes `state.output` (`evalForRender`→`eval`→`serialize` two-walk
@@ -390,6 +447,8 @@ Everywhere else, EMIT writes bytes. No retained second tree.
 - The container static short-circuits (population 2) → reactive fall-through.
 - `extendSelector` node→node API + `processExtends` walk-end pass → SOLVE folded into the traversal.
 - `ownSelector`/`analyzeNonPartialExtends` cascade → composed-contribution derived from the stack.
+- The separate visitor PASS + the `preSerializeRoot` whole-tree hook (`rules.ts:4778`) → inline
+  per-node visitor hooks fired at each node's emit moment (§6). Visitors stop being tree-walkers.
 - Finally: `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`F_CHILD_DERIVED`/`propagateFlagsFrom` (C4) —
   their only surviving readers are the reuse gates + container short-circuits, both deleted above.
 
@@ -424,11 +483,12 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
    traversal reaches the offending node (the pass is a single source-order walk, so source-order
    warning emission is natural). The v5 FORMAT is owner-defined; the design just pins the PRODUCTION
    POINT.
-4. **less-compat consumer output (owner-pending, §6/OQ-F).** A 4.x plugin/function running through
-   the bridge sees a node-shaped view; changing WHEN the bridge sees the tree relative to
-   extend/collapse could shift what it produces. Since the protected surface is owner-pending, this is
-   a "reason about + confirm" boundary, not a fixed corpus to reproduce — but the compat scenarios
-   should be exercised and any divergence owner-confirmed.
+4. **less-compat consumer output (§6, model resolved).** A 4.x plugin/function now runs at the inline
+   per-node hook (post-shape, pre-serialize) on a node already carrying its resolved values, composed
+   selector, and extend contributions — so per-node inspect/transform and custom-function resolution
+   are well-defined. The residual divergence risk is only the whole-tree mutate-then-observe plugin
+   pattern (OQ-F) the inline model cannot serve; exercise the compat scenarios and owner-confirm any
+   such case rather than reintroducing a whole-tree pass.
 
 ---
 
@@ -455,13 +515,14 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
 - **OQ-C — is the migration incremental or a coordinated cutover?** See §10 — this is the honest big
   one.
 
-- **OQ-F — the less-compat consumer's protected surface (§6).** What does the bridge contractually
-  owe external Less-4.x plugins/functions — `less.tree` node constructors, the `less.functions`
-  registry, a plugin/visitor hook, or all three? And WHEN does the node-materialization seam fire
-  relative to the extend fixpoint and collapse (before extend / after extend, pre-collapse /
-  post-collapse)? This determines the shape and firing point of the surviving node crossing. Owner is
-  clarifying; until then the pass keeps a materialization seam at `preSerializeRoot` but its exact
-  contract is open.
+- **OQ-F — RESOLVED (§6).** The less-compat / visitor surface is the per-node inline hook
+  (post-shape, pre-serialize), receiving (node, frame), firing in traversal order at each node's own
+  settled shape. No whole-tree visitor pass, no before-vs-after-extend whole-tree choice. What
+  remains genuinely open is narrow: whether any 4.x visitor relies on MUTATING-then-observing a
+  sibling/ancestor across the whole tree (a pattern the inline per-node model cannot serve, since it
+  visits each node once and releases it). If such a plugin exists in the compat corpus it needs an
+  owner ruling; the common cases (per-node inspect/transform, custom-function value resolution) are
+  fully served.
 
 - **OQ-D — confluence / batch-equals-sequential (carried from extend doc OQ-4).** SOLVE's
   order-independence needs "no rewrite's output value depends on current partial state in an
@@ -521,8 +582,10 @@ remains.
 **Bottom line:** the architecture is coherent and settled in shape — one downward traversal carrying
 two decoupled stacks (value-frame threaded live for leaf resolution, structural stack for
 composition/collapse/hoist) plus the document extend model (PLAN precompute → SOLVE selector-graph
-fixpoint → EMIT projection), materializing to buffer once, with node crossings only at the
-sourcemap-origin and less-compat boundaries. It is READY for review. It is NOT ready to implement
+fixpoint → EMIT projection), emitted through a per-node inline pipeline (produce shape → inline
+visitor hook → serialize → release), so a node shape exists only transiently at each emit position —
+never a persistent output tree, never a separate visitor or serialize pass. It is READY for review.
+It is NOT ready to implement
 until OQ-A (selector-value entanglement) is arbitrated, because that determines whether the pass is
 genuinely single or needs a bounded selector-value sub-pass — and it must land as a coordinated
 cutover, not an incremental fold, because B1s proved the incremental path is exhausted.
