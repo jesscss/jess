@@ -270,7 +270,10 @@ the live structural stack) are routed to the target index and reachable work is 
 composition is already on the walk (Slice 4) and the structural stack is live, the composed subject
 form is available exactly when needed. The fixpoint still reaches global closure before any subject's
 final branch set is EMITted — so a subject whose branches gain an extend contribution from a
-LATER-visited selector must have its emit deferred until the fixpoint settles.
+LATER-visited selector must have its emit deferred until the fixpoint settles. **The exact deferral /
+flush discipline this induces — what is buffered vs streamed, the baseline flush-at-end-of-descent, and
+the sound early-flush predicate that reclaims scope-closed subjects mid-document — is settled in §4.4
+(OQ-B).**
 
 **This is the one real tension the unification introduces (see OQ-A):** extend closure is a
 document-global fixpoint, but the value-frame threading is a strictly downward, push/pop-as-you-go
@@ -285,7 +288,10 @@ honest rather than a claim that hides a second traversal.
 
 ### 4.3 EMIT — project (B) + composed contribution at each subject's position
 
-At a subject's emit position, its final `Or`-branch set (post-SOLVE) is projected to output:
+At a subject's emit position, its final `Or`-branch set (post-SOLVE) is projected to output. *WHEN a
+subject's header reaches its emit position — the flush timing that reconciles this projection with the
+downward pass — is §4.4 (OQ-B, settled); the projection rules below describe WHAT is written once that
+position is reached.*
 
 - `placement=root` → hoisted branches emit into the root selector list; `this-level` into the nested
   form (B1). Crossing folds in here (ruling 3) — it is just a `placement=root` branch, not a
@@ -305,7 +311,236 @@ currently-wrong nested-extender cases) become correct because EMIT composes the 
 structural stack the walk already carries. The `ownSelector`/`analyzeNonPartialExtends` cascade
 (`extend-roots.ts:972-1089`) DISAPPEARS — it was the entangled re-derivation of exactly this.
 
-### 4.4 `extendSelector` eliminated (ruling 2)
+### 4.4 Flush discipline — when a subject's rule-header may be written (OQ-B, SETTLED)
+
+This settles OQ-B concretely: given that extend is a document-global fixpoint (§4.2) but emit is a
+downward streaming pass (§2), **when can a subject's rule-header (its composed selector list) be
+flushed to output?** The answer has five parts: the value/header split at flush, the provably-correct
+baseline, the exact early-flush predicate + its soundness proof, the buffer-vs-patch decision, and the
+canonical-cache interaction.
+
+#### 4.4.1 What is buffered vs streamed — the value/selector split
+
+A subject ruleset emits as `HEADER { DECLS }`. The two parts have opposite dependencies:
+
+- **DECLS are resolved and streamed as bytes, into a per-subject buffer, DURING the descent.** A
+  declaration's value is a function of the eval-moment value-frame (§2.2 B1s) — it is resolved against
+  the LIVE frame at the instant the walk stands on the leaf, and the resolved **bytes** are appended to
+  the subject's buffer. By flush time the value-frame is already popped; that is fine, because the
+  buffer holds resolved bytes, not deferred value work. There is no "re-resolve at flush" — the frame
+  was consumed on the way down. This is the whole point of §2: value resolution never waits for the
+  fixpoint.
+- **The HEADER (composed selector list) is the ONLY thing deferred.** It cannot be resolved against a
+  frame — it is a function of the structural stack (fixed on descent, §4.2) PLUS the extend
+  contributions the subject's branches gain during SOLVE. A subject's branch set is not final until
+  every instruction that can reach it has fired and the transitive closure over its reachable set has
+  settled (§4.2). Because output order puts the header BEFORE its decls, and the header is not yet
+  final while the decls already are, the decls cannot go straight to the final output stream — they
+  would land under a header that is still a hole. So the per-subject buffer holds `[header-slot,
+  resolved-decl-bytes…]`: decls are byte-final immediately, the header slot is filled at flush.
+
+Precisely: **buffered = the header slot (deferred) + the already-resolved decl bytes (parked, not
+deferred). Streamed to final output = nothing for this subject until its header is final; then the
+whole buffer (header text ++ parked decl bytes) is spliced into the output stream in document order.**
+The decls are byte-complete before the header; they wait only because they follow a not-yet-final
+header in output order, not because any value work remains.
+
+Nested subjects: a child ruleset's buffer is itself a decl-region entry of its parent's buffer (the
+buffer is a tree mirroring source nesting, not a flat list), so a child header that finalizes later
+than its parent's decls is naturally expressed — the parent's buffer just contains a not-yet-final
+child sub-buffer among its byte-final own decls.
+
+#### 4.4.2 Baseline discipline — flush-at-end-of-descent (provably correct)
+
+**Baseline: buffer every subject through the whole descent; after the descent completes, flush all
+per-subject buffers in document order.** Correctness is immediate from §4.2:
+
+1. After the full downward descent, EVERY `:extend` instruction in the document has been gathered
+   (PLAN enumerates them up front; SOLVE has seen every subject branch, since every ruleset was
+   entered).
+2. PLAN is complete and SOLVE has run to global closure — the fixpoint has settled (§2.5 termination:
+   value-dedup + fire-once bound). No further branch can appear for any subject.
+3. Therefore every subject's final `Or`-branch set is FIXED. Composing each subject's header from its
+   settled branch set (§4.3) and splicing `[header ++ parked decls]` in document order (B3's
+   `order`-sort is exactly this splice) yields the correct output.
+
+One eval descent + one flush. **Memory cost: the ENTIRE output is buffered until the fixpoint settles**
+— every subject's resolved decl bytes + header slot are retained from the moment the subject is
+entered until end-of-descent flush. For a large file this is O(output size) resident. This baseline is
+always correct and is the fallback for any subject the early-flush predicate below cannot discharge.
+
+#### 4.4.3 Early-flush — the exact predicate + soundness proof
+
+**Goal:** flush a subject's buffer (and reclaim its memory) as soon as its branch set is provably
+FINAL, without waiting for end-of-descent.
+
+**When is a subject S closed?** S's branch set can only grow from (§4.2):
+- (i) instructions that can REACH S — i.e. instructions whose bucket `reach(instrBucket, bucket(S))`
+  holds (A1–A8), AND
+- (ii) transitively, contributions from branches those instructions produce that then themselves reach
+  S (the cross-selector closure, §2.3), AND
+- (iii) `&`-hoist re-bucketing (§2.4), which can move a branch into the ROOT bucket mid-fixpoint and
+  thereby make it reachable to root-bucket instructions.
+
+So S is closed once: **(a) every instruction whose bucket can reach `bucket(S)` has been
+gathered-and-fired against S, and (b) the transitive closure over S's reachable set has settled, and
+(c) no future re-bucketing event can create a new instruction↔S edge.**
+
+**Reduction to a document-structural condition.** The reachability graph's edge direction is the lever.
+From `extend-roots.ts`:
+
+- **A2 (root-can-reach-IN) / A3 (inner-cannot-reach-OUT):** `isSameOrDescendantRoot`
+  (`extend-roots.ts:555-580`) walks ONLY the `childrenRoots` edges — an extend root reaches its OWN
+  root (A1, `:624`) and DESCENDANT roots (A2, `:627`→`:555`), and NEVER ancestor roots (A3, the
+  child-edge direction). `isInstructionVisibleForRoot` (`:605-637`) gates exactly on this: an
+  instruction is visible for a subject's root iff the instruction's `extendRoot` is the subject's root
+  (`:624`), is a same-or-descendant relationship (`:627`), or the subject's root is in the
+  instruction's transitive visible set (`:633`→`getVisibleRoots:508`).
+
+  Consequence: an instruction authored in root R can only reach subjects in R and R's descendant roots.
+  A subject S in root R therefore can only be reached by instructions authored in R or in an ANCESTOR
+  root of R. **Once the walk has fully descended and exited a root R (all of R's subtree is behind us),
+  no not-yet-visited node can author an instruction in R or an ancestor of R that reaches back into
+  R's already-closed subtree** — the not-yet-visited nodes are, by document order + the tree structure,
+  either later siblings/descendants (which are in R's descendants or in disjoint sibling roots — A3
+  says a disjoint sibling root's instructions do NOT reach into R) or are re-entries the single
+  downward walk does not make. So:
+
+  > **SCOPE-CLOSE PREDICATE (base case).** A subject S in root R is closed when the walk has fully
+  > descended and exited R AND every ANCESTOR root of R has also been fully descended past the point
+  > where it could still author an instruction reaching into R. Concretely: S is closed at the moment
+  > the LAST of {R, all ancestor roots of R} finishes emitting the region from which an R-reaching
+  > instruction could be authored.
+
+  For the common case — a subject at the ROOT document scope, or a subject whose only reaching roots
+  are already fully descended — S closes exactly when its own root closes, because a root's own
+  `:extend` instructions are all gathered by the time the root's subtree is exited.
+
+- **The transitive closure (ii) stays WITHIN S's reachable set.** A branch B′ produced against S is
+  itself routed to the index (§2.3); it can only gain further contributions from instructions that
+  reach `bucket(B′)`. If `bucket(B′) = bucket(S)` (the common case: a local rewrite keeps the branch in
+  S's own root), the same reaching-set bounds it, so closing S's reaching roots closes the closure. The
+  ONE exception is (iii).
+
+**The hard cases — pinned to end-of-descent:**
+
+1. **Root-scoped / global-reaching extends.** An instruction whose `extendRoot` is the document root
+   reaches EVERY subject (A2/A8: root is same-or-ancestor of all). Such an instruction can be authored
+   ANYWHERE in the document (a `:extend` at the bottom of the file whose extend root is the document
+   root). Therefore NO subject can be declared closed before the document-root scope itself is fully
+   descended — a later root-reaching instruction could still fire against it. **Any subject reachable
+   by a root-bucket instruction is pinned to end-of-descent** unless PLAN can prove the document root
+   authors no further reaching instruction after the subject's position (see 4.4.4). Since PLAN
+   enumerates all instructions up front, this IS decidable: see the strengthened predicate below.
+
+2. **`&`-hoist re-bucketing mid-fixpoint (§2.4).** A crossing rewrite moves a branch to the root bucket
+   and enqueues it against root-bucket instructions. This can happen while S is being solved. A subject
+   whose branches can be hoisted (it or a descendant has a crossing extend) must not early-flush until
+   the root bucket's instruction set is closed — i.e. it inherits case 1's pin. Detectable in PLAN: a
+   subject is hoist-exposed iff some reachable instruction is a crossing (parent+child-spanning) match
+   against it.
+
+3. **Transitive closure crossing scopes.** If a produced branch B′ re-buckets (case 2) or is composed
+   into a bucket other than S's own, closing S's own root no longer bounds it — it inherits the
+   reaching-set of B′'s new bucket. Pinned to end-of-descent whenever B′'s bucket ⊋ S's original
+   reaching set.
+
+**Strengthened (PLAN-exact) early-flush predicate.** Because PLAN enumerates every instruction and its
+`extendRoot` up front, "has every reaching instruction been gathered" is decidable precisely rather
+than conservatively:
+
+> **EARLY-FLUSH(S).** Let `Reaching(S) = { instr : isInstructionVisibleForRoot(root(S), instr) }`
+> (the A1–A8 set, computed by PLAN). S may flush at the moment the walk reaches document position `p`
+> iff:
+> 1. every `instr ∈ Reaching(S)` is authored at a document position `≤ p` (all reaching instructions
+>    already gathered-and-fired — PLAN gives each instruction's authored position), AND
+> 2. the transitive closure over S's branches has settled with no branch having re-bucketed OUTSIDE
+>    `Reaching(S)` (no §2.4 hoist to a bucket with un-gathered instructions; no §2.3 cross-scope
+>    escape), AND
+> 3. no instruction in `Reaching(S)` is a crossing match against S that remains un-fired.
+>
+> Equivalently, in structural terms: **S early-flushes when the maximum authored position over
+> `Reaching(S)` is behind the walk AND S is not hoist-exposed to an un-closed root bucket.**
+
+**Soundness (never flush a subject a later instruction would still change).** Suppose S flushes at `p`
+under EARLY-FLUSH(S) but some later instruction `I` (authored at `q > p`) changes S's branch set. `I`
+changing S means `I` fires against some branch of S, which requires `reach(bucket(I), bucket(S'))` for
+some current branch S′ of S. Two cases:
+- `bucket(S′) ∈ Reaching(S)` (S′ is in S's original reachable set): then `I ∈ Reaching(S)` by
+  definition, so condition (1) required `q ≤ p` — contradicting `q > p`. ∎
+- `bucket(S′) ∉ Reaching(S)` (S′ re-bucketed): then a hoist/cross-scope event moved S′ outside
+  `Reaching(S)`, which condition (2) forbids at flush time — contradiction. ∎
+
+Either way the assumption fails, so no post-flush instruction can change S. The predicate is sound. It
+is also non-vacuous: a subject in a leaf `@media` root with no crossing extends and whose only reaching
+instructions are authored earlier in that same `@media` body flushes the instant that `@media` body's
+subtree is exited — its memory reclaims mid-document, not at end.
+
+#### 4.4.4 What CAN early-flush vs what is PINNED
+
+- **Early-flushable:** a subject S such that `max authored position over Reaching(S)` lies within an
+  already-fully-descended scope AND S is not hoist-exposed. Canonically: subjects inside a `@media` /
+  `@layer`-isolated / protected (A7) root whose reaching instructions are all authored inside that same
+  root (or an ancestor already past its last reaching-instruction position), with no crossing extend.
+  These flush and reclaim when their scope closes — the win the optimization exists for. A7 protected
+  roots (`isProtected`, `extend-roots.ts:621`) are especially clean: the wall means the only reaching
+  instructions are those declared inside, so the root is self-contained — flush on exit.
+- **Pinned to end-of-descent:** (1) any subject reachable by a document-root-bucket instruction
+  authored after it; (2) any hoist-exposed subject (a reachable crossing extend); (3) any subject a
+  produced branch re-buckets outside its original reaching set. In the limit — a document where a
+  trailing root-scope `:extend .foo` targets a `.foo` used everywhere — nothing early-flushes and the
+  discipline degrades gracefully to the §4.4.2 baseline. This is correct, not a failure: those subjects
+  genuinely are not final until the end.
+
+#### 4.4.5 Buffer-then-flush vs streaming-patch — DECISION
+
+**Recommend: buffer-per-subject-then-flush, with the §4.4.3 early-flush optimization.** Reasons, against
+the alternative (stream authored form immediately, write a placeholder for the header, then PATCH the
+extend additions into the hole once the fixpoint settles):
+
+- **Document-order confluence (decisive).** The fixpoint is confluent ONLY because EMIT sorts OR-branches
+  by document `order` (§2.6 / §4.3 B3) — the final header is a post-fixpoint SORT over branches gathered
+  in arbitrary fire order. A streaming-patch writer would have to insert branches into an already-written
+  header at their sorted position, i.e. reproduce the sort by in-place splice into emitted text. That is
+  the sort done the hard way, against live byte offsets. Buffer-then-flush composes the header ONCE from
+  the settled, sorted branch set — the sort is a list operation, not a text-offset splice. The confluence
+  invariant the whole SOLVE design rests on directly favors buffer-then-flush.
+- **Sourcemaps.** Header offsets are assigned at flush, after the header text is final, so every mapping
+  is written once at its true offset. Streaming-patch would assign a placeholder offset then shift every
+  subsequent mapping when the hole is filled to a different width — an O(mappings) rewrite per patch, and
+  a silent-divergence risk (§8.1). Buffer-then-flush has no offset rewrite.
+- **Streaming-writer compatibility.** Buffer-then-flush is NOT all-or-nothing streaming: with early-flush,
+  a scope-closed subject's bytes are emitted to the real writer the moment its scope closes, so output
+  streams at scope granularity. A large file that is mostly leaf-`@media`/`@layer`/protected scopes with
+  local extends streams progressively; only the pinned (root-reaching / hoist-exposed) subjects wait for
+  end-of-descent. Streaming-patch streams sooner but at the cost above, and its "sooner" is illusory for
+  pinned subjects (their header is genuinely unknown early — you would stream a hole and patch it, buying
+  nothing but the offset-rewrite tax).
+- **Memory.** Buffer-then-flush's cost is the §4.4.2 O(output) worst case, reduced by early-flush to
+  O(largest open pinned span). Streaming-patch holds less output but must retain a patch table (hole
+  positions + pending branch sets) whose worst case is the same pinned set — so its memory advantage is
+  marginal and it pays the offset-rewrite CPU on top.
+
+Streaming-patch is worse on every axis that the confluence invariant and sourcemap identity make
+load-bearing, and its only theoretical edge (earlier first-byte for pinned subjects) is exactly the case
+where the header is genuinely not yet known. **Buffer-then-flush + early-flush is the settled discipline.**
+
+#### 4.4.6 Interaction with the loosened canonical-mutation invariant (ruling 1)
+
+Ruling 1 (loosened 2026-07-08) permits OUTPUT-INVISIBLE in-place mutation on a canonical node — including
+"a cached composed-form / bucket-path." This directly simplifies flush: the subject's composed header and
+each branch's bucket-path (the A1–A8 routing key + the `composeExtendWithRelativeToTarget` /
+`getFullComposedForm` composed contribution, `extend-roots.ts:257`/`:320`) MAY be memoized on the
+canonical node the first time the walk composes it, because the composed form is output-invisible
+bookkeeping (it does not change the canonical node's own re-serialization or its reuse elsewhere). So at
+flush time the header composition is available WITHOUT re-walking `.parent` and without recomputing the
+bucket path — it is read off the canonical cache seeded during descent (this is also the flagged
+`getFullComposedForm`-reads-`composedSelectorStack` perf follow-up, §4.3, now permitted to persist on the
+canonical node rather than recomputed per placement). The early-flush predicate's `Reaching(S)` set,
+likewise, is PLAN data that may cache on the canonical root node. Net: the loosened invariant turns flush
+from a re-composition into a cache read.
+
+### 4.5 `extendSelector` eliminated (ruling 2)
 
 There is no in-flow caller for a node→node per-call extend: SOLVE operates on the IR/selector layer
 and EMIT is the sole materializer. `extendSelector`/`applyExtendsToSelector`/`wouldMatchNode`
@@ -515,12 +750,19 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   decoupling is clean and the pass is genuinely single. If the latter, the fixpoint and frame
   threading are entangled and the design needs a staged sub-pass — materially larger.
 
-- **OQ-B — deferred subject emit / buffer ordering.** Because a subject's extend contributions can
-  come from later-visited selectors, its final selector list is only known post-fixpoint. Does EMIT
-  buffer per-subject and flush after the fixpoint (simple, a little memory), or does the walk emit
-  authored form first and PATCH extend additions in (harder, streaming)? The extend doc's confluence
-  invariant (EMIT sorts by document order) assumes a post-fixpoint sort, favoring buffer-then-flush.
-  Confirm that is acceptable for streaming/large-file memory.
+- **OQ-B — RESOLVED (§4.4).** The flush discipline is SETTLED: (1) decls resolve against the live
+  frame and stream as bytes into a per-subject buffer during descent — only the rule HEADER is deferred
+  (§4.4.1); (2) baseline is flush-at-end-of-descent, provably correct once the fixpoint settles, at
+  O(output) memory (§4.4.2); (3) the early-flush optimization flushes a subject the moment
+  `max authored position over Reaching(S)` (its A1–A8 reachable-instruction set) is behind the walk AND
+  it is not hoist-exposed — sound by the §4.4.3 proof; leaf `@media`/`@layer`/protected-root subjects
+  with local extends early-flush on scope close, while root-reaching / hoist-exposed / cross-scope
+  subjects are pinned to end-of-descent (§4.4.4); (4) buffer-then-flush beats streaming-patch on
+  confluence-sort, sourcemap-offset identity, and memory (§4.4.5); (5) the loosened canonical-mutation
+  invariant lets the composed header + bucket-path cache on the canonical node, making flush a cache
+  read (§4.4.6). **Residual owner call:** the O(largest open pinned span) memory of the pinned set under
+  a pathological trailing-root-`:extend` document is a latency/memory tradeoff, not a correctness issue
+  — accept the graceful degradation to baseline, or add a spill-to-writer cap? (Deferred; not blocking.)
 
 - **OQ-C — is the migration incremental or a coordinated cutover?** See §10 — this is the honest big
   one.
