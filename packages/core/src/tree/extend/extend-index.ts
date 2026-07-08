@@ -2941,9 +2941,48 @@ function extendAmpersandTarget(
 }
 
 /**
+ * `&` FIND own-construction. A find carrying `&` is resolved the SAME way a `&` TARGET is (rung 6):
+ * lift the find, resolve every amp step to its stored parent, then match/extend against the resolved
+ * find. Two oracle-verified outcomes:
+ *
+ *   • UNRESOLVED amp (a bare `&` with no stored parent — `resolvedFormSeq` yields null) → the find
+ *     carries an atom that matches no concrete target compound. The oracle returns NOT_FOUND for
+ *     every such shape (`&.x`, `& .foo`, bare `&`), so we do too.
+ *   • RESOLVED amp (`&`→`.foo`, find `&.x` → `.foo.x`) → recurse `extendByIndexOwn` on the resolved
+ *     PLAIN find; the resolved find is amp-free so the normal engine builds the exact output the
+ *     oracle produces (`.foo.x` f `.foo.x` e `.y` → `.foo.x,.y`; a non-matching target → NOT_FOUND).
+ *
+ * Only the single-branch find is modeled here; an OR-find carrying `&` defers to UNSUPPORTED.
+ */
+function extendAmpersandFind(
+  targetSel: Selector,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | Selector[] | 'NOT_FOUND' | UnsupportedResult {
+  const syms = new SymbolTable();
+  const irFind = liftSel(find, syms);
+  if (irFind.branches.length !== 1) {
+    return UNSUPPORTED; // OR-find with amp — not modeled
+  }
+  const resolvedFind = resolveAllAmps(irFind.branches[0]!);
+  if (!resolvedFind) {
+    // The amp could not be resolved to a concrete parent (unresolved bare `&`, or a list-parent
+    // graft). An unresolved amp atom matches no concrete target → the oracle's NOT_FOUND.
+    return 'NOT_FOUND';
+  }
+  const plainFind = irSeqToSelectorReusing(resolvedFind);
+  if (hasAmpersand(plainFind)) {
+    return UNSUPPORTED; // residual amp survived resolution — not modeled
+  }
+  return extendByIndexOwn(targetSel, plainFind, extendWith, partial);
+}
+
+/**
  * PUBLIC ENTRY (own construction). Same contract as `extendSelector`, but never delegates:
  * it either builds the output itself (byte-identical to the oracle on covered shapes) or
- * returns UNSUPPORTED. No `&` / list-parent / constructor-atom-find handling yet.
+ * returns UNSUPPORTED. `&`-FIND is resolved (rung 6, find side); list-parent / non-amp
+ * constructor-atom-find shapes stay UNSUPPORTED.
  */
 export function extendByIndexOwn(
   target: ExtendInput,
@@ -2973,10 +3012,17 @@ export function extendByIndexOwn(
     }
   }
 
-  // Constructor-atom / `&` FINDS are not built by the own engine yet. Gate to UNSUPPORTED
+  // `&` FIND: resolve the find's amp to its parent and recurse on the plain find (rung 6, find side).
+  // An unresolved amp → NOT_FOUND; a resolved amp → the amp-free recursion builds the oracle output
+  // (a residual `:is`/`:not` graft after resolution is caught by the recursion's own gates → UNSUPPORTED).
+  if (hasAmpersand(find)) {
+    return extendAmpersandFind(targetSel, find, extendWith, partial);
+  }
+
+  // Constructor-atom FINDS (non-amp) are not built by the own engine yet. Gate to UNSUPPORTED
   // (never a wrong/NOT_FOUND answer). A `:not`/`:where`/`:has` FIND (pseudo-arg on the find side)
   // is caught by the node-level `nodeHasPseudoWithSelectorArg` guard below.
-  if (hasAmpersand(find) || hasConstructorAtoms(find)) {
+  if (hasConstructorAtoms(find)) {
     return UNSUPPORTED;
   }
   if (nodeHasPseudoWithSelectorArg(find)) {

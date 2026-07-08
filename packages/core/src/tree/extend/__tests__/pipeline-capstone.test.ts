@@ -318,21 +318,19 @@ describe('CAPSTONE — PLAN→SOLVE→EMIT composed vs ratified v5 alpha .css (w
     });
   });
 
-  // ── FRONTIER PROBES — shapes the own engine is expected to gate to UNSUPPORTED ─────────────────
-  describe('frontier — UNSUPPORTED fallback classes (fail-loud, recorded)', () => {
-    it('&-carrying FIND target is a fallback (own engine gates &-finds)', () => {
-      // A find that carries `&` (parent-relative) is a shape `extendByIndexOwn` does not build.
+  // ── FRONTIER — `&`-carrying FIND is now OWN-BUILT (rung 6, find side) ────────────────────────────
+  describe('frontier — &-carrying FIND (own-built vs oracle)', () => {
+    it('UNRESOLVED &-find → NOT_FOUND (own-built, matches oracle): no fire, subject unchanged', () => {
+      // A find `&.x` whose `&` has no stored parent matches no concrete compound. The oracle returns
+      // NOT_FOUND; the own engine now reproduces that (no UNSUPPORTED fallback). The subject `&.x`
+      // seed is unchanged (no fire), so the projection is the subject's own composed form.
       const instr: PipelineInstruction[] = [
         { target: compound([amp(), el('.x')]), extendWith: el('.y'), partial: false, path: [el('.y')], order: 1 }
       ];
       const out = runExtendPipeline([{ id: 'amp', path: [compound([amp(), el('.x')])], order: 0 }], instr);
-      // Either own-built (if the engine happens to build it) or a recorded fallback — never a silent
-      // wrong answer. Record the outcome for the frontier tally.
-      if (!out.subjects[0]!.ownBuilt) {
-        // already recorded via runExtendPipeline's unsupported list — mirror into the fallback tally
-        fallbacks.push(`frontier/&-find: ${out.subjects[0]!.unsupported.map(u => String(u.target.valueOf())).join(', ')}`);
-      }
-      expect(out.subjects[0]!.header === '' || out.subjects[0]!.ownBuilt).toBeTruthy();
+      expect(out.subjects[0]!.ownBuilt).toBe(true);
+      expect(out.subjects[0]!.unsupported).toEqual([]);
+      expect(realGaps).toEqual([]);
     });
   });
 });

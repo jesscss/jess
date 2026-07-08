@@ -8,7 +8,7 @@
  * we skip the byte-compare and record the frontier), never a silent delegation.
  */
 import { describe, it, expect } from 'vitest';
-import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo, amp, type Selector } from '../../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../../util/extend.js';
 import { extendByIndexOwn, UNSUPPORTED } from '../extend-index.js';
@@ -787,6 +787,37 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     // target's full sym superset). Was UNSUPPORTED (multi-graft fail-loud); now the correct NOT_FOUND.
     it(':is(.a,.b) :is(.p,.q) f .x .y e .d PARTIAL → NOT_FOUND (find absent everywhere)', () => {
       pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), is(sellist([el('.p'), el('.q')]))]), sel([el('.x'), co(' '), el('.y')]), el('.d'), true, 'NOT_FOUND');
+    });
+  });
+
+  describe('18. rung-6 FIND-SIDE `&` (resolve the find amp, then extend the plain find)', () => {
+    // A find carrying `&` is resolved the same way a `&` TARGET is: an UNRESOLVED amp matches no
+    // concrete compound (oracle NOT_FOUND); a RESOLVED amp becomes a plain find the engine builds.
+    it('UNRESOLVED &.x find, .a.x target FULL → NOT_FOUND (bare & matches nothing)', () => {
+      pin(compound([el('.a'), el('.x')]), compound([amp(), el('.x')]), el('.y'), false, 'NOT_FOUND');
+    });
+    it('UNRESOLVED &.x find, .a.x target PARTIAL → NOT_FOUND', () => {
+      pin(compound([el('.a'), el('.x')]), compound([amp(), el('.x')]), el('.y'), true, 'NOT_FOUND');
+    });
+    it('UNRESOLVED "& .foo" descendant find → NOT_FOUND', () => {
+      pin(sel([el('.p'), co(' '), el('.foo')]), sel([amp(), co(' '), el('.foo')]), el('.y'), true, 'NOT_FOUND');
+    });
+    it('UNRESOLVED bare & find → NOT_FOUND', () => {
+      pin(el('.a'), amp(), el('.y'), true, 'NOT_FOUND');
+    });
+    it('RESOLVED &.x (&=.foo), .foo.x target FULL → .foo.x,.y (resolves to .foo.x, matches, appends)', () => {
+      pin(compound([el('.foo'), el('.x')]), compound([ampWith(el('.foo')), el('.x')]), el('.y'), false, '.foo.x,.y');
+    });
+    it('RESOLVED &.x (&=.foo), .foo.x target PARTIAL → .foo.x,.y', () => {
+      pin(compound([el('.foo'), el('.x')]), compound([ampWith(el('.foo')), el('.x')]), el('.y'), true, '.foo.x,.y');
+    });
+    it('RESOLVED &.x (&=.foo), .bar.x target PARTIAL → NOT_FOUND (resolved .foo.x absent)', () => {
+      pin(compound([el('.bar'), el('.x')]), compound([ampWith(el('.foo')), el('.x')]), el('.y'), true, 'NOT_FOUND');
+    });
+    // Byte-identical to the oracle across the same shapes.
+    it('resolved &-find agrees with oracle (differential)', () => {
+      same(() => ({ target: compound([el('.foo'), el('.x')]), find: compound([ampWith(el('.foo')), el('.x')]), extendWith: el('.y'), partial: false }));
+      same(() => ({ target: compound([el('.foo'), el('.x')]), find: compound([ampWith(el('.foo')), el('.x')]), extendWith: el('.y'), partial: true }));
     });
   });
 });
