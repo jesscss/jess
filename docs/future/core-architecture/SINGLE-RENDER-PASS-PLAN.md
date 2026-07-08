@@ -257,6 +257,26 @@ Subsequent B slices widen the shape set (nested containers → B2s; declarations
 B3s; then the container static short-circuits fall as reactive fall-through, population 2). Each
 widening is its own byte-identical gate.
 
+**B1s RESULT — VERDICT: REFUTED (branch `work/srp-b1s`, `68343c2b3`, flag-gated shadow harness, NOT merged).**
+The "re-resolve the shared source leaf at serialize from the placement frame" seam mechanism is DEAD, and the
+refutation lands at the byte layer (upstream of the sourcemap gate). Measured across the Less corpus (118 renders,
+target `width: @w`-shape hit 216×): **102 re-resolved byte-identical, 111 THREW** (`'x' is not defined` — the
+reference's binding isn't in scope at the placement frame), **7 genuine byte MISMATCHES** — the leaf re-resolved to
+a *different valid value* than eval produced: `scope.less` lazy-eval shadowing (`'top level'`→`'inside'`),
+`mixins-closure` closure capture (`99px`→`0px`), `mixins-guards` guard-selected binding (`8`→`auto`),
+`variables.less` authored-trivia boundary. **Root cause:** a dynamic leaf's value is a function of the EVAL-MOMENT
+scope (lazy/closure/guard/live-binding captured when eval descended), which the architecture DISCARDS after eval; a
+`Reference`'s `.parent` chain is empty even during eval (it resolves via `context.rulesContext` + captured scope),
+so serialize cannot reconstruct the resolving scope from the output placement.
+**IMPLICATION (reframes all of §3):** B is NOT incrementally foldable one-leaf-shape-at-a-time via placement-frame
+re-resolution — there is no "narrow enough" first shape (even the scalar `@w` is entangled with shadowing/closure).
+B REQUIRES the **frame-threading spine** first: serialize genuinely descends the SOURCE tree carrying the LIVE eval
+frame stack forward (per §3.1), so a leaf resolves against the SAME frame eval would have used — a monolithic
+prerequisite, not an incremental slice. That materially enlarges the B spine (and thus C1/C2/C4) beyond what §4's
+slice ladder assumed. §3.3's "narrowest shape" strategy is retired; §4's B1s→B2s→B3s ladder is superseded by
+"land the frame-threading spine, THEN fold leaves." A0's provenance conclusion still holds (span is B-handled once
+serialize descends the source tree) — but only AFTER the spine exists.
+
 ---
 
 ## 4. Ordered slice sequence (the drivable list)

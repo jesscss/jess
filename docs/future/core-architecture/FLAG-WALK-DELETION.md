@@ -374,10 +374,21 @@ the bench stays neutral (per the measured A/B). Same-directory A/B only.
   (inherit REJECTED, now class-2 BLOCKED) and reprofiled as <1% self-time.** Items (3)(4)(5) are landable now as
   reader-retirement (shrink the set, code-health), but do NOT reach C4 alone. (1)+(2) are the multi-slice coupled
   piece. **OWNER DECISION (do 1 AND 2):** reader-retirements (3/4/5) — ALL LANDED; Phase D relocations
-  (hoist/composition/D2) banked. Now committed to the deep rework too — the `SINGLE-RENDER-PASS-PLAN.md` slice
-  sequence is the executable path, starting with the **A0 provenance spike** (gates the riskiest slice A2s by
-  measuring whether the residual is the ~10-site flag-only record the plan hypothesizes). Only populations (1)+(2)
-  remain between here and C4; both reduce to sub-problem B (dynamic-leaf per-frame lookup vs copy).
+  (hoist/composition/D2) banked. Deep rework attempted per `SINGLE-RENDER-PASS-PLAN.md`: **A0 GO** (residual is
+  flag-only, position-derivable), **A1s LANDED** (`inherit` only mutates fresh nodes tree-wide) — then **B1s
+  REFUTED the incremental fold** (dev branch `work/srp-b1s`, not merged).
+  **⛔ B1s FINDING (reframes the C4 endgame):** a dynamic leaf's value is a function of the EVAL-MOMENT scope
+  (lazy/closure/guard/live-binding), which the architecture discards after eval; re-resolving from the placement
+  frame at serialize gives 7 byte-mismatches + 111 throws across the corpus. So sub-problem B (dynamic-leaf-share,
+  the mechanism both populations (1)+(2) reduce to) is **NOT incrementally foldable** — it requires the full
+  **frame-threading spine** (serialize descends the SOURCE tree carrying the live eval frame forward) as a
+  MONOLITHIC prerequisite before ANY leaf folds. That enlarges C4's cost well beyond the incremental slice ladder.
+  **NET: C4 (delete `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`propagateFlagsFrom`) is gated on the
+  frame-threading-serialize spine — a big-bang architectural rework, twice-refined-and-now-refuted-incrementally,
+  reprofiled <1% self-time.** DECISION POINT (owner): PARK C4 and bank the banked wins (reader-retirements + Phase D
+  relocations + the A0/A1s/B1s findings) as the flag-walk outcome, OR commit to the frame-threading spine as a pure
+  code-health bet (not a perf lever). Recommendation: PARK — the incremental path is exhausted and the remaining
+  step is a monolith with no perf payoff.
   - Also: `getFullComposedForm` (`extend-roots.ts:320`) re-walks the parent chain inside extend instead of sharing
     the walk's `composedSelectorStack` — a candidate for the extend track.
 
