@@ -1008,6 +1008,7 @@ const R_DERIVED_STATE_MASK =
  * hidden class. No dynamic attach / `Object.assign` / `defineProperty` / `delete`.
  */
 class RulesLookupState {
+  varsByName: Map<string, BindingEntry[]> | undefined = undefined;
   functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
   callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined = undefined;
@@ -1025,6 +1026,7 @@ class RulesLookupState {
   callableLookupVersion = 0;
   functionLookupVersion = 0;
   declarationLookupVersion = 0;
+  lookupVersion = 0;
 }
 
 export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
@@ -1033,7 +1035,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   readonly rules: Node[];
 
   /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
-  varsByName: Map<string, BindingEntry[]> | undefined;
+  get varsByName(): Map<string, BindingEntry[]> | undefined {
+    return this._lookup?.varsByName;
+  }
+
+  set varsByName(value: Map<string, BindingEntry[]> | undefined) {
+    this.ensureLookup().varsByName = value;
+  }
+
   /**
    * Cold callable/function/child-rule lookup state (see `RulesLookupState`). One
    * slot instead of ~12 eager fields; lazily allocated on first WRITE by
@@ -1193,7 +1202,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this.ensureLookup().directDeclarationLookupCache = value;
   }
 
-  lookupVersion = 0;
+  get lookupVersion(): number {
+    return this._lookup?.lookupVersion ?? 0;
+  }
+
+  set lookupVersion(value: number) {
+    this.ensureLookup().lookupVersion = value;
+  }
 
   get declarationLookupVersion(): number {
     return this._lookup?.declarationLookupVersion ?? 0;
@@ -1356,6 +1371,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     delete json._lookup;
     const lookup = this._lookup;
     if (lookup) {
+      json.varsByName = lookup.varsByName;
       json.functionsByName = lookup.functionsByName;
       json.functionLookupVersion = lookup.functionLookupVersion;
       json.functionLookupVersionsByName = lookup.functionLookupVersionsByName;
@@ -1365,6 +1381,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       json.declarationLookupVersion = lookup.declarationLookupVersion;
       json.declarationLookupVersionsByName = lookup.declarationLookupVersionsByName;
       json.callableLookupVersion = lookup.callableLookupVersion;
+      json.lookupVersion = lookup.lookupVersion;
     }
     return json;
   }
@@ -1442,12 +1459,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ? new Map(source.functionLookupVersionsByName)
         : undefined;
     }
-    this.varsByName = undefined;
     // Clear all child-derived surface bits + _hasExtends/_hasReferenceImports in
     // one masked write. Deliberately leaves _bodyEvaluated and _registrationPrepared
     // untouched, matching the prior per-field resets (which did not reset those).
     this.rulesFlags &= ~R_DERIVED_STATE_MASK;
-    this.lookupVersion = 0;
+    if (this._lookup) {
+      this._lookup.varsByName = undefined;
+      this._lookup.lookupVersion = 0;
+    }
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
@@ -4349,8 +4368,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     restorePrintState(options, saved);
     return result;
   }
-
-  pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
 
   constructor(
     value: Node[],
