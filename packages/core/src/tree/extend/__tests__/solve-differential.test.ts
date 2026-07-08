@@ -49,14 +49,21 @@ async function build(src: string, collapseNesting = false): Promise<Built> {
   const context = new Context({ output: { collapseNesting }, leakyRules: true });
   const parser = new Parser();
   const { tree } = parser.parse(src);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
+  // Force the EVAL path (identity `preSerializeRoot` pins off the single-pass spine): this
+  // suite validates SOLVE against the EVAL-path gather's `context.extends` + `extendRoots`,
+  // which the spine (P3) does not populate (it folds extend into the pass, spine-native).
+  await renderNodeToString(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    tree as unknown as RenderBufferNode,
+    context,
+    { context, preSerializeRoot: (r: Rules) => r }
+  );
   return { context, plan: buildExtendPlan(context) };
 }
 
 /** The reachable instruction set for a subject root — the SAME gate SOLVE applies. */
 function reachableInstructions(plan: ExtendPlan, root: Rules): PlanInstruction[] {
-  return plan.instructions.filter(inst => {
+  return plan.instructions.filter((inst) => {
     const set = plan.reachability.get(inst);
     return set !== undefined && set.has(root);
   });

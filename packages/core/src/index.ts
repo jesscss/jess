@@ -31,7 +31,7 @@ export { isNode } from './tree/util/is-node.js';
 // can assert real spine routing (≥N corpus roots) and that the eval two-walk is
 // not entered for a wired extend-free eligible root.
 export { spineRenderCounter, isSpineEligibleRoot } from './tree/util/emit-walk.js';
-export { engageExtendLayer, isFlatExtendTopology, treeHasExtend, extendLayerCounter } from './tree/extend/spine-extend.js';
+export { engageExtendLayer, isSpineExtendTopology, treeHasExtend, extendLayerCounter } from './tree/extend/spine-extend.js';
 export { type Operator } from './tree/util/calculate.js';
 export {
   shouldOperateWithMathFrames,

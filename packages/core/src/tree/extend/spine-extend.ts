@@ -44,16 +44,15 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import type { Rules } from '../rules.js';
 import type { Node } from '../node.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { projectSubject, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
 import type { OutputWriter } from '../util/print.js';
-import type { Context } from '../../context.js';
 import type { Selector } from '../selector.js';
 import { Nil } from '../nil.js';
 import { SelectorList } from '../selector-list.js';
 import { spanStartOf } from '../util/provenance.js';
 import { asExtendSelectorNode } from '../util/extend-roots.js';
-import { Extend } from '../extend.js';
+import { Extend, ExtendFlag } from '../extend.js';
 import { ExtendList } from '../extend-list.js';
 import { runSubjectProjection, type PipelineInstruction, type PipelineSubject } from './pipeline.js';
 
@@ -138,78 +137,62 @@ export function engageExtendLayer(root: Rules): boolean {
   return treeHasExtend(root);
 }
 
-/** A root-direct-child subject ruleset + its document order (span-start offset). */
-export interface FlatSubject {
+/**
+ * A candidate extend SUBJECT — any ruleset in the document, with its BUCKET PATH (the
+ * ancestor Selector chain outermost → own local, tracked by the gather walk since parse-tree
+ * nodes carry no `.parent`) and its document order. A NESTED subject's path is length > 1
+ * (`[.type1, .sidebar3]`); a root subject's path is length 1 (`[.sidebar]`).
+ */
+export interface SpineSubject {
   ruleset: Ruleset;
-  localSelector: Selector;
+  path: BucketPath;
   order: number;
 }
 
 /**
- * The FLAT (root-direct-child) extend orchestration — increment 1's live path. Given the
- * document root's SUBJECT children (each a root-level ruleset with a concrete local
- * selector) and the instructions ALREADY gathered into `context.extends` by the descent's
- * pre-scan (`Extend.runEffect` at each extender's ruleset-enter — the validated eval
- * gather, reused not reimplemented), decide each subject's FINAL Or-branch header.
+ * Compose each ROOT-LEVEL subject's FINAL Or-branch header from its bucket path + the
+ * document-wide gathered `instructions` (each carrying its extender's bucket path). Runs the
+ * validated pipeline per subject (`runSubjectProjection`: SOLVE fixpoint decides which
+ * instructions fire, EMIT composes-relative-to-target + orders + dedups) and formats the
+ * projected branch NODES into a `SelectorList` header the normal serializer emits with `,\n`.
  *
- * WHY NO DEFERRAL for the flat case (design §4.4.2 baseline, degenerate). The caller
- * PRE-SCANS all root children before emitting any, so every instruction is gathered before
- * any subject emits — `Reaching(S)` is fully known at each subject's emit position, so the
- * header is FINAL inline. Buffer-then-flush's deferral (§4.4.1) is unnecessary here; the
- * `bufferSubjectDecls`/`flushBufferedSubject` unit still ASSEMBLES the block, we just emit
- * it at the subject's own position. (A NESTED subject whose contribution comes from a
- * later-emitting extender is the case that genuinely needs deferral — a later increment.)
+ * WHY NO DEFERRAL (design §4.4.2 baseline, degenerate). The caller gathers EVERY instruction
+ * document-wide BEFORE any subject emits, so `Reaching(S)` is total at each subject's position
+ * and the header is FINAL inline. Buffer-then-flush's deferral (§4.4.1) is unnecessary; the
+ * `bufferSubjectDecls`/`flushBufferedSubject` unit still ASSEMBLES the block, emitted at the
+ * subject's own position.
  *
- * Returns a map: subject ruleset → its composed header (`,\n`-joined Or-branches, the
- * eval-path byte shape). ONLY subjects that gained ≥1 extra branch appear; a subject with
- * no reaching extend is absent (it streams its authored header unchanged — the §4.0
- * `Reaching(S)=∅` inline case). A subject whose projection would HOIST (crossing) throws
- * fail-loud (crossing is a later increment).
+ * Returns a map: subject ruleset → its composed header. ONLY subjects that gained ≥1 extra
+ * branch appear; a subject with no reaching extend is absent (streams its authored header — the
+ * §4.0 `Reaching(S)=∅` inline case). A projection that HOISTS (crossing) throws fail-loud —
+ * crossing is a later increment, and the eligibility gate excludes it (descendant-target +
+ * `&`-path exclusion), so this throw is an unreachable invariant guard.
  *
- * Bucket paths are trivial at this topology: every subject/extender is a root child, so its
- * path is `[localSelector]` (length 1) — no ancestor chain to compose. This is exactly the
- * shape the pipeline's `runExtendPipeline` consumes; we reuse it (SOLVE fixpoint + EMIT
- * projection, validated) and format its ordered `branches` with the `,\n` join.
- *
- * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.0 §4.2 §4.4.2
+ * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.0 §4.2 §4.3 §4.4.2
  */
-export function composeFlatSubjectHeaders(
-  context: Context,
-  subjects: FlatSubject[]
+export function composeSpineSubjectHeaders(
+  subjects: SpineSubject[],
+  instructions: PipelineInstruction[]
 ): Map<Ruleset, Selector> {
   extendLayerCounter.planRuns++;
-  const instructions: PipelineInstruction[] = [];
-  for (const [target, extendWith, partial, , , documentOrder] of context.extends) {
-    // The extender's bucket path is its own composed selector as a single root-level level.
-    // `extendWith` is the extender's already-composed selector (the eval gather resolved `&`
-    // + parent composition), so at the flat topology its path is just `[extendWith]`.
-    instructions.push({
-      target,
-      extendWith,
-      partial,
-      path: [extendWith],
-      order: documentOrder ?? 0
-    });
-  }
-
   const headers = new Map<Ruleset, Selector>();
   for (let i = 0; i < subjects.length; i++) {
     const subject = subjects[i]!;
     const pipelineSubject: PipelineSubject = {
       id: `s${i}`,
-      path: [subject.localSelector],
+      path: subject.path,
       order: subject.order
     };
     extendLayerCounter.solveRuns++;
     const { projection, ownBuilt } = runSubjectProjection(pipelineSubject, instructions);
     if (!ownBuilt || !projection) {
       // A shape the own engine can't build — leave the subject on its authored header; the
-      // eval-path fallback (still live in P3) covers it. (Flat exact extends are own-built.)
+      // eval-path fallback (still live in P3) covers it.
       continue;
     }
     if (projection.hoistToRoot) {
       throw new Error(
-        'spine extend flat: hoistToRoot not wired (P3 increment 1 handles root-level non-crossing only)'
+        'spine extend: hoistToRoot not wired (crossing is a later increment; the gate excludes it)'
       );
     }
     // Only override when the subject actually gained a branch (else stream authored header).
@@ -217,32 +200,14 @@ export function composeFlatSubjectHeaders(
       // Build the multi-branch header NODE so the normal serializer emits `,\n` (the
       // eval-path byte shape) — never a re-parsed string. The projected branches are the
       // authored own form + composed contributions, document-order sorted + deduped (EMIT).
+      // NOTE: `projection.branches[0]` is the subject's OWN composed form (its full bucket
+      // path composed); for a nested subject the normal serializer would ALSO compose the
+      // parent frame, so we install ONLY the subject's LOCAL branch shape — handled by the
+      // caller keying the override to the subject's local emit position.
       headers.set(subject.ruleset, new SelectorList(projection.branches as SelectorList['value']));
     }
   }
   return headers;
-}
-
-/**
- * Gather extend instructions from a root-child extender ruleset by running the VALIDATED
- * eval gather (`Extend.runEffect`) against the LIVE frame — reused, not reimplemented (A1).
- * The caller has confirmed `context.extendRoots` has the document root registered+pushed
- * and pushes `extender` onto `context.rulesetFrames` so `runEffect` composes the extender's
- * selector against the correct parent frame (the flagged frame-composition risk). Runs the
- * effect for every `Extend` node in the extender's selector; async-safe (chains).
- */
-export function gatherExtenderInstructions(
-  context: Context,
-  extendNodes: readonly Extend[]
-): MaybePromise<void> {
-  const run = (i: number): MaybePromise<void> => {
-    if (i >= extendNodes.length) {
-      return undefined;
-    }
-    const effect = extendNodes[i]!.runEffect(context);
-    return isThenable(effect) ? effect.then(() => run(i + 1)) : run(i + 1);
-  };
-  return run(0);
 }
 
 /**
@@ -300,99 +265,126 @@ function extendTargetIsSimple(node: Extend): boolean {
   return !/[ >+~,()]/.test(text.trim());
 }
 
-/** Every Extend effect in a ruleset's body has a simple target (see `extendTargetIsSimple`). */
-function rulesetExtendsAreSimple(ruleset: Ruleset): boolean {
-  return rulesetExtendNodes(ruleset).every(extendTargetIsSimple);
-}
-
 /**
- * True when this eligibility check admits the FLAT topology only: every root child that
- * bears extends is a plain root-level Ruleset (concrete local selector), and no extend
- * subject/extender is nested inside another container. Increment 1 handles ONLY this shape;
- * anything nested falls to the eval path (unchanged, byte-identical). Conservative: any
- * non-flat extend shape anywhere → return false (whole root stays on eval).
+ * The SPINE extend topology gate (P3 increment 2) — admits NESTED EXTENDERS (whose composed
+ * contribution the document-wide gather resolves against their ancestor frames) while keeping
+ * the strict conservative discipline: a shape outside the proven set → false (whole root stays
+ * on eval, byte-identical). Generalizes the flat gate; the widening is precisely "the EXTENDER
+ * may be nested" (`.type1 { .sidebar3 { &:extend(.sidebar all) } }`).
+ *
+ * Admits iff:
+ *   1. every extend TARGET (at any depth) is a SIMPLE find (`extendTargetIsSimple`: single
+ *      compound, no combinator/list/graft) — a descendant/list/graft target matches a NESTED or
+ *      MULTI subject the header-override cannot address (this also excludes most `&`-crossing,
+ *      whose targets are descendant selectors);
+ *   2. every target resolves to exactly one ROOT-LEVEL subject ruleset AND no NESTED ruleset
+ *      shares that selector — the header override rewrites root-level subjects; a nested subject
+ *      would be missed. (The EXTENDER may be nested; the TARGET/subject must be root-level.);
+ *   3. NO chaining — a target that is itself an extender's subject needs the transitive
+ *      cross-subject fixpoint ordering (a later increment);
+ *   4. NO extend reaching INTO an at-rule body (the subject there is at-rule-scoped, not a
+ *      document-root subject).
+ * A shape passing this gate is own-buildable by the pipeline with a root-level subject header
+ * override; anything else routes to eval.
  */
-export function isFlatExtendTopology(root: Rules): boolean {
+export function isSpineExtendTopology(root: Rules): boolean {
   const targets = new Set<string>();
-  const rootChildSelectors = new Set<string>();
+  const rootLevelSelectors = new Set<string>();
+  const extenderSelectors = new Set<string>();
+  let ok = true;
 
+  // Root-level subject selectors (targets must resolve to one of these).
   for (const child of root.rules) {
     if (isNode(child, N.Ruleset)) {
       const local = flatLocalSelector(child);
-      if (treeHasExtend(child) && local === undefined) {
-        return false; // amp-only / interpolated root child bearing extends — not flat
-      }
       if (local !== undefined) {
-        rootChildSelectors.add(String(local.valueOf()));
+        rootLevelSelectors.add(String(local.valueOf()));
       }
-      // Every extend BORNE by this root child must be a SIMPLE target (single compound, no
-      // combinator/list/graft) — the only find the flat single-subject override applies.
-      if (!rulesetExtendsAreSimple(child)) {
-        return false;
+    }
+  }
+
+  // Document-wide walk: collect every extend target (checking simplicity) + every
+  // extend-BEARING ruleset's selector (chain detection). At-rule bodies bearing extends
+  // disqualify (clause 4).
+  const walk = (node: Node, ancestorAmp: boolean): void => {
+    if (!ok) {
+      return;
+    }
+    if (isNode(node, N.AtRule) && 'rules' in node && Array.isArray(node.rules) && treeHasExtend(node)) {
+      ok = false;
+      return;
+    }
+    let rules: readonly Node[] | undefined;
+    let amp = ancestorAmp;
+    if (isNode(node, N.Ruleset)) {
+      rules = node.rules;
+      const local = flatLocalSelector(node);
+      // An `&`-bearing local selector (`&.sidebar4`, `&:hover`) needs frame `&`-resolution
+      // the direct bucket-path capture does NOT perform — so an extender ON such a path
+      // composes wrong. Track amp-ness down the path; disqualify only when it actually bears
+      // an extend (a plain `&` ancestor with no extend below is harmless).
+      if (local !== undefined && String(local.valueOf()).includes('&')) {
+        amp = true;
       }
-      collectSimpleTargets(child, targets);
-      // A nested ruleset/at-rule INSIDE this root child bearing an extend is deferral
-      // territory (not flat) — its extenders/subjects are not root-direct children.
-      for (const grand of child.rules) {
-        const isContainer = isNode(grand, N.Ruleset) || (isNode(grand, N.AtRule) && 'rules' in grand);
-        if (isContainer && treeHasExtend(grand)) {
-          return false;
+      const extendNodes = rulesetExtendNodes(node);
+      if (extendNodes.length > 0) {
+        if (amp) {
+          ok = false; // extender on an `&`-bearing path — direct capture can't compose it
+          return;
+        }
+        if (local !== undefined) {
+          extenderSelectors.add(String(local.valueOf()));
+        }
+        for (const ext of extendNodes) {
+          if (!extendTargetIsSimple(ext)) {
+            ok = false;
+            return;
+          }
+          if (ext.target !== undefined && ext.target !== null) {
+            targets.add(String(ext.target.valueOf()));
+          }
         }
       }
-    } else if ((isNode(child, N.AtRule) || isNode(child, N.Rules)) && treeHasExtend(child)) {
-      // Extends inside an at-rule / nested Rules wrapper (a `.a:extend(.b)` reaching INTO a
-      // `@media` subject, etc.) are NOT the flat root case — the root-child override cannot
-      // reach a nested subject. Route the whole root to eval.
+    } else if (isNode(node, N.Rules)) {
+      rules = node.rules;
+    } else if (isNode(node, N.AtRule) && 'rules' in node && Array.isArray(node.rules)) {
+      rules = node.rules;
+    }
+    if (rules) {
+      for (const child of rules) {
+        walk(child, amp);
+        if (!ok) {
+          return;
+        }
+      }
+    }
+  };
+  for (const child of root.rules) {
+    walk(child, false);
+    if (!ok) {
       return false;
     }
   }
 
-  // The selectors of root children that THEMSELVES bear an extend (extenders) — used to
-  // detect CHAINING (a target that is another extender's subject).
-  const extenderSelectors = new Set<string>();
-  for (const child of root.rules) {
-    if (isNode(child, N.Ruleset) && treeHasExtend(child)) {
-      const local = flatLocalSelector(child);
-      if (local !== undefined) {
-        extenderSelectors.add(String(local.valueOf()));
-      }
-    }
-  }
-
-  // STRICT SUBJECT CORRESPONDENCE. The flat override only rewrites ROOT-DIRECT-CHILD subject
-  // headers, so every extend TARGET must resolve to a root-child ruleset's own selector — and
-  // NOT to any deeper (nested) ruleset that would also be a subject the override misses. If a
-  // target matches no root child, or ALSO matches a nested selector, route to eval.
+  // STRICT SUBJECT CORRESPONDENCE (clauses 2 + 3). Each target must be a ROOT-LEVEL subject, not
+  // shadowed by a nested ruleset of the same selector, and not itself an extender (no chaining).
   for (const target of targets) {
-    if (!rootChildSelectors.has(target)) {
-      return false; // target's subject is not a root child (nested / cross-scope)
+    if (!rootLevelSelectors.has(target)) {
+      return false; // target's subject is nested / cross-scope — override can't reach it
     }
     if (anyNestedRulesetMatchesSelector(root, target)) {
       return false; // a deeper ruleset shares the target selector — override would miss it
     }
-    // CHAINING: a target whose subject is ITSELF an extender (`.c:extend(.b)` where
-    // `.b:extend(.a)`) needs the transitive fixpoint's cross-subject ordering — deferred to a
-    // later increment. Keep chains on the eval path (byte-identical) so increment 1 stays the
-    // simplest non-chained shape.
     if (extenderSelectors.has(target)) {
-      return false;
+      return false; // chaining — deferred to a later increment
     }
   }
   return true;
 }
 
-/** Collect the target strings of a ruleset's direct Extend/ExtendList children. */
-function collectSimpleTargets(ruleset: Ruleset, out: Set<string>): void {
-  for (const node of rulesetExtendNodes(ruleset)) {
-    if (node.target !== undefined && node.target !== null) {
-      out.add(String(node.target.valueOf()));
-    }
-  }
-}
-
 /**
  * True if any ruleset NESTED below the root's direct children has a local selector equal to
- * `selector` — i.e. a subject the flat root-child override would fail to rewrite. Walks the
+ * `selector` — i.e. a subject the root-level header override would fail to rewrite. Walks the
  * subtree of each root child (not the root children themselves).
  */
 function anyNestedRulesetMatchesSelector(root: Rules, selector: string): boolean {
@@ -431,77 +423,87 @@ function anyNestedRulesetMatchesSelector(root: Rules, selector: string): boolean
 }
 
 /**
- * Collect the Extend/ExtendList EFFECT nodes from a ruleset's DIRECT body children. `:extend`
- * (both `.b:extend(.a)` selector sugar and `&:extend(.a)` body form) lands as an invisible
- * Extend / ExtendList body child; its `runEffect` is the validated eval gather.
- */
-function collectExtendEffectNodes(ruleset: Ruleset): Extend[] {
-  return rulesetExtendNodes(ruleset);
-}
-
-/**
- * FLAT extend wire-in (P3 increment 1) — the full live path for root-direct-child subjects.
+ * SPINE extend wire-in (P3 increment 2) — the DOCUMENT-WIDE gather generalizing increment 1's
+ * flat root-child pre-scan.
  *
- * PRE-SCAN + GATHER: register the document root as the extend root (replicating the eval
- * registration `rules.ts:5417`) and, for each root-child extender ruleset, push its frame
- * onto `context.rulesetFrames` and run its Extend effects (`runEffect`, the validated gather
- * — A1) so `context.extends` is populated BEFORE any subject emits. Because the scan
- * precedes emit, `Reaching(S)` is fully known at every subject's position (§4.0), so the
- * header is final inline — no deferral (§4.4.2 degenerate; see `composeFlatSubjectHeaders`).
+ * GATHER (document-wide, eval-free, PURE STRUCTURAL). WALK the whole source tree, tracking the
+ * ancestor Selector `path` (parse-tree nodes carry no `.parent`, so the walk is the sole source
+ * of ancestry). For each Extend a ruleset bears, record a `PipelineInstruction` whose `path` is
+ * the EXTENDER's full bucket path — so a NESTED extender (`.type1 { .sidebar3 { &:extend } }`)
+ * carries `[.type1, .sidebar3]`, and EMIT's `composeContribution` composes it relative to the
+ * target → `.type1 .sidebar3` (NOT the bare `.sidebar3` the eval engine's node-graph
+ * re-derivation gets wrong — the extend-nest bug). Composing from EXPLICIT bucket paths is why
+ * this is correct WITHOUT resolving `&`/parent-composition against live frames — that is the
+ * OQ-5(B) design (placement derives from the path, not a stored own-selector / `.parent` walk).
  *
- * COMPOSE: build the per-subject header override map (`composeFlatSubjectHeaders`).
+ * Because the gather completes BEFORE any subject emits, every instruction is known at every
+ * subject's position — `Reaching(S)` is total, so the header is final inline: NO deferral
+ * (§4.4.2 degenerate), even for nested extenders (decider #2: a document-wide pre-scan sees ALL
+ * instructions, so no genuinely-later contribution exists — the ONLY exception is `&`-hoist
+ * re-bucketing, excluded by the gate via descendant-target + `&`-path exclusion).
  *
- * The caller (`renderRootViaSpine`) installs the returned map on `options.spineExtendHeaders`
- * for the emit descent, then RESTORES the extend-root/frame state. Async-safe: `runEffect`
- * can be async (an extender selector reading an async value), so the gather chains.
+ * SUBJECTS are ROOT-LEVEL only (the gate guarantees targets resolve to root-level subjects); a
+ * nested subject's header composes via the existing `&`-flow from its parent's override (§ the
+ * `extend-clearfix` `:is(...):after` case). `composeSpineSubjectHeaders` projects each.
  *
  * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.0 §4.2 §4.3 §4.4.2
  */
-export function wireFlatExtends(root: Rules, context: Context): MaybePromise<Map<Ruleset, Selector>> {
-  // Register + push the document root as the extend root (eval does this at registration;
-  // the spine skips eval, so do the minimal equivalent here). Idempotent-guarded like eval.
-  if (!context.extendRoots.root) {
-    context.extendRoots.registerRoot(root);
-  }
-  context.extendRoots.pushExtendRoot(root);
+export function wireSpineExtends(root: Rules): Map<Ruleset, Selector> {
+  const subjects: SpineSubject[] = [];
+  const instructions: PipelineInstruction[] = [];
 
-  const subjects: FlatSubject[] = [];
-  for (const child of root.rules) {
-    if (isNode(child, N.Ruleset)) {
-      const local = flatLocalSelector(child);
-      if (local !== undefined) {
-        subjects.push({ ruleset: child, localSelector: local, order: orderOf(child) });
+  // Recursive document-wide gather: descend rulesets, tracking the ancestor Selector `path`
+  // (the extender's full bucket path — parse-tree nodes carry no `.parent`, so the walk is the
+  // only source of ancestry). Collect each ruleset as a candidate subject with its path, and
+  // each Extend it bears as an instruction whose `path` is the EXTENDER's bucket path — EMIT
+  // composes that relative to the target (`[.type1, .sidebar3]` → `.type1 .sidebar3`), which is
+  // exactly why the composed contribution is correct WITHOUT relying on a pre-composed
+  // `extendWith` (the flat-only `runEffect` extendWith is bare `.sidebar3` for a nested extender).
+  const gatherRuleset = (ruleset: Ruleset, parentPath: readonly Selector[]): void => {
+    const local = flatLocalSelector(ruleset);
+    const path: readonly Selector[] = local !== undefined ? [...parentPath, local] : parentPath;
+    // SUBJECTS are ROOT-LEVEL only (the gate guarantees every target resolves to a root-level
+    // subject). A NESTED subject/target is NOT collected: its header composes from its parent's
+    // (possibly overridden) header via the existing `&`-composition flow-through — exactly how
+    // `extend-clearfix`'s `:is(.clearfix, .foo, .bar):after` falls out of the `.clearfix` header
+    // override with NO nested-subject machinery. (EXTENDERS, by contrast, ARE gathered at any
+    // depth below — that is the document-wide widening this increment adds.)
+    if (local !== undefined && parentPath.length === 0) {
+      subjects.push({ ruleset, path, order: orderOf(ruleset) });
+    }
+    for (const ext of rulesetExtendNodes(ruleset)) {
+      const rawTarget = ext.target;
+      if (rawTarget === undefined || rawTarget === null || path.length === 0) {
+        continue;
       }
+      const target = typeof rawTarget === 'string' || Array.isArray(rawTarget)
+        ? asExtendSelectorNode(rawTarget)
+        : rawTarget;
+      instructions.push({
+        target,
+        // `extendWith` (SOLVE local-apply) is the extender's OWN local selector; `path` (EMIT
+        // compose-relative-to-target) is the full ancestor chain — EMIT owns the composition.
+        extendWith: local ?? target,
+        partial: ext.flag === ExtendFlag.All,
+        path: [...path],
+        order: orderOf(ruleset)
+      });
     }
-  }
-
-  // GATHER: run each extender's effects with its frame live so `runEffect` composes the
-  // extender selector against the correct parent (the flagged frame-composition risk).
-  const gatherChild = (i: number): MaybePromise<void> => {
-    if (i >= subjects.length) {
-      return undefined;
-    }
-    const ruleset = subjects[i]!.ruleset;
-    const effects = collectExtendEffectNodes(ruleset);
-    if (effects.length === 0) {
-      return gatherChild(i + 1);
-    }
-    context.rulesetFrames.push(ruleset);
-    const done = gatherExtenderInstructions(context, effects);
-    const pop = (): MaybePromise<void> => {
-      context.rulesetFrames.pop();
-      return gatherChild(i + 1);
-    };
-    return isThenable(done) ? done.then(pop) : pop();
+    descendChildren(ruleset.rules, path);
   };
 
-  const finish = (): Map<Ruleset, Selector> => {
-    context.extendRoots.popExtendRoot();
-    return composeFlatSubjectHeaders(context, subjects);
+  const descendChildren = (children: readonly Node[], path: readonly Selector[]): void => {
+    for (const child of children) {
+      if (isNode(child, N.Ruleset)) {
+        gatherRuleset(child, path);
+      }
+      // At-rules / nested Rules bearing extends are excluded by the eligibility gate, so no
+      // descent into them (defensive omission; the gate guarantees none reach us).
+    }
   };
 
-  const gathered = gatherChild(0);
-  return isThenable(gathered) ? gathered.then(finish) : finish();
+  descendChildren(root.rules, []);
+  return composeSpineSubjectHeaders(subjects, instructions);
 }
 
 /** Document order of a ruleset = its source span start offset (matches the extend tuple's docOrder). */

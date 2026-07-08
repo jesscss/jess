@@ -144,6 +144,45 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toContain('font-weight: bold');
   });
 
+  it('P3 increment 2: a NESTED EXTENDER composes as its BUCKET PATH through the spine (`.type1 .sidebar3`)', async () => {
+    // The document-wide gather (increment 2) descends nested rulesets, so a NESTED extender
+    // (`.type1 { .sidebar3 { &:extend(.sidebar all) } }`) contributes its COMPOSED form
+    // `.type1 .sidebar3` — NOT the bare `.sidebar3` the eval engine emits (the extend-nest bug).
+    // This is the pipeline's designed fix, now live through the Compiler. The SUBJECT `.sidebar`
+    // is root-level; the widening is that the EXTENDER may be nested.
+    const compiler = makeCompiler();
+    const src = `.sidebar {\n  width: 300px;\n}\n.sidebar2 {\n  &:extend(.sidebar all);\n  background: blue;\n}\n.type1 {\n  .sidebar3 {\n    &:extend(.sidebar all);\n    background: green;\n  }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // The subject `.sidebar` gained the nested extender's COMPOSED form, not the bare fragment.
+      expect(css).toContain('.type1 .sidebar3');
+      expect(css).toMatch(/\.sidebar,\n\.sidebar2,\n\.type1 \.sidebar3 \{/);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('P3 increment 2: an `&`-bearing nested extender (`&.sidebar4`) STAYS on eval (needs frame `&`-resolution)', async () => {
+    // A `.type2 { &.sidebar4 { &:extend(.sidebar all) } }` extender's local `&.sidebar4` needs
+    // frame `&`-resolution the direct bucket-path capture does not do — excluded by the gate,
+    // stays on eval (byte-identical). A later increment resolves `&` on the gather path.
+    const compiler = makeCompiler();
+    const src = `.sidebar {\n  width: 300px;\n}\n.type2 {\n  &.sidebar4 {\n    &:extend(.sidebar all);\n    background: red;\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (amp-extender excluded)
+    expect(css).toContain('.sidebar');
+  });
+
   it('routes ROOT-ONLY wrap+emit at-rules through the spine on the COMPILER path (no eval two-walk)', async () => {
     // Broadened coverage: a root that is a `@font-face` / `@keyframes` / `@page`
     // wrap+emit at-rule now renders LIVE through the spine in production, byte-

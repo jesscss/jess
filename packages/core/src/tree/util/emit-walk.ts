@@ -40,7 +40,7 @@ import { Ruleset } from '../ruleset.js';
 import type { AtRule } from '../at-rule.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './print.js';
-import { engageExtendLayer, isFlatExtendTopology, wireFlatExtends } from '../extend/spine-extend.js';
+import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends } from '../extend/spine-extend.js';
 import type { Selector } from '../selector.js';
 
 /**
@@ -409,7 +409,7 @@ function isSpineEligibleContainer(node: Node, allowExtend = false): boolean {
   // Extend-bearing selectors stay on the eval path UNLESS the FLAT extend topology is
   // engaged (P3 increment 1): a root-direct-child extender's `:extend` is gathered by the
   // pre-scan and its subject header composed as an override. `allowExtend` is threaded ONLY
-  // for the flat root case (`isFlatExtendTopology` guarantees no NESTED extend), so a nested
+  // for the flat root case (`isSpineExtendTopology` guarantees no NESTED extend), so a nested
   // extend still falls to the eval path.
   if (!allowExtend && Ruleset.hasExtendedTopLevelSelector(ruleset.selector)) {
     return false;
@@ -1055,7 +1055,7 @@ export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   // subjects/extenders (no nested extend) is spine-eligible — the pre-scan gathers and the
   // subject header is composed as an override. `allowExtend` admits the extend-bearing root
   // children + their ExtendList effect nodes. A NON-flat extend shape stays on the eval path.
-  const allowExtend = engageExtendLayer(root) && isFlatExtendTopology(root);
+  const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root);
   return isSpineEligibleBody(root.rules, allowExtend);
 }
 
@@ -1215,10 +1215,10 @@ export function renderRootViaSpine(
   // child) topology is wired below (P3 increment 1): a pre-scan gathers instructions,
   // composes each subject's final Or-branch header, and installs it as a render-local
   // override. A NON-flat extend shape is kept OFF the spine by `isSpineEligibleRoot`
-  // (`isFlatExtendTopology`), so reaching this with a non-flat shape is a fail-loud
+  // (`isSpineExtendTopology`), so reaching this with a non-flat shape is a fail-loud
   // invariant breach — the streaming descent cannot apply nested extends.
   const extendEngaged = engageExtendLayer(root);
-  if (extendEngaged && !isFlatExtendTopology(root)) {
+  if (extendEngaged && !isSpineExtendTopology(root)) {
     throw new Error(
       'spine extend: non-flat topology reached renderRootViaSpine (P3 increment 1 handles root-direct-child only)'
     );
@@ -1296,23 +1296,18 @@ export function renderRootViaSpine(
     }
     return isThenable(step) ? step.then(finish, fail) : finish(step);
   };
-  // EXTEND (P3 increment 1, flat topology). Pre-scan + gather + compose the per-subject
-  // header overrides BEFORE the body descent, so `Reaching(S)` is fully known at every
-  // subject's emit position (§4.0 → header final inline, no deferral). The override map is
-  // installed on `options.spineExtendHeaders`, which `Ruleset.effectiveHeaderSelector`
-  // consults so a subject emits its composed Or-branch header. Async-safe: gather chains.
+  // EXTEND (P3, document-wide gather). Gather every `:extend` instruction with its extender
+  // BUCKET PATH + compose the per-subject header overrides BEFORE the body descent, so
+  // `Reaching(S)` is fully known at every subject's emit position (§4.0 → header final inline,
+  // no deferral, even for nested extenders). The override map is installed on
+  // `options.spineExtendHeaders`, which `Ruleset.effectiveHeaderSelector` consults so a subject
+  // emits its composed Or-branch header. Pure structural (selector-graph) — synchronous.
   if (extendEngaged) {
-    let headers: MaybePromise<Map<Ruleset, Selector>>;
     try {
-      headers = wireFlatExtends(root, context);
+      options.spineExtendHeaders = wireSpineExtends(root);
     } catch (error) {
       return fail(error);
     }
-    const install = (map: Map<Ruleset, Selector>): MaybePromise<string> => {
-      options.spineExtendHeaders = map;
-      return descend();
-    };
-    return isThenable(headers) ? headers.then(install, fail) : install(headers);
   }
   return descend();
 }
