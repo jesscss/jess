@@ -73,6 +73,10 @@ export class Any<
     this.addFlag(F_ALLOW_ROOT);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
   override prepareRegistration(_context: Context): this {
     this.registrationPrepared = true;
     return this;

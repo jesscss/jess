@@ -26,6 +26,22 @@ import { BitSetLibrary } from './tree/util/bitset.js';
 import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
 
+/**
+ * The single-pass EMIT visitor contract (design §6.1/§6.6). `enter` receives the
+ * RESOLVED output node and either returns VOID (inspect / invisibly-annotate — the
+ * node is emitted unchanged) or returns a NEW node (an output-affecting REPLACE —
+ * a fresh transient serialized in place, never mutating the shared canonical node
+ * in a byte-/reuse-affecting way, §6.4). No `ctx`, no frame — the node is already
+ * resolved. `exit` (optional) fires after the node's children, kept solely for the
+ * `inline-urls` enter/exit proof (§6.6).
+ */
+export type SpineVisitorEnter = (node: Node) => Node | void;
+export type SpineVisitorExit = (node: Node) => void;
+export interface SpineVisitor {
+  enter: SpineVisitorEnter;
+  exit?: SpineVisitorExit;
+}
+
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 
@@ -368,6 +384,32 @@ export class Context {
 
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
+
+  /**
+   * Generic single-pass EMIT visitors (design §6). An ordered, initially-EMPTY
+   * list of `(node) => Node | void` hooks (with an optional `exit`) the spine
+   * fires at each resolved output node's emit moment. The list being empty is
+   * the ZERO-COST common case (§6.5 / §4.0-style gate): the spine checks
+   * `spineVisitors === undefined` and skips all hook machinery. `node` is the
+   * RESOLVED output node — no ctx, no frame (§6, decision table). Native Jess
+   * visitors and the less-compat bridge (registered only when ≥1 real Less
+   * visitor exists — NOT built here) coexist as plain list entries; core owns no
+   * chaining / REMOVE / ABORT / per-type dispatch.
+   *
+   * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §6.
+   */
+  spineVisitors?: SpineVisitor[];
+
+  /**
+   * Append a generic EMIT visitor (design §6.5). Deterministic registration
+   * order; the pass threads each node through `enter` (`shape = enter(shape) ??
+   * shape`) and fires `exit` (if registered) after the node's children. No
+   * auto-registration — the list stays undefined (zero-cost) until a caller
+   * registers.
+   */
+  registerSpineVisitor(enter: SpineVisitorEnter, options?: { exit?: SpineVisitorExit }): void {
+    (this.spineVisitors ??= []).push({ enter, exit: options?.exit });
+  }
 
   /**
    * Depth-first document order of each Ruleset (assigned once per root before eval).

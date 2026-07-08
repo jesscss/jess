@@ -28,6 +28,10 @@ export class Bool extends Node<boolean> {
     this.addFlag(F_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
   override compare(other: Node): 0 | 1 | -1 | undefined {
     if (other instanceof Bool) {
       return this.value === other.value ? 0 : undefined;

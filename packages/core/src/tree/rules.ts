@@ -33,6 +33,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
+import { isSpineEligibleRoot, renderRootViaSpine } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -66,7 +67,8 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText
+  writeRenderText,
+  writeRenderTextResult
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -90,7 +92,6 @@ const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
-type FlagLikeNode = { hasFlag(flag: number): boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 type RulesRenderContextSnapshot = {
   rulesContext: Context['rulesContext'];
@@ -653,11 +654,11 @@ function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && (error as PathResolutionError)._isPathResolutionError === true;
 }
 
-function hasFlagMethod(value: unknown): value is FlagLikeNode {
+function hasStaticNameMethod(value: unknown): value is { hasStaticName(): boolean } {
   return typeof value === 'object'
     && value !== null
-    && 'hasFlag' in value
-    && typeof value.hasFlag === 'function';
+    && 'hasStaticName' in value
+    && typeof (value as { hasStaticName?: unknown }).hasStaticName === 'function';
 }
 
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
@@ -1009,6 +1010,7 @@ const R_DERIVED_STATE_MASK =
  * hidden class. No dynamic attach / `Object.assign` / `defineProperty` / `delete`.
  */
 class RulesLookupState {
+  varsByName: Map<string, BindingEntry[]> | undefined = undefined;
   functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
   callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined = undefined;
@@ -1026,6 +1028,7 @@ class RulesLookupState {
   callableLookupVersion = 0;
   functionLookupVersion = 0;
   declarationLookupVersion = 0;
+  lookupVersion = 0;
 }
 
 export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
@@ -1034,7 +1037,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   readonly rules: Node[];
 
   /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
-  varsByName: Map<string, BindingEntry[]> | undefined;
+  get varsByName(): Map<string, BindingEntry[]> | undefined {
+    return this._lookup?.varsByName;
+  }
+
+  set varsByName(value: Map<string, BindingEntry[]> | undefined) {
+    this.ensureLookup().varsByName = value;
+  }
+
   /**
    * Cold callable/function/child-rule lookup state (see `RulesLookupState`). One
    * slot instead of ~12 eager fields; lazily allocated on first WRITE by
@@ -1194,7 +1204,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this.ensureLookup().directDeclarationLookupCache = value;
   }
 
-  lookupVersion = 0;
+  get lookupVersion(): number {
+    return this._lookup?.lookupVersion ?? 0;
+  }
+
+  set lookupVersion(value: number) {
+    this.ensureLookup().lookupVersion = value;
+  }
 
   get declarationLookupVersion(): number {
     return this._lookup?.declarationLookupVersion ?? 0;
@@ -1357,6 +1373,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     delete json._lookup;
     const lookup = this._lookup;
     if (lookup) {
+      json.varsByName = lookup.varsByName;
       json.functionsByName = lookup.functionsByName;
       json.functionLookupVersion = lookup.functionLookupVersion;
       json.functionLookupVersionsByName = lookup.functionLookupVersionsByName;
@@ -1366,6 +1383,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       json.declarationLookupVersion = lookup.declarationLookupVersion;
       json.declarationLookupVersionsByName = lookup.declarationLookupVersionsByName;
       json.callableLookupVersion = lookup.callableLookupVersion;
+      json.lookupVersion = lookup.lookupVersion;
     }
     return json;
   }
@@ -1443,12 +1461,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ? new Map(source.functionLookupVersionsByName)
         : undefined;
     }
-    this.varsByName = undefined;
     // Clear all child-derived surface bits + _hasExtends/_hasReferenceImports in
     // one masked write. Deliberately leaves _bodyEvaluated and _registrationPrepared
     // untouched, matching the prior per-field resets (which did not reset those).
     this.rulesFlags &= ~R_DERIVED_STATE_MASK;
-    this.lookupVersion = 0;
+    if (this._lookup) {
+      this._lookup.varsByName = undefined;
+      this._lookup.lookupVersion = 0;
+    }
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
@@ -4351,8 +4371,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return result;
   }
 
-  pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
-
   constructor(
     value: Node[],
     options?: RulesOptions & NodeOptions,
@@ -4777,6 +4795,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // the old separate eval pre-pass existed — so no second eval is needed.
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     const preSerializeRoot = sourceWasRoot ? printOptions?.preSerializeRoot : undefined;
+    // Single-pass spine (P1): a spine-eligible root is rendered by ONE downward
+    // descent of the source tree with the live value-frame threaded — no eval
+    // pass, no `state.output` tree, no separate serialize walk. This REPLACES
+    // the two-walk below for that shape; the eval→output-tree→serialize path is
+    // not entered for it. (`preSerializeRoot` is a post-eval visitor hook — a
+    // spine-eligible leaf-only root has no such consumer here; P2 folds the
+    // visitor hook into the pass generically.)
+    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context)) {
+      const prepared = prepareRenderPrintState(context, printOptions);
+      const rendered = renderRootViaSpine(this, context, prepared);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderTextResult(bufferOrOptions, rendered)
+        : rendered;
+    }
     const serialize = (state: RulesRenderState): MaybePromise<string> => {
       checkValidNodes(state.output?.rules, context, sourceWasRoot);
       return isRenderBuffer(bufferOrOptions)
@@ -5548,11 +5580,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   /**
-   * Helper to check if a value is static (either a Node with F_STATIC flag or a primitive value)
+   * Does a name/path value resolve to a fixed identifier at construction time?
+   * A primitive (bare string) always does; a name/path Node answers from its own
+   * structure (`hasStaticName`) rather than the bubbled `F_STATIC` flag.
    */
   private _isStatic(value: unknown): boolean {
-    if (hasFlagMethod(value)) {
-      return value.hasFlag(F_STATIC);
+    if (hasStaticNameMethod(value)) {
+      return value.hasStaticName();
     }
     // Primitive values (strings, numbers, etc.) are considered static
     return true;
@@ -5666,9 +5700,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (node.registrationPrepared) {
         return true;
       }
-      // Check F_STATIC flag for other selector types.
-      if (hasFlagMethod(selector)) {
-        return selector.hasFlag(F_STATIC);
+      // Other selector types (Interpolated/Ampersand/Attribute/Pseudo): ask the
+      // selector whether its identity is fixed at construction, from structure.
+      if (hasStaticNameMethod(selector)) {
+        return selector.hasStaticName();
       }
       return false;
     }

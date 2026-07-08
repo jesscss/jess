@@ -1582,6 +1582,10 @@ export class Call extends Node<CallValue, CallOptions> {
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
+  }
+
   override toTrimmedString(rawOptions?: PrintOptions) {
     const options = getPrintOptions(rawOptions);
     const w = options.writer!;

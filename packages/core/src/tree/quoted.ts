@@ -80,6 +80,14 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     }
   }
 
+  override hasStaticName(): boolean {
+    return typeof this.value === 'string' && !this.escaped;
+  }
+
+  protected override ownStaticFlag(): number {
+    return typeof this.value === 'string' && !this.escaped ? F_STATIC : F_NON_STATIC;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     return this.renderQuotedSyntax(this.value, options);
   }

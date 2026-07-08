@@ -1,7 +1,7 @@
 import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
-import { F_STATIC } from '../node.js';
 import type { List } from '../list.js';
+import { isConstantGuard } from './callable-guard-constant.js';
 import type { Rules } from '../rules.js';
 import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
 import type { CallableEntry } from './callable-entry.js';
@@ -69,7 +69,7 @@ export async function executeCallableCandidate({
   let usesPreboundParamGuardOuterRules = false;
 
   if (candidateParams || paramBindings.length > 0) {
-    const needsOuterRules = Boolean(candidateGuard && !candidateGuard.hasFlag(F_STATIC));
+    const needsOuterRules = Boolean(candidateGuard && !isConstantGuard(candidateGuard));
     if (needsOuterRules) {
       outerRules = ensureCallableOuterRulesSurface({
         currentOuterRules: outerRules,

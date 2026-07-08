@@ -315,6 +315,20 @@ replaced with constructor-set fields — reference.ts never got the memo.
   per definition); lower priority but convert for consistency.
 - `logger.ts:13` — cold, ignore.
 
+### ⛔ HARD BUDGET (owner) — ≤5 CLASS-UNIQUE FIELDS PER NODE TYPE
+**Every node class gets a budget of at most 5 instance fields UNIQUE TO THAT CLASS** — i.e. fields the class declares
+BEYOND what its parent already carries (base `Node`/`Rules` fields don't count against the subclass; they count
+against the class that FIRST declares them). This is a hard ceiling, not a style nit: a class over budget is a bug to
+fix. When a class exceeds 5 class-unique fields, collapse the overflow by (in preference order): pack booleans into
+ONE class-local flags int; make derivable state a **getter** (compute, don't store); move cold/rare fields into a
+**lazy sub-struct** allocated only when first used; split into a lean **subtype** that carries only its kind's fields;
+or **drop** it. Never a WeakMap side-table (the provenance regression proved side-tables are strictly worse).
+**`Rules`/`Ruleset` is the flagship violator and the reason for this rule** — even after the `rulesFlags` pack
+(own-key 42→32) it is many times over budget; its field sprawl is the "nonsense" this budget exists to end. Drive it
+(and every class) under 5 class-unique fields. **A change that pushes a class over budget does not land without an
+explicit subtype/lazy-struct justification.** Track class-unique field count per node type as a first-class metric
+(alongside total own-key) in `SLIM_NODES_AUDIT.md`.
+
 ### ⛔ STANDING PERF RULE — SLIM NODES (minimize node shape; performance is the driver)
 Every field on a node is paid per-instance: memory + construction cost + a slot on the hidden class + a bigger
 object to GC. Keep node shapes **AS LEAN AS POSSIBLE.** Prefer **type specialization** — distinct lean node

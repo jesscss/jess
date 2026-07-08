@@ -8,13 +8,16 @@
  * we skip the byte-compare and record the frontier), never a silent delegation.
  */
 import { describe, it, expect } from 'vitest';
-import { el, sel, sellist, compound, is, co, pseudo, type Selector } from '../../../index.js';
+import { el, sel, sellist, compound, is, co, pseudo, amp, type Selector } from '../../../index.js';
+import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../../util/extend.js';
 import { extendByIndexOwn, UNSUPPORTED } from '../extend-index.js';
 
 const not = (arg: Selector): Selector => pseudo({ name: ':not', arg }) as unknown as Selector;
 const where = (arg: Selector): Selector => pseudo({ name: ':where', arg }) as unknown as Selector;
 const has = (arg: Selector): Selector => pseudo({ name: ':has', arg }) as unknown as Selector;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ampWith = (selector: any): any => Ampersand.create({ selectorContainer: { selector } });
 
 /** Hardcoded-pin helper: assert own-engine output is EXACTLY `expected` (independent of oracle). */
 function pin(
@@ -651,6 +654,170 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     });
     it('div+.a.c.b>.y.x find .a.b>.x ext (.d,.e) → div+:is(.a.c.b>.y.x,.d,.e) (list flattens into :is arg)', () => {
       pin(sel([el('div'), co('+'), compound([el('.a'), el('.c'), el('.b')]), co('>'), compound([el('.y'), el('.x')])]), sel([compound([el('.a'), el('.b')]), co('>'), el('.x')]), sellist([el('.d'), el('.e')]), true, 'div+:is(.a.c.b>.y.x,.d,.e)');
+    });
+  });
+
+  // RUNG 8 — closed by the full-corpus sweep (differential vs the oracle over the whole reachable
+  // extend suite). Each case is a real divergence the sweep surfaced; the fix is pinned here.
+  describe('16. full-corpus sweep (rung 8)', () => {
+    // FULL-mode append DEDUPES: extendWith already a target branch → no duplicate OR-branch.
+    it('.base,.child f .base e .child → .base,.child (dedup, no dup branch)', () => {
+      pin(sellist([sel([el('.base')]), sel([el('.child')])]), el('.base'), el('.child'), false, '.base,.child');
+    });
+    it('.x,.y,.z f .z e .x → .x,.y,.z (dedup, .x already present)', () => {
+      pin(sellist([sel([el('.x')]), sel([el('.y')]), sel([el('.z')])]), el('.z'), el('.x'), false, '.x,.y,.z');
+    });
+    it('.w f .w e .w → .w (FULL self-extend no-op)', () => {
+      pin(sel([el('.w')]), el('.w'), el('.w'), false, '.w');
+    });
+    it('.btn:hover f .btn:hover e .btn:hover → .btn:hover (FULL self-extend no-op)', () => {
+      pin(sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), false, '.btn:hover');
+    });
+    // Control: extendWith NOT present → append fires normally.
+    it('.a,.b f .b e .c → .a,.b,.c (control, append fires)', () => {
+      pin(sellist([sel([el('.a')]), sel([el('.b')])]), el('.b'), el('.c'), false, '.a,.b,.c');
+    });
+
+    // DUP-FIND multiset: `.e.e` (2 atoms, 1 sym) needs the target to carry `.e` twice.
+    it('.e f .e.e e .dbl FULL → NOT_FOUND (target has one .e, find needs two)', () => {
+      pin(sel([el('.e')]), compound([el('.e'), el('.e')]), el('.dbl'), false, 'NOT_FOUND');
+    });
+    it('.e f .e.e e .dbl PARTIAL → NOT_FOUND', () => {
+      pin(sel([el('.e')]), compound([el('.e'), el('.e')]), el('.dbl'), true, 'NOT_FOUND');
+    });
+    it('.e.e f .e.e e .dbl FULL → .e.e,.dbl (target supplies both .e)', () => {
+      pin(compound([el('.e'), el('.e')]), compound([el('.e'), el('.e')]), el('.dbl'), false, '.e.e,.dbl');
+    });
+
+    // FULL-mode bare-`:is` graft appends ONLY when it is the WHOLE selector.
+    it(':is(.dd,.ee) f .dd e .ff FULL → :is(.dd,.ee,.ff) (whole selector → append)', () => {
+      pin(sel([is(sellist([sel([el('.dd')]), sel([el('.ee')])]))]), el('.dd'), el('.ff'), false, ':is(.dd,.ee,.ff)');
+    });
+    it('.aa :is(.dd,.ee) f .dd e .ff FULL → .aa :is(.dd,.ee) (graft not whole selector → unchanged)', () => {
+      pin(sel([el('.aa'), co(' '), is(sellist([sel([el('.dd')]), sel([el('.ee')])]))]), el('.dd'), el('.ff'), false, '.aa :is(.dd,.ee)');
+    });
+    it('.aa :is(.dd,.ee) f .dd e .ff PARTIAL → .aa :is(.dd,.ee,.ff) (partial still wraps)', () => {
+      pin(sel([el('.aa'), co(' '), is(sellist([sel([el('.dd')]), sel([el('.ee')])]))]), el('.dd'), el('.ff'), true, '.aa :is(.dd,.ee,.ff)');
+    });
+
+    // Single-arm `:is` with a MULTI-compound arm is kept wrapped on a full through-match.
+    it('d :is(.b .c) f .b .c e .a FULL → d :is(.b .c) (multi-compound arm not unwrapped)', () => {
+      pin(sel([el('d'), co(' '), is(sellist([sel([el('.b'), co(' '), el('.c')])]))]), sel([el('.b'), co(' '), el('.c')]), el('.a'), false, 'd :is(.b .c)');
+    });
+
+    // Graft target, find matches NOTHING → NOT_FOUND (not the unchanged target).
+    it(':is(.foo,.bar) .baz f .aa FULL → NOT_FOUND (no match anywhere)', () => {
+      pin(sel([is(sellist([sel([el('.foo')]), sel([el('.bar')])])), co(' '), el('.baz')]), el('.aa'), el('.cc'), false, 'NOT_FOUND');
+    });
+
+    // Element/ID conflict → UNSUPPORTED (fail-loud; own engine does not build conflict validation).
+    it('a.info f .info e div.foo PARTIAL → UNSUPPORTED (element conflict)', () => {
+      pin(compound([el('a'), el('.info')]), el('.info'), compound([el('div'), el('.foo')]), true, 'UNSUPPORTED');
+    });
+    it('#main.info f .info e #other.foo PARTIAL → UNSUPPORTED (id conflict)', () => {
+      pin(compound([el('#main'), el('.info')]), el('.info'), compound([el('#other'), el('.foo')]), true, 'UNSUPPORTED');
+    });
+    // Control: same element type → no conflict, wrap builds.
+    it('a.info f .info e a.foo PARTIAL → a:is(.info,a.foo) (same element, no conflict)', () => {
+      pin(compound([el('a'), el('.info')]), el('.info'), compound([el('a'), el('.foo')]), true, 'a:is(.info,a.foo)');
+    });
+
+    // Exact-mode cartesian de-distribution (oracle compacts to :is()) → UNSUPPORTED (not built).
+    it('.a .b,.a .d,.c .b f .c .b e .c .d FULL → UNSUPPORTED (cartesian de-distribution)', () => {
+      pin(sellist([sel([el('.a'), co(' '), el('.b')]), sel([el('.a'), co(' '), el('.d')]), sel([el('.c'), co(' '), el('.b')])]), sel([el('.c'), co(' '), el('.b')]), sel([el('.c'), co(' '), el('.d')]), false, 'UNSUPPORTED');
+    });
+
+    // Graft arm with an INTERNAL non-space combinator → UNSUPPORTED (flatten not built).
+    it(':is(.p+.q) .r f .p .r e .x FULL → UNSUPPORTED (arm has + combinator)', () => {
+      pin(sel([is(sellist([sel([el('.p'), co('+'), el('.q')])])), co(' '), el('.r')]), sel([el('.p'), co(' '), el('.r')]), el('.x'), false, 'UNSUPPORTED');
+    });
+  });
+
+  // RUNG 9 residuals — the last own-engine UNSUPPORTED-with-oracle-output classes the rung-8 sweep
+  // enumerated (reached only from synthetic unit tests, never a real render). Each derived from the
+  // oracle on the exact sweep tuples + hardcode-pinned. See EXTEND-INDEX-DESIGN.md rung 9.
+  describe('17. rung-9 residual classes', () => {
+    // (1) DISTINCT-PARENT `&&` passenger — two amps with DIFFERENT resolved parents in one compound.
+    // A CHILD-ONLY match (find confined to the compound's genuinely-child atom, disjoint from every
+    // resolved parent) is order-independent: recurse the resolved form (parents ride as passengers,
+    // spliced AT their `&` positions so order is faithful). Any parent contact → NOT_FOUND.
+    const ampAmp = (): Selector => compound([ampWith(compound([el('.foo'), el('.bar')])), ampWith(el('.baz')), el('.suffix')]);
+    it('&(.foo.bar)&(.baz).suffix f .suffix e .extended PARTIAL → .foo.bar.baz:is(.suffix,.extended)', () => {
+      pin(ampAmp(), el('.suffix'), el('.extended'), true, '.foo.bar.baz:is(.suffix,.extended)');
+    });
+    it('&(.foo.bar)&(.baz).suffix f .suffix e .extended FULL → .foo.bar.baz.suffix (subset → unchanged)', () => {
+      pin(ampAmp(), el('.suffix'), el('.extended'), false, '.foo.bar.baz.suffix');
+    });
+    it('&(.foo.bar)&(.baz).suffix f .baz e .extended PARTIAL → NOT_FOUND (parent-only)', () => {
+      pin(ampAmp(), el('.baz'), el('.extended'), true, 'NOT_FOUND');
+    });
+    it('&(.foo.bar)&(.baz).suffix f .foo e .extended PARTIAL → NOT_FOUND (parent-only)', () => {
+      pin(ampAmp(), el('.foo'), el('.extended'), true, 'NOT_FOUND');
+    });
+    it('&(.foo.bar)&(.baz).suffix f .foo.suffix e .extended PARTIAL → NOT_FOUND (crossing)', () => {
+      pin(ampAmp(), compound([el('.foo'), el('.suffix')]), el('.extended'), true, 'NOT_FOUND');
+    });
+
+    // (2) FIND-SIDE GRAFT, WHOLE-SELECTOR match — a find carrying a `:where`/`:not`/`:has`/multi-arm
+    // `:is` graft equal to a whole target branch → append extendWith (deduped). Single-arm `:is`
+    // (needs the oracle's unwrap on output) and non-whole-branch shapes stay UNSUPPORTED (unreached).
+    it(':where(.a) f :where(.a) e .b FULL → :where(.a),.b (the reachable sweep tuple)', () => {
+      pin(where(el('.a')), where(el('.a')), el('.b'), false, ':where(.a),.b');
+    });
+    it(':where(.a) f :where(.a) e .b PARTIAL → :where(.a),.b (whole-match append in both modes)', () => {
+      pin(where(el('.a')), where(el('.a')), el('.b'), true, ':where(.a),.b');
+    });
+    it(':where(.a,.b) f :where(.a,.b) e .c FULL → :where(.a,.b),.c (multi-arm)', () => {
+      pin(where(sellist([el('.a'), el('.b')])), where(sellist([el('.a'), el('.b')])), el('.c'), false, ':where(.a,.b),.c');
+    });
+    it('.a:not(.b) f .a:not(.b) e .c FULL → .a:not(.b),.c', () => {
+      pin(compound([el('.a'), not(el('.b'))]), compound([el('.a'), not(el('.b'))]), el('.c'), false, '.a:not(.b),.c');
+    });
+    it(':is(.b,.d) f :is(.b,.d) e .c FULL → :is(.b,.d),.c (multi-arm is, no unwrap)', () => {
+      pin(is(sellist([el('.b'), el('.d')])), is(sellist([el('.b'), el('.d')])), el('.c'), false, ':is(.b,.d),.c');
+    });
+    it(':where(.a) f :where(.a) e :where(.a) FULL → :where(.a) (self-extend dedupes)', () => {
+      pin(where(el('.a')), where(el('.a')), where(el('.a')), false, ':where(.a)');
+    });
+    it('.a:is(.b) f .a:is(.b) e .c FULL → UNSUPPORTED (single-arm :is unwrap not built)', () => {
+      pin(compound([el('.a'), is(sellist([el('.b')]))]), compound([el('.a'), is(sellist([el('.b')]))]), el('.c'), false, 'UNSUPPORTED');
+    });
+
+    // (3) MULTI-GRAFT-IN-BOTH-SLOTS, find wholly absent → definite NOT_FOUND (find sym absent from the
+    // target's full sym superset). Was UNSUPPORTED (multi-graft fail-loud); now the correct NOT_FOUND.
+    it(':is(.a,.b) :is(.p,.q) f .x .y e .d PARTIAL → NOT_FOUND (find absent everywhere)', () => {
+      pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), is(sellist([el('.p'), el('.q')]))]), sel([el('.x'), co(' '), el('.y')]), el('.d'), true, 'NOT_FOUND');
+    });
+  });
+
+  describe('18. rung-6 FIND-SIDE `&` (resolve the find amp, then extend the plain find)', () => {
+    // A find carrying `&` is resolved the same way a `&` TARGET is: an UNRESOLVED amp matches no
+    // concrete compound (oracle NOT_FOUND); a RESOLVED amp becomes a plain find the engine builds.
+    it('UNRESOLVED &.x find, .a.x target FULL → NOT_FOUND (bare & matches nothing)', () => {
+      pin(compound([el('.a'), el('.x')]), compound([amp(), el('.x')]), el('.y'), false, 'NOT_FOUND');
+    });
+    it('UNRESOLVED &.x find, .a.x target PARTIAL → NOT_FOUND', () => {
+      pin(compound([el('.a'), el('.x')]), compound([amp(), el('.x')]), el('.y'), true, 'NOT_FOUND');
+    });
+    it('UNRESOLVED "& .foo" descendant find → NOT_FOUND', () => {
+      pin(sel([el('.p'), co(' '), el('.foo')]), sel([amp(), co(' '), el('.foo')]), el('.y'), true, 'NOT_FOUND');
+    });
+    it('UNRESOLVED bare & find → NOT_FOUND', () => {
+      pin(el('.a'), amp(), el('.y'), true, 'NOT_FOUND');
+    });
+    it('RESOLVED &.x (&=.foo), .foo.x target FULL → .foo.x,.y (resolves to .foo.x, matches, appends)', () => {
+      pin(compound([el('.foo'), el('.x')]), compound([ampWith(el('.foo')), el('.x')]), el('.y'), false, '.foo.x,.y');
+    });
+    it('RESOLVED &.x (&=.foo), .foo.x target PARTIAL → .foo.x,.y', () => {
+      pin(compound([el('.foo'), el('.x')]), compound([ampWith(el('.foo')), el('.x')]), el('.y'), true, '.foo.x,.y');
+    });
+    it('RESOLVED &.x (&=.foo), .bar.x target PARTIAL → NOT_FOUND (resolved .foo.x absent)', () => {
+      pin(compound([el('.bar'), el('.x')]), compound([ampWith(el('.foo')), el('.x')]), el('.y'), true, 'NOT_FOUND');
+    });
+    // Byte-identical to the oracle across the same shapes.
+    it('resolved &-find agrees with oracle (differential)', () => {
+      same(() => ({ target: compound([el('.foo'), el('.x')]), find: compound([ampWith(el('.foo')), el('.x')]), extendWith: el('.y'), partial: false }));
+      same(() => ({ target: compound([el('.foo'), el('.x')]), find: compound([ampWith(el('.foo')), el('.x')]), extendWith: el('.y'), partial: true }));
     });
   });
 });

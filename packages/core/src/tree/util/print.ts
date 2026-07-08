@@ -4,6 +4,7 @@ import type { TriviaMap, Trivia } from '../../types/index.js';
 import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
+import type { Nil } from '../nil.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type PrintOptions = {
@@ -43,12 +44,57 @@ export type PrintOptions = {
   /** Render-local override for one at-rule body during direct render. */
   atRuleBodyNode?: AtRule;
   atRuleBodyOverride?: import('../rules.js').Rules;
+  /**
+   * Spine-mode selector override (P1 §2, OQ-A). When `spineSelectorNode === this`
+   * ruleset, its header composes from `spineSelector` — the selector resolved
+   * (`selector.eval`) against the live value-frame at ruleset-enter — instead of
+   * the raw authored `this.selector`. This is how INTERPOLATED selectors
+   * (`[data=@{attr}]`, `.@{name}`) reach their CONCRETE form in the single pass,
+   * and is the OQ-A prerequisite: extend sees the resolved selector. It is a
+   * transient render-local override (a resolved selector is OUTPUT-AFFECTING, so
+   * per the loosened canonical-mutation invariant it must NOT live on the shared
+   * canonical node) mirroring the `atRuleHeaderPrelude` pattern.
+   */
+  spineSelectorNode?: Ruleset;
+  spineSelector?: Selector | Nil;
+  /**
+   * Spine-mode at-rule marker (P1 §4/§7). When `spineAtRuleNode === this` at-rule,
+   * its value-frame has already been pushed by `serializeSpineFrameAtRule` and its
+   * prelude resolved-at-enter (handed to the header via the existing
+   * `atRuleHeaderNode`/`atRuleHeaderPrelude` override). Doubles as the re-entry
+   * guard so the spine setup runs once per at-rule, then the descent proceeds.
+   */
+  spineAtRuleNode?: AtRule;
+  /**
+   * Spine-mode `+:`/`+_:` merge plan for the CURRENT body (P1). Keyed by source
+   * declaration: a `suppress` entry emits nothing; an `anchor` entry emits the
+   * coalesced value. Built at body-enter by `planBodyMerges`; consulted by the
+   * leaf resolver. Undefined when the body has no merge-flagged declarations
+   * (the common case pays nothing).
+   */
+  spineMergePlan?: import('./spine-merge.js').SpineMergePlan;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
   emittedTrivia?: Set<Trivia>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
   sourceMap?: boolean;
+  /**
+   * Single-pass spine mode (P1, UNIFIED-EVAL-EMIT §2). When set, the container
+   * serializer descends the SOURCE tree with the live value-frame threaded and
+   * resolves each leaf against that frame at emit time — instead of reading a
+   * pre-evaluated output tree. This REPLACES the eval→output-tree→serialize
+   * two-walk on the wired path (no eval() call, no `state.output`); it is not a
+   * dual path — the eval path only runs for shapes the spine does not yet cover.
+   *
+   * Async discipline (§2): leaf resolution is SYNC by default. It bails to an
+   * async continuation ONLY when `eval` returns a genuine thenable (an async
+   * import result / JS function / reference to an async value) — reactively, via
+   * `isThenable`, never a pre-scan/flag to predetermine async-ness (that was
+   * `F_MAY_ASYNC`, deleted) and never a speculative `awaitable-pipe` await. So a
+   * `calc()`/`Operation` whose subtree is fully sync pays ZERO async cost.
+   */
+  spineMode?: boolean;
   /** Output syntax target, e.g. 'jess' for Jess canonical output. */
   syntax?: string;
   /** Jess conversion options for rewriting import paths during serialization. */

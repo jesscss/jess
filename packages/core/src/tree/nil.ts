@@ -48,6 +48,10 @@ export class Nil extends Node<''> {
     this.removeFlag(F_VISIBLE);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
   override toTrimmedString() {
     return '';
   }

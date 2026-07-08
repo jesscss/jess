@@ -31,6 +31,10 @@ export class BasicSelector extends SimpleSelector<string> {
     this.addFlag(F_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
   get isClass() {
     return /^\./.test(this.value);
   }

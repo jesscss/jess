@@ -198,6 +198,10 @@ export class Interpolated<
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
+  }
+
   override valueOf(): string {
     return this.source;
   }

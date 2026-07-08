@@ -38,6 +38,10 @@ export class Expression extends Node<Node> {
     this.addFlag(F_NON_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
     const out = this.value.eval(context);
     /** @todo - Cast as selector if the context is within a selector */

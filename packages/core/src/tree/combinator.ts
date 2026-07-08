@@ -31,6 +31,10 @@ export class Combinator extends Selector<Combinators> {
     this.addFlag(F_STATIC);
   }
 
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
   override resolve(context: Context): MaybePromise<Node> {
     return this.evalNode(context);
   }

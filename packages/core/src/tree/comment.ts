@@ -35,6 +35,10 @@ export class Comment extends Node<string, CommentOptions> {
     }
   }
 
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
+  }
+
   override resolve(_context: Context): this {
     return this;
   }

@@ -257,6 +257,30 @@ function reachableSyms(c: IrCompound): Set<number> {
 }
 
 /**
+ * SUPERSET of every simple-id sym anywhere in a seq, INCLUDING inside every graft arg
+ * (`:is`/`:not`/`:where`/`:has`) and resolved amp parent, recursively. Unlike `reachableSyms`
+ * (which is match-precise — only `:is`/amp cross), this is a coarse OVER-approximation used ONLY
+ * as a sound NOT_FOUND fast-reject: a find sym absent from this superset cannot possibly match.
+ */
+function allSymsInSeq(seq: IrSeq, out: Set<number>): void {
+  for (const step of seq) {
+    for (const a of step.compound.atoms) {
+      if (a.kind === 'id') {
+        out.add(a.sym);
+      } else if (a.kind === 'is') {
+        for (const br of a.sel.branches) {
+          allSymsInSeq(br, out);
+        }
+      } else if (a.kind === 'amp' && a.resolved) {
+        for (const br of a.resolved.branches) {
+          allSymsInSeq(br, out);
+        }
+      }
+    }
+  }
+}
+
+/**
  * ── DISCOVERY RESULT ──────────────────────────────────────────────────────
  * The index reports what it discovered; the reused rewrite decides the exact
  * output shape.
@@ -388,7 +412,31 @@ function compoundSubset(find: IrCompound, target: IrCompound): boolean {
   if (compoundHasConstructorAtom(find)) {
     return false;
   }
-  // Target-side `:is()`/`&` are grafted via reachableSyms (the :is() seam).
+  // When BOTH compounds are plain (no `:is`/`&` graft), containment is MULTISET: a find atom that
+  // repeats (`.e.e`) needs the target to carry it at least as many times. The oracle treats an
+  // internal find duplicate as multiset (`.e` find `.e.e` → NOT_FOUND; `.e.e` find `.e.e` → match).
+  // A pure set test would let `.e.e` "match" `.e`, producing a spurious location.
+  if (!compoundHasConstructorAtom(target)) {
+    const targetCounts = new Map<number, number>();
+    for (const a of target.atoms) {
+      if (a.kind === 'id') {
+        targetCounts.set(a.sym, (targetCounts.get(a.sym) ?? 0) + 1);
+      }
+    }
+    const findCounts = new Map<number, number>();
+    for (const a of find.atoms) {
+      if (a.kind === 'id') {
+        findCounts.set(a.sym, (findCounts.get(a.sym) ?? 0) + 1);
+      }
+    }
+    for (const [s, n] of findCounts) {
+      if ((targetCounts.get(s) ?? 0) < n) {
+        return false;
+      }
+    }
+    return true;
+  }
+  // Target-side `:is()`/`&` are grafted via reachableSyms (the :is() seam) — set-based reach.
   const available = reachableSyms(target);
   for (const s of find.syms) {
     if (!available.has(s)) {
@@ -503,8 +551,14 @@ function resolvedFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq 
           mergedSyms.add(a.sym);
         }
       }
+      // Splice the parent-tail atoms AT the amp's original position (not prepended): the atoms
+      // written LEFT of `&` stay left, those written RIGHT stay right. This keeps distinct-parent
+      // `&&` order faithful (`&(.foo.bar)&(.baz).suffix` → `.foo.bar` then `.baz` then `.suffix`,
+      // NOT `.baz.foo.bar…`). syms are order-free so they're unaffected by the splice position.
+      const before = seq[i]!.compound.atoms.slice(0, at.atom);
+      const after = seq[i]!.compound.atoms.slice(at.atom + 1);
       const merged: IrCompound = {
-        atoms: [...parentTail.compound.atoms, ...otherAtoms],
+        atoms: [...before, ...parentTail.compound.atoms, ...after],
         syms: mergedSyms,
         node: seq[i]!.compound.node,
         raw: seq[i]!.compound.raw
@@ -721,6 +775,56 @@ function hasGraftTarget(target: Selector, _find: Selector): boolean {
   return nodeHasPseudoWithSelectorArg(target);
 }
 
+/** Collect lowercase element-type and id values from a selector subtree (BasicSelector leaves). */
+function collectTagsAndIds(node: unknown, tags: Set<string>, ids: Set<string>): void {
+  if (typeof node === 'string' || node === null || node === undefined) {
+    return;
+  }
+  if (isNode(node, N.BasicSelector)) {
+    const b = node as { isTag?: boolean; isId?: boolean; value: string };
+    if (b.isTag) {
+      tags.add(b.value.toLowerCase());
+    }
+    if (b.isId) {
+      ids.add(b.value);
+    }
+    return;
+  }
+  const container = node as { value?: unknown; arg?: unknown };
+  if (Array.isArray(container.value)) {
+    for (const child of container.value) {
+      collectTagsAndIds(child, tags, ids);
+    }
+  } else if (container.value !== undefined) {
+    collectTagsAndIds(container.value, tags, ids);
+  }
+}
+
+/**
+ * Whether a partial `:is`-wrap of `find` inside `target` with `extendWith` would trip the oracle's
+ * element/id conflict validation (`ELEMENT_CONFLICT`/`ID_CONFLICT`). Conservative: fires only when
+ * `extendWith` itself carries a tag or id (the oracle's own `extendWithNeedsConflictValidation`
+ * precondition) AND the combined tag/id set of the matched target compounds + extendWith would hold
+ * more than one distinct element type or id. The own engine does not build the conflict-validated
+ * output, so a hit routes to UNSUPPORTED (never a wrong `:is(.info,div.foo)`).
+ */
+function partialWrapMayConflict(target: Selector, find: Selector, extendWith: Selector): boolean {
+  const extTags = new Set<string>();
+  const extIds = new Set<string>();
+  collectTagsAndIds(extendWith, extTags, extIds);
+  if (extTags.size === 0 && extIds.size === 0) {
+    return false; // extendWith has no element/id → no conflict possible (matches oracle precondition)
+  }
+  // Combined element/id set across the whole target + extendWith. If wrapping would place >1
+  // distinct element or >1 distinct id into one compound context, the oracle refuses.
+  const tags = new Set(extTags);
+  const ids = new Set(extIds);
+  collectTagsAndIds(target, tags, ids);
+  // Conservative gate: conflict when the combined context would hold >1 distinct element type or id.
+  void find;
+  return tags.size > 1 || ids.size > 1;
+}
+
 function nodeHasPseudoWithSelectorArg(node: unknown): boolean {
   if (typeof node === 'string' || node === null || node === undefined) {
     return false;
@@ -745,6 +849,84 @@ function nodeHasPseudoWithSelectorArg(node: unknown): boolean {
     }
   }
   return false;
+}
+
+/** True when a selector subtree carries a single-arm `:is(...)` (one branch) — the shape the oracle
+ * UNWRAPS on a whole-selector append (`.a:is(.b)` → `.a.b`). We do not build that unwrap → fail-loud. */
+function nodeHasSingleArmIs(node: unknown): boolean {
+  if (typeof node === 'string' || node === null || node === undefined) {
+    return false;
+  }
+  if (isNode(node, N.PseudoSelector)) {
+    const p = node as PseudoSelector;
+    if (p.name === ':is' && p.arg && isSelectorNode(p.arg)) {
+      const arg = p.arg;
+      const branchCount = isNode(arg, N.SelectorList) ? arg.value.length : 1;
+      if (branchCount === 1) {
+        return true;
+      }
+    }
+  }
+  const container = node as { value?: unknown };
+  const val = container.value;
+  if (Array.isArray(val)) {
+    for (const child of val) {
+      if (nodeHasSingleArmIs(child)) {
+        return true;
+      }
+    }
+  } else if (val !== undefined && typeof val !== 'string' && nodeHasSingleArmIs(val)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * FIND-SIDE GRAFT, WHOLE-SELECTOR match. A find carrying a `:where`/`:not`/`:has`/`:is` graft that
+ * structurally EQUALS a whole target OR-branch → append extendWith after all branches (deduped),
+ * every original branch emitted verbatim. Byte-identical to the oracle on the reachable shape
+ * (`:where(.a)` f `:where(.a)` e `.b` → `:where(.a),.b`; self-extend dedupes).
+ *
+ * Returns null (defer to the caller's UNSUPPORTED gate) when NOT a clean whole-branch match — a proper
+ * subset (`:where(.a).c` f `:where(.a)`), a partial-wrap, or a target branch that carries a single-arm
+ * `:is` needing the oracle's unwrap on output (`.a:is(.b)` → `.a.b`, not built → never a wrong
+ * non-unwrapped `.a:is(.b),.c`).
+ */
+function extendFindSideGraftWholeMatch(
+  targetSel: Selector,
+  find: Selector,
+  extendWith: Selector
+): Selector | Selector[] | UnsupportedResult | null {
+  const branches: Selector[] = isNode(targetSel, N.SelectorList)
+    ? (targetSel.value.map(v => (typeof v === 'string' ? wrapString(v) : (v as Selector))) as Selector[])
+    : [targetSel];
+  const findStr = String(find.valueOf());
+  let anyMatch = false;
+  for (const b of branches) {
+    if (String(b.valueOf()) === findStr) {
+      anyMatch = true;
+      // The matched branch would need the oracle's single-arm-`:is` unwrap on output → not built.
+      if (nodeHasSingleArmIs(b)) {
+        return UNSUPPORTED;
+      }
+    }
+  }
+  if (!anyMatch) {
+    // Not a whole-branch match (proper subset / partial-wrap / wholly absent) — defer to the caller's
+    // UNSUPPORTED gate rather than guess NOT_FOUND vs a subset-wrap the own engine does not build.
+    return null;
+  }
+  const extendBranches = extendWithBranches(extendWith);
+  const out: Selector[] = [...branches];
+  const present = new Set(out.map(b => String(b.valueOf())));
+  for (const eb of extendBranches) {
+    const k = String(eb.valueOf());
+    if (!present.has(k)) {
+      out.push(eb);
+      present.add(k);
+    }
+  }
+  return out.length === 1 ? out[0]! : sellist(out);
 }
 
 /* ============================================================================
@@ -1009,7 +1191,15 @@ function buildPartialBranch(
     // find `.z` → both `.z` compounds become `:is(.z, …)`; `.foo.foo` find `.foo` → each `.foo`
     // atom slot wrapped).
     const matchStarts = new Set(m.starts);
-    const findSyms = find[0]!.compound.syms;
+    const findCompound = find[0]!.compound;
+    const findSyms = findCompound.syms;
+    // A find compound with an INTERNAL duplicate atom (`.e.e`: 2 atoms, 1 sym) must wrap the two
+    // matched slots as ONE `:is(.e.e, ext)` (oracle: `.e.e.x` f `.e.e` → `:is(.e.e,.dbl).x`), not
+    // one `:is` per slot. The own engine doesn't build the contiguous multi-occurrence wrap — gate
+    // to UNSUPPORTED (fail-loud). Unreached by the real corpus; a wrong per-slot wrap would be worse.
+    if (findCompound.atoms.length > findSyms.size) {
+      return UNSUPPORTED;
+    }
     for (let i = 0; i < targetSeq.length; i++) {
       const step = targetSeq[i]!;
       if (i > 0) {
@@ -1369,7 +1559,8 @@ function buildGraftCompound(
   findSyms: Set<number>,
   find: Selector,
   extendWith: Selector,
-  partial: boolean
+  partial: boolean,
+  wholeSelector: boolean
 ): Selector | MatchedUnchanged | MatchedFullAppend | null | UnsupportedResult {
   const atoms = compoundStep.compound.atoms;
   const plainSyms = new Set<number>();
@@ -1468,9 +1659,10 @@ function buildGraftCompound(
     return null; // no graft hosts the find
   }
 
+  // FULL mode, find reaches a graft INSIDE a larger compound (`.x:is(.a,.b)` find `.a`) → the graft
+  // reach was verified above (hostIdx via reachableSymsOfGraft), so this is a genuine subset match,
+  // not full → the compound stays unchanged.
   if (!partial && !isBareCompound) {
-    // FULL mode, find only reaches a graft inside a larger compound → subset match, not full →
-    // unchanged (e.g. `.x:is(.a,.b)` find `.a` full → `.x:is(.a,.b)`).
     return MATCHED_UNCHANGED;
   }
 
@@ -1480,7 +1672,14 @@ function buildGraftCompound(
     return UNSUPPORTED;
   }
   if (rebuilt === null) {
-    return null;
+    return null; // the find does not actually match inside the bare graft → no match
+  }
+  // FULL mode, bare `:is` graft that is only ONE compound of a MULTI-compound seq (`.aa :is(.dd,.ee)`
+  // / `.aa>:is(.dd,.ee)` find `.dd`): the find reaches the graft (rebuilt is non-null) but it is NOT
+  // the whole selector, so a FULL match cannot fire — the compound stays unchanged; only PARTIAL
+  // wraps it in place. A bare `:is` that IS the whole selector (`:is(.dd,.ee)` f `.dd`) appends below.
+  if (!partial && !wholeSelector) {
+    return MATCHED_UNCHANGED;
   }
   // Reassemble the compound with the rewritten graft in place.
   if (isBareCompound) {
@@ -1723,7 +1922,7 @@ function buildGraftBranch(
       rebuiltParts.push(makeCombinator(step.comb));
     }
     const built = compoundHasGraftAtom(step.compound)
-      ? buildGraftCompound(step, findSyms, find, extendWith, partial)
+      ? buildGraftCompound(step, findSyms, find, extendWith, partial, targetSeq.length === 1)
       : matchPlainCompound(step, findSyms, find, extendWith, partial);
     if (built === UNSUPPORTED) {
       return UNSUPPORTED;
@@ -1888,6 +2087,23 @@ function tryMultiGraftExpand(
     return null; // single-compound find is not this rung
   }
 
+  // DEFINITE NOT_FOUND: if any find sym is absent from the target's FULL sym superset (everything,
+  // including inside every graft arg), the find cannot match ANYWHERE — return NOT_FOUND soundly
+  // instead of the multi-graft fail-loud below. This turns the multi-graft-both-slots absent-find
+  // shape (`:is(.foo,…) :is(.bar,…)` f `.ext8 .ext9`, oracle NOT_FOUND) from UNSUPPORTED into the
+  // correct NOT_FOUND, WITHOUT needing the expand-then-fail machinery (the find isn't in the corpus).
+  const targetAllSyms = new Set<number>();
+  for (const tb of irTarget.branches) {
+    allSymsInSeq(tb, targetAllSyms);
+  }
+  const findReqSyms = new Set<number>();
+  allSymsInSeq(findSeq, findReqSyms);
+  for (const fs of findReqSyms) {
+    if (!targetAllSyms.has(fs)) {
+      return 'NOT_FOUND';
+    }
+  }
+
   // Decide whether ANY branch needs expansion. A branch qualifies when it carries a bare-`:is`
   // compound AND the find does not clean-whole-span-full match it (rung 4 owns that shape).
   let anyExpand = false;
@@ -1895,6 +2111,7 @@ function tryMultiGraftExpand(
   // extendWith once (like rung 4). A SINGLE-arm `:is(.a)` expands to one plain branch and behaves
   // exactly like plain `.a` — no through-graft append (`.x :is(.a) .c` f `.a .c` FULL → `.x .a .c`).
   let anyMultiArmGraft = false;
+  let anyMultiCompoundArm = false;
   const expandedBranches: IrSeq[] = [];
   for (const tb of irTarget.branches) {
     const bareIs = bareIsStepIndices(tb);
@@ -1917,8 +2134,27 @@ function tryMultiGraftExpand(
     }
     anyExpand = true;
     const graftAtom = tb[bareIs[0]!]!.compound.atoms[0] as Extract<Atom, { kind: 'is' }>;
+    // A graft arm with an INTERNAL non-space combinator (`.c.replace+.replace`, `a>.foo`) is not
+    // spliced correctly by the own expand+flatten machinery (rung 5 handles only space-combinator
+    // arms). The oracle produces a full boundary-cross flatten (`:is(.replace.replace,.c.replace+
+    // .replace) .replace` f `.replace.replace .replace` → nested `:is`); the own engine over-expands.
+    // Gate to UNSUPPORTED (fail-loud) — this is a reachable residual (extend-exact fixture).
+    for (const br of graftAtom.sel.branches) {
+      for (let bi = 1; bi < br.length; bi++) {
+        const c = br[bi]!.comb;
+        if (c !== '' && c !== ' ') {
+          return UNSUPPORTED;
+        }
+      }
+    }
     if (graftAtom.sel.branches.length >= 2) {
       anyMultiArmGraft = true;
+    }
+    // A single-arm `:is` whose sole arm is a MULTI-compound complex selector (`:is(.b .c)`) is NOT
+    // unwrapped by the oracle on a full through-match (`d :is(.b .c)` f `.b .c` FULL → unchanged),
+    // unlike a single-compound arm (`:is(.a)` → plain `.a`, which the oracle unwraps).
+    if (graftAtom.sel.branches.some(br => br.length >= 2)) {
+      anyMultiCompoundArm = true;
     }
     for (const eb of expandBareIsStep(tb, bareIs[0]!)) {
       expandedBranches.push(eb);
@@ -1955,8 +2191,23 @@ function tryMultiGraftExpand(
     return 'NOT_FOUND';
   }
   // A single-arm `:is(.a)` expansion is plain `.a`: full mode leaves it unchanged (no through-graft
-  // append). Only a multi-arm graft crossing yields the append.
+  // append). Only a multi-arm graft crossing yields the append. If the probe produced NO effective
+  // change (the expanded form is byte-identical to itself, i.e. the find matched only a proper
+  // suffix/substring), return the ORIGINAL target — the oracle keeps the authored `:is` wrapper
+  // (`d :is(.b .c)` f `.b .c` FULL → `d :is(.b .c)`, NOT the unwrapped `d .b .c`).
   if (!anyMultiArmGraft) {
+    // A single-arm `:is` with a MULTI-compound arm (`d :is(.b .c)`) is kept wrapped when the find
+    // matched only a proper suffix/substring (no effective rewrite) — the oracle does not unwrap it.
+    // A single-COMPOUND arm (`.x :is(.a) .c`) IS unwrapped to plain (`.x .a .c`) — return the probe.
+    if (anyMultiCompoundArm) {
+      const probeStr = Array.isArray(probe)
+        ? probe.map(p => String(p.valueOf())).join(',')
+        : String((probe as Selector).valueOf());
+      const expandedStr = String(expandedList.valueOf());
+      if (probeStr === expandedStr) {
+        return targetSel;
+      }
+    }
     return probe;
   }
   const out: Selector[] = [...expandedBranches.map(seqToSelector), ...extendWithBranches(extendWith)];
@@ -2087,10 +2338,9 @@ function branchHasGraft(seq: IrSeq): boolean {
  * SCOPE (fail-loud → UNSUPPORTED, never a guessed NOT_FOUND):
  *   • single-branch subject + a single resolved amp with a single-branch parent (`resolvedFormSeq`
  *     returns null / cls 'none' otherwise — list-parent grafts, amp-in-`:is()`, OR subjects);
- *   • the subject must NOT lead with a combinator (`> &.child`): a leading-combinator relative
- *     subject takes the oracle's `shouldSkipRelativePartialBoundary` in-place path
- *     (`>:is(.parent.child,.new)` — keeps the combinator, wraps rather than appends), which the
- *     plain resolved-form recursion drops — left UNSUPPORTED for a future rung.
+ *   • a subject leading with a combinator (`> &.child`) is a NESTED RELATIVE rule — handled by the
+ *     rung-7 `extendRelativeAmpersandTarget` (combinator-preserving in-place `:is`-wrap), NOT the
+ *     plain resolved-form recursion (which drops the combinator + uses the wrong wrap-span).
  */
 
 /** Serialize a lifted seq that carries NO amp atoms back to a Selector, reusing authored nodes. */
@@ -2179,6 +2429,394 @@ function subjectLeadsWithCombinator(subject: Selector): boolean {
   return isCombinator(first) || isNode(first, N.Combinator);
 }
 
+/* ============================================================================
+ * LEADING-COMBINATOR RELATIVE `&` OWN-CONSTRUCTION (rung 7)
+ * ============================================================================
+ * A NESTED RELATIVE rule (`.parent { > &.child {} }`) composes post-eval to a ComplexSelector
+ * whose FIRST component is a combinator (`> &.child`). The oracle takes its
+ * `shouldSkipRelativePartialBoundary` path (extend.ts:1594): re-target onto the amp-RESOLVED
+ * form (`replaceAmpersandWithItsValue`, KEEPING the leading combinator) and run the normal
+ * in-place wrap — NOT the rung-6 plain resolved-form recursion (which drops the combinator and
+ * uses the wrong wrap-span). So this is its own construction.
+ *
+ * DERIVED RULE (differential-probed against the oracle on reachable parse-shaped inputs; every
+ * shape hardcode-pinned in corpus-ampersand-cases.test.ts):
+ *
+ * Let the amp sit in `ampCompound`; `parentAtoms` = the amp's resolved (single-branch) atoms,
+ * `childAtoms` = the OTHER atoms of `ampCompound`. The resolved seq keeps the leading combinator.
+ *
+ *   • NOT_FOUND gate (both modes) — a match confined to the parent portion of an EMBEDDED amp
+ *     (`ampCompound` also carries child atoms):
+ *       - find touches SOME but not ALL parentAtoms (proper-subset-of-parent), OR
+ *       - find is a SIMPLE selector consuming exactly all parentAtoms with no child atom.
+ *     (A lone amp — its own compound, no child atoms fused in — has NO parent gate: `.parent`
+ *      there is a plain step, so `> & .b` f `.parent` → `>:is(.parent,.x) .b`, not NOT_FOUND.)
+ *   • FULL mode (not gated) → the resolved form UNCHANGED (a relative selector is never a whole
+ *     selector to append to: `> &.child` f `.parent.child` FULL → `>.parent.child`).
+ *   • PARTIAL mode (not gated) → in-place `:is`-wrap on the resolved form, wrap span by match kind:
+ *       - whole-selector span (find spans every step) → wrap the whole seq (minus leading comb):
+ *         `> & .b` f `.parent .b` → `>:is(.parent .b,.x)`.
+ *       - single simple find matching ONE atom → wrap that atom in place:
+ *         `> &.child` f `.child` → `>.parent:is(.child,.new)`.
+ *       - find EQUALS the amp's resolved value (matches the amp as a unit) → wrap the parentAtoms
+ *         in place: `> &(.p1.p2).c` f `.p1.p2` → `>:is(.p1.p2,.new).c`.
+ *       - any other compound find matching within one compound → wrap the WHOLE compound:
+ *         `> &.child` f `.parent.child` → `>:is(.parent.child,.new)`.
+ *
+ * SCOPE (fail-loud → UNSUPPORTED): single-branch subject; single-branch amp parent; the amp's
+ * whole compound is `parentAtoms ∪ childAtoms` with no OTHER graft atom; the find carries no
+ * constructor atom (already gated by the caller). Anything else → UNSUPPORTED.
+ */
+
+interface ResolvedAtom {
+  atom: Atom;
+  origin: 'parent' | 'child';
+}
+interface ResolvedRelStep {
+  comb: string;
+  atoms: ResolvedAtom[];
+}
+
+/**
+ * Build the resolved seq of a leading-combinator relative subject with per-atom parent/child
+ * origin, KEEPING the leading combinator. The amp (single-branch parent) is spliced at its
+ * position: a lone-amp head step becomes the parent's steps (parent-origin); an embedded amp
+ * merges the parent's LAST compound into `ampCompound` (parent atoms first, then the compound's
+ * OWN atoms as child) with the parent's earlier steps prepended. Returns null for shapes not
+ * modeled here (multi-branch parent, amp not in the head step, other graft atoms in the amp
+ * compound) so the caller fails loud.
+ */
+function resolvedRelSeq(
+  subjectSeq: IrSeq,
+  at: { step: number; atom: number }
+): ResolvedRelStep[] | null {
+  const ampAtom = subjectSeq[at.step]!.compound.atoms[at.atom]!;
+  if (ampAtom.kind !== 'amp' || !ampAtom.resolved || ampAtom.resolved.branches.length !== 1) {
+    return null;
+  }
+  // The amp must be in the HEAD step of a leading-combinator subject (`> &.child` / `> & .b`).
+  if (at.step !== 0) {
+    return null;
+  }
+  const ampCompound = subjectSeq[0]!.compound;
+  const otherAtoms = ampCompound.atoms.filter((_, j) => j !== at.atom);
+  // Only plain-id child atoms are modeled (no nested graft fused with the amp).
+  if (otherAtoms.some(a => a.kind !== 'id')) {
+    return null;
+  }
+  const parent = ampAtom.resolved.branches[0]!;
+  // The parent itself must be graft-free (plain compounds/combinators) to reason about origins.
+  for (const ps of parent) {
+    if (ps.compound.atoms.some(a => a.kind !== 'id')) {
+      return null;
+    }
+  }
+  const leadComb = subjectSeq[0]!.comb;
+  const out: ResolvedRelStep[] = [];
+  if (otherAtoms.length === 0) {
+    // Lone amp head step: parent's steps take the amp's position; parent's head keeps leadComb.
+    for (let p = 0; p < parent.length; p++) {
+      const ps = parent[p]!;
+      out.push({
+        comb: p === 0 ? leadComb : ps.comb,
+        atoms: ps.compound.atoms.map(a => ({ atom: a, origin: 'parent' as const }))
+      });
+    }
+  } else {
+    // Embedded amp: parent's earlier steps prepend (leadComb on the very first); the parent's
+    // LAST compound merges with the amp compound's OWN atoms (parent-origin first, child after).
+    for (let p = 0; p < parent.length - 1; p++) {
+      const ps = parent[p]!;
+      out.push({
+        comb: p === 0 ? leadComb : ps.comb,
+        atoms: ps.compound.atoms.map(a => ({ atom: a, origin: 'parent' as const }))
+      });
+    }
+    const parentTail = parent[parent.length - 1]!;
+    const mergedAtoms: ResolvedAtom[] = [
+      ...parentTail.compound.atoms.map(a => ({ atom: a, origin: 'parent' as const })),
+      ...otherAtoms.map(a => ({ atom: a, origin: 'child' as const }))
+    ];
+    out.push({ comb: parent.length === 1 ? leadComb : parentTail.comb, atoms: mergedAtoms });
+  }
+  // The remaining subject steps (after the amp head step) are all child material.
+  for (let i = 1; i < subjectSeq.length; i++) {
+    const step = subjectSeq[i]!;
+    out.push({ comb: step.comb, atoms: step.compound.atoms.map(a => ({ atom: a, origin: 'child' as const })) });
+  }
+  return out;
+}
+
+/** Serialize a ResolvedRelStep list to a plain Selector (reusing authored atom nodes). */
+function relSeqToSelector(steps: ResolvedRelStep[]): Selector {
+  const parts: (Selector | string)[] = [];
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]!;
+    if (i === 0) {
+      if (step.comb !== '') {
+        parts.push(makeCombinator(step.comb));
+      }
+    } else {
+      parts.push(makeCombinator(step.comb));
+    }
+    parts.push(relCompoundNode(step.atoms));
+  }
+  return sel(parts as ComplexSelectorComponent[]);
+}
+
+/** A compound Selector rebuilt from resolved atoms (reused nodes); single atom stays bare. */
+function relCompoundNode(atoms: ResolvedAtom[]): Selector | string {
+  const parts: (Selector | string)[] = atoms.map(ra =>
+    ra.atom.kind === 'id' ? ra.atom.node : (ra.atom.node as Selector)
+  );
+  if (parts.length === 1) {
+    return parts[0]!;
+  }
+  return compound(parts as Parameters<typeof compound>[0]);
+}
+
+/** IrCompound view of a resolved step's atoms (for subset matching). */
+function relStepCompound(step: ResolvedRelStep): IrCompound {
+  const symSet = new Set<number>();
+  for (const ra of step.atoms) {
+    if (ra.atom.kind === 'id') {
+      symSet.add(ra.atom.sym);
+    }
+  }
+  return { atoms: step.atoms.map(r => r.atom), syms: symSet, node: '', raw: '' };
+}
+
+/**
+ * Own construction for the leading-combinator relative-`&` case. Assumes the caller has verified
+ * a single-branch subject leading with a combinator and a single resolved amp in the head step.
+ */
+function extendRelativeAmpersandTarget(
+  subjectSeq: IrSeq,
+  at: { step: number; atom: number },
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean,
+  syms: SymbolTable
+): Selector | Selector[] | 'NOT_FOUND' | UnsupportedResult {
+  const resolved = resolvedRelSeq(subjectSeq, at);
+  if (!resolved) {
+    return UNSUPPORTED;
+  }
+  const irFind = liftSel(find, syms);
+  if (irFind.branches.length !== 1) {
+    return UNSUPPORTED; // OR-find with relative `&` — not modeled
+  }
+  const findSeq = irFind.branches[0]!;
+  const resolvedIr: IrSeq = resolved.map(s => ({ comb: s.comb, compound: relStepCompound(s) }));
+
+  // The find must match the resolved form at all (else the oracle NOT_FOUNDs before the amp path).
+  if (!matchSeqInSeq(resolvedIr, findSeq)) {
+    return 'NOT_FOUND';
+  }
+
+  const findIsSimple = isNode(find, N.SimpleSelector);
+  const findSyms = new Set<number>();
+  for (const step of findSeq) {
+    for (const s of step.compound.syms) {
+      findSyms.add(s);
+    }
+  }
+
+  // Parent gate: only for the EMBEDDED amp head step (parent+child fused in one compound). Find the
+  // head step's parent atoms + whether the head step carries child atoms.
+  const headStep = resolved[embeddedHeadIndex(resolved)];
+  if (headStep) {
+    const parentSyms = new Set<number>();
+    let headHasChild = false;
+    for (const ra of headStep.atoms) {
+      if (ra.atom.kind === 'id') {
+        if (ra.origin === 'parent') {
+          parentSyms.add(ra.atom.sym);
+        } else {
+          headHasChild = true;
+        }
+      }
+    }
+    if (headHasChild && parentSyms.size > 0) {
+      const touched = [...parentSyms].filter(s => findSyms.has(s));
+      const touchesSome = touched.length > 0;
+      const touchesAll = touched.length === parentSyms.size;
+      // find cuts into parent partially → parent-only / partial-parent → NOT_FOUND.
+      if (touchesSome && !touchesAll) {
+        return 'NOT_FOUND';
+      }
+      // simple find consuming exactly all parent atoms, no child → parent-only → NOT_FOUND.
+      const childSymsInFind = [...findSyms].some(s => !parentSyms.has(s));
+      if (findIsSimple && touchesAll && !childSymsInFind) {
+        return 'NOT_FOUND';
+      }
+    }
+  }
+
+  // FULL mode (not gated): the resolved form is returned UNCHANGED.
+  if (!partial) {
+    return relSeqToSelector(resolved);
+  }
+
+  // PARTIAL mode: in-place `:is`-wrap, span by match kind.
+  return buildRelativeWrap(resolved, resolvedIr, findSeq, find, findIsSimple, extendWith);
+}
+
+/** Index of the head step that fuses parent + child atoms (the embedded amp step), else -1. */
+function embeddedHeadIndex(resolved: ResolvedRelStep[]): number {
+  for (let i = 0; i < resolved.length; i++) {
+    const s = resolved[i]!;
+    const hasParent = s.atoms.some(ra => ra.origin === 'parent');
+    const hasChild = s.atoms.some(ra => ra.origin === 'child');
+    if (hasParent && hasChild) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Build the partial in-place `:is`-wrap for the relative-`&` resolved form, keeping the leading
+ * combinator. Wrap-span rules are derived from the oracle (see the block comment above).
+ */
+function buildRelativeWrap(
+  resolved: ResolvedRelStep[],
+  resolvedIr: IrSeq,
+  findSeq: IrSeq,
+  find: Selector,
+  findIsSimple: boolean,
+  extendWith: Selector
+): Selector | UnsupportedResult {
+  const extendBranches = extendWithBranches(extendWith);
+  const P = findSeq.length;
+
+  // MULTI-STEP WHOLE-SELECTOR span: a multi-compound find spanning EVERY resolved step → wrap the
+  // whole seq (minus leading comb). A single-compound seq never takes this path (it uses the
+  // per-compound wrap-kind logic below, which distinguishes atom-in-place from whole-compound).
+  if (P >= 2 && P === resolvedIr.length && matchSeqInSeq(resolvedIr, findSeq)) {
+    const whole = relSeqToSelectorNoLead(resolved);
+    const wrapped = is(sellist([whole, ...extendBranches]));
+    return prefixLeadingComb(resolved[0]!.comb, wrapped);
+  }
+
+  // SINGLE-COMPOUND find: locate the compound it matches, wrap by kind.
+  if (P === 1) {
+    const findComp = findSeq[0]!.compound;
+    // Find the resolved step whose compound the find is a subset of.
+    for (let i = 0; i < resolvedIr.length; i++) {
+      if (!compoundSubset(findComp, resolvedIr[i]!.compound)) {
+        continue;
+      }
+      const step = resolved[i]!;
+      // find EQUALS the amp's parent value → wrap the parent atoms in place.
+      const parentAtoms = step.atoms.filter(ra => ra.origin === 'parent');
+      const parentSyms = new Set(parentAtoms.filter(ra => ra.atom.kind === 'id').map(ra => (ra.atom as { sym: number }).sym));
+      const findMatchesParentExactly = parentAtoms.length > 0
+        && findComp.syms.size === parentSyms.size
+        && [...findComp.syms].every(s => parentSyms.has(s));
+      if (findIsSimple && findComp.syms.size === 1) {
+        // Wrap the single matched atom in place.
+        return buildRelStepWrapAtoms(resolved, i, ra => findComp.syms.has(atomSym(ra)), extendBranches);
+      }
+      if (findMatchesParentExactly && step.atoms.some(ra => ra.origin === 'child')) {
+        // Wrap the parent atoms in place, keep child atoms outside.
+        return buildRelStepWrapAtoms(resolved, i, ra => ra.origin === 'parent', extendBranches);
+      }
+      // Otherwise wrap the WHOLE compound in place.
+      return buildRelStepWrapAtoms(resolved, i, () => true, extendBranches);
+    }
+    return UNSUPPORTED;
+  }
+
+  // Multi-compound proper-substring span within a longer relative seq is not built here.
+  return UNSUPPORTED;
+}
+
+function atomSym(ra: ResolvedAtom): number {
+  return ra.atom.kind === 'id' ? (ra.atom as { sym: number }).sym : -1;
+}
+
+/** Serialize the resolved seq WITHOUT its leading combinator (for the whole-selector `:is` arg). */
+function relSeqToSelectorNoLead(resolved: ResolvedRelStep[]): Selector {
+  const stripped = resolved.map((s, i) => (i === 0 ? { comb: '', atoms: s.atoms } : s));
+  return relSeqToSelector(stripped);
+}
+
+/** Prefix a leading combinator onto a wrapped `:is` compound as a relative ComplexSelector. */
+function prefixLeadingComb(comb: string, wrapped: Selector): Selector {
+  if (comb === '') {
+    return wrapped;
+  }
+  return sel([makeCombinator(comb), wrapped] as ComplexSelectorComponent[]);
+}
+
+/**
+ * Rebuild the resolved seq with, at step `wrapIdx`, the atoms selected by `wrapPred` collapsed into
+ * a single `:is(<selected>, ...extend)` in place (selected atoms replaced by one `:is` at the first
+ * selected slot; other atoms keep their positions/order). Leading combinator preserved.
+ */
+function buildRelStepWrapAtoms(
+  resolved: ResolvedRelStep[],
+  wrapIdx: number,
+  wrapPred: (ra: ResolvedAtom) => boolean,
+  extendBranches: Selector[]
+): Selector {
+  const parts: (Selector | string)[] = [];
+  for (let i = 0; i < resolved.length; i++) {
+    const step = resolved[i]!;
+    if (i === 0) {
+      if (step.comb !== '') {
+        parts.push(makeCombinator(step.comb));
+      }
+    } else {
+      parts.push(makeCombinator(step.comb));
+    }
+    if (i !== wrapIdx) {
+      parts.push(relCompoundNode(step.atoms));
+      continue;
+    }
+    parts.push(relWrapCompound(step.atoms, wrapPred, extendBranches));
+  }
+  return sel(parts as ComplexSelectorComponent[]);
+}
+
+/** Build a compound where the wrap-selected atoms collapse to one `:is(sel, ...extend)` in place. */
+function relWrapCompound(
+  atoms: ResolvedAtom[],
+  wrapPred: (ra: ResolvedAtom) => boolean,
+  extendBranches: Selector[]
+): Selector {
+  const selected = atoms.filter(wrapPred);
+  const selectedSel = selected.length === 1
+    ? relCompoundNodeAsSelector(selected)
+    : compound(selected.map(ra => (ra.atom.kind === 'id' ? ra.atom.node : (ra.atom.node as Selector))) as Parameters<typeof compound>[0]);
+  const wrap = is(sellist([selectedSel, ...extendBranches]));
+  const rest = atoms.filter(ra => !wrapPred(ra));
+  if (rest.length === 0) {
+    return wrap;
+  }
+  // Place the `:is` at the FIRST selected slot; keep unselected atoms in original order.
+  const parts: (Selector | string)[] = [];
+  let placed = false;
+  for (const ra of atoms) {
+    if (wrapPred(ra)) {
+      if (!placed) {
+        parts.push(wrap);
+        placed = true;
+      }
+    } else {
+      parts.push(ra.atom.kind === 'id' ? ra.atom.node : (ra.atom.node as Selector));
+    }
+  }
+  return compound(parts as Parameters<typeof compound>[0]);
+}
+
+/** A single selected atom serialized as a Selector (never a bare string, for the `:is` arg). */
+function relCompoundNodeAsSelector(selected: ResolvedAtom[]): Selector {
+  const n = selected[0]!.atom.node;
+  return typeof n === 'string' ? wrapString(n) : (n as Selector);
+}
+
 /**
  * `&` OWN-CONSTRUCTION entry. Reproduces the oracle's two/three-probe classification in the IR,
  * then either recurses `extendByIndexOwn` on the cloning-free RESOLVED form (child-in-place /
@@ -2207,13 +2845,21 @@ function extendAmpersandTarget(
   if (ampAtom.kind !== 'amp' || !ampAtom.resolved) {
     return UNSUPPORTED;
   }
-  // Leading-combinator relative subject (`> &.child`) → oracle's in-place `:is`-wrap path. Not built.
+  // Leading-combinator relative subject (`> &.child`) → oracle's in-place `:is`-wrap path (rung 7):
+  // re-target on the amp-RESOLVED form KEEPING the leading combinator, then in-place wrap.
   if (subjectLeadsWithCombinator(subject)) {
-    return UNSUPPORTED;
+    return extendRelativeAmpersandTarget(subjectSeq, at, find, extendWith, partial, syms);
   }
-  // Multiple amps with DIFFERENT resolved parents (`&&` where each `&` has a distinct parent) — the
-  // iterative resolution's merge order is not modeled for distinct parents → UNSUPPORTED (fail-loud).
-  // Same-parent repeats (`&&` → `.e.e`) resolve identically regardless of order and ARE supported.
+  // Multiple amps with DIFFERENT resolved parents (`&&` where each `&` has a distinct parent, e.g.
+  // `&(.foo.bar)&(.baz).suffix`). The iterative resolution's merge ORDER of distinct parents is not
+  // modeled, so a match that touches ANY parent atom (crossing / parent-only) is not decidable here.
+  // But a CHILD-ONLY match (find confined to the compound's genuinely-child atoms, disjoint from every
+  // resolved parent) is order-independent: the parents ride along as fixed passengers and the resolved
+  // form's in-place `:is`-wrap of the child atom(s) is byte-identical to the oracle regardless of amp
+  // order (`&(.foo.bar)&(.baz).suffix` f `.suffix` → `.foo.bar.baz:is(.suffix,.extended)`). So:
+  // child-only → recurse the resolved form; any parent contact → NOT_FOUND (the oracle's answer on the
+  // reachable distinct-parent tuples: parent-only baz/foo and crossing `.foo.suffix` are all NOT_FOUND).
+  // Same-parent repeats (`&&` → `.e.e`) resolve identically regardless of order and take the shared path.
   const ampResolvedValues = new Set<string>();
   for (const step of subjectSeq) {
     for (const a of step.compound.atoms) {
@@ -2223,7 +2869,46 @@ function extendAmpersandTarget(
     }
   }
   if (ampResolvedValues.size > 1) {
-    return UNSUPPORTED;
+    const resolvedDistinct = resolveAllAmps(resolvedFormSeq(subjectSeq, at));
+    if (!resolvedDistinct) {
+      return UNSUPPORTED; // list-parent / unresolved amp — not modeled
+    }
+    if (!seqMatchesFind(resolvedDistinct, irFind)) {
+      return 'NOT_FOUND';
+    }
+    // Child atoms = every non-amp id sym in the subject; parent atoms = every amp's resolved id syms.
+    const childSyms = new Set<number>();
+    const parentSyms = new Set<number>();
+    for (const step of subjectSeq) {
+      for (const a of step.compound.atoms) {
+        if (a.kind === 'id') {
+          childSyms.add(a.sym);
+        } else if (a.kind === 'amp' && a.resolved) {
+          for (const pb of a.resolved.branches) {
+            for (const ps of pb) {
+              for (const s of ps.compound.syms) {
+                parentSyms.add(s);
+              }
+            }
+          }
+        }
+      }
+    }
+    const findReq = liftSel(find, syms);
+    let childOnly = findReq.branches.length > 0;
+    for (const fb of findReq.branches) {
+      for (const fstep of fb) {
+        for (const fa of fstep.compound.atoms) {
+          if (fa.kind !== 'id' || !childSyms.has(fa.sym) || parentSyms.has(fa.sym)) {
+            childOnly = false;
+          }
+        }
+      }
+    }
+    if (!childOnly) {
+      return 'NOT_FOUND'; // touches a parent atom → parent-only/crossing, merge order not modeled
+    }
+    return extendByIndexOwn(irSeqToSelectorReusing(resolvedDistinct), find, extendWith, partial);
   }
 
   const resolvedSeq = resolveAllAmps(resolvedFormSeq(subjectSeq, at));
@@ -2256,9 +2941,48 @@ function extendAmpersandTarget(
 }
 
 /**
+ * `&` FIND own-construction. A find carrying `&` is resolved the SAME way a `&` TARGET is (rung 6):
+ * lift the find, resolve every amp step to its stored parent, then match/extend against the resolved
+ * find. Two oracle-verified outcomes:
+ *
+ *   • UNRESOLVED amp (a bare `&` with no stored parent — `resolvedFormSeq` yields null) → the find
+ *     carries an atom that matches no concrete target compound. The oracle returns NOT_FOUND for
+ *     every such shape (`&.x`, `& .foo`, bare `&`), so we do too.
+ *   • RESOLVED amp (`&`→`.foo`, find `&.x` → `.foo.x`) → recurse `extendByIndexOwn` on the resolved
+ *     PLAIN find; the resolved find is amp-free so the normal engine builds the exact output the
+ *     oracle produces (`.foo.x` f `.foo.x` e `.y` → `.foo.x,.y`; a non-matching target → NOT_FOUND).
+ *
+ * Only the single-branch find is modeled here; an OR-find carrying `&` defers to UNSUPPORTED.
+ */
+function extendAmpersandFind(
+  targetSel: Selector,
+  find: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector | Selector[] | 'NOT_FOUND' | UnsupportedResult {
+  const syms = new SymbolTable();
+  const irFind = liftSel(find, syms);
+  if (irFind.branches.length !== 1) {
+    return UNSUPPORTED; // OR-find with amp — not modeled
+  }
+  const resolvedFind = resolveAllAmps(irFind.branches[0]!);
+  if (!resolvedFind) {
+    // The amp could not be resolved to a concrete parent (unresolved bare `&`, or a list-parent
+    // graft). An unresolved amp atom matches no concrete target → the oracle's NOT_FOUND.
+    return 'NOT_FOUND';
+  }
+  const plainFind = irSeqToSelectorReusing(resolvedFind);
+  if (hasAmpersand(plainFind)) {
+    return UNSUPPORTED; // residual amp survived resolution — not modeled
+  }
+  return extendByIndexOwn(targetSel, plainFind, extendWith, partial);
+}
+
+/**
  * PUBLIC ENTRY (own construction). Same contract as `extendSelector`, but never delegates:
  * it either builds the output itself (byte-identical to the oracle on covered shapes) or
- * returns UNSUPPORTED. No `&` / list-parent / constructor-atom-find handling yet.
+ * returns UNSUPPORTED. `&`-FIND is resolved (rung 6, find side); list-parent / non-amp
+ * constructor-atom-find shapes stay UNSUPPORTED.
  */
 export function extendByIndexOwn(
   target: ExtendInput,
@@ -2274,10 +2998,31 @@ export function extendByIndexOwn(
     return targetSel;
   }
 
-  // Constructor-atom / `&` FINDS are not built by the own engine yet. Gate to UNSUPPORTED
+  // FIND-SIDE GRAFT, WHOLE-SELECTOR match: a find carrying a `:where`/`:not`/`:has`/`:is` graft that
+  // EQUALS the whole target selector (structurally) → append extendWith as a sibling (deduped). This
+  // is the only find-side graft shape the sweep reaches (`:where(.a)` f `:where(.a)` e `.b` →
+  // `:where(.a),.b`); it works in BOTH modes (partial + full behave the same on a whole-selector
+  // match — an append). Handled here before the blanket find-graft gate below. `:is` grafts that
+  // would need the single-arm-unwrap on the appended-alongside original branch (`.a:is(.b)` →
+  // oracle `.a.b`) stay UNSUPPORTED (see helper) — never a wrong non-unwrapped output.
+  if ((hasConstructorAtoms(find) || nodeHasPseudoWithSelectorArg(find)) && !hasAmpersand(find)) {
+    const fg = extendFindSideGraftWholeMatch(targetSel, find, extendWith);
+    if (fg !== null) {
+      return fg;
+    }
+  }
+
+  // `&` FIND: resolve the find's amp to its parent and recurse on the plain find (rung 6, find side).
+  // An unresolved amp → NOT_FOUND; a resolved amp → the amp-free recursion builds the oracle output
+  // (a residual `:is`/`:not` graft after resolution is caught by the recursion's own gates → UNSUPPORTED).
+  if (hasAmpersand(find)) {
+    return extendAmpersandFind(targetSel, find, extendWith, partial);
+  }
+
+  // Constructor-atom FINDS (non-amp) are not built by the own engine yet. Gate to UNSUPPORTED
   // (never a wrong/NOT_FOUND answer). A `:not`/`:where`/`:has` FIND (pseudo-arg on the find side)
   // is caught by the node-level `nodeHasPseudoWithSelectorArg` guard below.
-  if (hasAmpersand(find) || hasConstructorAtoms(find)) {
+  if (hasConstructorAtoms(find)) {
     return UNSUPPORTED;
   }
   if (nodeHasPseudoWithSelectorArg(find)) {
@@ -2295,6 +3040,14 @@ export function extendByIndexOwn(
   // shapes; boundary-cross flatten (`:is(.a,.b).c` find `.a.c` partial) stays UNSUPPORTED.
   if (hasGraftTarget(targetSel, find)) {
     return extendGraftTarget(targetSel, find, extendWith, partial);
+  }
+
+  // PARTIAL element/id CONFLICT: a partial `:is`-wrap that would combine the matched compound's
+  // element/id with a DIFFERENT element/id from extendWith is an ELEMENT_CONFLICT/ID_CONFLICT the
+  // oracle refuses (returns a conflict sentinel, `a.info` f `.info` e `div.foo` → ELEMENT_CONFLICT).
+  // The own engine does not build the conflict-validated output — gate to UNSUPPORTED (fail-loud).
+  if (partial && partialWrapMayConflict(targetSel, find, extendWith)) {
+    return UNSUPPORTED;
   }
 
   const syms = new SymbolTable();
@@ -2390,8 +3143,15 @@ export function extendByIndexOwn(
     }
   }
   if (anyFull) {
+    // FULL-mode append DEDUPES against branches already present in the target list: the oracle does
+    // not emit a duplicate OR-branch when the appended extendWith selector is already a branch
+    // (`.base,.child` f `.base` e `.child` → `.base,.child`, and self-extend `.w` f `.w` e `.w` → `.w`).
+    const present = new Set(outBranches.map(b => String(b.valueOf())));
     for (const eb of extendBranches) {
-      outBranches.push(eb);
+      if (!present.has(String(eb.valueOf()))) {
+        outBranches.push(eb);
+        present.add(String(eb.valueOf()));
+      }
     }
   }
   for (const s of siblingBranches) {
@@ -2405,7 +3165,64 @@ export function extendByIndexOwn(
   if (outBranches.length === 1) {
     return outBranches[0]!;
   }
+  // EXACT-MODE CARTESIAN DE-DISTRIBUTION: in FULL mode the oracle collapses a complete cross-product
+  // of `left <comb> right` branches into `:is(left...) <comb> :is(right...)` (`.a .b,.a .d,.c .b` f
+  // `.c .b` e `.c .d` → `:is(.a,.c) :is(.b,.d)`). The own engine emits the flat list. Not built —
+  // gate to UNSUPPORTED (fail-loud) when the assembled branches contain such a full cross-product.
+  if (anyFull && hasExactCartesianProduct(outBranches)) {
+    return UNSUPPORTED;
+  }
   return sellist(outBranches);
+}
+
+/**
+ * True when `branches` contains a COMPLETE cartesian product of `left <comb> right` complex selectors
+ * sharing one combinator (≥2 distinct lefts × ≥2 distinct rights, every combination present) — the
+ * shape the oracle de-distributes into `:is(...) <comb> :is(...)`.
+ */
+function hasExactCartesianProduct(branches: Selector[]): boolean {
+  const byComb = new Map<string, Array<{ left: string; right: string }>>();
+  for (const b of branches) {
+    if (!isNode(b, N.ComplexSelector)) {
+      continue;
+    }
+    const parts = (b as ComplexSelector).value;
+    if (parts.length !== 3) {
+      continue;
+    }
+    const first = parts[0];
+    const second = parts[1];
+    const third = parts[2];
+    if (!isSelectorNode(first) || !isCombinator(second) || !isSelectorNode(third)) {
+      continue;
+    }
+    // `second` is a Combinator (guarded above); its `.valueOf()` is the combinator string — mirrors
+    // the oracle's grouping key (`second.valueOf()`), avoiding a non-narrowing `combinatorValue` call.
+    const key = String((second as { valueOf(): unknown }).valueOf());
+    if (!byComb.has(key)) {
+      byComb.set(key, []);
+    }
+    byComb.get(key)!.push({ left: String(first.valueOf()), right: String(third.valueOf()) });
+  }
+  for (const pairs of byComb.values()) {
+    const lefts = new Set(pairs.map(p => p.left));
+    const rights = new Set(pairs.map(p => p.right));
+    if (lefts.size >= 2 && rights.size >= 2 && pairs.length === lefts.size * rights.size) {
+      const seen = new Set(pairs.map(p => `${p.left}|${p.right}`));
+      let complete = true;
+      for (const l of lefts) {
+        for (const r of rights) {
+          if (!seen.has(`${l}|${r}`)) {
+            complete = false;
+          }
+        }
+      }
+      if (complete) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /** Rebuild a lifted seq as a Selector, reusing authored nodes (no rewrite). */
