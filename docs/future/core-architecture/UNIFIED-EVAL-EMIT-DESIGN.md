@@ -941,8 +941,9 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   TARGET unresolved — it pushes the raw `[data="@{attr}"]` at `extend.ts:341` before interpolation runs,
   so `:extend([data=@{attr}])` silently no-ops today. The fix is bounded: resolve the target's
   interpolation at capture time (frame live) so the instruction carries the concrete target. (Fixing
-  this is also what makes interpolated extend targets actually work — verify the exact output shape vs
-  Less 4.x when building it.)
+  this is also what makes interpolated extend targets actually work. When building it, use Less 4.x only
+  to affirm BEHAVIOR — does the interpolated target extend, what does it match — NOT output shape: Jess
+  emits `:is()` and supports nesting, so the SHAPE is the v5/alpha form, not 4.x's expansion.)
 
 - **OQ-B — RESOLVED (§4.4).** The flush discipline is SETTLED: (1) decls resolve against the live
   frame and stream as bytes into a per-subject buffer during descent — only the rule HEADER is deferred
