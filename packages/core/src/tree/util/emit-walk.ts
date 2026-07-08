@@ -85,6 +85,35 @@ export function isValueLeaf(node: Node): boolean {
 }
 
 /**
+ * A leaf THIS phase's root wire-in can fully render in the single pass. Stricter
+ * than `isValueLeaf`: excludes leaves whose correct output depends on the eval
+ * pass's cross-statement handling that the spine does not yet perform —
+ *   - `+:` / conditional / merge-flagged declarations (Less property-merge is a
+ *     cross-declaration value combination built during eval registration),
+ *   - `setDefined` / `nearestOuter` var-declarations (scope-mutating assigns),
+ *   - any non-declaration leaf (Call/Apply/etc.) that can expand to statements.
+ * Comments and plain declarations/var-declarations with default `:` assign are
+ * safe: their bytes are a pure function of the live-frame value resolution.
+ */
+function isSimpleSpineLeaf(node: Node): boolean {
+  if (isNode(node, N.Comment)) {
+    return true;
+  }
+  if (isNode(node, N.Declaration)) {
+    const options = node.options as { assign?: string; setDefined?: boolean; nearestOuter?: boolean } | undefined;
+    const assign = options?.assign ?? ':';
+    if (assign !== ':') {
+      return false;
+    }
+    if (options?.setDefined || options?.nearestOuter) {
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
  * Descend a SHARED body under a pushed value-frame. `bodyOwner` is the source
  * Rules whose children are emitted; `frameRules` is the Rules whose
  * `_scopeFrame` carries the per-placement bindings (params / loop counter) as
@@ -156,4 +185,99 @@ function emitChildren(
     }
   }
   return undefined;
+}
+
+/**
+ * Diagnostic counter for the RATCHET (metric axis (b): pass count 3→1). It
+ * increments once each time a root is rendered through the single-pass spine
+ * instead of the eval→output-tree→serialize two-walk. A standing test asserts
+ * this moves for a spine-eligible root AND that the root's `eval` was NOT
+ * invoked on that render, locking the two-walk removal so a later change that
+ * re-introduces the eval pass on that path trips a red test.
+ */
+export const spineRenderCounter = { rootRenders: 0 };
+
+/**
+ * Eligibility for the single-pass root path THIS phase covers: a root Rules
+ * whose body is purely VALUE LEAVES (declarations / comments / var-decls) — no
+ * nested containers, no charset/import document framing. For this shape the
+ * spine fully replaces the two-walk: descend the source body once, resolving
+ * each leaf against the live frame at its emit moment, with NO eval pass and NO
+ * output tree. Nested-container descent is the next push (it needs the
+ * structural container serializer fused with live-frame leaf resolution).
+ */
+export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
+  if (context.currentCharset || context.topImports?.length) {
+    return false;
+  }
+  if (root.options?.referenceMode === true) {
+    return false;
+  }
+  const children = root.rules;
+  // A variable RE-DECLARED in the same scope makes a value read source-order
+  // sensitive (an earlier reader / a `snapshot` ref must see the earlier value,
+  // not the last binding). The single upfront frame the spine pushes carries the
+  // last-wins binding, so re-declaration is not yet spine-safe — exclude it.
+  // (Source-order-threaded per-position binding is a later push.)
+  let seenVarNames: Set<string> | undefined;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (!isSimpleSpineLeaf(child)) {
+      return false;
+    }
+    if (isNode(child, N.VarDeclaration)) {
+      const name = child.name;
+      if (typeof name === 'string') {
+        seenVarNames ??= new Set<string>();
+        if (seenVarNames.has(name)) {
+          return false;
+        }
+        seenVarNames.add(name);
+      } else {
+        // A non-static (interpolated) var name can collide unseen — exclude.
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/**
+ * Render a spine-eligible root through the SINGLE downward pass. This REPLACES
+ * `evalForRender`→`this.eval()`→`serialize(output)` for this shape: there is no
+ * `eval` call and no materialized output tree. The root's own value-frame is
+ * pushed (its `_scopeFrame` made live via `context.rulesContext`) and each leaf
+ * is resolved+emitted in place. The returned string is the document body (the
+ * root owns its trailing newline, matching `_toDocumentString`).
+ */
+export function renderRootViaSpine(
+  root: Rules,
+  context: Context,
+  options: FinalPrintOptions
+): MaybePromise<string> {
+  spineRenderCounter.rootRenders++;
+  // Value-frame push: make the root's scope frame live for the whole descent,
+  // and point the document root/tree-root at the SOURCE root (what the eval pass
+  // used to establish). No eval() is called — the descent below resolves each
+  // leaf against this live frame in place.
+  root.getScopeFrame();
+  const savedRoot = context.root;
+  const savedTreeRoot = context.treeRoot;
+  context.root ??= root;
+  if (root._treeContext) {
+    context.treeRoot = root;
+  }
+  const finish = (body: string): string => {
+    context.root = savedRoot;
+    context.treeRoot = savedTreeRoot;
+    const trimmed = body.trimEnd();
+    return trimmed ? `${trimmed}\n` : '';
+  };
+  // Descend the SOURCE root's body ONCE in render mode: the statement-framing
+  // machinery (separators, `;`, trivia, indentation) is the kept structural
+  // serializer (design §7 "survives"); the value resolution happens against the
+  // live frame threaded here. `toRenderString` runs `_emitRulesBody('render')`,
+  // which for each leaf resolves via `node.render(context)` at its emit moment.
+  const step = withValueFrame(context, root, () => root.toRenderString(options));
+  return isThenable(step) ? step.then(finish) : finish(step);
 }

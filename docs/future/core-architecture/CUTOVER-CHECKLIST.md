@@ -42,21 +42,27 @@ old structure instead of building the target*. Guardrails, binding on every cuto
 ### P1 — the frame-threading spine (§2)  ·  SERIAL, foundational, everything depends on it
 - [~] Emit descends the SOURCE tree with the live value-frame stack pushed/popped by the walk; a leaf
       resolves `resolve(sourceLeaf, currentFrame)`→bytes at its emit moment; no `state.output` tree.
-      **Mechanism landed** in `tree/util/emit-walk.ts`: `withValueFrame` (value-frame push/pop via
-      `context.rulesContext`), `emitLeaf` (resolve-against-live-frame → bytes, transient resolved node
-      dropped, source node as sourcemap origin), `emitSharedBody`/`emitChildren` (leaf descent). Proven
-      by `emit-walk-spine.test.ts`: static leaf + dynamic `width:@w` resolve+emit with NO output tree.
-      **Still standing (next push):** wiring this into `Rules.render` to REPLACE `evalForRender`→`eval`→
-      `serialize` for the container descent (structural side reused from `serializeRulesContainer`).
+      **Mechanism landed** + **WIRED IN** for the leaf-only-root slice. `tree/util/emit-walk.ts`:
+      `withValueFrame`, `emitLeaf`, `emitSharedBody`/`emitChildren`, `pushBoundBodyFrame`, plus the
+      wire-in `isSpineEligibleRoot` + `renderRootViaSpine`. `Rules.render` (rules.ts:~4795) now ROUTES a
+      spine-eligible root (leaf-only body — declarations/comments, default `:` assign, no re-declared
+      vars, no charset/import/reference) through ONE downward pass: NO `this.eval()` call, NO `state.output`
+      tree, NO separate serialize walk. It reuses the KEPT statement-framing serializer via
+      `toRenderString`→`_emitRulesBody('render')` (§7 "survives"), resolving each leaf against the live
+      frame in place. **Locked** by `emit-walk-ratchet.test.ts`: spine counter moves + root `eval()`
+      proven NOT called on the wired path (two-walk eliminated) + eligibility boundary asserted. Full core
+      suite green (3168 pass, 0 fail). **Still standing (next push):** the CONTAINER (nested ruleset /
+      at-rule / mixin) descent — that needs the structural container serializer fused with live-frame leaf
+      resolution; until then containers use the eval path (correctly excluded from eligibility).
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
-      **Shared-body mechanism landed:** `pushBoundBodyFrame` builds a thin surface over the SHARED source
-      child array under a fresh per-placement `buildScopeFrame` with live-cell bindings (mirrors
-      `createIterationEvalSurface(share=true)`). Proven: one shared body emitted twice under two frames →
-      `10px`/`20px` with the SAME leaf node identity (no copy). `inherit` span-stamp elimination not yet
-      done (depends on the render wire-in removing the derived output node).
+      **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
+      `inherit` span-stamp elimination NOT YET done and correctly BLOCKED: `inherit` is still live on the
+      eval path (all container/mixin cases still route there), so deleting it now would break a
+      still-standing path. It becomes dead only when the container descent is wired (removes the derived
+      output node) — the target-honest gate, not a "keep to be safe".
 - [ ] Selector interpolation resolves at ruleset-enter (frame live) → concrete selector available to extend.
-      NOT STARTED (structural-side; comes with the container wire-in).
+      NOT STARTED (structural-side; comes with the container wire-in — no ruleset on the wired leaf-only path yet).
 
 ### P2 — per-node inline visitor model (§6)  ·  depends on P1
 - [ ] Replace the separate visitor walk + `preSerializeRoot` with the generic per-node hook
@@ -117,7 +123,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity) |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root path now 2→1** (eval pass eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called on the wired path). Container path still 2 (eval pass) pending the container wire-in. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -156,3 +162,19 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   into `Rules.render` to REPLACE `evalForRender`→`eval`→`serialize` two-walk (rules.ts:4754/4788) for the
   container descent, reusing the structural `serializeRulesContainer`/`composedSelectorStack` side; then
   eliminate `inherit` span-stamp (node-base.ts:1474-1516) once the derived output node is gone.
+- 2026-07-08 · P1 · WIRE-IN FLIP landed (the serial blocker). `Rules.render` now REPLACES
+  `evalForRender`→`eval`→`serialize` with the single spine pass for a spine-eligible root (leaf-only body:
+  declarations/comments, default `:` assign, no re-declared vars, no charset/import/reference). No `eval`
+  call, no `state.output`, no separate serialize walk on that path — it reuses the KEPT statement-framing
+  serializer (`toRenderString`→`_emitRulesBody('render')`, §7) with live-frame leaf resolution.
+  RATCHET committed (`emit-walk-ratchet.test.ts`): `spineRenderCounter` moves + root `eval()` proven NOT
+  called on the wired path (2→1 pass-count locked) + eligibility boundary asserted. Iterated eligibility to
+  exclude what the spine does not yet fully handle (found via core-suite deltas, each a REAL gap not
+  churn): `+:`/conditional/`setDefined` decls (eval-pass merge), re-declared vars (source-order snapshot),
+  containers/imports. Core suite GREEN: 3168 pass / 0 fail / 15 skip (tree 1998/0; +7 new spine+ratchet
+  tests). `inherit` span-stamp elimination + selector-interpolation-at-ruleset-enter remain BLOCKED behind
+  the CONTAINER wire-in (nested ruleset/at-rule/mixin descent fused with live-frame leaf resolution) — the
+  next serial push; not deletable yet because the eval path (still handling all containers) still reads
+  them. Backpedal self-check: did NOT keep a dual/old path alive on the wired slice — the eval two-walk is
+  genuinely not entered for an eligible root (ratchet-proven); the eval path stands ONLY for shapes the
+  spine does not yet cover, which is a scoped frontier, not a safety fallback for covered shapes.

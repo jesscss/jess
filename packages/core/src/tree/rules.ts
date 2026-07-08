@@ -33,6 +33,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
+import { isSpineEligibleRoot, renderRootViaSpine } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -66,7 +67,8 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText
+  writeRenderText,
+  writeRenderTextResult
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -4793,6 +4795,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // the old separate eval pre-pass existed — so no second eval is needed.
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     const preSerializeRoot = sourceWasRoot ? printOptions?.preSerializeRoot : undefined;
+    // Single-pass spine (P1): a spine-eligible root is rendered by ONE downward
+    // descent of the source tree with the live value-frame threaded — no eval
+    // pass, no `state.output` tree, no separate serialize walk. This REPLACES
+    // the two-walk below for that shape; the eval→output-tree→serialize path is
+    // not entered for it. (`preSerializeRoot` is a post-eval visitor hook — a
+    // spine-eligible leaf-only root has no such consumer here; P2 folds the
+    // visitor hook into the pass generically.)
+    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context)) {
+      const prepared = prepareRenderPrintState(context, printOptions);
+      const rendered = renderRootViaSpine(this, context, prepared);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderTextResult(bufferOrOptions, rendered)
+        : rendered;
+    }
     const serialize = (state: RulesRenderState): MaybePromise<string> => {
       checkValidNodes(state.output?.rules, context);
       return isRenderBuffer(bufferOrOptions)
