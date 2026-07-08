@@ -120,15 +120,44 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
-  it('eligibility boundary excludes shapes the container spine does not yet fold', () => {
-    // These stay on the eval path (a scoped frontier, not a safety fallback).
-    // Ampersand composition:
-    const ampRoot = rules([
+  it('eligibility boundary excludes AMPERSAND-APPEND (the eval-pass materialize+hoist shape)', () => {
+    // `&-mod` (anonymous append) stays on the eval path — its suffix materializes
+    // + hoists only via Ampersand.evalNode's appendValue path. A scoped frontier,
+    // not a safety fallback. (Plain `&` composition IS admitted — see below.)
+    const appendRoot = rules([
       ruleset({ selector: sel([el('.a')]), rules: [
-        ruleset({ selector: sel([amp(), el('-mod')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
+        ruleset({ selector: sel([amp('-mod')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
       ] })
     ]);
-    expect(isSpineEligibleRoot(ampRoot, context)).toBe(false);
+    expect(isSpineEligibleRoot(appendRoot, context)).toBe(false);
+  });
+
+  it('ADMITS + composes plain `&` selectors through the spine (no eval/derive)', () => {
+    // `.parent { &.active { color: red } }` → `.parent.active` composed from the
+    // live structural stack at ruleset-enter, in ONE pass.
+    const root = rules([
+      ruleset({ selector: sel([el('.parent')]), rules: [
+        ruleset({ selector: sel([amp(), el('.active')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
+      ] })
+    ]);
+    const ampContext = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(root, ampContext)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(ampContext) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0); // no output tree
+      expect(css).toContain('.parent.active'); // `&` composed from the live stack
+    } finally {
+      Rules.prototype.derive = original;
+    }
   });
 
   it('ADMITS calc()/Operation-valued declarations — resolved sync by default, reactive-bail to async', () => {

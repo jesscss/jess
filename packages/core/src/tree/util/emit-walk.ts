@@ -30,7 +30,7 @@
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Context } from '../../context.js';
-import { Node, F_AMPERSAND } from '../node.js';
+import { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
@@ -101,20 +101,31 @@ export function isValueLeaf(node: Node): boolean {
   return !isNode(node, N.Rules | N.Ruleset | N.AtRule | N.Mixin);
 }
 
-/** True if `selector` (a Selector, a SelectorList array, or a string) carries `&`. */
-function selectorHasAmpersand(selector: unknown): boolean {
+/**
+ * True if `selector` contains an ampersand with an APPEND value (`&-modifier`,
+ * `&-primary`) — the anonymous-append form whose suffix is materialized (and
+ * hoisted) ONLY by `Ampersand.evalNode`'s `appendValue` path, which depends on
+ * eval-pass frame state the spine does not fully reproduce at ruleset-enter.
+ * Plain `&` composition (`&.foo`, `& + &`, `&:hover`, bare `&`) IS spine-folded;
+ * append is the excluded sub-shape. Walks the selector node tree (Ampersand
+ * nodes carry `appendValue`).
+ */
+function selectorHasAmpersandAppend(selector: unknown): boolean {
   if (!selector || typeof selector === 'string') {
     return false;
   }
   if (Array.isArray(selector)) {
-    return selector.some(item => selectorHasAmpersand(item));
+    return selector.some(item => selectorHasAmpersandAppend(item));
   }
-  if (selector instanceof Node) {
-    if (selector.hasFlag(F_AMPERSAND)) {
-      return true;
-    }
-    const source = selector.sourceNode;
-    if (source && source !== selector && source.hasFlag(F_AMPERSAND)) {
+  if (!(selector instanceof Node)) {
+    return false;
+  }
+  const isAppendAmp = (n: Node): boolean => isNode(n, N.Ampersand) && n.appendValue !== undefined;
+  if (isAppendAmp(selector)) {
+    return true;
+  }
+  for (const descendant of selector.walk(true)) {
+    if (isAppendAmp(descendant)) {
       return true;
     }
   }
@@ -123,12 +134,13 @@ function selectorHasAmpersand(selector: unknown): boolean {
 
 /**
  * A nested CONTAINER child THIS phase can descend through the spine: a plain
- * `Ruleset` with a non-Nil selector, no guard, and a body that is itself
- * spine-eligible (leaves + eligible sub-rulesets). Excluded (still eval path):
- * at-rules (hoist/root-only framing not yet spine-wired), mixins, guarded
- * rulesets, `&`-bearing selectors (ampersand composition not folded),
- * extend-bearing/reference rulesets — their correct output needs machinery the
- * spine has not folded in yet.
+ * `Ruleset` with a non-Nil selector, no guard, a spine-eligible body, and a
+ * selector whose composition the spine folds. Admitted: plain `&` composition
+ * (`&.foo`, `& + &`, `&:hover`, bare `&`) + interpolation. Excluded (still eval
+ * path, precise reasons): AMPERSAND-APPEND (`&-modifier` — the anonymous-append
+ * materialize+hoist is eval-pass machinery, `selectorHasAmpersandAppend`),
+ * extend-bearing/reference/guarded rulesets, at-rules routed to
+ * `isSpineEligibleAtRule`, mixins.
  */
 function isSpineEligibleContainer(node: Node): boolean {
   if (isNode(node, N.AtRule)) {
@@ -148,19 +160,20 @@ function isSpineEligibleContainer(node: Node): boolean {
   if (options?.referenceMode === true) {
     return false;
   }
-  // An extend-bearing selector, or ANY selector carrying `&`, needs the
-  // ampersand-composition / extend machinery the spine has not folded yet
-  // (a `&-suffix` composes against the parent selector at enter). Excluded.
+  // Extend-bearing selectors stay on the eval path (extend is P3, not yet wired).
   if (Ruleset.hasExtendedTopLevelSelector(ruleset.selector)) {
     return false;
   }
-  if (selectorHasAmpersand(ruleset.selector)) {
+  // Ampersand-APPEND (`&-modifier`) is not folded — its anonymous-append suffix
+  // materializes + hoists only via `Ampersand.evalNode`'s appendValue path (eval
+  // frame state the spine does not reproduce). Plain `&` composition + interp ARE
+  // folded: `serializeSpineFrameContainer` resolves the selector against the live
+  // stacks at ruleset-enter (`&` reads `context.rulesetFrames` via
+  // `Ampersand.eval`; interpolation via `selector.eval`). The resolved form is
+  // the header AND what extend sees (OQ-A).
+  if (selectorHasAmpersandAppend(ruleset.selector)) {
     return false;
   }
-  // INTERPOLATED selectors (`[data=@{attr}]`, `.@{name}`) ARE now admitted — the
-  // spine resolves `selector.eval` against the live frame at ruleset-enter (see
-  // `serializeSpineFrameContainer`) so the header composes from the CONCRETE form
-  // (OQ-A: extend sees the resolved selector).
   return isSpineEligibleBody(ruleset.rules);
 }
 

@@ -1177,28 +1177,37 @@ function serializeSpineFrameContainer(
   const savedRulesContext = context.rulesContext;
   const savedSelectorNode = options.spineSelectorNode;
   const savedSelector = options.spineSelector;
+  const rawSelector = node.selector;
   node.getScopeFrame();
   context.rulesContext = node;
+  const rulesetFrameBaseline = context.rulesetFrames.length;
   const restore = (text: string): string => {
     context.rulesContext = savedRulesContext;
     options.spineSelectorNode = savedSelectorNode;
     options.spineSelector = savedSelector;
+    context.rulesetFrames.length = rulesetFrameBaseline;
     return text;
   };
   // Descend with the override MARKER set on this node (`spineSelectorNode`), so
   // the re-entry below skips this setup — the marker is what breaks the recursion
   // AND signals "this node's frame is already pushed". `spineSelector` carries the
   // resolved selector when one was computed; when undefined the header falls back
-  // to the authored `this.selector` (string/array/plain selectors need no eval).
+  // to the authored `this.selector`. Node's OWN ruleset frame is pushed HERE (not
+  // before selector eval) so its `&` resolves against the PARENT frame — node's
+  // frame is only the parent for its DESCENDANTS' `&`.
   const descend = (resolvedSelector: Selector | Nil | undefined): MaybePromise<string> => {
     options.spineSelectorNode = node;
     options.spineSelector = resolvedSelector;
+    context.rulesetFrames.push(node);
     const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
     return isThenable(out) ? out.then(restore) : restore(out);
   };
-  // Resolve the selector against the live frame (interpolation → concrete form).
-  // Only Selector nodes carry interpolation; string/array/Nil pass through.
-  const rawSelector = node.selector;
+  // Resolve the selector against the live frame. A Selector node carries either
+  // interpolation (`@{…}` → concrete via `eval`) or ampersand (`&-x` → the
+  // composed form via `eval` reading `context.rulesetFrames`, whose top is the
+  // enclosing ruleset). Either way the resolved selector becomes the header
+  // override, so it emits concretely AND extend sees the resolved form (OQ-A).
+  // string/array/Nil pass through unevaled.
   try {
     if (rawSelector instanceof Selector) {
       const resolved = rawSelector.eval(context);

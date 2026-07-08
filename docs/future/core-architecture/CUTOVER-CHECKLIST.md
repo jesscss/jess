@@ -72,10 +72,23 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       + @media-hoist-through-spine. `@layer` EXCLUDED (nested layer-NAME registration is an eval-pass side
       effect the spine doesn't replicate); `@scope` EXCLUDED (special `(start)`/`(end)` prelude + scoped
       body); root-only (`@font-face`/`@keyframes`/…) excluded.
-      **Exact boundary — still eval path (scoped frontier):** `&`-selectors (ampersand compose),
+      **`&`-COMPOSITION DONE (plain `&`).** Plain ampersand — `&.foo`, `& + &`, `&:hover`, `& .child`,
+      bare `&` — now composes through the spine: `serializeSpineFrameContainer` pushes the ruleset onto
+      `context.rulesetFrames` (the parent link `Ampersand.eval` reads — top = immediate parent) and eval's
+      the `&`-selector against it at ruleset-enter, so `&` resolves from the LIVE structural stack. Node's
+      OWN frame is pushed AFTER its selector evals (so its `&` sees the PARENT, not itself); node's frame is
+      the parent only for its DESCENDANTS. The resolved `&` form is the header override AND what extend sees
+      (OQ-A). AMPERSAND-APPEND (`&-modifier`/`&-primary`) EXCLUDED with precise reason: the anonymous-append
+      suffix materializes + hoists ONLY via `Ampersand.evalNode`'s `appendValue` path (eval-pass frame state
+      the spine does not reproduce) — `selectorHasAmpersandAppend` gates it. Ratchets: plain-`&`-compose +
+      ampersand-append-excluded.
+      **Exact boundary — still eval path (scoped frontier):** ampersand-APPEND (`&-modifier`),
       `+:`/conditional/`setDefined` decls (merge), re-declared vars (source-order), `@layer`/`@scope`/
       root-only + interpolated-name at-rules, guarded/extend/mixin/reference containers, charset/import.
-      Interpolated selectors (item 3) + conditional-group at-rules NOW folded. **Next push:** `&`-composition.
+      Interpolated selectors (item 3), conditional-group at-rules, AND plain `&` NOW folded. **Next push:**
+      RECOMMEND the hard decl shapes (`+:`/conditional/`setDefined`/re-declared vars) — the per-position
+      value-binding + cross-declaration merge is the last big VALUE-path frontier and unblocks the most
+      remaining real content (see progress log for rationale). `@layer`/`@scope` + `inherit`-span after.
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
       **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
@@ -161,7 +174,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), AND conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting). Ampersand / `@layer`/`@scope` / hard-decl shapes still 2 (eval path) — scoped frontier, not fallback. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), AND plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter). Ampersand-APPEND / `@layer`/`@scope` / hard-decl shapes still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -302,3 +315,34 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   dual path — conditional-group at-rules have one path now: the spine); hoist machinery REUSED not
   reimplemented; frame pop chains on the async promise (B1s guard). Stopped at the at-rule boundary
   (ampersand is its own increment — the structural-stack `&` substitution is a distinct surface).
+- 2026-07-08 · P1 · `&`-COMPOSITION landed (plain `&`). Plain ampersand — `&.foo`, `& + &`, `&:hover`,
+  `& .child`, bare `&` — composes through the spine. KEY mechanism: `Ampersand.evalNode` reads the parent
+  from `context.rulesetFrames` (top = immediate parent ruleset), NOT `composedSelectorStack`. So
+  `serializeSpineFrameContainer` now (a) eval's the ruleset's `&`-selector against the ALREADY-present
+  parent frame (resolving `&` from the live structural stack), then (b) pushes node's OWN frame onto
+  `context.rulesetFrames` for its DESCENDANTS — ordering matters: node's frame must NOT be on the stack
+  when its own `&` evals (else `&` = itself). The resolved selector becomes the header override (reusing
+  the `spineSelector` override built for interpolation), so it emits concretely AND extend sees it (OQ-A).
+  Both collapse modes. AMPERSAND-APPEND (`&-modifier`/`&-primary`) EXCLUDED with precise reason (found via
+  the ampersand/nesting suite deltas — 2 residual failures after the frame fix): the anonymous-append
+  suffix materializes + hoists ONLY via `Ampersand.evalNode`'s `appendValue` path (eval-pass frame state
+  the spine does not reproduce); `selectorHasAmpersandAppend` (a `Node.walk` scan for an Ampersand with
+  `appendValue`) gates it. Iteration story: admitting `&` naively broke 10 tests (eval-override destroyed
+  `&`: `&-modifier`→`-modifier`); skip-eval-for-`&` fixed 2; the `rulesetFrames` push fixed 6 more; the
+  remaining 2 were append → excluded. RATCHET: plain-`&`-compose-through-spine (`.parent.active`,
+  eval/derive not called) + ampersand-append-excluded. Core suite GREEN 3184/0/15. tsc ZERO new errors
+  (removed now-unused `F_AMPERSAND` imports from emit-walk + serialize-helper). DOCUMENTATION STANDARD:
+  `serializeSpineFrameContainer` + `selectorHasAmpersandAppend` carry contract/invariant + `@see §7`.
+  NEVER used `git stash` (`git show HEAD:path`).
+  RECOMMENDED NEXT INCREMENT: the HARD DECL SHAPES (`+:`/conditional/`setDefined`/re-declared vars). Rationale:
+  every structural container class (leaf-root, ruleset, at-rule, `&`) is now folded — the remaining big
+  frontier is the VALUE path. Per-position value-binding (a re-declared `@x` read must see the value at the
+  reader's source position, not last-wins) + cross-declaration merge (`+:` combines earlier same-prop
+  decls) are what block the most remaining real content (real stylesheets shadow vars + use merges). It is
+  also the P1 item that most changes the frame threading (the single upfront frame → per-position binding),
+  so landing it consolidates the value-side spine before P2/P3. `@layer`/`@scope` (fold their eval-pass
+  name/scope semantics) + `inherit` in-place span attribution are narrower follow-ups after.
+  Backpedal self-check: `&` resolves from the LIVE structural stack (`rulesetFrames`), reusing
+  `Ampersand.eval` + the header override — no canonical mutation, no dual path (plain `&` has one path: the
+  spine); append is a precise coverage gap, not a safety fallback. Frame push/pop balanced across sync +
+  async exits (`rulesetFrames.length = baseline` in `restore`). Stopped at the `&` boundary as directed.
