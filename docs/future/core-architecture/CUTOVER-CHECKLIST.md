@@ -70,6 +70,53 @@ old structure instead of building the target*. Guardrails, binding on every cuto
 - [ ] The 4 perf dimensions measured (fast-reject / chained / clock / memory) — now a REAL swap, not additive.
 - [ ] Merge `work/cutover` → `dev`.
 
+## SUCCESS CRITERIA & RATCHET — how this plan guarantees itself
+
+**The honest guarantee.** A multi-week rework can hit a genuine blocker — that's not what "guarantee"
+addresses. What IS guaranteed is against the three ways a big rework actually fails silently: (1)
+**backslide** — a gain later undone; (2) **drift** — agents wandering off the target; (3) **false-done**
+— declaring success on vibes. Each has a mechanical defense below. "Success" = the P5 acceptance metrics
+are hit AND locked; the guarantee is that nothing regresses them undetected and nothing is called done
+that isn't measured done.
+
+### How every agent checks its work (per-phase gate)
+1. Build passes; **component/unit tests prove the new mechanism on small inputs** (not "looks right").
+2. **Anti-backpedal self-check** (the ⛔ HARD RULE): "did I match/preserve the old structure anywhere?"
+3. **Lock the gain** — every improvement this phase made is encoded as a STANDING test (see RATCHET).
+4. Metric table (below) updated; net movement is the right direction, nothing regressed.
+5. At each integration + P5: byte-identical vs alpha `all-less` (both collapse modes) + core suite +
+   sourcemap identity + all ratchet tests green. (Mid-cutover all-less is expected RED — the checklist +
+   component tests are truth then, NOT all-less. Do not backslide because all-less is red mid-cutover.)
+
+### The three metric axes — baseline → target, each RATCHETED by a standing test
+| axis | metric | ratchet test (fails on regression) |
+|---|---|---|
+| **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity) |
+| **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
+
+### The RATCHET principle (this is the "not undone by further work" guarantee)
+As EACH gain lands, it is immediately encoded as a committed STANDING test that goes RED if a later change
+regresses it — deleted a symbol → absence assertion; shrank the bundle → size ceiling; hit the field
+budget → field-count assertion; made a path linear → the scaling counter; improved a bench → a floor
+gate. So a later agent that reintroduces `propagateFlagsFrom`, re-adds a node field, re-bloats the
+bundle, re-splits the pass, or regresses perf **trips a red test immediately** — the gain cannot be
+silently undone. "Lock the gain" is a required item in every phase's gate, not an afterthought.
+
+### Checklist coherence + drift control
+- This file is the **single source of truth**. Agents update it (check items, append the progress log,
+  update the metric table). The orchestrator reconciles concurrent edits at integration.
+- **A checklist claim is not "done" until its ratchet test is committed and green** — the tests are the
+  enforcement, the prose is just the map. This is what makes "done" objective (defeats false-done).
+- Drift is caught by the ⛔ HARD RULE self-check + frequent touch-base: agents report at each stopping
+  point; the orchestrator reviews progress **against the target (the design), not against current code**,
+  and redirects on the first sign of structure-matching.
+
+### DEFINITION OF DONE (P5 acceptance — all simultaneously)
+byte-identical vs alpha `all-less` (both modes) · core suite green · sourcemap identity · every metric-table
+target hit (size↓, complexity↓, perf↑) · every ratchet test green (all gains locked) → only then merge to `dev`.
+
 ## Progress log
 (agents append: date · phase · what landed / what's blocked)
 - 2026-07-08 · P0 · checklist created.
+- 2026-07-08 · governance · success-criteria + ratchet + metric-table + definition-of-done added.
