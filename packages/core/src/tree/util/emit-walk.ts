@@ -40,6 +40,41 @@ import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-fra
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './print.js';
 
 /**
+ * Assign source-order indices to a scope's body children — the PER-POSITION
+ * bookkeeping the value-frame threading needs (P1 §2, the eval-fold's core).
+ *
+ * A variable read resolves against the binding visible AT THE READER'S SOURCE
+ * POSITION: a re-declared `@x` or a `snapshot` ref must see the value bound
+ * BEFORE it, not the last-wins binding. The position-gated scope-frame lookup
+ * (`lookupScopeFrameVariable`) enforces this by comparing each reader's `start`
+ * (its `node.index`) against each declaration's `sourceNode.index` — but those
+ * indices are assigned during EVAL/registration, which the spine skips. So the
+ * spine assigns them here at scope-enter, replicating the registration counter
+ * (one increment per non-`Comment` child). This is output-INVISIBLE bookkeeping
+ * on the canonical node (§ruling 1) — it changes neither re-serialization nor
+ * reuse; it only makes the source positions the lookup already keys on available.
+ *
+ * Idempotent: skips a body whose first indexable child already has an index (the
+ * eval path, or a prior spine visit, already numbered it).
+ */
+export function assignSpineChildIndices(body: Rules): void {
+  const children = body.rules;
+  let indexed = 0;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isNode(child, N.Comment)) {
+      continue;
+    }
+    if (indexed === 0 && child.index !== undefined) {
+      // Already numbered (eval path or prior spine visit) — leave it.
+      return;
+    }
+    child.index = indexed;
+    indexed++;
+  }
+}
+
+/**
  * The value-frame push (scope-enter/scope-exit for the value stack).
  *
  * Contract: point `context.rulesContext` at `frameRules` (whose `_scopeFrame` is
@@ -215,24 +250,20 @@ function isSpineEligibleAtRule(node: Node): boolean {
   return isSpineEligibleBody(atRule.rules);
 }
 
-/** A body (ordered child list) is spine-eligible when every child is. */
+/**
+ * A body (ordered child list) is spine-eligible when every child is. Re-declared
+ * variables ARE now admitted — `assignSpineChildIndices` numbers the children at
+ * scope-enter so a re-declared / `snapshot` read resolves against the binding at
+ * its own source position (the position-gated `lookupScopeFrameVariable`), not
+ * last-wins. A non-static (interpolated) var NAME is still excluded (its bucket
+ * key isn't statically known, so the position gate can't be pre-seeded).
+ */
 function isSpineEligibleBody(children: readonly Node[]): boolean {
-  let seenVarNames: Set<string> | undefined;
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     if (isSimpleSpineLeaf(child)) {
-      if (isNode(child, N.VarDeclaration)) {
-        const name = child.name;
-        if (typeof name !== 'string') {
-          return false;
-        }
-        seenVarNames ??= new Set<string>();
-        if (seenVarNames.has(name)) {
-          // Re-declared variable → source-order-sensitive read; not spine-safe
-          // with the single upfront frame (see isSpineEligibleRoot note).
-          return false;
-        }
-        seenVarNames.add(name);
+      if (isNode(child, N.VarDeclaration) && typeof child.name !== 'string') {
+        return false;
       }
       continue;
     }
@@ -420,6 +451,10 @@ export function renderRootViaSpine(
   // structural serializer against a live frame (no eval, no output tree) and
   // leaves resolve live — see serialize-helper `spineMode` + Ruleset.render.
   options.spineMode = true;
+  // Per-position bookkeeping: number the body children BEFORE building the scope
+  // frame, so the frame's declaration buckets carry source indices and a
+  // re-declared / `snapshot` read resolves against the binding at its position.
+  assignSpineChildIndices(root);
   // Value-frame push: make the root's scope frame live for the whole descent,
   // and point the document root/tree-root at the SOURCE root (what the eval pass
   // used to establish). No eval() is called — the descent below resolves each

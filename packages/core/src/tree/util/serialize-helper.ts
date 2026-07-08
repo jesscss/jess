@@ -21,6 +21,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
+import { assignSpineChildIndices } from './emit-walk.js';
 
 type TriviaSide = 'before' | 'after';
 type SerializeProfileCounter =
@@ -1178,6 +1179,10 @@ function serializeSpineFrameContainer(
   const savedSelectorNode = options.spineSelectorNode;
   const savedSelector = options.spineSelector;
   const rawSelector = node.selector;
+  // Per-position bookkeeping BEFORE the scope frame is built, so this ruleset's
+  // declaration buckets carry source indices (re-declared / `snapshot` reads
+  // resolve against the binding at their position). See `assignSpineChildIndices`.
+  assignSpineChildIndices(node);
   node.getScopeFrame();
   context.rulesContext = node;
   const rulesetFrameBaseline = context.rulesetFrames.length;

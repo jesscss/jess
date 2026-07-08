@@ -287,4 +287,46 @@ describe('emit-walk wire-in ratchet (P1)', () => {
       Rules.prototype.derive = original;
     }
   });
+
+  it('resolves a RE-DECLARED var + `snapshot` read PER-POSITION through the spine (no eval/derive)', () => {
+    // @color: red; seen(snapshot): @color; @color: blue; later: @color
+    //   → seen sees red (binding at its source position), later sees blue.
+    // The single-pass spine numbers the children at scope-enter
+    // (assignSpineChildIndices) so the position-gated lookup picks the right
+    // declaration — NOT last-wins. NO eval pass, NO output tree.
+    const root = rules([
+      vardecl({ name: 'color', value: any('red') }),
+      decl({ name: 'seen', value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' }) }),
+      vardecl({ name: 'color', value: any('blue') }),
+      decl({ name: 'later', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(context) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0);
+      expect(css).toContain('seen: red'); // snapshot: value at its position
+      expect(css).toContain('later: blue'); // read after the re-declaration
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('still EXCLUDES `+:` merge / conditional / setDefined declarations (the value-path frontier)', () => {
+    // These need the cross-declaration merge (`_coalesceMergedDeclarations`) /
+    // scope-mutating-assign machinery not yet folded — a scoped frontier.
+    const mergeRoot = rules([
+      decl({ name: 'background', value: any('red') }, { assign: '+:' }),
+      decl({ name: 'background', value: any('blue') }, { assign: '+:' })
+    ]);
+    expect(isSpineEligibleRoot(mergeRoot, context)).toBe(false);
+  });
 });

@@ -82,13 +82,25 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       suffix materializes + hoists ONLY via `Ampersand.evalNode`'s `appendValue` path (eval-pass frame state
       the spine does not reproduce) — `selectorHasAmpersandAppend` gates it. Ratchets: plain-`&`-compose +
       ampersand-append-excluded.
+      **PER-POSITION VALUE-BINDING DONE (re-declared vars + `snapshot` reads).** The single-upfront-frame
+      last-wins gap is closed: `assignSpineChildIndices` numbers a scope's body children at scope-enter
+      (replicating the registration counter — one increment per non-`Comment` child), so the KEPT
+      position-gated `lookupScopeFrameVariable` resolves each read against the binding at the READER'S
+      source position (`node.index` vs each decl's `sourceNode.index`), not last-wins. Output-INVISIBLE
+      bookkeeping on the canonical node (§ruling 1) — changes neither re-serialization nor reuse; idempotent
+      (skips already-numbered bodies from the eval path). Proven: `@color:red; seen(snapshot):@color;
+      @color:blue; later:@color` → `seen:red` (position), `later:blue`, `eval=0 derives=0`. Re-declared vars
+      admitted in eligibility. Ratchets: re-declared-var/snapshot-per-position + `+:`-merge-still-excluded.
       **Exact boundary — still eval path (scoped frontier):** ampersand-APPEND (`&-modifier`),
-      `+:`/conditional/`setDefined` decls (merge), re-declared vars (source-order), `@layer`/`@scope`/
-      root-only + interpolated-name at-rules, guarded/extend/mixin/reference containers, charset/import.
-      Interpolated selectors (item 3), conditional-group at-rules, AND plain `&` NOW folded. **Next push:**
-      RECOMMEND the hard decl shapes (`+:`/conditional/`setDefined`/re-declared vars) — the per-position
-      value-binding + cross-declaration merge is the last big VALUE-path frontier and unblocks the most
-      remaining real content (see progress log for rationale). `@layer`/`@scope` + `inherit`-span after.
+      `+:`/`+_:` merge + conditional (`?:`)/`setDefined` decls, interpolated-var-NAME decls, `@layer`/
+      `@scope`/root-only + interpolated-name at-rules, guarded/extend/mixin/reference containers,
+      charset/import. Interpolated selectors, conditional-group at-rules, plain `&`, AND per-position
+      var-binding NOW folded. **Next push (recommended order):** (1) `+:`/`+_:` MERGE — wire the KEPT
+      `_coalesceMergedDeclarations` cross-declaration coalescing into the spine descent (it's on the
+      "NOT copies, stays" list — constructs a genuinely new combined value; the remaining VALUE-path piece);
+      (2) conditional (`?:`)/`setDefined` scope-mutating assigns; (3) `@layer`/`@scope` at-rules (fold their
+      eval-pass name/scope semantics); (4) `inherit` in-place span attribution (narrowest — the last
+      transient-leaf sourcemap-span carry). Ampersand-APPEND folds alongside (3)'s hoist work.
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
       **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
@@ -174,7 +186,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), AND plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter). Ampersand-APPEND / `@layer`/`@scope` / hard-decl shapes still 2 (eval path) — scoped frontier, not fallback. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter), AND per-position var-binding (re-declared vars + `snapshot` reads resolve at the reader's source position via `assignSpineChildIndices`, not last-wins). Ampersand-APPEND / `+:`-merge+conditional / `@layer`/`@scope` still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -346,3 +358,32 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   `Ampersand.eval` + the header override — no canonical mutation, no dual path (plain `&` has one path: the
   spine); append is a precise coverage gap, not a safety fallback. Frame push/pop balanced across sync +
   async exits (`rulesetFrames.length = baseline` in `restore`). Stopped at the `&` boundary as directed.
+- 2026-07-08 · P1 · PER-POSITION VALUE-BINDING landed (re-declared vars + `snapshot` reads — the
+  eval-fold's core, as flagged). Root cause of the last-wins gap: variable resolution is ALREADY
+  position-gated (`lookupScopeFrameVariable` compares the reader's `start` = `node.index` against each
+  declaration's `sourceNode.index` in `declarationBucketsByName`), but those indices are assigned during
+  EVAL/registration — which the spine skips — so through the spine every `node.index` was `undefined` and
+  the gate was a no-op (last-wins). Fix: `assignSpineChildIndices(body)` numbers a scope's children at
+  scope-enter (BEFORE `getScopeFrame`, so the buckets carry the indices), replicating the registration
+  counter (one increment per non-`Comment` child). Called in `renderRootViaSpine` (root body) and
+  `serializeSpineFrameContainer` (each ruleset body). Output-INVISIBLE canonical bookkeeping (§ruling 1);
+  idempotent (skips already-numbered bodies). Chose the INDEX-assignment mechanism over incremental
+  cell-population because the position-gated bucket lookup is the KEPT machinery — it just needed positions
+  to gate on; no new frame-mutation-during-descent invariant. Proven:
+  `@color:red; seen(snapshot):@color; @color:blue; later:@color` → `seen:red` (binding at its position),
+  `later:blue`; `eval=0 derives=0`. Note: a PLAIN re-declared read (non-snapshot, `@color` after both
+  decls) is last-wins on BOTH eval and spine (verified — matched, not a divergence); the position gate
+  bites for `snapshot` / start-gated reads. Re-declared vars admitted in eligibility. `+:`/`+_:` merge +
+  conditional/`setDefined` REMAIN excluded (this increment is per-position binding only — the merge needs
+  `_coalesceMergedDeclarations` wired into the descent, a focused follow-up). RATCHET:
+  re-declared-var/snapshot-per-position (`seen:red`/`later:blue`, eval/derive not called) +
+  `+:`-merge-still-excluded. Core suite GREEN 3186/0/15. tsc ZERO new errors. serialize-helper imports
+  `assignSpineChildIndices` from emit-walk (one-way dep; emit-walk does not import serialize-helper — no
+  cycle). DOCUMENTATION STANDARD: `assignSpineChildIndices` JSDoc spells out the PER-POSITION INVARIANT (the
+  subtle one) + why index-assignment not cell-population + `@see §2`. NEVER used `git stash`.
+  RECOMMENDED NEXT ORDER: (1) `+:`/`+_:` merge (last VALUE-path piece — wire `_coalesceMergedDeclarations`
+  into the spine descent); (2) conditional/`setDefined`; (3) `@layer`/`@scope` at-rules (+ ampersand-append
+  hoist alongside); (4) `inherit` in-place span (narrowest). Backpedal self-check: reused the KEPT
+  position-gated lookup — the only new thing is numbering canonical children (output-invisible), no dual
+  path (re-declared/snapshot has one path: the spine), no cell-population invariant introduced. Merge stays
+  a precise coverage gap, not a safety fallback. Stopped at the per-position boundary as directed.
