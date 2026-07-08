@@ -311,3 +311,257 @@ the status quo — scope = reachability precompute (A) + per-branch state (B); m
 global dataflow worklist over reachability buckets, confluent by construction, materialized once. It
 is ready for review. It is NOT ready to implement until OQ-1/OQ-2/OQ-5 are arbitrated, because each
 changes what the IR carries and how much of today's `processExtends` the flow subsumes.
+
+---
+
+## 9. OQ-5 behavioral characterization (own vs composed)
+
+**Purpose.** OQ-5 was posed in the code's jargon (`analyzeNonPartialExtends`, `F_EXTEND_TARGET`,
+`ownSelector`). This section restates it as PLAIN OBSERVABLE BEHAVIOR — concrete `.less`→`.css` cases,
+rendered through the ACTUAL current Jess renderer (`renderNodeToString`, `collapseNesting:true`) — so
+the axis can be ruled on with real examples rather than machinery.
+
+**The distinction, in one sentence.** A nested ruleset `.aa { .dd {} }` has two selector forms: its
+**own** authored fragment `.dd`, and its **composed/resolved** form `.aa .dd`. The question is whether
+extend targeting/contribution needs BOTH as distinct handles, and whether that folds into the (B)
+placement model or is a separate axis.
+
+**Two directions the split shows up (critical — they are NOT the same thing):**
+- **As a TARGET** — an extend elsewhere names `.dd` vs `.aa .dd` and we ask which form of the nested
+  ruleset it may hit.
+- **As a CONTRIBUTION (extend-with)** — the nested ruleset is itself the *extender* (`.dd:extend(.x)`
+  or `.dd { &:extend(.x) }`), and we ask which form of `.dd` gets added to `.x`'s selector list.
+
+The contribution direction is where the current renderer is actually WRONG today (§9.2), and it is the
+load-bearing half of OQ-5.
+
+### 9.1 Cases where own-vs-composed is a TARGET distinction
+
+All rendered through Jess as of `work/oq5` (branched from `origin/dev`).
+
+**C1 — plain `:extend(.dd)` against a nested own fragment: NO match.**
+```less
+.aa { .dd { color: red; } }
+.zz:extend(.dd) { color: blue; }
+```
+```css
+.aa .dd { color: red; }
+.zz { color: blue; }
+```
+A non-`all` extend naming the bare own fragment `.dd` does **not** fire against the nested ruleset.
+Neither own nor composed is extended. *(Own form is not independently targetable by a plain extend.)*
+
+**C2 — `:extend(.aa .dd)` (composed) DOES match.**
+```less
+.aa { .dd { color: red; } }
+.zz:extend(.aa .dd) { color: blue; }
+```
+```css
+.aa .dd,
+.zz { color: red; }
+.zz { color: blue; }
+```
+The COMPOSED form drove it: the target text equals the resolved selector, so `.zz` is appended.
+
+**C3 — `:extend(.dd all)` fires inside the composed selector.**
+```less
+.aa { .dd { color: red; } }
+.zz:extend(.dd all) { color: blue; }
+```
+```css
+.aa .dd,
+.aa .zz { color: red; }
+.zz { color: blue; }
+```
+`all` matches the `.dd` FRAGMENT *within* the composed `.aa .dd`, substituting to `.aa .zz`. The OWN
+fragment drove the match, but the emitted contribution is re-composed under the found context `.aa`.
+
+**C4 — `:extend(.aa .dd all)` (composed whole) replaces the whole branch.**
+```less
+.aa { .dd { color: red; } }
+.zz:extend(.aa .dd all) { color: blue; }
+```
+```css
+.aa .dd,
+.zz { color: red; }
+.zz { color: blue; }
+```
+The COMPOSED whole drove it; `.zz` replaces the entire `.aa .dd`, not just a fragment.
+
+**Reading of 9.1:** target-side, own vs composed is NOT two independent handles the IR must carry — it
+is one selector (the composed/resolved form) plus the `all`-mode fragment-substitution semantics of the
+(C) match/rewrite engine. C3 differs from C4 ONLY by `all`-fragment vs `all`-whole matching, which (C)
+already owns. The bare own fragment `.dd` is not a target at all (C1). **Target-side collapses into (C).**
+
+### 9.2 Cases where own-vs-composed is a CONTRIBUTION distinction — and Jess is WRONG today
+
+Here the nested ruleset is the *extender*. Rendered from the real Less test-data fixtures
+`tests-unit/extend-selector` and `tests-unit/extend-nest` through the Jess corpus harness
+(`all-less.test.ts`, `LESS_TEST_DATA_ROOT` = the Less.js checkout). **Both fixtures currently FAIL in
+Jess**, and every failure line is this axis. The `- Expected` lines are the Less-4.x golden; the
+`+ Received` lines are what Jess emits today.
+
+**C5 — nested extender must contribute its COMPOSED form (extend-selector).**
+```less
+.ext { test: 1; }
+.a, .b {
+  test: 2;
+  .c:extend(.ext all) { test: 3; .d { test: 4; } }
+}
+```
+```diff
+  .ext,
+- :is(.a, .b) .c {      // expected: composed form of the extender
++ .c {                  // Jess emits: OWN fragment only
+    test: 1;
+  }
+```
+The extender `.c` lives under `.a, .b`. Its contribution to `.ext`'s list must be the COMPOSED
+`:is(.a, .b) .c`. Jess adds the OWN `.c`. **Composed form is load-bearing and currently dropped.**
+
+**C6 — crossing extender must contribute its COMPOSED form (extend-selector, `.footer .footer-nav`).**
+```less
+.header { .header-nav { background: red; &:before { background: blue; } } }
+.footer { .footer-nav { &:extend( .header .header-nav all ); } }
+```
+```diff
+  .header .header-nav,
+- .footer .footer-nav {   // expected: composed extender
++ .footer-nav {           // Jess emits: OWN fragment only
+```
+Same axis via a crossing (`all`, target spans parent+child) extend. `.footer` is not an ancestor of the
+target, so the extender must compose to `.footer .footer-nav`.
+
+**C7 — nested extender against a top-level target (extend-selector, issue-2586).**
+```less
+.issue-2586-bordered { border: solid 1px black; }
+.issue-2586-somepage {
+  .content:extend(.issue-2586-bordered) { &>span { margin-bottom: 10px; } }
+}
+```
+```diff
+  .issue-2586-bordered,
+- .issue-2586-somepage .content {   // expected: composed
++ .content {                        // Jess emits: OWN
+```
+Note this is a NON-`all`, NON-crossing plain extend, yet composition is still required — so the
+composed-contribution requirement is not gated on `all` or crossing.
+
+**C8 — the `sidebar` family (extend-nest).**
+```less
+.sidebar { width: 300px; .box { color: white; } }
+.type1 { .sidebar3 { &:extend(.sidebar all); background: green; } }
+```
+```diff
+  .sidebar,
+  .sidebar2,
+- .type1 .sidebar3,   // expected: composed
++ .sidebar3,          // Jess emits: OWN
+  .type2.sidebar4 { width: 300px; background: red; }
+```
+And the same substitution flows into the `.box` `:is(...)` line. `.sidebar2` (top-level extender, own ==
+composed) is correct; only the NESTED extenders (`.sidebar3`) diverge — pinpointing that the bug is
+exactly "own emitted where composed required."
+
+**Reading of 9.2:** contribution-side, the extender's OWN fragment and its COMPOSED form are genuinely
+different strings, and Less semantics require the COMPOSED form in the target's selector list. This is
+NOT the target-side story of 9.1 — it is about *where the extending ruleset sits*, i.e. its placement in
+the tree relative to the target. The composed contribution is `composeExtendWithRelativeToTarget`
+(`extend-roots.ts:257`) / `getFullComposedForm` (`:320`); today's bug is that the nested extender's
+contribution falls back to own for local/plain matches.
+
+### 9.3 The `&{}` / reference-mode angle (B2 interaction)
+
+**C9 — `&{}` hoist under an extender.**
+```less
+.base { color: black; }
+.derived { &:extend(.base); & { color: green; } }
+```
+```css
+.base,
+.derived { color: black; }
+.derived { color: green; }
+```
+Here `.derived` (own == composed, top-level) is added to `.base`, and the `& {}` block hoists to a
+`.derived` sibling. In reference-import mode this is the design's known `.b { color: green }` case: the
+original target `.base` must be SUPPRESSED while the extend-added `.derived` and the hoisted `& {}`
+sibling remain — which is B2 (`origin`/`visible` annotations), NOT own-vs-composed. Own-vs-composed is
+orthogonal to it: the reference filter operates on the composed contribution regardless of which form
+was chosen. *(The full `tests-unit/import/import-reference.less` fixture is on the expected-failure list
+for an unrelated at-rule-filtering reason, so C9 is an isolated inline reproduction of just the
+`&{}`+extend interaction, which renders correctly today in non-reference mode.)*
+
+### 9.4 Do the two forms ever COEXIST as targets for one ruleset simultaneously?
+
+No case in the corpus requires the SAME ruleset to expose both `.dd` and `.aa .dd` as two live targets
+at once. Target-side, only the composed form is ever a target (9.1). Contribution-side, a ruleset
+contributes exactly ONE form per fire — its composed form relative to the matched target (9.2); the
+"relative to target" clause means the composed string can differ per target, but it is still one
+contribution per (extender, target) pair, not two coexisting handles.
+
+### 9.5 Recommendation: OQ-5 is **(a) — folds into (B) placement, not a third axis**
+
+**Claim:** own-vs-composed is NOT an independent scope axis. It decomposes cleanly into the two models
+already in the design:
+- **Target-side (9.1)** → belongs to **(C)**, the match/rewrite black box. The only "own" behavior is
+  `all`-mode fragment matching inside the composed selector (C3), which (C) already owns. The composed
+  form is the sole target; the bare own fragment is never independently targetable (C1). No new IR state.
+- **Contribution-side (9.2)** → is a **(B) PLACEMENT** fact. "Which form does this extender contribute"
+  is fully determined by WHERE the extender sits in the tree relative to the target — precisely the
+  information PLAN already computes (the extend-root graph + parent chain) and EMIT already projects
+  (`placement`, and the `hoistToRoot`/composed-form logic). The composed contribution is
+  `composeExtendWith…RelativeToTarget` — a function of the extender's bucket/placement and the target's
+  ancestor set, both PLAN outputs.
+
+**How the two-targets encoding reproduces every case.** In the §2.2 model, each branch carries
+`{ bucket, placement, origin, order, visible, generated }`. Own-vs-composed needs NO new field:
+- The extender's branch already knows its `bucket` (which root/parent chain it lives in). Its composed
+  contribution is derived at fire time by composing along the path from its bucket up to the target's
+  bucket's common ancestor — exactly `composeExtendWithRelativeToTarget`. C5/C6/C7/C8 are all "compose
+  the extender's authored fragment along its `bucket` path relative to the target," which is a PLAN-graph
+  walk + (C) rewrite, producing ONE `origin=extend-added` branch on the target with the composed value.
+- A crossing extender (C6) additionally sets `placement=root` on its produced branch — already in the
+  model (§2.4). Own-vs-composed adds nothing beyond the composed VALUE of the contributed branch.
+- C1–C4 are pure (C): the target subject's branch is rewritten (or not) by the instruction; `all` vs
+  non-`all` and fragment vs whole are (C)'s existing rewrite modes.
+- C9 is pure (B2): `origin`/`visible` on the added/hoisted branches; own-vs-composed does not enter.
+
+So the branch annotation set is sufficient: the "composed" form is a DERIVED value (compose along the
+bucket path at fire time), and the "own" form is just the extender's authored fragment before that
+composition. There is no third orthogonal dimension to carry — no `ownness` flag independent of
+`bucket`/`placement`. The current code's `ownSelector`/`analyzeNonPartialExtends` cascade
+(`extend-roots.ts:972`–`1089`) is the ENTANGLED form of this: it re-derives, per instruction on mutating
+nodes, "should I emit the own fragment or the composed whole," precisely because placement and match are
+not separated. In the clean-slate model that cascade DISAPPEARS: PLAN gives the bucket path, (C) gives
+the match, and EMIT composes the contribution from the path — the own/composed choice is never an
+explicit branch, it is the output of composing (or not) along a known path.
+
+**Why NOT (b) a third axis.** A third axis would be justified only if own-ness were independent of both
+reachability and placement — i.e. a ruleset could need its own form as a live handle in a way not
+determined by its tree position. No corpus case shows that (9.4). Own-ness is a strict function of
+placement (tree position relative to target), so it is a projection of (B), not an orthogonal coordinate.
+
+**Bottom line for the design:** OQ-5 resolves to **(a)**. The IR carries no new field; the composed
+contribution is a fire-time derivation from the extender branch's `bucket`/`placement` (PLAN data) run
+through the (C) rewrite, and EMIT projects it exactly as it already projects placement. This REMOVES the
+`ownSelector`/`analyzeNonPartialExtends` cascade rather than reproducing it — consistent with the §1
+claim that separating (A)/(B)/(C) collapses today's classify passes.
+
+### 9.6 Needs owner confirmation of intended output
+
+The `.css` files under the Less.js checkout are **Less-4.x goldens**, NOT the user-maintained Jess v5
+alpha expected outputs. The C5–C8 diffs above are Jess-vs-Less-4.x. Two points need an owner ruling
+before treating them as the correctness target:
+1. **Is the composed-contribution form (`:is(.a,.b) .c`, `.footer .footer-nav`, `.type1 .sidebar3`) the
+   intended v5 output?** It matches Less 4.x semantics and the recommendation assumes yes, but these
+   specific fixtures are not on the jess pass-list yet (extend-nest and extend-selector currently FAIL),
+   so the v5 expected `.css` for them has not been ratified by the owner.
+2. **Adjacent (non-OQ-5) divergences in the same fixtures, flagged so they are not conflated with OQ-5:**
+   - `extend-nest`: `:is(.button, .submit):hover` (golden) vs `.button:hover, .submit:hover` (Jess) — an
+     `:is()`-grouping/format question (B4-adjacent), independent of own-vs-composed.
+   - `extend-nest`: the `.amp-test-*` block renders malformed in Jess (leaked `&`, runaway `:is()`
+     nesting) — a `&`-substitution recursion bug, independent of OQ-5.
+   - `extend-selector`: `[data=@{attr-data}]` unresolved (golden resolves to `[data="test3"]`) — an
+     interpolation-eval issue, independent of OQ-5.
+   These do not affect the (a)-vs-(b) ruling but WILL block making the fixtures green; they belong to
+   other axes and should be tracked separately.
