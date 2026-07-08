@@ -247,6 +247,23 @@ pushed value-frame. This is the thing copies exist for today, resolved by the th
 The extend doc's three-phase system is preserved but is no longer a separate document-level pipeline
 bolted onto eval — it is woven into the single traversal.
 
+### 4.0 Extend-work gate — ZERO cost when nothing extends (pay only for real work)
+The extend layer engages ONLY when there is real work, mirroring the visitor gate (§6) and pre-eval gate
+(§6.9). Two levels:
+1. **No `:extend` registered anywhere** (`context.extends` empty) → **the entire extend layer is bypassed**:
+   PLAN is not built, SOLVE never runs, and — crucially — **no per-subject buffering / header-deferral is
+   set up at all**. The pass is then a pure frame-threading streaming descent (§2 spine alone): every
+   subject's header is final the moment the walk reaches it, so it emits inline with zero deferral, zero
+   buffer, zero extend overhead. This is the COMMON case (most stylesheets have no extends) and it must
+   cost nothing — the buffer-then-flush machinery of §4.4 exists solely to serve deferral, and deferral
+   only arises from a reaching extend.
+2. **Extends exist but none REACHES a given subject** (`Reaching(S) = ∅`) → that subject emits inline
+   immediately (the §4.4.3 EARLY-FLUSH predicate is trivially satisfied when `Reaching(S)` is empty — the
+   "max authored position over ∅" condition holds at the subject's own position). So a scope with no
+   reaching extends streams without buffering even while other scopes defer. PLAN's reachability cost
+   itself scales with the number of extend roots (∝ number of `:extend`s), not tree size — few extends →
+   tiny PLAN. Net: buffering/deferral is paid strictly per-reaching-extend-per-subject, never globally.
+
 ### 4.1 PLAN — precompute before the traversal (unchanged, low-risk)
 
 Once, up front (this is the part of today's `extend-roots.ts` that survives structurally):

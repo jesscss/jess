@@ -54,6 +54,12 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       same contract unless owner drops v5 pre-eval compat.
 
 ### P3 — extend wired into the pass (§4)  ·  depends on P1; overlaps P2
+- [ ] **Extend-work gate (§4.0) — the fast path.** No `:extend` registered (`context.extends` empty) →
+      bypass PLAN/SOLVE/buffering ENTIRELY: the pass stays a pure streaming spine, headers emit inline,
+      zero extend overhead (the common case). No extend REACHES a subject (`Reaching(S)=∅`) → that subject
+      emits inline (early-flush trivially holds). Buffering is paid strictly per-reaching-extend, never
+      globally. **Lock:** a ratchet test asserting an extend-free stylesheet triggers zero PLAN/SOLVE and
+      zero per-subject buffering (instrument a counter = 0).
 - [ ] `runExtendPipeline` (PLAN reachability + target index → SOLVE global fixpoint → EMIT compose/hoist/
       collapse) REPLACES the `processExtends` apply. Buffer-then-flush discipline (§4.4): decls stream to
       per-subject buffer, headers deferred, early-flush per the §4.4.3 predicate.
