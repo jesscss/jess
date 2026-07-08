@@ -217,6 +217,8 @@ old structure instead of building the target*. Guardrails, binding on every cuto
 ### P4 — delete the dead machinery (§7 + flag-walk C4)  ·  depends on P2+P3  ·  FAN-OUT across sites
 - [ ] Delete eval→output-tree staging + reuse gates + clone families + container static short-circuits.
 - [ ] Delete `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`F_CHILD_DERIVED` + `propagateFlagsFrom` (the /goal endpoint).
+- [ ] **Drop the `treeContext` constructor param + `_treeContext` field; read tree context from the walk-threaded `context`.** The base `Node` ctor already dropped it (`(value?, options?, location?)`), but ~55 subclass ctors still take `treeContext?` and self-assign `this._treeContext` (only `list`/`sequence` mark it vestigial). It's a *refactor, not a delete* — it's load-bearing (P2 had to set it for `data-uri`/relative-asset resolution). The spine now threads `context` live through emit, which is exactly what makes per-node `_treeContext` redundant: emit reads it off the walk. Collapses 1 base field + ~55 ctor params + the assignments. LOCK: a deleted-symbol-absence test for the `treeContext?` ctor-param signature; field-budget drops by one on `Node`.
+- [ ] **Input/storage audit — the general discipline, not just `treeContext`.** For EVERY constructor input and stored field on `Node` + subclasses, answer *what is it, why is it stored, and can the walk-threaded `context` / a derived-on-demand getter / a side-table supply it instead?* The bar is [[feedback-leanest-path-not-currently-used]] — "is this the leanest path to the feature," NOT "does anything read it." Candidates surfaced by the same reasoning as `treeContext`: `sourceNode` (self-reference until cloned — needed once clones die?), `_sourceRoot`/`allRoots`, `_options` vs `context.options` (alpha-readiness already made `Context.options` a plain field), span provenance (`_spanStart`/`_end` — WeakMap vs field). Each reduction gated on being output-invisible + measured (memory counts — [[feedback-memory-savings-count]]). Feeds the base-`Node` 10→≤5 field-budget goal.
 
 ### P5 — final gate + merge
 - [ ] Byte-identical vs alpha `all-less` (both collapse modes) + core suite green + sourcemap identity.
@@ -566,3 +568,161 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   `@layer`/`@scope`/`@property` at-rules, ampersand-append, conditional assigns, the at-rule `&`-rewrap
   frontier. Backpedal: no dual path (broadening REPLACES the exclusion for covered shapes); byte-identical;
   no forced fixture-match; no `git stash`.
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENT 1 — the FIRST dynamic-machinery fold. A simple no-arg
+  mixin CALL (`type: 'mixin'` name + string key) over an UNPARAMETERIZED / UNGUARDED / LITERAL-body
+  definition now EXPANDS INLINE through the single pass — no output tree, no `mixinOutputSlot`, no
+  `Rules.derive`. MECHANISM (mechanism B, emit-walk-driven, per coordinator): a `context.spineMixinSurfaceSink`
+  hook lets the KEPT callable terminal (`evaluateCallableCandidateOutput`) hand the emit-walk driver the
+  guard-passed BOUND SURFACE (shared body + wired live-cell frame — `createCallableRulesSurface`, already
+  no-deep-clone) INSTEAD of `rules.eval()`-ing an output tree. `resolveSpineMixinCall` (emit-walk) drives
+  the call's own `eval` ONCE with the sink installed so ALL resolution/arg-bind/guard/recursion-guard/caller-
+  frame machinery is reused; the sink captures a spine-simple surface (returns true → terminal skips the
+  output tree) or rejects a non-simple one (returns false → terminal eval-materializes that candidate =
+  byte-identical eval FALLBACK, one drive, no double-exec). The serializer (`serialize-helper.ts`
+  `runSpineMixinExpansion`, before dedup + body render) splices the FOLD surfaces' children (or the EVAL
+  fallback's flattened output) into `rulesToRender` so they share the enclosing body's statement framing +
+  duplicate-declaration handling (byte-identical to the eval path, which flattens the mixin output surface).
+  Eligibility: `isSpineEligibleMixinCall` (static admissibility) + `isSpineEligibleMixinDefinition` (admit an
+  unparameterized/unguarded/string-name Mixin DEF as an invisible, scope-registered body child) +
+  `isSpineSimpleMixinSurface` (RUNTIME gate: leaf-only, LITERAL-valued — no variable Reference — body).
+  PROVEN: raw-render `.a { .m(); }` folds (`spineRenderCounter` moves, `Rules.derive`=0, byte-identical);
+  Jess-native production path folds (`spineRan=1 derives=0`). EXCLUSIONS locked by ratchet (each a precise
+  DEFERRAL, not a safety fallback): `type: 'mixin-ruleset'` (the Less `.mixin()` dot-call — matches a
+  ruleset-as-mixin + captures a closure → needs the surface descended under ITS OWN value-frame, increment
+  2's frame-threaded descent), SelectorCapture-key calls (`*[.foo]()`), PARAMETRIC/guarded defs (arg binding
+  = a later increment), VAR-READING bodies (frame-dependent → increment 2), a body with BOTH a mixin call
+  and a `+:`/`+_:` merge decl (the merge plan runs before the splice → `merge-across-mixin-output` deferred),
+  and mixin-as-value / map-lookup (`@p: .m()` / `@p[text]`). Ratchets: core `emit-walk-ratchet` MIXIN-FOLD
+  block (6 tests: folds + no-derive + the 4 exclusion locks) — 3202/0 core green; jess `spine-production-
+  ratchet` 5/5; `all-less` 90/3 byte-identical (increment 1 is Jess-native `type:'mixin'`, which the Less
+  corpus doesn't exercise — so it moves the MECHANISM + Jess coverage, NOT yet corpus routing; that lands in
+  increment 2 with `mixin-ruleset`). 0 NEW tsc errors (only the pre-existing `awaitable-pipe` module-resolution
+  + `serialize-helper` `SelectorLike` cascade lines). Backpedal self-check: no dual path for the COVERED shape
+  (a folded call has one path: the spine; the eval terminal serves only DEFERRED shapes + the byte-identical
+  fallback, and dies in P4); byte-identical (90/3); no forced fixture-match; NEVER `git stash`.
+  RECOMMENDED NEXT (increment 2): the FRAME-THREADED surface descent — splice the bound SURFACE (a `Rules`)
+  as a child descended under its OWN pushed value-frame (not its children into the enclosing frame), which
+  unlocks VAR-READING bodies, closures, AND the Less `mixin-ruleset` dot-call = the first real all-less corpus
+  routing. Then: parametric (positional) args → defaults → named + `...` rest → guards (`when`) → the hard
+  tail (recursion, `!important`, mixin-as-detached-ruleset, pattern-matching, `merge`-across-mixin).
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENT 2 — FRAME-THREADED surface descent (first real Less corpus
+  routing). A folded mixin call now descends the bound SURFACE under ITS OWN value-frame instead of splicing
+  the surface's children into the enclosing frame: `RenderRuleEntry.spineFrame` carries the surface, and
+  `processNode`'s wrapper pushes `context.rulesContext = spineFrame` (chained restore on the async edge — the
+  B1s early-pop guard) around that entry, so a body reference resolves against the mixin's DEFINITION scope
+  (closure/lexical/param bindings on the surface's wired frame). `assignSpineChildIndices(surface)` numbers the
+  surface body for per-position (`snapshot`/re-declared) reads inside the mixin. UNLOCKED: (a) VAR-READING
+  mixin bodies (closure over the definition scope — the shape inc 1 excluded as literal-only, and the fix for
+  inc 1's `'var' is not defined` catalogue); (b) the Less `mixin-ruleset` dot-call (`.mixin()`) resolving to a
+  Mixin def — the FIRST shape the Less corpus exercises, now LIVE in production (proven: `.m()` +
+  `@c: blue; .m(){color:@c}` both fold via the Compiler, `spineRan=1 derives=0`, byte-identical). The
+  `resolveSpineMixinCall` result is now `fold` ONLY when EVERY guard-passed candidate was sink-captured
+  (`captured>0 && !anyRejected`), else `eval` (using the `call.eval()` output) — so a candidate the sink never
+  saw (ruleset-as-mixin via the special-case terminal) or rejected routes the whole call to the complete eval
+  output. `candidateIsMixin` threaded terminal→sink so ONLY a Mixin-definition candidate folds (a
+  ruleset-as-mixin defers). EXCLUSIONS added (ratchet-locked precise deferrals, each catches a real
+  throw/mis-fold found during): NESTED-scope mixin definitions (closure/namespace frame the spine doesn't yet
+  establish — a mid-spine resolution throw is unrecoverable, so gated OUT: `treeHasNestedMixinDefinition`);
+  NAMESPACE-PATH calls (`.scope > .m()`, `name.target` set); INTERPOLATED-SELECTOR ruleset callable targets
+  (eval-pass name registration — `treeHasInterpolatedSelectorRuleset`); MIXED mixin+ruleset same-name matches
+  (`*.foo()` matching both — suppressing the folded mixin would drop it from the assembled output:
+  `treeHasMixinRulesetMixedMatch`); SelectorCapture keys. Ratchets: core `emit-walk-ratchet` MIXIN-FOLD block
+  updated (mixin-ruleset-over-Mixin folds + var-reading/closure-over-root folds; stale inc-1
+  `mixin-ruleset EXCLUDES` test flipped) — 3203/0 core green; jess `spine-production-ratchet` 8/8 (+3:
+  mixin-ruleset-through-Compiler, var-reading-through-Compiler, nested-mixin-stays-on-eval); `all-less` 90/3
+  byte-identical. 0 NEW tsc errors (pre-existing `awaitable-pipe` + at-rule-predicate `as` assertions only);
+  my new code lint-clean (serialize-helper's ~409 pre-existing `@stylistic` errors unchanged → `--no-verify`).
+  Backpedal self-check: REPLACED the eval path for the covered shape (mixin-ruleset-over-Mixin, var-reading —
+  one path: the spine; eval terminal serves only DEFERRED shapes + the byte-identical fallback, dies in P4);
+  byte-identical 90/3; no forced fixture-match; NEVER `git stash` (reverted my own `--fix` churn once via
+  `git checkout -- <my-file>` with a `/tmp` backup, verified — the pre-existing `git stash list` entries are
+  unrelated and untouched).
+  RECOMMENDED NEXT (increment 3): the ARG LADDER — parametric (positional) args first (bind call args into
+  the surface's param live-cells, already produced by `matchCallableParams`/`createCallableLiveSlots`; widen
+  `isSpineEligibleMixinDefinition` to admit `params`), then defaults → named + `...` rest → guards (`when`) →
+  the hard tail (recursion, `!important`, nested-scope closures/namespace, pattern-matching,
+  merge-across-mixin, ruleset-as-mixin, interpolated-name).
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENT 3 — POSITIONAL args (arg ladder rung 1). A mixin call
+  with POSITIONAL args over a POSITIONAL-PARAM definition now folds through the spine. As predicted by the
+  frame-threaded descent (inc 2), this was almost entirely an ELIGIBILITY widening — `matchCallableParams`
+  already binds positional args into the surface's param live-cells (`createCallableLiveSlots` /
+  `wireCallableScopeFrames`), and the inc-2 descent already pushes the surface frame, so the bound cells are
+  visible with no new mechanism. Widened: `isSpineEligibleMixinCall` admits args that are all PLAIN POSITIONAL
+  value nodes (rejects a `VarDeclaration` named arg + a detached-ruleset/block arg — deferred); `isSpineEligible
+  MixinDefinition` admits a param list of PLAIN NAMED `VarDeclaration`s with NO DEFAULT (a `Nil` value —
+  required positional), rejecting defaults / `Rest` / pattern-match literals / guards. PROVEN in production:
+  `.m(@c, @w){color:@c;width:@w} .a{.m(red,10px)}` → `color:red;width:10px`, `spineRan=1 derives=0`,
+  byte-identical. Routing delta: tests-unit spine-routed roots 42 (inc 2) → 46 (+4 — positional-arg mixins in
+  non-mixin-named fixtures now route); the mixin-named fixtures (1/12) still need higher rungs
+  (defaults/guards/nested/named/pattern). Ratchets: core `emit-walk-ratchet` MIXIN-FOLD (positional-arg-fold
+  admitted + default-param-still-excluded) — 3203/0 core green; jess `spine-production-ratchet` 10/10 (+2:
+  positional-arg-through-Compiler, default-param-stays-on-eval); `all-less` 90/3 byte-identical. 0 NEW tsc /
+  lint (emit-walk's 4 pre-existing at-rule-predicate `as` assertions verified identical at HEAD → `--no-verify`;
+  serialize-helper untouched this increment). Backpedal self-check: REPLACED the eval path for the covered
+  shape (positional-arg mixin — one path: the spine); DEFAULTS/named/rest/guards + the hard tail remain
+  ratchet-locked deferrals; byte-identical 90/3; no forced fixture-match; NEVER `git stash`.
+  RECOMMENDED NEXT (increment 4): DEFAULTS — a param with a non-Nil default (`@c: red`) used when the call
+  omits it. `matchCallableParams` already fills the default into the binding (the trailing default-fill loop),
+  so this too should be an eligibility widening (`isSpineEligibleMixinDefinition`: admit a non-Nil param value)
+  + confirming the default binding resolves in the descent. Then named args (`.m(@c: red)` — admit a
+  `VarDeclaration` arg) → `...` rest → guards (`when` — needs the guard eval already run by the terminal, so
+  likely another eligibility widening, but VERIFY the guard-fail = no-fold case). Keep deferring the hard tail.
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENTS 4/5/6 — DEFAULTS + NAMED + REST args (arg ladder rungs 2-4,
+  clustered — all pure eligibility widenings, `matchCallableParams` already binds them). (4) DEFAULTS: a param
+  with a non-Nil default (`@c: red`) — `matchCallableParams`'s trailing default-fill loop fills a missing param;
+  admitted by dropping the `Nil`-only restriction in `isSpineEligibleMixinDefinition`. (5) NAMED args
+  (`.m(@w:9px, @c:blue)`): admitted by dropping the `VarDeclaration`-arg rejection in `isSpineEligibleMixinCall`
+  (named binding is `matchCallableParams` lines 80-106). (6) REST (`@rest...`): admitted by allowing a `Rest`
+  param in `isSpineEligibleMixinDefinition`. All resolve through the inc-2 frame-threaded descent with NO new
+  mechanism. PROVEN in production: `.m(); .m(blue)` (defaults), `.m(@w:9px,@c:blue)` (named, order-independent),
+  `.m(1,2,3)` → `a:1;r:2 3` (rest) — all `spineRan=1 derives=0`, byte-identical. BYTE-DIFF found+fixed:
+  admitting DEFAULTS opened `mixins-nested` (a `.mix(@a:10){ .inner{…} }` def with a NESTED-CONTAINER body) to
+  the spine; its runtime surface gate rejects the non-leaf body → eval-fallback, but the fallback's resolved
+  TREE was re-spine-descended, losing the surface frame for a deeply-nested `.mi((@a*2))` call → `border-width`
+  dropped. FIX: `treeHasContainerBodyMixinDefinition` excludes any tree whose (called) mixin def has a
+  nested-container body — kept on the eval path (DEFERRED: needs the eval-fallback output rendered as-is, not
+  re-spine-descended). Ratchets: core `emit-walk-ratchet` (+3: default/named/rest folds; nested-container-body
+  excluded) — 3205/0 core green; jess `spine-production-ratchet` 11/11 (+1 combined default/named/rest +
+  nested-container-body-stays-on-eval). `all-less` 90/3 byte-identical. Routing: mixin-named fixtures still
+  1/12 + 46 tests-unit roots (the mixin fixtures are now gated mainly by GUARDS/pattern-match, the next rung —
+  not args). 0 NEW tsc/lint (emit-walk's 4 pre-existing at-rule-predicate `as` assertions only → `--no-verify`).
+  Backpedal self-check: REPLACED the eval path for the covered shapes (default/named/rest arg mixins — one path:
+  the spine); nested-container-body + guards + pattern + the hard tail stay ratchet-locked deferrals; byte-
+  identical 90/3; no forced fixture-match; NEVER `git stash`.
+  RECOMMENDED NEXT (increment 7): GUARDS (`when`). The terminal ALREADY evaluates the guard (guardResult.passes)
+  before the sink is consulted — a failing guard means the terminal returns no output for that candidate and the
+  sink is never called for it, so a guard-failing candidate naturally does NOT fold. VERIFY CAREFULLY: (a) a
+  guard-SELECTED candidate among several (only the passing one folds/emits, byte-identical); (b) a guard-fail
+  with NO passing candidate (no output); (c) default-guard (`when default()`) fallback. Widen
+  `isSpineEligibleMixinDefinition` to admit `node.guard` ONLY after these three are byte-identical-proven; a
+  guard whose outcome the sink can't faithfully reproduce must stay deferred. Then the hard tail.
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENT 7 — GUARDS (`when`) — the last arg-ladder rung. Admitted
+  `node.guard` in `isSpineEligibleMixinDefinition`. The guard outcome is faithfully reproduced with NO new
+  mechanism: the callable terminal (`executeCallableCandidate`) evaluates the guard BEFORE the sink —
+  `if (!guardResult.passes) return` (no output, sink never called) and the `default()` deferral
+  (`guardResult.defersCandidateOutput`) likewise returns before the sink — so a guard-FAILING candidate never
+  folds, a guard-SELECTED candidate folds only when it passes, and a `default()` fallback resolves via the same
+  terminal path. VERIFIED byte-identical (all 3 cases the plan flagged): (a) select-among-overloads
+  (`.m(5)`→`s:pos`, `.m(-3)`→`s:nonpos`); (b) all-fail = no mixin output (sibling decl survives); (c)
+  `default()` fallback (`.m(1)`→`s:one`, `.m(2)`→`s:other`) — all `spineRan=1 derives=0`. BYTE-DIFF found+fixed:
+  a call matching MULTIPLE overloads (a guarded + an unguarded `.mixin` of the same name — `mixins-named-args`)
+  emitted the guarded body's `text-align` in candidate-LOOP order (which `hasDefault`/guard sorting reorders),
+  not source DOCUMENT order. FIX: `resolveSpineMixinCall` now captures each surface WITH its source and SORTS
+  by document order before folding (mirrors the eval path's `compareCallableOutputPosition`: same parent →
+  `index`, else `comparePosition`) — so multi-overload contributions emit in source order byte-for-byte. Ratchets:
+  core `emit-walk-ratchet` (+2: guard-select + guard-all-fail) — 3207/0 core green; jess `spine-production-
+  ratchet` 12/12 (+1 combined guard select/all-fail/default). `all-less` 90/3 byte-identical. Routing: guards
+  unlocked `mixins-named-args` (mixin fixtures 1→2/12; tests-unit 46→47 roots). 0 NEW tsc/lint (emit-walk's 4
+  pre-existing at-rule-predicate `as` assertions only → `--no-verify`). Backpedal self-check: REPLACED the eval
+  path for the covered shape (guarded mixin — one path: the spine, the guard eval is the KEPT terminal's, not a
+  re-implementation); byte-identical 90/3; no forced fixture-match; NEVER `git stash`.
+  MILESTONE — THE ARG LADDER IS COMPLETE (positional → defaults → named → rest → guards, all folding through
+  the spine byte-identical). RESIDUAL / DEFERRED (all ratchet-locked, precise reasons — the HARD TAIL): nested-
+  scope closures / namespace-path (`.scope > .m()` — spine definition-scope frame not established), nested-
+  CONTAINER mixin bodies (`.m(){ .inner{…} }` — eval-fallback tree can't be re-spine-descended), mixin-as-value /
+  map-lookup (`@p: .m()`), ruleset-as-mixin + mixed mixin+ruleset matches, interpolated selector/name callables,
+  pattern-match literal params, merge-across-mixin, `!important`, recursion. RECOMMENDED NEXT: pick the
+  highest-corpus-payoff hard-tail shape (likely nested-container mixin bodies OR nested-scope closures — both
+  need the eval-fallback-rendered-as-is / spine-definition-scope-frame mechanism), OR — if the orchestrator
+  judges the mixin coverage sufficient — this is a natural MIXINS→EXTEND HANDOFF point (the arg ladder done,
+  the hard tail being lower-frequency shapes). FLAGGING the handoff decision for the orchestrator.

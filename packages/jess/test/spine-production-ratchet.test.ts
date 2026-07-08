@@ -136,4 +136,160 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path
     expect(css).toContain('@property --x');
   });
+
+  it('INCREMENT 2: folds a root-level Less `.mixin()` dot-call through the spine on the COMPILER path (mixin-ruleset, no derive)', async () => {
+    // The moment of truth for increment 2: a REAL Less `mixin-ruleset` dot-call
+    // (`.m()`) over a root-level Mixin definition routes through the spine in
+    // production, no output tree — the first mixin shape the Less corpus exercises.
+    const compiler = makeCompiler();
+    const src = `.m() {\n  color: red;\n  width: 10px;\n}\n.a {\n  .m();\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // no output tree materialized for the fold
+      expect(css).toContain('color: red');
+      expect(css).toContain('width: 10px');
+      expect(css).not.toContain('.m('); // the call expanded, not printed
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('INCREMENT 2: folds a VAR-READING Less mixin body (closure over the definition scope) via the Compiler', async () => {
+    // The frame-threaded descent resolves the mixin body's `@c` against the
+    // DEFINITION scope (root) — the shape increment 1 excluded (literal-only) and
+    // inc 2 unlocks; it is the fix for inc 1's `'var' is not defined` catalogue.
+    const compiler = makeCompiler();
+    const src = `@c: blue;\n.m() {\n  color: @c;\n}\n.a {\n  .m();\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+    expect(css).toContain('color: blue');
+  });
+
+  it('does NOT route a NESTED-scope mixin definition through the spine (closure/namespace → eval path)', async () => {
+    // A mixin defined inside a ruleset captures its enclosing scope; folding a call
+    // to it from another scope needs the definition-scope frame the spine does not
+    // yet establish — deferred, stays on the eval path (byte-identical).
+    const compiler = makeCompiler();
+    const src = `.scope {\n  @v: 9px;\n  .m() { width: @v; }\n}\n.a {\n  .scope > .m();\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
+    expect(css).toContain('width: 9px');
+  });
+
+  it('INCREMENT 3: folds a POSITIONAL-arg Less mixin call through the spine on the COMPILER path (no derive)', async () => {
+    // A `.m(@c, @w)` def called `.m(red, 10px)` binds positional args into the
+    // param live-cells (matchCallableParams), resolved by the frame-threaded
+    // descent — LIVE in production, no output tree.
+    const compiler = makeCompiler();
+    const src = `.m(@c, @w) {\n  color: @c;\n  width: @w;\n}\n.a {\n  .m(red, 10px);\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0);
+      expect(css).toContain('color: red');
+      expect(css).toContain('width: 10px');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('INCREMENT 4/5/6: folds DEFAULT / NAMED / REST-arg Less mixin calls through the spine (no derive)', async () => {
+    const cases: Array<{ src: string; expect: string[] }> = [
+      // default used when omitted
+      { src: `.m(@c: red, @w: 5px) { color: @c; width: @w; }\n.a { .m(); }`, expect: ['color: red', 'width: 5px'] },
+      // named args, order-independent
+      { src: `.m(@c: red, @w: 5px) { color: @c; width: @w; }\n.a { .m(@w: 9px, @c: blue); }`, expect: ['color: blue', 'width: 9px'] },
+      // rest collects the tail
+      { src: `.m(@a, @rest...) { a: @a; r: @rest; }\n.x { .m(1, 2, 3); }`, expect: ['a: 1', 'r: 2 3'] }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before);
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0);
+        for (const frag of c.expect) {
+          expect(css, `output ${frag}: ${c.src}`).toContain(frag);
+        }
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
+  });
+
+  it('does NOT route a NESTED-CONTAINER-body mixin through the spine (eval-fallback re-descent gap → eval path)', async () => {
+    // `.mix() { .inner { … } }` — a non-leaf body; the eval-fallback's resolved tree
+    // can't be re-spine-descended without losing the surface frame for deeply-nested
+    // calls, so the whole tree stays on the eval path (byte-identical).
+    const compiler = makeCompiler();
+    const src = `.mi(@v) { border-width: @v; }\n.mix(@a: 10) { .inner { height: (@a * 10); .innest { .mi((@a * 2)); } } }\n.class { .mix(30); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
+    expect(css).toContain('border-width: 60'); // the deeply-nested call still emits
+  });
+
+  it('INCREMENT 7: folds GUARDED (`when`) mixin calls through the spine on the COMPILER path (no derive)', async () => {
+    // Guard select-among-overloads + all-fail + default() all fold: the terminal
+    // evaluates the guard before the sink, so the passing candidate folds, a failing
+    // one emits nothing, and the outcome is byte-identical.
+    const cases: Array<{ src: string; has: string[]; hasNot?: string[] }> = [
+      // select among two guarded overloads
+      { src: `.m(@x) when (@x > 0) { s: pos; }\n.m(@x) when (@x <= 0) { s: nonpos; }\n.a { .m(5); }\n.b { .m(-3); }`,
+        has: ['s: pos', 's: nonpos'] },
+      // all guards fail → no mixin output (sibling decl survives)
+      { src: `.m(@x) when (@x > 100) { s: big; }\n.a { .m(5); color: red; }`,
+        has: ['color: red'], hasNot: ['s: big'] },
+      // default() fallback
+      { src: `.m(@x) when (@x = 1) { s: one; }\n.m(@x) when (default()) { s: other; }\n.a { .m(1); }\n.b { .m(2); }`,
+        has: ['s: one', 's: other'] }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before);
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0);
+        for (const frag of c.has) {
+          expect(css, `output ${frag}: ${c.src}`).toContain(frag);
+        }
+        for (const frag of c.hasNot ?? []) {
+          expect(css, `no output ${frag}: ${c.src}`).not.toContain(frag);
+        }
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
+  });
 });

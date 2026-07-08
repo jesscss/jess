@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest, condition } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
@@ -473,5 +473,313 @@ describe('emit-walk wire-in ratchet (P1)', () => {
       ] })
     ]);
     expect(isSpineEligibleRoot(ampInAtRule, context)).toBe(false);
+  });
+});
+
+/**
+ * MIXIN-FOLD RATCHET (cutover increment 1 — the FIRST dynamic-machinery fold).
+ * A simple no-arg mixin call over a literal-body definition is EXPANDED INLINE
+ * through the single pass: the KEPT callable pipeline resolves the candidate +
+ * binds + guards, the terminal hands the bound surface to the emit-walk sink
+ * INSTEAD of building an output tree, and the surface's declarations are spliced
+ * into the enclosing body's statement stream. LOCKS: the call routes via the
+ * spine (`spineRenderCounter` moves) with NO output tree (`Rules.derive`
+ * uncalled), byte-identical to the eval path; and the precise increment-1 exclusion
+ * boundary (`mixin-ruleset`/closures, parametric defs, var-reading bodies,
+ * merge-adjacent, mixin-as-value) stays on the eval path. A regression that stops
+ * folding, builds an output tree, or silently admits a deferred shape trips RED.
+ *
+ * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §2/§3 (frame
+ *   threading + always-share body).
+ */
+describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
+  let context: Context;
+  beforeEach(() => {
+    context = new Context();
+  });
+
+  const simpleMixinRoot = () => rules([
+    mixin({ name: '.m', rules: [
+      decl({ name: 'color', value: spaced([el('red')]) }),
+      decl({ name: 'width', value: spaced([el('10px')]) })
+    ] }),
+    ruleset({
+      selector: sel([el('.a')]),
+      rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }) })]
+    })
+  ]);
+
+  it('folds a simple literal mixin call through the spine — counter moves, output correct', async () => {
+    const root = simpleMixinRoot();
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    // A mixin call resolves ASYNC (Call.evalNode is async) — the fold threads a
+    // promise; await it (unlike the pure-sync leaf/container ratchets above).
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1);
+    expect(css).toContain('.a');
+    expect(css).toContain('color: red');
+    expect(css).toContain('width: 10px');
+    // The raw call syntax must NOT leak (the fold expanded, not printed).
+    expect(css).not.toContain('.m(');
+  });
+
+  it('builds NO output tree (Rules.derive not called) on the folded mixin path', async () => {
+    const root = simpleMixinRoot();
+    context.root = root;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await root.render(context);
+      expect(css).toContain('color: red');
+      expect(deriveCalls).toBe(0);
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('INCREMENT 2: folds the Less `mixin-ruleset` dot-call over a Mixin def through the spine', async () => {
+    // `type: 'mixin-ruleset'` (the Less `.m()` dot-call) resolving to a MIXIN
+    // definition now folds via the frame-threaded descent — the first shape the
+    // Less corpus actually exercises. (A ruleset-as-mixin candidate still defers.)
+    const root = rules([
+      mixin({ name: '.m', rules: [decl({ name: 'color', value: spaced([el('red')]) })] }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [call({ name: ref({ key: '.m' }, { type: 'mixin-ruleset' }) })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1);
+    expect(css).toContain('.a');
+    expect(css).toContain('color: red');
+  });
+
+  it('INCREMENT 2: folds a VAR-READING mixin body (frame-threaded descent — resolves the definition scope)', async () => {
+    // The body reads a variable bound in the DEFINITION scope (root). Increment 2
+    // descends the bound surface under its own value-frame, so `@c` resolves to
+    // `blue` (the closure/lexical binding) — NOT last-wins against the caller. This
+    // is the shape increment 1 excluded (literal-only) and inc 2 unlocks; it is the
+    // fix for the `'var' is not defined` failures inc 1 catalogued.
+    const root = rules([
+      vardecl({ name: 'c', value: spaced([el('blue')]) }),
+      mixin({ name: '.m', rules: [decl({ name: 'color', value: ref({ key: 'c' }, { type: 'variable' }) })] }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }) })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const css = await root.render(context);
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('.m(');
+  });
+
+  it('INCREMENT 3: folds a POSITIONAL-arg mixin call through the spine (arg bound into the param cell)', async () => {
+    // `.m(@c, @w) { color: @c; width: @w }` called `.m(red, 10px)` — the positional
+    // args bind into the param live-cells (`matchCallableParams`), resolved by the
+    // frame-threaded descent. No output tree.
+    const root = rules([
+      mixin({
+        name: '.m',
+        params: list([
+          vardecl({ name: 'c', value: nil() }, { paramVar: true }),
+          vardecl({ name: 'w', value: nil() }, { paramVar: true })
+        ]),
+        rules: [
+          decl({ name: 'color', value: ref({ key: 'c' }, { type: 'variable' }) }),
+          decl({ name: 'width', value: ref({ key: 'w' }, { type: 'variable' }) })
+        ]
+      }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [call({
+          name: ref({ key: '.m' }, { type: 'mixin' }),
+          args: list([spaced([el('red')]), spaced([el('10px')])])
+        })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1);
+    expect(css).toContain('color: red');
+    expect(css).toContain('width: 10px');
+    expect(css).not.toContain('.m(');
+  });
+
+  it('INCREMENT 5: folds a NAMED-arg mixin call (order-independent binding by param name)', async () => {
+    const root = rules([
+      mixin({
+        name: '.m',
+        params: list([
+          vardecl({ name: 'c', value: spaced([el('red')]) }),
+          vardecl({ name: 'w', value: spaced([el('1px')]) })
+        ]),
+        rules: [
+          decl({ name: 'color', value: ref({ key: 'c' }, { type: 'variable' }) }),
+          decl({ name: 'width', value: ref({ key: 'w' }, { type: 'variable' }) })
+        ]
+      }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [call({
+          name: ref({ key: '.m' }, { type: 'mixin' }),
+          args: list([
+            vardecl({ name: 'w', value: spaced([el('9px')]) }),
+            vardecl({ name: 'c', value: spaced([el('blue')]) })
+          ])
+        })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const css = await root.render(context);
+    expect(css).toContain('color: blue');
+    expect(css).toContain('width: 9px');
+  });
+
+  it('INCREMENT 6: folds a REST-param mixin call (tail args collected into `@rest`)', async () => {
+    const root = rules([
+      mixin({
+        name: '.m',
+        params: list([vardecl({ name: 'a', value: nil() }, { paramVar: true }), rest('rest')]),
+        rules: [
+          decl({ name: 'a', value: ref({ key: 'a' }, { type: 'variable' }) }),
+          decl({ name: 'r', value: ref({ key: 'rest' }, { type: 'variable' }) })
+        ]
+      }),
+      ruleset({
+        selector: sel([el('.x')]),
+        rules: [call({
+          name: ref({ key: '.m' }, { type: 'mixin' }),
+          args: list([spaced([el('1')]), spaced([el('2')]), spaced([el('3')])])
+        })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1);
+    expect(css).toContain('a: 1');
+  });
+
+  it('INCREMENT 4: folds a DEFAULT-param mixin call (default used when the arg is omitted)', async () => {
+    // `.m(@c: red)` called `.m()` — `matchCallableParams` fills the default into the
+    // param cell, resolved by the frame-threaded descent. No output tree.
+    const root = rules([
+      mixin({
+        name: '.m',
+        params: list([vardecl({ name: 'c', value: spaced([el('red')]) })]),
+        rules: [decl({ name: 'color', value: ref({ key: 'c' }, { type: 'variable' }) })]
+      }),
+      ruleset({ selector: sel([el('.a')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }) })] })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1);
+    expect(css).toContain('color: red');
+  });
+
+  it('EXCLUDES a mixin definition with a NESTED-CONTAINER body (deferred — eval-fallback can\'t re-descend)', () => {
+    // `.m() { .inner { … } }` — a non-leaf body eval-falls-back, but the fallback's
+    // resolved tree can't be re-spine-descended without losing the surface frame
+    // for deeply-nested calls. Kept on the eval path.
+    const root = rules([
+      mixin({
+        name: '.m',
+        rules: [ruleset({ selector: sel([el('.inner')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })]
+      }),
+      ruleset({ selector: sel([el('.a')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }) })] })
+    ]);
+    expect(isSpineEligibleRoot(root, context)).toBe(false);
+  });
+
+  it('INCREMENT 7: folds GUARDED mixin overloads — the passing guard SELECTS, the failing one emits nothing', async () => {
+    // Two overloads of `.m(@x)` — `when (@x > 0)` and `when (@x <= 0)`. The terminal
+    // evaluates the guard before the sink; only the passing candidate folds. A call
+    // with no passing guard emits nothing (its sibling decl still emits).
+    const guarded = (opStr: string, out: string) => mixin({
+      name: '.m',
+      params: list([vardecl({ name: 'x', value: nil() }, { paramVar: true })]),
+      guard: condition([ref({ key: 'x' }, { type: 'variable' }), opStr, dimension(num(0))]),
+      rules: [decl({ name: 's', value: spaced([el(out)]) })]
+    });
+    const root = rules([
+      guarded('>', 'pos'),
+      guarded('<=', 'nonpos'),
+      ruleset({ selector: sel([el('.a')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }), args: list([dimension(num(5))]) })] }),
+      ruleset({ selector: sel([el('.b')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }), args: list([dimension(num(-3))]) })] })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const css = await root.render(context);
+    // `.a` (x=5) selects the `> 0` overload; `.b` (x=-3) selects `<= 0`.
+    expect(css).toMatch(/\.a\s*\{[^}]*s:\s*pos/);
+    expect(css).toMatch(/\.b\s*\{[^}]*s:\s*nonpos/);
+  });
+
+  it('INCREMENT 7: a guard that FAILS for all candidates folds to no mixin output', async () => {
+    const root = rules([
+      mixin({
+        name: '.m',
+        params: list([vardecl({ name: 'x', value: nil() }, { paramVar: true })]),
+        guard: condition([ref({ key: 'x' }, { type: 'variable' }), '>', dimension(num(100))]),
+        rules: [decl({ name: 's', value: spaced([el('big')]) })]
+      }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [
+          call({ name: ref({ key: '.m' }, { type: 'mixin' }), args: list([dimension(num(5))]) }),
+          decl({ name: 'color', value: spaced([el('red')]) })
+        ]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const css = await root.render(context);
+    expect(css).toContain('color: red');
+    expect(css).not.toContain('s: big');
+  });
+
+  it('EXCLUDES a body with BOTH a mixin call and a `+:` merge decl (merge-across-mixin deferred)', () => {
+    const root = rules([
+      mixin({ name: '.m', rules: [decl({ name: 'box-shadow', value: spaced([el('a')]) })] }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [
+          call({ name: ref({ key: '.m' }, { type: 'mixin' }) }),
+          decl({ name: 'box-shadow', value: spaced([el('b')]) }, { assign: '+:' })
+        ]
+      })
+    ]);
+    expect(isSpineEligibleRoot(root, context)).toBe(false);
+  });
+
+  it('EXCLUDES a body using a mixin as a variable value / map (`@p: .m()` — mixin-as-value deferred)', () => {
+    const root = rules([
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [
+          mixin({ name: '.m', rules: [decl({ name: 'text', value: spaced([el('white')]) })] }),
+          vardecl({ name: 'p', value: call({ name: ref({ key: '.m' }, { type: 'mixin' }) }) })
+        ]
+      })
+    ]);
+    expect(isSpineEligibleRoot(root, context)).toBe(false);
   });
 });

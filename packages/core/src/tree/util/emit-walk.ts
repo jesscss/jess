@@ -33,6 +33,7 @@ import type { Context } from '../../context.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
+import { comparePosition } from './compare.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
@@ -135,6 +136,213 @@ export function emitLeaf(
 /** True for a node the spine resolves as a value leaf (not a scope container). */
 export function isValueLeaf(node: Node): boolean {
   return !isNode(node, N.Rules | N.Ruleset | N.AtRule | N.Mixin);
+}
+
+/**
+ * True for a plain no-arg mixin CALL the spine may attempt to fold (cutover
+ * P3-precursor, UNIFIED-EVAL-EMIT-DESIGN §2/§3). STATIC admissibility only — the
+ * candidate's body shape is checked at RUNTIME by `isSpineSimpleMixinSurface`
+ * against the resolved bound surface (the definition is not statically bound at
+ * the call site). Admitted: a `Call` whose name is a mixin `Reference`, with NO
+ * args, NO content block, and none of the legacy `markImportant`/`silentFail`
+ * options. This is INCREMENT 1's shape — parametric/guarded/named/rest calls
+ * widen this gate in later increments.
+ */
+export function isSpineEligibleMixinCall(node: Node): boolean {
+  if (!isNode(node, N.Call)) {
+    return false;
+  }
+  // INCREMENT 3/5: POSITIONAL (`.m(red, 10px)`) and NAMED (`.m(@c: red)`) args
+  // admitted. `matchCallableParams` binds both — positional by index, named by
+  // matching a `VarDeclaration` arg to a same-named param — into the surface's
+  // param live-cells, which the frame-threaded descent (increment 2) resolves.
+  // DEFERRED: a detached-ruleset / content-block arg (needs the block bound as a
+  // callable-body value — a later rung).
+  if (node.args) {
+    for (let i = 0; i < node.args.value.length; i++) {
+      const arg = node.args.value[i]!;
+      if (isNode(arg, N.Rules | N.Ruleset | N.AtRule | N.Mixin)) {
+        return false; // detached-ruleset / block arg — deferred
+      }
+    }
+  }
+  if (node.contentNode) {
+    return false;
+  }
+  const options = node.options as { markImportant?: boolean; silentFail?: boolean } | undefined;
+  if (options?.markImportant || options?.silentFail) {
+    return false;
+  }
+  const name = node.name;
+  // INCREMENT 2: a mixin-name reference with a STRING key — both `type: 'mixin'`
+  // (Jess `$.mixin()`) and `type: 'mixin-ruleset'` (the Less `.mixin()` dot-call,
+  // which matches a mixin OR a same-named ruleset-as-mixin). The frame-threaded
+  // descent (`entry.spineFrame`) resolves each bound surface against its DEFINITION
+  // scope, so closure-capturing bodies fold correctly; the runtime gate
+  // (`isSpineSimpleMixinSurface`) + eval fall-back handle whichever the string key
+  // resolves to and defer non-simple shapes. EXCLUDED: a non-string (SelectorCapture)
+  // key (`*[.foo]()`) — the capture lookup path, deferred.
+  if (!isNode(name, N.Reference)) {
+    return false;
+  }
+  const type = name.options?.type;
+  if ((type !== 'mixin' && type !== 'mixin-ruleset') || typeof name.key !== 'string') {
+    return false;
+  }
+  // EXCLUDED: a NAMESPACE-PATH / cross-scope call (`.scope > .mixin()`, `#ns.m()`)
+  // — `name.target` names an enclosing namespace whose scope frame must be
+  // established (with its captured `@var`s) for the closure to resolve. The spine
+  // does not fully establish a not-yet-descended sibling namespace's frame, so the
+  // closure body would fail to resolve its definition-scope vars. DEFERRED: the
+  // namespace/closure-capture path (a later increment).
+  if (name.target !== undefined) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * RUNTIME simplicity gate: a resolved bound surface the spine can descend inline.
+ * A `false` makes the callable terminal fall back to the eval path for that
+ * candidate (byte-identical). A `false` from ANY candidate routes the whole call
+ * to eval-fallback (`resolveSpineMixinCall`).
+ *
+ * INCREMENT 2 (frame-threaded descent): the body must be LEAF-ONLY spine-simple
+ * children (`:`/merge declarations + comments — `isSimpleSpineLeaf`) with NO
+ * nested container and NO further mixin call. VAR-READING decls are NOW ADMITTED —
+ * increment 2 descends each surface with `context.rulesContext` pushed to the
+ * surface, so a body reference resolves against the mixin's DEFINITION scope (its
+ * wired lexical/closure/param frame). The literal-only restriction (increment 1)
+ * is lifted. DEFERRED (still fall back): nested containers in a mixin body, a
+ * mixin body that itself calls a mixin, parametric/guarded defs (gated earlier).
+ */
+function isSpineSimpleMixinSurface(surface: Rules): boolean {
+  const children = surface.rules;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (!isSimpleSpineLeaf(child)) {
+      return false;
+    }
+    // A further mixin call inside the body needs its own frame-threaded descent
+    // nested under this surface's frame — deferred (a later increment).
+    if (isSpineEligibleMixinCall(child)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The result of driving a spine-eligible mixin CALL's resolution:
+ *   - `{ kind: 'fold', surfaces }` — EVERY guard-passed candidate was spine-simple;
+ *     descend the bound surfaces inline (no output tree).
+ *   - `{ kind: 'eval', output }` — at least one candidate was NOT spine-simple, so
+ *     the KEPT terminal eval-materialized the call to an output `Rules`; the caller
+ *     splices that (flattened) output like the eval path (byte-identical fallback).
+ *     The eval terminal dies in P4; until then it's the eligibility-gated frontier.
+ */
+export type SpineMixinCallResolution =
+  | { kind: 'fold'; surfaces: Rules[] }
+  | { kind: 'eval'; output: Node };
+
+/**
+ * Drive a spine-eligible mixin CALL's resolution ONCE, folding to bound surfaces
+ * when spine-simple and falling back to the eval terminal otherwise (cutover,
+ * UNIFIED-EVAL-EMIT-DESIGN §2/§3).
+ *
+ * Contract: `call` has passed `isSpineEligibleMixinCall`. Installs
+ * `context.spineMixinSurfaceSink` (scoped save/restore), then drives the call's
+ * own `eval` so ALL the KEPT machinery runs exactly once — candidate match, arg
+ * binding (none for increment 1), guard eval, recursion guard (`callMap`), caller
+ * frame. Per guard-passed candidate the terminal consults the sink:
+ *   - spine-simple surface → sink CAPTURES it and returns `true` (terminal skips
+ *     the `rules.eval()` output-tree build for that candidate);
+ *   - non-simple surface → sink returns `false`, `anyRejected` is set, and the
+ *     terminal eval-materializes that candidate the normal way.
+ * If ANY candidate was rejected the whole call is treated as eval-fallback and the
+ * `call.eval()` return (the output `Rules`) is used; otherwise the captured
+ * surfaces are folded. Exactly ONE drive either way — no double execution.
+ */
+export function resolveSpineMixinCall(
+  call: Node,
+  context: Context
+): MaybePromise<SpineMixinCallResolution> {
+  const captured: Array<{ surface: Rules; source: Rules }> = [];
+  let anyRejected = false;
+  const savedSink = context.spineMixinSurfaceSink;
+  context.spineMixinSurfaceSink = (
+    boundSurface: Rules,
+    sourceRules: Rules,
+    candidateIsMixin: boolean
+  ): boolean => {
+    // Fold ONLY a spine-simple Mixin-DEFINITION body. A ruleset-as-mixin
+    // (`!candidateIsMixin` — the `mixin-ruleset` dot-call matching a same-named
+    // ruleset) needs different placement (the ruleset ALSO emits standalone) and a
+    // non-simple body both DEFER: reject → the terminal eval-materializes that
+    // candidate, and `anyRejected` routes the whole call to the eval fallback.
+    if (!candidateIsMixin || !isSpineSimpleMixinSurface(boundSurface)) {
+      anyRejected = true;
+      return false;
+    }
+    // Number the surface's body children so a position-gated read inside the
+    // mixin body (a re-declared var / `snapshot`) resolves against the binding at
+    // its own position, not last-wins (the per-position discipline, §2 — same as
+    // `serializeSpineFrameContainer` does for a ruleset body).
+    assignSpineChildIndices(boundSurface);
+    // Capture the source (the definition body/Mixin) for DOCUMENT-ORDER sorting
+    // below — when a call matches MULTIPLE candidates (a guarded + unguarded
+    // overload of the same name), their contributions must emit in source order,
+    // NOT candidate-loop order (which `hasDefault`/guard sorting may reorder).
+    captured.push({ surface: boundSurface, source: sourceRules });
+    return true;
+  };
+  const restore = <T>(value: T): T => {
+    context.spineMixinSurfaceSink = savedSink;
+    return value;
+  };
+  // FOLD only when EVERY guard-passed candidate was captured by the sink (none
+  // rejected) AND at least one surface was captured. If `captured` is empty the
+  // call resolved entirely via paths the sink never saw (e.g. a ruleset-as-mixin
+  // handled by the special-case terminal) — use the eval output. `anyRejected`
+  // likewise routes to eval. Either way the `call.eval()` return carries the
+  // correct eval-path output for the fallback.
+  const finish = (output: Node): SpineMixinCallResolution => {
+    if (anyRejected || captured.length === 0) {
+      return { kind: 'eval', output };
+    }
+    // Sort captured surfaces by their source DOCUMENT ORDER (mirrors the eval
+    // path's `compareCallableOutputPosition`): same parent → by `index`, else
+    // `comparePosition`. So a call matching several overloads (guarded + unguarded)
+    // emits their bodies in source order, matching the eval path byte-for-byte.
+    const ordered = captured.slice().sort((a, b) => {
+      if (a.source.parent === b.source.parent
+        && a.source.index !== undefined
+        && b.source.index !== undefined) {
+        return a.source.index - b.source.index;
+      }
+      return comparePosition(a.source, b.source);
+    });
+    return { kind: 'fold', surfaces: ordered.map(entry => entry.surface) };
+  };
+  try {
+    // Drive the call's own resolution: the caller frame + candidate match + arg
+    // binding + guard + recursion guard all run through the KEPT `evalNode`
+    // pipeline; the installed sink diverts a spine-simple candidate to capture
+    // instead of building an output tree.
+    const result = call.eval(context);
+    return isThenable(result)
+      ? result.then(
+          (output: Node) => restore(finish(output)),
+          (error: unknown) => {
+            restore(undefined);
+            throw error;
+          }
+        )
+      : restore(finish(result));
+  } catch (error) {
+    restore(undefined);
+    throw error;
+  }
 }
 
 /**
@@ -474,6 +682,24 @@ function atRuleBodyHasAmpersandRuleset(children: readonly Node[]): boolean {
  * key isn't statically known, so the position gate can't be pre-seeded).
  */
 function isSpineEligibleBody(children: readonly Node[]): boolean {
+  // INCREMENT 1 cross-check: a mixin call is folded by splicing its emitted decls
+  // into the body's statement loop AFTER `planBodyMerges` has run — so a spliced
+  // decl cannot participate in a `+:`/`+_:` merge chain in the SAME body. If the
+  // body has BOTH a mixin call and a merge decl, keep the whole body on the eval
+  // path (the merge would otherwise leak `prop+:`). DEFERRED: merge-across-mixin-
+  // output (needs the merge plan to see the expansion).
+  if (bodyHasMixinCall(children) && bodyHasDirectMergeDecl(children)) {
+    return false;
+  }
+  // INCREMENT 1 cross-check: a mixin used other than as a BARE foldable call —
+  // a var-decl bound to a mixin call (`@p: .mk-map()`), a map-lookup on such a
+  // value (`@p[text]`), a detached-ruleset call — is NOT folded. Admitting a
+  // Mixin DEFINITION below would otherwise pull the whole enclosing body onto the
+  // spine even though the mixin is consumed by machinery the spine does not yet
+  // cover. Keep such a body on the eval path. DEFERRED: mixin-as-value / map-lookup.
+  if (bodyHasMixinDefinition(children) && bodyHasCallInVarValue(children)) {
+    return false;
+  }
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     if (isSimpleSpineLeaf(child)) {
@@ -482,7 +708,63 @@ function isSpineEligibleBody(children: readonly Node[]): boolean {
       }
       continue;
     }
+    // A mixin DEFINITION emits nothing (invisible output) and registers into the
+    // scope frame at `getScopeFrame`, which the spine already calls at scope-enter
+    // — so a callable resolves without an eval pass. Increment 1 admits an
+    // unparameterized, unguarded definition (the only shape its calls fold); a
+    // parametric/guarded/interpolated-name definition is DEFERRED (its body still
+    // registers, but its calls fall back at runtime).
+    if (isNode(child, N.Mixin)) {
+      if (isSpineEligibleMixinDefinition(child)) {
+        continue;
+      }
+      return false;
+    }
     if (!isSpineEligibleContainer(child)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * A mixin DEFINITION whose calls the spine may fold — a static string name, no
+ * `when` guard, and (INCREMENT 3/4) a NAMED-parameter list. Its body need NOT be
+ * statically simple here (a call's runtime gate `isSpineSimpleMixinSurface`
+ * decides fold-vs-fallback), but a definition that can't be admitted at all forces
+ * the enclosing body off the spine.
+ *
+ * Admitted: each param is a plain named `VarDeclaration` — NO default (a `Nil`
+ * value, a required positional — increment 3) OR a DEFAULT value (`@c: red` —
+ * increment 4) — OR a REST param (`...` / `@rest...` — increment 6).
+ * `matchCallableParams` binds the call's positional/named args into the params'
+ * live cells, fills a missing param from its default, and collects the tail into
+ * the rest param; the frame-threaded descent resolves them all. DEFERRED (still off
+ * the spine): PATTERN-MATCH literal params (`.m(dark, @c)` — a non-VarDeclaration,
+ * non-Rest value guard); a `when` guard; an interpolated name.
+ */
+function isSpineEligibleMixinDefinition(node: Node): boolean {
+  if (!isNode(node, N.Mixin)) {
+    return false;
+  }
+  if (typeof node.name !== 'string') {
+    return false;
+  }
+  // INCREMENT 7: a `when` GUARD is admitted. The callable terminal evaluates the
+  // guard BEFORE the sink is consulted (`executeCallableCandidate`: `if
+  // (!guardResult.passes) return` — no output, sink never called), so a guard-
+  // FAILING candidate never folds and a guard-SELECTED candidate folds only when it
+  // passes — the guard outcome is faithfully reproduced by the KEPT eval. Verified
+  // byte-identical for pass / fail / select-among-several / `default()`.
+  const params = node.params;
+  if (!params) {
+    return true;
+  }
+  for (let i = 0; i < params.value.length; i++) {
+    const param = params.value[i]!;
+    // A named param (required OR default) or a Rest param. A pattern-match literal
+    // (a value guard — neither a VarDeclaration nor a Rest) defers.
+    if (!isNode(param, N.VarDeclaration) && param.type !== 'Rest') {
       return false;
     }
   }
@@ -509,6 +791,13 @@ function isSimpleSpineLeaf(node: Node): boolean {
   if (isNode(node, N.Comment)) {
     return true;
   }
+  // Plain no-arg mixin CALL (cutover increment 1): STATIC admissibility only —
+  // the resolved candidate body shape is gated at RUNTIME (`resolveSpineMixinCall
+  // Surfaces` / `isSpineSimpleMixinSurface`), with a byte-identical fall-back to
+  // the eval path when the resolved shape is not spine-simple.
+  if (isSpineEligibleMixinCall(node)) {
+    return true;
+  }
   if (isNode(node, N.Declaration)) {
     const options = node.options as { assign?: string; setDefined?: boolean; nearestOuter?: boolean } | undefined;
     const assign = options?.assign ?? ':';
@@ -531,6 +820,46 @@ function isSimpleSpineLeaf(node: Node): boolean {
 
 /** Property-merge assign operators the spine coalesces (see `planBodyMerges`). */
 const MERGE_ASSIGNS = new Set(['+:', '+_:', '&,:', '&_:']);
+
+/** True if any DIRECT child of `body` is a spine-eligible mixin call. */
+function bodyHasMixinCall(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    if (isSpineEligibleMixinCall(children[i]!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True if any DIRECT child of `body` is a mixin DEFINITION. */
+function bodyHasMixinDefinition(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    if (isNode(children[i]!, N.Mixin)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True if any DIRECT child is a VarDeclaration whose VALUE contains a `Call`
+ * (`@p: .mk-map()` — a mixin bound to a variable, later map-looked-up `@p[text]`).
+ * This is the mixin-as-value shape increment 1 does not fold.
+ */
+function bodyHasCallInVarValue(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (!isNode(child, N.VarDeclaration)) {
+      continue;
+    }
+    for (const descendant of child.walk(true)) {
+      if (isNode(descendant, N.Call)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 /** True if any DIRECT child of `body` is a merge-flagged declaration. */
 function bodyHasDirectMergeDecl(children: readonly Node[]): boolean {
@@ -666,7 +995,178 @@ export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   if (bodyHasDirectMergeDecl(root.rules)) {
     return false;
   }
+  // INCREMENT 2 cross-check: a mixin CALL whose target might be an INTERPOLATED-
+  // SELECTOR ruleset (`.@{x} {}` used as `.foo()`) can't fold — the interpolated
+  // name is registered into the callable cache by the EVAL pass, which the spine
+  // skips, so the call's resolution would throw "No matching mixins". If the tree
+  // has BOTH a mixin call and an interpolated-selector ruleset, keep it on the eval
+  // path. DEFERRED: interpolated-name callable registration (an eval-pass side effect).
+  if (treeHasMixinCall(root) && treeHasInterpolatedSelectorRuleset(root)) {
+    return false;
+  }
+  // INCREMENT 2 cross-check: a `mixin-ruleset` dot-call whose key names BOTH a
+  // Mixin definition AND a same-named Ruleset (`.foo() {}` mixin + `.foo {}`
+  // ruleset) matches BOTH — the call must emit the mixin body AND the ruleset-as-
+  // mixin body. The spine folds only the Mixin candidate; suppressing it while the
+  // ruleset candidate falls back to eval would drop the mixin's contribution from
+  // the assembled output. Keep such a MIXED-match tree on the eval path. DEFERRED:
+  // multi-candidate (mixin + ruleset) matches.
+  if (treeHasMixinRulesetMixedMatch(root)) {
+    return false;
+  }
+  // INCREMENT 2 cross-check: a NESTED-scope mixin DEFINITION (defined inside a
+  // ruleset/at-rule, not a direct document-root child) is a closure-capture /
+  // namespace shape whose definition-scope frame the spine does not fully
+  // establish for a call in a DIFFERENT scope — resolution can throw
+  // "'x' is not defined" or bind the wrong scope. A mid-spine throw is
+  // unrecoverable (no fallback once committed to the pass), so keep any tree that
+  // has BOTH a mixin call and a nested mixin definition on the eval path. Root-
+  // level mixin defs (the common corpus shape) still fold. DEFERRED: the
+  // nested-scope closure/namespace path (needs spine definition-scope frame
+  // establishment — a later increment).
+  if (treeHasMixinCall(root) && treeHasNestedMixinDefinition(root)) {
+    return false;
+  }
+  // INCREMENT 4 cross-check: a mixin DEFINITION whose body contains NESTED
+  // CONTAINERS (a Ruleset/AtRule — `.mix() { .inner { … } }`) can't fold: the
+  // runtime surface gate rejects a non-leaf body, so the call eval-falls-back, but
+  // the eval fallback's output is a resolved TREE that the spine then re-descends —
+  // losing the eval-time frame for any DEEPLY-NESTED mixin call (`.mix-inner((@a*2))`
+  // reads `@a` from the surface frame the re-descent doesn't carry), dropping its
+  // output. Keep such a tree on the eval path entirely. DEFERRED: nested-container
+  // mixin bodies (needs the eval-fallback output rendered as-is, not re-spine-
+  // descended — a later mechanism). Flat (leaf-only) mixin bodies still fold.
+  if (treeHasMixinCall(root) && treeHasContainerBodyMixinDefinition(root)) {
+    return false;
+  }
   return isSpineEligibleBody(root.rules);
+}
+
+/**
+ * True if the tree has a Mixin definition whose body (deep) contains a nested
+ * container (Ruleset/AtRule) — the non-leaf mixin body whose eval-fallback the
+ * spine cannot faithfully re-descend (see `isSpineEligibleRoot`). Direct body
+ * children only need checking, but a container anywhere in the body qualifies.
+ */
+function treeHasContainerBodyMixinDefinition(root: Node): boolean {
+  for (const node of root.walk(true)) {
+    if (!isNode(node, N.Mixin)) {
+      continue;
+    }
+    const body = node.rules;
+    for (let i = 0; i < body.length; i++) {
+      if (isNode(body[i]!, N.Ruleset | N.AtRule)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * True if the tree has a Mixin definition nested INSIDE a container (a
+ * ruleset/at-rule body), i.e. NOT a direct child of the document root. A nested
+ * mixin captures its enclosing scope; folding a call to it from another scope
+ * needs the definition-scope frame the spine does not yet establish (deferred).
+ */
+function treeHasNestedMixinDefinition(root: Rules): boolean {
+  const rootChildren = new Set<Node>(root.rules);
+  for (const node of root.walk(true)) {
+    if (isNode(node, N.Mixin) && !rootChildren.has(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True if the tree has a `mixin-ruleset` CALL whose key names BOTH a Mixin
+ * definition and a same-named Ruleset — the multi-candidate mixed match the fold
+ * defers (see `isSpineEligibleRoot`). Conservative: keys compared by string value.
+ */
+function treeHasMixinRulesetMixedMatch(root: Node): boolean {
+  const mixinNames = new Set<string>();
+  const rulesetSelectorKeys = new Set<string>();
+  const dotCallKeys = new Set<string>();
+  for (const node of root.walk(true)) {
+    if (isNode(node, N.Mixin) && typeof node.name === 'string') {
+      mixinNames.add(node.name);
+    } else if (isNode(node, N.Ruleset)) {
+      const key = simpleSelectorKey((node as Ruleset).selector);
+      if (key !== undefined) {
+        rulesetSelectorKeys.add(key);
+      }
+    } else if (
+      isNode(node, N.Call)
+      && isNode(node.name, N.Reference)
+      && node.name.options?.type === 'mixin-ruleset'
+      && typeof node.name.key === 'string'
+    ) {
+      dotCallKeys.add(node.name.key);
+    }
+  }
+  for (const key of dotCallKeys) {
+    if (mixinNames.has(key) && rulesetSelectorKeys.has(key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The single class/id selector string of a plain ruleset selector, else undefined. */
+function simpleSelectorKey(selector: unknown): string | undefined {
+  const raw = typeof selector === 'string'
+    ? selector
+    : selector instanceof Node
+      ? selector.valueOf()
+      : undefined;
+  return typeof raw === 'string' ? raw.trim() : undefined;
+}
+
+/** Deep: any Call in the tree that is a spine-eligible mixin call. */
+function treeHasMixinCall(root: Node): boolean {
+  for (const node of root.walk(true)) {
+    if (isSpineEligibleMixinCall(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Deep: any Ruleset in the tree whose selector is an InterpolatedSelector. */
+function treeHasInterpolatedSelectorRuleset(root: Node): boolean {
+  for (const node of root.walk(true)) {
+    if (!isNode(node, N.Ruleset)) {
+      continue;
+    }
+    const selector = (node as Ruleset).selector;
+    if (selectorHasInterpolatedSelector(selector)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True if `selector` is (or contains) an `InterpolatedSelector` node. */
+function selectorHasInterpolatedSelector(selector: unknown): boolean {
+  if (!selector || typeof selector === 'string') {
+    return false;
+  }
+  if (Array.isArray(selector)) {
+    return selector.some(item => selectorHasInterpolatedSelector(item));
+  }
+  if (!(selector instanceof Node)) {
+    return false;
+  }
+  if (selector.type === 'InterpolatedSelector') {
+    return true;
+  }
+  for (const descendant of selector.walk(true)) {
+    if (descendant.type === 'InterpolatedSelector') {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

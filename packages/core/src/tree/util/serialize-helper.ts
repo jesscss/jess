@@ -21,7 +21,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
-import { assignSpineChildIndices } from './emit-walk.js';
+import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution } from './emit-walk.js';
 import { planBodyMerges, type SpineMergePlan } from './spine-merge.js';
 
 type TriviaSide = 'before' | 'after';
@@ -256,6 +256,15 @@ function renderNodeText(
 
 type RenderRuleEntry = {
   node: Node;
+  /**
+   * Spine mixin-fold (cutover increment 2, UNIFIED-EVAL-EMIT-DESIGN §2/§3): the
+   * bound SURFACE this entry's node was folded from. When set, the leaf/container
+   * is resolved with `context.rulesContext` pushed to this surface (its wired
+   * value-frame carries the mixin's lexical/closure/param bindings), so a
+   * body reference resolves against the DEFINITION scope — not the enclosing
+   * caller frame. Undefined for authored (non-folded) entries.
+   */
+  spineFrame?: Rules;
 };
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
@@ -724,14 +733,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
     }
     const declarationCountsByProp = new Map<string, number>();
-    for (let i = 0; i < rulesToRender.length; i++) {
-      const node = rulesToRender[i]!.node;
-      if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
-        continue;
+    const recomputeDeclCounts = (): void => {
+      declarationCountsByProp.clear();
+      for (let i = 0; i < rulesToRender.length; i++) {
+        const node = rulesToRender[i]!.node;
+        if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+          continue;
+        }
+        const declProp = node.name.valueOf();
+        declarationCountsByProp.set(declProp, (declarationCountsByProp.get(declProp) ?? 0) + 1);
       }
-      const declProp = node.name.valueOf();
-      declarationCountsByProp.set(declProp, (declarationCountsByProp.get(declProp) ?? 0) + 1);
-    }
+    };
+    recomputeDeclCounts();
     // Per-declaration dedup KEY. Eval path: the static `writeSyntax` of the
     // already-resolved node IS its final bytes. Spine path: the value is still
     // UNRESOLVED at this point, so `writeSyntax` emits opaque `$??(…)` placeholders
@@ -804,6 +817,52 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         seenValues.add(declKey);
       }
     };
+    // Spine mixin-fold (cutover increment 1, UNIFIED-EVAL-EMIT-DESIGN §2/§3):
+    // resolve each spine-eligible no-arg mixin CALL entry and splice its
+    // guard-passed bound-surface children into `rulesToRender` in place, BEFORE
+    // dedup + body render — so the folded declarations participate in the same
+    // duplicate-declaration handling and statement framing as authored decls
+    // (byte-identical to the eval path, which flattens the mixin output surface).
+    // FOLD splices the surfaces' children; the EVAL fallback (a non-simple
+    // candidate) splices the terminal's flattened output `Rules`. Off the spine
+    // (`!spineMode`) this is a no-op. Resolution is async (a mixin call always
+    // resolves async).
+    const runSpineMixinExpansion = (): MaybePromise<void> => {
+      const spineContext = options.spineMode ? options.context : undefined;
+      if (!spineContext) {
+        return undefined;
+      }
+      const expandFrom = (start: number): MaybePromise<void> => {
+        for (let i = start; i < rulesToRender.length; i++) {
+          const entryNode = rulesToRender[i]!.node;
+          if (!isSpineEligibleMixinCall(entryNode)) {
+            continue;
+          }
+          const resolution = resolveSpineMixinCall(entryNode, spineContext);
+          const apply = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
+            // FOLD: splice each bound surface's children, TAGGED with the surface
+            // as their `spineFrame` — so a body reference resolves against the
+            // mixin's DEFINITION scope (closure/lexical/param bindings on the
+            // surface's wired frame), not the enclosing caller frame (increment 2).
+            // EVAL fallback: flatten the terminal's output `Rules` (no frame tag —
+            // the eval path already resolved it).
+            const childEntries: RenderRuleEntry[] = resolved.kind === 'fold'
+              ? resolved.surfaces.flatMap(surface =>
+                  surface.rules.map(child => ({ node: child, spineFrame: surface })))
+              : isNode(resolved.output, N.Rules)
+                ? flattenVisibleRulesForRender(resolved.output, options, false)
+                : [{ node: resolved.output }];
+            rulesToRender.splice(i, 1, ...childEntries);
+            recomputeDeclCounts();
+            return expandFrom(i + childEntries.length);
+          };
+          return isThenable(resolution) ? resolution.then(apply) : apply(resolution);
+        }
+        return undefined;
+      };
+      return expandFrom(0);
+    };
+
     const runDedupPass = (): MaybePromise<void> => {
       const stepFrom = (i: number): MaybePromise<void> => {
         for (let idx = i; idx >= 0; idx--) {
@@ -954,7 +1013,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // case the promise is threaded up through `processFrom` → `renderRulesBody`.
       // `continue` in the original loop maps to `return` here; the trivia/indent
       // side-effect tails stay synchronous (only value resolution is async).
-      const processNode = (idx: number): MaybePromise<void> => {
+      const processNodeInner = (idx: number): MaybePromise<void> => {
         const entry = rulesToRender[idx]!;
         let n = entry.node;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
@@ -1195,6 +1254,39 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         };
         return isThenable(outResult) ? outResult.then(finishLeaf) : finishLeaf(outResult);
       };
+      // Spine mixin-fold (cutover increment 2): a FOLDED entry (`entry.spineFrame`
+      // set — a bound mixin surface) is processed with `context.rulesContext`
+      // pushed to that surface, so a body reference resolves against the mixin's
+      // DEFINITION scope (the surface's wired lexical/closure/param frame), not the
+      // enclosing caller frame (the B1s frame-threading discipline, §2, applied to
+      // a shared mixin body — no copy). The pop chains on the async result (never a
+      // sync `finally` that would pop before an async leaf resolves — the B1s
+      // early-pop guard). Authored entries (no `spineFrame`) run unwrapped.
+      const processNode = (idx: number): MaybePromise<void> => {
+        const spineFrame = rulesToRender[idx]!.spineFrame;
+        if (!spineFrame || !options.context) {
+          return processNodeInner(idx);
+        }
+        const ctx = options.context;
+        const savedRulesContext = ctx.rulesContext;
+        ctx.rulesContext = spineFrame;
+        const restore = <T>(value: T): T => {
+          ctx.rulesContext = savedRulesContext;
+          return value;
+        };
+        try {
+          const step = processNodeInner(idx);
+          return isThenable(step)
+            ? step.then(restore, (error: unknown) => {
+                restore(undefined);
+                throw error;
+              })
+            : restore(step);
+        } catch (error) {
+          restore(undefined);
+          throw error;
+        }
+      };
       // Drive the per-node processor in source order, threading a promise only if
       // a node resolved async (spine-mode `calc()`/function leaf or nested async
       // container). The common all-sync case never allocates a promise.
@@ -1264,11 +1356,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     }
     return renderRulesBody();
     };
-    // The duplicate-declaration dedup pass may resolve keys ASYNC in spine mode
-    // (live value resolution); the body render must wait for the skip set to be
-    // populated. Eval path stays fully sync (keys are static `writeSyntax`).
-    const dedup = runDedupPass();
-    return isThenable(dedup) ? dedup.then(proceed) : proceed();
+    // Expand spine-eligible mixin calls into their (fold surface / eval fallback)
+    // children BEFORE dedup + body render, so folded decls share the enclosing
+    // body's dedup + statement framing.
+    const expand = runSpineMixinExpansion();
+    const afterExpand = (): MaybePromise<string> => {
+      // The duplicate-declaration dedup pass may resolve keys ASYNC in spine mode
+      // (live value resolution); the body render must wait for the skip set to be
+      // populated. Eval path stays fully sync (keys are static `writeSyntax`).
+      const dedup = runDedupPass();
+      return isThenable(dedup) ? dedup.then(proceed) : proceed();
+    };
+    return isThenable(expand) ? expand.then(afterExpand) : afterExpand();
   };
 
   const saved = savePrintState(options, [
