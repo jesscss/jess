@@ -101,30 +101,6 @@ export function isValueLeaf(node: Node): boolean {
   return !isNode(node, N.Rules | N.Ruleset | N.AtRule | N.Mixin);
 }
 
-/**
- * True if `selector` contains Less-style interpolation (`@{…}` / `${…}`) — i.e.
- * its concrete form depends on the value-frame, so it must resolve at
- * ruleset-enter (not yet folded). A selector's `valueOf()` serializes its WHOLE
- * form (including nested attribute/compound components), so a single top-level
- * text scan detects any interpolation marker.
- */
-function selectorHasInterpolation(selector: unknown): boolean {
-  if (selector == null) {
-    return false;
-  }
-  if (typeof selector === 'string') {
-    return selector.includes('@{') || selector.includes('${');
-  }
-  if (Array.isArray(selector)) {
-    return selector.some(item => selectorHasInterpolation(item));
-  }
-  if (!(selector instanceof Node)) {
-    return false;
-  }
-  const text = selector.valueOf();
-  return typeof text === 'string' && (text.includes('@{') || text.includes('${'));
-}
-
 /** True if `selector` (a Selector, a SelectorList array, or a string) carries `&`. */
 function selectorHasAmpersand(selector: unknown): boolean {
   if (!selector || typeof selector === 'string') {
@@ -178,13 +154,10 @@ function isSpineEligibleContainer(node: Node): boolean {
   if (selectorHasAmpersand(ruleset.selector)) {
     return false;
   }
-  // An INTERPOLATED selector (`[data=@{attr}]`, `.@{name}`) must resolve against
-  // the live frame at ruleset-enter — the 3rd P1 item, not yet folded into the
-  // spine header composition (the mechanism is `selector.eval(context)` with the
-  // frame this descent already pushes; a follow-up). Excluded until then.
-  if (selectorHasInterpolation(ruleset.selector)) {
-    return false;
-  }
+  // INTERPOLATED selectors (`[data=@{attr}]`, `.@{name}`) ARE now admitted — the
+  // spine resolves `selector.eval` against the live frame at ruleset-enter (see
+  // `serializeSpineFrameContainer`) so the header composes from the CONCRETE form
+  // (OQ-A: extend sees the resolved selector).
   return isSpineEligibleBody(ruleset.rules);
 }
 

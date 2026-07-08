@@ -62,9 +62,9 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       `finally` that would pop before an async leaf resolves — the B1s bug). Ratchet updated: admits
       calc/Operation + asserts sync-Operation stays sync.
       **Exact boundary — still eval path (scoped frontier):** `&`-selectors (ampersand compose),
-      interpolated selectors (item 3 below), `+:`/conditional/`setDefined` decls (merge), re-declared vars
-      (source-order), guarded/extend/at-rule/mixin/reference containers, charset/import. **Next push:**
-      selector-interpolation-at-enter (item 3), then at-rule containers + ampersand compose.
+      `+:`/conditional/`setDefined` decls (merge), re-declared vars (source-order),
+      guarded/extend/at-rule/mixin/reference containers, charset/import. Interpolated selectors are NOW
+      folded (item 3, done). **Next push:** at-rule containers, then ampersand compose.
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
       **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
@@ -76,18 +76,20 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       IN PLACE (design §2.4) rather than stamp a transient — a change shared with the still-standing eval
       path. NOT force-deleted (live on both the transient-leaf path and the eval path): the target-honest
       gate. This is its own follow-up, not a byproduct of the container fold.
-- [ ] Selector interpolation resolves at ruleset-enter (frame live) → concrete selector available to extend.
-      **NEXT ITEM — mechanism + injection point analyzed, not yet folded.** The spine already pushes the
-      live frame at ruleset-enter (the `spineFrameNode` block in `serializeRulesContainerInternal`); the
-      resolve is `selector.eval(context)` there (what `_prepareRulesetSelectorIdentity`/ruleset.ts:1827 do
-      on the eval path). The wrinkle: the container serializer reads `node.selector` in ~6 places
-      (`composePushedSelector` :1451, `writeHeaderSelector` :1584, the `run` reference check, collapse) — a
-      resolved selector must reach all of them WITHOUT mutating the canonical node (output-affecting → needs
-      a transient, not the loosened-invariant in-place cache). Cleanest: resolve once at the spine-frame
-      block and thread the resolved selector as an options override (like `atRuleHeaderPrelude` already
-      does) OR a scoped swap-and-restore. Interpolated selectors stay EXCLUDED (`selectorHasInterpolation`)
-      until folded, so current output is correct. This is the OQ-A prerequisite (extend sees concrete
-      selectors). Deferred to keep the async-threading change isolated + reviewable.
+- [x] Selector interpolation resolves at ruleset-enter (frame live) → concrete selector available to extend.
+      **DONE.** `serializeSpineFrameContainer` now pushes the container's value-frame at ruleset-enter,
+      resolves `selector.eval(context)` against that live frame, and installs the CONCRETE selector as a
+      render-local override (`PrintOptions.spineSelectorNode`/`spineSelector`, mirroring the
+      `atRuleHeaderPrelude` pattern — NOT a canonical-node mutation, since a resolved selector is
+      output-affecting). `Ruleset.effectiveHeaderSelector(options)` is the single accessor that returns the
+      override; `composePushedSelector` + `writeHeaderSelector` both read through it, so every header path
+      sees the resolved form. `isSpineEligibleRoot` widened to ADMIT interpolated selectors (dropped
+      `selectorHasInterpolation`). Proven: `[data=@{attr-data}]` → `[data="foo"]` through the spine with
+      `eval=0 derives=0` (no eval pass, no output tree). **OQ-A prerequisite satisfied** — extend now sees
+      the concrete selector, not the raw `@{…}` template. RATCHET: interpolated-selector-through-spine
+      assertion added (`emit-walk-ratchet.test.ts`: single-pass counter moves + `derive` not called +
+      output is `[data="foo"]` + no `@{`). The recursion guard is the override marker
+      (`spineSelectorNode === node` short-circuits re-setup); always set on descend, incl. the no-eval path.
 
 ### P2 — per-node inline visitor model (§6)  ·  depends on P1
 - [ ] Replace the separate visitor walk + `preSerializeRoot` with the generic per-node hook
@@ -148,7 +150,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail). Ampersand / at-rule / interpolated-selector shapes still 2 (eval path) — scoped frontier, not fallback. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail) AND interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A). Ampersand / at-rule shapes still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -244,3 +246,25 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   (analyzed: resolve `selector.eval` at the spine-frame block + thread as an options override; kept
   isolated from this async change for reviewability). NEVER used `git stash` (hard rule) — inspected prior
   state via `git show HEAD~1:path`.
+- 2026-07-08 · P1 · SELECTOR-INTERPOLATION-AT-RULESET-ENTER landed (OQ-A prerequisite). Added
+  `serializeSpineFrameContainer`: at ruleset-enter it pushes the container's value-frame, resolves
+  `selector.eval(context)` against that live frame, and installs the CONCRETE selector as a render-local
+  OVERRIDE (`PrintOptions.spineSelectorNode`/`spineSelector`) — mirroring `atRuleHeaderPrelude`, NOT a
+  canonical-node mutation (a resolved selector is output-affecting → transient per the loosened invariant).
+  `Ruleset.effectiveHeaderSelector(options)` is the single accessor threading the override into BOTH
+  `composePushedSelector` and `writeHeaderSelector`, so every header path sees the resolved form. Moved the
+  spine frame-push to the TOP of `serializeRulesContainerInternal` (was at the bottom) so the frame + the
+  resolved selector are live BEFORE header composition; re-entry is guarded by the override marker
+  (`spineSelectorNode === node`). `isSpineEligibleRoot` widened to ADMIT interpolated selectors (deleted
+  `selectorHasInterpolation`). Proven: `[data=@{attr-data}]` → `[data="foo"]` through the spine with
+  `eval=0 derives=0`. Bug found+fixed during: the no-eval (string/plain-selector) descent path didn't set
+  the override marker → infinite recursion (stack overflow in 3 tests); fix = always set the marker on
+  descend, resolved-or-undefined. RATCHET: interpolated-selector-through-spine assertion (single-pass
+  counter moves + `derive` not called + `[data="foo"]` + no `@{`). Core suite GREEN 3181/0/15. tsc: ZERO
+  new errors (2 pre-existing `canMergeSameHeaderRuleset` `SelectorLike` lines only; verified my exact edit
+  lines clean). DOCUMENTATION STANDARD: `spineSelectorNode`/`spineSelector` + `effectiveHeaderSelector` +
+  `serializeSpineFrameContainer` all carry contract + invariant + OQ-A `@see`. NEVER used `git stash`
+  (inspected prior state via `git show HEAD:path`). NEXT: at-rule containers, then `&`-composition.
+  Backpedal self-check: override is a MODE-scoped transient on the KEPT serializer (no canonical mutation,
+  no dual path); the eval path serves only not-yet-covered shapes; the frame pop chains on the async
+  promise (never a sync `finally` — B1s guard preserved).

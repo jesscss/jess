@@ -18,7 +18,7 @@ import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { Selector, SelectorLike } from '../selector.js';
+import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 
@@ -506,6 +506,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
   if (isNode(node, N.Ruleset) && (node as Ruleset).selector instanceof Nil) {
     return '';
+  }
+
+  // Spine mode (P1 §2): the resolved value-frame + interpolated-selector setup
+  // must be live BEFORE header composition below (`composePushedSelector` reads
+  // the effective selector). If this container is a spine-mode Ruleset, resolve
+  // the interpolated selector against the live frame and continue through
+  // `serializeSpineFrameContainer`, which pushes the frame + override for the
+  // whole descent and restores on exit (chaining on the async path — never a
+  // sync `finally`, which would pop before an async leaf resolves, the B1s bug).
+  const spineCtx = options.spineMode ? options.context : undefined;
+  if (spineCtx && node instanceof Ruleset && isNode(node, N.Rules) && options.spineSelectorNode !== node) {
+    return serializeSpineFrameContainer(node, options, closeFramesOnExit, spineCtx);
   }
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
   // getHeaderString normally handles this, but cached frame headers skip it.
@@ -1128,35 +1140,73 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     }
     return runWithCurrentComposedStack();
   };
-  const spineContext = options.spineMode ? options.context : undefined;
-  const spineFrameNode = spineContext && node instanceof Ruleset && isNode(node, N.Rules) ? node : undefined;
   // Restore the print state after the body's bytes are in the buffer — for the
   // async path this MUST chain on the promise, never a sync `finally` (which
-  // would pop the value-frame before an async leaf resolves — the B1s bug).
+  // would pop before an async leaf resolves — the B1s bug). The spine value-frame
+  // + selector override (when present) are pushed/popped by
+  // `serializeSpineFrameContainer`, which wraps this call.
   const finishRun = (text: string): string => {
     restorePrintState(options, saved);
     return text;
   };
-  if (spineContext && spineFrameNode) {
-    const savedRulesContext = spineContext.rulesContext;
-    spineFrameNode.getScopeFrame();
-    spineContext.rulesContext = spineFrameNode;
-    const restoreSpineFrame = (text: string): string => {
-      spineContext.rulesContext = savedRulesContext;
-      return finishRun(text);
-    };
-    let runResult: MaybePromise<string>;
-    try {
-      runResult = runContainer();
-    } catch (error) {
-      spineContext.rulesContext = savedRulesContext;
-      restorePrintState(options, saved);
-      throw error;
-    }
-    return isThenable(runResult) ? runResult.then(restoreSpineFrame) : restoreSpineFrame(runResult);
-  }
   const runResult = runContainer();
   return isThenable(runResult) ? runResult.then(finishRun) : finishRun(runResult);
+}
+
+/**
+ * Spine-mode container setup (P1 §2, OQ-A): push the container's value-frame,
+ * resolve its (possibly interpolated) selector against that live frame, install
+ * the resolved selector as a render-local override, then descend the body. The
+ * frame + override are popped AFTER the body's bytes are in the buffer (chaining
+ * on the async path). Restoring only on the outbound edge keeps the frame live
+ * through header composition (`composePushedSelector` reads the effective
+ * selector) and every leaf resolution.
+ *
+ * OQ-A: because the selector is resolved to its CONCRETE form here (before the
+ * body — hence before any nested extend participates), extend sees the resolved
+ * selector, not the raw `@{…}` template.
+ */
+function serializeSpineFrameContainer(
+  node: Ruleset,
+  options: FinalPrintOptions,
+  closeFramesOnExit: boolean,
+  context: NonNullable<FinalPrintOptions['context']>
+): MaybePromise<string> {
+  const savedRulesContext = context.rulesContext;
+  const savedSelectorNode = options.spineSelectorNode;
+  const savedSelector = options.spineSelector;
+  node.getScopeFrame();
+  context.rulesContext = node;
+  const restore = (text: string): string => {
+    context.rulesContext = savedRulesContext;
+    options.spineSelectorNode = savedSelectorNode;
+    options.spineSelector = savedSelector;
+    return text;
+  };
+  // Descend with the override MARKER set on this node (`spineSelectorNode`), so
+  // the re-entry below skips this setup — the marker is what breaks the recursion
+  // AND signals "this node's frame is already pushed". `spineSelector` carries the
+  // resolved selector when one was computed; when undefined the header falls back
+  // to the authored `this.selector` (string/array/plain selectors need no eval).
+  const descend = (resolvedSelector: Selector | Nil | undefined): MaybePromise<string> => {
+    options.spineSelectorNode = node;
+    options.spineSelector = resolvedSelector;
+    const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
+    return isThenable(out) ? out.then(restore) : restore(out);
+  };
+  // Resolve the selector against the live frame (interpolation → concrete form).
+  // Only Selector nodes carry interpolation; string/array/Nil pass through.
+  const rawSelector = node.selector;
+  try {
+    if (rawSelector instanceof Selector) {
+      const resolved = rawSelector.eval(context);
+      return isThenable(resolved) ? resolved.then(descend) : descend(resolved);
+    }
+    return descend(undefined);
+  } catch (error) {
+    restore('');
+    throw error;
+  }
 }
 
 /**

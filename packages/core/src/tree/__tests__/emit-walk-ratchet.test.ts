@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
@@ -152,5 +152,36 @@ describe('emit-walk wire-in ratchet (P1)', () => {
       ] })
     ]);
     expect(isSpineEligibleRoot(calcRoot, context)).toBe(true);
+  });
+
+  it('resolves an INTERPOLATED selector at ruleset-enter through the spine (OQ-A: concrete selector)', () => {
+    // `[data=@{attr-data}]` must resolve to `[data="foo"]` against the live frame
+    // at ruleset-enter — via `selector.eval` in the single pass, NO eval pass, NO
+    // output tree. This is what lets extend see the CONCRETE selector (OQ-A).
+    const root = rules([
+      vardecl({ name: 'attr-data', value: spaced([el('foo')]) }),
+      ruleset({
+        selector: attr({ name: 'data', op: '=', value: any('@{attr-data}') }),
+        rules: [decl({ name: 'color', value: spaced([el('red')]) })]
+      })
+    ]);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(context) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1); // single pass ran
+      expect(deriveCalls).toBe(0); // no output tree
+      expect(css).toContain('[data="foo"]'); // interpolation resolved concrete
+      expect(css).not.toContain('@{'); // raw template gone
+    } finally {
+      Rules.prototype.derive = original;
+    }
   });
 });

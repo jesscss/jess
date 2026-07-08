@@ -1447,8 +1447,22 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    * children wrap the group in `:is()` (`.a { #x, #y { .z {…} } }` →
    * `:is(.a #x, .a #y) .z`). Returns `undefined` when there is nothing to push.
    */
+  /**
+   * The selector this ruleset's HEADER composes from. In spine mode (P1 §2) an
+   * interpolated selector is resolved (`selector.eval`) against the live frame at
+   * ruleset-enter and handed back via `options.spineSelector` — so the header
+   * (and extend, OQ-A) sees the CONCRETE selector, not the raw `@{…}` form.
+   * Falls through to the authored `this.selector` when there is no override.
+   */
+  private effectiveHeaderSelector(options: FinalPrintOptions) {
+    if (options.spineSelectorNode === this && options.spineSelector !== undefined) {
+      return options.spineSelector;
+    }
+    return this.selector;
+  }
+
   composePushedSelector(options: FinalPrintOptions): Selector | undefined {
-    const sel = this.selector;
+    const sel = this.effectiveHeaderSelector(options);
     if (!sel || sel instanceof Nil) {
       return undefined;
     }
@@ -1582,7 +1596,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private writeHeaderSelector(options: FinalPrintOptions, withoutComments: boolean): boolean {
-    const { selector } = this;
+    const selector = this.effectiveHeaderSelector(options);
 
     if (typeof selector === 'string') {
       if (options.referenceMode === true) {

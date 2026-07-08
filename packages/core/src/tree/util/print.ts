@@ -4,6 +4,7 @@ import type { TriviaMap, Trivia } from '../../types/index.js';
 import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
+import type { Nil } from '../nil.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type PrintOptions = {
@@ -43,6 +44,19 @@ export type PrintOptions = {
   /** Render-local override for one at-rule body during direct render. */
   atRuleBodyNode?: AtRule;
   atRuleBodyOverride?: import('../rules.js').Rules;
+  /**
+   * Spine-mode selector override (P1 §2, OQ-A). When `spineSelectorNode === this`
+   * ruleset, its header composes from `spineSelector` — the selector resolved
+   * (`selector.eval`) against the live value-frame at ruleset-enter — instead of
+   * the raw authored `this.selector`. This is how INTERPOLATED selectors
+   * (`[data=@{attr}]`, `.@{name}`) reach their CONCRETE form in the single pass,
+   * and is the OQ-A prerequisite: extend sees the resolved selector. It is a
+   * transient render-local override (a resolved selector is OUTPUT-AFFECTING, so
+   * per the loosened canonical-mutation invariant it must NOT live on the shared
+   * canonical node) mirroring the `atRuleHeaderPrelude` pattern.
+   */
+  spineSelectorNode?: Ruleset;
+  spineSelector?: Selector | Nil;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
