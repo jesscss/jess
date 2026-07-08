@@ -841,16 +841,17 @@ whole-tree pre-pass — `beforeEvalVisitor` / `beforeEvalVisitorForTree` (`plugi
 step, so there is no "un-evaluated whole tree" moment mid-pass for a pre-eval visitor to observe.
 
 This matters for the proof because `less-plugin-inline-urls` is a real, published **pre-eval** replacing
-visitor (audit `:2140`). Options:
-1. **Keep the pre-eval pre-pass as-is** (RECOMMENDED) — a cheap structural pre-walk over the
-   un-evaluated tree, orthogonal to the eval/emit fold, feeding the SAME `(node, ctx) => Node | void`
-   contract at a different lifecycle point. Preserves `inline-urls` compat.
-2. **Drop pre-eval visitor support in v5** — one hook lifecycle, but a compat regression for
-   `inline-urls` and any 4.x plugin using `isPreEvalVisitor`.
+visitor (audit `:2140`).
 
-**Recommendation: option 1**, with the owner deciding whether pre-eval compat is worth the extra
-pre-pass given how few plugins use it. This is the only residual open item; the entire post-eval side
-is settled.
+**RESOLVED (owner 2026-07-08): KEEP the pre-eval pre-pass, gated on registration so it is ZERO-COST when
+unused.** It stays a separate structural pre-walk over the un-evaluated tree, orthogonal to the eval/emit
+fold, feeding the SAME `(node, ctx) => Node | void` contract at the pre-eval lifecycle point (preserving
+`inline-urls` compat). The leanness requirement is a hard gate: **the pre-walk only runs if ≥1 pre-eval
+visitor is registered** — if none are (the common case; pre-eval visitors are rare, `inline-urls` is the
+lone published one), the canonical tree is NEVER walked pre-eval and the pre-pass costs nothing. So the
+mechanism is: check the pre-eval registry; empty → skip entirely (no walk, no traversal); non-empty →
+one structural pre-walk invoking the registered pre-eval visitor(s). No always-on cost. This closes the
+last residual — the entire visitor story (post-eval §6.1–§6.8 + this gated pre-eval pass) is now settled.
 
 ### 6.10 Sourcemaps and the net reduction
 
