@@ -190,6 +190,7 @@ export async function executeCallableCandidate({
     rules,
     sourceRules,
     restrictMixinOutputLookup,
+    allowSpineFold: !hasDefault,
     candidateIsMixin: isNode(candidate, N.Mixin)
   });
 
