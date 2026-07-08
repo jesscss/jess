@@ -253,8 +253,8 @@ importers:
         specifier: ^4.4.0
         version: 4.4.0
       parseman:
-        specifier: ^0.14.0
-        version: 0.14.0
+        specifier: ^0.18.2
+        version: 0.18.2
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
@@ -444,8 +444,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.5
       parseman:
-        specifier: ^0.14.0
-        version: 0.14.0
+        specifier: ^0.18.2
+        version: 0.18.2
 
   packages/jess-plugin:
     dependencies:
@@ -617,8 +617,8 @@ importers:
         specifier: ^4.6.3
         version: 4.6.3
       parseman:
-        specifier: ^0.14.0
-        version: 0.14.0
+        specifier: ^0.18.2
+        version: 0.18.2
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
@@ -654,8 +654,8 @@ importers:
         version: 12.0.0
     devDependencies:
       parseman:
-        specifier: ^0.14.0
-        version: 0.14.0
+        specifier: ^0.18.2
+        version: 0.18.2
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/f282e3844db9889a0747b810898f67571272e8e5(@babel/core@7.28.6)
@@ -7329,7 +7329,7 @@ packages:
       '@vitest/spy': 4.1.0
       estree-walker: 3.0.3
       magic-string: 0.30.21
-      vite: 6.4.1(@types/node@20.19.30)(less@4.6.3)
+      vite: 6.4.1(@types/node@22.19.7)(less@4.6.3)
     dev: true
 
   /@vitest/mocker@4.1.2(vite@6.4.1):
@@ -16863,8 +16863,8 @@ packages:
     dependencies:
       entities: 6.0.1
 
-  /parseman@0.14.0:
-    resolution: {integrity: sha512-FHwJzhr+wAOSoA3kBkeaYVK8s3pFcIJFu/pKKPUp4aXUxA/M0cgmrRCoRQml7YqEIt18EYEhBi6GGhYOOA5Gtw==}
+  /parseman@0.18.2:
+    resolution: {integrity: sha512-PEloFH7ZrqvmcKs9bDG51niYRLpLcn1sqcG50g9fViEF6Z+X6z/g8ojUQ/6j72577cqakpAg5bQIuFHl4ghgZA==}
     dependencies:
       magic-string: 0.30.21
       oxc-parser: 0.137.0
