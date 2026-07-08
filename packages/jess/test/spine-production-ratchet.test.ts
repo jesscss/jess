@@ -94,4 +94,46 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toContain('.derived');
     expect(css).toContain('font-weight: bold');
   });
+
+  it('routes ROOT-ONLY wrap+emit at-rules through the spine on the COMPILER path (no eval two-walk)', async () => {
+    // Broadened coverage: a root that is a `@font-face` / `@keyframes` / `@page`
+    // wrap+emit at-rule now renders LIVE through the spine in production, byte-
+    // identical to the eval path. A regression that drops them back to eval trips
+    // the counter (no move) or `Rules.derive` (fires) RED.
+    const cases: Array<{ src: string; expect: string[] }> = [
+      { src: '@font-face { font-family: "X"; src: url("x.woff2"); }', expect: ['@font-face', 'font-family: "X"', 'src: url("x.woff2")'] },
+      { src: '@keyframes spin { 0% { top: 0; } 100% { top: 10px; } }', expect: ['@keyframes spin', '0%', 'top: 0', '100%', 'top: 10px'] },
+      { src: '@page { margin: 2cm; }', expect: ['@page', 'margin: 2cm'] },
+      { src: '@counter-style c { system: fixed; }', expect: ['@counter-style c', 'system: fixed'] }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before);
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0);
+        for (const frag of c.expect) {
+          expect(css, `output ${frag}: ${c.src}`).toContain(frag);
+        }
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
+  });
+
+  it('does NOT route `@property` through the spine (custom-property registration → eval path)', async () => {
+    const compiler = makeCompiler();
+    const src = '@property --x { syntax: "<color>"; inherits: false; initial-value: red; }';
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
+    expect(css).toContain('@property --x');
+  });
 });

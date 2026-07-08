@@ -36,6 +36,7 @@ import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
+import type { AtRule } from '../at-rule.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './print.js';
 
@@ -276,22 +277,73 @@ function atRuleBodyNeedsAncestorRewrap(children: readonly Node[]): boolean {
 /**
  * The conditional-group at-rules THIS phase folds through the spine: pure
  * "wrap + (maybe) hoist" containers with no extra eval-pass side effects on
- * their name or body binding.
+ * their name or body binding. These BUBBLE to root when nested in a ruleset
+ * (`@media`→root hoist + composed-selector re-wrap of their body).
+ *
+ * `@starting-style` is included here (not in the root-only set) because it
+ * bubbles + wraps exactly like `@media`: nested it hoists to root carrying its
+ * ancestor selector, and its body is composed rulesets/declarations. It rides
+ * the same hoist machinery and the same `&`-rewrap frontier guard.
  */
-const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container']);
+const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container', '@starting-style']);
+
+/**
+ * The ROOT-ONLY "wrap + emit" at-rules THIS phase folds through the spine. Unlike
+ * the conditional-group family they do NOT hoist/compose selectors: they emit at
+ * their document position with a prelude + a self-contained body —
+ *   - DECLARATION-bodied: `@font-face`, `@page` (+ margin-box at-rules), `@viewport`,
+ *     `@counter-style` — body is `:`-declarations / comments.
+ *   - KEYFRAME-bodied: `@keyframes` / `@-webkit-keyframes` — body is keyframe-
+ *     selector rulesets (`0%`, `from`, `to`, `from,to`) that DO NOT `&`-compose;
+ *     the root-only composed-stack reset (`isRootOnly()` in the kept serializer)
+ *     keeps each keyframe selector standalone.
+ *   - RULESET-bodied conditional-ish: `@document`/`@-x-document`/`@-moz-document`,
+ *     `@host` — body is plain-selector rulesets emitted inside the block.
+ *
+ * EXCLUDED (still eval path, precise reasons): `@property` — registers a custom
+ * property (an eval-pass registration side effect the spine does not replicate);
+ * `@charset`/`@import`/`@namespace` — document-framing / non-block (already gated
+ * out by `isSpineEligibleRoot`'s charset/topImports check and having no `Rules`
+ * body). Interpolated NAMES are handled where the prelude resolves at-enter; an
+ * interpolated at-rule keyword itself is not folded (name is a Node, gated below).
+ */
+const SPINE_ELIGIBLE_ROOT_ONLY_AT_RULES = new Set([
+  '@font-face',
+  '@page',
+  '@viewport',
+  '@counter-style',
+  '@keyframes',
+  '@-webkit-keyframes',
+  '@document',
+  '@-x-document',
+  '@-moz-document',
+  '@host'
+]);
+
+/** True for the keyframes family, whose children are keyframe-selector rulesets. */
+const SPINE_KEYFRAMES_AT_RULES = new Set(['@keyframes', '@-webkit-keyframes']);
 
 /**
  * A nested AT-RULE child THIS phase can descend through the spine: a
- * conditional-group block at-rule (`@media`/`@supports`/`@container`) with a
- * string name (not interpolated — an interpolated at-rule NAME is not folded
- * yet) and a spine-eligible body. The prelude is resolved-at-enter by
- * `serializeSpineFrameAtRule`; `@media`→root hoisting and the root-only
- * composed-stack reset are the KEPT walk machinery (§7).
+ * block at-rule from one of two families, with a string name (not interpolated —
+ * an interpolated at-rule NAME is not folded yet) and a spine-eligible body:
+ *   - CONDITIONAL-GROUP (`@media`/`@supports`/`@container`/`@starting-style`) —
+ *     bubbles to root + composes its body's selectors (the `@media`→root hoist +
+ *     composed-stack machinery, §7); subject to the `&`-through-hoist re-wrap
+ *     frontier guard (`atRuleBodyHasAmpersandRuleset`).
+ *   - ROOT-ONLY WRAP+EMIT (`@font-face`/`@page`/`@keyframes`/`@-webkit-keyframes`/
+ *     `@viewport`/`@counter-style`/`@document`/`@host`, `SPINE_ELIGIBLE_ROOT_ONLY_
+ *     AT_RULES`) — no hoist, no composition; body is declarations / keyframe-
+ *     selector rulesets / plain-selector rulesets. The root-only composed-stack
+ *     reset keeps keyframe selectors standalone. Body gated by
+ *     `isSpineEligibleRootOnlyAtRuleBody`.
+ * The prelude is resolved-at-enter by `serializeSpineFrameAtRule`.
  *
  * EXCLUDED (still eval path, precise reasons): `@layer` — nested layer-NAME
  * registration (`@layer a.b`) is an eval-pass side effect the spine does not
  * replicate; `@scope` — special `(start)`/`(end)` prelude + scoped-body binding;
- * root-only at-rules (`@font-face`/`@keyframes`/…) and non-nestable forms.
+ * `@property` — registers a custom property (eval-pass registration side effect);
+ * interpolated at-rule NAMES; non-nestable / document-framing forms.
  */
 function isSpineEligibleAtRule(node: Node): boolean {
   if (!isNode(node, N.AtRule) || !isNode(node, N.Rules)) {
@@ -304,6 +356,12 @@ function isSpineEligibleAtRule(node: Node): boolean {
   const options = atRule.options as { referenceMode?: boolean } | undefined;
   if (options?.referenceMode === true) {
     return false;
+  }
+  // ROOT-ONLY "wrap + emit" family (`@font-face`/`@page`/`@keyframes`/…): no
+  // hoist, no selector composition. Body is declarations/comments, or (keyframes)
+  // keyframe-selector rulesets, or (`@document`/`@host`) plain-selector rulesets.
+  if (SPINE_ELIGIBLE_ROOT_ONLY_AT_RULES.has(atRule.name)) {
+    return isSpineEligibleRootOnlyAtRuleBody(atRule);
   }
   if (!SPINE_ELIGIBLE_AT_RULES.has(atRule.name)) {
     return false;
@@ -322,6 +380,51 @@ function isSpineEligibleAtRule(node: Node): boolean {
     return false;
   }
   return isSpineEligibleBody(atRule.rules);
+}
+
+/**
+ * Body eligibility for a ROOT-ONLY "wrap + emit" at-rule. Keyframes bodies hold
+ * keyframe-selector rulesets (`0%`, `from`, `to`) — admitted as-is: they carry no
+ * `&` and don't compose (the root-only stack reset keeps them standalone), and
+ * their own body must be spine-eligible declarations. Declaration/ruleset bodies
+ * (`@font-face`, `@page`, `@document`, `@host`, …) reuse the normal body check,
+ * which admits `:`/merge declarations, comments, and spine-eligible nested
+ * containers. A `&`-bearing child stays on the eval path (no ancestor to compose
+ * against here, but the composed serializer would still mis-handle a stray `&`).
+ */
+function isSpineEligibleRootOnlyAtRuleBody(atRule: Pick<AtRule, 'name' | 'rules'>): boolean {
+  const children = atRule.rules;
+  if (SPINE_KEYFRAMES_AT_RULES.has(atRule.name as string)) {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]!;
+      if (isNode(child, N.Comment)) {
+        continue;
+      }
+      // Each keyframe stop is a Ruleset (`0% { … }`) whose selector is a keyframe
+      // keyword/percentage (no `&`) and whose body is spine-eligible declarations.
+      if (!isNode(child, N.Ruleset)) {
+        return false;
+      }
+      const ruleset = child;
+      if (ruleset.guard || (ruleset.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
+        return false;
+      }
+      if (selectorHasAmpersand(ruleset.selector)) {
+        return false;
+      }
+      if (!isSpineEligibleBody(ruleset.rules)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  // Declaration/ruleset-bodied root-only at-rules: an `&`-bearing child ruleset
+  // stays on the eval path (the composed serializer would mis-handle a stray `&`
+  // with no meaningful parent here); everything else follows the normal body gate.
+  if (atRuleBodyHasAmpersandRuleset(children)) {
+    return false;
+  }
+  return isSpineEligibleBody(children);
 }
 
 /** True if `selector` contains any Ampersand node (bare `&`, `&.x`, `.x &`, …). */
@@ -537,12 +640,15 @@ export const spineRenderCounter = { rootRenders: 0 };
  * Exact boundary — eligible when the whole body is spine-coverable
  * (`isSpineEligibleBody`): value leaves (comments + `:`- and merge-assign
  * declarations), nested `Ruleset`s (non-Nil, unguarded, no ampersand-append, no
- * extend/reference) with `&`/interpolated selectors resolved-at-enter, and
- * conditional-group at-rules; re-declared vars + `snapshot` reads resolve
- * per-position. Excluded (still eval path — a scoped frontier, NOT a safety
- * fallback): charset/import document framing, reference mode, conditional (`?:`)/
- * `setDefined` declarations, ampersand-append, `@layer`/`@scope`, guarded/extend/
- * mixin/reference containers, interpolated var/at-rule NAMES.
+ * extend/reference) with `&`/interpolated selectors resolved-at-enter,
+ * conditional-group at-rules (`@media`/`@supports`/`@container`/`@starting-style`),
+ * and ROOT-ONLY wrap+emit at-rules (`@font-face`/`@page`/`@keyframes`/`@-webkit-
+ * keyframes`/`@viewport`/`@counter-style`/`@document`/`@host`); re-declared vars +
+ * `snapshot` reads resolve per-position. Excluded (still eval path — a scoped
+ * frontier, NOT a safety fallback): charset/import document framing, reference
+ * mode, conditional (`?:`)/`setDefined` declarations, ampersand-append,
+ * `@layer`/`@scope`/`@property`, the at-rule `&`-through-hoist re-wrap frontier,
+ * guarded/extend/mixin/reference containers, interpolated var/at-rule NAMES.
  *
  * ROOT-LEVEL merge guard: a `+:`/`+_:` declaration DIRECTLY in the root body (not
  * inside a ruleset) is excluded — property-merge coalescing is applied on the

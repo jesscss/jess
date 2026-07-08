@@ -410,4 +410,68 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     ]);
     expect(isSpineEligibleRoot(nearestOuter, context)).toBe(false);
   });
+
+  it('ADMITS root-only WRAP+EMIT at-rules through the spine (declaration + keyframe bodies)', () => {
+    // The "wrap + emit" family (`@font-face`/`@page`/`@keyframes`/…): no hoist, no
+    // composition — a prelude + a self-contained body. Locked eligible so a
+    // regression that drops them back to the eval path trips RED.
+    const fontFace = rules([
+      atrule({ name: '@font-face', rules: [
+        decl({ name: 'font-family', value: any('"X"') }),
+        decl({ name: 'src', value: call({ name: 'url', args: list([any('"x.woff2"')]) }) })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(fontFace, context)).toBe(true);
+
+    const page = rules([
+      atrule({ name: '@page', rules: [decl({ name: 'margin', value: any('2cm') })] })
+    ]);
+    expect(isSpineEligibleRoot(page, context)).toBe(true);
+
+    const counterStyle = rules([
+      atrule({ name: '@counter-style', prelude: any('c'), rules: [decl({ name: 'system', value: any('fixed') })] })
+    ]);
+    expect(isSpineEligibleRoot(counterStyle, context)).toBe(true);
+
+    // Keyframes: keyframe-selector rulesets (`0%`, `100%`) as children — admitted
+    // (no `&`, standalone via the root-only composed-stack reset).
+    const keyframes = rules([
+      atrule({ name: '@keyframes', prelude: any('spin'), rules: [
+        ruleset({ selector: sel([el('0%')]), rules: [decl({ name: 'top', value: any('0') })] }),
+        ruleset({ selector: sel([el('100%')]), rules: [decl({ name: 'top', value: any('10px') })] })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(keyframes, context)).toBe(true);
+
+    const webkitKeyframes = rules([
+      atrule({ name: '@-webkit-keyframes', prelude: any('frames'), rules: [
+        ruleset({ selector: sel([el('0%')]), rules: [decl({ name: 'border', value: any('1px') })] })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(webkitKeyframes, context)).toBe(true);
+  });
+
+  it('EXCLUDES `@property` (custom-property registration is an eval-pass side effect)', () => {
+    // `@property --x { … }` REGISTERS a custom property during eval — a side effect
+    // the spine does not replicate. Kept on the eval path; locked here.
+    const property = rules([
+      atrule({ name: '@property', prelude: any('--x'), rules: [
+        decl({ name: 'syntax', value: any('"<color>"') }),
+        decl({ name: 'inherits', value: any('false') })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(property, context)).toBe(false);
+  });
+
+  it('EXCLUDES a root-only at-rule whose body carries an `&` (the composed-frontier guard)', () => {
+    // A stray `&`-bearing child ruleset inside a wrap+emit at-rule has no
+    // meaningful parent to compose against and the composed serializer would
+    // mis-handle it — kept on the eval path.
+    const ampInAtRule = rules([
+      atrule({ name: '@document', prelude: any('url-prefix("x")'), rules: [
+        ruleset({ selector: sel([amp(), el('.x')]), rules: [decl({ name: 'color', value: any('red') })] })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(ampInAtRule, context)).toBe(false);
+  });
 });

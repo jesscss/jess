@@ -71,7 +71,20 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       .inner {…} }` at root, `eval=0 derives=0`. Both collapse modes. Ratchets added: at-rule-through-spine
       + @media-hoist-through-spine. `@layer` EXCLUDED (nested layer-NAME registration is an eval-pass side
       effect the spine doesn't replicate); `@scope` EXCLUDED (special `(start)`/`(end)` prelude + scoped
-      body); root-only (`@font-face`/`@keyframes`/…) excluded.
+      body).
+      **AT-RULE COVERAGE BROADENED (P2, 2026-07-08) — ROOT-ONLY WRAP+EMIT + `@starting-style`.** Admitted
+      the "wrap + emit" family into `isSpineEligibleRoot`/`isSpineEligibleAtRule`, rendering LIVE through the
+      spine in production byte-identical to dev: `@font-face`/`@page`/`@viewport`/`@counter-style`
+      (declaration bodies), `@keyframes`/`@-webkit-keyframes` (keyframe-selector rulesets `0%`/`from`/`to`,
+      standalone via the root-only composed-stack reset — no `&`-compose), `@document`/`@-x-document`/
+      `@-moz-document`/`@host` (plain-selector ruleset bodies). `@starting-style` joined the conditional-group
+      set (bubbles+wraps like `@media`, same hoist machinery + `&`-rewrap guard). All reuse
+      `serializeSpineFrameAtRule` unchanged. `@property` EXCLUDED (registers a custom property — eval-pass
+      registration side effect); the at-rule `&`-through-hoist re-wrap frontier stays excluded (unchanged, not
+      reopened). `all-less` still 90/3 (zero byte-diffs); production routing 25→27 whole-roots + the at-rule
+      SHAPES now spine-covered. Ratchets: core `emit-walk-ratchet` (root-only wrap+emit admitted; `@property`
+      + `&`-body excluded) + jess `spine-production-ratchet` (root-only at-rules route via Compiler,
+      `Rules.derive=0`; `@property` stays on eval).
       **`&`-COMPOSITION DONE (plain `&`).** Plain ampersand — `&.foo`, `& + &`, `&:hover`, `& .child`,
       bare `&` — now composes through the spine: `serializeSpineFrameContainer` pushes the ruleset onto
       `context.rulesetFrames` (the parent link `Ampersand.eval` reads — top = immediate parent) and eval's
@@ -157,9 +170,26 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       (`spineSelectorNode === node` short-circuits re-setup); always set on descend, incl. the no-eval path.
 
 ### P2 — per-node inline visitor model (§6)  ·  depends on P1
-- [ ] Replace the separate visitor walk + `preSerializeRoot` with the generic per-node hook
-      `(node,ctx)=>void|Node|REMOVE|ABORT` at enter/exit edges; delete `TreeVisitor`/driver.
-- [ ] Generic API in core, Less-agnostic (less-compat registered by the `less` pkg, optional side-dep).
+- [x] **PRODUCTION WIRE-IN (2026-07-08).** The single-pass spine is LIVE on the jess `Compiler` render path
+      for the safe subset (extend-free / visitor-free eligible roots) — the moment of truth. Gate refinement:
+      `renderTree` sets `preSerializeRoot` ONLY when a real pre-render visitor is registered
+      (`hasPreRenderVisitor`), so eligible roots route through `renderRootViaSpine` in production instead of
+      being pinned to the eval path (the P1 finding: 0% routed before). 4 real byte-diffs the isolated tests
+      missed, found+fixed: orphaned container scope-frame (parsed nodes have no `.parent` — link to live
+      enclosing frame); async-leaf root value-frame early-pop (chain root restore on the async result);
+      dup-declaration dedup keyed on placeholder `$??` syntax (key on live-resolved bytes in a scratch
+      `emittedTrivia`); `treeContext` not established (relative-asset `data-uri` fell back to `cwd`). At-rule
+      bubbling ancestor-rewrap narrowed (a scoped frontier). Ratchets: jess `spine-production-ratchet`
+      (routes ≥1 root via Compiler; `Rules.derive`/eval not entered for a wired root; extend-bearing stays on
+      eval). `all-less` 90/3, byte-identical to dev.
+- [x] **Generic per-node hook (§6) — core surface.** `Context.registerSpineVisitor(enter,{exit?})` + an
+      ordered `spineVisitors` list; the spine fires `shape = enter(shape) ?? shape` on the RESOLVED output node
+      at its emit moment (`applySpineVisitorsEnter` in the leaf serializer). ZERO-cost when none registered
+      (list undefined → no iteration). Signature reduced to `(node)=>Node|void` per §6.6 (no `ctx`/frame; no
+      `REMOVE`/`ABORT` — a consumer returns Nil to drop). less-compat consumer NOT built here (lives in the
+      `less` pkg, registered only for real Less visitors). Ratchet: core `spine-visitor-hook` (zero-cost /
+      inspect / replace / ordering / no-derive). RESIDUAL: the `exit` edge type is reserved but not yet fired
+      by the spine (only `less-plugin-inline-urls` needs it — deferred).
 - [ ] `beforeEval` pre-walk: owner-pending (§6.8) — keep as a separate structural pre-walk feeding the
       same contract unless owner drops v5 pre-eval compat.
 
@@ -215,7 +245,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter), per-position var-binding (re-declared vars + `snapshot` reads via `assignSpineChildIndices`, not last-wins), AND `+:`/`+_:` property-merge coalescing in ruleset/at-rule bodies (`spine-merge.ts` `planBodyMerges` → combined value at the anchor, earlier suppressed). Ampersand-APPEND / root-level-`+:` / conditional / `@layer`/`@scope` still 2 (eval path) — scoped frontier, not fallback. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter), per-position var-binding (re-declared vars + `snapshot` reads via `assignSpineChildIndices`, not last-wins), AND `+:`/`+_:` property-merge coalescing in ruleset/at-rule bodies (`spine-merge.ts` `planBodyMerges` → combined value at the anchor, earlier suppressed). **P2 (2026-07-08): spine is LIVE on the production `Compiler` path** (gate refinement — `preSerializeRoot` set only when a real visitor is registered), routing 27 whole-roots byte-identical to dev, LOCKED by jess `spine-production-ratchet` (Compiler-path routed + `Rules.derive`=0). At-rule coverage broadened to the ROOT-ONLY wrap+emit family (`@font-face`/`@page`/`@keyframes`/`@-webkit-keyframes`/`@viewport`/`@counter-style`/`@document`/`@host`) + `@starting-style`, plus the generic §6 visitor hook (`registerSpineVisitor`, zero-cost gated) — LOCKED by core `emit-walk-ratchet` + `spine-visitor-hook`. Ampersand-APPEND / root-level-`+:` / conditional / `@layer`/`@scope`/`@property` / the at-rule `&`-through-hoist re-wrap still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -477,3 +507,42 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   Backpedal self-check: did NOT force a risky partial `?:` fix or speculatively mutate shared eval; the
   exclusion is a correctness-gated scoped frontier locked by a ratchet, not a silent gap. No dual path
   introduced.
+- 2026-07-08 · P2 · PRODUCTION WIRE-IN (the moment of truth) + generic §6 visitor hook. The spine was
+  CORRECT but DORMANT: `renderTree` set `preSerializeRoot` unconditionally and the gate requires
+  `!preSerializeRoot`, so 0% of real Compiler renders routed through the spine (only the isolated raw-render
+  tests exercised it). FIX: set `preSerializeRoot` ONLY when a real pre-render visitor is registered
+  (`hasPreRenderVisitor`, mirrors `applyPreRenderVisitors`' hook selection) — extend-free/visitor-free
+  eligible roots now route through `renderRootViaSpine` in production. 4 REAL byte-diffs the isolated tests
+  missed, found+fixed to the intended CSS shape (not to fixtures): (1) parsed nested rulesets carry no
+  `.parent`, so the container scope-frame was orphaned and root vars resolved "not defined" — link the frame
+  to the live enclosing frame explicitly; (2) root value-frame popped synchronously before an async leaf
+  (`alpha(@var)`) resolved — chain the root restore on the async result (root-level B1s); (3) dup-declaration
+  dedup keyed on static `writeSyntax`, an opaque `$??` placeholder in spine mode that collapsed
+  `rgb(var)`/`hsla(var)` — key on live-resolved bytes in a scratch `emittedTrivia` set (also fixed a
+  comment-drop caught by `render-scaling`); (4) `treeContext` not established, so `data-uri` relative-asset
+  resolution fell back to `cwd` — set treeContext/treeRoot/allRoots like `_setupContextForRules`. At-rule
+  ancestor-rewrap-on-hoist narrowed (declarations/`&`-rulesets inside a hoisting at-rule stay on eval).
+  GENERIC VISITOR HOOK (§6): `Context.registerSpineVisitor(enter,{exit?})` + zero-cost `spineVisitors` list,
+  fired `shape = enter(shape) ?? shape` on the resolved leaf at its emit moment; `(node)=>Node|void` only (no
+  ctx/frame/REMOVE/ABORT); less-compat consumer NOT built (lives in `less` pkg). Ratchets: jess
+  `spine-production-ratchet` + core `spine-visitor-hook`. `all-less` 90/3, byte-identical to dev; core
+  177/0; zero new tsc. Backpedal: no dual dormant path (wire-in REPLACES the gated state); byte-identical
+  achieved; no forced fixture-match; NEVER `git stash` (file backups + `git checkout --` on my own edits
+  only, verified).
+- 2026-07-08 · P2 · AT-RULE COVERAGE BROADENED (measurement gap #2). Admitted the ROOT-ONLY "wrap + emit"
+  at-rule family into the spine, LIVE in production byte-identical to dev: `@font-face`/`@page`/`@viewport`/
+  `@counter-style` (declaration bodies), `@keyframes`/`@-webkit-keyframes` (keyframe-selector rulesets
+  `0%`/`from`/`to` — standalone, no `&`-compose, via the root-only composed-stack reset),
+  `@document`/`@-x-document`/`@-moz-document`/`@host` (plain-selector ruleset bodies). `@starting-style`
+  joined the conditional-group set (bubbles+wraps like `@media`). New sets `SPINE_ELIGIBLE_ROOT_ONLY_AT_RULES`
+  + `SPINE_KEYFRAMES_AT_RULES` + predicate `isSpineEligibleRootOnlyAtRuleBody`; all reuse
+  `serializeSpineFrameAtRule` unchanged (no new serializer). `@property` EXCLUDED (registers a custom
+  property — an eval-pass registration side effect); the at-rule `&`-through-hoist re-wrap frontier NOT
+  reopened. Zero byte-diffs across `all-less` (still 90/3); production whole-root routing 25→27, and the
+  at-rule SHAPES are now spine-covered (roots that are at-rule-dominant route; mixed roots still gated by
+  their other content). Ratchets: core `emit-walk-ratchet` (root-only wrap+emit ADMITTED; `@property` +
+  `&`-body EXCLUDED) + jess `spine-production-ratchet` (root-only at-rules route via Compiler with
+  `Rules.derive=0`; `@property` stays on eval). RESIDUAL: visitor `exit` edge (only `inline-urls` needs it),
+  `@layer`/`@scope`/`@property` at-rules, ampersand-append, conditional assigns, the at-rule `&`-rewrap
+  frontier. Backpedal: no dual path (broadening REPLACES the exclusion for covered shapes); byte-identical;
+  no forced fixture-match; no `git stash`.
