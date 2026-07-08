@@ -191,8 +191,12 @@ export function composeContribution(
   return { selector: result, crossesParentBoundary };
 }
 
-/** The target's OWN authored composed form (its full bucket path composed). */
-function composeTargetOwn(targetPath: BucketPath): Selector {
+/**
+ * The target's OWN authored composed form (its full bucket path composed). Exported for the
+ * end-to-end pipeline driver, which composes a subject's authored selector from its bucket path
+ * (the SOLVE seed) before projecting its contributions.
+ */
+export function composeTargetOwn(targetPath: BucketPath): Selector {
   let result: Selector = targetPath[0]!;
   for (let i = 1; i < targetPath.length; i++) {
     const child = wrapIsIfMultiList(targetPath[i]!);
