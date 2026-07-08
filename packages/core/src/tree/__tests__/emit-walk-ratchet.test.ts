@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
+import { isThenable } from '@jesscss/awaitable-pipe';
 import { spineRenderCounter, isSpineEligibleRoot } from '../util/emit-walk.js';
 
 /**
@@ -128,13 +129,28 @@ describe('emit-walk wire-in ratchet (P1)', () => {
       ] })
     ]);
     expect(isSpineEligibleRoot(ampRoot, context)).toBe(false);
+  });
 
-    // Async-shape (calc/operation) declaration value:
+  it('ADMITS calc()/Operation-valued declarations — resolved sync by default, reactive-bail to async', () => {
+    // Pure Operation is fully sync (no speculative await); calc() (a Call) is
+    // genuinely async here and takes the async path only because eval actually
+    // returns a thenable. Both are eligible — the container serializer threads a
+    // promise ONLY when one really surfaces.
+    const opRoot = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        decl({ name: 'width', value: op([dimension([10, 'px']), '+', dimension([20, 'px'])]) })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(opRoot, context)).toBe(true);
+    const opResult = opRoot.render(context);
+    expect(isThenable(opResult)).toBe(false); // sync-by-default: no promise allocated
+    expect(opResult as string).toContain('width: 30px');
+
     const calcRoot = rules([
       ruleset({ selector: sel([el('.a')]), rules: [
         decl({ name: 'margin', value: call({ name: 'calc', args: list([op([dimension([10, 'px']), '*', num(2)])]) }) })
       ] })
     ]);
-    expect(isSpineEligibleRoot(calcRoot, context)).toBe(false);
+    expect(isSpineEligibleRoot(calcRoot, context)).toBe(true);
   });
 });

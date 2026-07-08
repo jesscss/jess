@@ -49,13 +49,22 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       container's value-frame at enter and RESOLVES its leaves live — NO `eval()`, NO `state.output`, NO
       `Rules.derive`. Both collapse modes verified (`.a .b` vs nested). **Locked** by
       `emit-walk-ratchet.test.ts`: spine counter moves + root `eval` not called + **`Rules.derive` not
-      called on the wired container path** (output-tree-absence ratchet ACTIVATED) + eligibility boundary
-      (ampersand / calc-async excluded). Full core suite green (3179 pass, 0 fail).
+      called on the wired container path** (output-tree-absence ratchet ACTIVATED) + eligibility boundary.
+      Full core suite green (3180 pass, 0 fail).
+      **ASYNC-LEAF THREADING DONE.** `calc()`/`Operation`-valued declarations now flip through the spine.
+      The container serializer is `MaybePromise<string>`-typed, but resolution is SYNC-BY-DEFAULT with a
+      REACTIVE `isThenable`-bail (`resolveSpineLeafText` + the `isThenable(x) ? x.then() : sync(x)` twins
+      through `processNode`/`renderRulesBody`/`run`/`runContainer`). NO pre-scan/flag/`Node.walk` to
+      predetermine async-ness (that was `F_MAY_ASYNC`, deleted A1), NO speculative `awaitable-pipe` await —
+      a fully-sync value (pure `Operation`) pays ZERO async cost (proven: `10px+20px` renders sync,
+      `thenable=false`); a genuinely-async `calc()` (Call eval is async) threads a promise only because one
+      actually surfaces (proven: `margin: 20px`). The spine-frame pop chains on the promise (never a sync
+      `finally` that would pop before an async leaf resolves — the B1s bug). Ratchet updated: admits
+      calc/Operation + asserts sync-Operation stays sync.
       **Exact boundary — still eval path (scoped frontier):** `&`-selectors (ampersand compose),
-      interpolated selectors (item 3 below), `calc()`/`Operation` values (async leaf), `+:`/conditional/
-      `setDefined` decls (merge), re-declared vars (source-order), guarded/extend/at-rule/mixin/reference
-      containers, charset/import. **Next push:** at-rule containers + ampersand compose + async leaf
-      threading (make the container serializer MaybePromise in spine mode).
+      interpolated selectors (item 3 below), `+:`/conditional/`setDefined` decls (merge), re-declared vars
+      (source-order), guarded/extend/at-rule/mixin/reference containers, charset/import. **Next push:**
+      selector-interpolation-at-enter (item 3), then at-rule containers + ampersand compose.
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
       **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
@@ -67,12 +76,18 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       IN PLACE (design §2.4) rather than stamp a transient — a change shared with the still-standing eval
       path. NOT force-deleted (live on both the transient-leaf path and the eval path): the target-honest
       gate. This is its own follow-up, not a byproduct of the container fold.
-- [~] Selector interpolation resolves at ruleset-enter (frame live) → concrete selector available to extend.
-      **Mechanism identified, not yet folded.** The spine already pushes the live frame at ruleset-enter;
-      the resolve is `selector.eval(context)` before header composition (ruleset.ts:1827 does exactly this
-      on the eval path). Interpolated selectors are currently EXCLUDED from eligibility
-      (`selectorHasInterpolation`) so output stays correct; folding the resolve into the spine header
-      composition is the immediate next item (and is what lets extend see concrete selectors — OQ-A).
+- [ ] Selector interpolation resolves at ruleset-enter (frame live) → concrete selector available to extend.
+      **NEXT ITEM — mechanism + injection point analyzed, not yet folded.** The spine already pushes the
+      live frame at ruleset-enter (the `spineFrameNode` block in `serializeRulesContainerInternal`); the
+      resolve is `selector.eval(context)` there (what `_prepareRulesetSelectorIdentity`/ruleset.ts:1827 do
+      on the eval path). The wrinkle: the container serializer reads `node.selector` in ~6 places
+      (`composePushedSelector` :1451, `writeHeaderSelector` :1584, the `run` reference check, collapse) — a
+      resolved selector must reach all of them WITHOUT mutating the canonical node (output-affecting → needs
+      a transient, not the loosened-invariant in-place cache). Cleanest: resolve once at the spine-frame
+      block and thread the resolved selector as an options override (like `atRuleHeaderPrelude` already
+      does) OR a scoped swap-and-restore. Interpolated selectors stay EXCLUDED (`selectorHasInterpolation`)
+      until folded, so current output is correct. This is the OQ-A prerequisite (extend sees concrete
+      selectors). Deferred to keep the async-threading change isolated + reviewable.
 
 ### P2 — per-node inline visitor model (§6)  ·  depends on P1
 - [ ] Replace the separate visitor walk + `preSerializeRoot` with the generic per-node hook
@@ -133,7 +148,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Async-leaf / ampersand / at-rule / interpolated-selector shapes still 2 (eval path) — scoped frontier, not fallback. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail). Ampersand / at-rule / interpolated-selector shapes still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -210,3 +225,22 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   the old eval→output path — on the wired path the eval two-walk + output tree are genuinely gone
   (ratchet-proven); the eval path remains ONLY for not-yet-covered shapes (scoped frontier). No dual path
   for a covered shape.
+- 2026-07-08 · P1 · ASYNC-LEAF THREADING landed (foundational, per owner: before ampersand/at-rules).
+  `calc()`/`Operation`-valued declarations now flip through the spine. Made the container serializer
+  (`serializeRulesContainerInternal` + `renderRulesBody`/`run`/`runContainer` + `serializeRulesContainer`
+  /`Inline`) `MaybePromise<string>`, but resolution is SYNC-BY-DEFAULT + REACTIVE `isThenable`-bail —
+  aligned with the owner's two corrections: (1) do NOT blanket-MaybePromise calc/Operation (most are sync);
+  (2) REACTIVE ONLY — no static async-determination walk (that IS `F_MAY_ASYNC`, deleted A1; measured
+  neutral-to-faster reactive). Deleted my earlier `declarationValueHasAsyncShape`/`Node.walk` pre-scan;
+  admit calc/Operation broadly in eligibility; `resolveSpineLeafText` runs `node.eval` and only `.then()`s
+  on a genuine thenable. Proven: pure `Operation` `10px+20px` renders SYNC (`thenable=false`) → `30px`;
+  `calc(10px*2)` (Call eval is async) threads a promise only because one actually surfaces → `20px`. The
+  spine-frame pop chains on the promise (never a sync `finally` — avoids the B1s early-pop bug). tsc:
+  ZERO new errors in serialize-helper/emit-walk beyond the 2 pre-existing `canMergeSameHeaderRuleset`
+  `SelectorLike` cascade lines (verified verbatim at HEAD~1). Core suite GREEN 3180/0/15. DOCUMENTATION
+  STANDARD: `PrintOptions.spineMode` async-discipline note + `resolveSpineLeafText` contract/invariant.
+  Backpedal self-check: no dual path (spineMode is a mode on the KEPT serializer); no speculative await;
+  reactive-bail is the SAME pattern as the `evaluateSelectorsRest` twins. Selector-interp-at-enter DEFERRED
+  (analyzed: resolve `selector.eval` at the spine-frame block + thread as an options override; kept
+  isolated from this async change for reviewability). NEVER used `git stash` (hard rule) — inspected prior
+  state via `git show HEAD~1:path`.

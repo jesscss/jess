@@ -217,15 +217,20 @@ function isSpineEligibleBody(children: readonly Node[]): boolean {
 }
 
 /**
- * A leaf THIS phase's root wire-in can fully render in the single pass. Stricter
- * than `isValueLeaf`: excludes leaves whose correct output depends on the eval
- * pass's cross-statement handling that the spine does not yet perform —
+ * A leaf THIS phase's spine can fully render in the single pass. Stricter than
+ * `isValueLeaf`: excludes leaves whose correct output depends on the eval pass's
+ * cross-statement handling that the spine does not yet perform —
  *   - `+:` / conditional / merge-flagged declarations (Less property-merge is a
  *     cross-declaration value combination built during eval registration),
  *   - `setDefined` / `nearestOuter` var-declarations (scope-mutating assigns),
  *   - any non-declaration leaf (Call/Apply/etc.) that can expand to statements.
  * Comments and plain declarations/var-declarations with default `:` assign are
  * safe: their bytes are a pure function of the live-frame value resolution.
+ *
+ * NOTE: `calc()`/`Operation`-valued declarations ARE admitted — their value is
+ * resolved SYNC by default and only bails to async if a child genuinely produces
+ * a thenable (see `resolveSpineLeafText` / the `isThenable` reactive-bail in the
+ * container serializer). No async cost is paid for the common (sync) case.
  */
 function isSimpleSpineLeaf(node: Node): boolean {
   if (isNode(node, N.Comment)) {
@@ -240,40 +245,7 @@ function isSimpleSpineLeaf(node: Node): boolean {
     if (options?.setDefined || options?.nearestOuter) {
       return false;
     }
-    // Function/arithmetic-valued declarations (`calc(...)`, an `Operation`) can
-    // resolve ASYNC; the container serializer's leaf resolution is synchronous,
-    // so those are not spine-folded yet (async leaf threading is the next
-    // increment). Excluded — they route to the eval path.
-    if (declarationValueHasAsyncShape(node.value)) {
-      return false;
-    }
     return true;
-  }
-  return false;
-}
-
-/** True if a declaration value contains a `Call`/`Operation` (potentially async eval). */
-function declarationValueHasAsyncShape(value: unknown): boolean {
-  if (!value || typeof value === 'string') {
-    return false;
-  }
-  if (Array.isArray(value)) {
-    return value.some(item => declarationValueHasAsyncShape(item));
-  }
-  if (!(value instanceof Node)) {
-    return false;
-  }
-  // Check the value node and every descendant for a Call/Operation. Use the
-  // string `type` (not the `isNode` mask overload, whose narrowing collapses the
-  // post-guard type to `never` here) so `walk` stays available on `Node`.
-  const isAsyncShape = (node: Node): boolean => node.type === 'Call' || node.type === 'Operation';
-  if (isAsyncShape(value)) {
-    return true;
-  }
-  for (const descendant of value.walk(true)) {
-    if (isAsyncShape(descendant)) {
-      return true;
-    }
   }
   return false;
 }

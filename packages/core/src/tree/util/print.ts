@@ -56,6 +56,13 @@ export type PrintOptions = {
    * pre-evaluated output tree. This REPLACES the eval→output-tree→serialize
    * two-walk on the wired path (no eval() call, no `state.output`); it is not a
    * dual path — the eval path only runs for shapes the spine does not yet cover.
+   *
+   * Async discipline (§2): leaf resolution is SYNC by default. It bails to an
+   * async continuation ONLY when `eval` returns a genuine thenable (an async
+   * import result / JS function / reference to an async value) — reactively, via
+   * `isThenable`, never a pre-scan/flag to predetermine async-ness (that was
+   * `F_MAY_ASYNC`, deleted) and never a speculative `awaitable-pipe` await. So a
+   * `calc()`/`Operation` whose subtree is fully sync pays ZERO async cost.
    */
   spineMode?: boolean;
   /** Output syntax target, e.g. 'jess' for Jess canonical output. */

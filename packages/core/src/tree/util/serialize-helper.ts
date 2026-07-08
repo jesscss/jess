@@ -17,7 +17,7 @@ import {
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
-import { isThenable } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Selector, SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
@@ -84,6 +84,32 @@ function captureNodeTrivia(
   return consumeTriviaText(trivia, boundaryOffset(node, side), side, options);
 }
 
+/**
+ * Spine-mode leaf resolution (P1 §2).
+ *
+ * Contract: resolve `node` against the LIVE value-frame (`options.context`, whose
+ * `rulesContext` is the frame the container descent pushed) and return its
+ * serialized bytes. `eval` is MaybePromise, so this returns `MaybePromise<string>`
+ * — the caller threads the promise (see `renderRulesBody`'s `processNode`).
+ *
+ * Load-bearing invariant: this is the SAME resolution the eval pass produced,
+ * now done in place with NO output tree — the resolved node is transient and
+ * dropped after serialization. Replaces static `writeSyntax` (which would print
+ * `$w`, not the resolved value).
+ */
+function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
+  const serialize = (resolved: Node | Nil | undefined): string => {
+    if (!resolved || resolved instanceof Nil) {
+      return '';
+    }
+    const writer = new OutputWriter();
+    resolved.toString(getPrintOptions({ ...options, writer }));
+    return writer.toString();
+  };
+  const resolved = node.eval(options.context!);
+  return isThenable(resolved) ? resolved.then(serialize) : serialize(resolved);
+}
+
 function renderNodeText(
   node: Node,
   options: FinalPrintOptions,
@@ -100,26 +126,6 @@ function renderNodeText(
     }
   }
   if (reason === 'declaration-fallback') {
-    // Spine mode (P1 §2): resolve the leaf against the LIVE value-frame at its
-    // emit moment instead of static `writeSyntax` (which would print `$w`, not
-    // the resolved value). `eval` reads `context.rulesContext` — the frame pushed
-    // by the container descent — so this is the SAME resolution the eval pass
-    // produced, now done in place with no output tree.
-    if (options.spineMode && options.context) {
-      const resolved = node.eval(options.context);
-      if (isThenable(resolved)) {
-        throw new Error('spine leaf resolution produced a promise; async spine leaves not yet supported');
-      }
-      if (!resolved || resolved instanceof Nil) {
-        return '';
-      }
-      const writer = new OutputWriter();
-      resolved.toString(getPrintOptions({
-        ...options,
-        writer
-      }));
-      return writer.toString();
-    }
     const writer = new OutputWriter();
     node.writeSyntax(getPrintOptions({
       ...options,
@@ -493,7 +499,7 @@ function renderHoistedParentComparableHeader(
   return frag;
 }
 
-function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalPrintOptions, closeFramesOnExit: boolean): string {
+function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalPrintOptions, closeFramesOnExit: boolean): MaybePromise<string> {
   const w = options.writer;
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
@@ -523,7 +529,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
     }
   }
-  const run = () => {
+  const run = (): MaybePromise<string> => {
     const mark = w.mark();
     const previousReferenceMode = options.referenceMode === true;
     const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
@@ -767,22 +773,27 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       };
 
       /** Don't output selector yet. Let's see if any child rules need hoisting. */
-      for (let idx = 0; idx < rulesToRender.length; idx++) {
+      // Per-node emit. Returns MaybePromise<void>: sync unless a spine-mode leaf
+      // or a nested container resolves ASYNC (a `calc()`/function value), in which
+      // case the promise is threaded up through `processFrom` → `renderRulesBody`.
+      // `continue` in the original loop maps to `return` here; the trivia/indent
+      // side-effect tails stay synchronous (only value resolution is async).
+      const processNode = (idx: number): MaybePromise<void> => {
         const entry = rulesToRender[idx]!;
         let n = entry.node;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
         if (!n.visible && !hasPrintableTrivia(n, options)) {
-          continue;
+          return;
         }
         if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
-          continue;
+          return;
         }
         if (inReferenceMode && !renderEnabled && !isContainer) {
-          continue;
+          return;
         }
         if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {
-          continue;
+          return;
         }
 
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -811,14 +822,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const childHeaderSnapshot = saveArrayState(frameHeaders);
           const childPositionBaseline = w.position();
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
-          if (!childOut && !hasPrintableTrivia(n, options)) {
-            w.restore(childPositionBaseline);
-            restoreArrayState(lastRenderedFrames, childFrameSnapshot);
-            restoreArrayState(frameHeaders, childHeaderSnapshot);
-            continue;
-          }
-          continue;
+          const childOutResult = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
+          const finishChild = (childOut: string): void => {
+            if (!childOut && !hasPrintableTrivia(n, options)) {
+              w.restore(childPositionBaseline);
+              restoreArrayState(lastRenderedFrames, childFrameSnapshot);
+              restoreArrayState(frameHeaders, childHeaderSnapshot);
+            }
+          };
+          return isThenable(childOutResult) ? childOutResult.then(finishChild) : finishChild(childOutResult);
         }
 
         /** Re-widen type after accumulated isNode narrowing above */
@@ -835,7 +847,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             child.visible || hasPrintableTrivia(child, options)
           );
           if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
-            continue;
+            return;
           }
         }
         ensureRenderedFrames(leafFrames);
@@ -880,148 +892,169 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             w.restore(renderedPositionBaseline);
             restoreArrayState(lastRenderedFrames, renderedFrameSnapshot);
             restoreArrayState(frameHeaders, frameHeaderSnapshot);
-            continue;
+            return;
           }
           w.add('\n');
           const trailing = captureNodeTrivia(nn, 'after', options);
           if (!/^\s*$/.test(trailing)) {
             w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
           }
-          continue;
+          return;
         }
-        const out = isHiddenStructuralNode
+        // Leaf value resolution. In spineMode a declaration resolves LIVE against
+        // the pushed frame (`resolveSpineLeafText`, MaybePromise for `calc()`/
+        // functions); otherwise it is the static/eval-tree serializer. The
+        // sync trivia/indent tail below runs in `finishLeaf` once `out` is known.
+        const outResult: MaybePromise<string> = isHiddenStructuralNode
           ? ''
-          : isNode(nn, N.Declaration)
-            ? renderNodeText(nn, options, 'declaration-fallback')
-            : renderNodeText(nn, options);
-        restorePrintState(options, leafSaved);
-        // Suppress pure-void Any nodes from generating blank output lines.
-        if (
-          isNode(nn, N.Any)
-          && !nn.requiredSemi
-          && !out.trim()
-          && !leading.trim()
-        ) {
-          continue;
-        }
-        if (
-          isNode(nn, N.Rules)
-          && !out
-          && !leading.trim()
-          && !hasPrintableTrivia(nn, options)
-        ) {
-          continue;
-        }
-        if (isHiddenStructuralNode) {
-          if (!/^\s*$/.test(leading)) {
-            const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
-            const trimmed = normalized.replace(/[ \t]+$/u, '');
-            w.add(trimmed);
-            if (/\/\*/u.test(leading) && trimmed && !trimmed.endsWith('\n')) {
-              w.add('\n');
-            }
+          : options.spineMode && options.context && isNode(nn, N.Declaration)
+            ? resolveSpineLeafText(nn, options)
+            : isNode(nn, N.Declaration)
+              ? renderNodeText(nn, options, 'declaration-fallback')
+              : renderNodeText(nn, options);
+        const finishLeaf = (out: string): void => {
+          restorePrintState(options, leafSaved);
+          // Suppress pure-void Any nodes from generating blank output lines.
+          if (
+            isNode(nn, N.Any)
+            && !nn.requiredSemi
+            && !out.trim()
+            && !leading.trim()
+          ) {
+            return;
           }
-          continue;
-        }
-        if (isNode(nn, N.Declaration)) {
-          const hasLeadingDeclarationBlockComment = /\/\*/u.test(leading.trimStart());
-          if (hasLeadingDeclarationBlockComment) {
-            const normalizedStandaloneLeading = normalizeBlockTrivia(leading, idt).replace(/[ \t]+$/u, '');
-            if (normalizedStandaloneLeading) {
-              w.add(normalizedStandaloneLeading);
-              if (!normalizedStandaloneLeading.endsWith('\n')) {
+          if (
+            isNode(nn, N.Rules)
+            && !out
+            && !leading.trim()
+            && !hasPrintableTrivia(nn, options)
+          ) {
+            return;
+          }
+          if (isHiddenStructuralNode) {
+            if (!/^\s*$/.test(leading)) {
+              const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
+              const trimmed = normalized.replace(/[ \t]+$/u, '');
+              w.add(trimmed);
+              if (/\/\*/u.test(leading) && trimmed && !trimmed.endsWith('\n')) {
                 w.add('\n');
               }
             }
+            return;
           }
-          const normalizedLeading = hasLeadingDeclarationBlockComment
-            ? (leading.match(/\n([ \t]*)$/u)?.[1] ?? '')
-            : leading.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-          // `out` already carries continuation indentation relative to the
-          // property line (see `formatNonCustomValue`), so measure the relative
-          // baseline from `out` itself (first line at column 0) — not from any
-          // authored leading indent, which is empty for non-first declarations
-          // and would otherwise re-base multi-line values inconsistently.
-          const hasEmptyValue = /:\s*$/.test(out);
-          // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
-          // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
-          const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
-            ? `${idt}${out}`
-            : normalizeIndent(out, idt, true);
-          if (nn.name.valueOf().startsWith('--')) {
-            w.add(idt);
-            w.add(out, nn);
-          } else {
-            w.add(declNormalized, nn);
-          }
-        } else if (isNode(nn, N.Rules)) {
-          if (!/^\s*$/.test(leading)) {
-            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
-          }
-          /**
+          if (isNode(nn, N.Declaration)) {
+            const hasLeadingDeclarationBlockComment = /\/\*/u.test(leading.trimStart());
+            if (hasLeadingDeclarationBlockComment) {
+              const normalizedStandaloneLeading = normalizeBlockTrivia(leading, idt).replace(/[ \t]+$/u, '');
+              if (normalizedStandaloneLeading) {
+                w.add(normalizedStandaloneLeading);
+                if (!normalizedStandaloneLeading.endsWith('\n')) {
+                  w.add('\n');
+                }
+              }
+            }
+            const normalizedLeading = hasLeadingDeclarationBlockComment
+              ? (leading.match(/\n([ \t]*)$/u)?.[1] ?? '')
+              : leading.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+            // `out` already carries continuation indentation relative to the
+            // property line (see `formatNonCustomValue`), so measure the relative
+            // baseline from `out` itself (first line at column 0) — not from any
+            // authored leading indent, which is empty for non-first declarations
+            // and would otherwise re-base multi-line values inconsistently.
+            const hasEmptyValue = /:\s*$/.test(out);
+            // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
+            // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
+            const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
+              ? `${idt}${out}`
+              : normalizeIndent(out, idt, true);
+            if (nn.name.valueOf().startsWith('--')) {
+              w.add(idt);
+              w.add(out, nn);
+            } else {
+              w.add(declNormalized, nn);
+            }
+          } else if (isNode(nn, N.Rules)) {
+            if (!/^\s*$/.test(leading)) {
+              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+            }
+            /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
        * `Rules.toTrimmedString()` already emits correctly indented child declarations for the
        * provided depth, so do not prefix another `idt` here (that would double-indent).
        */
-          w.add(out, nn);
-        } else if (isLeafAtRule) {
-          if (!/^\s*$/.test(leading)) {
-            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+            w.add(out, nn);
+          } else if (isLeafAtRule) {
+            if (!/^\s*$/.test(leading)) {
+              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+            }
+            w.add(idt);
+            w.add(out, nn);
+          } else {
+            if (!/^\s*$/.test(leading)) {
+              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+            }
+            w.add(idt);
+            w.add(out, nn);
           }
-          w.add(idt);
-          w.add(out, nn);
-        } else {
-          if (!/^\s*$/.test(leading)) {
-            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+          /** @todo - optionally add semi-colon for compression */
+          // if (n.requiredSemi && next) {
+          //   w.add(';');
+          // }
+          if (nn.requiredSemi) {
+            w.add(';');
           }
-          w.add(idt);
-          w.add(out, nn);
-        }
-        /** @todo - optionally add semi-colon for compression */
-        // if (n.requiredSemi && next) {
-        //   w.add(';');
-        // }
-        if (nn.requiredSemi) {
-          w.add(';');
-        }
 
-        w.add('\n');
-        const trailing = captureNodeTrivia(nn, 'after', options);
+          w.add('\n');
+          const trailing = captureNodeTrivia(nn, 'after', options);
 
-        if (!/^\s*$/.test(trailing)) {
-          w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
+          if (!/^\s*$/.test(trailing)) {
+            w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
+          }
+        };
+        return isThenable(outResult) ? outResult.then(finishLeaf) : finishLeaf(outResult);
+      };
+      // Drive the per-node processor in source order, threading a promise only if
+      // a node resolved async (spine-mode `calc()`/function leaf or nested async
+      // container). The common all-sync case never allocates a promise.
+      const processFrom = (idx: number): MaybePromise<void> => {
+        for (let i = idx; i < rulesToRender.length; i++) {
+          const step = processNode(i);
+          if (isThenable(step)) {
+            return step.then(() => processFrom(i + 1));
+          }
         }
-      // }
-      // else {
-      //   n.toString({ ...options, depth: options.depth + 1 });
-      // }
-      }
-      if (
-        hoistedParent
-        && !closeFramesOnExit
-        && lastRenderedFrames[lastRenderedFrames.length - 1] === hoistedParent.frame
-      ) {
-        const parentDepth = lastRenderedFrames.length - 1;
-        w.add(indent(parentDepth) + '}\n');
-        frameHeaders.pop();
-        lastRenderedFrames.pop();
-      }
-      if (!isTransparentWrapper) {
-        inFrames.pop();
-        if (closeFramesOnExit) {
+        return undefined;
+      };
+      const bodyResult = processFrom(0);
+      const finishBody = (): string => {
+        if (
+          hoistedParent
+          && !closeFramesOnExit
+          && lastRenderedFrames[lastRenderedFrames.length - 1] === hoistedParent.frame
+        ) {
+          const parentDepth = lastRenderedFrames.length - 1;
+          w.add(indent(parentDepth) + '}\n');
           frameHeaders.pop();
-        }
-      }
-      if (closeFramesOnExit) {
-        let renderedLength = lastRenderedFrames.length;
-        while (treeFrames.length < renderedLength) {
-          w.add(indent(renderedLength - 1) + '}\n');
-          options.depth--;
           lastRenderedFrames.pop();
-          renderedLength = lastRenderedFrames.length;
         }
-      }
-      return w.getSince(mark);
+        if (!isTransparentWrapper) {
+          inFrames.pop();
+          if (closeFramesOnExit) {
+            frameHeaders.pop();
+          }
+        }
+        if (closeFramesOnExit) {
+          let renderedLength = lastRenderedFrames.length;
+          while (treeFrames.length < renderedLength) {
+            w.add(indent(renderedLength - 1) + '}\n');
+            options.depth--;
+            lastRenderedFrames.pop();
+            renderedLength = lastRenderedFrames.length;
+          }
+        }
+        return w.getSince(mark);
+      };
+      return isThenable(bodyResult) ? bodyResult.then(finishBody) : finishBody();
     };
     if (hoisted && !isTransparentWrapper) {
       const savedFrames = saveArrayState(treeFrames);
@@ -1041,8 +1074,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       treeFrames.push(node);
       options.inFrames = inFrames = treeFrames;
       const out = renderRulesBody();
-      restoreArrayState(treeFrames, savedFrames);
-      return out;
+      const restoreFrames = (text: string): string => {
+        restoreArrayState(treeFrames, savedFrames);
+        return text;
+      };
+      return isThenable(out) ? out.then(restoreFrames) : restoreFrames(out);
     }
     return renderRulesBody();
   };
@@ -1054,7 +1090,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     'inFrames',
     'composedSelectorStack'
   ]);
-  const runWithCurrentComposedStack = () => {
+  const runWithCurrentComposedStack = (): MaybePromise<string> => {
     if (!pushedComposed || !pushedComposedSelector) {
       return run();
     }
@@ -1062,15 +1098,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const pushedStackSnapshot = saveArrayState(stack);
     stack.push(pushedComposedSelector);
     const out = run();
-    restoreArrayState(stack, pushedStackSnapshot);
-    return out;
+    const restoreStack = (text: string): string => {
+      restoreArrayState(stack, pushedStackSnapshot);
+      return text;
+    };
+    return isThenable(out) ? out.then(restoreStack) : restoreStack(out);
   };
   // Spine mode (P1 §2): push this container's VALUE-FRAME for the duration of
   // its body descent, so leaves resolve against the SAME frame eval would have
   // used — no eval pass, no output tree. The frame is the source container's own
   // `_scopeFrame` (built lazily, lexical parent via the `.parent` chain). Popped
   // (rulesContext restored) after the body's bytes are in the buffer.
-  const runContainer = (): string => {
+  const runContainer = (): MaybePromise<string> => {
     if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
       const currentStack = options.composedSelectorStack;
       if (currentStack) {
@@ -1078,31 +1117,46 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         currentStack.length = 0;
         options.composedSelectorStack = currentStack;
         const inner = runWithCurrentComposedStack();
-        restoreArrayState(currentStack, rootStackSnapshot);
-        return inner;
+        const restoreRootStack = (text: string): string => {
+          restoreArrayState(currentStack, rootStackSnapshot);
+          return text;
+        };
+        return isThenable(inner) ? inner.then(restoreRootStack) : restoreRootStack(inner);
       }
       options.composedSelectorStack = [];
       return runWithCurrentComposedStack();
     }
     return runWithCurrentComposedStack();
   };
-  let runResult: string;
   const spineContext = options.spineMode ? options.context : undefined;
   const spineFrameNode = spineContext && node instanceof Ruleset && isNode(node, N.Rules) ? node : undefined;
+  // Restore the print state after the body's bytes are in the buffer — for the
+  // async path this MUST chain on the promise, never a sync `finally` (which
+  // would pop the value-frame before an async leaf resolves — the B1s bug).
+  const finishRun = (text: string): string => {
+    restorePrintState(options, saved);
+    return text;
+  };
   if (spineContext && spineFrameNode) {
     const savedRulesContext = spineContext.rulesContext;
     spineFrameNode.getScopeFrame();
     spineContext.rulesContext = spineFrameNode;
+    const restoreSpineFrame = (text: string): string => {
+      spineContext.rulesContext = savedRulesContext;
+      return finishRun(text);
+    };
+    let runResult: MaybePromise<string>;
     try {
       runResult = runContainer();
-    } finally {
+    } catch (error) {
       spineContext.rulesContext = savedRulesContext;
+      restorePrintState(options, saved);
+      throw error;
     }
-  } else {
-    runResult = runContainer();
+    return isThenable(runResult) ? runResult.then(restoreSpineFrame) : restoreSpineFrame(runResult);
   }
-  restorePrintState(options, saved);
-  return runResult;
+  const runResult = runContainer();
+  return isThenable(runResult) ? runResult.then(finishRun) : finishRun(runResult);
 }
 
 /**
@@ -1110,7 +1164,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
  * This is the normal entrypoint: the container fully owns opening and closing
  * its rendered frame stack.
  */
-export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPrintOptions): string {
+export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPrintOptions): MaybePromise<string> {
   return serializeRulesContainerInternal(node, options, true);
 }
 
@@ -1119,6 +1173,6 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
  * Parent `Rules` owns final frame closure, so this leaves matching rendered
  * frames open for subsequent sibling reconciliation.
  */
-export function serializeRulesContainerInline(node: AtRule | Ruleset, options: FinalPrintOptions): string {
+export function serializeRulesContainerInline(node: AtRule | Ruleset, options: FinalPrintOptions): MaybePromise<string> {
   return serializeRulesContainerInternal(node, options, false);
 }
