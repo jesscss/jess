@@ -929,16 +929,20 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
 
 ## 9. Open questions for owner arbitration
 
-- **OQ-A — extend-closure vs downward frame threading (the new tension §4.2).** The reconciliation is
-  "extend is a selector-graph fixpoint, independent of value-frames; the two layers are decoupled and
-  EMIT interleaves them." This holds IF no extend decision ever depends on a dynamically-evaluated
-  value (e.g. an interpolated selector `[data=@{attr}]` that is an extend target/subject). The corpus
-  has interpolated-selector cases (§9.6 of the extend doc flags `[data=@{attr-data}]` unresolved
-  today). **Owner ruling needed:** is selector interpolation resolved BEFORE the extend fixpoint
-  (a bounded value-eval sub-pass over selectors only, then structural SOLVE), or can an extend target
-  genuinely depend on a value that itself depends on placement? If the former (expected), the
-  decoupling is clean and the pass is genuinely single. If the latter, the fixpoint and frame
-  threading are entangled and the design needs a staged sub-pass — materially larger.
+- **OQ-A — RESOLVED (owner 2026-07-08): the former — selector interpolation resolves EARLY, so extend
+  sees concrete selectors; the pass is genuinely single.** Interpolated selectors CAN be extend
+  targets/subjects (a real, supported feature). But a selector's interpolation (`[data=@{attr}]`)
+  resolves when the walk EVALS that node — at ruleset-enter, value-frame live — and the CONCRETE result
+  is what feeds PLAN/SOLVE. So extend never sees an unresolved dynamic value; it operates on the
+  already-resolved selector. "Vars are resolved early" (owner) is exactly the mechanism: the
+  value-dependent part is discharged during the eval descent BEFORE the selector participates in extend,
+  which is WHY the extend layer is cleanly decoupled from the value-frame — no staged sub-pass, no
+  entanglement. **Concrete consequence (bug to fix in the cutover):** jess currently captures the extend
+  TARGET unresolved — it pushes the raw `[data="@{attr}"]` at `extend.ts:341` before interpolation runs,
+  so `:extend([data=@{attr}])` silently no-ops today. The fix is bounded: resolve the target's
+  interpolation at capture time (frame live) so the instruction carries the concrete target. (Fixing
+  this is also what makes interpolated extend targets actually work — verify the exact output shape vs
+  Less 4.x when building it.)
 
 - **OQ-B — RESOLVED (§4.4).** The flush discipline is SETTLED: (1) decls resolve against the live
   frame and stream as bytes into a per-subject buffer during descent — only the rule HEADER is deferred
@@ -954,8 +958,15 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   a pathological trailing-root-`:extend` document is a latency/memory tradeoff, not a correctness issue
   — accept the graceful degradation to baseline, or add a spill-to-writer cap? (Deferred; not blocking.)
 
-- **OQ-C — is the migration incremental or a coordinated cutover?** See §10 — this is the honest big
-  one.
+- **OQ-C — RESOLVED (owner 2026-07-08): COORDINATED CUTOVER, not incremental.** Power the full target
+  architecture out on a dedicated branch (`CUTOVER-CHECKLIST.md` is the tracked plan). **Explicit reason
+  for cutover over incremental:** incremental attempts made agents BACKPEDAL — they start, read the
+  existing eval→output-tree→visitor→serialize structure, and match it instead of driving to the target,
+  poisoning the goal. The cutover is guardrailed against that: the design docs are the SPEC, the existing
+  structure is what's being TORN OUT (never matched), agents work the checklist toward the target and
+  touch base often, byte-identical-vs-alpha is the FINAL gate (not per-intermediate-step), and progress
+  is tracked against the checklist, not re-derived from current code. Fan-out across disjoint phase-work;
+  serialize the coupled spine.
 
 - **OQ-F — RESOLVED (§6).** The visitor surface is a FIRST-CLASS GENERIC core-owned per-node hook —
   `(node, ctx) => void|Node|REMOVE|ABORT`, fired at enter/exit edges post-shape/pre-serialize in
