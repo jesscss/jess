@@ -168,6 +168,22 @@ The unified walk owns BOTH stacks and threads them together:
   (it was pushed on the way down, not reconstructed on the way back), the value is correct by
   construction — no re-resolution, no shadowing/closure/guard divergence.
 
+**ASYNC DISCIPLINE — sync by default, async only on a genuine thenable (owner).** Resolving a leaf is
+NOT uniformly async. The vast majority of values (a `calc()`/`Operation` over dimensions/literals/sync
+references) resolve fully synchronously; they MUST stay on a pure sync path — faster AND deterministic.
+A leaf goes async ONLY when its subtree actually produces a promise (an async import result, an async
+JS function, a reference resolving to an async value) — never merely because of its node *shape*. The
+mechanism is the reactive **attempt-sync / `isThenable`-bail** pattern already in the tree from the
+F_MAY_ASYNC deletion (`evaluateSelectorsRest`-style twins): run sync, and continue on the async
+continuation only if a real thenable surfaces. **Reactive is the RATIFIED, MEASURED answer — do NOT
+re-introduce a static async-determination walk.** That walk IS what `F_MAY_ASYNC` was, and it was
+deleted (Phase A1) precisely because determining async-ness up front required the `propagateFlagsFrom`
+bubble and bought nothing: same-build A/B measured the reactive path neutral-to-FASTER (dynamic
+132→122ms) even in the conservative case that still paid the bubble. So: no pre-scan/flag to decide
+async-ness; just attempt sync and react to a real thenable. Equally, **do NOT blanket-`MaybePromise` the
+emit/serializer, and do NOT lean on `awaitable-pipe` as a default wrapper** — it awaits speculatively
+even when nothing is async (slower, less deterministic). Async cost is paid only when async genuinely happens.
+
 The key difference from B1s: B1s tried to re-enter the resolving frame *after* eval had popped it.
 The unified pass **never pops it until the subtree is fully emitted** — resolve-and-emit are the
 same downward step, so the frame is never gone when the leaf needs it.
