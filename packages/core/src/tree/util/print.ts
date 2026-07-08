@@ -65,6 +65,14 @@ export type PrintOptions = {
    * guard so the spine setup runs once per at-rule, then the descent proceeds.
    */
   spineAtRuleNode?: AtRule;
+  /**
+   * Spine-mode `+:`/`+_:` merge plan for the CURRENT body (P1). Keyed by source
+   * declaration: a `suppress` entry emits nothing; an `anchor` entry emits the
+   * coalesced value. Built at body-enter by `planBodyMerges`; consulted by the
+   * leaf resolver. Undefined when the body has no merge-flagged declarations
+   * (the common case pays nothing).
+   */
+  spineMergePlan?: import('./spine-merge.js').SpineMergePlan;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;

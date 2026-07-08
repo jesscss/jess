@@ -22,6 +22,7 @@ import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 import { assignSpineChildIndices } from './emit-walk.js';
+import { planBodyMerges, type SpineMergePlan } from './spine-merge.js';
 
 type TriviaSide = 'before' | 'after';
 type SerializeProfileCounter =
@@ -107,8 +108,74 @@ function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybeProm
     resolved.toString(getPrintOptions({ ...options, writer }));
     return writer.toString();
   };
+  // `+:`/`+_:` merge (P1): a suppressed member emits nothing; the anchor emits
+  // the coalesced value. Eval the decl FIRST so its assign normalizes (`+:` → a
+  // plain `:` printed form, via `normalizedFromAssign`), THEN swap in the combined
+  // value (a genuinely new node — no canonical mutation). The combined value was
+  // resolved against the live frame during planning.
+  const mergeEntry = options.spineMergePlan?.get(node);
+  if (mergeEntry) {
+    if (mergeEntry.kind === 'suppress') {
+      return '';
+    }
+    const withMergedValue = (resolved: Node | Nil | undefined): string => {
+      if (isNode(resolved, N.Declaration)) {
+        const anchorDecl = resolved.deriveWithParts({ value: mergeEntry.value });
+        // Print the anchor as a plain `prop: value` (not `prop+: …`). `withParts`
+        // copies options into a fresh transient, so recording that this declaration
+        // was NORMALIZED from a merge assign (`normalizedFromAssign`) — which the
+        // decl serializer reads to print `:` — mutates only this per-emit node,
+        // never the canonical source.
+        const anchorOptions = anchorDecl.options as { assign?: string; normalizedFromAssign?: string };
+        if (anchorOptions.normalizedFromAssign === undefined && anchorOptions.assign && anchorOptions.assign !== ':') {
+          anchorOptions.normalizedFromAssign = anchorOptions.assign;
+        }
+        return serialize(anchorDecl);
+      }
+      return serialize(resolved);
+    };
+    const evaluatedAnchor = node.eval(options.context!);
+    return isThenable(evaluatedAnchor) ? evaluatedAnchor.then(withMergedValue) : withMergedValue(evaluatedAnchor);
+  }
   const resolved = node.eval(options.context!);
   return isThenable(resolved) ? resolved.then(serialize) : serialize(resolved);
+}
+
+/**
+ * Build the `+:`/`+_:` merge plan for `children` (a body about to be descended)
+ * and install it on `options.spineMergePlan` for the duration of `fn`, restoring
+ * the prior plan on exit (nested bodies each get their own; save/restore keeps
+ * them scoped). The plan resolves each merge decl's VALUE against the live frame
+ * (`node.eval`) to combine — so it runs AFTER the frame is pushed. No plan is
+ * built (and no cost paid) when the body has no merge-flagged declarations.
+ */
+function withSpineMergePlan(
+  children: readonly Node[],
+  options: FinalPrintOptions,
+  context: NonNullable<FinalPrintOptions['context']>,
+  fn: () => MaybePromise<string>
+): MaybePromise<string> {
+  const resolveValue = (decl: Node): MaybePromise<Node | undefined> => {
+    const resolved = decl.eval(context);
+    const toValue = (node: Node | undefined): Node | undefined =>
+      isNode(node, N.Declaration) ? node.valueNode() : undefined;
+    return isThenable(resolved) ? resolved.then(toValue) : toValue(resolved);
+  };
+  const planResult = planBodyMerges(children, resolveValue);
+  const run = (plan: SpineMergePlan | undefined): MaybePromise<string> => {
+    if (!plan) {
+      return fn();
+    }
+    const saved = options.spineMergePlan;
+    options.spineMergePlan = plan;
+    const restorePlan = (text: string): string => {
+      options.spineMergePlan = saved;
+      return text;
+    };
+    const out = fn();
+    return isThenable(out) ? out.then(restorePlan) : restorePlan(out);
+  };
+  return isThenable(planResult) ? planResult.then(run) : run(planResult);
 }
 
 function renderNodeText(
@@ -801,6 +868,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (!n.visible && !hasPrintableTrivia(n, options)) {
           return;
         }
+        // `+:`/`+_:` merge (P1): a suppressed member is coalesced into a later
+        // anchor — skip it entirely (like a hidden decl), unless it carries
+        // printable trivia to preserve.
+        if (options.spineMergePlan?.get(n)?.kind === 'suppress' && !hasPrintableTrivia(n, options)) {
+          return;
+        }
         if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
           return;
         }
@@ -1204,8 +1277,10 @@ function serializeSpineFrameContainer(
     options.spineSelectorNode = node;
     options.spineSelector = resolvedSelector;
     context.rulesetFrames.push(node);
-    const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
-    return isThenable(out) ? out.then(restore) : restore(out);
+    return withSpineMergePlan(node.rules, options, context, () => {
+      const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
+      return isThenable(out) ? out.then(restore) : restore(out);
+    });
   };
   // Resolve the selector against the live frame. A Selector node carries either
   // interpolation (`@{…}` → concrete via `eval`) or ampersand (`&-x` → the
@@ -1264,10 +1339,13 @@ function serializeSpineFrameAtRule(
       options.atRuleHeaderNode = node;
       options.atRuleHeaderPrelude = resolvedPrelude;
     }
+    assignSpineChildIndices(node);
     node.getScopeFrame();
     context.rulesContext = node;
-    const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
-    return isThenable(out) ? out.then(restore) : restore(out);
+    return withSpineMergePlan(node.rules, options, context, () => {
+      const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
+      return isThenable(out) ? out.then(restore) : restore(out);
+    });
   };
   const rawPrelude = node.prelude;
   try {

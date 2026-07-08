@@ -297,13 +297,33 @@ function isSimpleSpineLeaf(node: Node): boolean {
   if (isNode(node, N.Declaration)) {
     const options = node.options as { assign?: string; setDefined?: boolean; nearestOuter?: boolean } | undefined;
     const assign = options?.assign ?? ':';
-    if (assign !== ':') {
+    // `:` (plain) and the property-MERGE assigns (`+:`/`+_:`/`&,:`/`&_:`) are
+    // folded — merge coalesces in the spine descent (`planBodyMerges`). Still
+    // excluded: conditional `?:` and scope-mutating `setDefined`/`nearestOuter`.
+    if (assign !== ':' && !MERGE_ASSIGNS.has(assign)) {
       return false;
     }
     if (options?.setDefined || options?.nearestOuter) {
       return false;
     }
     return true;
+  }
+  return false;
+}
+
+/** Property-merge assign operators the spine coalesces (see `planBodyMerges`). */
+const MERGE_ASSIGNS = new Set(['+:', '+_:', '&,:', '&_:']);
+
+/** True if any DIRECT child of `body` is a merge-flagged declaration. */
+function bodyHasDirectMergeDecl(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isNode(child, N.Declaration) && !isNode(child, N.VarDeclaration)) {
+      const assign = (child.options as { assign?: string } | undefined)?.assign;
+      if (assign && MERGE_ASSIGNS.has(assign)) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -400,15 +420,20 @@ export const spineRenderCounter = { rootRenders: 0 };
  * tree); false ⇒ it routes to the eval path.
  *
  * Exact boundary — eligible when the whole body is spine-coverable
- * (`isSpineEligibleBody`): value leaves (comments + `:`-assign declarations with
- * NO async-shape value) and nested plain `Ruleset`s (non-Nil, unguarded, no `&`,
- * no interpolation, no extend/reference), each variable declared at most ONCE
- * per scope. Excluded (still eval path — a scoped frontier, NOT a safety
- * fallback): charset/import document framing, reference mode, `+:`/conditional/
- * `setDefined` declarations (cross-declaration merge), `calc()`/`Operation`
- * values (async eval), `&`-selectors (ampersand composition), interpolated
- * selectors (resolve-at-enter — the 3rd P1 item), guarded/extend/at-rule
- * containers, and re-declared variables (source-order-sensitive read).
+ * (`isSpineEligibleBody`): value leaves (comments + `:`- and merge-assign
+ * declarations), nested `Ruleset`s (non-Nil, unguarded, no ampersand-append, no
+ * extend/reference) with `&`/interpolated selectors resolved-at-enter, and
+ * conditional-group at-rules; re-declared vars + `snapshot` reads resolve
+ * per-position. Excluded (still eval path — a scoped frontier, NOT a safety
+ * fallback): charset/import document framing, reference mode, conditional (`?:`)/
+ * `setDefined` declarations, ampersand-append, `@layer`/`@scope`, guarded/extend/
+ * mixin/reference containers, interpolated var/at-rule NAMES.
+ *
+ * ROOT-LEVEL merge guard: a `+:`/`+_:` declaration DIRECTLY in the root body (not
+ * inside a ruleset) is excluded — property-merge coalescing is applied on the
+ * CONTAINER descent path (`withSpineMergePlan`), which the flat root-body path
+ * (`toRenderString`) does not run. Root-level property merges are unusual
+ * (properties belong in rulesets); a real one routes to the eval path.
  */
 export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   if (context.currentCharset || context.topImports?.length) {
@@ -417,11 +442,9 @@ export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   if (root.options?.referenceMode === true) {
     return false;
   }
-  // The body — leaves + nested rulesets — must be fully spine-coverable. A
-  // variable RE-DECLARED in the same scope is source-order sensitive (an earlier
-  // reader / `snapshot` ref must see the earlier value, not last-wins); the
-  // single upfront frame is not yet enough, so re-declaration is excluded per
-  // scope (per-position binding is a later push).
+  if (bodyHasDirectMergeDecl(root.rules)) {
+    return false;
+  }
   return isSpineEligibleBody(root.rules);
 }
 

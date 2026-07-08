@@ -90,17 +90,28 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       bookkeeping on the canonical node (§ruling 1) — changes neither re-serialization nor reuse; idempotent
       (skips already-numbered bodies from the eval path). Proven: `@color:red; seen(snapshot):@color;
       @color:blue; later:@color` → `seen:red` (position), `later:blue`, `eval=0 derives=0`. Re-declared vars
-      admitted in eligibility. Ratchets: re-declared-var/snapshot-per-position + `+:`-merge-still-excluded.
-      **Exact boundary — still eval path (scoped frontier):** ampersand-APPEND (`&-modifier`),
-      `+:`/`+_:` merge + conditional (`?:`)/`setDefined` decls, interpolated-var-NAME decls, `@layer`/
-      `@scope`/root-only + interpolated-name at-rules, guarded/extend/mixin/reference containers,
-      charset/import. Interpolated selectors, conditional-group at-rules, plain `&`, AND per-position
-      var-binding NOW folded. **Next push (recommended order):** (1) `+:`/`+_:` MERGE — wire the KEPT
-      `_coalesceMergedDeclarations` cross-declaration coalescing into the spine descent (it's on the
-      "NOT copies, stays" list — constructs a genuinely new combined value; the remaining VALUE-path piece);
-      (2) conditional (`?:`)/`setDefined` scope-mutating assigns; (3) `@layer`/`@scope` at-rules (fold their
-      eval-pass name/scope semantics); (4) `inherit` in-place span attribution (narrowest — the last
-      transient-leaf sourcemap-span carry). Ampersand-APPEND folds alongside (3)'s hoist work.
+      admitted in eligibility.
+      **`+:`/`+_:` MERGE DONE (in ruleset/at-rule bodies).** Property-merge coalesces through the spine:
+      new `spine-merge.ts` `planBodyMerges` walks a body's DIRECT decls at body-enter (frame live), groups
+      same-property merge chains (`+:`/`&,:` → comma `List`; `+_:`/`&_:` → space `Sequence`), records a
+      per-body PLAN (WeakMap keyed by source decl: earlier members `suppress`, last member `anchor` with the
+      combined value). `withSpineMergePlan` installs it on `options.spineMergePlan` for the body descent
+      (scoped save/restore); `resolveSpineLeafText` consults it — a suppressed decl emits nothing, the
+      anchor emits the combined value (eval'd-then-`deriveWithParts`, `normalizedFromAssign` set on the
+      TRANSIENT so it prints plain `prop: value` not `prop+:`). The combined value is a genuinely NEW node
+      (design "NOT copies, stays"); NO canonical mutation. Proven: `background+:red; background+:blue` →
+      `background: red, blue`; `transform+_:scale(1); +_:rotate(5deg)` → `transform: scale(1) rotate(5deg)`;
+      both `eval=0 derives=0`, matching the eval-path baseline. ROOT-LEVEL merge (a `+:` directly in the
+      document root, not in a ruleset) stays on the eval path — the flat root-body path doesn't run the
+      plan; unusual shape. Ratchets: `+:`/`+_:`-merge-through-spine + root-merge/conditional-excluded.
+      **Exact boundary — still eval path (scoped frontier):** ampersand-APPEND (`&-modifier`), ROOT-LEVEL
+      `+:` merge, conditional (`?:`)/`setDefined` decls, interpolated-var-NAME decls, `@layer`/`@scope`/
+      root-only + interpolated-name at-rules, guarded/extend/mixin/reference containers, charset/import.
+      Interpolated selectors, conditional-group at-rules, plain `&`, per-position var-binding, AND `+:`/`+_:`
+      merge NOW folded. **Next push (recommended order):** (1) conditional (`?:`)/`setDefined` scope-mutating
+      assigns; (2) `@layer`/`@scope` at-rules (fold their eval-pass name/scope semantics; ampersand-APPEND
+      folds alongside the hoist work); (3) `inherit` in-place span attribution (narrowest — the last
+      transient-leaf sourcemap-span carry).
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
       **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
@@ -186,7 +197,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter), AND per-position var-binding (re-declared vars + `snapshot` reads resolve at the reader's source position via `assignSpineChildIndices`, not last-wins). Ampersand-APPEND / `+:`-merge+conditional / `@layer`/`@scope` still 2 (eval path) — scoped frontier, not fallback. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter), per-position var-binding (re-declared vars + `snapshot` reads via `assignSpineChildIndices`, not last-wins), AND `+:`/`+_:` property-merge coalescing in ruleset/at-rule bodies (`spine-merge.ts` `planBodyMerges` → combined value at the anchor, earlier suppressed). Ampersand-APPEND / root-level-`+:` / conditional / `@layer`/`@scope` still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -387,3 +398,36 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   position-gated lookup — the only new thing is numbering canonical children (output-invisible), no dual
   path (re-declared/snapshot has one path: the spine), no cell-population invariant introduced. Merge stays
   a precise coverage gap, not a safety fallback. Stopped at the per-position boundary as directed.
+- 2026-07-08 · P1 · `+:`/`+_:` PROPERTY-MERGE landed (in ruleset/at-rule bodies — the last big VALUE-path
+  piece). New `tree/util/spine-merge.ts`: `planBodyMerges(children, resolveValue)` walks a body's DIRECT
+  declaration children in source order at body-enter, groups same-property merge chains
+  (`+:`/`&,:` → comma `List`; `+_:`/`&_:` → space `Sequence`), and returns a per-body PLAN — a WeakMap
+  keyed by source decl: earlier chain members `{kind:'suppress'}`, the last member
+  `{kind:'anchor', value: combined}`. Combining resolves each member's VALUE against the LIVE frame
+  (`decl.eval().valueNode()`, MaybePromise). `withSpineMergePlan` (serialize-helper) installs the plan on
+  `options.spineMergePlan` for the body descent (scoped save/restore; nested bodies each get their own),
+  wired into `serializeSpineFrameContainer` + `serializeSpineFrameAtRule` descends. `resolveSpineLeafText`
+  consults it: suppressed → emits '' (and the container leaf loop skips it like a hidden decl); anchor →
+  eval the decl then `deriveWithParts({value: combined})` and set `normalizedFromAssign` on the TRANSIENT
+  so it prints plain `prop: value` (not `prop+:`). Combined value = genuinely NEW node (design "NOT copies,
+  stays"); NO canonical mutation, NO output tree, NO eval pass. Proven: `background+:red; +:blue` →
+  `background: red, blue`; `transform+_:scale(1); +_:rotate(5deg)` → `transform: scale(1) rotate(5deg)`;
+  both match the eval-path baseline, `eval=0 derives=0`. Widened `isSimpleSpineLeaf` to admit merge assigns
+  (`MERGE_ASSIGNS`); kept conditional `?:`/`setDefined` excluded. ROOT-LEVEL `+:` (directly in the document
+  root, not a ruleset) stays on eval path (`bodyHasDirectMergeDecl` guard in `isSpineEligibleRoot`) — the
+  flat root path (`toRenderString`) doesn't run the plan; unusual shape. FINDING: the eval path's `+:`
+  model is a merge-REFERENCE (reads prior value) resolved by the post-pass `_coalesceMergedDeclarations`;
+  the spine PRE-COMBINES eval'd values into the anchor value instead — simpler, same output for the
+  same-body subset the spine admits (cross-scope/mixin already excluded). RATCHET:
+  `+:`/`+_:`-merge-through-spine (combined value emits, no `+:` operator, eval/derive not called) +
+  root-merge/conditional-excluded. Core suite GREEN 3186/0/15. tsc ZERO new errors. serialize-helper
+  imports `planBodyMerges` from spine-merge (one-way; no cycle). DOCUMENTATION STANDARD: `spine-merge.ts`
+  module + `planBodyMerges`/`withSpineMergePlan` JSDoc spell out the plan model + no-canonical-mutation
+  invariant. NEVER used `git stash`.
+  RECOMMENDED NEXT ORDER: (1) conditional (`?:`)/`setDefined` scope-mutating assigns; (2) `@layer`/`@scope`
+  at-rules (+ ampersand-APPEND hoist alongside); (3) `inherit` in-place span attribution (narrowest).
+  Backpedal self-check: pre-combine reuses the same comma/space merge shape the eval path produces; the
+  suppress/anchor plan is a side table (no `F_MERGE_SUPPRESSED` on the canonical source); `normalizedFromAssign`
+  is set only on the per-emit TRANSIENT. No dual path for the covered subset (in-body `+:`/`+_:` has one
+  path: the spine); root-level `+:` is a precise coverage gap, not a safety fallback. Stopped at the merge
+  boundary as directed.

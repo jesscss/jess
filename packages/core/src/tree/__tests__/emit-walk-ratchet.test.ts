@@ -320,13 +320,60 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
-  it('still EXCLUDES `+:` merge / conditional / setDefined declarations (the value-path frontier)', () => {
-    // These need the cross-declaration merge (`_coalesceMergedDeclarations`) /
-    // scope-mutating-assign machinery not yet folded — a scoped frontier.
-    const mergeRoot = rules([
+  it('coalesces `+:` / `+_:` MERGE declarations in a ruleset body through the spine (no eval/derive)', () => {
+    // `+:` → comma list on the anchor (last), earlier suppressed; `+_:` → space
+    // sequence. The combined value is a genuinely new node produced at emit time;
+    // NO eval pass, NO output tree. Both printed as plain `prop: value`.
+    const addRoot = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        decl({ name: 'background', value: any('red') }, { assign: '+:' }),
+        decl({ name: 'background', value: any('blue') }, { assign: '+:' })
+      ] })
+    ]);
+    const seqRoot = rules([
+      ruleset({ selector: sel([el('.b')]), rules: [
+        decl({ name: 'transform', value: any('scale(1)') }, { assign: '+_:' }),
+        decl({ name: 'transform', value: any('rotate(5deg)') }, { assign: '+_:' })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(addRoot, context)).toBe(true);
+    expect(isSpineEligibleRoot(seqRoot, context)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const addCss = addRoot.render(context) as string;
+      const seqCss = seqRoot.render(new Context()) as string;
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0); // no output tree
+      expect(addCss).toContain('background: red, blue'); // comma-coalesced anchor
+      expect(addCss).not.toContain('+:'); // operator normalized away
+      expect(seqCss).toContain('transform: scale(1) rotate(5deg)'); // space-coalesced
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('still EXCLUDES ROOT-LEVEL `+:` merge + conditional/`setDefined` (scoped frontier)', () => {
+    // Root-level property-merge is applied on the CONTAINER descent path only, so
+    // a `+:` DIRECTLY in the root body routes to the eval path (unusual shape).
+    const rootMerge = rules([
       decl({ name: 'background', value: any('red') }, { assign: '+:' }),
       decl({ name: 'background', value: any('blue') }, { assign: '+:' })
     ]);
-    expect(isSpineEligibleRoot(mergeRoot, context)).toBe(false);
+    expect(isSpineEligibleRoot(rootMerge, context)).toBe(false);
+
+    // Conditional `?:` stays on the eval path.
+    const condRoot = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        decl({ name: 'color', value: any('red') }, { assign: '?:' })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(condRoot, context)).toBe(false);
   });
 });
