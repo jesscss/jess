@@ -1,7 +1,7 @@
 > ⚠️ **The active cleanup queue is now [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).** The
 > per-focus trackers this doc references (SINGLE_FRAME_PLAN, NODE-REWRITE-TRACKER,
 > PERFORMANCE-HANDOFF, BINDING-LOOKUP-REMAINING) were consolidated there; their history
-> lives in `docs/archive/`. This doc is kept for its routing/guardrail context.
+> lives in git history. This doc is kept for its routing/guardrail context.
 
 # Core Architecture Focii
 
@@ -24,26 +24,26 @@ Use the spelling `focii` in task titles if that helps search continuity.
    commit.
 
 Do not move active queues into `HANDOFF.md`. Do not rename a tracker as a
-handoff. Completed history belongs in git, focused tracker rows, or
-`PERFORMANCE-HANDOFF.md`, not in the router.
+handoff. Completed history belongs in git or `CORE-CLEANUP.md`, not in the
+router.
 
 ## Focus: Serialization / `writeSyntax`
 
 **Goal prompt:** Complete the Jess serialization / `writeSyntax` focus queue by
 closing the remaining node-family render/string transport rows in
-`NODE-REWRITE-TRACKER.md`, preserving Less/Jess behavior, updating the tracker
+`CORE-CLEANUP.md`, preserving Less/Jess behavior, updating the tracker
 and aggressive self-prosecution evidence, committing, pushing, and continuing
 until the queue is drained or a real semantic/design blocker is reached.
 
 **Required docs:**
 
 - `HANDOFF.md`
-- `NODE-REWRITE-TRACKER.md`
+- `CORE-CLEANUP.md`
 - `AGGRESSIVE-CUTTING-REVIEW.md`
-- `PERFORMANCE-HANDOFF.md` before any speed claim or benchmark-leashed hot-path
-  decision
+- `CORE-CLEANUP.md` benchmark evidence before any speed claim or
+  benchmark-leashed hot-path decision
 
-**Active queue:** `NODE-REWRITE-TRACKER.md`.
+**Active queue:** `CORE-CLEANUP.md`.
 
 **Current priority:** continue the repo-wide node serialization rewrite. Hot
 unfinished rows include `Ruleset`, `Declaration`, `QueryCondition`, `Call`,
@@ -72,7 +72,7 @@ paths require it.
 ## Focus: Binding / Lookup
 
 **Goal prompt:** Complete the Jess binding / lookup / registryless focus by
-draining every remaining work cluster in `BINDING-LOOKUP-REMAINING.md`, not
+draining every remaining work cluster in `CORE-CLEANUP.md`, not
 just the currently visible checklist. Repeatedly reseed the active queue from
 the remaining clusters, deleting registry-shaped fallback bridges, hot-path
 materialization, unnecessary child scans, broad invalidation, and object-heavy
@@ -84,13 +84,12 @@ criteria are satisfied or a real semantic/design blocker is reached.
 **Required docs:**
 
 - `HANDOFF.md`
-- `BINDING-LOOKUP-REMAINING.md`
-- `BINDING-INDEX-PROPOSAL.md`
+- `CORE-CLEANUP.md`
 - `AGGRESSIVE-CUTTING-REVIEW.md`
-- `PERFORMANCE-HANDOFF.md` before any speed claim or profile-backed lookup
-  decision
+- `CORE-CLEANUP.md` benchmark evidence before any speed claim or
+  profile-backed lookup decision
 
-**Active queue:** `BINDING-LOOKUP-REMAINING.md`.
+**Active queue:** `CORE-CLEANUP.md`.
 
 **Current priority:** use modeled scope frames, child-surface facts, reference
 handles, and per-key versions to close the full registryless family: direct
@@ -120,7 +119,7 @@ binding/lookup work.
 ## Focus: Performance Evidence
 
 **Goal prompt:** Refresh Jess core architecture performance evidence by running
-the benchmark/profile protocol in `PERFORMANCE-HANDOFF.md` for the currently
+the benchmark/profile protocol in `CORE-CLEANUP.md` for the currently
 selected implementation focus, recording only evidence-backed interpretations,
 and returning a concrete next implementation target without making unsupported
 speed claims.
@@ -128,7 +127,7 @@ speed claims.
 **Required docs:**
 
 - `HANDOFF.md`
-- `PERFORMANCE-HANDOFF.md`
+- `CORE-CLEANUP.md`
 - the tracker for the selected implementation focus
 - `AGGRESSIVE-CUTTING-REVIEW.md` if code changes are made
 
@@ -141,12 +140,12 @@ checks a target for another focus.
   implementation focus.
 - Only benchmarks/profiles can justify "faster"; tests and code inspection can
   justify "less machinery."
-- Rejected experiments in `PERFORMANCE-HANDOFF.md` must not be retried without
+- Rejected experiments in `CORE-CLEANUP.md` must not be retried without
   a new hypothesis or changed code shape.
 
 **Stop rule:** stop after producing a current profile/benchmark interpretation,
 a rejected experiment record, or one concrete implementation target for the
 active focus.
 
-**Gates:** the benchmark/profile commands named in `PERFORMANCE-HANDOFF.md`,
+**Gates:** the benchmark/profile commands named in `CORE-CLEANUP.md`,
 plus focused behavior tests for any code touched during the evidence pass.

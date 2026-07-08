@@ -13,7 +13,7 @@ import { makeJessError } from '../../jess-error.js';
  * detached-ruleset that evaluated to a bare value and dropped it into
  * statement position.
  *
- * @see docs/archive/ponytail-core-audit.md E12
+ * @see docs/future/core-architecture/CORE-CLEANUP.md
  */
 export function checkValidNodes(
   rules: readonly Node[] | undefined,

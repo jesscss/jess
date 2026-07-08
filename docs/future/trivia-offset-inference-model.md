@@ -1,8 +1,7 @@
 # Trivia & spans: the positioned tree is the index
 
 Branch: `feature/parseman`. Status: **core landed + proven; parser-population is the
-remaining wiring** (2026-07-04). Related: [`whitespace-token-proposal.md`](whitespace-token-proposal.md)
-(token-side capture). This note is the storage / reconstruction / indexing side, and
+remaining wiring** (2026-07-04). This note is the storage / reconstruction / indexing side, and
 supersedes the earlier flyweight and per-gap-record sketches.
 
 ## Implementation status
