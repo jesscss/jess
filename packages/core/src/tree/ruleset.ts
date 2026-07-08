@@ -825,6 +825,22 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    // Spine mode (P1 §2): render this ruleset by descending its SOURCE body under
+    // the live value-frame — NO eval() call, NO output tree. The container
+    // serializer (`serializeRulesContainer`, kept per §7) composes the header and
+    // collapse from the structural stack; its leaf emission resolves values live
+    // against the frame it pushes (see serialize-helper spineMode). This REPLACES
+    // the eval→serialize two-walk for a ruleset on the wired path.
+    const spinePrintOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    if (spinePrintOptions?.spineMode === true && !(this.selector instanceof Nil)) {
+      // Serialize through the CURRENT print state (carrying spineMode + the live
+      // composedSelectorStack), not a fresh one — the caller already prepared it.
+      const spineOptions = getPrintOptions(spinePrintOptions);
+      const rendered = serializeRulesContainer(this, spineOptions);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderText(bufferOrOptions, rendered)
+        : rendered;
+    }
     const finishNilSelectorBodyRender = (rendered: string): string => {
       if (rendered.endsWith('\n')) {
         return rendered;

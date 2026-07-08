@@ -42,27 +42,37 @@ old structure instead of building the target*. Guardrails, binding on every cuto
 ### P1 — the frame-threading spine (§2)  ·  SERIAL, foundational, everything depends on it
 - [~] Emit descends the SOURCE tree with the live value-frame stack pushed/popped by the walk; a leaf
       resolves `resolve(sourceLeaf, currentFrame)`→bytes at its emit moment; no `state.output` tree.
-      **Mechanism landed** + **WIRED IN** for the leaf-only-root slice. `tree/util/emit-walk.ts`:
-      `withValueFrame`, `emitLeaf`, `emitSharedBody`/`emitChildren`, `pushBoundBodyFrame`, plus the
-      wire-in `isSpineEligibleRoot` + `renderRootViaSpine`. `Rules.render` (rules.ts:~4795) now ROUTES a
-      spine-eligible root (leaf-only body — declarations/comments, default `:` assign, no re-declared
-      vars, no charset/import/reference) through ONE downward pass: NO `this.eval()` call, NO `state.output`
-      tree, NO separate serialize walk. It reuses the KEPT statement-framing serializer via
-      `toRenderString`→`_emitRulesBody('render')` (§7 "survives"), resolving each leaf against the live
-      frame in place. **Locked** by `emit-walk-ratchet.test.ts`: spine counter moves + root `eval()`
-      proven NOT called on the wired path (two-walk eliminated) + eligibility boundary asserted. Full core
-      suite green (3168 pass, 0 fail). **Still standing (next push):** the CONTAINER (nested ruleset /
-      at-rule / mixin) descent — that needs the structural container serializer fused with live-frame leaf
-      resolution; until then containers use the eval path (correctly excluded from eligibility).
+      **Wired for leaf-only roots AND nested-ruleset CONTAINERS.** `tree/util/emit-walk.ts` +
+      `serialize-helper.ts` `spineMode` + `Ruleset.render` spine branch. `Rules.render` routes a
+      spine-eligible root through ONE downward pass; nested plain rulesets descend in place through the
+      KEPT container serializer (`serializeRulesContainer`, §7) which in `spineMode` PUSHES each
+      container's value-frame at enter and RESOLVES its leaves live — NO `eval()`, NO `state.output`, NO
+      `Rules.derive`. Both collapse modes verified (`.a .b` vs nested). **Locked** by
+      `emit-walk-ratchet.test.ts`: spine counter moves + root `eval` not called + **`Rules.derive` not
+      called on the wired container path** (output-tree-absence ratchet ACTIVATED) + eligibility boundary
+      (ampersand / calc-async excluded). Full core suite green (3179 pass, 0 fail).
+      **Exact boundary — still eval path (scoped frontier):** `&`-selectors (ampersand compose),
+      interpolated selectors (item 3 below), `calc()`/`Operation` values (async leaf), `+:`/conditional/
+      `setDefined` decls (merge), re-declared vars (source-order), guarded/extend/at-rule/mixin/reference
+      containers, charset/import. **Next push:** at-rule containers + ampersand compose + async leaf
+      threading (make the container serializer MaybePromise in spine mode).
 - [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
       **Shared-body mechanism landed** (`pushBoundBodyFrame`, proven `10px`/`20px` same-leaf-identity).
-      `inherit` span-stamp elimination NOT YET done and correctly BLOCKED: `inherit` is still live on the
-      eval path (all container/mixin cases still route there), so deleting it now would break a
-      still-standing path. It becomes dead only when the container descent is wired (removes the derived
-      output node) — the target-honest gate, not a "keep to be safe".
-- [ ] Selector interpolation resolves at ruleset-enter (frame live) → concrete selector available to extend.
-      NOT STARTED (structural-side; comes with the container wire-in — no ruleset on the wired leaf-only path yet).
+      **`inherit` span-stamp: FINDING — NOT unblocked by the container wire-in alone.** The container
+      OUTPUT TREE is gone on the wired path (`Rules.derive` not called, ratchet-proven), but `inherit` is
+      STILL called ~4×/render there — by TRANSIENT LEAF-RESOLUTION nodes (a `Reference`→`Sequence`, a
+      resolved `Declaration`, a composed `ComplexSelector`) that carry the source span for the sourcemap
+      origin. So eliminating the stamp needs leaf sourcemap attribution reworked to read the source span
+      IN PLACE (design §2.4) rather than stamp a transient — a change shared with the still-standing eval
+      path. NOT force-deleted (live on both the transient-leaf path and the eval path): the target-honest
+      gate. This is its own follow-up, not a byproduct of the container fold.
+- [~] Selector interpolation resolves at ruleset-enter (frame live) → concrete selector available to extend.
+      **Mechanism identified, not yet folded.** The spine already pushes the live frame at ruleset-enter;
+      the resolve is `selector.eval(context)` before header composition (ruleset.ts:1827 does exactly this
+      on the eval path). Interpolated selectors are currently EXCLUDED from eligibility
+      (`selectorHasInterpolation`) so output stays correct; folding the resolve into the spine header
+      composition is the immediate next item (and is what lets extend see concrete selectors — OQ-A).
 
 ### P2 — per-node inline visitor model (§6)  ·  depends on P1
 - [ ] Replace the separate visitor walk + `preSerializeRoot` with the generic per-node hook
@@ -123,7 +133,7 @@ that isn't measured done.
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root path now 2→1** (eval pass eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called on the wired path). Container path still 2 (eval pass) pending the container wire-in. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Async-leaf / ampersand / at-rule / interpolated-selector shapes still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -178,3 +188,25 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   them. Backpedal self-check: did NOT keep a dual/old path alive on the wired slice — the eval two-walk is
   genuinely not entered for an eligible root (ratchet-proven); the eval path stands ONLY for shapes the
   spine does not yet cover, which is a scoped frontier, not a safety fallback for covered shapes.
+- 2026-07-08 · P1 · CONTAINER DESCENT wired. Nested plain rulesets now flip through the spine: added
+  `PrintOptions.spineMode`; in `serialize-helper.ts` the KEPT container serializer (§7) — in spineMode —
+  PUSHES each container's value-frame at enter (`context.rulesContext = node`, `getScopeFrame()`) and its
+  leaf emission RESOLVES against that live frame (`node.eval`) instead of static `writeSyntax`;
+  `Ruleset.render` gained a spineMode branch that serializes the SOURCE ruleset directly (no
+  `evalForRender`). Result on the wired container path: `Rules.eval` NOT called, `Rules.derive` NOT called
+  (NO output tree) — proven; both collapse modes correct (`.a .b` / nested). RATCHET activated:
+  output-tree-absence (`Rules.derive` not called) test committed. Iterated eligibility from core-suite
+  deltas (each a REAL coverage gap, not churn): excluded `&`-selectors (ampersand compose — 8 ampersand/
+  nesting tests), `calc()`/`Operation` values (async leaf — the sync container serializer can't thread a
+  promise yet; throws a clear guard if it ever slips through), interpolated selectors (resolve-at-enter,
+  item 3). Core suite GREEN 3179/0/15 (+ container ratchet tests). DOCUMENTATION STANDARD applied:
+  module + function JSDoc on emit-walk carry contract + load-bearing invariant + `@see §2/§4/§7`; stale
+  "no nested containers" eligibility docstring retired. FINDING (important): `inherit` span-stamp is NOT
+  unblocked by removing the output tree — it is still called by TRANSIENT leaf-resolution nodes for
+  sourcemap span carry (§2.4); eliminating it needs in-place source-span attribution, a separate follow-up
+  shared with the eval path (recorded in the P1 item). NEXT: at-rule containers, ampersand compose, async
+  leaf threading (container serializer → MaybePromise in spineMode), and selector-interpolation-at-enter.
+  Backpedal self-check: reused the KEPT serializer as a MODE (spineMode) rather than forking or preserving
+  the old eval→output path — on the wired path the eval two-walk + output tree are genuinely gone
+  (ratchet-proven); the eval path remains ONLY for not-yet-covered shapes (scoped frontier). No dual path
+  for a covered shape.

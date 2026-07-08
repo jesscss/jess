@@ -17,6 +17,7 @@ import {
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
+import { isThenable } from '@jesscss/awaitable-pipe';
 import type { Selector, SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
@@ -99,6 +100,26 @@ function renderNodeText(
     }
   }
   if (reason === 'declaration-fallback') {
+    // Spine mode (P1 §2): resolve the leaf against the LIVE value-frame at its
+    // emit moment instead of static `writeSyntax` (which would print `$w`, not
+    // the resolved value). `eval` reads `context.rulesContext` — the frame pushed
+    // by the container descent — so this is the SAME resolution the eval pass
+    // produced, now done in place with no output tree.
+    if (options.spineMode && options.context) {
+      const resolved = node.eval(options.context);
+      if (isThenable(resolved)) {
+        throw new Error('spine leaf resolution produced a promise; async spine leaves not yet supported');
+      }
+      if (!resolved || resolved instanceof Nil) {
+        return '';
+      }
+      const writer = new OutputWriter();
+      resolved.toString(getPrintOptions({
+        ...options,
+        writer
+      }));
+      return writer.toString();
+    }
     const writer = new OutputWriter();
     node.writeSyntax(getPrintOptions({
       ...options,
@@ -1044,21 +1065,41 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     restoreArrayState(stack, pushedStackSnapshot);
     return out;
   };
-  let runResult: string;
-  if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
-    const currentStack = options.composedSelectorStack;
-    if (currentStack) {
-      const rootStackSnapshot = saveArrayState(currentStack);
-      currentStack.length = 0;
-      options.composedSelectorStack = currentStack;
-      runResult = runWithCurrentComposedStack();
-      restoreArrayState(currentStack, rootStackSnapshot);
-    } else {
+  // Spine mode (P1 §2): push this container's VALUE-FRAME for the duration of
+  // its body descent, so leaves resolve against the SAME frame eval would have
+  // used — no eval pass, no output tree. The frame is the source container's own
+  // `_scopeFrame` (built lazily, lexical parent via the `.parent` chain). Popped
+  // (rulesContext restored) after the body's bytes are in the buffer.
+  const runContainer = (): string => {
+    if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
+      const currentStack = options.composedSelectorStack;
+      if (currentStack) {
+        const rootStackSnapshot = saveArrayState(currentStack);
+        currentStack.length = 0;
+        options.composedSelectorStack = currentStack;
+        const inner = runWithCurrentComposedStack();
+        restoreArrayState(currentStack, rootStackSnapshot);
+        return inner;
+      }
       options.composedSelectorStack = [];
-      runResult = runWithCurrentComposedStack();
+      return runWithCurrentComposedStack();
+    }
+    return runWithCurrentComposedStack();
+  };
+  let runResult: string;
+  const spineContext = options.spineMode ? options.context : undefined;
+  const spineFrameNode = spineContext && node instanceof Ruleset && isNode(node, N.Rules) ? node : undefined;
+  if (spineContext && spineFrameNode) {
+    const savedRulesContext = spineContext.rulesContext;
+    spineFrameNode.getScopeFrame();
+    spineContext.rulesContext = spineFrameNode;
+    try {
+      runResult = runContainer();
+    } finally {
+      spineContext.rulesContext = savedRulesContext;
     }
   } else {
-    runResult = runWithCurrentComposedStack();
+    runResult = runContainer();
   }
   restorePrintState(options, saved);
   return runResult;

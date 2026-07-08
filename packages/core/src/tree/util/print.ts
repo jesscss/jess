@@ -49,6 +49,15 @@ export type PrintOptions = {
   emittedTrivia?: Set<Trivia>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
   sourceMap?: boolean;
+  /**
+   * Single-pass spine mode (P1, UNIFIED-EVAL-EMIT §2). When set, the container
+   * serializer descends the SOURCE tree with the live value-frame threaded and
+   * resolves each leaf against that frame at emit time — instead of reading a
+   * pre-evaluated output tree. This REPLACES the eval→output-tree→serialize
+   * two-walk on the wired path (no eval() call, no `state.output`); it is not a
+   * dual path — the eval path only runs for shapes the spine does not yet cover.
+   */
+  spineMode?: boolean;
   /** Output syntax target, e.g. 'jess' for Jess canonical output. */
   syntax?: string;
   /** Jess conversion options for rewriting import paths during serialization. */

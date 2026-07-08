@@ -1,40 +1,55 @@
 /**
- * emit-walk — the P1 frame-threading spine (UNIFIED-EVAL-EMIT-DESIGN §2).
+ * emit-walk — the P1 frame-threading spine of the ONE eval-and-emit pass.
  *
- * ONE downward traversal of the SOURCE tree. There is no eval() that returns a
- * materialized output tree for a separate serialize() walk: at each node we
- * resolve-against-the-current-frame and write-to-buffer together.
+ * ONE downward traversal of the SOURCE tree. There is no `eval()` that returns a
+ * materialized output tree for a separate `serialize()` walk: at each node we
+ * resolve-against-the-current-frame and write-to-buffer together. This module
+ * owns the pass entry (`renderRootViaSpine`), the value-frame threading
+ * (`withValueFrame`), the leaf/shared-body mechanism, and the static eligibility
+ * predicate that scopes which SOURCE shapes the spine fully covers today.
  *
  * Two stacks are threaded for the whole pass:
- *   - the STRUCTURAL stack (ancestry / composedSelectorStack) — already carried
- *     in PrintOptions and owned by the existing container serializer, which we
- *     reuse for header composition/collapse (design §7 "survives").
- *   - the VALUE stack — the live ScopeFrame chain, threaded through
- *     `context.rulesContext`. It is pushed on scope-enter and NOT popped until
- *     that scope's bytes are in the buffer, so a leaf resolves against the SAME
- *     frame eval would have used (the B1s fix).
+ *   - the STRUCTURAL stack (ancestry / `composedSelectorStack`) — carried in
+ *     `PrintOptions` and owned by the KEPT container serializer
+ *     (`serializeRulesContainer`), which the spine reuses for header
+ *     composition/collapse/hoist rather than re-implementing (design §7
+ *     "survives"). In spine mode that serializer pushes the container's
+ *     value-frame at enter and resolves its leaves live (see `PrintOptions.spineMode`).
+ *   - the VALUE stack — the live `ScopeFrame` chain, threaded through
+ *     `context.rulesContext`. Pushed on scope-enter and NOT popped until that
+ *     scope's bytes are in the buffer, so a leaf resolves against the SAME frame
+ *     eval would have used (the B1s fix).
  *
  * A leaf resolves `resolve(sourceLeaf, currentFrame)` → bytes at its emit
  * moment. Mixin / loop / $for / $if bodies are descended SHARED under a pushed
  * value-frame carrying per-placement bindings as live cells — never copied.
+ *
+ * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §2 (frame
+ *   threading), §4/§4.4 (extend flush — P3), §7 (survives vs replaced).
  */
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Context } from '../../context.js';
-import { Node } from '../node.js';
+import { Node, F_AMPERSAND } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
+import { Ruleset } from '../ruleset.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './print.js';
 
 /**
- * The value-frame push: point `context.rulesContext` at the source Rules node
- * whose `_scopeFrame` is the live lexical frame for its subtree, run `fn` while
- * that frame is live, then restore. This is scope-enter/scope-exit with the
- * exit happening AFTER the scope's bytes are in the buffer (design §2.3), so a
- * leaf reached during `fn` resolves against exactly this frame.
+ * The value-frame push (scope-enter/scope-exit for the value stack).
+ *
+ * Contract: point `context.rulesContext` at `frameRules` (whose `_scopeFrame` is
+ * the live lexical frame for its subtree), run `fn`, then restore the prior
+ * `rulesContext` — always, even on throw.
+ *
+ * Load-bearing invariant: the pop (restore) happens AFTER the scope's bytes are
+ * in the buffer, so every leaf reached during `fn` resolves against EXACTLY this
+ * frame — the same one eval would have used (the B1s fix, design §2.3). A leaf
+ * resolution must never run after its frame is popped.
  */
 export function withValueFrame<T>(
   context: Context,
@@ -51,15 +66,17 @@ export function withValueFrame<T>(
 }
 
 /**
- * Resolve one leaf against the live value-frame and write its bytes to the
- * buffer at the emit position, attributing the chunk to the SOURCE node as the
- * sourcemap origin (design §2.4 — the origin travels with the emit position, no
- * retained output node).
+ * Resolve one leaf against the live value-frame and write its bytes.
  *
- * "Resolve" is `node.eval(context)` with `context.rulesContext` pointing at the
- * live frame (set by `withValueFrame`); "write bytes" is `resolved.toString()`
- * through the shared print state. The resolved node is transient and local — it
- * is serialized then dropped, never staged into an output tree.
+ * Contract: eval `node` against `context` (whose `rulesContext` is the live
+ * frame set by `withValueFrame`), then serialize the resolved node into
+ * `options.writer` at the current emit position. Returns a promise iff eval is
+ * async. No return value beyond the write side effect.
+ *
+ * Load-bearing invariant: the resolved node is TRANSIENT and LOCAL — serialized
+ * then dropped, never staged into a persistent output tree (design §2.4). The
+ * SOURCE node is the sourcemap origin; the frame must be live at call time (see
+ * `withValueFrame`).
  */
 export function emitLeaf(
   node: Node,
@@ -82,6 +99,121 @@ export function emitLeaf(
 /** True for a node the spine resolves as a value leaf (not a scope container). */
 export function isValueLeaf(node: Node): boolean {
   return !isNode(node, N.Rules | N.Ruleset | N.AtRule | N.Mixin);
+}
+
+/**
+ * True if `selector` contains Less-style interpolation (`@{…}` / `${…}`) — i.e.
+ * its concrete form depends on the value-frame, so it must resolve at
+ * ruleset-enter (not yet folded). A selector's `valueOf()` serializes its WHOLE
+ * form (including nested attribute/compound components), so a single top-level
+ * text scan detects any interpolation marker.
+ */
+function selectorHasInterpolation(selector: unknown): boolean {
+  if (selector == null) {
+    return false;
+  }
+  if (typeof selector === 'string') {
+    return selector.includes('@{') || selector.includes('${');
+  }
+  if (Array.isArray(selector)) {
+    return selector.some(item => selectorHasInterpolation(item));
+  }
+  if (!(selector instanceof Node)) {
+    return false;
+  }
+  const text = selector.valueOf();
+  return typeof text === 'string' && (text.includes('@{') || text.includes('${'));
+}
+
+/** True if `selector` (a Selector, a SelectorList array, or a string) carries `&`. */
+function selectorHasAmpersand(selector: unknown): boolean {
+  if (!selector || typeof selector === 'string') {
+    return false;
+  }
+  if (Array.isArray(selector)) {
+    return selector.some(item => selectorHasAmpersand(item));
+  }
+  if (selector instanceof Node) {
+    if (selector.hasFlag(F_AMPERSAND)) {
+      return true;
+    }
+    const source = selector.sourceNode;
+    if (source && source !== selector && source.hasFlag(F_AMPERSAND)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A nested CONTAINER child THIS phase can descend through the spine: a plain
+ * `Ruleset` with a non-Nil selector, no guard, and a body that is itself
+ * spine-eligible (leaves + eligible sub-rulesets). Excluded (still eval path):
+ * at-rules (hoist/root-only framing not yet spine-wired), mixins, guarded
+ * rulesets, `&`-bearing selectors (ampersand composition not folded),
+ * extend-bearing/reference rulesets — their correct output needs machinery the
+ * spine has not folded in yet.
+ */
+function isSpineEligibleContainer(node: Node): boolean {
+  if (!isNode(node, N.Ruleset)) {
+    return false;
+  }
+  const ruleset = node;
+  if (ruleset.selector instanceof Nil || ruleset.selector == null) {
+    return false;
+  }
+  if (ruleset.guard) {
+    return false;
+  }
+  const options = ruleset.options as { referenceMode?: boolean; ownSelector?: unknown } | undefined;
+  if (options?.referenceMode === true) {
+    return false;
+  }
+  // An extend-bearing selector, or ANY selector carrying `&`, needs the
+  // ampersand-composition / extend machinery the spine has not folded yet
+  // (a `&-suffix` composes against the parent selector at enter). Excluded.
+  if (Ruleset.hasExtendedTopLevelSelector(ruleset.selector)) {
+    return false;
+  }
+  if (selectorHasAmpersand(ruleset.selector)) {
+    return false;
+  }
+  // An INTERPOLATED selector (`[data=@{attr}]`, `.@{name}`) must resolve against
+  // the live frame at ruleset-enter — the 3rd P1 item, not yet folded into the
+  // spine header composition (the mechanism is `selector.eval(context)` with the
+  // frame this descent already pushes; a follow-up). Excluded until then.
+  if (selectorHasInterpolation(ruleset.selector)) {
+    return false;
+  }
+  return isSpineEligibleBody(ruleset.rules);
+}
+
+/** A body (ordered child list) is spine-eligible when every child is. */
+function isSpineEligibleBody(children: readonly Node[]): boolean {
+  let seenVarNames: Set<string> | undefined;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isSimpleSpineLeaf(child)) {
+      if (isNode(child, N.VarDeclaration)) {
+        const name = child.name;
+        if (typeof name !== 'string') {
+          return false;
+        }
+        seenVarNames ??= new Set<string>();
+        if (seenVarNames.has(name)) {
+          // Re-declared variable → source-order-sensitive read; not spine-safe
+          // with the single upfront frame (see isSpineEligibleRoot note).
+          return false;
+        }
+        seenVarNames.add(name);
+      }
+      continue;
+    }
+    if (!isSpineEligibleContainer(child)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -108,7 +240,40 @@ function isSimpleSpineLeaf(node: Node): boolean {
     if (options?.setDefined || options?.nearestOuter) {
       return false;
     }
+    // Function/arithmetic-valued declarations (`calc(...)`, an `Operation`) can
+    // resolve ASYNC; the container serializer's leaf resolution is synchronous,
+    // so those are not spine-folded yet (async leaf threading is the next
+    // increment). Excluded — they route to the eval path.
+    if (declarationValueHasAsyncShape(node.value)) {
+      return false;
+    }
     return true;
+  }
+  return false;
+}
+
+/** True if a declaration value contains a `Call`/`Operation` (potentially async eval). */
+function declarationValueHasAsyncShape(value: unknown): boolean {
+  if (!value || typeof value === 'string') {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some(item => declarationValueHasAsyncShape(item));
+  }
+  if (!(value instanceof Node)) {
+    return false;
+  }
+  // Check the value node and every descendant for a Call/Operation. Use the
+  // string `type` (not the `isNode` mask overload, whose narrowing collapses the
+  // post-guard type to `never` here) so `walk` stays available on `Node`.
+  const isAsyncShape = (node: Node): boolean => node.type === 'Call' || node.type === 'Operation';
+  if (isAsyncShape(value)) {
+    return true;
+  }
+  for (const descendant of value.walk(true)) {
+    if (isAsyncShape(descendant)) {
+      return true;
+    }
   }
   return false;
 }
@@ -198,13 +363,22 @@ function emitChildren(
 export const spineRenderCounter = { rootRenders: 0 };
 
 /**
- * Eligibility for the single-pass root path THIS phase covers: a root Rules
- * whose body is purely VALUE LEAVES (declarations / comments / var-decls) — no
- * nested containers, no charset/import document framing. For this shape the
- * spine fully replaces the two-walk: descend the source body once, resolving
- * each leaf against the live frame at its emit moment, with NO eval pass and NO
- * output tree. Nested-container descent is the next push (it needs the
- * structural container serializer fused with live-frame leaf resolution).
+ * Static eligibility: may this root render through the single pass?
+ *
+ * Contract: pure/side-effect-free predicate on the SOURCE tree (never evals).
+ * True ⇒ `renderRootViaSpine` fully covers the tree (no eval pass, no output
+ * tree); false ⇒ it routes to the eval path.
+ *
+ * Exact boundary — eligible when the whole body is spine-coverable
+ * (`isSpineEligibleBody`): value leaves (comments + `:`-assign declarations with
+ * NO async-shape value) and nested plain `Ruleset`s (non-Nil, unguarded, no `&`,
+ * no interpolation, no extend/reference), each variable declared at most ONCE
+ * per scope. Excluded (still eval path — a scoped frontier, NOT a safety
+ * fallback): charset/import document framing, reference mode, `+:`/conditional/
+ * `setDefined` declarations (cross-declaration merge), `calc()`/`Operation`
+ * values (async eval), `&`-selectors (ampersand composition), interpolated
+ * selectors (resolve-at-enter — the 3rd P1 item), guarded/extend/at-rule
+ * containers, and re-declared variables (source-order-sensitive read).
  */
 export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   if (context.currentCharset || context.topImports?.length) {
@@ -213,42 +387,29 @@ export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   if (root.options?.referenceMode === true) {
     return false;
   }
-  const children = root.rules;
-  // A variable RE-DECLARED in the same scope makes a value read source-order
-  // sensitive (an earlier reader / a `snapshot` ref must see the earlier value,
-  // not the last binding). The single upfront frame the spine pushes carries the
-  // last-wins binding, so re-declaration is not yet spine-safe — exclude it.
-  // (Source-order-threaded per-position binding is a later push.)
-  let seenVarNames: Set<string> | undefined;
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (!isSimpleSpineLeaf(child)) {
-      return false;
-    }
-    if (isNode(child, N.VarDeclaration)) {
-      const name = child.name;
-      if (typeof name === 'string') {
-        seenVarNames ??= new Set<string>();
-        if (seenVarNames.has(name)) {
-          return false;
-        }
-        seenVarNames.add(name);
-      } else {
-        // A non-static (interpolated) var name can collide unseen — exclude.
-        return false;
-      }
-    }
-  }
-  return true;
+  // The body — leaves + nested rulesets — must be fully spine-coverable. A
+  // variable RE-DECLARED in the same scope is source-order sensitive (an earlier
+  // reader / `snapshot` ref must see the earlier value, not last-wins); the
+  // single upfront frame is not yet enough, so re-declaration is excluded per
+  // scope (per-position binding is a later push).
+  return isSpineEligibleBody(root.rules);
 }
 
 /**
- * Render a spine-eligible root through the SINGLE downward pass. This REPLACES
- * `evalForRender`→`this.eval()`→`serialize(output)` for this shape: there is no
- * `eval` call and no materialized output tree. The root's own value-frame is
- * pushed (its `_scopeFrame` made live via `context.rulesContext`) and each leaf
- * is resolved+emitted in place. The returned string is the document body (the
- * root owns its trailing newline, matching `_toDocumentString`).
+ * Render a spine-eligible root through the SINGLE downward pass — the pass entry.
+ *
+ * Contract: caller has confirmed `isSpineEligibleRoot`. Sets `options.spineMode`,
+ * pushes the root's value-frame, descends the source tree once (leaves + nested
+ * rulesets), and returns the document body string (root owns its trailing
+ * newline, matching `_toDocumentString`). Restores `context.root`/`treeRoot` on
+ * exit.
+ *
+ * Load-bearing invariant: REPLACES `evalForRender`→`this.eval()`→
+ * `serialize(output)` — there is NO `eval` call and NO materialized output tree
+ * on this path (ratchet-locked: `spineRenderCounter` moves, `Rules.eval`/
+ * `Rules.derive` not called). Nested containers reuse the KEPT structural
+ * serializer (`serializeRulesContainer`) in `spineMode`, which pushes each
+ * container's frame and resolves its leaves live.
  */
 export function renderRootViaSpine(
   root: Rules,
@@ -256,6 +417,10 @@ export function renderRootViaSpine(
   options: FinalPrintOptions
 ): MaybePromise<string> {
   spineRenderCounter.rootRenders++;
+  // Mark the whole descent spine mode: nested containers render via the
+  // structural serializer against a live frame (no eval, no output tree) and
+  // leaves resolve live — see serialize-helper `spineMode` + Ruleset.render.
+  options.spineMode = true;
   // Value-frame push: make the root's scope frame live for the whole descent,
   // and point the document root/tree-root at the SOURCE root (what the eval pass
   // used to establish). No eval() is called — the descent below resolves each

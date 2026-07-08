@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num } from '../index.js';
 import { Context } from '../../context.js';
-import type { Rules } from '../rules.js';
+import { Rules } from '../rules.js';
 import { spineRenderCounter, isSpineEligibleRoot } from '../util/emit-walk.js';
 
 /**
@@ -70,13 +70,71 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
-  it('a root with a nested container is NOT yet spine-eligible (routes to old path)', () => {
-    // Nested-container descent is the next push — until then such a root uses
-    // the eval path. This asserts the eligibility boundary so the wire-in does
-    // not silently claim shapes it does not yet fully handle.
+  it('routes a NESTED-RULESET root through the single pass with live leaf resolution', () => {
     const root = rules([
-      rules([decl({ name: 'color', value: spaced([el('red')]) })])
+      vardecl({ name: 'w', value: spaced([el('10px')]) }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [
+          decl({ name: 'width', value: ref({ key: 'w' }, { type: 'variable' }) }),
+          ruleset({ selector: sel([el('.b')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
+        ]
+      })
     ]);
-    expect(isSpineEligibleRoot(root, context)).toBe(false);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const css = root.render(context) as string;
+    expect(spineRenderCounter.rootRenders).toBe(before + 1);
+    // Container descended in place; dynamic @w resolved live under the frame.
+    expect(css).toContain('.a');
+    expect(css).toContain('width: 10px');
+    expect(css).toContain('color: red');
+  });
+
+  it('builds NO output tree (Rules.derive not called) on the wired container path', () => {
+    // RATCHET (metric axis (b)) — the eval→output-tree materialization is GONE
+    // for the wired container path. `Rules.derive` (the copy-on-write output-tree
+    // surface builder) must not fire. A later change that re-introduces the
+    // output tree on this path trips this RED.
+    const root = rules([
+      vardecl({ name: 'w', value: spaced([el('10px')]) }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [decl({ name: 'width', value: ref({ key: 'w' }, { type: 'variable' }) })]
+      })
+    ]);
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(context) as string;
+      expect(css).toContain('width: 10px');
+      expect(deriveCalls).toBe(0);
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('eligibility boundary excludes shapes the container spine does not yet fold', () => {
+    // These stay on the eval path (a scoped frontier, not a safety fallback).
+    // Ampersand composition:
+    const ampRoot = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        ruleset({ selector: sel([amp(), el('-mod')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(ampRoot, context)).toBe(false);
+
+    // Async-shape (calc/operation) declaration value:
+    const calcRoot = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        decl({ name: 'margin', value: call({ name: 'calc', args: list([op([dimension([10, 'px']), '*', num(2)])]) }) })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(calcRoot, context)).toBe(false);
   });
 });
