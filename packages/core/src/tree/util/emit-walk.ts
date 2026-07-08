@@ -33,6 +33,7 @@ import type { Context } from '../../context.js';
 import { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
+import { comparePosition } from './compare.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
@@ -266,12 +267,12 @@ export function resolveSpineMixinCall(
   call: Node,
   context: Context
 ): MaybePromise<SpineMixinCallResolution> {
-  const captured: Rules[] = [];
+  const captured: Array<{ surface: Rules; source: Rules }> = [];
   let anyRejected = false;
   const savedSink = context.spineMixinSurfaceSink;
   context.spineMixinSurfaceSink = (
     boundSurface: Rules,
-    _sourceRules: Rules,
+    sourceRules: Rules,
     candidateIsMixin: boolean
   ): boolean => {
     // Fold ONLY a spine-simple Mixin-DEFINITION body. A ruleset-as-mixin
@@ -288,7 +289,11 @@ export function resolveSpineMixinCall(
     // its own position, not last-wins (the per-position discipline, §2 — same as
     // `serializeSpineFrameContainer` does for a ruleset body).
     assignSpineChildIndices(boundSurface);
-    captured.push(boundSurface);
+    // Capture the source (the definition body/Mixin) for DOCUMENT-ORDER sorting
+    // below — when a call matches MULTIPLE candidates (a guarded + unguarded
+    // overload of the same name), their contributions must emit in source order,
+    // NOT candidate-loop order (which `hasDefault`/guard sorting may reorder).
+    captured.push({ surface: boundSurface, source: sourceRules });
     return true;
   };
   const restore = <T>(value: T): T => {
@@ -301,10 +306,24 @@ export function resolveSpineMixinCall(
   // handled by the special-case terminal) — use the eval output. `anyRejected`
   // likewise routes to eval. Either way the `call.eval()` return carries the
   // correct eval-path output for the fallback.
-  const finish = (output: Node): SpineMixinCallResolution =>
-    !anyRejected && captured.length > 0
-      ? { kind: 'fold', surfaces: captured }
-      : { kind: 'eval', output };
+  const finish = (output: Node): SpineMixinCallResolution => {
+    if (anyRejected || captured.length === 0) {
+      return { kind: 'eval', output };
+    }
+    // Sort captured surfaces by their source DOCUMENT ORDER (mirrors the eval
+    // path's `compareCallableOutputPosition`): same parent → by `index`, else
+    // `comparePosition`. So a call matching several overloads (guarded + unguarded)
+    // emits their bodies in source order, matching the eval path byte-for-byte.
+    const ordered = captured.slice().sort((a, b) => {
+      if (a.source.parent === b.source.parent
+        && a.source.index !== undefined
+        && b.source.index !== undefined) {
+        return a.source.index - b.source.index;
+      }
+      return comparePosition(a.source, b.source);
+    });
+    return { kind: 'fold', surfaces: ordered.map(entry => entry.surface) };
+  };
   try {
     // Drive the call's own resolution: the caller frame + candidate match + arg
     // binding + guard + recursion guard all run through the KEPT `evalNode`
@@ -728,9 +747,15 @@ function isSpineEligibleMixinDefinition(node: Node): boolean {
   if (!isNode(node, N.Mixin)) {
     return false;
   }
-  if (typeof node.name !== 'string' || node.guard) {
+  if (typeof node.name !== 'string') {
     return false;
   }
+  // INCREMENT 7: a `when` GUARD is admitted. The callable terminal evaluates the
+  // guard BEFORE the sink is consulted (`executeCallableCandidate`: `if
+  // (!guardResult.passes) return` — no output, sink never called), so a guard-
+  // FAILING candidate never folds and a guard-SELECTED candidate folds only when it
+  // passes — the guard outcome is faithfully reproduced by the KEPT eval. Verified
+  // byte-identical for pass / fail / select-among-several / `default()`.
   const params = node.params;
   if (!params) {
     return true;

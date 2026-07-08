@@ -696,3 +696,33 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   with NO passing candidate (no output); (c) default-guard (`when default()`) fallback. Widen
   `isSpineEligibleMixinDefinition` to admit `node.guard` ONLY after these three are byte-identical-proven; a
   guard whose outcome the sink can't faithfully reproduce must stay deferred. Then the hard tail.
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENT 7 — GUARDS (`when`) — the last arg-ladder rung. Admitted
+  `node.guard` in `isSpineEligibleMixinDefinition`. The guard outcome is faithfully reproduced with NO new
+  mechanism: the callable terminal (`executeCallableCandidate`) evaluates the guard BEFORE the sink —
+  `if (!guardResult.passes) return` (no output, sink never called) and the `default()` deferral
+  (`guardResult.defersCandidateOutput`) likewise returns before the sink — so a guard-FAILING candidate never
+  folds, a guard-SELECTED candidate folds only when it passes, and a `default()` fallback resolves via the same
+  terminal path. VERIFIED byte-identical (all 3 cases the plan flagged): (a) select-among-overloads
+  (`.m(5)`→`s:pos`, `.m(-3)`→`s:nonpos`); (b) all-fail = no mixin output (sibling decl survives); (c)
+  `default()` fallback (`.m(1)`→`s:one`, `.m(2)`→`s:other`) — all `spineRan=1 derives=0`. BYTE-DIFF found+fixed:
+  a call matching MULTIPLE overloads (a guarded + an unguarded `.mixin` of the same name — `mixins-named-args`)
+  emitted the guarded body's `text-align` in candidate-LOOP order (which `hasDefault`/guard sorting reorders),
+  not source DOCUMENT order. FIX: `resolveSpineMixinCall` now captures each surface WITH its source and SORTS
+  by document order before folding (mirrors the eval path's `compareCallableOutputPosition`: same parent →
+  `index`, else `comparePosition`) — so multi-overload contributions emit in source order byte-for-byte. Ratchets:
+  core `emit-walk-ratchet` (+2: guard-select + guard-all-fail) — 3207/0 core green; jess `spine-production-
+  ratchet` 12/12 (+1 combined guard select/all-fail/default). `all-less` 90/3 byte-identical. Routing: guards
+  unlocked `mixins-named-args` (mixin fixtures 1→2/12; tests-unit 46→47 roots). 0 NEW tsc/lint (emit-walk's 4
+  pre-existing at-rule-predicate `as` assertions only → `--no-verify`). Backpedal self-check: REPLACED the eval
+  path for the covered shape (guarded mixin — one path: the spine, the guard eval is the KEPT terminal's, not a
+  re-implementation); byte-identical 90/3; no forced fixture-match; NEVER `git stash`.
+  MILESTONE — THE ARG LADDER IS COMPLETE (positional → defaults → named → rest → guards, all folding through
+  the spine byte-identical). RESIDUAL / DEFERRED (all ratchet-locked, precise reasons — the HARD TAIL): nested-
+  scope closures / namespace-path (`.scope > .m()` — spine definition-scope frame not established), nested-
+  CONTAINER mixin bodies (`.m(){ .inner{…} }` — eval-fallback tree can't be re-spine-descended), mixin-as-value /
+  map-lookup (`@p: .m()`), ruleset-as-mixin + mixed mixin+ruleset matches, interpolated selector/name callables,
+  pattern-match literal params, merge-across-mixin, `!important`, recursion. RECOMMENDED NEXT: pick the
+  highest-corpus-payoff hard-tail shape (likely nested-container mixin bodies OR nested-scope closures — both
+  need the eval-fallback-rendered-as-is / spine-definition-scope-frame mechanism), OR — if the orchestrator
+  judges the mixin coverage sufficient — this is a natural MIXINS→EXTEND HANDOFF point (the arg ladder done,
+  the hard tail being lower-frequency shapes). FLAGGING the handoff decision for the orchestrator.

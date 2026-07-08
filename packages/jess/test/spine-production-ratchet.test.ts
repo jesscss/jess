@@ -252,4 +252,44 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path
     expect(css).toContain('border-width: 60'); // the deeply-nested call still emits
   });
+
+  it('INCREMENT 7: folds GUARDED (`when`) mixin calls through the spine on the COMPILER path (no derive)', async () => {
+    // Guard select-among-overloads + all-fail + default() all fold: the terminal
+    // evaluates the guard before the sink, so the passing candidate folds, a failing
+    // one emits nothing, and the outcome is byte-identical.
+    const cases: Array<{ src: string; has: string[]; hasNot?: string[] }> = [
+      // select among two guarded overloads
+      { src: `.m(@x) when (@x > 0) { s: pos; }\n.m(@x) when (@x <= 0) { s: nonpos; }\n.a { .m(5); }\n.b { .m(-3); }`,
+        has: ['s: pos', 's: nonpos'] },
+      // all guards fail → no mixin output (sibling decl survives)
+      { src: `.m(@x) when (@x > 100) { s: big; }\n.a { .m(5); color: red; }`,
+        has: ['color: red'], hasNot: ['s: big'] },
+      // default() fallback
+      { src: `.m(@x) when (@x = 1) { s: one; }\n.m(@x) when (default()) { s: other; }\n.a { .m(1); }\n.b { .m(2); }`,
+        has: ['s: one', 's: other'] }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before);
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0);
+        for (const frag of c.has) {
+          expect(css, `output ${frag}: ${c.src}`).toContain(frag);
+        }
+        for (const frag of c.hasNot ?? []) {
+          expect(css, `no output ${frag}: ${c.src}`).not.toContain(frag);
+        }
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
+  });
 });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest, condition } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
@@ -707,6 +707,53 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
       ruleset({ selector: sel([el('.a')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }) })] })
     ]);
     expect(isSpineEligibleRoot(root, context)).toBe(false);
+  });
+
+  it('INCREMENT 7: folds GUARDED mixin overloads — the passing guard SELECTS, the failing one emits nothing', async () => {
+    // Two overloads of `.m(@x)` — `when (@x > 0)` and `when (@x <= 0)`. The terminal
+    // evaluates the guard before the sink; only the passing candidate folds. A call
+    // with no passing guard emits nothing (its sibling decl still emits).
+    const guarded = (opStr: string, out: string) => mixin({
+      name: '.m',
+      params: list([vardecl({ name: 'x', value: nil() }, { paramVar: true })]),
+      guard: condition([ref({ key: 'x' }, { type: 'variable' }), opStr, dimension(num(0))]),
+      rules: [decl({ name: 's', value: spaced([el(out)]) })]
+    });
+    const root = rules([
+      guarded('>', 'pos'),
+      guarded('<=', 'nonpos'),
+      ruleset({ selector: sel([el('.a')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }), args: list([dimension(num(5))]) })] }),
+      ruleset({ selector: sel([el('.b')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }), args: list([dimension(num(-3))]) })] })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const css = await root.render(context);
+    // `.a` (x=5) selects the `> 0` overload; `.b` (x=-3) selects `<= 0`.
+    expect(css).toMatch(/\.a\s*\{[^}]*s:\s*pos/);
+    expect(css).toMatch(/\.b\s*\{[^}]*s:\s*nonpos/);
+  });
+
+  it('INCREMENT 7: a guard that FAILS for all candidates folds to no mixin output', async () => {
+    const root = rules([
+      mixin({
+        name: '.m',
+        params: list([vardecl({ name: 'x', value: nil() }, { paramVar: true })]),
+        guard: condition([ref({ key: 'x' }, { type: 'variable' }), '>', dimension(num(100))]),
+        rules: [decl({ name: 's', value: spaced([el('big')]) })]
+      }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [
+          call({ name: ref({ key: '.m' }, { type: 'mixin' }), args: list([dimension(num(5))]) }),
+          decl({ name: 'color', value: spaced([el('red')]) })
+        ]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const css = await root.render(context);
+    expect(css).toContain('color: red');
+    expect(css).not.toContain('s: big');
   });
 
   it('EXCLUDES a body with BOTH a mixin call and a `+:` merge decl (merge-across-mixin deferred)', () => {
