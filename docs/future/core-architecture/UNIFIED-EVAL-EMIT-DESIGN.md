@@ -44,9 +44,10 @@ expected to change.
    contribution is its COMPOSED selector.
 5. **EMIT is a per-node inline pipeline carrying a PRUNED-MINIMUM GENERIC VISITOR (owner-resolved, §6):**
    per node — produce shape (reuse canonical untouched if unchanged; fresh transient only if eval
-   changed it) → invoke registered visitors inline on that node (a generic `(node, ctx) => Node | void`
-   hook owned by `@jesscss/core`, Less-agnostic — NO `REMOVE`/`ABORT`/`visitDeeper`; less-compat is just
-   ONE downstream consumer, §6.7) → serialize immediately → release. The node intermediate survives only
+   changed it) → invoke registered visitors inline on the RESOLVED OUTPUT node (a generic
+   `(node) => Node | void` hook owned by `@jesscss/core`, Less-agnostic — the node handed in IS the node
+   that will serialize, its value already in output form; NO `frame`, NO `REMOVE`/`ABORT`/`visitDeeper`;
+   less-compat is just ONE downstream consumer, §6.7) → serialize immediately → release. The node intermediate survives only
    TRANSIENTLY and LOCALLY at each emit position, never as a persistent output tree, never as a separate
    visitor or serialize pass. The pass IS the traversal, so a visitor needs no traversal of its own —
    this is what lets the whole-tree `Visitor`/`TreeVisitor` framework and the `preSerializeRoot` seam
@@ -632,16 +633,34 @@ The contract lives in `@jesscss/core` and is complete and testable with zero Les
 **Final signature.**
 
 ```ts
-type NodeVisitor = (node: Node, ctx: VisitContext) => Node | void
+type NodeVisitor = (node: Node) => Node | void
 ```
 
 That is the WHOLE core contract. A visitor is a function the pass fires at each node, after that
 node's own eval/emit shape is produced and before it serializes.
 
+**The node passed IS the node that will be serialized, values already resolved — a visitor never
+resolves against a frame to read the current node.** The hook fires post-shape / pre-serialize, so
+`node` is the ACTUAL output node, not a canonical/unresolved placeholder: a static node is its concrete
+canonical form; a dynamic node (e.g. `@w`) is its resolved output form (`10px`, not `@w`). A visitor
+reads and returns `node` directly — no resolving-against-a-frame gymnastics, no "is this the real node
+or a template?" ambiguity. (See §6.4 for how this reconciles with the shape / canonical-mutation model,
+and the "resolve-before-hook is gated on registration" note below for why this costs nothing when no
+visitor is registered.)
+
+**Resolve-before-hook is GATED on visitor registration (zero-cost when no visitor exists).** The pass's
+no-copy fast path is preserved: a leaf resolves lazily at write time, and materializing a dynamic node
+into its output form *before* the hook only happens when ≥1 visitor is registered. With no visitor
+registered, the pass never forces early materialization — the leaf resolves at write exactly as it does
+today, and "the visitor sees a resolved node" imposes no cost because there is no visitor. A static
+node's canonical value is already concrete, so it needs no pre-hook resolution regardless; only a
+DYNAMIC node, and only when a visitor IS registered, is resolved into its output form before the hook
+fires.
+
 **Return semantics — exactly two cases (this is the sane minimum, §item 1):**
 - **`void` / `undefined`** → node unchanged; the same shape flows to serialize. (Output-invisible
   in-place annotation is separately governed by ruling 1 — see §6.4.)
-- **a `Node`** → REPLACEMENT; the returned node is what serializes. This is `fn.call(this, n, ctx) ?? n`
+- **a `Node`** → REPLACEMENT; the returned node is what serializes. This is `fn.call(this, n) ?? n`
   — the semantics core's `Visitor._visit` already implements (`visitor/index.ts:144-150`).
 
 There is **no `REMOVE` and no `ABORT` in the core return vocabulary** (see the KEEP/DROP table, §6.6).
@@ -649,25 +668,41 @@ There is **no `REMOVE` and no `ABORT` in the core return vocabulary** (see the K
 the return type narrows to `Node | void`. (`REMOVE`/`ABORT` may remain as internal core symbols for
 other machinery, but they are NOT exposed to visitors and NOT part of this contract.)
 
-**Context — the smallest bundle that lets less-compat build its `less.tree` adapter (§item 7):**
+**Context — DROPPED. There is no `ctx`.** The prior design passed `ctx: { frame }` (the live
+value-frame). That is removed from the contract: the visitor's sole argument is the resolved output
+`node`. The reasoning:
 
-```ts
-interface VisitContext {
-  frame: ScopeFrame       // the live value-frame (top of the §2 stack)
-}
-```
+- **Why `frame` was a smell.** Handing a visitor a `frame` implies "here is a maybe-unresolved node —
+  resolve it yourself against these bindings." That is exactly the backflip the contract must forbid.
+  Since the node handed in is ALREADY the resolved output node (above), there is nothing for a visitor
+  to resolve against a frame. The frame only ever appeared to serve less-compat's *custom functions*
+  (`less.functions`), so the question is strictly whether less-compat needs a frame handed via the
+  visitor `ctx`. It does not.
+- **The bridge never reads a frame from the visitor ctx (cited).** The less-compat visitor entry
+  (`plugin.ts:1136` `visit(node)`) takes only a node; the per-type dispatch passes each Less `visit*`
+  method a second argument of `{ visitDeeper }` — a bridge-internal descent flag, NOT a scope frame
+  (`less-compat-structures.ts:49-52,70,105`). No `visit*` method, and nothing in the transform layer,
+  reads a `frame`/scope off a visitor context. A repo-wide search of the bridge for `frame` finds ZERO
+  uses. The Less *visitor* plugins operate purely on the converted `less.tree` node SHAPE.
+- **Custom-fn resolution is a SEPARATE path that already has its scope — no visitor ctx involved.**
+  A Less custom function is wrapped and added to the Jess function registry
+  (`addToJessRegistry`, `plugin.ts:26-45`); it is invoked during the Call node's OWN eval, where `this`
+  is the Jess eval context and args resolve via `arg.eval(this)` (`plugin.ts:37-42`). That `this`/scope
+  is supplied by Jess's normal function-call eval path — i.e. the live value-frame the pass threads at
+  the leaf (§2, `reference.ts:1040-1050` `scope.findFunction`), NOT a frame handed through the visitor
+  hook. Custom functions run at their Call node's eval instant, before/independently of the visitor
+  hook; the visitor never calls a custom function. So `less.functions` already resolves against live
+  bindings without any `ctx.frame`.
 
-- the live **value-frame** — so a visitor, or a custom function it calls, resolves values / inspects
-  scope against the SAME bindings leaf resolution uses (§2). This is what `less.functions` custom
-  functions need to run against live bindings (`plugin.ts` function-registry path).
-
-Nothing else. The context carries NO structural-stack handle, NO output-writer handle, NO
-`visitDeeper` flag, NO Less-specific view, NO consumer identity. The node passed as the first argument
-is the placement-context node the pass already stands on; less-compat adapts THAT one node to a
-`less.tree` view (`toLessNode`) and drives its own child adaptation lazily via its adapter's `accept`
-(`less-compat-structures.ts:121`) — it does not need core to hand it ancestry, a writer, or a descent
-flag. The earlier design's structural-stack + writer + `visitDeeper` fields are all dropped from `ctx`
-(§6.6) because neither the bridge nor any sampled plugin reads them.
+Verdict: **(a) drop `frame` entirely.** The resolved node is self-contained for the visitor, and
+less-compat's custom functions get their live scope from the Call-eval path they already use. The
+context also carries NO structural-stack handle, NO output-writer handle, NO `visitDeeper` flag, NO
+Less-specific view, NO consumer identity — the earlier design's structural-stack + writer +
+`visitDeeper` fields were already dropped (§6.6); `frame` now joins them. The node passed as the sole
+argument is the resolved placement-context node the pass already stands on; less-compat adapts THAT one
+node to a `less.tree` view (`toLessNode`) and drives its own child adaptation lazily via its adapter's
+`accept` (`less-compat-structures.ts:121`) — it needs neither ancestry, a writer, a descent flag, nor
+a frame from core.
 
 ### 6.2 Hook edges — ONE (enter) in the baseline; EXIT kept only because one real plugin needs it
 
@@ -716,7 +751,7 @@ tree to walk. **In the unified pass the walk already happens**, so a visitor nee
   descent under the pass.
 
 **KEEP as the minimal core:**
-- The **`(node, ctx) => Node | void`** shape and its two-case (void / replace) semantics (§6.1).
+- The **`(node) => Node | void`** shape and its two-case (void / replace) semantics (§6.1).
 - The **enter edge** always; the **exit edge** as an optional registration (§6.2, kept for the
   `inline-urls` proof).
 - A **trivial ordered list of registered visitors** the pass iterates per node (§6.5). This is the one
@@ -725,7 +760,7 @@ tree to walk. **In the unified pass the walk already happens**, so a visitor nee
 **Verdict:** still a NET SIMPLIFICATION, now strictly smaller than the previous §6: we delete the
 whole-tree walker + root seam + self-driven driver AND we drop `REMOVE`, `ABORT`, `visitDeeper`, the
 structural-stack/writer context fields, and the multi-visitor chaining logic from the core surface.
-What remains is "a registered `(node, ctx) => Node | void` callback the pass fires at enter (and,
+What remains is "a registered `(node) => Node | void` callback the pass fires at enter (and,
 optionally, exit)."
 
 ### 6.4 Interaction with the shape / canonical-mutation model (ruling 1)
@@ -749,7 +784,7 @@ discipline as the rest of the pass; visitors introduce no new invariant.
   ordered list held on the render/compile context. No auto-registration; the list is empty unless a
   caller registers.
 - **Ordering.** Deterministic registration order. The pass iterates the list at each node, threading
-  the current shape through: `shape = visitor.enter(shape, ctx) ?? shape`. A `Node` return re-seats
+  the current shape through: `shape = visitor.enter(shape) ?? shape`. A `Node` return re-seats
   `shape` for the next visitor; exit edges (if any) fire after children.
 - **NO chaining semantics beyond that.** The previous §6 specified `REMOVE` short-circuit, `ABORT`
   continue-others, and LIFO exit as a registry option. All DROPPED: no sampled plugin returns a removal
@@ -764,13 +799,13 @@ discipline as the rest of the pass; visitors introduce no new invariant.
 
 | Element (prior §6) | Verdict | Reason (with citation) |
 |---|---|---|
-| **Signature `(node, ctx) => Node \| void`** (replace / unchanged) | **KEEP (core)** | The sane minimum. Covers the entire real-plugin operation set: "inspect a node, optionally replace it" (audit `:2129–2155`). Baseline contract. |
+| **Signature `(node) => Node \| void`** (replace / unchanged) | **KEEP (core)** | The sane minimum. Covers the entire real-plugin operation set: "inspect a node, optionally replace it" (audit `:2129–2155`). Baseline contract. `node` is the resolved output node (§6.1) — no `ctx`, no frame. |
 | **`REMOVE` return** | **DROP from core → PUSH to consumer** | No sampled published plugin removes a node (`rtl` and `inline-urls` both *replace*; `dls` only inspects — `:2132–2149`). A consumer that truly wants to drop a node returns an invisible/Nil node, which already serializes to nothing. The bridge's one internal `REMOVE` (`plugin.ts:1235`, fired when a *replacing* Less visitor returns `undefined`) maps to "return a Nil/invisible node" on the bridge side — it never needs a core removal signal. Core's `REMOVE` symbol leaves the visitor contract. |
 | **`ABORT` / `visitDeeper:false` (skip children)** | **DROP from core** | NO sampled plugin uses skip-children (audit `:2129–2166`). `visitDeeper` in the bridge is purely BRIDGE-INTERNAL: it gates the bridge's own `LessAdapterBase.accept` walk over the adapted `less.tree` view (`less-compat-structures.ts:49–52,60,121`), driven on the Less side, never a core skip signal. Core supplies the traversal; there is nothing for a core `ABORT` to skip. |
 | **enter/exit BOTH edges** | **enter KEEP (core); exit KEEP-ONLY-FOR-PROOF (optional)** | enter carries `rtl`, `dls`, and the whole inspect/replace common case. exit is retained solely because one real published plugin, `less-plugin-inline-urls`, "touches `Rule` **enter/exit** state" (`:2141`). Made OPTIONAL: fired only if a visitor registers it; zero cost otherwise. |
 | **Per-type dispatch (`visitRuleset`…)** | **PUSH to consumer (already)** | The consumer switches on `node.type` inside its own `enter` (`less-compat-structures.ts:70`, v2 aliases `:76-91`). Core owes no per-type table. Confirmed. |
 | **Multi-visitor chaining / ordering / priority** | **DROP to a trivial list (core); real chaining PUSHED to consumer** | less-compat registers exactly ONE core visitor (`plugin.ts:135,304`). The multi-Less-visitor iteration lives inside that single bridge visitor (`plugin.ts:1210-1242`) on the Less side. Core keeps only a bare ordered list so native + compat visitors coexist — no short-circuit/`REMOVE`/`ABORT`/LIFO machinery (§6.5). |
-| **Context: value-frame** | **KEEP (core)** | Needed so `less.functions` custom functions resolve against live bindings, exactly as leaf resolution does (§2, §6.1). |
+| **Context: value-frame** | **DROP from core (no `ctx` at all)** | The visitor never resolves against a frame: the node it receives is ALREADY the resolved output node (§6.1). The frame's only apparent purpose was less-compat's `less.functions`, but the bridge never reads a frame off the visitor ctx — its `visit(node)` takes only a node and the per-type methods get `{ visitDeeper }`, not a scope (`plugin.ts:1136`, `less-compat-structures.ts:49-52,70`; repo-wide `frame` search of the bridge = 0 hits). Custom functions resolve against live bindings via their OWN Call-eval path (`addToJessRegistry` → `arg.eval(this)`, `plugin.ts:26-45`; `reference.ts:1040-1050`), not the visitor hook. Signature reduces to `(node) => Node \| void`. |
 | **Context: structural stack (ancestry / `composedSelectorStack`)** | **DROP from core** | Neither the bridge nor any sampled plugin reads core-supplied ancestry; the bridge builds its own view from the single node via `toLessNode`/`accept` (`less-compat-structures.ts`). If a future plugin needs ancestry, it is added then — not speculatively. |
 | **Context: output writer/buffer handle** | **DROP from core** | The normal (and only observed) path is return-a-node; no sampled plugin emits bytes directly. Drop the writer affordance; re-add only if a concrete plugin needs it. |
 | **Context: `visitDeeper` descent flag** | **DROP from core** | Bridge-internal only (see `ABORT` row). Not a core affordance. |
@@ -786,8 +821,19 @@ bridge already is (`plugin.ts:1136` `visit`, `:1194` `toLessNode`, `:1247` `from
 bridge now does ITSELF vs gets from CORE, under the pruned surface:
 
 **From core (the whole core surface it consumes):**
-- the **node** at its settled shape, at the **enter** edge (and **exit** for `inline-urls`);
-- the **live value-frame** in `ctx`, so wrapped `less.functions` resolve against live bindings.
+- the **resolved output node** at its settled shape, at the **enter** edge (and **exit** for
+  `inline-urls`). That is the ENTIRE core surface — one node, no `ctx`, no frame.
+
+**Custom functions (`less.functions`) under the reduced ctx — no frame needed.** Dropping `frame` does
+NOT strand custom functions, because they never ran inside the visitor hook to begin with. A Less
+custom function is wrapped and added to the Jess function registry (`addToJessRegistry`,
+`plugin.ts:26-45`); Jess invokes it during the Call node's OWN eval, binding `this` to the live Jess
+eval context and resolving its args via `arg.eval(this)` (`plugin.ts:37-42`). That `this`/scope is the
+live value-frame the pass already threads at the leaf (§2; `scope.findFunction`, `reference.ts:1040-1050`)
+— supplied by the normal function-call path, not by anything handed through the visitor. So custom-fn
+resolution against live bindings is already self-contained on the Call-eval side; the visitor `ctx` was
+never in that path. The `visit(node)` entry itself only converts node shape and runs Less *visitor*
+plugins (`plugin.ts:1136,1194,1247`) — none of which read a scope.
 
 **On the bridge side (everything else — this is where the conservative scope lives):**
 - **`less.tree` node view** — built inside the bridge's `enter` via `toLessNode` on the ONE handed
@@ -808,9 +854,9 @@ bridge now does ITSELF vs gets from CORE, under the pruned surface:
 **The proof it discharges:** a real published plugin (`less-plugin-rtl`) that inspects and replaces
 declaration/value nodes runs through the enter-only path; a real published plugin
 (`less-plugin-inline-urls`) that needs enter/exit state and pre-eval runs through the optional exit
-edge plus the retained pre-eval pre-pass; custom functions resolve against the `ctx` value-frame. That
-is the full observed real-plugin operation set, served by `Node | void` + value-frame + optional
-exit + pre-eval pre-pass — and nothing more.
+edge plus the retained pre-eval pre-pass; custom functions resolve against the live frame via their own
+Call-eval path (above). That is the full observed real-plugin operation set, served by `Node | void`
+(node only, no ctx) + optional exit + pre-eval pre-pass — and nothing more.
 
 Because less-compat is a **conservative bridge** (scoped to observed real-plugin usage, §intro), it
 does NOT claim full 4.x visitor fidelity. Any 4.x capability with no demonstrated published-plugin
@@ -819,18 +865,59 @@ in core, structural-stack/writer context) is intentionally NOT bridged and docum
 rather than simulated — matching the audit's own policy note (`:2156-2166`: "Unsupported leaf hooks
 should be documented as intentionally unavailable rather than simulated").
 
+**Leanness note 1 — compat-shape conversion scales with what the plugin actually visits (a `less`
+concern; core unaffected).** Today the bridge converts EAGERLY: the top-level `visit(node)` is fired by
+the pass on every node and immediately calls `toLessNode(jessNode)` (`plugin.ts:1194`) BEFORE any
+per-type dispatch — the `visit${type}` fan-out happens only later, inside the adapter's `accept`
+(`less-compat-structures.ts:70`). So a jess node whose type NO registered Less visitor handles is still
+round-tripped through the `less.tree` adapter (`toLessNode`/`fromLessNode`) for nothing — the visitor
+will never touch it. The optimization: at registration, enumerate the SET of `visit{Type}` methods the
+registered Less visitor(s) actually define (discoverable exactly as `accept` discovers them —
+`typeof this.visitor['visit'+Type] === 'function'`, plus the v2 `Directive`/`Rule`/`Reference` aliases
+`less-compat-structures.ts:76-91`, and the generic `visit` fallback which, if present, forces
+convert-all); in the bridge's `enter`, skip `toLessNode` + dispatch entirely for node types NOT in that
+set — those nodes stay jess nodes with no round-trip. Compat cost then scales with the plugin's actual
+visited-type footprint, not tree-size × all-types. Caveat: `@plugin`-inserted visitors can widen the
+set mid-run (`plugin.ts:1210-1242`), so the set must be recomputed when `lessVisitorInstances` grows
+(or fall back to convert-all once a dynamically-added visitor with an unknown footprint appears). This
+is purely a `less`-package refinement — core's `(node) => Node | void` contract is unchanged by it.
+
+**Leanness note 2 — the registration gate keys on REAL WORK, not on the plugin being present (a `less`
+concern; core stays a dumb registered-or-not gate).** The resolve-before-hook materialization (§6.1) is
+gated on "is any visitor registered?" But less-compat, if it registered its bridge jess-visitor merely
+because the plugin is LOADED, would trip that gate — and pay the dynamic-node materialization — even
+with ZERO real Less visitors to run. The gate must track real work, not mere presence. **Fix
+(preferred, keeps core dumb): less-compat registers its bridge jess-visitor CONDITIONALLY — only when
+it has ≥1 real Less visitor / pre-eval visitor to run.** The bridge already knows this cheaply at
+registration/pre-pass time: `hasConfiguredBeforeEvalWork()` (`plugin.ts:206-208`,
+`opts.plugins?.length || opts.visitors?.length`) plus, because `@plugin` can inject visitors mid-run,
+`sourceMayContainPluginDirective(tree)` (`plugin.ts:210-213`, source contains `@plugin`). If neither
+holds → less-compat registers NOTHING → core's "any visitor registered?" gate stays FALSE → no early
+materialization; the no-copy fast path holds even with less-compat loaded. (Only if the bridge truly
+could not know its set before registering would a core-side "does any registered visitor have work?"
+query be the fallback — but the two predicates above make conditional registration sufficient, so core
+stays a simple registered-or-not gate.) This makes "less-compat loaded but idle" cost EXACTLY zero,
+identical to "no visitor at all."
+
+**General principle (§6):** the registration gate keys on REAL WORK, not on a plugin being present. A
+consumer registers a visitor only when it will actually do something at a node; a loaded-but-idle
+consumer registers nothing and is indistinguishable, cost-wise, from having no visitor. Both leanness
+notes above are the same "least weight" spirit as the core contract — scale cost to actual usage.
+
 ### 6.8 Package boundary — core owns the generic API, `less` owns the compat consumer (unchanged)
 
-- The generic registration API (`registerVisitor`, the `(node, ctx) => Node | void` contract, the
+- The generic registration API (`registerVisitor`, the `(node) => Node | void` contract, the
   enter/optional-exit edges, the trivial list) lives in `@jesscss/core`, complete and testable with
-  ZERO Less knowledge. Core exposes only node + value-frame + return-a-node; it MUST NOT expose a
-  Less-specific hook or bake in `less.tree`/`less.functions` shapes.
+  ZERO Less knowledge. Core exposes only the resolved node + return-a-node (no `ctx`, no frame); it
+  MUST NOT expose a Less-specific hook or bake in `less.tree`/`less.functions` shapes.
 - The less-compat visitor is registered by the `less` package (the 4.x-compat facade). For jess,
   less-compat is an OPTIONAL SIDE DEPENDENCY: jess never imports or auto-registers it. The native-Jess
   visitor story stands alone.
-- Any capability the bridge needs is framed as a GENERAL `VisitContext` affordance (node + live frame)
+- Any capability the bridge needs is framed as a GENERAL affordance (currently just the resolved node)
   that less-compat HAPPENS to use to build a `less.tree` adapter on its own side — never a Less-branded
-  core API.
+  core API. Should a future native plugin genuinely need scope at the hook, it would be re-added then as
+  an explicit optional/advanced affordance — but no current consumer (bridge or sampled plugin) does, so
+  the contract carries no `ctx`.
 
 ### 6.9 Pre-eval visitors — the one residual owner call (narrowed)
 
@@ -845,7 +932,7 @@ visitor (audit `:2140`).
 
 **RESOLVED (owner 2026-07-08): KEEP the pre-eval pre-pass, gated on registration so it is ZERO-COST when
 unused.** It stays a separate structural pre-walk over the un-evaluated tree, orthogonal to the eval/emit
-fold, feeding the SAME `(node, ctx) => Node | void` contract at the pre-eval lifecycle point (preserving
+fold, feeding the SAME `(node) => Node | void` contract at the pre-eval lifecycle point (preserving
 `inline-urls` compat). The leanness requirement is a hard gate: **the pre-walk only runs if ≥1 pre-eval
 visitor is registered** — if none are (the common case; pre-eval visitors are rare, `inline-urls` is the
 lone published one), the canonical tree is NEVER walked pre-eval and the pre-pass costs nothing. So the
@@ -859,10 +946,13 @@ Sourcemaps are unchanged from §2.4: the writer attributes each chunk to the sou
 stands on (canonical for static, or a transient's carried origin for changed/visitor-replaced nodes).
 No persistent output tree is forced.
 
-**Net:** the pruned core visitor surface is: **one signature `(node, ctx: { frame }) => Node | void`,
-fired at enter (always) and exit (optional, kept only for the `inline-urls` proof), threaded through a
-trivial ordered list.** Deleted vs the prior §6: `REMOVE` from the return type, `ABORT`/`visitDeeper`
-entirely, the structural-stack and output-writer context fields, and the multi-visitor
+**Net:** the pruned core visitor surface is: **one signature `(node) => Node | void` where `node` is the
+resolved output node (values already in output form — a visitor never resolves against a frame to read
+the current node), fired at enter (always) and exit (optional, kept only for the `inline-urls` proof),
+threaded through a trivial ordered list.** Deleted vs the prior §6: `REMOVE` from the return type,
+`ABORT`/`visitDeeper` entirely, the `ctx` object as a whole (the `frame` field included — the visitor
+reads the resolved node directly, and less-compat's custom functions get their live scope from their
+own Call-eval path, §6.7), the structural-stack and output-writer context fields, and the multi-visitor
 chaining/short-circuit/priority machinery — on top of the already-planned deletion of `TreeVisitor`,
 `preSerializeRoot`, and the self-driven `Visitor.visit` driver. less-compat proves the reduced surface
 with two real published plugins (`rtl` via enter; `inline-urls` via optional-exit + the retained
@@ -882,11 +972,12 @@ chaining ENTIRELY on its own side. Residual open item: pre-eval (§6.9).
 - The ScopeFrame model (`scope-frame.ts`) — its lexical-chain design is exactly right; the change is
   its LIFETIME (kept live through emit) not its shape.
 - `+:` decl-merge and `$while` counter state (not copies).
-- The PRUNED visitor CONTRACT — `(node, ctx: { frame }) => Node | void` (replace / unchanged only;
-  reuses core's `fn(n,ctx) ?? n` semantics at `visitor/index.ts:144-150`) with an always-fired **enter**
-  edge and an OPTIONAL **exit** edge — survives as the core-owned per-node hook (§6.1–§6.2); only its
-  INVOCATION changes (fired by the pass, not self-driven). `REMOVE`, `ABORT`, and `visitDeeper` are NOT
-  in the core visitor surface (§6.6).
+- The PRUNED visitor CONTRACT — `(node) => Node | void` where `node` is the resolved output node
+  (replace / unchanged only; reuses core's `fn(n) ?? n` semantics at `visitor/index.ts:144-150`) with an
+  always-fired **enter** edge and an OPTIONAL **exit** edge — survives as the core-owned per-node hook
+  (§6.1–§6.2); only its INVOCATION changes (fired by the pass, not self-driven). `REMOVE`, `ABORT`,
+  `visitDeeper`, AND the `ctx`/`frame` are NOT in the core visitor surface (§6.6); a visitor reads the
+  resolved node directly and never resolves against a frame.
 - The pre-eval visitor pre-pass (`beforeEvalVisitor` / `applyBeforeEvalVisitors`) — retained as a
   separate structural pre-walk outside the unified pass (kept because `less-plugin-inline-urls` is a
   real pre-eval plugin; §6.9, owner decision pending).
