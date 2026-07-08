@@ -44,6 +44,9 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import type { Rules } from '../rules.js';
 import type { Node } from '../node.js';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { projectSubject, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
+import type { OutputWriter } from '../util/print.js';
 
 /**
  * Instrument for the zero-extend ratchet (metric axis (b): the fast path pays nothing).
@@ -93,7 +96,7 @@ export function treeHasExtend(node: Node): boolean {
     rules = node.rules;
   } else if (isNode(node, N.Rules)) {
     rules = node.rules;
-  } else if (isNode(node, N.AtRule)) {
+  } else if (isNode(node, N.AtRule) && 'rules' in node && Array.isArray(node.rules)) {
     rules = node.rules;
   }
   if (rules) {
@@ -118,4 +121,95 @@ export function treeHasExtend(node: Node): boolean {
  */
 export function engageExtendLayer(root: Rules): boolean {
   return treeHasExtend(root);
+}
+
+/**
+ * A reaching-extend SUBJECT captured for buffer-then-flush (design §4.4.1). Its two parts
+ * have OPPOSITE dependencies (§4.4.1):
+ *
+ *   - `decls` — the subject's body bytes, ALREADY RESOLVED against the live value-frame
+ *     during the descent (via `bufferSubjectDecls` below). Byte-final the instant the walk
+ *     leaves the subject; they wait at flush only because they follow a not-yet-final
+ *     header in output order, NOT because any value work remains.
+ *   - `targetPath` / `contributions` — the HEADER inputs. The header is a function of the
+ *     structural stack (`targetPath`, fixed on descent) PLUS the extend contributions the
+ *     subject gains during SOLVE — not final until the fixpoint settles (§4.2). So the
+ *     header is the ONLY deferred part.
+ */
+export interface BufferedSubject {
+  /** the target's own bucket path (ancestor Selector chain, outermost → own local). */
+  targetPath: BucketPath;
+  /** document order of the subject's authored selector (branch-0 order, EMIT sort key). */
+  order: number;
+  /** the extend contributions SOLVE routed to this subject (extender bucket paths + order). */
+  contributions: EmitContribution[];
+  /** the subject body bytes, resolved live during descent (everything between `{` and `}`). */
+  decls: string;
+  /** the raw block-opening (` {\n` etc.) and closing (`}\n`) framing captured at the subject. */
+  open: string;
+  close: string;
+}
+
+/**
+ * Capture a subject's body bytes into a buffer DURING the descent — the value half of
+ * §4.4.1. Runs `emitBody` (which resolves the subject's leaves against the LIVE
+ * value-frame and writes them to `writer`), but via `writer.preview`, which MARKS the
+ * writer, lets `emitBody` write, captures the produced bytes with `getSince`, then ROLLS
+ * THE WRITER BACK. So the decls are byte-final and parked, and NOTHING lands in the real
+ * output stream for this subject yet (its header is still a hole).
+ *
+ * ASYNC-SAFE FLUSH INVARIANT (LOAD-BEARING — the B1s discipline, design §2.3/§4.4.1).
+ * A declaration value can resolve ASYNC (`calc()`, an async less-compat `alpha()`), so
+ * `emitBody` may return a promise that writes into the writer in a LATER microtask. The
+ * capture MUST NOT roll the writer back until that async write has completed — otherwise
+ * the rolled-back writer receives the async bytes at the wrong position (the exact
+ * wrong-place-bytes bug the P1 frame-pop guard prevents). `writer.preview` already honors
+ * this: it chains `getSince`+`restore` on the thenable (`print.ts:660` —
+ * `isThenable(out) ? out.then(finish) : finish(out)`), so the rollback runs only AFTER
+ * the async body settles. We therefore MUST return `preview`'s MaybePromise unchanged and
+ * never wrap it in a synchronous `finally` that would roll back early.
+ */
+export function bufferSubjectDecls(
+  writer: OutputWriter,
+  emitBody: () => MaybePromise<string | void>
+): MaybePromise<string> {
+  return writer.preview(emitBody);
+}
+
+/**
+ * Compose the subject's FINAL header from its settled contributions (the header half of
+ * §4.4.1 / the EMIT projection §4.3), joined in the byte shape the serializer emits: one
+ * Or-branch per line, `,\n`-separated (matching the eval-path `.a,\n.b` output). Reuses
+ * the validated EMIT `projectSubject` (compose-relative-to-target + document-order sort +
+ * dedup); this unit only formats the projected branches into header text.
+ *
+ * Returns the branches' header text AND `hoistToRoot` — the caller (the reaching-subject
+ * routing) decides placement. Increment 1 handles only `hoistToRoot === false`.
+ */
+export function composeSubjectHeader(subject: BufferedSubject): { header: string; hoistToRoot: boolean } {
+  const emitSubject: EmitSubject = {
+    path: subject.targetPath,
+    order: subject.order,
+    contributions: subject.contributions
+  };
+  const projection = projectSubject(emitSubject);
+  const header = projection.branches.map(b => String(b.valueOf())).join(',\n');
+  return { header, hoistToRoot: projection.hoistToRoot };
+}
+
+/**
+ * FLUSH one buffered subject to its final block text: `header ++ open ++ decls ++ close`
+ * (design §4.4.2 baseline splice — compose the header ONCE from the settled, sorted branch
+ * set, then splice the parked decl bytes). This is a pure string assembly; the caller
+ * writes the result to the real writer at the subject's document position.
+ *
+ * Increment 1 asserts `hoistToRoot === false` (root-level, non-crossing shape); a crossing
+ * subject is a later increment (it emits at root placement, not the subject's position).
+ */
+export function flushBufferedSubject(subject: BufferedSubject): string {
+  const { header, hoistToRoot } = composeSubjectHeader(subject);
+  if (hoistToRoot) {
+    throw new Error('spine extend flush: hoistToRoot not wired (P3 increment 1 handles non-crossing only)');
+  }
+  return header + subject.open + subject.decls + subject.close;
 }
