@@ -40,11 +40,23 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       `F_HAS_NODE_CHILD`/`F_CHILD_DERIVED`. (Reference: `FLAG-WALK-DELETION.md`, design §7.)
 
 ### P1 — the frame-threading spine (§2)  ·  SERIAL, foundational, everything depends on it
-- [ ] Emit descends the SOURCE tree with the live value-frame stack pushed/popped by the walk; a leaf
+- [~] Emit descends the SOURCE tree with the live value-frame stack pushed/popped by the walk; a leaf
       resolves `resolve(sourceLeaf, currentFrame)`→bytes at its emit moment; no `state.output` tree.
-- [ ] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
+      **Mechanism landed** in `tree/util/emit-walk.ts`: `withValueFrame` (value-frame push/pop via
+      `context.rulesContext`), `emitLeaf` (resolve-against-live-frame → bytes, transient resolved node
+      dropped, source node as sourcemap origin), `emitSharedBody`/`emitChildren` (leaf descent). Proven
+      by `emit-walk-spine.test.ts`: static leaf + dynamic `width:@w` resolve+emit with NO output tree.
+      **Still standing (next push):** wiring this into `Rules.render` to REPLACE `evalForRender`→`eval`→
+      `serialize` for the container descent (structural side reused from `serializeRulesContainer`).
+- [~] Mixin/loop/`$for`/`$if` bodies descended SHARED under a pushed frame (no copy); `inherit`'s per-node
       span/flag stamping ELIMINATED (span read off the source node in place).
+      **Shared-body mechanism landed:** `pushBoundBodyFrame` builds a thin surface over the SHARED source
+      child array under a fresh per-placement `buildScopeFrame` with live-cell bindings (mirrors
+      `createIterationEvalSurface(share=true)`). Proven: one shared body emitted twice under two frames →
+      `10px`/`20px` with the SAME leaf node identity (no copy). `inherit` span-stamp elimination not yet
+      done (depends on the render wire-in removing the derived output node).
 - [ ] Selector interpolation resolves at ruleset-enter (frame live) → concrete selector available to extend.
+      NOT STARTED (structural-side; comes with the container wire-in).
 
 ### P2 — per-node inline visitor model (§6)  ·  depends on P1
 - [ ] Replace the separate visitor walk + `preSerializeRoot` with the generic per-node hook
@@ -133,3 +145,14 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
 (agents append: date · phase · what landed / what's blocked)
 - 2026-07-08 · P0 · checklist created.
 - 2026-07-08 · governance · success-criteria + ratchet + metric-table + definition-of-done added.
+- 2026-07-08 · P1 · frame-threading spine MECHANISM landed as `tree/util/emit-walk.ts` (new module, not a
+  rewrite of the old serializer — HARD RULE respected): `withValueFrame` (value-frame push/pop via
+  `context.rulesContext`), `emitLeaf` (resolve-against-live-frame→bytes, no output node), `emitSharedBody`
+  + `emitChildren` (leaf descent), `pushBoundBodyFrame` (shared body under fresh per-placement live-cell
+  frame). Component proof `emit-walk-spine.test.ts` (4/4 green): (1) static leaf resolve+emit no output
+  tree; (2) dynamic `width:@w` resolves against the LIVE frame at emit moment; (3) one shared body emitted
+  twice under two frames → `10px`/`20px` with SAME source leaf identity (no copy); (4) push/pop restores.
+  Build green; additive-only so far (basic-render 9/9 unaffected). BLOCKER / next push: wire emit-walk
+  into `Rules.render` to REPLACE `evalForRender`→`eval`→`serialize` two-walk (rules.ts:4754/4788) for the
+  container descent, reusing the structural `serializeRulesContainer`/`composedSelectorStack` side; then
+  eliminate `inherit` span-stamp (node-base.ts:1474-1516) once the derived output node is gone.
