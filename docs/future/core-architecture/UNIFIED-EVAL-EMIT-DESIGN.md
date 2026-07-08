@@ -26,8 +26,18 @@ expected to change.
 
 **Owner rulings baked in (settled — not re-opened):**
 1. One pass, no double-eval. Eval ONCE; serialize/emit as you go; swap live-bound references +
-   computed values in DURING serialization; NEVER mutate the canonical source tree. The live eval
-   frame stays threaded through emit.
+   computed values in DURING serialization; the live eval frame stays threaded through emit.
+   **CANONICAL-MUTATION INVARIANT (LOOSENED, owner 2026-07-08 — supersedes every "never mutate the
+   canonical source tree" / "you cannot mutate the shared canonical → always fresh" phrasing below,
+   incl. §3 and §6 step 1):** you MAY mutate a canonical source-tree node in place, PROVIDED the
+   mutation is output-invisible — i.e. it changes neither (a) the bytes produced by re-serializing that
+   canonical node, nor (b) the output when that node is REUSED in another placement. In effect: the
+   canonical node must stay correct-for-re-serialization and correct-for-reuse; anything invisible to
+   those two (memoized projections, the cached IR/match-bitset, a cached composed-form/bucket-path,
+   internal bookkeeping flags) is permitted ON the canonical node — no transient copy required for it.
+   Only an OUTPUT-AFFECTING change (a different value/visibility/selector for a given placement) still
+   demands a fresh transient shape. This shrinks the "fresh transient" set to genuinely
+   output-differing nodes and lets output-invisible caches live on the shared node.
 2. Kill the per-call `extendSelector` node→node API. Extend is a PLAN executed fast inside the pass.
 3. `&`-crossing folds into EMIT (one system, not a pre-apply side-channel).
 4. OQ-5 folds into (B) placement; no third axis, no stored own-selector field. The extender's
