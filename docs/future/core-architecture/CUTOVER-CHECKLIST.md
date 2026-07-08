@@ -568,3 +568,40 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   `@layer`/`@scope`/`@property` at-rules, ampersand-append, conditional assigns, the at-rule `&`-rewrap
   frontier. Backpedal: no dual path (broadening REPLACES the exclusion for covered shapes); byte-identical;
   no forced fixture-match; no `git stash`.
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENT 1 — the FIRST dynamic-machinery fold. A simple no-arg
+  mixin CALL (`type: 'mixin'` name + string key) over an UNPARAMETERIZED / UNGUARDED / LITERAL-body
+  definition now EXPANDS INLINE through the single pass — no output tree, no `mixinOutputSlot`, no
+  `Rules.derive`. MECHANISM (mechanism B, emit-walk-driven, per coordinator): a `context.spineMixinSurfaceSink`
+  hook lets the KEPT callable terminal (`evaluateCallableCandidateOutput`) hand the emit-walk driver the
+  guard-passed BOUND SURFACE (shared body + wired live-cell frame — `createCallableRulesSurface`, already
+  no-deep-clone) INSTEAD of `rules.eval()`-ing an output tree. `resolveSpineMixinCall` (emit-walk) drives
+  the call's own `eval` ONCE with the sink installed so ALL resolution/arg-bind/guard/recursion-guard/caller-
+  frame machinery is reused; the sink captures a spine-simple surface (returns true → terminal skips the
+  output tree) or rejects a non-simple one (returns false → terminal eval-materializes that candidate =
+  byte-identical eval FALLBACK, one drive, no double-exec). The serializer (`serialize-helper.ts`
+  `runSpineMixinExpansion`, before dedup + body render) splices the FOLD surfaces' children (or the EVAL
+  fallback's flattened output) into `rulesToRender` so they share the enclosing body's statement framing +
+  duplicate-declaration handling (byte-identical to the eval path, which flattens the mixin output surface).
+  Eligibility: `isSpineEligibleMixinCall` (static admissibility) + `isSpineEligibleMixinDefinition` (admit an
+  unparameterized/unguarded/string-name Mixin DEF as an invisible, scope-registered body child) +
+  `isSpineSimpleMixinSurface` (RUNTIME gate: leaf-only, LITERAL-valued — no variable Reference — body).
+  PROVEN: raw-render `.a { .m(); }` folds (`spineRenderCounter` moves, `Rules.derive`=0, byte-identical);
+  Jess-native production path folds (`spineRan=1 derives=0`). EXCLUSIONS locked by ratchet (each a precise
+  DEFERRAL, not a safety fallback): `type: 'mixin-ruleset'` (the Less `.mixin()` dot-call — matches a
+  ruleset-as-mixin + captures a closure → needs the surface descended under ITS OWN value-frame, increment
+  2's frame-threaded descent), SelectorCapture-key calls (`*[.foo]()`), PARAMETRIC/guarded defs (arg binding
+  = a later increment), VAR-READING bodies (frame-dependent → increment 2), a body with BOTH a mixin call
+  and a `+:`/`+_:` merge decl (the merge plan runs before the splice → `merge-across-mixin-output` deferred),
+  and mixin-as-value / map-lookup (`@p: .m()` / `@p[text]`). Ratchets: core `emit-walk-ratchet` MIXIN-FOLD
+  block (6 tests: folds + no-derive + the 4 exclusion locks) — 3202/0 core green; jess `spine-production-
+  ratchet` 5/5; `all-less` 90/3 byte-identical (increment 1 is Jess-native `type:'mixin'`, which the Less
+  corpus doesn't exercise — so it moves the MECHANISM + Jess coverage, NOT yet corpus routing; that lands in
+  increment 2 with `mixin-ruleset`). 0 NEW tsc errors (only the pre-existing `awaitable-pipe` module-resolution
+  + `serialize-helper` `SelectorLike` cascade lines). Backpedal self-check: no dual path for the COVERED shape
+  (a folded call has one path: the spine; the eval terminal serves only DEFERRED shapes + the byte-identical
+  fallback, and dies in P4); byte-identical (90/3); no forced fixture-match; NEVER `git stash`.
+  RECOMMENDED NEXT (increment 2): the FRAME-THREADED surface descent — splice the bound SURFACE (a `Rules`)
+  as a child descended under its OWN pushed value-frame (not its children into the enclosing frame), which
+  unlocks VAR-READING bodies, closures, AND the Less `mixin-ruleset` dot-call = the first real all-less corpus
+  routing. Then: parametric (positional) args → defaults → named + `...` rest → guards (`when`) → the hard
+  tail (recursion, `!important`, mixin-as-detached-ruleset, pattern-matching, `merge`-across-mixin).

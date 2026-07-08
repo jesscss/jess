@@ -30,7 +30,20 @@ export async function evaluateCallableCandidateOutput({
   }
 
   try {
+    // Spine mixin-fold (cutover, UNIFIED-EVAL-EMIT-DESIGN §2/§3): when the
+    // emit-walk driver installed a surface sink, hand it the guard-passed BOUND
+    // surface (`rules` — shared body + wired live-cell param frame) to descend
+    // INLINE instead of building an output tree. Inside the recursion-guard
+    // bracket so a recursive body still trips `callMap`. The sink returns `true`
+    // when it consumed the surface (return `undefined` → no output-tree
+    // contribution); `false` means the shape is not spine-simple → fall through
+    // to the eval terminal for this candidate (byte-identical transition; the
+    // eval terminal dies in P4).
     candidateParent.adopt(rules);
+    const sink = context.spineMixinSurfaceSink;
+    if (sink && sink(rules, sourceRules)) {
+      return undefined;
+    }
     const newRules = await rules.eval(context);
     candidateParent.adopt(newRules);
     newRules.index = candidateIndex;

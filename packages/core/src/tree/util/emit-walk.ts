@@ -138,6 +138,162 @@ export function isValueLeaf(node: Node): boolean {
 }
 
 /**
+ * True for a plain no-arg mixin CALL the spine may attempt to fold (cutover
+ * P3-precursor, UNIFIED-EVAL-EMIT-DESIGN §2/§3). STATIC admissibility only — the
+ * candidate's body shape is checked at RUNTIME by `isSpineSimpleMixinSurface`
+ * against the resolved bound surface (the definition is not statically bound at
+ * the call site). Admitted: a `Call` whose name is a mixin `Reference`, with NO
+ * args, NO content block, and none of the legacy `markImportant`/`silentFail`
+ * options. This is INCREMENT 1's shape — parametric/guarded/named/rest calls
+ * widen this gate in later increments.
+ */
+export function isSpineEligibleMixinCall(node: Node): boolean {
+  if (!isNode(node, N.Call)) {
+    return false;
+  }
+  if (node.args && node.args.value.length > 0) {
+    return false;
+  }
+  if (node.contentNode) {
+    return false;
+  }
+  const options = node.options as { markImportant?: boolean; silentFail?: boolean } | undefined;
+  if (options?.markImportant || options?.silentFail) {
+    return false;
+  }
+  const name = node.name;
+  // INCREMENT 1: a plain Jess-native mixin-name reference — `type: 'mixin'` with a
+  // STRING key. EXCLUDED (DEFERRED to increment 2 — the frame-threaded surface
+  // descent): `type: 'mixin-ruleset'` (the Less `.mixin()` dot-call — it can match
+  // a same-named RULESET-as-mixin and captures a closure, both of which need the
+  // bound surface descended under ITS OWN value-frame, not spliced into the
+  // enclosing frame); a SelectorCapture key (`*[.foo]()` — capture lookup path).
+  // Increment 1's splice-into-enclosing-frame fold is byte-identical ONLY for a
+  // literal (frame-independent) body, which the runtime gate additionally enforces.
+  if (!isNode(name, N.Reference)) {
+    return false;
+  }
+  return name.options?.type === 'mixin' && typeof name.key === 'string';
+}
+
+/**
+ * RUNTIME simplicity gate for INCREMENT 1: a resolved bound surface the spine can
+ * descend inline. The surface must be a body of leaf-only spine-simple children
+ * (`:`-declarations / comments — `isSimpleSpineLeaf`), i.e. no nested containers,
+ * no merge/conditional assigns, no further mixin calls. A `false` here makes the
+ * callable terminal fall back to the eval path for that candidate (byte-identical).
+ *
+ * INCREMENT 1 is additionally restricted to LITERAL-VALUED bodies — a declaration
+ * whose value carries NO variable Reference. Rationale: a mixin body that reads a
+ * definition-scope variable must resolve against the bound SURFACE's value-frame,
+ * but this increment splices the surface's decls into the ENCLOSING container's
+ * statement loop (which resolves against the container frame). For a literal body
+ * (`color: red`) the frame is irrelevant to the bytes, so the splice is byte-
+ * identical; a var-reading body is DEFERRED to the next increment (frame-threaded
+ * descent) and falls back to the eval path here.
+ */
+function isSpineSimpleMixinSurface(surface: Rules): boolean {
+  const children = surface.rules;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (!isSimpleSpineLeaf(child)) {
+      return false;
+    }
+    // A further mixin call inside the body is not increment-1 simple.
+    if (isSpineEligibleMixinCall(child)) {
+      return false;
+    }
+    if (isNode(child, N.Declaration) && declarationReadsVariable(child)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** True if a declaration's value carries any variable Reference (frame-dependent). */
+function declarationReadsVariable(decl: Node): boolean {
+  for (const descendant of decl.walk(true)) {
+    if (isNode(descendant, N.Reference)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The result of driving a spine-eligible mixin CALL's resolution:
+ *   - `{ kind: 'fold', surfaces }` — EVERY guard-passed candidate was spine-simple;
+ *     descend the bound surfaces inline (no output tree).
+ *   - `{ kind: 'eval', output }` — at least one candidate was NOT spine-simple, so
+ *     the KEPT terminal eval-materialized the call to an output `Rules`; the caller
+ *     splices that (flattened) output like the eval path (byte-identical fallback).
+ *     The eval terminal dies in P4; until then it's the eligibility-gated frontier.
+ */
+export type SpineMixinCallResolution =
+  | { kind: 'fold'; surfaces: Rules[] }
+  | { kind: 'eval'; output: Node };
+
+/**
+ * Drive a spine-eligible mixin CALL's resolution ONCE, folding to bound surfaces
+ * when spine-simple and falling back to the eval terminal otherwise (cutover,
+ * UNIFIED-EVAL-EMIT-DESIGN §2/§3).
+ *
+ * Contract: `call` has passed `isSpineEligibleMixinCall`. Installs
+ * `context.spineMixinSurfaceSink` (scoped save/restore), then drives the call's
+ * own `eval` so ALL the KEPT machinery runs exactly once — candidate match, arg
+ * binding (none for increment 1), guard eval, recursion guard (`callMap`), caller
+ * frame. Per guard-passed candidate the terminal consults the sink:
+ *   - spine-simple surface → sink CAPTURES it and returns `true` (terminal skips
+ *     the `rules.eval()` output-tree build for that candidate);
+ *   - non-simple surface → sink returns `false`, `anyRejected` is set, and the
+ *     terminal eval-materializes that candidate the normal way.
+ * If ANY candidate was rejected the whole call is treated as eval-fallback and the
+ * `call.eval()` return (the output `Rules`) is used; otherwise the captured
+ * surfaces are folded. Exactly ONE drive either way — no double execution.
+ */
+export function resolveSpineMixinCall(
+  call: Node,
+  context: Context
+): MaybePromise<SpineMixinCallResolution> {
+  const captured: Rules[] = [];
+  let anyRejected = false;
+  const savedSink = context.spineMixinSurfaceSink;
+  context.spineMixinSurfaceSink = (boundSurface: Rules): boolean => {
+    if (!isSpineSimpleMixinSurface(boundSurface)) {
+      anyRejected = true;
+      return false;
+    }
+    captured.push(boundSurface);
+    return true;
+  };
+  const restore = <T>(value: T): T => {
+    context.spineMixinSurfaceSink = savedSink;
+    return value;
+  };
+  const finish = (output: Node): SpineMixinCallResolution =>
+    anyRejected ? { kind: 'eval', output } : { kind: 'fold', surfaces: captured };
+  try {
+    // Drive the call's own resolution: the caller frame + candidate match + arg
+    // binding + guard + recursion guard all run through the KEPT `evalNode`
+    // pipeline; the installed sink diverts a spine-simple candidate to capture
+    // instead of building an output tree.
+    const result = call.eval(context);
+    return isThenable(result)
+      ? result.then(
+          (output: Node) => restore(finish(output)),
+          (error: unknown) => {
+            restore(undefined);
+            throw error;
+          }
+        )
+      : restore(finish(result));
+  } catch (error) {
+    restore(undefined);
+    throw error;
+  }
+}
+
+/**
  * True if `selector` contains an ampersand with an APPEND value (`&-modifier`,
  * `&-primary`) — the anonymous-append form whose suffix is materialized (and
  * hoisted) ONLY by `Ampersand.evalNode`'s `appendValue` path, which depends on
@@ -474,6 +630,24 @@ function atRuleBodyHasAmpersandRuleset(children: readonly Node[]): boolean {
  * key isn't statically known, so the position gate can't be pre-seeded).
  */
 function isSpineEligibleBody(children: readonly Node[]): boolean {
+  // INCREMENT 1 cross-check: a mixin call is folded by splicing its emitted decls
+  // into the body's statement loop AFTER `planBodyMerges` has run — so a spliced
+  // decl cannot participate in a `+:`/`+_:` merge chain in the SAME body. If the
+  // body has BOTH a mixin call and a merge decl, keep the whole body on the eval
+  // path (the merge would otherwise leak `prop+:`). DEFERRED: merge-across-mixin-
+  // output (needs the merge plan to see the expansion).
+  if (bodyHasMixinCall(children) && bodyHasDirectMergeDecl(children)) {
+    return false;
+  }
+  // INCREMENT 1 cross-check: a mixin used other than as a BARE foldable call —
+  // a var-decl bound to a mixin call (`@p: .mk-map()`), a map-lookup on such a
+  // value (`@p[text]`), a detached-ruleset call — is NOT folded. Admitting a
+  // Mixin DEFINITION below would otherwise pull the whole enclosing body onto the
+  // spine even though the mixin is consumed by machinery the spine does not yet
+  // cover. Keep such a body on the eval path. DEFERRED: mixin-as-value / map-lookup.
+  if (bodyHasMixinDefinition(children) && bodyHasCallInVarValue(children)) {
+    return false;
+  }
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     if (isSimpleSpineLeaf(child)) {
@@ -482,11 +656,40 @@ function isSpineEligibleBody(children: readonly Node[]): boolean {
       }
       continue;
     }
+    // A mixin DEFINITION emits nothing (invisible output) and registers into the
+    // scope frame at `getScopeFrame`, which the spine already calls at scope-enter
+    // — so a callable resolves without an eval pass. Increment 1 admits an
+    // unparameterized, unguarded definition (the only shape its calls fold); a
+    // parametric/guarded/interpolated-name definition is DEFERRED (its body still
+    // registers, but its calls fall back at runtime).
+    if (isNode(child, N.Mixin)) {
+      if (isSpineEligibleMixinDefinition(child)) {
+        continue;
+      }
+      return false;
+    }
     if (!isSpineEligibleContainer(child)) {
       return false;
     }
   }
   return true;
+}
+
+/**
+ * INCREMENT 1: a mixin DEFINITION whose calls the spine may fold — unparameterized
+ * (no `params`), unguarded (no `when`), with a static string name. Its body need
+ * NOT be statically simple here (a call's runtime gate `isSpineSimpleMixinSurface`
+ * decides fold-vs-fallback), but a definition that can't be admitted at all forces
+ * the enclosing body off the spine. Later increments admit params/guards.
+ */
+function isSpineEligibleMixinDefinition(node: Node): boolean {
+  if (!isNode(node, N.Mixin)) {
+    return false;
+  }
+  if (node.params || node.guard) {
+    return false;
+  }
+  return typeof node.name === 'string';
 }
 
 /**
@@ -507,6 +710,13 @@ function isSpineEligibleBody(children: readonly Node[]): boolean {
  */
 function isSimpleSpineLeaf(node: Node): boolean {
   if (isNode(node, N.Comment)) {
+    return true;
+  }
+  // Plain no-arg mixin CALL (cutover increment 1): STATIC admissibility only —
+  // the resolved candidate body shape is gated at RUNTIME (`resolveSpineMixinCall
+  // Surfaces` / `isSpineSimpleMixinSurface`), with a byte-identical fall-back to
+  // the eval path when the resolved shape is not spine-simple.
+  if (isSpineEligibleMixinCall(node)) {
     return true;
   }
   if (isNode(node, N.Declaration)) {
@@ -531,6 +741,46 @@ function isSimpleSpineLeaf(node: Node): boolean {
 
 /** Property-merge assign operators the spine coalesces (see `planBodyMerges`). */
 const MERGE_ASSIGNS = new Set(['+:', '+_:', '&,:', '&_:']);
+
+/** True if any DIRECT child of `body` is a spine-eligible mixin call. */
+function bodyHasMixinCall(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    if (isSpineEligibleMixinCall(children[i]!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True if any DIRECT child of `body` is a mixin DEFINITION. */
+function bodyHasMixinDefinition(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    if (isNode(children[i]!, N.Mixin)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True if any DIRECT child is a VarDeclaration whose VALUE contains a `Call`
+ * (`@p: .mk-map()` — a mixin bound to a variable, later map-looked-up `@p[text]`).
+ * This is the mixin-as-value shape increment 1 does not fold.
+ */
+function bodyHasCallInVarValue(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (!isNode(child, N.VarDeclaration)) {
+      continue;
+    }
+    for (const descendant of child.walk(true)) {
+      if (isNode(descendant, N.Call)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 /** True if any DIRECT child of `body` is a merge-flagged declaration. */
 function bodyHasDirectMergeDecl(children: readonly Node[]): boolean {

@@ -289,6 +289,21 @@ export class Context {
   /** The call that is currently being evaluated */
   caller?: Call;
 
+  /**
+   * Spine mixin-fold sink (cutover P3-precursor, UNIFIED-EVAL-EMIT-DESIGN §2/§3).
+   * When set by the emit-walk spine before it drives a mixin CALL's resolution,
+   * the callable terminal (`evaluateCallableCandidateOutput`) skips the
+   * `rules.eval()` output-tree build and instead hands the emit-walk driver the
+   * guard-passed BOUND SURFACE (shared body children + the wired live-cell param
+   * frame) so it can descend it INLINE to the writer emit-walk already holds — no
+   * output tree, no `mixinOutputSlot`, no `Rules.derive`. Returning `false` from
+   * the sink signals "not a spine-simple shape" so the terminal falls back to the
+   * eval path for THAT candidate (byte-identical transition; the eval terminal
+   * dies in P4). Scoped save/restore around the drive — undefined on the eval path
+   * so the terminal is unchanged there.
+   */
+  spineMixinSurfaceSink?: (boundSurface: Rules, sourceRules: Rules) => boolean;
+
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
 
