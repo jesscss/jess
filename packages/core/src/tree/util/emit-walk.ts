@@ -40,7 +40,8 @@ import { Ruleset } from '../ruleset.js';
 import type { AtRule } from '../at-rule.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './print.js';
-import { engageExtendLayer } from '../extend/spine-extend.js';
+import { engageExtendLayer, isFlatExtendTopology, wireFlatExtends } from '../extend/spine-extend.js';
+import type { Selector } from '../selector.js';
 
 /**
  * Assign source-order indices to a scope's body children — the PER-POSITION
@@ -387,7 +388,7 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
  * extend-bearing/reference/guarded rulesets, at-rules routed to
  * `isSpineEligibleAtRule`, mixins.
  */
-function isSpineEligibleContainer(node: Node): boolean {
+function isSpineEligibleContainer(node: Node, allowExtend = false): boolean {
   if (isNode(node, N.AtRule)) {
     return isSpineEligibleAtRule(node);
   }
@@ -405,8 +406,12 @@ function isSpineEligibleContainer(node: Node): boolean {
   if (options?.referenceMode === true) {
     return false;
   }
-  // Extend-bearing selectors stay on the eval path (extend is P3, not yet wired).
-  if (Ruleset.hasExtendedTopLevelSelector(ruleset.selector)) {
+  // Extend-bearing selectors stay on the eval path UNLESS the FLAT extend topology is
+  // engaged (P3 increment 1): a root-direct-child extender's `:extend` is gathered by the
+  // pre-scan and its subject header composed as an override. `allowExtend` is threaded ONLY
+  // for the flat root case (`isFlatExtendTopology` guarantees no NESTED extend), so a nested
+  // extend still falls to the eval path.
+  if (!allowExtend && Ruleset.hasExtendedTopLevelSelector(ruleset.selector)) {
     return false;
   }
   // Ampersand-APPEND (`&-modifier`) is not folded — its anonymous-append suffix
@@ -432,7 +437,7 @@ function isSpineEligibleContainer(node: Node): boolean {
   if (bodyHasAtRuleNeedingAncestorRewrap(ruleset.rules)) {
     return false;
   }
-  return isSpineEligibleBody(ruleset.rules);
+  return isSpineEligibleBody(ruleset.rules, allowExtend);
 }
 
 /**
@@ -682,7 +687,7 @@ function atRuleBodyHasAmpersandRuleset(children: readonly Node[]): boolean {
  * last-wins. A non-static (interpolated) var NAME is still excluded (its bucket
  * key isn't statically known, so the position gate can't be pre-seeded).
  */
-function isSpineEligibleBody(children: readonly Node[]): boolean {
+function isSpineEligibleBody(children: readonly Node[], allowExtend = false): boolean {
   // INCREMENT 1 cross-check: a mixin call is folded by splicing its emitted decls
   // into the body's statement loop AFTER `planBodyMerges` has run — so a spliced
   // decl cannot participate in a `+:`/`+_:` merge chain in the SAME body. If the
@@ -703,7 +708,7 @@ function isSpineEligibleBody(children: readonly Node[]): boolean {
   }
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
-    if (isSimpleSpineLeaf(child)) {
+    if (isSimpleSpineLeaf(child, allowExtend)) {
       if (isNode(child, N.VarDeclaration) && typeof child.name !== 'string') {
         return false;
       }
@@ -721,7 +726,7 @@ function isSpineEligibleBody(children: readonly Node[]): boolean {
       }
       return false;
     }
-    if (!isSpineEligibleContainer(child)) {
+    if (!isSpineEligibleContainer(child, allowExtend)) {
       return false;
     }
   }
@@ -788,8 +793,14 @@ function isSpineEligibleMixinDefinition(node: Node): boolean {
  * a thenable (see `resolveSpineLeafText` / the `isThenable` reactive-bail in the
  * container serializer). No async cost is paid for the common (sync) case.
  */
-function isSimpleSpineLeaf(node: Node): boolean {
+function isSimpleSpineLeaf(node: Node, allowExtend = false): boolean {
   if (isNode(node, N.Comment)) {
+    return true;
+  }
+  // Extend / ExtendList are invisible effect nodes (they emit nothing; their gather
+  // runs in the pre-scan). Admitted only under the FLAT extend topology (P3 increment 1),
+  // where the root-level pre-scan gathers them ahead of emit.
+  if (allowExtend && (node.type === 'Extend' || node.type === 'ExtendList')) {
     return true;
   }
   // Plain no-arg mixin CALL (cutover increment 1): STATIC admissibility only —
@@ -1040,7 +1051,12 @@ export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   if (treeHasMixinCall(root) && treeHasContainerBodyMixinDefinition(root)) {
     return false;
   }
-  return isSpineEligibleBody(root.rules);
+  // FLAT extend topology (P3 increment 1): a root whose ONLY extends are root-direct-child
+  // subjects/extenders (no nested extend) is spine-eligible — the pre-scan gathers and the
+  // subject header is composed as an override. `allowExtend` admits the extend-bearing root
+  // children + their ExtendList effect nodes. A NON-flat extend shape stays on the eval path.
+  const allowExtend = engageExtendLayer(root) && isFlatExtendTopology(root);
+  return isSpineEligibleBody(root.rules, allowExtend);
 }
 
 /**
@@ -1193,22 +1209,18 @@ export function renderRootViaSpine(
 ): MaybePromise<string> {
   spineRenderCounter.rootRenders++;
   // EXTEND-WORK GATE (design §4.0). Decide ONCE, here, whether this render must
-  // engage the extend layer (PLAN / SOLVE / buffer-then-flush) or stays a pure
-  // streaming spine. When the tree carries no `:extend`, `engageExtendLayer`
-  // returns false and the pass streams headers inline with ZERO extend cost — the
-  // common case. When it returns true, the reaching subjects defer their headers
-  // (later increments). Increment 0: only extend-FREE roots reach the spine (the
-  // upstream `isSpineEligibleRoot`/`hasExtendedTopLevelSelector` gate keeps
-  // extend-bearing roots on the eval path), so this is false on every wired render
-  // today; the call is the SEAM later increments hook, and the zero-extend
-  // invariant it names is locked by the extend-layer ratchet.
-  if (engageExtendLayer(root)) {
-    // Later increments engage PLAN/SOLVE/buffer-then-flush here for the reaching
-    // subjects. Increment 0 reaches this branch only if a future eligibility change
-    // admits an extend-bearing root before the layer is built — fail loud rather
-    // than silently mis-render, since the streaming path below cannot apply extends.
+  // engage the extend layer or stays a pure streaming spine. When the tree carries
+  // no `:extend`, `engageExtendLayer` returns false and the pass streams headers
+  // inline with ZERO extend cost — the common case. When true, the FLAT (root-direct-
+  // child) topology is wired below (P3 increment 1): a pre-scan gathers instructions,
+  // composes each subject's final Or-branch header, and installs it as a render-local
+  // override. A NON-flat extend shape is kept OFF the spine by `isSpineEligibleRoot`
+  // (`isFlatExtendTopology`), so reaching this with a non-flat shape is a fail-loud
+  // invariant breach — the streaming descent cannot apply nested extends.
+  const extendEngaged = engageExtendLayer(root);
+  if (extendEngaged && !isFlatExtendTopology(root)) {
     throw new Error(
-      'spine extend layer not yet wired (P3): an extend-bearing root reached renderRootViaSpine'
+      'spine extend: non-flat topology reached renderRootViaSpine (P3 increment 1 handles root-direct-child only)'
     );
   }
   // Mark the whole descent spine mode: nested containers render via the
@@ -1275,11 +1287,32 @@ export function renderRootViaSpine(
   // live frame threaded here. `toRenderString` runs `_emitRulesBody('render')`,
   // which for each leaf resolves via `node.render(context)` at its emit moment.
   context.rulesContext = root;
-  let step: MaybePromise<string>;
-  try {
-    step = root.toRenderString(options);
-  } catch (error) {
-    return fail(error);
+  const descend = (): MaybePromise<string> => {
+    let step: MaybePromise<string>;
+    try {
+      step = root.toRenderString(options);
+    } catch (error) {
+      return fail(error);
+    }
+    return isThenable(step) ? step.then(finish, fail) : finish(step);
+  };
+  // EXTEND (P3 increment 1, flat topology). Pre-scan + gather + compose the per-subject
+  // header overrides BEFORE the body descent, so `Reaching(S)` is fully known at every
+  // subject's emit position (§4.0 → header final inline, no deferral). The override map is
+  // installed on `options.spineExtendHeaders`, which `Ruleset.effectiveHeaderSelector`
+  // consults so a subject emits its composed Or-branch header. Async-safe: gather chains.
+  if (extendEngaged) {
+    let headers: MaybePromise<Map<Ruleset, Selector>>;
+    try {
+      headers = wireFlatExtends(root, context);
+    } catch (error) {
+      return fail(error);
+    }
+    const install = (map: Map<Ruleset, Selector>): MaybePromise<string> => {
+      options.spineExtendHeaders = map;
+      return descend();
+    };
+    return isThenable(headers) ? headers.then(install, fail) : install(headers);
   }
-  return isThenable(step) ? step.then(finish, fail) : finish(step);
+  return descend();
 }

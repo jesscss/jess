@@ -42,7 +42,8 @@ import {
   emitSubjectHeader,
   type BucketPath,
   type EmitContribution,
-  type EmitSubject
+  type EmitSubject,
+  type EmitProjection
 } from './emit.js';
 
 export { UNSUPPORTED, type UnsupportedResult };
@@ -180,18 +181,35 @@ function solveContributions(
 }
 
 /**
+ * SOLVE + EMIT for ONE subject, returning the EMIT PROJECTION (branch Selector NODES, not
+ * stringified) plus own-built/unsupported status. Exposed so a live consumer (the spine's
+ * flat-extend wire-in, `spine-extend.ts`) can build a `SelectorList` header NODE from the
+ * projected branches — letting the normal serializer emit the multi-branch header (`,\n`)
+ * rather than re-parsing a stringified header. `runSubject` (the capstone's string result)
+ * is now a thin formatter over this.
+ */
+export function runSubjectProjection(
+  subject: PipelineSubject,
+  instructions: PipelineInstruction[]
+): { projection: EmitProjection | undefined; ownBuilt: boolean; unsupported: PipelineInstruction[] } {
+  const { fired, unsupported, ownBuilt } = solveContributions(subject, instructions);
+  if (!ownBuilt) {
+    return { projection: undefined, ownBuilt: false, unsupported };
+  }
+  const contributions: EmitContribution[] = fired.map(inst => ({ path: inst.path, order: inst.order }));
+  const emitSubject: EmitSubject = { path: subject.path, order: subject.order, contributions };
+  return { projection: projectSubject(emitSubject), ownBuilt: true, unsupported };
+}
+
+/**
  * Drive ONE subject end-to-end: SOLVE decides the fired contribution set; EMIT projects them from
  * bucket paths to the final composed/hoisted/collapsed header.
  */
 function runSubject(subject: PipelineSubject, instructions: PipelineInstruction[]): PipelineSubjectResult {
-  const { fired, unsupported, ownBuilt } = solveContributions(subject, instructions);
-  if (!ownBuilt) {
+  const { projection, unsupported, ownBuilt } = runSubjectProjection(subject, instructions);
+  if (!ownBuilt || !projection) {
     return { id: subject.id, header: '', branches: [], hoistToRoot: false, ownBuilt: false, unsupported };
   }
-
-  const contributions: EmitContribution[] = fired.map(inst => ({ path: inst.path, order: inst.order }));
-  const emitSubject: EmitSubject = { path: subject.path, order: subject.order, contributions };
-  const projection = projectSubject(emitSubject);
 
   const branches = projection.branches.map(b => String(b.valueOf()));
   const header = subject.nestedChildLocal

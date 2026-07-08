@@ -1455,6 +1455,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    * Falls through to the authored `this.selector` when there is no override.
    */
   private effectiveHeaderSelector(options: FinalPrintOptions) {
+    // P3 §4.3: an extend SUBJECT's header is its composed multi-branch Or-set (authored own
+    // form + document-order-sorted extend contributions), overriding the authored selector.
+    // Checked first — a subject reached via extend takes its final header from the projection.
+    const extendHeader = options.spineExtendHeaders?.get(this);
+    if (extendHeader !== undefined) {
+      return extendHeader;
+    }
     if (options.spineSelectorNode === this && options.spineSelector !== undefined) {
       return options.spineSelector;
     }

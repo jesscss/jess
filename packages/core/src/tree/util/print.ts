@@ -58,6 +58,16 @@ export type PrintOptions = {
   spineSelectorNode?: Ruleset;
   spineSelector?: Selector | Nil;
   /**
+   * Spine-mode EXTEND header override (P3 §4.3 increment 1). Maps a root-level SUBJECT
+   * ruleset to its FINAL composed multi-branch header (a `SelectorList` of the authored own
+   * form + document-order-sorted extend contributions, from `composeFlatSubjectHeaders`).
+   * When present for `this` ruleset, `effectiveHeaderSelector` returns it so the header
+   * emits with the added extend branches (`.a,\n.b`) instead of the authored `.a`. Only
+   * subjects that gained a branch appear; absence = stream the authored header. A transient
+   * render-local override (output-affecting → not on the canonical node), like `spineSelector`.
+   */
+  spineExtendHeaders?: Map<Ruleset, Selector>;
+  /**
    * Spine-mode at-rule marker (P1 §4/§7). When `spineAtRuleNode === this` at-rule,
    * its value-frame has already been pushed by `serializeSpineFrameAtRule` and its
    * prelude resolved-at-enter (handed to the header via the existing

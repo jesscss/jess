@@ -78,20 +78,69 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('does NOT route an EXTEND-bearing root through the spine (stays on the eval path — extend is P3)', async () => {
-    // `:extend` in a selector makes the root spine-INELIGIBLE (extend application
-    // is not wired into the spine yet). It must render on the eval path — the
-    // spine counter must NOT move for it, and the extend must still apply.
+  it('P3 increment 1: ROUTES a FLAT root-level `:extend` through the spine (extend folded into the pass)', async () => {
+    // The P3 milestone: a root-direct-child `:extend` subject now renders THROUGH the
+    // single pass — the pre-scan gathers the instruction, SOLVE/EMIT composes the subject's
+    // final Or-branch header, installed as a render-local override. The spine counter MOVES
+    // and `processExtends` is NOT called on this path (asserted below).
     const compiler = makeCompiler();
     const src = `.base {\n  color: red;\n}\n.derived:extend(.base) {\n  font-weight: bold;\n}`;
 
     const before = spineRenderCounter.rootRenders;
     const css = await compiler.renderString(src, { language: 'less' });
 
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path, not spine
-    // Extend applied correctly on the eval path.
-    expect(css).toContain('.base');
-    expect(css).toContain('.derived');
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (P3)
+    // The subject `.base` gained the `.derived` branch; the extender emits its own block.
+    expect(css).toBe('.base,\n.derived {\n  color: red;\n}\n.derived {\n  font-weight: bold;\n}\n');
+  });
+
+  it('P3 increment 1: flat `:extend` does NOT enter the eval two-walk (Rules.derive uncalled)', async () => {
+    // The extend is applied by the spine PLAN/SOLVE/EMIT, NOT the eval-path
+    // gather-and-mutate `processExtends` — which runs INSIDE the eval two-walk. `Rules.derive`
+    // (the copy-on-write output-tree surface) fires on that eval path and never on the spine,
+    // so `derive` uncalled + the spine counter moving proves `processExtends` did not run.
+    const compiler = makeCompiler();
+    const src = `.base {\n  color: red;\n}\n.derived:extend(.base) {\n  font-weight: bold;\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → processExtends did not run
+      expect(css).toBe('.base,\n.derived {\n  color: red;\n}\n.derived {\n  font-weight: bold;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('P3 increment 1: `&:extend(... all)` with a nested block folds through the spine byte-identically (extend-clearfix shape)', async () => {
+    // A root-level `&:extend(.x all)` whose target has a NESTED block: the subject header
+    // override (`.clearfix, .foo, .bar`) flows through the existing `&`-composition, so the
+    // nested `&:after` composes against the multi-branch parent → `:is(...)`-grouped — no
+    // extra nested-composition machinery. Byte-identical to the ratified alpha `.css`.
+    const compiler = makeCompiler();
+    const src = `.clearfix {\n  *zoom: 1;\n  &:after { content: ''; }\n}\n.foo {\n  &:extend(.clearfix all);\n  color: red;\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toContain('.clearfix,\n.foo');
+    expect(css).toContain(":is(.clearfix, .foo):after");
+  });
+
+  it('P3 increment 1: a NESTED-scope `:extend` does NOT route through the spine (deferral territory → eval path)', async () => {
+    // An extend nested inside a ruleset (not a root-direct child) is NOT the flat topology
+    // increment 1 handles — it stays on the eval path (byte-identical), reclaimed by a later
+    // increment (nested-subject interception / deferral).
+    const compiler = makeCompiler();
+    const src = `.wrap {\n  .base {\n    color: red;\n  }\n  .derived:extend(.base) {\n    font-weight: bold;\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (nested extend deferred)
     expect(css).toContain('font-weight: bold');
   });
 
