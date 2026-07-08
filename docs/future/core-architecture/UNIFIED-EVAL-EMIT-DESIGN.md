@@ -1109,13 +1109,64 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   plugin needs it, so it is not built. The common cases (per-node inspect/replace, custom-function value
   resolution, `rtl`/`inline-urls`/`dls`) are fully served.
 
-- **OQ-D — confluence / batch-equals-sequential (carried from extend doc OQ-4).** SOLVE's
-  order-independence needs "no rewrite's output value depends on current partial state in an
-  order-sensitive way." Today's `applyBatchedExtend` vs sequential must be output-equal (claimed,
-  unpinned). Pin as an invariant or order becomes load-bearing.
+- **OQ-D — RESOLVED-WITH-CAVEAT (owner 2026-07-08): the branch SET is confluent; the sibling ORDER
+  is NOT, and the design's canonicalizing sort is NOT yet wired — the cutover must build it.**
+  Settled empirically by a differential over the extend corpus driving `applyExtendsToSelector`
+  (`extend.ts:334` — the exact code OQ-D names; its per-subject loop selects the `applyBatchedExtend`
+  fast-path vs the sequential `tryExtendSelector` purely by the ADJACENCY of same-target non-partial
+  instructions at `extend.ts:391-402`, so permuting the instruction list IS the sound batched-vs-
+  sequential-vs-shuffled knob). Test (standing invariant, test-only, bundle-excluded):
+  `packages/core/src/tree/extend/__tests__/oqd-confluence-differential.test.ts`. Findings, precise:
+  1. **The branch SET is confluent.** Over ALL permutations of every corpus subject's instruction
+     list — including adjacency-clustered (forces the batch path) and interleaved (forces sequential)
+     — the produced set of comma-branches is byte-identical. `applyBatchedExtend` == sequential ==
+     any order at the SET level. This half of OQ-4's claim holds and is now pinned.
+  2. **The comma-SIBLING ORDER is apply-order-sensitive** (COUNTEREXAMPLE found: `.base←.x` then
+     `.base←.y` interleaved with `.other←.q` yields `.base,.other,.x,.y,.q` in one order and
+     `.base,.other,.q,.x,.y` in another — same set, different order). So order IS load-bearing for
+     sibling ordering.
+  3. **Production is deterministic ANYWAY — but by a document-order FEED, not the design's sort.**
+     The render path never permutes: `processExtends` (`extend-roots.ts:686`) builds instructions via
+     `context.extends.flatMap(...)`, and `context.extends` is populated during eval in DOCUMENT order
+     (`extend.ts:341`, tuple carries `docOrder`); the per-subject list is a document-order-preserving
+     `filter` (`extend-roots.ts:757`). Today's sibling order == authored document order.
+  4. **The design's confluence MECHANISM (EMIT sorts OR-branches by document `order`, §4.4/B3) is NOT
+     installed.** `setExtendOrderMap` (`extend.ts:155`) — the only entry that would populate the
+     value→documentOrder map the sort branches read (`extend.ts:842`, `:1192`, guard at `:233`) — has
+     ZERO callers repo-wide, so `extendOrderMap` is always null and those sort branches are dead.
+  **Consequence:** OQ-D's premise ("EMIT's document-order sort pins output, so SOLVE may fire in any
+  order") is **a cutover DELIVERABLE, not an existing fact.** SOLVE may fire in any order for the SET
+  (safe today), but to fire in any order AND match today's byte output it must EMIT-sort siblings by
+  document order — the currently-dead `extendOrderMap` machinery must be wired into the fold. Until
+  then the document-order feed is the load-bearing pin. **Fully settleable from the current engine?**
+  YES for the verdict (confluent set + order-sensitive siblings + missing sort, all proven now); the
+  FIX (wire the sort) lands in the cutover. The test's negative assertion (`a !== b` on raw order)
+  flips to `a === b` when the sort is built — it is the guard that the cutover actually did so.
 
-- **OQ-E — `:is`-graft termination (carried from extend doc OQ-3).** Is graft depth provably bounded
-  by input depth, or is a depth guard retained?
+- **OQ-E — RESOLVED (owner 2026-07-08): graft depth is bounded — fire-once + value-dedup terminate,
+  no depth guard is required for correctness.** Settled by analysis confirmed with a direct probe on
+  `extendByIndexOwn` (`tree/extend/extend-index.ts:2987`). The escape §2.5 worried about
+  (`:is(.a.b)` find `.a` partial → `:is(:is(.a,.q).b)`, deepening the nesting) is **self-limiting at
+  +1**: re-firing the SAME `(find, extendWith)` against the produced graft yields the SAME value
+  (`:is(:is(.a,.q).b)` unchanged — the `.q` is already grafted, so the second wrap is value-INERT and
+  dedup'd). Concretely, a produced graft is a NEW distinct value only ONCE per `(find-value,
+  target-value)` pair; the second application is fire-once/dedup-inert. Why the value space is finite:
+  (a) new branches draw atoms only from `{authored} ∪ {extendWith}`, a FIXED finite set — no
+  instruction with a produced-graft find is ever synthesized (the fixpoint re-enqueues only from the
+  authored `allExtends` set: `extend.ts:425/465`), and a FIND carrying a constructor/pseudo-arg graft
+  is UNSUPPORTED in the own engine (`extend-index.ts:3025-3030`), so a produced `:is(...)` can never
+  become an active find that re-wraps; (b) graft depth therefore increases at most once per distinct
+  `(find, target)` pair, bounded by |instructions|; (c) fire-once keyed on `(branchValue,
+  instruction)` (`solve.ts:140-142`, legacy `queuedKeys` at `extend.ts:374`) plus value-dedup then
+  halt. **Existing guard:** the own-engine SOLVE and pipeline DO carry a belt-and-suspenders
+  iteration cap `guardMax = (n+2)²` (`solve.ts:150-152`, `pipeline.ts:147-149`) as a silent loop
+  bound; per the analysis + probe it is provably unreachable under the fire-once set on the modeled
+  shapes (and the legacy walk `applyExtendsToSelector` carries NO such cap and terminates purely on
+  fire-once + value-change, `extend.ts:378-483`). The guard is defensible to KEEP as cheap insurance
+  against an unmodeled divergent rewrite, but it is NOT load-bearing for the modeled corpus — it is
+  never hit. **Design requirement:** none new; retain the finite-alphabet + fire-once + value-dedup
+  invariant, and (optional) keep the `guardMax` cap. **Fully settleable from the current engine?**
+  YES — the termination argument holds on the current own-engine + legacy-walk without the cutover.
 
 ---
 
