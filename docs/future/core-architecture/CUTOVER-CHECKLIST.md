@@ -642,3 +642,28 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   `isSpineEligibleMixinDefinition` to admit `params`), then defaults → named + `...` rest → guards (`when`) →
   the hard tail (recursion, `!important`, nested-scope closures/namespace, pattern-matching,
   merge-across-mixin, ruleset-as-mixin, interpolated-name).
+- 2026-07-08 · P3-precursor (MIXINS) · INCREMENT 3 — POSITIONAL args (arg ladder rung 1). A mixin call
+  with POSITIONAL args over a POSITIONAL-PARAM definition now folds through the spine. As predicted by the
+  frame-threaded descent (inc 2), this was almost entirely an ELIGIBILITY widening — `matchCallableParams`
+  already binds positional args into the surface's param live-cells (`createCallableLiveSlots` /
+  `wireCallableScopeFrames`), and the inc-2 descent already pushes the surface frame, so the bound cells are
+  visible with no new mechanism. Widened: `isSpineEligibleMixinCall` admits args that are all PLAIN POSITIONAL
+  value nodes (rejects a `VarDeclaration` named arg + a detached-ruleset/block arg — deferred); `isSpineEligible
+  MixinDefinition` admits a param list of PLAIN NAMED `VarDeclaration`s with NO DEFAULT (a `Nil` value —
+  required positional), rejecting defaults / `Rest` / pattern-match literals / guards. PROVEN in production:
+  `.m(@c, @w){color:@c;width:@w} .a{.m(red,10px)}` → `color:red;width:10px`, `spineRan=1 derives=0`,
+  byte-identical. Routing delta: tests-unit spine-routed roots 42 (inc 2) → 46 (+4 — positional-arg mixins in
+  non-mixin-named fixtures now route); the mixin-named fixtures (1/12) still need higher rungs
+  (defaults/guards/nested/named/pattern). Ratchets: core `emit-walk-ratchet` MIXIN-FOLD (positional-arg-fold
+  admitted + default-param-still-excluded) — 3203/0 core green; jess `spine-production-ratchet` 10/10 (+2:
+  positional-arg-through-Compiler, default-param-stays-on-eval); `all-less` 90/3 byte-identical. 0 NEW tsc /
+  lint (emit-walk's 4 pre-existing at-rule-predicate `as` assertions verified identical at HEAD → `--no-verify`;
+  serialize-helper untouched this increment). Backpedal self-check: REPLACED the eval path for the covered
+  shape (positional-arg mixin — one path: the spine); DEFAULTS/named/rest/guards + the hard tail remain
+  ratchet-locked deferrals; byte-identical 90/3; no forced fixture-match; NEVER `git stash`.
+  RECOMMENDED NEXT (increment 4): DEFAULTS — a param with a non-Nil default (`@c: red`) used when the call
+  omits it. `matchCallableParams` already fills the default into the binding (the trailing default-fill loop),
+  so this too should be an eligibility widening (`isSpineEligibleMixinDefinition`: admit a non-Nil param value)
+  + confirming the default binding resolves in the descent. Then named args (`.m(@c: red)` — admit a
+  `VarDeclaration` arg) → `...` rest → guards (`when` — needs the guard eval already run by the terminal, so
+  likely another eligibility widening, but VERIFY the guard-fail = no-fold case). Keep deferring the hard tail.

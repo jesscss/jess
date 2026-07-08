@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
@@ -585,7 +585,42 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(css).not.toContain('.m(');
   });
 
-  it('EXCLUDES a parametric mixin definition (deferred — arg binding is a later increment)', () => {
+  it('INCREMENT 3: folds a POSITIONAL-arg mixin call through the spine (arg bound into the param cell)', async () => {
+    // `.m(@c, @w) { color: @c; width: @w }` called `.m(red, 10px)` — the positional
+    // args bind into the param live-cells (`matchCallableParams`), resolved by the
+    // frame-threaded descent. No output tree.
+    const root = rules([
+      mixin({
+        name: '.m',
+        params: list([
+          vardecl({ name: 'c', value: nil() }, { paramVar: true }),
+          vardecl({ name: 'w', value: nil() }, { paramVar: true })
+        ]),
+        rules: [
+          decl({ name: 'color', value: ref({ key: 'c' }, { type: 'variable' }) }),
+          decl({ name: 'width', value: ref({ key: 'w' }, { type: 'variable' }) })
+        ]
+      }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [call({
+          name: ref({ key: '.m' }, { type: 'mixin' }),
+          args: list([spaced([el('red')]), spaced([el('10px')])])
+        })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1);
+    expect(css).toContain('color: red');
+    expect(css).toContain('width: 10px');
+    expect(css).not.toContain('.m(');
+  });
+
+  it('EXCLUDES a mixin definition with a DEFAULT param value (deferred — the defaults rung)', () => {
+    // A param with a non-Nil default (`@c: red`) is the next rung, not positional.
     const root = rules([
       mixin({
         name: '.m',

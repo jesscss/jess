@@ -151,8 +151,22 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
   if (!isNode(node, N.Call)) {
     return false;
   }
-  if (node.args && node.args.value.length > 0) {
-    return false;
+  // INCREMENT 3: POSITIONAL args admitted. Each arg must be a plain positional
+  // value node — NOT a named arg (`@c: red`, a `VarDeclaration`) and NOT a
+  // detached-ruleset / content block. Named args + `...` rest are later rungs of
+  // the ladder (deferred). `matchCallableParams` binds positional args into the
+  // surface's param live-cells, which the frame-threaded descent (increment 2)
+  // already resolves — so positional binding needs only this eligibility widening.
+  if (node.args) {
+    for (let i = 0; i < node.args.value.length; i++) {
+      const arg = node.args.value[i]!;
+      if (isNode(arg, N.VarDeclaration)) {
+        return false; // named arg — deferred
+      }
+      if (isNode(arg, N.Rules | N.Ruleset | N.AtRule | N.Mixin)) {
+        return false; // detached-ruleset / block arg — deferred
+      }
+    }
   }
   if (node.contentNode) {
     return false;
@@ -698,20 +712,43 @@ function isSpineEligibleBody(children: readonly Node[]): boolean {
 }
 
 /**
- * INCREMENT 1: a mixin DEFINITION whose calls the spine may fold — unparameterized
- * (no `params`), unguarded (no `when`), with a static string name. Its body need
+ * A mixin DEFINITION whose calls the spine may fold — a static string name, no
+ * `when` guard, and (INCREMENT 3) a POSITIONAL-only parameter list. Its body need
  * NOT be statically simple here (a call's runtime gate `isSpineSimpleMixinSurface`
  * decides fold-vs-fallback), but a definition that can't be admitted at all forces
- * the enclosing body off the spine. Later increments admit params/guards.
+ * the enclosing body off the spine.
+ *
+ * INCREMENT 3 admits positional params: every param is a plain named `VarDeclaration`
+ * (`.m(@a, @b)`) with NO DEFAULT value (a `Nil` value — a required positional).
+ * `matchCallableParams` binds the call's positional args into these params' live
+ * cells, resolved by the frame-threaded descent. DEFERRED (still off the spine):
+ * DEFAULTS (a non-Nil param value — next rung), REST (`...`), and PATTERN-MATCH
+ * literal params (`.m(dark, @c)` — a non-VarDeclaration value guard); a guard
+ * (`when`); an interpolated name.
  */
 function isSpineEligibleMixinDefinition(node: Node): boolean {
   if (!isNode(node, N.Mixin)) {
     return false;
   }
-  if (node.params || node.guard) {
+  if (typeof node.name !== 'string' || node.guard) {
     return false;
   }
-  return typeof node.name === 'string';
+  const params = node.params;
+  if (!params) {
+    return true;
+  }
+  for (let i = 0; i < params.value.length; i++) {
+    const param = params.value[i]!;
+    // Only a plain named param with NO default (required positional). A default
+    // (non-Nil value), a Rest, or a pattern-match literal defers.
+    if (!isNode(param, N.VarDeclaration)) {
+      return false;
+    }
+    if (!(param.value instanceof Nil)) {
+      return false; // has a default — deferred to the defaults rung
+    }
+  }
+  return true;
 }
 
 /**

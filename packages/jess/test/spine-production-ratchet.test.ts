@@ -185,4 +185,37 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path
     expect(css).toContain('width: 9px');
   });
+
+  it('INCREMENT 3: folds a POSITIONAL-arg Less mixin call through the spine on the COMPILER path (no derive)', async () => {
+    // A `.m(@c, @w)` def called `.m(red, 10px)` binds positional args into the
+    // param live-cells (matchCallableParams), resolved by the frame-threaded
+    // descent — LIVE in production, no output tree.
+    const compiler = makeCompiler();
+    const src = `.m(@c, @w) {\n  color: @c;\n  width: @w;\n}\n.a {\n  .m(red, 10px);\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0);
+      expect(css).toContain('color: red');
+      expect(css).toContain('width: 10px');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('does NOT route a DEFAULT-param mixin definition through the spine (deferred — the defaults rung)', async () => {
+    const compiler = makeCompiler();
+    const src = `.m(@c: red) {\n  color: @c;\n}\n.a {\n  .m();\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
+    expect(css).toContain('color: red');
+  });
 });
