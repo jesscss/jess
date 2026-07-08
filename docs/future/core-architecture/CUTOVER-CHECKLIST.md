@@ -96,10 +96,30 @@ that isn't measured done.
 1. Build passes; **component/unit tests prove the new mechanism on small inputs** (not "looks right").
 2. **Anti-backpedal self-check** (the ⛔ HARD RULE): "did I match/preserve the old structure anywhere?"
 3. **Lock the gain** — every improvement this phase made is encoded as a STANDING test (see RATCHET).
-4. Metric table (below) updated; net movement is the right direction, nothing regressed.
-5. At each integration + P5: byte-identical vs alpha `all-less` (both collapse modes) + core suite +
+4. **Document for reason-from-the-docs** (see DOCUMENTATION STANDARD below) — every module/function/method
+   this phase CREATES or materially changes carries contract-level JSDoc. A phase isn't done if its core
+   machinery can only be understood by reverse-engineering the code.
+5. Metric table (below) updated; net movement is the right direction, nothing regressed.
+6. At each integration + P5: byte-identical vs alpha `all-less` (both collapse modes) + core suite +
    sourcemap identity + all ratchet tests green. (Mid-cutover all-less is expected RED — the checklist +
    component tests are truth then, NOT all-less. Do not backslide because all-less is red mid-cutover.)
+
+### DOCUMENTATION STANDARD — reason about core functionality from the docs
+The cutover reduces machinery but the remaining single-pass core is subtle; it must be reasonable-about
+from its documentation, not just its code. Binding on every cutover agent:
+- **Module JSDoc**: each new/reworked core module (`emit-walk.ts`, the extend PLAN/SOLVE/EMIT modules, the
+  visitor registry, the flush/buffer machinery) gets a top-of-file block: what it is, its role in the ONE
+  pass, and a `@see` to the governing design section (e.g. `@see UNIFIED-EVAL-EMIT-DESIGN.md §2`).
+- **Function/method JSDoc**: the CONTRACT (inputs/outputs/effect) + any LOAD-BEARING INVARIANT
+  (e.g. "resolves against the top-of-stack value-frame at emit; must not run after that frame is popped";
+  "operates on the resolved output node — never the canonical source"). Enough that a reader reasons about
+  the flow without tracing the body.
+- **This is NOT license for inline noise.** The "no unnecessary comments" rule still holds — no line-by-line
+  narration of obvious code. Document CONTRACTS and WHY at the module/function boundary; keep bodies clean.
+- Prefer linking the design doc (single source of the *why*) over duplicating it; the JSDoc says what the
+  unit does + which design section governs it. Supplemental prose (a module README/design §) is fine where
+  a mechanism spans several units.
+- Retire stale docs as you delete machinery — a JSDoc describing a deleted path is worse than none.
 
 ### The three metric axes — baseline → target, each RATCHETED by a standing test
 | axis | metric | ratchet test (fails on regression) |
