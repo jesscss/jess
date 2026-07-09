@@ -4,7 +4,7 @@
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
 import type { IToken } from 'chevrotain';
 import { NoViableAltException } from 'chevrotain';
-import { productions as cssProductions } from '@jesscss/css-parser';
+import { productions as cssProductions } from '@jesscss/css-parser/jess';
 import {
   Any,
   Call,

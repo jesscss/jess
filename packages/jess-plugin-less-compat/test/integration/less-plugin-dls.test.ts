@@ -6,13 +6,15 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Parser } from '@jesscss/less-parser';
+import { Parser } from '@jesscss/less-parser/jess';
 import { lessCompatPlugin } from '../../src/index.js';
 import type { Visitor } from '@jesscss/core';
 
 // Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
 function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {
-  if (!visitor) return undefined;
+  if (!visitor) {
+    return undefined;
+  }
   if (Array.isArray(visitor)) {
     return visitor[0];
   }

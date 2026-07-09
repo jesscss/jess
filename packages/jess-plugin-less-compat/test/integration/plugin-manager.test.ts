@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Parser } from '@jesscss/less-parser';
+import { Parser } from '@jesscss/less-parser/jess';
 import { lessCompatPlugin } from '../../src/index.js';
 import { LessPluginManager, LessVisitor, createLessMock } from '../../src/less-compat-structures.js';
 import type { Visitor } from '@jesscss/core';

@@ -8,7 +8,7 @@
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
 import { type IOrAlt } from 'chevrotain';
-import { productions as cssProductions } from '@jesscss/css-parser';
+import { productions as cssProductions } from '@jesscss/css-parser/jess';
 
 import {
   Node,

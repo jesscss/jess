@@ -12,7 +12,7 @@ import {
   extractRelevantLines,
   type Rules
 } from '@jesscss/core';
-import { Parser } from '@jesscss/scss-parser';
+import { Parser } from '@jesscss/scss-parser/jess';
 import path from 'node:path';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 import type { EqualityMode, UnitMode } from '@jesscss/core';

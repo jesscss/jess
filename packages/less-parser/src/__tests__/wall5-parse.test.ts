@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- test inspects parser tree internals structurally. */
 import { describe, it, expect } from 'vitest';
-import { Parser } from '../index.js';
+import { Parser } from '../jess.js';
 
 /**
  * Bootstrap wall-5: `-(@gutter / 2)` (grid mixin `_grid.less`) threw
@@ -15,15 +16,21 @@ import { Parser } from '../index.js';
  * through to the strict math paren.
  */
 function firstOfType(node: any, type: string): any {
-  if (!node || typeof node !== 'object') return undefined;
-  if (node.type === type) return node;
+  if (!node || typeof node !== 'object') {
+    return undefined;
+  }
+  if (node.type === type) {
+    return node;
+  }
   const keys = (node.constructor?.childKeys ?? []) as string[];
   for (const k of keys) {
     const v = node[k];
     const arr = Array.isArray(v) ? v : [v];
     for (const it of arr) {
       const found = firstOfType(it, type);
-      if (found) return found;
+      if (found) {
+        return found;
+      }
     }
   }
   // Operation stores operands positionally

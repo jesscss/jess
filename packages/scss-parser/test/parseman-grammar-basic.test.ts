@@ -4,7 +4,7 @@
  * grammar (see grammar-rules.ts). The class-based `ScssGrammar` is builder-only.
  */
 import { describe, it, expect } from 'vitest';
-import { parseScssFn } from '../src/index.js';
+import { parseScssFn } from '../src/jess.js';
 import { isNode, N, Condition, serializeTypes, TreeContext } from '@jesscss/core';
 
 function parseOk(src: string) {

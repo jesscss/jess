@@ -1,7 +1,7 @@
 import * as glob from 'glob';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { invalidLess } from '@jesscss/shared';
 import { resolveLessTestDataRoot } from './test-data.js';
 

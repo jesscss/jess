@@ -11,8 +11,27 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
+      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
+    },
+    "./cst": {
+      "types": "./lib/cst.d.ts",
+      "source": "./src/cst.ts",
+      "import": "./lib/cst.js",
+      "require": "./lib/cst.cjs"
+    },
+    "./grammar": {
+      "types": "./lib/grammar.d.ts",
+      "source": "./src/grammar.ts",
+      "import": "./lib/grammar.js",
+      "require": "./lib/grammar.cjs"
+    },
+    "./jess": {
+      "types": "./lib/jess.d.ts",
+      "source": "./src/jess.ts",
+      "import": "./lib/jess.js",
+      "require": "./lib/jess.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -31,21 +50,31 @@
     "bench:memory": "node --expose-gc --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --memory",
     "bench:heap": "node --expose-gc --import ../../scripts/parseman-macro-register.mjs --import tsx test/bench.ts --heap-snapshot",
     "test": "cross-env TEST=true vitest --watch=false",
+    "test:debug": "cross-env TEST=true TEST_DEBUG=true vitest --watch=false test/debug-self-analysis.test.ts test/debug-subset-self-analysis.test.ts",
+    "test:perf": "cross-env TEST=true TEST_PERF=true vitest --watch=false test/perf.test.ts",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
-    "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
     "chevrotain": "^12.0.0",
     "known-css-properties": "~0.37.0"
   },
+  "peerDependencies": {
+    "@jesscss/core": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@jesscss/core": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@jesscss/core": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "less": "^4.6.3",
-    "parseman": "^0.16.0",
     "@types/node": "^18.19.31",
+    "less": "^4.6.3",
+    "parseman": "link:/Users/matthew/git/oss/parser-thing",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

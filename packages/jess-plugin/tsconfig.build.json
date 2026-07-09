@@ -4,7 +4,12 @@
     "composite": true,
     "outDir": "./lib",
     "rootDir": "./src",
-    "noEmit": false
+    "noEmit": false,
+    // This package still emits via plain `tsc -b` (unlike siblings on tsdown +
+    // `tsc --emitDeclarationOnly`), so the root's `allowImportingTsExtensions:true`
+    // is illegal here (it requires noEmit/emitDeclarationOnly/rewrite). Disable it;
+    // this package imports no .ts extensions.
+    "allowImportingTsExtensions": false
   },
   "include": ["src/**/*.ts"]
 }

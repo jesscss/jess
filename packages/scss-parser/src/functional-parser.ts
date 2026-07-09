@@ -4,10 +4,10 @@
  * points. The grammar itself lives in ./grammar.ts; the shared driver is reused
  * from @jesscss/css-parser.
  */
-import type { Span } from 'parseman';
+import type { FieldMap, Span } from 'parseman';
 import type { TriviaMap, JessError, Rules, TreeContext, IParseResult } from '@jesscss/core';
 import type { ILexingResult } from 'chevrotain';
-import { runFunctionalParse, type FunctionalParseHost } from '@jesscss/css-parser';
+import { runFunctionalParse, type FunctionalParseHost } from '@jesscss/css-parser/jess';
 import { scssGrammar } from './grammar.js';
 import { ScssGrammar } from './builders.js';
 import { setParseScssFnForInterp } from './interp.js';
@@ -43,11 +43,15 @@ class BuilderHost extends ScssGrammar implements FunctionalParseHost {
 
   /** `ctx.build` host: every structural `node(type, …)` builds through this,
    * reusing ScssGrammar's (SCSS + inherited Less/CSS) `buildNode` verbatim. */
-  build(type: string, children: ReadonlyArray<unknown>, rawChildren: ReadonlyArray<unknown>, span: { start: number; end: number }): unknown {
+  captureTriviaForNode(type: string) {
+    return type === 'CompoundSelector';
+  }
+
+  build(type: string, children: ReadonlyArray<unknown>, fields: FieldMap | undefined, span: { start: number; end: number }, rawChildren: ReadonlyArray<unknown>, triviaLog: readonly number[]): unknown {
     /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
     return (this as unknown as {
-      buildNode(t: string, s: Span, c: ReadonlyArray<unknown>, st: unknown, r: ReadonlyArray<unknown>): unknown;
-    }).buildNode(type, { start: span.start, end: span.end } as Span, children, undefined, rawChildren);
+      buildNode(t: string, s: Span, c: ReadonlyArray<unknown>, st: unknown, r: ReadonlyArray<unknown>, f?: FieldMap, tl?: readonly number[]): unknown;
+    }).buildNode(type, { start: span.start, end: span.end } as Span, children, undefined, rawChildren, fields, triviaLog);
     /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
   }
 }

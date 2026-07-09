@@ -1,11 +1,17 @@
 import { mergeConfig, defineConfig } from 'vitest/config';
 import base from '../../vitest.config.js';
 
+const exclude = [
+  ...(process.env.TEST_DEBUG === 'true' ? [] : ['test/debug-*.test.ts']),
+  ...(process.env.TEST_PERF === 'true' ? [] : ['test/perf.test.ts'])
+];
+
 export default mergeConfig(
   base,
   defineConfig({
     test: {
       name: 'less-parser',
+      exclude,
       // Coverage configuration for less-parser
       coverage: {
         provider: 'v8',
@@ -17,7 +23,7 @@ export default mergeConfig(
           '**/node_modules/**',
           '**/lib/**',
           '**/dist/**'
-        ],
+        ]
         // Keep reporting scoped to parser productions without hard-gating coverage.
       }
     }

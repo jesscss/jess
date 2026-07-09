@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- test inspects parser tree internals structurally. */
 import { N, isNode, type Node } from '@jesscss/core';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 
 const parser = new Parser();
 const parse = parser.parse;
@@ -51,7 +52,7 @@ describe('@{var} interpolation inside quoted strings', () => {
   });
 
   it('splits an escaped single-quoted string on @{a}/@{b}', () => {
-    const { tree: root, errors } = parse(".x { foo: ~'@{a}/@{b}'; }", 'Stylesheet');
+    const { tree: root, errors } = parse('.x { foo: ~\'@{a}/@{b}\'; }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const q = findQuoted(root);
     expect(q).toBeDefined();

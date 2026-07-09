@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { Quoted, Interpolated, Reference, Call, INTERPOLATION_PLACEHOLDER, isNode, N } from '@jesscss/core';
 
 const parser = new Parser();
