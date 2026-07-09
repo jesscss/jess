@@ -206,36 +206,38 @@ export function composeTargetOwn(targetPath: BucketPath): Selector {
 }
 
 /**
- * PROJECT a subject to its ordered Or-branch set. The subject's authored own form is branch 0 (by
- * its document order); each contribution is composed relative to the target and inserted by document
- * order. This is the EMIT projection §4.3: order = document order (confluence), placement/origin
- * flow from the composed form.
+ * PROJECT a subject to its Or-branch set. Extend is LIST-APPEND: the subject's authored own form
+ * always LEADS (branch 0), and each contribution is composed relative to the target and APPENDED
+ * in feed (document) order. There is NO sort — the target's own selector heads its own rule
+ * unconditionally, extenders follow. (An earlier version sorted the own form AMONG the
+ * contributions by document position, which floated a before-authored extender ahead of the
+ * target — `.b, .a` instead of `.a, .b`. That was a bug, not an ordering choice: append semantics
+ * have nothing to sort. The bug hid because every ratified fixture authors the target BEFORE its
+ * extenders, where append and sort coincide.)
+ *
+ * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.3 (extend is list-append; target leads; no sort).
  */
 export function projectSubject(subject: EmitSubject): EmitProjection {
-  const ordered = [
-    { order: subject.order, selector: composeTargetOwn(subject.path) },
-    ...subject.contributions.map(c => {
-      const { selector } = composeContribution(c, subject.path);
-      return { order: c.order, selector };
-    })
+  const entries: Selector[] = [
+    composeTargetOwn(subject.path),
+    ...subject.contributions.map(c => composeContribution(c, subject.path).selector)
   ];
-  ordered.sort((a, b) => a.order - b.order);
   let hoistToRoot = false;
   for (const c of subject.contributions) {
     if (composeContribution(c, subject.path).crossesParentBoundary) {
       hoistToRoot = true;
     }
   }
-  // Dedup by selector text, preserving order.
+  // Dedup by selector text, preserving append order (target-own first).
   const seen = new Set<string>();
   const branches: Selector[] = [];
-  for (const entry of ordered) {
-    const key = selectorKey(entry.selector);
+  for (const selector of entries) {
+    const key = selectorKey(selector);
     if (seen.has(key)) {
       continue;
     }
     seen.add(key);
-    branches.push(entry.selector);
+    branches.push(selector);
   }
   return { branches, hoistToRoot };
 }

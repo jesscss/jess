@@ -206,13 +206,15 @@ old structure instead of building the target*. Guardrails, binding on every cuto
 - [ ] EMIT projects (B): `placement`/`origin`(`F_EXTENDED`/`F_EXTEND_TARGET`)/`order`/`visible`/`generated`
       onto branches (the B2 flag work — on the branch, never the shared source selector).
 - [ ] Resolve interpolated extend TARGET at capture (OQ-A fix, `extend.ts:341`) so `:extend([data=@{attr}])` works.
-- [ ] **Wire the comma-sibling document-order determinism (OQ-D finding).** The branch SET is confluent, but
-      sibling ORDER is not order-independent — and the design's EMIT document-order sort is **dead code today**
-      (`setExtendOrderMap` has zero callers; `extendOrderMap` always null). Production is deterministic only via a
-      document-order FEED. So the cutover MUST either build the EMIT order sort (install the value→document-order
-      map the §4.2/§4.4 sort branches read) OR preserve the document-order feed. Lock: the pinned
-      `oqd-confluence-differential.test.ts` negative assertion (raw sibling order NOT confluent) flips to
-      `a === b` when the sort is wired — activate it then (it's the guard that the sort actually got built).
+- [x] **OQ-D CORRECTED + DONE (owner 2026-07-08): extend is LIST-APPEND (target leads, no sort).** The
+      "document-order sort deliverable" was mis-scoped scaffolding around a `projectSubject` bug — there was
+      never a sort to build. FIX: `projectSubject` (`emit.ts`) drops the `ordered.sort`; the target's own
+      form leads, contributions append in feed order (a before-authored extender no longer floats ahead —
+      `.a, .b` not `.b, .a`). DELETED: the dead `setExtendOrderMap`/`extendOrderMap` path (zero callers,
+      always null) + its two always-false-guarded sort branches in `extend.ts`. The
+      `oqd-confluence-differential.test.ts` "sort not yet wired" negative assertion is REWRITTEN to assert
+      append semantics (set confluent + target-first + feed-order siblings). Byte-neutral on the 90 (every
+      fixture authors target-first, where sort and append coincided — which is why the bug hid).
 
 ### P4 — delete the dead machinery (§7 + flag-walk C4)  ·  depends on P2+P3  ·  FAN-OUT across sites
 - [ ] Delete eval→output-tree staging + reuse gates + clone families + container static short-circuits.

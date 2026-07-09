@@ -118,6 +118,19 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
+  it('extend is LIST-APPEND: an extender authored BEFORE its target still leads with the target', async () => {
+    // The projectSubject sort-bug fix (OQ-D corrected): extend appends to the target's list, the
+    // target's own selector LEADS unconditionally. A `.b:extend(.a)` authored BEFORE `.a` yields
+    // `.a,\n.b` (target-first), NOT `.b,\n.a` (the old sort-among-contributions bug). No corpus
+    // fixture exercised this (all author target-first), so it's pinned here.
+    const compiler = makeCompiler();
+    const src = `.b:extend(.a) {\n  color: blue;\n}\n.a {\n  color: red;\n}\n`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.b {\n  color: blue;\n}\n.a,\n.b {\n  color: red;\n}\n');
+  });
+
   it('P3 increment 1: `&:extend(... all)` with a nested block folds through the spine byte-identically (extend-clearfix shape)', async () => {
     // A root-level `&:extend(.x all)` whose target has a NESTED block: the subject header
     // override (`.clearfix, .foo, .bar`) flows through the existing `&`-composition, so the
