@@ -132,7 +132,7 @@ function asSelector(result: Selector | Selector[]): Selector {
 function solveContributions(
   subject: PipelineSubject,
   instructions: PipelineInstruction[]
-): { fired: PipelineInstruction[]; unsupported: PipelineInstruction[]; ownBuilt: boolean } {
+): { fired: PipelineInstruction[]; unsupported: PipelineInstruction[]; ownBuilt: boolean; solved: Selector } {
   const subjectScope = scopeKey(subject.scope);
   const reachable = instructions.filter(inst => scopeKey(inst.scope) === subjectScope);
   const unsupported: PipelineInstruction[] = [];
@@ -177,7 +177,7 @@ function solveContributions(
     }
   }
 
-  return { fired, unsupported, ownBuilt };
+  return { fired, unsupported, ownBuilt, solved: current };
 }
 
 /**
@@ -192,13 +192,34 @@ export function runSubjectProjection(
   subject: PipelineSubject,
   instructions: PipelineInstruction[]
 ): { projection: EmitProjection | undefined; ownBuilt: boolean; unsupported: PipelineInstruction[] } {
-  const { fired, unsupported, ownBuilt } = solveContributions(subject, instructions);
+  const { fired, unsupported, ownBuilt, solved } = solveContributions(subject, instructions);
   if (!ownBuilt) {
     return { projection: undefined, ownBuilt: false, unsupported };
   }
   const contributions: EmitContribution[] = fired.map(inst => ({ path: inst.path, order: inst.order }));
   const emitSubject: EmitSubject = { path: subject.path, order: subject.order, contributions };
-  return { projection: projectSubject(emitSubject), ownBuilt: true, unsupported };
+  const projection = projectSubject(emitSubject);
+  // SHAPE 4 (partial-of-sub-compound in-place wrap). EMIT is BRANCH-APPEND: it composes each
+  // extender as a NEW Or-branch. That is correct when the extend adds a sibling selector, but WRONG
+  // when the extend WRAPS a sub-compound of the subject's OWN branches in place
+  // (`.foo .bar` find `.foo` → `:is(.foo, .ext1 .ext2) .bar`, NOT `.foo .bar, .ext1 .ext2`). SOLVE's
+  // local-apply result (`solved`) is the oracle-identical rewrite for BOTH semantics. It is
+  // authoritative — no compose-from-path needed — precisely when EVERY fired extender is ROOT-LEVEL
+  // (`path.length === 1`): its `extendWith` is already its full form, so SOLVE applied it verbatim
+  // (a nested extender needs EMIT's compose-relative-to-target, so those keep the projection). When
+  // SOLVE's result differs from the branch-append projection under that condition, an in-place wrap
+  // occurred → return SOLVE's branches. (Equal results — the `.button,.submit` append — are
+  // unaffected.)
+  const allFiredRootLevel = fired.every(inst => inst.path.length === 1);
+  if (allFiredRootLevel && fired.length > 0 && !projection.hoistToRoot) {
+    const solvedBranches = solved instanceof SelectorList ? solved.value as Selector[] : [solved];
+    const solvedKey = solvedBranches.map(b => String(b.valueOf())).join(',');
+    const projectionKey = projection.branches.map(b => String(b.valueOf())).join(',');
+    if (solvedKey !== projectionKey) {
+      return { projection: { branches: solvedBranches, hoistToRoot: false }, ownBuilt: true, unsupported };
+    }
+  }
+  return { projection, ownBuilt: true, unsupported };
 }
 
 /**

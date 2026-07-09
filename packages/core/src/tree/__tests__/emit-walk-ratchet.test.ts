@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest, condition, extend, ExtendFlag, compound } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest, condition, extend, ExtendFlag, compound, co } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
@@ -362,6 +362,40 @@ describe('emit-walk wire-in ratchet (P1)', () => {
       expect(deriveCalls).toBe(0);
       // `.ext` gains the grouped composed contribution — the ratified alpha shape.
       expect(css).toContain('.ext,\n:is(.a, .b) .c');
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('wraps a PARTIAL-OF-LEADING-COMPOUND in place through the spine (extend-selector `.foo .bar`, no eval/derive)', () => {
+    // `.foo .bar, .foo .baz` with root-level partial extenders of the LEADING compound `.foo`
+    // (`.ext1 .ext2`, `.ext3`, `.ext4`) → each branch wraps `.foo` IN PLACE:
+    // `:is(.foo, .ext1 .ext2, .ext3, .ext4) .bar`. SHAPE 4: `.foo` is recognized as an addressable
+    // leading-compound subject (gate), and the header comes from SOLVE's local-apply rewrite (not
+    // EMIT's branch-append, which would wrongly add siblings). RATCHET: folds via the Compiler,
+    // `Rules.derive`=0.
+    const root = rules([
+      ruleset({ selector: [sel([el('.foo'), co(' '), el('.bar')]), sel([el('.foo'), co(' '), el('.baz')])], rules: [decl({ name: 'display', value: any('none') })] }),
+      ruleset({ selector: sel([el('.ext1'), co(' '), el('.ext2')]), rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })] }),
+      ruleset({ selector: [el('.ext3'), el('.ext4')], rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })] })
+    ]);
+    const partialCtx = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(root, partialCtx)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(partialCtx) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0);
+      // Leading `.foo` wrapped in place per branch — the ratified alpha shape.
+      expect(css).toContain(':is(.foo, .ext1 .ext2, .ext3, .ext4) .bar');
+      expect(css).toContain(':is(.foo, .ext1 .ext2, .ext3, .ext4) .baz');
     } finally {
       Rules.prototype.derive = original;
     }

@@ -394,6 +394,58 @@ function localIsMultiBranchList(ruleset: Ruleset): boolean {
   return local !== undefined && isNode(local, N.SelectorList) && local.value.length > 1;
 }
 
+/**
+ * The `valueOf()` of a complex selector's LEADING compound when it is followed by a DESCENDANT
+ * (space) combinator (`.foo .bar` → `.foo`), else undefined. Only a plain descendant lead qualifies
+ * for the SHAPE-4 partial-of-leading-compound `:is`-wrap; a child/sibling combinator (`>`, `+`, `~`)
+ * or a graft/`&` compound does not.
+ */
+function leadingDescendantCompound(sel: Selector): string | undefined {
+  if (!isNode(sel, N.ComplexSelector) || sel.value.length < 3) {
+    return undefined;
+  }
+  const lead = sel.value[0]!;
+  const comb = sel.value[1]!;
+  // The DESCENDANT combinator between lead and the rest must be a plain space. (A materialized
+  // component may be a raw string or a node — read `valueOf()` uniformly.)
+  if (typeof comb === 'string' ? comb !== ' ' : String(comb.valueOf()).trim() !== '') {
+    return undefined;
+  }
+  const text = typeof lead === 'string' ? lead : String(lead.valueOf());
+  // Reject a lead that is itself a graft / `&` / combinatorial — only a plain compound wraps cleanly.
+  if (/[>+~,()&]/.test(text)) {
+    return undefined;
+  }
+  return text;
+}
+
+/**
+ * The shared leading descendant compound across ALL branches of a subject selector, or undefined
+ * when the branches disagree (or a branch is not a descendant complex). `.foo .bar, .foo .baz` →
+ * `.foo`; `.foo .bar, .qux .baz` → undefined. A single complex (`.foo .bar`) also qualifies.
+ */
+function sharedLeadingCompound(sel: Selector): string | undefined {
+  const branches: Selector[] = isNode(sel, N.SelectorList)
+    ? sel.value.filter((b): b is Selector => typeof b !== 'string')
+    : [sel];
+  if (branches.length === 0) {
+    return undefined;
+  }
+  let shared: string | undefined;
+  for (const branch of branches) {
+    const lead = leadingDescendantCompound(branch);
+    if (lead === undefined) {
+      return undefined;
+    }
+    if (shared === undefined) {
+      shared = lead;
+    } else if (shared !== lead) {
+      return undefined;
+    }
+  }
+  return shared;
+}
+
 /** The Extend nodes borne by a ruleset's direct body (both `Extend` and `ExtendList.value`). */
 function rulesetExtendNodes(ruleset: Ruleset): Extend[] {
   const out: Extend[] = [];
@@ -458,12 +510,21 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
   const subjectComposedPaths = new Set<string>();
   let ok = true;
 
+  // The SHARED LEADING COMPOUND of every branch of a root-level subject (SHAPE 4). When a
+  // root-level subject is `.foo .bar, .foo .baz`, a partial extend of the leading `.foo` wraps it
+  // IN PLACE per branch (`:is(.foo, …) .bar`), so `.foo` is an addressable target even though it is
+  // not itself a root-level subject selector. The matcher + SOLVE build this; the gate must admit it.
+  const leadingCompoundTargets = new Set<string>();
   // Root-level subject selectors (a plain target resolves to one of these — increment 2 path).
   for (const child of root.rules) {
     if (isNode(child, N.Ruleset)) {
       const local = flatLocalSelector(child);
       if (local !== undefined) {
         rootLevelSelectors.add(String(local.valueOf()));
+        const lead = sharedLeadingCompound(local);
+        if (lead !== undefined) {
+          leadingCompoundTargets.add(lead);
+        }
       }
     }
   }
@@ -586,7 +647,12 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     // is that the nested block already emits at ROOT (which holds only under collapse). In expanded
     // mode the block stays nested and hoist would need block relocation (deferred) → stays on eval.
     const isNestedComposedTarget = collapseNesting && subjectComposedPaths.has(target) && target.includes(' ');
-    if (!isRootTarget && !isNestedComposedTarget) {
+    // SHAPE 4: the target is the shared leading compound of a root-level subject's branches — a
+    // partial-of-leading-compound in-place `:is`-wrap. Addressable by the root-level header override
+    // (the SOLVE local-apply rewrites the subject's own branches; not a nested subject).
+    const isLeadingCompoundTarget = leadingCompoundTargets.has(target)
+      && !anyNestedRulesetMatchesSelector(root, target);
+    if (!isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget) {
       return false; // target maps to no addressable subject (root selector or crossing nested path)
     }
     if (extenderSelectors.has(target)) {
