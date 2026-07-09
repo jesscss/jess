@@ -83,10 +83,6 @@ function sourceTriviaForNode(node: Node): PrintOptions['trivia'] | undefined {
   return isTriviaMap(trivia) ? trivia : undefined;
 }
 
-function createImportantFlag(): Any<'flag'> {
-  return new Any<'flag'>('!important', { role: 'flag' });
-}
-
 function startsWithWhitespace(text: string): boolean {
   return text.length > 0 && /^[ \t\r\n\f]/u.test(text);
 }
@@ -1745,7 +1741,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
-    const important = createImportantFlag();
+    const important = '!important';
     for (let index = 0; index < rules.rules.length; index++) {
       const rule = rules.rules[index]!;
       if (isNode(rule, N.Declaration)) {

@@ -11,7 +11,7 @@ import { isNode } from './util/is-node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
-import { Any, any, keyword, type AnyRole } from './any.js';
+import { Any, keyword, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
 import { List } from './list.js';
 import { Sequence, spaced } from './sequence.js';
@@ -219,7 +219,7 @@ export function finalizeContextualImportantPublicState(
   }
   return sourceImportant && sourceImportant !== true
     ? { important: sourceImportant }
-    : { important: any('!important', { role: 'flag' }) };
+    : { important: '!important' };
 }
 
 export function collectDeclarationMergeAdapterItems(
