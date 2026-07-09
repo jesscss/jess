@@ -55,7 +55,7 @@ import { spanStartOf } from '../util/provenance.js';
 import { asExtendSelectorNode } from '../util/extend-roots.js';
 import { Extend, ExtendFlag } from '../extend.js';
 import { ExtendList } from '../extend-list.js';
-import { runSubjectProjection, type PipelineInstruction, type PipelineSubject } from './pipeline.js';
+import { runSubjectProjection, solveSubjectBranches, type PipelineInstruction, type PipelineSubject } from './pipeline.js';
 
 /**
  * Instrument for the zero-extend ratchet (metric axis (b): the fast path pays nothing).
@@ -211,6 +211,27 @@ export function composeSpineSubjectHeaders(
         hoisted.add(subject.ruleset);
         continue;
       }
+    }
+
+    // EXPANDED-MODE NESTED IN-PLACE REWRITE (`collapseNesting:false`). A nested subject keeps its
+    // block; its header is the subject's BARE per-level local rewritten IN PLACE (`.attributes {
+    // [data="test"], .attribute-test { … } }` — the block wrapper supplies `.attributes`). SOLVE
+    // seeded with the BARE local + each fired SIBLING extender's bare `extendWith` produces exactly
+    // that (oracle-identical); EMIT's compose-from-path would not fire (the matcher rejects a
+    // composed descendant target) or prepend the shared ancestor. Install the bare multi-branch
+    // header — NOT hoisted, so the normal expanded-mode nested-header path emits it (composing the
+    // parent frame like an authored nested selector). Only when it gained a branch.
+    if (isNested && !collapseNesting) {
+      const bareLocal = subject.path[subject.path.length - 1]!;
+      extendLayerCounter.solveRuns++;
+      const solvedBare = solveSubjectBranches(
+        { id: `n${i}`, path: [bareLocal], order: subject.order },
+        instructions
+      );
+      if (solvedBare && solvedBare.branches.length > 1) {
+        headers.set(subject.ruleset, new SelectorList(solvedBare.branches as SelectorList['value']));
+      }
+      continue;
     }
 
     const pipelineSubject: PipelineSubject = {
@@ -934,13 +955,55 @@ export function wireSpineExtends(root: Rules, context: Context, collapseNesting:
     context.rulesetFrames.length = Math.max(frameBaseline, context.rulesetFrames.length - 1);
   };
 
+  // A STANDALONE `Extend` (`.a, .b:extend(.x) {}`) — an empty-body selector-list block whose only
+  // effect is the extend — parses as a bare `Rules` container holding an `Extend` node that carries
+  // its OWN branch selector (`ext.selector` = `.ext7`), NOT a `Ruleset` whose selector is the
+  // extender (the normal case, where `ext.selector` is absent). Gather it as an instruction with the
+  // extender path `[...parentPath, ext.selector]` — the extender own IS the Extend's branch selector.
+  const gatherStandaloneExtend = (ext: Extend, parentPath: readonly Selector[]): void => {
+    const rawTarget = ext.target;
+    const branchSel = ext.selector;
+    if (rawTarget === undefined || rawTarget === null || branchSel === undefined || branchSel === null) {
+      return;
+    }
+    // The branch selector materializes like any string/array target surface (same as `asExtendSelectorNode`).
+    const extenderLocal: Selector | undefined = typeof branchSel === 'string' || Array.isArray(branchSel)
+      ? asExtendSelectorNode(branchSel)
+      : branchSel;
+    if (extenderLocal === undefined || String(extenderLocal.valueOf()).includes('&')) {
+      return; // an `&`-branch standalone extend needs eval-composition — defer (not in the corpus)
+    }
+    const path: readonly Selector[] = [...parentPath, extenderLocal];
+    const target = typeof rawTarget === 'string' || Array.isArray(rawTarget)
+      ? asExtendSelectorNode(rawTarget)
+      : rawTarget;
+    instructions.push({
+      target,
+      extendWith: extenderLocal,
+      partial: ext.flag === ExtendFlag.All,
+      path: [...path],
+      order: orderOf(ext)
+    });
+  };
+
   const descendChildren = (children: readonly Node[], path: readonly Selector[]): void => {
     for (const child of children) {
       if (isNode(child, N.Ruleset)) {
         gatherRuleset(child, path);
+      } else if (child instanceof Extend) {
+        // A standalone `Extend` directly under a `Rules` container (`.a, .b:extend(.x) {}` → the
+        // empty-body block parses as `Rules`, not `Ruleset`). Its extender own is its branch selector.
+        gatherStandaloneExtend(child, path);
+      } else if (child instanceof ExtendList) {
+        for (const ext of child.value) {
+          gatherStandaloneExtend(ext, path);
+        }
+      } else if (isNode(child, N.Rules) && Array.isArray((child as { rules?: Node[] }).rules)) {
+        // A nested `Rules` container (the empty-body selector-list-extend surface) — descend so its
+        // standalone `Extend` children are gathered. Its own selector (if any) is empty (no output).
+        descendChildren((child as { rules: Node[] }).rules, path);
       }
-      // At-rules / nested Rules bearing extends are excluded by the eligibility gate, so no
-      // descent into them (defensive omission; the gate guarantees none reach us).
+      // At-rules bearing extends are excluded by the eligibility gate, so no descent into them.
     }
   };
 
@@ -949,9 +1012,9 @@ export function wireSpineExtends(root: Rules, context: Context, collapseNesting:
   return composeSpineSubjectHeaders(subjects, instructions, collapseNesting);
 }
 
-/** Document order of a ruleset = its source span start offset (matches the extend tuple's docOrder). */
-function orderOf(ruleset: Ruleset): number {
-  const span = spanStartOf(ruleset);
+/** Document order of a node = its source span start offset (matches the extend tuple's docOrder). */
+function orderOf(node: Node): number {
+  const span = spanStartOf(node);
   return typeof span === 'number' ? span : 0;
 }
 

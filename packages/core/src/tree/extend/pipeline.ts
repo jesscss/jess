@@ -144,6 +144,14 @@ function solveContributions(
   const done = new Set<string>();
   const fireKey = (branchValue: string, inst: PipelineInstruction): string =>
     `${branchValue}|${inst.partial ? 1 : 0}|${String(inst.target.valueOf())}|${String(inst.extendWith.valueOf())}`;
+  // FIRE-ONCE PER INSTRUCTION (Less semantics — an extend is NOT recursively applied to the
+  // extension it just produced). The `branchValue`-keyed `done` above re-opens the sweep after ANY
+  // fire (so a CHAINED extend — a DIFFERENT instruction now matching the produced branch — still
+  // fires), but the SAME instruction must never re-fire on its OWN output: a partial extend wraps
+  // its find in `:is(find, extendWith)`, and re-matching `find` INSIDE that graft is both wrong
+  // (double-extend) and a matcher UNSUPPORTED (`.replace` inside `:is(.replace, .rep_ace)` — the
+  // is-graft-target trap). So an instruction that has fired once is retired for the whole subject.
+  const firedInstructions = new Set<PipelineInstruction>();
 
   let changed = true;
   const guardMax = (reachable.length + 2) * (reachable.length + 2);
@@ -153,6 +161,9 @@ function solveContributions(
     rounds++;
     const branchValue = String(current.valueOf());
     for (const inst of reachable) {
+      if (firedInstructions.has(inst)) {
+        continue; // already fired once against this subject — never self-re-apply
+      }
       const key = fireKey(branchValue, inst);
       if (done.has(key)) {
         continue;
@@ -172,6 +183,7 @@ function solveContributions(
       if (String(next.valueOf()) !== branchValue) {
         current = next;
         fired.push(inst);
+        firedInstructions.add(inst);
         changed = true;
         break;
       }
@@ -231,6 +243,35 @@ export function runSubjectProjection(
     }
   }
   return { projection, ownBuilt: true, unsupported };
+}
+
+/**
+ * SOLVE-ONLY local-apply for ONE subject — the raw fixpoint rewrite of the subject's seed
+ * (`ownComposed(subject.path)`) by every fired instruction's `extendWith`, with NO EMIT
+ * compose-from-path. Returns the solved Or-branch NODES (split from a `SelectorList`) plus
+ * own-built status, or undefined when a per-match shape is UNSUPPORTED.
+ *
+ * WHY (P4 expanded-mode nested in-place rewrite). A NESTED subject under `collapseNesting:false`
+ * keeps its block; its header is the subject's BARE per-level local rewritten IN PLACE — the
+ * `.attributes { [data="test"], .attribute-test { … } }` shape (the block wrapper supplies the
+ * `.attributes` prefix). Seeding SOLVE with the BARE local and applying each SIBLING extender's
+ * bare `extendWith` produces exactly that (`[data="test"], .attribute-test`), which is
+ * oracle-identical (`applyExtendsToSelector`), whereas EMIT's compose-from-path would either not
+ * fire (the matcher rejects a composed descendant target) or prepend the shared ancestor. So the
+ * expanded-mode nested wiring calls THIS with the bare local, not `runSubjectProjection`.
+ */
+export function solveSubjectBranches(
+  subject: PipelineSubject,
+  instructions: PipelineInstruction[]
+): { branches: Selector[]; ownBuilt: boolean } | undefined {
+  const { ownBuilt, solved } = solveContributions(subject, instructions);
+  if (!ownBuilt) {
+    return undefined;
+  }
+  const branches: Selector[] = solved instanceof SelectorList
+    ? solved.value.map(item => (typeof item === 'string' ? asExtendSelectorNode(item) : item))
+    : [solved];
+  return { branches, ownBuilt };
 }
 
 /**
