@@ -786,6 +786,13 @@ function isSpineEligibleAtRule(node: Node, allowImport = false): boolean {
     return false;
   }
   const atRule = node;
+  // A non-string at-rule NAME (an `Interpolated` node) is UNREACHABLE, not a coverage
+  // gap: an interpolated at-rule name (`@@{n} screen {}`) is NOT a Less feature —
+  // less.js parse-errors on it (`tests-error/parse/bad-variable-declaration1.less`)
+  // and the jess parser likewise rejects it (`@@{n} …` never yields an `AtRule` with a
+  // non-string name; `@{n} …` parses as an InterpolatedSelector ruleset — the M8 lane).
+  // This branch is effectively dead; kept as a cheap type-narrowing guard. Do NOT
+  // "restore" it as a future feature — the shape is a verified non-feature.
   if (typeof atRule.name !== 'string') {
     return false;
   }
@@ -931,6 +938,13 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false, all
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     if (isSimpleSpineLeaf(child, allowExtend, allowImport)) {
+      // A non-string VarDeclaration NAME is UNREACHABLE, not a coverage gap: an
+      // interpolated var-name write (`@@{x}: v`) is NOT a Less feature — less.js
+      // parse-errors on it (`tests-error/parse/bad-variable-declaration1.less`) and
+      // the jess parser likewise rejects it (never yields a `VarDeclaration` with a
+      // non-string name). This branch is effectively dead; kept as a cheap
+      // type-narrowing guard. Do NOT "restore" it as a future feature — verified
+      // non-feature.
       if (isNode(child, N.VarDeclaration) && typeof child.name !== 'string') {
         return false;
       }
@@ -1357,15 +1371,16 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (bodyHasDirectSetDefined(root.rules)) {
     return false;
   }
-  // INCREMENT 2 cross-check: a mixin CALL whose target might be an INTERPOLATED-
-  // SELECTOR ruleset (`.@{x} {}` used as `.foo()`) can't fold — the interpolated
-  // name is registered into the callable cache by the EVAL pass, which the spine
-  // skips, so the call's resolution would throw "No matching mixins". If the tree
-  // has BOTH a mixin call and an interpolated-selector ruleset, keep it on the eval
-  // path. DEFERRED: interpolated-name callable registration (an eval-pass side effect).
-  if (treeHasMixinCall(root) && treeHasInterpolatedSelectorRuleset(root)) {
-    return false;
-  }
+  // M8 (FOLDED): a mixin CALL whose target is an INTERPOLATED-SELECTOR ruleset
+  // (`.@{name} {}` used as `.foo()`). The interpolated name used to be registered
+  // into the callable cache ONLY by the eval pass (`Ruleset.prepareRegistration` →
+  // `selector.eval` resolves `.@{name}` → `.foo` and writes `ownSelector`, which
+  // `collectCallablesFor` keys), which the spine skipped — so the call missed and
+  // threw "No matching mixins". `renderRootViaSpine` now replicates exactly that
+  // eval-pass side effect at root-enter (`wireSpineInterpolatedSelectorCallables`,
+  // gated on `treeHasInterpolatedSelectorRuleset` so a shape-free tree pays nothing):
+  // it resolves each interpolated-selector ruleset's identity in place and re-keys
+  // the callable cache, so the call resolves byte-identical to eval.
   // FOLD B (P4 terminal/sink): a `mixin-ruleset` dot-call whose key names BOTH a
   // Mixin definition AND a same-named Ruleset (`.foo() {}` mixin + `.foo {}` ruleset)
   // matches BOTH — the call emits the mixin body AND the ruleset-as-mixin body. Since
@@ -2014,7 +2029,52 @@ export function renderRootViaSpine(
       return fail(error);
     }
   }
+  // M8 (interpolated-selector callable). When an interpolated-selector ruleset
+  // (`.@{name} {}`) is present it may be a mixin CALL target — its callable identity
+  // is an eval-pass side effect (`selector.eval` → `ownSelector`) the spine otherwise
+  // skips. Replicate it at root-enter so a subsequent `.foo()` resolves. Gated on the
+  // shape (`treeHasInterpolatedSelectorRuleset`), so a shape-free tree pays nothing.
+  // May be async (the selector's interpolation can read an async value) — rides the
+  // isThenable bail into the chain, exactly like `wireSpineImports`.
+  if (treeHasInterpolatedSelectorRuleset(root)) {
+    let wired: MaybePromise<void>;
+    try {
+      wired = wireSpineInterpolatedSelectorCallables(root, context);
+    } catch (error) {
+      return fail(error);
+    }
+    return isThenable(wired) ? wired.then(wireImports, fail) : wireImports();
+  }
   return wireImports();
+}
+
+/**
+ * M8: register an interpolated-selector ruleset's callable identity at spine
+ * root-enter — the eval-pass side effect the spine skips.
+ *
+ * Eval's `Rules.prepareRegistration` resolves each non-static-name node's identity
+ * (`Ruleset.prepareRegistration` → `selector.eval` turns `.@{name}` into `.foo`,
+ * writes the resolved `ownSelector`, marks `registrationPrepared`) and swaps the
+ * prepared node into its parent slot — after which `collectCallablesFor` keys the
+ * callable bucket on the resolved name, so `.foo()` finds it. The spine descent
+ * never runs registration prep on the root body, so those identities stay
+ * unresolved and the call misses ("No matching mixins").
+ *
+ * This runs the SAME machinery eval runs (`root.prepareRegistration`) — idempotent
+ * (guarded by `_registrationPrepared`), output-invisible (name registration only, no
+ * eval of bodies), producing the exact end-state eval reaches: resolved `ownSelector`
+ * on the interpolated rulesets and a callable cache keyed on the concrete name. It
+ * registers all root names, not only the interpolated ones, but that is a byte-neutral
+ * superset — the spine descent already resolves each leaf against the same frame
+ * (`getScopeFrame`), so pre-registering the static names changes no output; only the
+ * interpolated-selector identities were otherwise missing. Gated by the caller on the
+ * shape, so it is paid only when an interpolated-selector ruleset is present.
+ */
+function wireSpineInterpolatedSelectorCallables(root: Rules, context: Context): MaybePromise<void> {
+  const prepared = root.prepareRegistration(context);
+  if (isThenable(prepared)) {
+    return prepared.then(() => undefined);
+  }
 }
 
 /**

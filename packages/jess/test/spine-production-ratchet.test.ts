@@ -1309,4 +1309,40 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
     expect(css).toBe('.foo :is(.bar, .ext3) {\n  display: none;\n}\n.ext3 {\n  x: 1;\n}\n');
   });
+
+  // M8 (interpolated-selector callable). An interpolated-SELECTOR ruleset
+  // (`.@{name} {}`) used as a mixin CALL target (`.foo()`). Its callable identity
+  // is resolved by an eval-pass side effect (`Ruleset.prepareRegistration` →
+  // `selector.eval` → `ownSelector`, which `collectCallablesFor` keys) that the
+  // spine used to skip — so the tree was gated to eval. `renderRootViaSpine` now
+  // replicates that registration at root-enter (`wireSpineInterpolatedSelectorCallables`,
+  // gated on the shape), so the call resolves and the whole root folds. These
+  // ratchet the FOLD (spine ran, byte-identical) so re-deferring to eval trips RED.
+  it('M8: interpolated-selector ruleset called as a mixin folds through the spine', async () => {
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(`@name: foo;\n.@{name} { color: red; }\n.a { .foo(); }`, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    // the interpolated ruleset resolves to `.foo` (emits standalone) AND the call
+    // resolves against the same registered name (folds its body at the call site).
+    expect(css).toBe('.foo {\n  color: red;\n}\n.a {\n  color: red;\n}\n');
+  });
+
+  it('M8: mid-string interpolation (`.foo-@{n}`) folds through the spine', async () => {
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(`@n: bar;\n.foo-@{n} { color: red; }\n.a { .foo-bar(); }`, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.foo-bar {\n  color: red;\n}\n.a {\n  color: red;\n}\n');
+  });
+
+  it('M8: interpolated-selector ruleset with NO call still folds (registration is inert)', async () => {
+    // The wiring resolves the identity even without a call — the shape-gated
+    // registration must not error or change the standalone emission.
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(`@name: foo;\n.@{name} { color: red; }`, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.foo {\n  color: red;\n}\n');
+  });
 });
