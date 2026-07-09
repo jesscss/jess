@@ -1,4 +1,4 @@
-import { parseCst, type CssCstParseOptions, type CssCstParseResult } from '@jesscss/css-parser';
+import { parseCst, type CssCstParseOptions, type CssCstParseResult } from '@jesscss/css-parser/cst';
 import { scssGrammar } from './grammar.js';
 
 export function parseScssCst(
@@ -17,4 +17,4 @@ export type {
   CssCstParseOptions as ScssCstParseOptions,
   CssCstParseResult as ScssCstParseResult,
   CssCstType as ScssCstType
-} from '@jesscss/css-parser';
+} from '@jesscss/css-parser/cst';
