@@ -1352,23 +1352,48 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 6: an INTERPOLATED-path import STAYS on eval (the `_isPathResolutionError` retry-lane wall)', async () => {
-    // An `@import "theme-@{t}.less"` with a FORWARD dependency (`@t` bound by a LATER
-    // import) resolves only via the eval-loop's path-resolution RETRY lane (defer, retry
-    // after later siblings bind the var) — no clean strictly-downward spine analogue. So
-    // the whole interpolated-path mode stays on eval (byte-identical). A regression that
-    // folds it would fail to resolve the forward-dependent path. DEFERRED (a REQUIRED P4
-    // item): a spine retry/defer-and-resume for forward-dependent interpolated imports.
+  it('IMPORT-SPEC: a FORWARD-dependent interpolated-path import (case B) SPECULATIVELY enters the spine then ABORTS to eval', async () => {
+    // Interpolated-path case (B), import-spec routing. `@import "theme-@{t}.less"` where `@t` is bound
+    // by a LATER import — a FORWARD dependency. The gate admits interpolated paths speculatively; the
+    // wire pass attempts path eval against the live frame, `@t` is not yet bound, so `_preparePathIdentity`
+    // throws `_isPathResolutionError`. The wire pass catches it and ABORTS to eval (pre-first-byte), where
+    // the `_isPathResolutionError` RETRY lane reorders + resolves it. Byte-identical (eval owns the retry).
+    // DEFERRED (Tier-B, sequenced): a strictly-downward spine retry/defer-and-resume for case B.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-interp-'));
     fs.writeFileSync(path.join(dir, 'vars.less'), '@t: "a";\n');
     fs.writeFileSync(path.join(dir, 'theme-a.less'), '.x { color: red; }\n');
     fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{t}.less";\n@import "vars.less";\n');
     const compiler = makeCompiler();
-    const before = spineRenderCounter.rootRenders;
     const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (interpolated-path retry wall)
-    expect(result.css).toBe('.x {\n  color: red;\n}\n'); // forward-dependent path resolved via retry
+    // Clean abort → byte-identical to eval (the forward-dependent path resolved via the retry lane).
+    expect(result.css).toBe('.x {\n  color: red;\n}\n');
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORT-SPEC: a DOWNWARD-resolvable interpolated-path import (case A) FOLDS via the spine (no derive)', async () => {
+    // Interpolated-path case (A), import-spec routing. `@import "theme-@{t}.less"` where `@t` is bound
+    // EARLIER in document order. The wire pass resolves `@{t}` against the live root frame (populated at
+    // wire time), so the import FOLDS through the spine byte-identical to eval — no output-tree derive.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-spec-interpA-'));
+    fs.writeFileSync(path.join(dir, 'theme-dark.less'), '.dark {\n  color: black;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@t: dark;\n@import "theme-@{t}.less";\n.main {\n  padding: 1px;\n}\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).toBe('.dark {\n  color: black;\n}\n.main {\n  padding: 1px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('COMBINATOR SUBJECT: a `>`/`+` subject partially extended folds through the spine (in-place `:is`-wrap)', async () => {

@@ -56,6 +56,19 @@ function isStyleImportNode(node: Node): node is StyleImport {
   return node.type === 'StyleImport';
 }
 
+/**
+ * True if `error` is a StyleImport PATH-RESOLUTION failure (`_isPathResolutionError`, set by
+ * `StyleImport._preparePathIdentity` when an interpolated import path's var is not yet bound). Import-
+ * spec routing uses this to distinguish a FORWARD-dependent interpolated path (case B — abort to the
+ * eval retry lane) from a genuine failure (missing file / parse error — propagate). Mirrors the eval
+ * loop's `isStyleImportPathResolutionError`.
+ */
+function isSpinePathResolutionError(error: unknown): boolean {
+  return error instanceof Error
+    && '_isPathResolutionError' in error
+    && (error as Error & Record<'_isPathResolutionError', unknown>)._isPathResolutionError === true;
+}
+
 function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
   return node.type === 'AtRuleStatement';
 }
@@ -2312,12 +2325,26 @@ export function renderRootViaSpine(
   // `options.spineImportPlacements` so the emit fold descends the SAME registered body
   // (resolve + register exactly once). Async (`getTree`) — rides the isThenable bail.
   // The extend RE-GATE (`wireExtends`) chains AFTER this so it sees the resolved placements.
+  // INTERPOLATED-PATH case (B) ABORT (import-spec routing). An interpolated `@import` path
+  // (`@import "theme-@{t}.less"`) is admitted speculatively; the wire pass resolves it against the
+  // live frame. A FORWARD-dependent path (the var bound by a LATER import) throws
+  // `_isPathResolutionError` here — a CLEAN pre-first-byte abort point. Route such a failure to eval
+  // (which owns the `_isPathResolutionError` retry-lane reorder), byte-identical. A genuine error
+  // (missing file, parse failure) is NOT a path-resolution error and propagates via `fail`. Case (A)
+  // (downward-resolvable) resolves here and folds.
+  const onWireError = (error: unknown): string | typeof SPINE_ABORT_TO_EVAL | never =>
+    isSpinePathResolutionError(error) ? abortToEval() : (fail(error) as never);
   const wireImports = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
     if (!importLayer) {
       return wireExtends();
     }
-    const wired = wireSpineImports(root, context, options);
-    return isThenable(wired) ? wired.then(wireExtends, fail) : wireExtends();
+    let wired: MaybePromise<void>;
+    try {
+      wired = wireSpineImports(root, context, options);
+    } catch (error) {
+      return onWireError(error);
+    }
+    return isThenable(wired) ? wired.then(wireExtends, onWireError) : wireExtends();
   };
   // M8 (interpolated-selector callable). When an interpolated-selector ruleset
   // (`.@{name} {}`) is present it may be a mixin CALL target — its callable identity
