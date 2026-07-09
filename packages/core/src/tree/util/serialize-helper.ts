@@ -25,6 +25,7 @@ import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCal
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, type SpineMergePlan } from './spine-merge.js';
 import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
+import { applyBodySetDefined, type SetDefinedApplyResult } from './spine-setdefined.js';
 import { Reference } from '../reference.js';
 
 type TriviaSide = 'before' | 'after';
@@ -232,6 +233,20 @@ function withSpineMergePlan(
       : resolved ?? undefined;
   };
   const condFrame = context.rulesContext?.getScopeFrame();
+  // `setDefined` (Sass !global): an incremental binding-WRITE performed at body-
+  // enter in source order (BEFORE the body descends, so a write lands before any
+  // later read of the cell). Zero cost on a body with no `setDefined` (fast
+  // pre-scan bail). On an `uncovered` frame surface the whole root is SEQUENCED to
+  // eval by the static gate, so reaching an `uncovered` here is an invariant breach.
+  const setDefinedResult = applyBodySetDefined(children, condFrame, context);
+  const afterSetDefined = (sd: SetDefinedApplyResult): MaybePromise<string> => {
+    if (sd === 'uncovered') {
+      throw new Error(
+        'spine setDefined: uncovered frame surface reached the descent (gate admits only covered shapes)'
+      );
+    }
+    return runMergeAndCond();
+  };
   const mergePlanResult = planBodyMerges(children, resolveValue);
   const runWithMerge = (mergePlan: SpineMergePlan | undefined): MaybePromise<string> => {
     const condPlanResult = planBodyConditionals(children, condFrame, resolveReference);
@@ -257,7 +272,9 @@ function withSpineMergePlan(
     };
     return isThenable(condPlanResult) ? condPlanResult.then(run) : run(condPlanResult);
   };
-  return isThenable(mergePlanResult) ? mergePlanResult.then(runWithMerge) : runWithMerge(mergePlanResult);
+  const runMergeAndCond = (): MaybePromise<string> =>
+    isThenable(mergePlanResult) ? mergePlanResult.then(runWithMerge) : runWithMerge(mergePlanResult);
+  return isThenable(setDefinedResult) ? setDefinedResult.then(afterSetDefined) : afterSetDefined(setDefinedResult);
 }
 
 function renderNodeText(

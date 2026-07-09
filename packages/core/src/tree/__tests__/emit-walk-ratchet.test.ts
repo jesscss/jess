@@ -5,6 +5,7 @@ import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import { spineRenderCounter, isSpineEligibleRoot } from '../util/emit-walk.js';
 import { bodyHasConditionalAssign } from '../util/spine-cond.js';
+import { bodyHasSetDefined } from '../util/spine-setdefined.js';
 import { Parser } from '../../../../less-parser/src/index.js';
 import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer.js';
 
@@ -620,7 +621,49 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     expect(String(buildFallback().render(new Context())).trim()).toContain('color: blue');
   });
 
-  it('STILL EXCLUDES a plain-PROPERTY `?:` + scope-mutating `setDefined`/`nearestOuter` (the frontier)', () => {
+  it('FOLDS a SAME-SCOPE `setDefined` (Sass !global) through the spine, byte-identical to eval', () => {
+    // `setDefined` on a variable with a PRIOR same-body binding is an incremental
+    // binding-WRITE (`spine-setdefined.ts`, mechanism B): resolve the existing
+    // SAME-frame cell and write it in-descent. Byte-identical to eval's same-scope
+    // update; no eval pass, no output tree.
+    const build = () => rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        vardecl({ name: 'color', value: any('red') }),
+        vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+        decl({ name: 'seen', value: ref({ key: 'color' }, { type: 'variable' }) })
+      ] })
+    ]);
+    const evalOracle = String(build().render(new Context(), { preSerializeRoot: (r: Rules): Rules => r })).trim();
+    const root = build();
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    const before = spineRenderCounter.rootRenders;
+    try {
+      const css = String(root.render(new Context())).trim();
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine ran
+      expect(deriveCalls).toBe(0); // no output tree
+      expect(css).toBe(evalOracle); // byte-identical
+      expect(css).toContain('seen: blue'); // the !global write is observed
+    } finally {
+      Rules.prototype.derive = original;
+    }
+    // Miss (no enclosing binding) throws `"x" is not defined` — like eval.
+    const miss = () => rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        vardecl({ name: 'y', value: any('blue') }, { setDefined: true })
+      ] })
+    ]);
+    // A bare cross-scope `setDefined` is NOT same-scope-covered, so it stays on
+    // eval; assert eligibility false so it is not folded (miss still throws in eval).
+    expect(isSpineEligibleRoot(miss(), context)).toBe(false);
+  });
+
+  it('STILL EXCLUDES a plain-PROPERTY `?:`, a CROSS-SCOPE `setDefined`, and `nearestOuter` (the frontier)', () => {
     // A `?:` on a plain PROPERTY (`color ?: v`) is NOT a binding rewrite — eval
     // keeps BOTH the prior property decl AND the fallback as a new decl. The body
     // plan models the VARIABLE-binding shape only, so a property `?:` stays on
@@ -633,15 +676,19 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     ]);
     expect(isSpineEligibleRoot(propCond, context)).toBe(false);
 
-    // `setDefined` (Sass !global) is an OUTER-scope binding write — folded via an
-    // incremental binding-write (mechanism B), a SEPARATE increment. Until wired,
-    // it stays on eval; locked here so it is not silently admitted before that.
-    const globalAssign = rules([
+    // A CROSS-SCOPE `setDefined` (no same-body prior — the write resolves to an
+    // OUTER frame) diverges from eval's two-pass (which does not leak an outer
+    // write to a later same-scope read). SEQUENCED to eval (`spine-setdefined.ts`);
+    // a nested-scope !global writing an outer binding stays off the spine.
+    const crossScope = rules([
       ruleset({ selector: sel([el('.a')]), rules: [
-        vardecl({ name: 'x', value: any('red') }, { setDefined: true })
+        vardecl({ name: 'x', value: any('red') }),
+        ruleset({ selector: sel([el('.inner')]), rules: [
+          vardecl({ name: 'x', value: any('blue') }, { setDefined: true })
+        ] })
       ] })
     ]);
-    expect(isSpineEligibleRoot(globalAssign, context)).toBe(false);
+    expect(isSpineEligibleRoot(crossScope, context)).toBe(false);
 
     // `nearestOuter` (Jess :=) has NO eval implementation — no correctness oracle
     // — so it stays EXCLUDED (owner decision pending). NOT silently no-op'd.
@@ -653,21 +700,23 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     expect(isSpineEligibleRoot(nearestOuter, context)).toBe(false);
   });
 
-  it('NEGATIVE ratchet: a tree WITHOUT `?:` adds NO read-time tax (no cond plan built)', () => {
-    // The `?:` fold is a per-body PLAN, built ONLY when a body contains a `?:`
-    // VarDeclaration (fast pre-scan bail). A plain tree must build NO cond plan and
-    // consult NO cond side-table on the variable-READ hot path — this locks the
-    // "no hot-path tax" decision (the read-time side-table mechanism was rejected
-    // precisely to avoid taxing every read). A future change that threads a
-    // conditional overlay into `lookupScopeFrameVariable` (mechanism A) trips this.
+  it('NEGATIVE ratchet: a tree WITHOUT `?:`/`setDefined` adds NO read-time tax (no plan / no write-pass)', () => {
+    // The `?:` fold is a per-body PLAN and `setDefined` is a per-body WRITE-pass,
+    // each built/run ONLY when a body contains that shape (fast pre-scan bail). A
+    // plain tree must build NO cond plan, run NO setDefined write-pass, and consult
+    // NO side-table on the variable-READ hot path — this locks the "no hot-path tax"
+    // decision (the read-time side-table mechanism was REJECTED precisely to avoid
+    // taxing every read). A future change that threads a conditional/outer-write
+    // overlay into `lookupScopeFrameVariable` (mechanism A) trips this.
     const plain = rules([
       vardecl({ name: 'x', value: any('red') }),
       decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) }),
       decl({ name: 'margin', value: any('0') })
     ]);
     expect(isSpineEligibleRoot(plain, context)).toBe(true);
-    // planBodyConditionals returns undefined (no plan) when there is no `?:` child.
+    // The pre-scan bails: no cond plan, no setDefined write-pass on a plain body.
     expect(bodyHasConditionalAssign(plain.rules)).toBe(false);
+    expect(bodyHasSetDefined(plain.rules)).toBe(false);
     const css = String(plain.render(new Context())).trim();
     expect(css).toContain('color: red');
     expect(css).toContain('margin: 0');

@@ -310,6 +310,15 @@ function isSpineSimpleMixinSurface(surface: Rules): boolean {
     if (!isSimpleSpineLeaf(child)) {
       return false;
     }
+    // A `setDefined` (Sass !global) inside a MIXIN body always writes an OUTER
+    // (caller / global) binding — a cross-scope write the spine setDefined fold
+    // does NOT cover (`spine-setdefined.ts` folds only a SAME-frame target). The
+    // per-body coverage check (`bodyHasPriorSameNameDecl`) lives in
+    // `isSpineEligibleBody`, not this surface gate, so exclude a mixin-surface
+    // `setDefined` explicitly — route the call to the byte-identical eval fallback.
+    if (isNode(child, N.VarDeclaration) && child.options?.setDefined) {
+      return false;
+    }
     // A Declaration with an INTERPOLATED (non-string) NAME (`prop-@{name}: …`) does
     // not resolve its name against the surface frame during the fold descent — the
     // interpolation emits raw (`prop-$name`). Route such a body to the eval fall-back
@@ -911,6 +920,17 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false, all
       if (isNode(child, N.VarDeclaration) && typeof child.name !== 'string') {
         return false;
       }
+      // `setDefined` (Sass !global) folds byte-identical ONLY when its target
+      // binding is in the SAME scope (a prior same-body declaration of the name):
+      // the in-descent cell write then matches eval's same-scope update. A
+      // CROSS-SCOPE target (no same-body prior — the write resolves to an OUTER
+      // frame) diverges from eval's two-pass (which does not leak an outer write
+      // to a later same-scope read) and is SEQUENCED to eval. Detected statically
+      // here so the runtime never reaches the `uncovered` bail on this root.
+      if (isNode(child, N.VarDeclaration) && child.options?.setDefined
+        && !bodyHasPriorSameNameDecl(children, i, child)) {
+        return false;
+      }
       continue;
     }
     // A mixin DEFINITION emits nothing (invisible output) and registers into the
@@ -1048,10 +1068,19 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
     if (CONDITIONAL_ASSIGNS.has(assign)) {
       return isNode(node, N.VarDeclaration);
     }
-    if (assign !== ':' && !MERGE_ASSIGNS.has(assign)) {
+    // `setDefined` (Sass !global) on a VARIABLE is an incremental binding-WRITE
+    // (`spine-setdefined.ts`, mechanism B): resolve the existing binding via the
+    // eval frame-path + write its cell during descent. Admitted here; an `uncovered`
+    // frame surface (optional / dynamic assignment targets) is SEQUENCED to eval by
+    // a runtime bail (`applyBodySetDefined` → root re-render). `nearestOuter`
+    // (Jess :=) stays excluded — no eval implementation, no correctness oracle.
+    if (options?.nearestOuter) {
       return false;
     }
-    if (options?.setDefined || options?.nearestOuter) {
+    if (options?.setDefined) {
+      return isNode(node, N.VarDeclaration);
+    }
+    if (assign !== ':' && !MERGE_ASSIGNS.has(assign)) {
       return false;
     }
     return true;
@@ -1064,6 +1093,29 @@ const MERGE_ASSIGNS = new Set(['+:', '+_:', '&,:', '&_:']);
 
 /** Conditional assign-if-undefined operator the spine folds (see `planBodyConditionals`). */
 const CONDITIONAL_ASSIGNS = new Set(['?:']);
+
+/**
+ * True if a DIRECT child BEFORE `index` is a non-`setDefined` VarDeclaration of the
+ * same name as `decl` — proving a `setDefined` write's target binding is SAME-scope
+ * (foldable; see `spine-setdefined.ts`). A `setDefined` with no same-body prior
+ * resolves to an OUTER frame (cross-scope) and is kept on eval.
+ */
+function bodyHasPriorSameNameDecl(children: readonly Node[], index: number, decl: Node): boolean {
+  if (typeof (decl as Node & { name?: unknown }).name !== 'string') {
+    return false;
+  }
+  const name = (decl as Node & { name: string }).name;
+  for (let i = 0; i < index; i++) {
+    const prior = children[i]!;
+    if (isNode(prior, N.VarDeclaration)
+      && !prior.options?.setDefined
+      && typeof prior.name === 'string'
+      && prior.name === name) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** True if any DIRECT child of `body` is a spine-eligible mixin call. */
 function bodyHasMixinCall(children: readonly Node[]): boolean {
@@ -1133,6 +1185,23 @@ function bodyHasDirectConditionalDecl(children: readonly Node[]): boolean {
       if (assign && CONDITIONAL_ASSIGNS.has(assign)) {
         return true;
       }
+    }
+  }
+  return false;
+}
+
+/**
+ * True if any DIRECT child of `body` is a `setDefined` VarDeclaration. Root-level
+ * `setDefined` is excluded like root-level `+:`/`?:`: the incremental
+ * binding-write runs on the CONTAINER descent path (`withSpineMergePlan` →
+ * `applyBodySetDefined`), which the flat root-body path (`toRenderString`) does
+ * not run.
+ */
+function bodyHasDirectSetDefined(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isNode(child, N.VarDeclaration) && child.options?.setDefined) {
+      return true;
     }
   }
   return false;
@@ -1269,6 +1338,9 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
     return false;
   }
   if (bodyHasDirectConditionalDecl(root.rules)) {
+    return false;
+  }
+  if (bodyHasDirectSetDefined(root.rules)) {
     return false;
   }
   // INCREMENT 2 cross-check: a mixin CALL whose target might be an INTERPOLATED-
