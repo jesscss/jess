@@ -977,4 +977,23 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(result.css).toBe('.raw { color: RED; }\n'); // raw text verbatim
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('IMPORTS increment 6: an INTERPOLATED-path import STAYS on eval (the `_isPathResolutionError` retry-lane wall)', async () => {
+    // An `@import "theme-@{t}.less"` with a FORWARD dependency (`@t` bound by a LATER
+    // import) resolves only via the eval-loop's path-resolution RETRY lane (defer, retry
+    // after later siblings bind the var) — no clean strictly-downward spine analogue. So
+    // the whole interpolated-path mode stays on eval (byte-identical). A regression that
+    // folds it would fail to resolve the forward-dependent path. DEFERRED (a REQUIRED P4
+    // item): a spine retry/defer-and-resume for forward-dependent interpolated imports.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-interp-'));
+    fs.writeFileSync(path.join(dir, 'vars.less'), '@t: "a";\n');
+    fs.writeFileSync(path.join(dir, 'theme-a.less'), '.x { color: red; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{t}.less";\n@import "vars.less";\n');
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (interpolated-path retry wall)
+    expect(result.css).toBe('.x {\n  color: red;\n}\n'); // forward-dependent path resolved via retry
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

@@ -936,10 +936,20 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         return false;
       }
     }
-    // A static Quoted specifier is the only foldable Less path shape (interpolated
-    // paths ride the `_isPathResolutionError` retry lane — deferred). A `Url` node
-    // is admitted ONLY as the CSS-passthrough carrier (`@import url(...)`), where
-    // the runtime `isPlainCssImport` verdict decides passthrough vs eval.
+    // A static Quoted specifier is the only foldable Less path shape. An INTERPOLATED
+    // path (`@import "theme-@{t}.less"`, a `Quoted` whose value is an Interpolated
+    // node) is DEFERRED — a REQUIRED P4 item. Investigation (increment 6): interpolated
+    // paths split into (A) the interpolation var bound EARLIER in document order
+    // (downward-resolvable in principle) and (B) a FORWARD dependency — the var bound
+    // by a LATER sibling/import (`import-interpolation.less`: `@import "…-@{in}…"` where
+    // `@in` is defined in a later-imported file). Case (B) is resolved ONLY by the
+    // eval-loop's `_isPathResolutionError` RETRY lane (defer the failing import, retry
+    // after later siblings bind the var) — an eval-loop REORDERING with no clean
+    // strictly-downward spine analogue. A/B are not reliably separable statically, and
+    // a case-(B) failure surfaces mid-wire where the spine is already committed (no
+    // clean abort). So the WHOLE interpolated-path mode stays on the eval path
+    // (byte-identical; eval owns the retry). DEFERRED: a spine retry/defer-and-resume
+    // mechanism for forward-dependent interpolated imports.
     if (this.path instanceof Url) {
       return true;
     }
