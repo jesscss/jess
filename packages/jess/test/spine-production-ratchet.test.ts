@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as path from 'path';
+import { readFileSync } from 'fs';
 import { Compiler } from '../src/index.js';
 import { spineRenderCounter, Rules } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { resolveLessTestDataRoot } from './test-utils.js';
+
+const testDataRoot = resolveLessTestDataRoot();
 
 /**
  * PRODUCTION-PATH RATCHET (cutover P2 wire-in). The core `emit-walk-ratchet`
@@ -494,5 +499,82 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
         Rules.prototype.derive = originalDerive;
       }
     }
+  });
+
+  // ── IMPORTS increment 1 (cutover) ──────────────────────────────────────────
+  // The import fold: CSS-passthrough `@import` emits inline via the spine (no eval),
+  // and a plain static-path Less `@import` descends its parsed body INLINE through
+  // the spine (no `rules.eval()`, no output tree → `Rules.derive` = 0). The
+  // import-work gate (§4.0) keeps a no-import render at zero import cost. Deferred
+  // shapes (reference / interpolated-path / inline / multiple / optional / postlude
+  // / with / compose) stay on the eval path — each a REQUIRED P4 item.
+
+  it('IMPORTS increment 1: CSS-passthrough `@import` folds via the spine (top-of-doc, no derive)', async () => {
+    const compiler = makeCompiler();
+    const src = `@import "reset.css";\n.a { color: red; }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // The CSS import emits at the top of the document, followed by the ruleset.
+      expect(css).toBe('@import "reset.css";\n.a {\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('IMPORTS increment 1: a plain static-path Less `@import` folds its body INLINE via the spine (no derive)', async () => {
+    // `import-module.less` = three plain static-path `@import "x.less"` of self-contained
+    // root-level rulesets — the smallest real Less-import fold. The parsed imported bodies
+    // descend INLINE through the spine (no `rules.eval()`), byte-identical to the eval path.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-unit/import/import-module.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-unit/import/import-module.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk, no output tree
+      expect(result.css).toBe(expected); // byte-identical to the Less golden
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('IMPORTS increment 1: a Less import whose importing tree CONSUMES its scope STAYS on eval (self-contained gate)', async () => {
+    // `namespacing-2.less`: the imported `#library` namespace is consumed by
+    // `#library.sizes[@width]` calls. The fold skips imported-scope registration, so
+    // such a tree must stay on the eval path (byte-identical). A regression that folds
+    // it would drop the namespace lookups (wrong/absent values).
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-2.less');
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(lessPath, {});
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (scope consumed)
+    expect(result.css).toContain('width: 800px'); // namespace lookup resolved (eval path)
+  });
+
+  it('IMPORTS increment 1: the import-work gate is ZERO-cost when the tree has no imports', async () => {
+    // A no-import render must never touch import machinery — `engageImportLayer` is
+    // false, so the spine stays a pure streaming descent. (Proven indirectly: the
+    // render routes via the spine and produces correct output with no import work.)
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString('.a { color: red; }', { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.a {\n  color: red;\n}\n');
   });
 });

@@ -33,7 +33,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -4446,6 +4446,75 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return this._emitRulesBody(options, 'render');
   }
 
+  /**
+   * Fold a root-level spine-foldable `@import` (IMPORTS increment 1). Drives
+   * `StyleImport.resolveForSpine` (which queues a CSS-passthrough import to the
+   * top-of-doc emitter, or `getTree`s a Less import's parsed body as an import-site
+   * placement), then:
+   *   - `css` → emit nothing inline (queued),
+   *   - `fold` + spine-simple body → descend each imported child INLINE via the
+   *     enclosing `emitNode`, with `context.rulesContext` pinned to the placement
+   *     frame so an imported leaf resolves up the import chain (§2 frame thread),
+   *   - `fold` + non-simple body → the byte-identical eval fall-back: render the
+   *     import node the eval way (`render` → `evalNode`) and emit its output.
+   */
+  private _emitSpineImportFold(
+    importNode: StyleImport,
+    options: FinalPrintOptions,
+    context: Context,
+    emitNode: (n: Node) => MaybePromise<void>
+  ): MaybePromise<void> {
+    const w = options.writer!;
+    const foldBody = (body: Rules): MaybePromise<void> => {
+      assignSpineChildIndices(body);
+      const savedRulesContext = context.rulesContext;
+      context.rulesContext = body;
+      const restore = <T>(value: T): T => {
+        context.rulesContext = savedRulesContext;
+        return value;
+      };
+      const children = body.rules;
+      const emitChild = (i: number): MaybePromise<void> => {
+        for (let idx = i; idx < children.length; idx++) {
+          const step = emitNode(children[idx]!);
+          if (isThenable(step)) {
+            return step.then(() => emitChild(idx + 1));
+          }
+        }
+        return undefined;
+      };
+      try {
+        const step = emitChild(0);
+        return isThenable(step)
+          ? step.then(restore, (error: unknown) => { restore(undefined); throw error; })
+          : restore(step);
+      } catch (error) {
+        restore(undefined);
+        throw error;
+      }
+    };
+    const evalFallback = (): MaybePromise<void> => {
+      // Byte-identical eval terminal for a non-simple imported body: render the
+      // import node the eval way and splice its output text at this position.
+      const position = w.position();
+      const rendered = importNode.render(context, getPrintOptions(options));
+      const finishRendered = (text: string): void => {
+        if (w.position() === position && text) {
+          w.add(text, importNode);
+        }
+      };
+      return isThenable(rendered) ? rendered.then(finishRendered) : finishRendered(rendered);
+    };
+    const apply = (resolved: { kind: 'css' } | { kind: 'fold'; body: Rules }): MaybePromise<void> => {
+      if (resolved.kind === 'css') {
+        return undefined;
+      }
+      return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body) : evalFallback();
+    };
+    const resolution = importNode.resolveForSpine(context);
+    return isThenable(resolution) ? resolution.then(apply) : apply(resolution);
+  }
+
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
   private _emitRulesBody(options: FinalPrintOptions, mode: 'render', exclude?: Set<Node>): MaybePromise<void>;
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source' | 'render', exclude?: Set<Node>): MaybePromise<void> {
@@ -4565,6 +4634,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (exclude?.has(n) || !n.visible) {
         emitLeadingBlockCommentForNode(n);
         return;
+      }
+      // Spine import-fold at the ROOT body (cutover IMPORTS increment 1,
+      // UNIFIED-EVAL-EMIT-DESIGN §2/§4.0). A root-level `@import` reaches this leaf
+      // branch (not the container serializer's `runSpineImportExpansion`), so fold
+      // it HERE: resolve, then either drop (CSS-passthrough → queued top-of-doc) or
+      // descend the parsed imported body's children INLINE by re-`emitNode`-ing each
+      // with `context.rulesContext` pointed at the import-site placement frame — the
+      // same shared-body/frame-thread discipline `spineFrame` applies nested. No
+      // `rules.eval()`, no output tree (ratchet: `Rules.derive` = 0). A non-simple
+      // imported body falls through to the eval terminal below (byte-identical).
+      if (mode === 'render' && context && options.spineMode && isSpineFoldableImport(n)) {
+        return this._emitSpineImportFold(n as unknown as StyleImport, options, context, emitNode);
       }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {

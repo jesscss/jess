@@ -30,7 +30,7 @@
 
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { Context } from '../../context.js';
-import { Node } from '../node.js';
+import { Node, F_STATIC } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { comparePosition } from './compare.js';
@@ -39,9 +39,79 @@ import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import type { AtRule } from '../at-rule.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
-import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './print.js';
+import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
 import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends } from '../extend/spine-extend.js';
 import type { Selector } from '../selector.js';
+import type { StyleImport } from '../import-style.js';
+
+/**
+ * IMPORT-WORK GATE (design §4.0, IMPORTS increment 1). True iff the tree carries
+ * ANY `StyleImport` — the eval-free signal that the pass must engage import
+ * machinery. When false the spine never touches `queueTopImport`, `getTree`, or
+ * placement wiring: a no-import render pays ZERO import cost (the ratchet floor).
+ * Mirrors `engageExtendLayer`: a single static tree scan, no side effects.
+ */
+export function engageImportLayer(root: Node): boolean {
+  for (const node of root.walk(true)) {
+    if (node.type === 'StyleImport' || isSpineFoldableCssImportStatement(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A leaf CSS `@import` at-rule statement the spine emits inline (CSS-passthrough,
+ * IMPORTS increment 1). A statically-`.css`/remote `@import` parses DIRECTLY as an
+ * `AtRuleStatement` (not a `StyleImport`) — no scope effect, no eval side effect;
+ * it serializes its own bytes at its document position (already the top, since it
+ * is authored first). Admitting it as a spine leaf unblocks a MIXED file (CSS
+ * import + rulesets) whose imports would otherwise force the whole root to eval.
+ * A NON-static (interpolated) prelude is deferred — its `@{…}` needs prelude eval
+ * (the interpolated-import lane, a REQUIRED P4 item).
+ */
+export function isSpineFoldableCssImportStatement(node: Node): boolean {
+  if (node.type !== 'AtRuleStatement') {
+    return false;
+  }
+  const stmt = node as unknown as { name?: unknown; prelude?: unknown };
+  const name = typeof stmt.name === 'string' ? stmt.name : (stmt.name as Node | undefined)?.valueOf?.();
+  if (name !== '@import') {
+    return false;
+  }
+  // The prelude must be static (a plain quoted/url specifier, maybe with a static
+  // media/supports postlude) — no interpolation to resolve against a frame.
+  const prelude = stmt.prelude;
+  if (prelude === undefined) {
+    return true;
+  }
+  return prelude instanceof Node && prelude.hasFlag(F_STATIC);
+}
+
+/**
+ * STATIC spine-fold admissibility for a `StyleImport` child (IMPORTS increment 1).
+ * Delegates the whole shape decision to `StyleImport.isSpineFoldableStyleImport`
+ * (owned by `import-style.ts`, where the import options live) — CSS-passthrough OR
+ * a plain static-path Less `@import`. A non-foldable import (reference / inline /
+ * interpolated-path / multiple / optional / postlude / with / compose — each a
+ * REQUIRED P4 item) keeps its enclosing body OFF the spine.
+ */
+export function isSpineFoldableImport(node: Node): boolean {
+  return node.type === 'StyleImport'
+    && (node as unknown as StyleImport).isSpineFoldableStyleImport();
+}
+
+/**
+ * RUNTIME body-simplicity gate for a resolved Less-import body (IMPORTS increment
+ * 1). Reuses the same eligibility the whole spine turns on (`isSpineEligibleBody`
+ * with `allowImport`, so a nested foldable import in the imported file also folds).
+ * A `false` routes that import to the byte-identical eval fall-back
+ * (`resolveSpineStyleImport` → `evalNode`) — the imported body carries a shape the
+ * spine does not yet descend (e.g. a mixin call, guarded ruleset, reference-mode).
+ */
+export function isSpineFoldableImportBody(body: Rules): boolean {
+  return isSpineEligibleBody(body.rules, false, true);
+}
 
 /**
  * Assign source-order indices to a scope's body children — the PER-POSITION
@@ -388,7 +458,7 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
  * extend-bearing/reference/guarded rulesets, at-rules routed to
  * `isSpineEligibleAtRule`, mixins.
  */
-function isSpineEligibleContainer(node: Node, allowExtend = false): boolean {
+function isSpineEligibleContainer(node: Node, allowExtend = false, allowImport = false): boolean {
   if (isNode(node, N.AtRule)) {
     return isSpineEligibleAtRule(node);
   }
@@ -437,7 +507,7 @@ function isSpineEligibleContainer(node: Node, allowExtend = false): boolean {
   if (bodyHasAtRuleNeedingAncestorRewrap(ruleset.rules)) {
     return false;
   }
-  return isSpineEligibleBody(ruleset.rules, allowExtend);
+  return isSpineEligibleBody(ruleset.rules, allowExtend, allowImport);
 }
 
 /**
@@ -687,7 +757,7 @@ function atRuleBodyHasAmpersandRuleset(children: readonly Node[]): boolean {
  * last-wins. A non-static (interpolated) var NAME is still excluded (its bucket
  * key isn't statically known, so the position gate can't be pre-seeded).
  */
-function isSpineEligibleBody(children: readonly Node[], allowExtend = false): boolean {
+function isSpineEligibleBody(children: readonly Node[], allowExtend = false, allowImport = false): boolean {
   // INCREMENT 1 cross-check: a mixin call is folded by splicing its emitted decls
   // into the body's statement loop AFTER `planBodyMerges` has run — so a spliced
   // decl cannot participate in a `+:`/`+_:` merge chain in the SAME body. If the
@@ -708,7 +778,7 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false): bo
   }
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
-    if (isSimpleSpineLeaf(child, allowExtend)) {
+    if (isSimpleSpineLeaf(child, allowExtend, allowImport)) {
       if (isNode(child, N.VarDeclaration) && typeof child.name !== 'string') {
         return false;
       }
@@ -726,7 +796,7 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false): bo
       }
       return false;
     }
-    if (!isSpineEligibleContainer(child, allowExtend)) {
+    if (!isSpineEligibleContainer(child, allowExtend, allowImport)) {
       return false;
     }
   }
@@ -793,8 +863,17 @@ function isSpineEligibleMixinDefinition(node: Node): boolean {
  * a thenable (see `resolveSpineLeafText` / the `isThenable` reactive-bail in the
  * container serializer). No async cost is paid for the common (sync) case.
  */
-function isSimpleSpineLeaf(node: Node, allowExtend = false): boolean {
+function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false): boolean {
   if (isNode(node, N.Comment)) {
+    return true;
+  }
+  // A spine-foldable `@import` (IMPORTS increment 1): CSS-passthrough (queued to
+  // the top-of-doc emitter) or a plain static-path Less import (its parsed body
+  // descended inline). Runtime body-simplicity is gated at fold time
+  // (`resolveSpineStyleImport` → `isSpineEligibleBody` on the resolved Less body),
+  // with a byte-identical eval fall-back for a non-simple imported body. Admitted
+  // only under `allowImport` (the import-work gate — `engageImportLayer`).
+  if (allowImport && (isSpineFoldableImport(node) || isSpineFoldableCssImportStatement(node))) {
     return true;
   }
   // Extend / ExtendList are invisible effect nodes (they emit nothing; their gather
@@ -998,7 +1077,17 @@ export const spineRenderCounter = { rootRenders: 0 };
  * (properties belong in rulesets); a real one routes to the eval path.
  */
 export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesting?: boolean): boolean {
-  if (context.currentCharset || context.topImports?.length) {
+  if (context.currentCharset) {
+    return false;
+  }
+  // IMPORT-WORK GATE (design §4.0, IMPORTS increment 1). When the tree carries no
+  // `StyleImport`, the spine pays zero import cost; a pre-populated `context.topImports`
+  // (from an unrelated prior render on this context) still routes to the eval path.
+  // When the tree HAS foldable imports the spine OWNS the top-of-doc `@import` emit
+  // (CSS-passthrough → `queueTopImport`, prepended in `renderRootViaSpine`), so a
+  // (freshly-cleared) `topImports` no longer forces the eval path.
+  const allowImport = engageImportLayer(root);
+  if (!allowImport && context.topImports?.length) {
     return false;
   }
   if (root.options?.referenceMode === true) {
@@ -1055,9 +1144,57 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // subjects/extenders (no nested extend) is spine-eligible — the pre-scan gathers and the
   // subject header is composed as an override. `allowExtend` admits the extend-bearing root
   // children + their ExtendList effect nodes. A NON-flat extend shape stays on the eval path.
+  // IMPORTS increment 1 SCOPE GUARD (self-contained imports only). The spine fold
+  // descends an imported body's OUTPUT but SKIPS the eval-pass REGISTRATION that
+  // populates the scope frame with the import's variables / mixins / namespaces.
+  // So an importing tree that CONSUMES an imported symbol (a variable `Reference`
+  // or a mixin/namespace `Call`) would resolve it against a frame the fold never
+  // seeded — a wrong/absent value (e.g. `namespacing-2`: `#library.sizes[@width]`
+  // reads the imported `#library` namespace). Keep such a tree on the eval path.
+  // A truly self-contained import set (`import-module`: imported rulesets that
+  // emit standalone, no consumer) still folds. DEFERRED (a REQUIRED P4 item): the
+  // in-fold registration of imported scope symbols so a consumer resolves them.
+  // Only a `StyleImport` (a Less import) REGISTERS scope symbols; a CSS-passthrough
+  // `@import` statement provides none, so a CSS-only tree may fold even with local
+  // var reads. Gate the consume-check on the tree carrying a scope-providing import.
+  if (allowImport && treeHasStyleImport(root) && treeConsumesScopeSymbols(root)) {
+    return false;
+  }
   const collapse = collapseNesting ?? context.output?.collapseNesting === true;
   const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root, collapse === true);
-  return isSpineEligibleBody(root.rules, allowExtend);
+  return isSpineEligibleBody(root.rules, allowExtend, allowImport);
+}
+
+/**
+ * True if the tree READS a scope symbol — any variable `Reference` or callable
+ * `Call` — that a folded import could have been responsible for providing. This is
+ * the IMPORTS-increment-1 self-contained gate: the fold skips imported-scope
+ * REGISTRATION, so a tree that consumes ANY scope symbol may consume an imported
+ * one, and cannot be proven safe statically. Conservative (a locally-satisfied
+ * read also trips it), which is correct-but-narrow — the fold applies only to
+ * import sets with no scope consumers. Skips a Reference that is an import PATH
+ * (the specifier itself is not a scope read).
+ */
+function treeConsumesScopeSymbols(root: Node): boolean {
+  for (const node of root.walk(true)) {
+    if (isNode(node, N.Call)) {
+      return true;
+    }
+    if (isNode(node, N.Reference)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True if the tree carries a `StyleImport` (a Less import that registers scope). */
+function treeHasStyleImport(root: Node): boolean {
+  for (const node of root.walk(true)) {
+    if (node.type === 'StyleImport') {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -1203,6 +1340,30 @@ function selectorHasInterpolatedSelector(selector: unknown): boolean {
  * serializer (`serializeRulesContainer`) in `spineMode`, which pushes each
  * container's frame and resolves its leaves live.
  */
+/**
+ * Render the queued top-of-doc `@import` at-rules to a string (IMPORTS increment 1).
+ * Mirrors the depth-0 `@import` emit in `_toDocumentString`: each queued rule is
+ * `writeSyntax`-serialized into a fresh writer, one per line. CSS-passthrough
+ * imports the spine folded were queued here; static preludes carry no
+ * interpolation, so no prelude re-eval is needed (unlike the eval path's `$`
+ * check, which serves interpolated CSS-import preludes — deferred with the
+ * interpolated-path lane). Returns '' when nothing is queued.
+ */
+function renderQueuedTopImports(context: Context, options: FinalPrintOptions): string {
+  const topImports = context.topImports;
+  if (!topImports?.length) {
+    return '';
+  }
+  let out = '';
+  for (let i = 0; i < topImports.length; i++) {
+    const importRule = topImports[i]!;
+    const writer = new OutputWriter();
+    importRule.writeSyntax(getPrintOptions({ ...options, writer, depth: 0 }));
+    out += `${writer.toString()}\n`;
+  }
+  return out;
+}
+
 export function renderRootViaSpine(
   root: Rules,
   context: Context,
@@ -1273,7 +1434,15 @@ export function renderRootViaSpine(
     context.treeRoot = savedTreeRoot;
     context.treeContext = savedTreeContext;
     const trimmed = body.trimEnd();
-    return trimmed ? `${trimmed}\n` : '';
+    const bodyText = trimmed ? `${trimmed}\n` : '';
+    // Top-of-doc `@import` lane (IMPORTS increment 1): CSS-passthrough imports
+    // folded during the descent were queued to `context.topImports` (the KEPT
+    // emitter). The spine's body carries none of them inline, so PREPEND them here
+    // — the same document framing `_toDocumentString` applies at depth 0 (`@import`
+    // after `@charset`, before other rules). Charset is already gated OUT of the
+    // spine (`isSpineEligibleRoot`), so only imports need prepending.
+    const importPrelude = renderQueuedTopImports(context, options);
+    return importPrelude ? `${importPrelude}${bodyText}` : bodyText;
   };
   const fail = (error: unknown): never => {
     context.rulesContext = savedRulesContext;

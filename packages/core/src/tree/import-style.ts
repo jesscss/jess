@@ -269,6 +269,16 @@ type ImportPlacementState = {
 
 export type ImportPlacementChildSegment = PlacementChildSegment;
 
+/**
+ * The result of driving a spine-foldable `StyleImport`'s resolution
+ * (`resolveForSpine`, UNIFIED-EVAL-EMIT-DESIGN §2/§4.0 IMPORTS increment 1):
+ *   - `css` — CSS-passthrough, already queued to `context.topImports`; emit nothing inline.
+ *   - `fold` — a plain Less import whose parsed body (`body`) the spine descends inline.
+ */
+export type SpineImportResolution =
+  | { kind: 'css' }
+  | { kind: 'fold'; body: Rules };
+
 type ImportPlacementOptionsState = {
   referenceMode: RulesOptions['referenceMode'];
   rulesVisibility: RulesOptions['rulesVisibility'];
@@ -880,6 +890,111 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       name: '@import',
       prelude
     }, undefined, location);
+  }
+
+  /**
+   * STATIC (eval-free) spine-fold admissibility for the single-pass import fold
+   * (cutover IMPORTS increment 1, UNIFIED-EVAL-EMIT-DESIGN §2/§4.0). Decides —
+   * from the source node alone, no path resolution, no eval — whether this import
+   * is one of the two shapes the spine folds:
+   *
+   *   - CSS-PASSTHROUGH (`@import url(...)`, a static `.css`/remote specifier): the
+   *     spine reuses the KEPT `queueTopImport` → top-of-doc emitter (nearly free),
+   *   - plain Less `@import "x.less"` (`type: 'import'`, static Quoted path, `once`
+   *     default): the spine `getTree`s the parsed body and descends it inline.
+   *
+   * DEFERRED (each stays a REQUIRED P4 item — a false here keeps the import on the
+   * eval path, byte-identical): `reference`, interpolated path, `inline`,
+   * `multiple`/dedupe, `optional`, `postlude`/`with`, `@-compose`/`forward`. The
+   * runtime body-simplicity gate is applied by the caller (`isSpineEligibleBody`
+   * on the resolved Less body); a non-simple body falls back to eval there.
+   */
+  isSpineFoldableStyleImport(): boolean {
+    if (this.options.type !== 'import') {
+      return false;
+    }
+    if (this.with) {
+      return false;
+    }
+    const io = this.options.importOptions;
+    if (io) {
+      if (
+        io.reference === true
+        || io.inline === true
+        || io.multiple === true
+        || io.optional === true
+        || io.mutable === true
+        || io.mutable === false
+        || io.forward === true
+        || io.postlude !== undefined
+        || io.once === false
+      ) {
+        return false;
+      }
+    }
+    // A static Quoted specifier is the only foldable Less path shape (interpolated
+    // paths ride the `_isPathResolutionError` retry lane — deferred). A `Url` node
+    // is admitted ONLY as the CSS-passthrough carrier (`@import url(...)`), where
+    // the runtime `isPlainCssImport` verdict decides passthrough vs eval.
+    if (this.path instanceof Url) {
+      return true;
+    }
+    if (!isNode(this.path, N.Quoted)) {
+      return false;
+    }
+    return typeof (this.path as Quoted).value === 'string' && !(this.path as Quoted).options?.escaped;
+  }
+
+  /**
+   * Drive a spine-foldable import's resolution ONCE (the import analogue of
+   * `resolveSpineMixinCall`, UNIFIED-EVAL-EMIT-DESIGN §2/§4.0). Caller has
+   * confirmed `isSpineFoldableStyleImport`.
+   *
+   *   - `{ kind: 'css' }` — CSS-passthrough: this method has ALREADY queued the
+   *     `@import` at-rule to `context.topImports` (the KEPT top-of-doc emitter);
+   *     the caller emits nothing inline.
+   *   - `{ kind: 'fold', body }` — a plain Less import: `body` is the parsed
+   *     imported tree wrapped in an import-site placement surface (a value-frame
+   *     whose lexical parent is the import site — free vars resolve up the import
+   *     chain). The caller descends `body`'s children INLINE through the spine,
+   *     REPLACING the eval terminal's `rules.eval()` + splice. `derive` is NOT
+   *     called (ratchet: import folds via the Compiler with `Rules.derive` = 0).
+   *
+   * No eval of the imported body happens here — that is the whole point of the
+   * fold (§2): the parsed body is descended, resolving each leaf against the live
+   * placement frame at its emit moment.
+   */
+  resolveForSpine(context: Context): MaybePromise<SpineImportResolution> {
+    const maybePath = this._preparePathIdentity(context);
+    const finish = (pathNode: Node): MaybePromise<SpineImportResolution> => {
+      const finalPath = String(pathNode.valueOf());
+      const evaluatedPathNode = this.toImportPathNode(pathNode);
+      if (this.isPlainCssImport(finalPath)) {
+        queueTopImport(context, this.createCssImportAtRule(evaluatedPathNode));
+        return { kind: 'css' };
+      }
+      return this._foldLessImportForSpine(context, finalPath);
+    };
+    return isThenable(maybePath) ? maybePath.then(finish) : finish(maybePath);
+  }
+
+  private async _foldLessImportForSpine(context: Context, finalPath: string): Promise<SpineImportResolution> {
+    const io = this.options.importOptions ?? {};
+    const loaded = await context.getTree(finalPath, io);
+    if (!loaded.node) {
+      // Nothing to emit (unsupported/empty) — mirror the eval path's empty surface.
+      return { kind: 'fold', body: this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true }) };
+    }
+    const importSite = this.getImportAnchorRules(context);
+    // Build the import-site placement over the parsed (un-evaled) imported body:
+    // shares the canonical children, frame parent = the import site so a free var
+    // resolves up the import chain (reuses `materializeImportPlacementState`'s
+    // wiring). The spine descends these children resolving each leaf live.
+    const placement = this.materializeImportPlacementState(
+      this.createFirstUseImportPlacementState(loaded.node),
+      importSite
+    );
+    return { kind: 'fold', body: placement };
   }
 
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {

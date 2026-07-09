@@ -21,7 +21,8 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
-import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution } from './emit-walk.js';
+import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody } from './emit-walk.js';
+import type { StyleImport, SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, type SpineMergePlan } from './spine-merge.js';
 
 type TriviaSide = 'before' | 'after';
@@ -863,6 +864,66 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return expandFrom(0);
     };
 
+    // Spine import-fold (cutover IMPORTS increment 1, UNIFIED-EVAL-EMIT-DESIGN
+    // §2/§4.0): resolve each spine-foldable `@import` entry and either drop it
+    // (CSS-passthrough → queued to the top-of-doc emitter, emits nothing inline)
+    // or splice its imported body's children into `rulesToRender` in place, TAGGED
+    // with the import-site placement as their `spineFrame` — so an imported leaf
+    // resolves against the placement's value-frame (lexical parent = the import
+    // site, so a free var resolves up the import chain, §2). The FOLD splices the
+    // parsed body's children (no `rules.eval()`, no output tree — the ratchet's
+    // `Rules.derive` = 0); a NON-simple imported body falls back to the eval
+    // terminal (byte-identical), flattening its resolved output like the mixin
+    // fallback. Off the spine (`!spineMode`) this is a no-op.
+    const runSpineImportExpansion = (): MaybePromise<void> => {
+      const spineContext = options.spineMode ? options.context : undefined;
+      if (!spineContext) {
+        return undefined;
+      }
+      const expandFrom = (start: number): MaybePromise<void> => {
+        for (let i = start; i < rulesToRender.length; i++) {
+          const entryNode = rulesToRender[i]!.node;
+          if (!isSpineFoldableImport(entryNode)) {
+            continue;
+          }
+          const importNode = entryNode as unknown as StyleImport;
+          const resolution = importNode.resolveForSpine(spineContext);
+          const apply = (resolved: SpineImportResolution): MaybePromise<void> => {
+            if (resolved.kind === 'css') {
+              // CSS-passthrough: nothing inline — drop the entry (queued top-of-doc).
+              rulesToRender.splice(i, 1);
+              recomputeDeclCounts();
+              return expandFrom(i);
+            }
+            // Less import: fold the parsed body inline when spine-simple, else
+            // fall back to the eval terminal (byte-identical) and flatten it.
+            if (isSpineFoldableImportBody(resolved.body)) {
+              assignSpineChildIndices(resolved.body);
+              const childEntries: RenderRuleEntry[] = resolved.body.rules.map(
+                child => ({ node: child, spineFrame: resolved.body })
+              );
+              rulesToRender.splice(i, 1, ...childEntries);
+              recomputeDeclCounts();
+              return expandFrom(i + childEntries.length);
+            }
+            const evalOutput = importNode.evalNode(spineContext);
+            const applyEval = (out: Node): MaybePromise<void> => {
+              const childEntries: RenderRuleEntry[] = isNode(out, N.Rules)
+                ? flattenVisibleRulesForRender(out, options, false)
+                : [{ node: out }];
+              rulesToRender.splice(i, 1, ...childEntries);
+              recomputeDeclCounts();
+              return expandFrom(i + childEntries.length);
+            };
+            return isThenable(evalOutput) ? evalOutput.then(applyEval) : applyEval(evalOutput);
+          };
+          return isThenable(resolution) ? resolution.then(apply) : apply(resolution);
+        }
+        return undefined;
+      };
+      return expandFrom(0);
+    };
+
     const runDedupPass = (): MaybePromise<void> => {
       const stepFrom = (i: number): MaybePromise<void> => {
         for (let idx = i; idx >= 0; idx--) {
@@ -1356,10 +1417,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     }
     return renderRulesBody();
     };
-    // Expand spine-eligible mixin calls into their (fold surface / eval fallback)
-    // children BEFORE dedup + body render, so folded decls share the enclosing
-    // body's dedup + statement framing.
-    const expand = runSpineMixinExpansion();
+    // Expand spine-foldable imports FIRST (their imported body may itself contain
+    // mixin calls the mixin pass then expands), then spine-eligible mixin calls,
+    // both BEFORE dedup + body render so folded decls share the enclosing body's
+    // dedup + statement framing.
+    const runExpansions = (): MaybePromise<void> => {
+      const imports = runSpineImportExpansion();
+      return isThenable(imports) ? imports.then(runSpineMixinExpansion) : runSpineMixinExpansion();
+    };
+    const expand = runExpansions();
     const afterExpand = (): MaybePromise<string> => {
       // The duplicate-declaration dedup pass may resolve keys ASYNC in spine mode
       // (live value resolution); the body render must wait for the skip set to be
