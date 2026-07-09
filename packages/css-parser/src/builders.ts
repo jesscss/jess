@@ -395,6 +395,15 @@ export type CssParseResult<T extends Node = Node> = {
 export class CssParser {
   protected _source = '';
   protected _strictEOF = false;
+  /**
+   * Provided by the functional host (see `commentOnlyTriviaForNode` on
+   * FunctionalParseHost): true for node types whose captured `triviaLog` is
+   * comment-only, so the comment lift can read it directly instead of re-scanning
+   * source. Absent (css/less/scss that haven't opted in) → re-scan. This is the
+   * signal that the `triviaLog` handed to `_buildStylesheet`/`_buildRuleset` is a
+   * comment-only log rather than empty/uncaptured.
+   */
+  commentOnlyTriviaForNode?(type: string): boolean;
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
   protected _errors: Array<{ message: string; offset?: number }> = [];
   /**
@@ -443,8 +452,8 @@ export class CssParser {
   ) {
     const loc = spanToLocation(span);
     switch (type) {
-      case 'Stylesheet':        return this._buildStylesheet(children, loc);
-      case 'Ruleset':           return this._buildRuleset(children, rawChildren, loc) as unknown as JessNode;
+      case 'Stylesheet':        return this._buildStylesheet(children, loc, triviaLog);
+      case 'Ruleset':           return this._buildRuleset(children, rawChildren, loc, triviaLog) as unknown as JessNode;
       case 'SelectorList':      return this._buildSelectorList(rawChildren, loc);
       case 'ComplexSelector':   return this._buildComplexSelector(rawChildren, loc);
       case 'CompoundSelector':  return this._buildCompoundSelector(rawChildren, span, triviaLog);
@@ -508,10 +517,41 @@ export class CssParser {
     bodyStart: number,
     bodyEnd: number,
     loc: LocationInfo,
-    atRoot = false
+    atRoot = false,
+    commentLog?: readonly number[]
   ): JessNode[] {
     const src = this._source;
     const out: JessNode[] = [];
+    // `commentLog` OPTS IN to reading standalone comments from parseman's
+    // comment-only per-node trivia log (flat [start, end, insertIdx, kind] × N, in
+    // source order) instead of re-scanning `src` char-by-char. When undefined (the
+    // default — less/scss and any caller that hasn't enabled comment-only capture)
+    // every gap uses the source scan, exactly as before. The one gap the log can't
+    // cover is the TRAILING gap after the last node: run() consumes trailing trivia
+    // with a throwaway ctx, so it never reaches the log — that gap always re-scans.
+    const useLog = commentLog !== undefined;
+    const STRIDE = 4;
+    let ci = 0;
+    const emitGap = (
+      gapStart: number,
+      gapEnd: number,
+      followingStart: number | undefined,
+      followingIsNestedRule: boolean
+    ) => {
+      if (!useLog) {
+        out.push(...this._scanStandaloneComments(src, gapStart, gapEnd, followingStart, followingIsNestedRule, loc));
+        return;
+      }
+      while (ci < commentLog!.length && commentLog![ci]! < gapStart) {
+        ci += STRIDE;
+      }
+      while (ci < commentLog!.length && commentLog![ci]! < gapEnd) {
+        const start = commentLog![ci]!;
+        const end = commentLog![ci + 1]!;
+        ci += STRIDE;
+        this._maybeEmitComment(src, start, end, followingStart, followingIsNestedRule, out, loc);
+      }
+    };
     let gapStart = bodyStart;
     for (const rule of orderedRuleNodes) {
       const nextStart = sourceSpanOf(rule)?.start;
@@ -520,13 +560,14 @@ export class CssParser {
         // trivia map at serialize time — but ONLY inside another rule's body.
         // At the stylesheet root, eval drops that trivia, so lift there instead.
         const followingIsNestedRule = !atRoot && (rule as { type?: string }).type === 'Ruleset';
-        out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, followingIsNestedRule, loc));
+        emitGap(gapStart, nextStart, nextStart, followingIsNestedRule);
         const nextEnd = sourceSpanOf(rule)?.end;
         gapStart = typeof nextEnd === 'number' ? nextEnd : nextStart;
       }
       out.push(rule);
     }
     // Trailing gap (after the last node): no following node → always standalone.
+    // Always source-scanned (not in the per-node log; see above).
     out.push(...this._scanStandaloneComments(src, gapStart, bodyEnd, undefined, false, loc));
     return out;
   }
@@ -621,20 +662,24 @@ export class CssParser {
     return true;
   }
 
-  protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo, triviaLog?: readonly number[]) {
     const nodes = nodeChildren(children);
     // The Stylesheet node's span ends at the last consumed statement, so trailing
     // trivia (a comment on the last line) sits past `loc.end`. Scan to the true
     // source end so a trailing standalone comment is lifted like any other.
     const bodyEnd = Math.max(loc.end, this._source.length);
-    const lifted = this._liftStandaloneComments(nodes, loc.start, bodyEnd, loc, true);
+    // Use the log only when the host declared Stylesheet capture comment-only;
+    // otherwise `triviaLog` is empty/uncaptured (less/scss) → re-scan source.
+    const commentLog = this.commentOnlyTriviaForNode?.('Stylesheet') ? triviaLog : undefined;
+    const lifted = this._liftStandaloneComments(nodes, loc.start, bodyEnd, loc, true, commentLog);
     return new Rules(lifted, undefined, loc);
   }
 
   protected _buildRuleset(
     children: ReadonlyArray<Child>,
     rawChildren: ReadonlyArray<{ _tag: string }>,
-    loc: LocationInfo
+    loc: LocationInfo,
+    triviaLog?: readonly number[]
   ) {
     const selector = readRulesetSelector(children);
     const sel = spannedComponents(rawChildren)[0];
@@ -644,7 +689,10 @@ export class CssParser {
     const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc.start;
     const closeIdx = this._source.lastIndexOf('}', loc.end - 1);
     const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc.end;
-    const rules = this._liftStandaloneComments(rawRules, bodyStart, bodyEnd, loc);
+    // Use the log only when the host declared Ruleset capture comment-only;
+    // otherwise `triviaLog` is empty/uncaptured (less/scss) → re-scan source.
+    const commentLog = this.commentOnlyTriviaForNode?.('Ruleset') ? triviaLog : undefined;
+    const rules = this._liftStandaloneComments(rawRules, bodyStart, bodyEnd, loc, false, commentLog);
     const node = new Ruleset({ selector, rules }, undefined, loc);
     if (selectorSpan) {
       const { index, count } = fieldIndexOf(node as unknown as JessNode, 'selector');

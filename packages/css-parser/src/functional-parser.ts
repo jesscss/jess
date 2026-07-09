@@ -37,7 +37,16 @@ class BuilderHost extends CssParser implements FunctionalParseHost {
    * (spans, `!important`, declaration splitting, selector collapse) verbatim.
    */
   captureTriviaForNode(type: string) {
-    return type === 'CompoundSelector';
+    return type === 'CompoundSelector' || type === 'Stylesheet' || type === 'Ruleset';
+  }
+
+  /**
+   * Stylesheet/Ruleset lift standalone comments from their body gaps; they want
+   * the comment runs, not whitespace. CompoundSelector is deliberately absent —
+   * it needs the whitespace trivia that marks a descendant combinator.
+   */
+  commentOnlyTriviaForNode(type: string) {
+    return type === 'Stylesheet' || type === 'Ruleset';
   }
 
   build(type: string, children: ReadonlyArray<unknown>, fields: FieldMap | undefined, span: { start: number; end: number }, rawChildren: ReadonlyArray<unknown>, triviaLog: readonly number[]): unknown {
