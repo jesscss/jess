@@ -143,6 +143,17 @@ type UncoveredCallableResult =
   | typeof UNCOVERED_CALLABLE_UNSUPPORTED;
 
 /**
+ * A variable-declaration that is an ASSIGNMENT to an existing binding, not a new
+ * binding: `setDefined` (Sass `!global`) or `nearestOuter` (Jess `:=`). Neither
+ * contributes a declaration/binding surface — they resolve and overwrite an
+ * existing cell — so both are skipped everywhere a declaration would be indexed
+ * as a fresh binding.
+ */
+function isBindingReassignment(node: Node): boolean {
+  return node.options?.setDefined === true || node.options?.nearestOuter === true;
+}
+
+/**
  * Evaluate a setDefined assignment's right-hand side. The value is left lazy
  * when there is no eval context (registration-time assignment): it is a value
  * node that the binding cell holds and reads dereference later.
@@ -534,7 +545,7 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
+    if (isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration) && !isBindingReassignment(node)) {
       return true;
     }
     const child = childRulesOf(node);
@@ -549,7 +560,7 @@ function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
+    if (isNode(node, N.VarDeclaration) && !isBindingReassignment(node)) {
       return true;
     }
     const child = childRulesOf(node);
@@ -1593,7 +1604,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (!isNode(node, N.VarDeclaration)) {
         continue;
       }
-      if (node.options?.setDefined) {
+      if (isBindingReassignment(node)) {
         continue;
       }
       if (!this._hasStaticName(node)) {
@@ -1691,7 +1702,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const node = value[i]!;
         if (
           isNode(node, N.VarDeclaration)
-          && !node.options?.setDefined
+          && !isBindingReassignment(node)
           && !this._hasStaticName(node)
         ) {
           return true;
@@ -2320,7 +2331,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           continue;
         }
         if (
-          !changedVariable.options?.setDefined
+          !isBindingReassignment(changedVariable)
           && isPublicRulesEntry(entry, 'VarDeclaration')
           && canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration' })
           && canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })
@@ -5194,7 +5205,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           this,
           key,
           true,
-          { searchParents: true }
+          // Exclude the `:=` node's own VarDeclaration: it must resolve to a PRIOR
+          // enclosing binding, never itself (the crawl would otherwise match the
+          // assignment node and fabricate a same-scope binding).
+          { searchParents: true, excludedDeclarations: [node] }
         );
         const result = resultOccurrence?.node;
         const owner = result?.parent;
@@ -5767,7 +5781,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (node.type === 'StyleImport') {
         return false;
       }
-      if ((isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) && !node.options?.setDefined) {
+      if ((isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) && !isBindingReassignment(node)) {
         if (!this._hasStaticName(node)) {
           return false;
         }
@@ -6872,7 +6886,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           const currentDecl = currentRules[j]!;
           if (
             isNode(currentDecl, N.VarDeclaration)
-            && !currentDecl.options?.setDefined
+            && !isBindingReassignment(currentDecl)
             && String(currentDecl.name.valueOf()) === key
           ) {
             throw new ReferenceError(`"${key}" is readonly`);
