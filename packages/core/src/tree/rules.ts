@@ -1,4 +1,4 @@
-import { setSourceSpan, spanStartOf, sourceSpanOf } from './util/provenance.js';
+import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   defineType,
@@ -11,6 +11,7 @@ import {
   F_MERGE_SUPPRESSED
 } from './node.js';
 import { Context } from '../context.js';
+import { ERR } from '../jess-error.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type Ruleset } from './ruleset.js';
@@ -5142,6 +5143,67 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // Note: Imported child Rules still contribute their own rules/rulesets after
       // evaluation completes, when the surrounding tree/root context is available.
     } else if (isNode(node, N.Declaration)) {
+      /**
+       * `nearestOuter` (Jess `:=`) reassigns the nearest lexically-enclosing
+       * scope that ALREADY binds the name, writing its runtime cell — a JS-block
+       * `let`-reassignment walking OUTWARD (nearest-first). It NEVER creates a new
+       * binding in the current scope (that is the contrast with `@x: v`), and a
+       * name that no enclosing scope binds is a hard compile error (one error,
+       * stop). Distinct from `setDefined` (Sass `!global`); shares the frame walk
+       * because `lookupScopeFrameVariable` already returns the first (nearest)
+       * hit up the parent chain. This fires only on a `:=` node, so the common
+       * variable path pays nothing.
+       */
+      if (node.options?.nearestOuter && isNode(node, N.VarDeclaration)) {
+        const key = node.name.toString();
+        // `:=` on a name no enclosing scope binds is a hard compile error, with
+        // this node's source location. One error, stop.
+        const unbound = (): never => {
+          throw ERR.nameNotFound({
+            ctx: context?.treeContext?.file ? { file: context.treeContext.file } : undefined,
+            node: { spanStart: spanStartOf(node), spanEnd: spanEndOf(node) },
+            meta: { symbol: key }
+          });
+        };
+        const frame = this._scopeFrame;
+        if (frame) {
+          const variableHit = lookupScopeFrameVariable(frame, key, {
+            bailOnPendingDeclarations: true,
+            // Exclude the `:=` node's own binding: the nearest enclosing target
+            // must be a PRIOR binding, never the assignment itself.
+            blockedSource: source => source === node,
+            filter: source => source !== node,
+            includeAssignmentTargets: true,
+            searchParents: true
+          });
+          if (variableHit.kind === 'live' || variableHit.kind === 'declaration') {
+            if (variableHit.readonly || variableHit.cell.readonly) {
+              throw new ReferenceError(`"${key}" is readonly`);
+            }
+            variableHit.cell.value = evalSetDefinedAssignedValue(node, context);
+            return;
+          }
+          if (variableHit.kind === 'miss') {
+            unbound();
+          }
+          // kind === 'uncovered': the frame can't statically model this surface
+          // (optional / dynamic targets). Fall to the occurrence crawl below,
+          // which walks parents (searchParents: true) and writes the found cell.
+        }
+        const resultOccurrence = findWritableSetDefinedDeclarationOccurrence(
+          this,
+          key,
+          true,
+          { searchParents: true }
+        );
+        const result = resultOccurrence?.node;
+        const owner = result?.parent;
+        if (result && isNode(result, N.VarDeclaration) && isNode(owner, N.Rules)) {
+          owner.writeSetDefinedBindingCell(key, result, evalSetDefinedAssignedValue(node, context));
+          return;
+        }
+        unbound();
+      }
       /**
        * setDefined assigns through the resolved variable binding. Static
        * VarDeclaration writes stay in place; the fallback below still handles
