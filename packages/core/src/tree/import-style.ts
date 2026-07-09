@@ -980,21 +980,37 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private async _foldLessImportForSpine(context: Context, finalPath: string): Promise<SpineImportResolution> {
     const io = this.options.importOptions ?? {};
-    const loaded = await context.getTree(finalPath, io);
-    if (!loaded.node) {
-      // Nothing to emit (unsupported/empty) — mirror the eval path's empty surface.
-      return { kind: 'fold', body: this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true }) };
+    // Bracket `context.treeContext` around `getTree` exactly as `evalNode`'s
+    // `finalize` does: a relative import path (`one/two/2`) resolves against the
+    // IMPORTING file's treeContext, so it must be set to this import's own source
+    // treeContext for the resolution and RESTORED after. Without this bracketing,
+    // resolving several imports in sequence (the spine pre-registration pass) leaves
+    // a deeply-nested import's treeContext in place, so the NEXT sibling import
+    // resolves against the wrong directory (an empty/failed tree → dropped output).
+    const previousTreeContext = context.treeContext;
+    const nodeTreeContext = this.sourceRoot?._treeContext;
+    if (nodeTreeContext) {
+      context.treeContext = nodeTreeContext;
     }
-    const importSite = this.getImportAnchorRules(context);
-    // Build the import-site placement over the parsed (un-evaled) imported body:
-    // shares the canonical children, frame parent = the import site so a free var
-    // resolves up the import chain (reuses `materializeImportPlacementState`'s
-    // wiring). The spine descends these children resolving each leaf live.
-    const placement = this.materializeImportPlacementState(
-      this.createFirstUseImportPlacementState(loaded.node),
-      importSite
-    );
-    return { kind: 'fold', body: placement };
+    try {
+      const loaded = await context.getTree(finalPath, io);
+      if (!loaded.node) {
+        // Nothing to emit (unsupported/empty) — mirror the eval path's empty surface.
+        return { kind: 'fold', body: this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true }) };
+      }
+      const importSite = this.getImportAnchorRules(context);
+      // Build the import-site placement over the parsed (un-evaled) imported body:
+      // shares the canonical children, frame parent = the import site so a free var
+      // resolves up the import chain (reuses `materializeImportPlacementState`'s
+      // wiring). The spine descends these children resolving each leaf live.
+      const placement = this.materializeImportPlacementState(
+        this.createFirstUseImportPlacementState(loaded.node),
+        importSite
+      );
+      return { kind: 'fold', body: placement };
+    } finally {
+      context.treeContext = previousTreeContext;
+    }
   }
 
   constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {

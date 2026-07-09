@@ -887,7 +887,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             continue;
           }
           const importNode = entryNode as unknown as StyleImport;
-          const resolution = importNode.resolveForSpine(spineContext);
           const apply = (resolved: SpineImportResolution): MaybePromise<void> => {
             if (resolved.kind === 'css') {
               // CSS-passthrough: nothing inline — drop the entry (queued top-of-doc).
@@ -917,6 +916,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             };
             return isThenable(evalOutput) ? evalOutput.then(applyEval) : applyEval(evalOutput);
           };
+          // Reuse the root pre-registration pass's resolved + registered + linked
+          // placement (IMPORTS increment 2) when present, so a nested-container
+          // descent folds the SAME scope-linked body; else resolve here (a nested
+          // import not covered by the root pre-wire).
+          const cached = options.spineImportPlacements?.get(importNode);
+          if (cached) {
+            return apply(cached);
+          }
+          const resolution = importNode.resolveForSpine(spineContext);
           return isThenable(resolution) ? resolution.then(apply) : apply(resolution);
         }
         return undefined;

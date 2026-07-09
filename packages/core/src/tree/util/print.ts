@@ -5,7 +5,19 @@ import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import type { Nil } from '../nil.js';
+import type { Node } from '../node.js';
+import type { Rules } from '../rules.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+
+/**
+ * A resolved spine import placement (IMPORTS increment 2). `css` — a CSS-passthrough
+ * import already queued to `context.topImports` (emits nothing inline). `fold` — a
+ * Less import whose registered placement `body` the spine descends inline; its scope
+ * frame is already linked as an importer fallback by `wireSpineImports`.
+ */
+export type SpineImportPlacementEntry =
+  | { kind: 'css' }
+  | { kind: 'fold'; body: Rules };
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -119,6 +131,17 @@ export type PrintOptions = {
    * `calc()`/`Operation` whose subtree is fully sync pays ZERO async cost.
    */
   spineMode?: boolean;
+  /**
+   * Spine import-fold cache (IMPORTS increment 2). Maps each spine-foldable
+   * `StyleImport` to its resolved placement (`resolveForSpine` result), populated
+   * ONCE by the root pre-registration pass (`wireSpineImports`) which registers the
+   * imported body's scope into the placement frame and links it as an importer
+   * fallback. The emit fold (`_emitSpineImportFold` / `runSpineImportExpansion`)
+   * reads from here to descend the SAME registered placement — so an import is
+   * resolved + registered exactly once, and a consumer (`#library.sizes[@width]`,
+   * an imported `@var`) resolves against the linked scope. Keyed by node identity.
+   */
+  spineImportPlacements?: Map<Node, SpineImportPlacementEntry>;
   /** Output syntax target, e.g. 'jess' for Jess canonical output. */
   syntax?: string;
   /** Jess conversion options for rewriting import paths during serialization. */

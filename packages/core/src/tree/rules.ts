@@ -54,6 +54,7 @@ import {
   copyScopeFrameLiveBindingSlots,
   createVarDeclarationBindingEntry,
   injectFrameLeakBinding,
+  linkImportFallbackFrame,
   lookupScopeFrameCallable,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
@@ -173,42 +174,6 @@ function isImportAtRule(node: Node): node is AtRule {
 function importInlinesMembersToParent(rules: Rules): boolean {
   return rules.options.importBoundary === false
     || rules.options.inlinesMembersToParent === true;
-}
-
-// Link an inline-import's own scope frame as `frame`'s fallback, preserving any
-// earlier sibling imports already chained on `frame.fallbackFrame`. A nested
-// import (an imported file that itself `@import`s) already points its own
-// fallbackFrame at its inner import, so the earlier siblings must be threaded
-// past that internal chain — appended at the TAIL of the import frame's fallback
-// chain — rather than skipped. Skipping (the old `=== undefined` guard) dropped
-// every earlier top-level import the moment a later import was itself nested.
-// The tail walk stops if it would revisit `frame`, `importFrame`, or the chain
-// head, so no cycle is ever formed. Fallbacks are consulted only AFTER the
-// primary scope chain, so an enclosing declaration always wins.
-function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): void {
-  if (importFrame === frame || importFrame === frame.fallbackFrame) {
-    return;
-  }
-  const chain = frame.fallbackFrame;
-  let tail: ScopeFrame = importFrame;
-  // Walk to the tail of importFrame's own fallback chain. The `seen` guard makes
-  // this loop total even if a prior link left a cycle in the chain (which would
-  // otherwise never hit the `=== chain/frame` stops) — we simply stop rather
-  // than append into a cycle.
-  const seen = new Set<ScopeFrame>([importFrame]);
-  while (
-    tail.fallbackFrame !== undefined
-    && tail.fallbackFrame !== chain
-    && tail.fallbackFrame !== frame
-    && !seen.has(tail.fallbackFrame)
-  ) {
-    tail = tail.fallbackFrame;
-    seen.add(tail);
-  }
-  if (tail.fallbackFrame === undefined) {
-    tail.fallbackFrame = chain;
-  }
-  frame.fallbackFrame = importFrame;
 }
 
 // Walk a frame's lexical parent chain to detect any per-call live-binding scope
@@ -4511,6 +4476,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body) : evalFallback();
     };
+    // Reuse the placement the root pre-registration pass already resolved +
+    // registered + frame-linked (IMPORTS increment 2), so the import is resolved
+    // once and its OUTPUT descends against the SAME scope its consumers see. A
+    // nested import not pre-wired (only root imports are wired today) resolves here.
+    const cached = options.spineImportPlacements?.get(importNode);
+    if (cached) {
+      return apply(cached);
+    }
     const resolution = importNode.resolveForSpine(context);
     return isThenable(resolution) ? resolution.then(apply) : apply(resolution);
   }

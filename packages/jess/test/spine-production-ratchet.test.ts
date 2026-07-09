@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import { readFileSync } from 'fs';
 import { Compiler } from '../src/index.js';
 import { spineRenderCounter, Rules } from '@jesscss/core';
@@ -554,16 +556,49 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 1: a Less import whose importing tree CONSUMES its scope STAYS on eval (self-contained gate)', async () => {
-    // `namespacing-2.less`: the imported `#library` namespace is consumed by
-    // `#library.sizes[@width]` calls. The fold skips imported-scope registration, so
-    // such a tree must stay on the eval path (byte-identical). A regression that folds
-    // it would drop the namespace lookups (wrong/absent values).
+  it('IMPORTS increment 2: an importer that CONSUMES imported scope (var + mixin) now FOLDS via the spine (no derive)', async () => {
+    // The registration-during-fold win: a root `@import` of a vars/mixins library is
+    // REGISTERED into its placement frame and LINKED as an importer fallback
+    // (`wireSpineImports`), so the importer's `@brand` read and `.rounded(8px)` mixin
+    // call resolve against the imported scope — folding through the spine with no eval
+    // two-walk. This is the common "import a library, then use it" shape.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc2-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '@brand: #3366cc;\n.rounded(@r: 4px) {\n  border-radius: @r;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "lib.less";\n.box {\n  color: @brand;\n  .rounded(8px);\n}\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // registration seeds NAMES only — no output tree
+      // The imported `@brand` var and `.rounded` mixin both resolved against the linked scope.
+      expect(result.css).toBe('.box {\n  color: #3366cc;\n  border-radius: 8px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 2: a NAMESPACE-PATH call over an imported namespace STAYS on eval (namespace-merge wall)', async () => {
+    // `namespacing-2.less`: a LOCAL `#library` (overriding `.sizes`) plus the imported
+    // `#library` (defining `.add-one`), consumed by `#library.add-one()`. Fallback-frame
+    // linking makes the imported namespace resolvable but does NOT MERGE it with the
+    // same-named local definition — the lookup finds the local `#library` first and never
+    // falls through for a member only the imported one defines. So a tree with a
+    // namespace-path call + an import stays on the eval path (byte-identical). A regression
+    // that folds it throws "No matching mixins for '#library.add-one'". DEFERRED (P4):
+    // cross-definition namespace merge in the fold.
     const compiler = makeCompiler();
     const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-2.less');
     const before = spineRenderCounter.rootRenders;
     const result = await compiler.renderToResult(lessPath, {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (scope consumed)
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (namespace-merge wall)
     expect(result.css).toContain('width: 800px'); // namespace lookup resolved (eval path)
   });
 
