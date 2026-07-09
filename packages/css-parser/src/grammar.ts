@@ -18,6 +18,16 @@ import {
 
 // ---------------------------------------------------------------------------
 // Trivia + terminals — bare combinators; node() captures them automatically.
+//
+// Trivia (`rw`) is INHERITED through the parse ctx: `Stylesheet` installs it once
+// via `parser({ trivia: rw }, …)`, and every rule reached from there sees the same
+// ambient trivia (sequence/repeat read `ctx.trivia` dynamically; a rule ref passes
+// ctx straight through). So a per-rule `parser({ trivia: rw }, …)` re-establishing
+// the SAME `rw` is a no-op and was dropped from most rules. A handful are kept
+// because parseman's deferred-trivia-commit boundaries interact across nested
+// grammar scopes: dropping them there changed what parsed (measured, not reasoned).
+// The kept establishers are `Stylesheet`, `atRuleBody`, `Paren`, `CalcCall`,
+// `QueryFeature`, `QueryCondition`, and `queryPrelude`.
 // ---------------------------------------------------------------------------
 
 const ws = regex(/[ \t\n\r\f]+/);
@@ -65,15 +75,15 @@ export const cssGrammar = rules((g: any) => {
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
   const Ruleset = node(
-    parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}'))));
+    sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}')));
 
   // ── Selectors ──────────────────────────────────────────────────────────────
   const SelectorList = node(
-    parser({ trivia: rw }, sequence(g.ComplexSelector, many(sequence(literal(','), g.ComplexSelector)))));
+    sequence(g.ComplexSelector, many(sequence(literal(','), g.ComplexSelector))));
   const ComplexSelector = node(
-    parser({ trivia: rw }, sequence(g.CompoundSelector, many(sequence(optional(combinator), g.CompoundSelector)))));
+    sequence(g.CompoundSelector, many(sequence(optional(combinator), g.CompoundSelector))));
   const CompoundSelector = node(
-    parser({ trivia: rw }, oneOrMore(g.simpleSelector)));
+    oneOrMore(g.simpleSelector));
   /**
    * `&` is the CSS nesting selector (the parent reference).
    * @see https://www.w3.org/TR/css-nesting-1/#nest-selector
@@ -82,13 +92,13 @@ export const cssGrammar = rules((g: any) => {
   const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.BasicSelector);
 
   const AttributeSelector = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       literal('['), field('name', ident),
       optional(sequence(field('op', attrOp), field('value', choice(singleStr, doubleStr, ident)), optional(field('mod', attrMod)))),
       literal(']')
-    )));
+    ));
   const PseudoSelector = node(
-    parser({ trivia: rw }, sequence(pseudoColon, ident, optional(sequence(literal('('), g.pseudoArg, literal(')'))))));
+    sequence(pseudoColon, ident, optional(sequence(literal('('), g.pseudoArg, literal(')')))));
   // `:nth-child(An+B of S)` — the `of <selector-list>` form. Without consuming the
   // `of S`, `nth` would match just `An+B` and the choice would commit, leaving the
   // outer `)` to fail. The last arm scans to `)` for arbitrary args, skipping
@@ -106,9 +116,9 @@ export const cssGrammar = rules((g: any) => {
    * rulesets and nested at-rules, not just declarations.
    * @see https://www.w3.org/TR/css-nesting-1/#syntax
    */
-  const declarationList = parser({ trivia: rw }, many(choice(
+  const declarationList = many(choice(
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
-  )));
+  ));
 
   /**
    * `!important`. Keyword is ASCII case-insensitive; trivia between `!` and the
@@ -133,7 +143,7 @@ export const cssGrammar = rules((g: any) => {
     // ruleset whose selector looks declaration-like (`a:hover { … }`) — CSS
     // Nesting's declaration-vs-rule ambiguity. The `not('{')` guard rejects the
     // declaration parse so the enclosing choice falls through to `Ruleset`.
-    parser({ trivia: rw }, sequence(propName, literal(':'), g.valueList, not(literal('{')), optional(important), optional(literal(';')))));
+    sequence(propName, literal(':'), g.valueList, not(literal('{')), optional(important), optional(literal(';'))));
   /**
    * Custom property (`--foo: …`). Its value is a near-arbitrary declaration-value
    * token stream with balanced (), [], {} — scanned to the terminating `;`/`}`,
@@ -141,15 +151,15 @@ export const cssGrammar = rules((g: any) => {
    * @see https://www.w3.org/TR/css-variables-1/#defining-variables
    */
   const CustomDeclaration = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       customProp, literal(':'),
       scanTo(choice(literal(';'), literal('}')), { skip: [balanced('(', ')'), balanced('[', ']'), balanced('{', '}')] }),
       optional(literal(';'))
-    )));
+    ));
 
   // ── Values ───────────────────────────────────────────────────────────────
-  const valueList = parser({ trivia: rw }, sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence))));
-  const valueSequence = parser({ trivia: rw }, oneOrMore(g.value));
+  const valueList = sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence)));
+  const valueSequence = oneOrMore(g.value);
   const value = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue);
   // ── Math expressions ───────────────────────────────────────────────────────
   // CSS does arithmetic ONLY inside `calc()` (and the parens nested in it), so these
@@ -165,31 +175,31 @@ export const cssGrammar = rules((g: any) => {
   const sumOp = regex(/[-+](?![0-9.])|(?<=\S)[-+](?=[0-9.])/);
   // A math operand is a value whose nested parens fold (calcParen), unlike the
   // general permissive `Paren`. Everything else matches the ordinary value set.
-  const calcParen = node('Paren', parser({ trivia: rw }, sequence(literal('('), g.mathSum, expect(literal(')')))));
+  const calcParen = node('Paren', sequence(literal('('), g.mathSum, expect(literal(')'))));
   const calcValue = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, calcParen, g.Quoted, g.anyValue);
   const mathProduct = node('Operation',
-    parser({ trivia: rw }, sequence(calcValue, many(sequence(prodOp, calcValue)))), undefined, { collapse: true });
+    sequence(calcValue, many(sequence(prodOp, calcValue))), undefined, { collapse: true });
   const mathSum = node('Operation',
-    parser({ trivia: rw }, sequence(g.mathProduct, many(sequence(sumOp, g.mathProduct)))), undefined, { collapse: true });
+    sequence(g.mathProduct, many(sequence(sumOp, g.mathProduct))), undefined, { collapse: true });
 
   // unit collapsed to one regex (Dimension still reads number + unit as two leaves).
   const Dimension = node(sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/)));
   // `Num` and `Color` now come from the shared `numericRules` fragment, spread into
   // the return object below (identical to the Less grammar's definitions).
   const Url = node(
-    parser({ trivia: rw }, sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')'))));
+    sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')')));
   // Generic function-call args stay a PERMISSIVE value list — `rgb(255 0 0)`,
   // `min(1px, 2px)` are space / comma lists, not math expressions.
-  const parenBody = parser({ trivia: rw }, sequence(optional(g.valueList), literal(')')));
+  const parenBody = sequence(optional(g.valueList), literal(')'));
   // Call OR bare ident, parsing the ident exactly once: take the call-args tail
   // only when '(' follows. _buildCall returns a Call node when args are present,
   // otherwise the bare ident string (bubbling identically to the old anyValue
   // ident arm). This removes the per-bare-ident "parse ident, backtrack on '('".
-  const Call = node(parser({ trivia: rw }, sequence(ident, optional(sequence(literal('('), g.parenBody)))));
+  const Call = node(sequence(ident, optional(sequence(literal('('), g.parenBody))));
   // `calc(…)` body is ONE math expression (folded in the grammar) — the only place
   // plain CSS folds operators. Matched before the generic `Call` so `calc(` routes
   // here; other math functions (min/max/clamp) stay generic Calls with list args.
-  const calcBody = parser({ trivia: rw }, sequence(g.mathSum, expect(literal(')'))));
+  const calcBody = sequence(g.mathSum, expect(literal(')')));
   // `CalcCall` (calc(…)) and the general value-position `Paren` come from the shared
   // `parenRules` fragment (spread below) — they defer to g.calcBody / g.parenBody here.
   // `Quoted` likewise comes from the `stringRules` fragment.
@@ -204,7 +214,7 @@ export const cssGrammar = rules((g: any) => {
   // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node(
-    parser({ trivia: rw }, sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+    sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
 
   // ── At-rules ───────────────────────────────────────────────────────────────
   /**
@@ -231,12 +241,12 @@ export const cssGrammar = rules((g: any) => {
   // falling through to the opaque unknown-at-rule rule.
   const knownBlockAtKeyword = regex(/@(?:media|container|supports|layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
   const AtRuleBlock = node(
-    parser({ trivia: rw }, sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+    sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
   const opaqueAtBody = scanTo(literal('}'), { skip: [balanced('{', '}'), singleStr, doubleStr, comment] });
   const UnknownAtRuleBlock = node(
-    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal('{'), opaqueAtBody, literal('}'))));
+    sequence(atKeyword, atPrelude, literal('{'), opaqueAtBody, literal('}')));
   const AtRuleStatement = node(
-    parser({ trivia: rw }, sequence(atKeyword, atPrelude, literal(';'))));
+    sequence(atKeyword, atPrelude, literal(';')));
   // Body of a known at-rule block. No catch-all: unparseable content stops `many`,
   // and the block's expect('}') reports a syntax error at that point.
   const atRuleBody = parser({ trivia: rw }, many(choice(
@@ -267,7 +277,7 @@ export const cssGrammar = rules((g: any) => {
       sequence(mfComparison, g.value, optional(sequence(mfComparison, g.value)))
     )))));
   const QueryInParens = node(
-    parser({ trivia: rw }, sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')'))));
+    sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')')));
   const QueryCondition = node(
     parser({ trivia: rw }, choice(
       sequence(regex(/not(?![-\w])/i), g.QueryInParens),
