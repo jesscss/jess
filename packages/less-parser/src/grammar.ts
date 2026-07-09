@@ -175,16 +175,16 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // `@a * 2` is a real Operation, not a Reference whose key is the raw string. The
   // `MixinArgs` production lives next to `callArgSeq`/`callArgList` (below) so it can
   // reuse them directly. See `_buildMixinArgs` (which reuses the shared `_assembleArgs`).
-  const mixinNamePath = parser({ trivia: rw }, sequence(basicSel, many(sequence(optional(combinator), basicSel))));
+  const mixinNamePath = sequence(basicSel, many(sequence(optional(combinator), basicSel)));
   // MixinCall names must start with . or # — plain idents are properties, not mixins.
   const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
-  const mixinCallPath = parser({ trivia: rw }, sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel))));
+  const mixinCallPath = sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel)));
   const MixinCall = node(
-    parser({ trivia: rw }, sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';')))));
+    sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';'))));
   // Anonymous mixin callback: `.(…){…}` OR `#(…){…}` — the Chevrotain
   // AnonMixinStart token is `/[.#]\(/`, so both prefixes are valid.
   const AnonymousMixinDefinition = node(
-    parser({ trivia: rw }, sequence(regex(/[.#]/), g.MixinArgs, literal('{'), g.declarationList, literal('}'))));
+    sequence(regex(/[.#]/), g.MixinArgs, literal('{'), g.declarationList, literal('}')));
   // A bare name with nothing after it is NOT a statement — require args (a mixin
   // call), or a `{}` body / `;` (a qualified rule or mixin call). Otherwise a lone
   // ident like `x` or `nonsense` would be silently accepted.
