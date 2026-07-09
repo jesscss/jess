@@ -301,6 +301,15 @@ function isSpineSimpleMixinSurface(surface: Rules): boolean {
     if (isSpineEligibleMixinCall(child)) {
       return false;
     }
+    // A Declaration with an INTERPOLATED (non-string) NAME (`prop-@{name}: …`) does
+    // not resolve its name against the surface frame during the fold descent — the
+    // interpolation emits raw (`prop-$name`). Route such a body to the eval fall-back
+    // (byte-identical) until per-placement interpolated-decl-name resolution folds
+    // into the surface descent. A VarDeclaration with an interpolated name is already
+    // excluded at the body gate; this covers a plain Declaration in a mixin body.
+    if (isNode(child, N.Declaration) && !isNode(child, N.VarDeclaration) && typeof child.name !== 'string') {
+      return false;
+    }
   }
   return true;
 }
@@ -868,18 +877,16 @@ function isSpineEligibleMixinDefinition(node: Node): boolean {
   // FAILING candidate never folds and a guard-SELECTED candidate folds only when it
   // passes — the guard outcome is faithfully reproduced by the KEPT eval. Verified
   // byte-identical for pass / fail / select-among-several / `default()`.
-  const params = node.params;
-  if (!params) {
-    return true;
-  }
-  for (let i = 0; i < params.value.length; i++) {
-    const param = params.value[i]!;
-    // A named param (required OR default) or a Rest param. A pattern-match literal
-    // (a value guard — neither a VarDeclaration nor a Rest) defers.
-    if (!isNode(param, N.VarDeclaration) && param.type !== 'Rest') {
-      return false;
-    }
-  }
+  // INCREMENT 8 (fold #2): PATTERN-MATCH literal params are admitted. A param that
+  // is neither a named `VarDeclaration` (required/default) nor a `Rest` is a value
+  // guard (`.m(dark)`, `.m(light)`) — the KEPT `matchCallableParams` compares the
+  // call's positional arg against the literal and only selects the matching overload
+  // BEFORE the sink is consulted, exactly like the eval path. A non-matching overload
+  // never folds; the matching one folds against its (spine-simple) body. Verified
+  // byte-identical for literal-select among several overloads. So the whole
+  // param-shape restriction is lifted — any param list a definition can carry
+  // (named, default, rest, pattern-match literal) is admitted here; the runtime
+  // surface gate + guard eval still decide fold-vs-fallback per candidate.
   return true;
 }
 
@@ -1181,6 +1188,21 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (treeHasMixinCall(root) && treeHasContainerBodyMixinDefinition(root)) {
     return false;
   }
+  // SEQUENCE cross-check (recursion / nested-call-in-body — the one genuinely
+  // architectural item, deferred): a mixin DEFINITION whose body itself contains a
+  // mixin CALL (`.wrapper() { .base(@c); }`, or a self-call `.loop() { …; .loop(); }`)
+  // can't fold — the fold splice is SHALLOW (it expands a call's surface at the
+  // container-serialize level but does NOT re-run the expansion on a folded surface's
+  // OWN children), so the nested call would emit its raw source instead of its
+  // resolved body. The runtime surface gate rejects such a body, but the eval
+  // fall-back does not reliably reconstruct this shape's output, so keep the whole
+  // tree on the eval path. DEFERRED: make the fold splice RE-ENTRANT (run
+  // `runSpineMixinExpansion` inside a folded surface's children) — a P4-era piece
+  // (joins extend #4a). Until then this gate is the correctness floor for #1/#2,
+  // whose relaxed eligibility would otherwise admit a nested-call body.
+  if (treeHasMixinCall(root) && treeHasMixinDefinitionWithNestedCall(root)) {
+    return false;
+  }
   // FLAT extend topology (P3 increment 1): a root whose ONLY extends are root-direct-child
   // subjects/extenders (no nested extend) is spine-eligible — the pre-scan gathers and the
   // subject header is composed as an override. `allowExtend` admits the extend-bearing root
@@ -1325,6 +1347,30 @@ function treeHasContainerBodyMixinDefinition(root: Node): boolean {
     const body = node.rules;
     for (let i = 0; i < body.length; i++) {
       if (isNode(body[i]!, N.Ruleset | N.AtRule)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * True if the tree has a Mixin definition whose body contains a spine-eligible
+ * mixin CALL — the recursion / nested-call-in-body shape (SEQUENCE item) the fold's
+ * SHALLOW splice cannot expand (a folded surface's own children are not re-run
+ * through `runSpineMixinExpansion`, so the nested call emits its raw source). Direct
+ * body children only: a call deeper inside a nested container is already covered by
+ * `treeHasContainerBodyMixinDefinition`. Keeps such a tree on the eval path until
+ * the fold splice is made re-entrant (a P4-era piece).
+ */
+function treeHasMixinDefinitionWithNestedCall(root: Node): boolean {
+  for (const node of root.walk(true)) {
+    if (!isNode(node, N.Mixin)) {
+      continue;
+    }
+    const body = node.rules;
+    for (let i = 0; i < body.length; i++) {
+      if (isSpineEligibleMixinCall(body[i]!)) {
         return true;
       }
     }
