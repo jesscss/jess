@@ -22,6 +22,17 @@ old structure instead of building the target*. Guardrails, binding on every cuto
    each work session, so the orchestrator catches backpedaling early.
 5. Work on the **cutover branch**, never dev. `.css`/warning expectations are the working oracle but not
    gospel — reason to the intended v5 shape (see the "no sacred expectations" rule).
+6. **NO PERMANENT EVAL FALLBACK — 100% spine coverage is the P4 precondition.** The eval path
+   (two-walk + output tree + clone families + `propagateFlagsFrom` + the flags + `treeContext`) is
+   MONOLITHIC: it cannot be half-deleted. If *any* shape still routes through eval, P4 cannot delete it,
+   and the cutover is a NET LOSS (we added the spine — bigger, more complex — with none of the deletion
+   payoff). So a transitional eval fallback for a not-yet-folded shape is fine (it dies in P4); declaring
+   a shape *permanently* eval-routed is NOT — that abandons the whole point. Every deferred shape (the
+   extend hard-tail, mixin hard-tail, `@layer`/`@scope`, import edge-modes, …) stays on the roadmap as
+   REQUIRED P4-blocking work. "Harder / poor ROI / rare / byte-identical-on-eval" is a SEQUENCING reason
+   to defer, NEVER a reason to abandon. If a shape proves *genuinely* unfoldable under the design, that is
+   a design GAP to surface to the owner — not something to silently leave on eval. The P4
+   deleted-symbol-absence ratchets enforce this: they cannot go green until the eval path carries nothing.
 
 ## Branch / gate strategy
 - Long-lived integration branch **`work/cutover`** off `dev`. Phase work happens on `work/cutover-<phase>`
