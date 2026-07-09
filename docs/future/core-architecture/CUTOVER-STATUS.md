@@ -4,7 +4,7 @@ At-a-glance status of the single-eval-emit cutover + core slimming. **Kept curre
 
 Legend: ✅ landed on `work/cutover-p1` · 🔵 in-flight · ⏸ queued (core-lane serializes) · 🔒 gated/deferred
 
-Tip: `origin/work/cutover-p1` = `84e61a580`.
+Tip: `origin/work/cutover-p1` = `5869859ad`.
 
 ## ✅ Landed
 - **Extend (spine, faster than eval, byte-identical):** common modes, Cases 1–3, Shape 4, extend-nest, extend-selector, #4a expanded-mode; combinator subjects/targets; partial list-targets; trailing/mid descendant wraps. **Perf: O(n²)→O(n) fan pre-reject — 2.4× slower → 1.37–1.43× faster.** Ratchet 61/61.
@@ -14,10 +14,11 @@ Tip: `origin/work/cutover-p1` = `84e61a580`.
 - **Value/decl:** `@x ?:` (CondAssign) + same-scope `setDefined` folds; `:=` (nearestOuter) EVAL ORACLE implemented (spine fold deferred).
 - **Slimming:** `!important` constant → bare string (Any reduction); lean-selector string-form consumers + 16 tests; string-forms model (ComplexSelector/RelativeSelector positional).
 - **Parser (on dev+alpha):** grammar-thinning wrapper drops (css/less/scss/jess) + SelectorCapture interior-trivia fix.
+- **interpolated-name fold (M8):** interpolated-selector ruleset called as a mixin folds through the spine (mid-string `.foo-@{n}` + no-call inert registration). Ratchet +3 (61→64). V4 (interpolated var-name) and R2 (interpolated at-rule-name) verified **non-features** — no additional spine work needed; the "3-for-1" collapses to M8 alone.
 - **Docs (unblock producer work):** STRINGS-OVER-NODES, P4-ENDGAME-PLAN, conditional-decls, extend-4a, any-name-reduction, basic-selector-boundary, parseman-trivia-audit.
 
 ## 🔵 In-flight
-- **interpolated-name fold** (M8 interpolated-selector callable + V4 interpolated var-name + R2 interpolated at-rule-name) — the plan's 3-for-1.
+- _(none)_
 
 ## ⏸ Queued P4 folds → 100% spine coverage (core-lane, one at a time)
 - nested-container mixin body
