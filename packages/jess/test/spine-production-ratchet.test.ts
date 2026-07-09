@@ -963,19 +963,63 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 6: `(inline)` STAYS on eval (raw-text emission — a distinct mechanism, deferred)', async () => {
-    // `(inline)` emits the imported file's RAW source text verbatim (no parse, no
-    // scope, no descent) — a fundamentally different mechanism from the fold. Kept on
-    // the eval path (byte-identical). DEFERRED (a REQUIRED P4 item).
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-inline-'));
+  it('IMPORTS increment 7: `(inline)` emits the file RAW verbatim via the spine (no parse/scope/descent, no derive)', async () => {
+    // `(inline)` builds the eval path's inline-source placement (an `Any` node holding
+    // the raw bytes) and the spine descends that leaf — the file's text emits UNCHANGED
+    // (uppercase `RED`, original spacing preserved), no reformatting. Folds, derive=0.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc7-inline-'));
     fs.writeFileSync(path.join(dir, 'x.css'), '.raw { color: RED; }\n');
     fs.writeFileSync(path.join(dir, 'main.less'), '@import (inline) "x.css";\n');
     const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(result.css).toBe('.raw { color: RED; }\n'); // raw text verbatim
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 7: `(inline)` with a postlude wraps the RAW text in `@media`; a following sibling emits at root', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc7-inlinepost-'));
+    fs.writeFileSync(path.join(dir, 'x.css'), '.raw { color: RED; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import (inline) "x.css" (min-width: 600px);\n.after { b: 2; }\n');
+    const compiler = makeCompiler();
     const before = spineRenderCounter.rootRenders;
     const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (inline deferred)
-    expect(result.css).toBe('.raw { color: RED; }\n'); // raw text verbatim
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(result.css).toBe('@media (min-width: 600px) {\n  .raw { color: RED; }\n\n}\n.after {\n  b: 2;\n}\n');
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORTS increment 7: `import-inline` corpus fixture folds via the spine, byte-identical (no derive)', async () => {
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-unit/import/import-inline.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-unit/import/import-inline.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(result.css).toBe(expected);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
   });
 
   it('IMPORTS increment 6: an INTERPOLATED-path import STAYS on eval (the `_isPathResolutionError` retry-lane wall)', async () => {

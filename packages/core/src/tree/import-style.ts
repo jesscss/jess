@@ -923,13 +923,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const io = this.options.importOptions;
     if (io) {
       // Foldable so far: `multiple`/`once:false` (inc 4), `reference` (inc 5),
-      // `optional` + `postlude` (inc 6 — a missing `optional` import folds to empty;
-      // a `postlude` wraps the folded body in `@media`/`@supports`/`@layer`). Still
-      // deferred (each a REQUIRED P4 item): `inline` (raw-text emission, no descent —
-      // a distinct mechanism), `mutable` (protected/extend-reach), `forward`, `with`.
+      // `optional` + `postlude` (inc 6), `inline` (inc 7 — the imported file's RAW
+      // source text is emitted verbatim via an `Any` node; no parse, no scope, no
+      // descent). Still deferred (each a REQUIRED P4 item): `mutable`
+      // (protected/extend-reach), `forward`, `with`.
       if (
-        io.inline === true
-        || io.mutable === true
+        io.mutable === true
         || io.mutable === false
         || io.forward === true
       ) {
@@ -1019,6 +1018,33 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       reference
     });
     try {
+      // `(inline)` (increment 7): emit the imported file's RAW source text verbatim.
+      // NO parse, NO scope, NO descent — build the same inline-source placement the
+      // eval path does (an `Any` node holding the raw bytes, wrapped in a `Rules` with
+      // the inlined file's own `TreeContext` for source-map provenance). The spine
+      // descends this `Any` leaf, which writes its text unchanged. `(optional) inline`
+      // still swallows a missing file; a postlude wraps the inlined text.
+      if (io.inline === true) {
+        try {
+          const resolved = await context.resolveImportPath(finalPath);
+          const sourceGetter = context.plugins.find(plugin => plugin.getSource);
+          if (!sourceGetter) {
+            throwMissingImportSourceGetter();
+          }
+          const source = await sourceGetter.getSource!(resolved.resolvedPath);
+          const sourceNode = this.createInlineSourceNode(source, resolved.resolvedPath);
+          let placement = this.deriveRulesSurface(this.getImportAnchorRules(context), [sourceNode], { resetScopeFrame: true });
+          if (io.postlude !== undefined) {
+            placement = this.wrapRulesWithPostlude(placement, io.postlude);
+          }
+          return { kind: 'fold', body: placement, resolvedPath: resolved.resolvedPath, multiple, reference };
+        } catch (error) {
+          if (io.optional === true) {
+            return emptyFold(undefined);
+          }
+          throw error;
+        }
+      }
       let loaded: Awaited<ReturnType<Context['getTree']>>;
       try {
         loaded = await context.getTree(finalPath, io);
