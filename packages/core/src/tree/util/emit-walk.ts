@@ -300,12 +300,14 @@ function isSpineSimpleMixinSurface(surface: Rules): boolean {
   const children = surface.rules;
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
-    if (!isSimpleSpineLeaf(child)) {
-      return false;
-    }
-    // A further mixin call inside the body needs its own frame-threaded descent
-    // nested under this surface's frame — deferred (a later increment).
+    // A further mixin CALL inside the body IS admitted (FOLD C): the re-entrant
+    // splice (`runSpineMixinExpansion` re-scans spliced children) expands it in turn,
+    // and `callMap` terminates genuine recursion. A call is not an `isSimpleSpineLeaf`,
+    // so admit it explicitly before the leaf check rejects it.
     if (isSpineEligibleMixinCall(child)) {
+      continue;
+    }
+    if (!isSimpleSpineLeaf(child)) {
       return false;
     }
     // A Declaration with an INTERPOLATED (non-string) NAME (`prop-@{name}: …`) does
@@ -1202,19 +1204,21 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (treeHasMixinCall(root) && treeHasContainerBodyMixinDefinition(root)) {
     return false;
   }
-  // SEQUENCE cross-check (recursion / nested-call-in-body — the one genuinely
-  // architectural item, deferred): a mixin DEFINITION whose body itself contains a
-  // mixin CALL (`.wrapper() { .base(@c); }`, or a self-call `.loop() { …; .loop(); }`)
-  // can't fold — the fold splice is SHALLOW (it expands a call's surface at the
-  // container-serialize level but does NOT re-run the expansion on a folded surface's
-  // OWN children), so the nested call would emit its raw source instead of its
-  // resolved body. The runtime surface gate rejects such a body, but the eval
-  // fall-back does not reliably reconstruct this shape's output, so keep the whole
-  // tree on the eval path. DEFERRED: make the fold splice RE-ENTRANT (run
-  // `runSpineMixinExpansion` inside a folded surface's children) — a P4-era piece
-  // (joins extend #4a). Until then this gate is the correctness floor for #1/#2,
-  // whose relaxed eligibility would otherwise admit a nested-call body.
-  if (treeHasMixinCall(root) && treeHasMixinDefinitionWithNestedCall(root)) {
+  // FOLD C (P4 terminal/sink): recursion / nested-call-in-body. A mixin DEFINITION
+  // whose body itself contains a DIRECT-child mixin CALL (`.wrapper() { .base(@c); }`,
+  // a nested chain `.a(){ .b() }`, incl. frame-dependent args `.b((@x - 1))`) now folds
+  // — the fold splice is made RE-ENTRANT (`runSpineMixinExpansion` re-scans a folded
+  // surface's spliced children from `i`, pushing each entry's `spineFrame` around the
+  // resolve so a nested call's args resolve against the OUTER surface frame). Two
+  // sub-shapes STAY on eval (byte-identical, ratchet-locked, REQUIRED P4 items):
+  //   - RECURSIVE calls (`treeHasRecursiveMixinCall`) — a name-cycle among mixin defs.
+  //     `callMap` terminates the recursion, but a recursive call's frame-dependent ARG
+  //     (`.loop((@n - 1))`) loses the per-level param frame on the recursive re-drive
+  //     (a genuine gap — spec in `P4-TERMINAL-SINK-DESIGN.md` §7).
+  //   - NESTED-CONTAINER bodies (`treeHasContainerBodyMixinDefinition`, above) — a call
+  //     inside a nested container is not a direct feed entry, so the flat re-scan does
+  //     not reach it.
+  if (treeHasMixinCall(root) && treeHasRecursiveMixinCall(root)) {
     return false;
   }
   // FLAT extend topology (P3 increment 1): a root whose ONLY extends are root-direct-child
@@ -1372,24 +1376,75 @@ function treeHasContainerBodyMixinDefinition(root: Node): boolean {
 }
 
 /**
- * True if the tree has a Mixin definition whose body contains a spine-eligible
- * mixin CALL — the recursion / nested-call-in-body shape (SEQUENCE item) the fold's
- * SHALLOW splice cannot expand (a folded surface's own children are not re-run
- * through `runSpineMixinExpansion`, so the nested call emits its raw source). Direct
- * body children only: a call deeper inside a nested container is already covered by
- * `treeHasContainerBodyMixinDefinition`. Keeps such a tree on the eval path until
- * the fold splice is made re-entrant (a P4-era piece).
+ * True if the tree has a RECURSIVE mixin call — a mixin definition whose body calls a
+ * mixin whose name-call graph forms a CYCLE (direct self-recursion `.loop(){ .loop() }`
+ * OR mutual `.ping↔.pong`). FOLD C folds NON-recursive nested calls (chains
+ * `.a→.b→.c`, incl. frame-dependent args) through the re-entrant splice, but a
+ * recursive call whose ARG is frame-dependent (`.loop((@n - 1))`) does NOT fold: the
+ * recursive re-drive loses the per-level param frame for arg binding (a genuine gap —
+ * see the FOLD C gate + `P4-TERMINAL-SINK-DESIGN.md` §7). `callMap` still terminates
+ * the recursion, so this is a byte-identical DEFERRAL to eval, not a hang.
+ *
+ * Conservative static over-approximation: build the mixin-name → called-mixin-names
+ * graph over string-keyed defs/calls and report any cycle. A recursive mixin with only
+ * LITERAL args would in principle fold, but the cheap gate defers the whole recursive
+ * shape (rare; the frame-dependent-arg case is the common recursive form). Document-
+ * level pre-scan, paid once (like the other `treeHas*` gates); a non-recursive tree
+ * returns immediately after the walk with no cycle.
  */
-function treeHasMixinDefinitionWithNestedCall(root: Node): boolean {
+function treeHasRecursiveMixinCall(root: Node): boolean {
+  // name → set of mixin names its bodies call (string keys only)
+  const callGraph = new Map<string, Set<string>>();
   for (const node of root.walk(true)) {
-    if (!isNode(node, N.Mixin)) {
+    if (!isNode(node, N.Mixin) || typeof node.name !== 'string') {
       continue;
     }
-    const body = node.rules;
-    for (let i = 0; i < body.length; i++) {
-      if (isSpineEligibleMixinCall(body[i]!)) {
-        return true;
+    const from = node.name;
+    let calls = callGraph.get(from);
+    if (!calls) {
+      calls = new Set<string>();
+      callGraph.set(from, calls);
+    }
+    for (const inner of node.walk(true)) {
+      if (
+        isNode(inner, N.Call)
+        && isNode(inner.name, N.Reference)
+        && typeof inner.name.key === 'string'
+      ) {
+        calls.add(inner.name.key);
       }
+    }
+  }
+  if (callGraph.size === 0) {
+    return false;
+  }
+  // Cycle detection (DFS with a recursion stack) over the mixin-name call graph.
+  const VISITING = 1;
+  const DONE = 2;
+  const state = new Map<string, number>();
+  const hasCycleFrom = (name: string): boolean => {
+    state.set(name, VISITING);
+    const calls = callGraph.get(name);
+    if (calls) {
+      for (const next of calls) {
+        if (!callGraph.has(next)) {
+          continue;
+        }
+        const s = state.get(next);
+        if (s === VISITING) {
+          return true;
+        }
+        if (s === undefined && hasCycleFrom(next)) {
+          return true;
+        }
+      }
+    }
+    state.set(name, DONE);
+    return false;
+  };
+  for (const name of callGraph.keys()) {
+    if (state.get(name) === undefined && hasCycleFrom(name)) {
+      return true;
     }
   }
   return false;

@@ -190,6 +190,41 @@ A/B (the `spineRenderCounter` + a micro-bench on a ruleset-as-mixin-heavy fixtur
 fold; never ship a defensive slowdown. If a fold regresses the hot path, find a faster shape or sequence
 it with a measured spec — do not abandon (HARD RULE #6).
 
+## 7. FOLD C recursion gap (found during the fold) — SEQUENCED, spec captured
+
+FOLD C made the fold splice re-entrant (`runSpineMixinExpansion` re-scans a folded surface's
+spliced children from `i`, pushing each entry's `spineFrame` around the resolve drive). This
+folds ALL non-recursive nested-call shapes byte-identical: plain nested call (`.a(){ .b() }`),
+multi-level chains (`.a→.b→.c`), and nested calls with outer-param OR Operation args
+(`.b((@a - 1))`).
+
+`callMap` terminates genuine recursion (verified: a `.loop(@n)` self-call produces exactly
+`n` bounded expansions, no hang). BUT a RECURSIVE call (self OR mutual — a name-cycle among
+mixin defs) whose ARG is frame-dependent (`.loop((@n - 1))`) does NOT fold: `'n' is not
+defined` on the recursive re-drive. Root cause: the re-entrant expansion pushes the entry's
+`spineFrame` (the OUTER surface) around the resolve — which correctly binds a one-level nested
+call's arg — but a recursive re-drive needs EACH LEVEL's freshly-bound param frame threaded
+through the CALL's own arg-binding eval (`Call.evalNode`→arg eval), not just
+`context.rulesContext`. Non-recursive chains work because each level is a distinct def with its
+own frame; a recursive cycle re-enters the SAME def and the per-level param binding is lost for
+arg resolution.
+
+**GATE (landed):** `treeHasRecursiveMixinCall` — a cheap document-level name-cycle detector
+over the mixin-def→called-names graph (DFS). A tree with a recursive mixin cycle stays on eval,
+byte-identical. Ratchet-locked (`mixin-fold-sequence-gate.test.ts`: flat self-recursion +
+mutual recursion + recursion+nested-container all `eligible=false`, render byte-correct on eval).
+
+**SPEC to land it (REQUIRED P4 item — no permanent fallback):** thread the per-level bound
+surface frame through the recursive call's ARG-BINDING eval. Before driving a recursive nested
+call, install the freshly-resolved surface's param frame as the caller/param frame
+`matchCallableParams` binds args against — so `(@n - 1)` resolves against level N's `@n`,
+producing level N-1's surface, etc. Mechanism candidates: (a) drive the nested call's arg eval
+under the surface's `getScopeFrame()` pushed as the caller frame (not just `rulesContext`); or
+(b) resolve+bind the recursive call's args at splice time against `entryFrame` before the sink
+drive. Bounded by `callMap` (already terminates). SHARED hot call/arg-binding eval — measure
+A/B before landing; no defensive slowdown on the common non-recursive path. Recursion is a
+low-frequency Less loop idiom; sequencing, not abandonment.
+
 ## 6. Anti-backpedal / invariants (binding on the folds)
 - No canonical mutation: the `kind` tag + captured surfaces are transient (§3 always-share); no
   `F_*` flag on a source node.

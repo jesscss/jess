@@ -764,6 +764,46 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     }
   });
 
+  it('FOLD C (P4 terminal/sink): folds a nested CHAIN mixin body (.a(){ .b() }) — re-entrant splice, no output tree', async () => {
+    // `.b(){ inner } .a(){ .b(); x } .k{ .a() }` — the fold splice is RE-ENTRANT, so the
+    // nested `.b()` call inside `.a()`'s folded surface is expanded in turn. Byte-
+    // identical to eval (`.k { inner; x }` in document order), no output tree. A
+    // RECURSIVE call (name-cycle) stays on eval (see mixin-fold-sequence-gate.test.ts).
+    const root = rules([
+      mixin({ name: '.b', rules: [decl({ name: 'inner', value: spaced([el('9')]) })] }),
+      mixin({ name: '.a', rules: [
+        call({ name: ref({ key: '.b' }, { type: 'mixin' }) }),
+        decl({ name: 'x', value: spaced([el('1')]) })
+      ] }),
+      ruleset({
+        selector: sel([el('.k')]),
+        rules: [call({ name: ref({ key: '.a' }, { type: 'mixin' }) })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await root.render(context);
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(css).toContain('inner: 9');
+      expect(css).toContain('x: 1');
+      // the nested call expanded (no raw call syntax)
+      expect(css).not.toContain('.b(');
+      expect(css).not.toContain('.a(');
+      // no output tree
+      expect(deriveCalls).toBe(0);
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
   it('INCREMENT 2: folds a VAR-READING mixin body (frame-threaded descent — resolves the definition scope)', async () => {
     // The body reads a variable bound in the DEFINITION scope (root). Increment 2
     // descends the bound surface under its own value-frame, so `@c` resolves to

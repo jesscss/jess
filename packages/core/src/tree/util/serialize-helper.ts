@@ -835,12 +835,32 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       const expandFrom = (start: number): MaybePromise<void> => {
         for (let i = start; i < rulesToRender.length; i++) {
-          const entryNode = rulesToRender[i]!.node;
+          const entry = rulesToRender[i]!;
+          const entryNode = entry.node;
           if (!isSpineEligibleMixinCall(entryNode)) {
             continue;
           }
+          // FOLD C: a NESTED call (a spliced child of a folded surface, `entry.spineFrame`
+          // set) must resolve its ARGS / GUARD against the OUTER surface's definition
+          // frame — a self-recursive `.loop((@n - 1))` reads `@n` from the loop's param
+          // frame. Push `context.rulesContext = spineFrame` around the resolve drive
+          // (same discipline as `processNode`'s leaf descent); the pop chains on the
+          // async result (B1s early-pop guard). A top-level authored call (no
+          // `spineFrame`) drives unwrapped — the common case pays nothing.
+          const entryFrame = entry.spineFrame;
+          const savedRulesContext = entryFrame ? spineContext.rulesContext : undefined;
+          if (entryFrame) {
+            spineContext.rulesContext = entryFrame;
+          }
+          const restoreFrame = <T>(value: T): T => {
+            if (entryFrame) {
+              spineContext.rulesContext = savedRulesContext;
+            }
+            return value;
+          };
           const resolution = resolveSpineMixinCall(entryNode, spineContext);
           const apply = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
+            restoreFrame(undefined);
             // FOLD: splice each bound surface's children, TAGGED with the surface
             // as their `spineFrame` — so a body reference resolves against the
             // mixin's DEFINITION scope (closure/lexical/param bindings on the
@@ -855,9 +875,19 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
                 : [{ node: resolved.output }];
             rulesToRender.splice(i, 1, ...childEntries);
             recomputeDeclCounts();
-            return expandFrom(i + childEntries.length);
+            // FOLD C: re-scan FROM `i` (the just-spliced children), not past them —
+            // so a nested mixin CALL among a folded surface's own children is expanded
+            // in turn (re-entrant fold). `callMap` terminates genuine recursion. A
+            // fold-fallback (`kind: 'eval'`) child that is itself a call re-resolves
+            // harmlessly (already-resolved output is not `isSpineEligibleMixinCall`).
+            return expandFrom(i);
           };
-          return isThenable(resolution) ? resolution.then(apply) : apply(resolution);
+          return isThenable(resolution)
+            ? resolution.then(apply, (error: unknown) => {
+                restoreFrame(undefined);
+                throw error;
+              })
+            : apply(resolution);
         }
         return undefined;
       };

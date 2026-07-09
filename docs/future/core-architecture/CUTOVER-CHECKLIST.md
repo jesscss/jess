@@ -245,6 +245,17 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       composes), bounded by the crossing-target count. Ratchet-locked on eval today
       (`spine-wire-selector-shapes.test.ts` #2 expanded-mode nested in-place); byte-correct there. REQUIRED
       P4 item (no permanent fallback) — dispatched separately by the orchestrator.
+- [ ] **MIXIN recursion with a frame-dependent arg — SEQUENCED (found during FOLD C).** FOLD C folds all
+      NON-recursive nested-call-in-body shapes (wrapper `.a(){ .b(@c) }`, chains `.a→.b→.c`, Operation/param
+      args) through the re-entrant splice, byte-identical. `callMap` terminates recursion. But a RECURSIVE
+      call (self or mutual name-cycle) whose ARG is frame-dependent (`.loop((@n - 1))`) does NOT fold — the
+      recursive re-drive loses the per-level param frame for arg binding (`'n' is not defined`). GATE:
+      `treeHasRecursiveMixinCall` (`emit-walk.ts`, a name-cycle DFS over mixin defs) keeps a recursive tree on
+      eval, byte-identical. Ratchet: `mixin-fold-sequence-gate.test.ts` (flat + mutual + recursion-with-
+      nested-container). SPEC (`P4-TERMINAL-SINK-DESIGN.md` §7): thread each level's freshly-bound surface
+      param frame through the recursive call's arg-binding eval (push the surface `getScopeFrame()` as the
+      caller/param frame, or bind args at splice time against `entryFrame`) — SHARED hot call/arg-binding eval,
+      measure A/B first. REQUIRED P4 item (no permanent fallback); low-frequency Less loop idiom.
 
 ### P4 — delete the dead machinery (§7 + flag-walk C4)  ·  depends on P2+P3  ·  FAN-OUT across sites
 - [ ] Delete eval→output-tree staging + reuse gates + clone families + container static short-circuits.
