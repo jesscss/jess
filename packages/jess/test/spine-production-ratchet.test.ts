@@ -1242,4 +1242,50 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(result.css).toBe('.x {\n  color: red;\n}\n'); // forward-dependent path resolved via retry
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  it('COMBINATOR SUBJECT: a `>`/`+` subject partially extended folds through the spine (in-place `:is`-wrap)', async () => {
+    // EMIT header-composition for a combinator subject: a partial extend of a compound WITHIN a
+    // combinator subject wraps it IN PLACE preserving the combinator (`.p > :is(.base, .ext)`),
+    // installed as a SINGLE-branch header override (the no-change guard, not a branch-count guard,
+    // gates the install — a single-branch in-place wrap still differs from the authored header).
+    // Matcher was already oracle-identical; the gap was the EMIT install + the gate admission.
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const child = await compiler.renderString(`.p > .base {\n  color: red;\n}\n.ext:extend(.base all) {\n  x: 1;\n}`, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(child).toBe('.p > :is(.base, .ext) {\n  color: red;\n}\n.ext {\n  x: 1;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('COMBINATOR TARGET: `:extend(.a + .b all)` on a combinator subject folds through the spine (append)', async () => {
+    // A combinator-TARGET find (`.a + .b`) matched WHOLE against a combinator subject appends the
+    // extender as a sibling branch (`.a + .b, .z`), oracle-identical. `extendTargetIsSimple` now
+    // admits combinators; the subject-correspondence (root-level combinator selector) admits it.
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(`.a + .b {\n  color: red;\n}\n.z:extend(.a + .b all) {\n  x: 1;\n}`, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.a + .b,\n.z {\n  color: red;\n}\n.z {\n  x: 1;\n}\n');
+  });
+
+  it('MIXED root-compound + combinator subject: one target extends both (separate headers)', async () => {
+    // The `extend.css` shape: a plain target (`.base all`) reaches BOTH a root-compound subject
+    // (`div.base` → `div:is(.base, .ext)`) AND a combinator subject (`.p > .base` →
+    // `.p > :is(.base, .ext)`), each installed as its own in-place-wrap header.
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(`div.base {\n  c: 1;\n}\n.p > .base {\n  c: 2;\n}\n.ext:extend(.base all) {\n  x: 1;\n}`, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('div:is(.base, .ext) {\n  c: 1;\n}\n.p > :is(.base, .ext) {\n  c: 2;\n}\n.ext {\n  x: 1;\n}\n');
+  });
 });

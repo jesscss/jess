@@ -304,9 +304,16 @@ export function composeSpineSubjectHeaders(
       // eval-path fallback (still live in P3) covers it.
       continue;
     }
-    // Only override when the subject actually gained a branch (else stream authored header).
-    if (projection.branches.length <= 1) {
-      continue;
+    // Only override when the projection CHANGES the authored header. Usually that means it gained a
+    // branch (`.a, .b`), but a PARTIAL in-place `:is`-wrap of a sub-compound produces a SINGLE branch
+    // that still differs from the authored own form (`.ext6 > .ext5` → `.ext6 > :is(.ext5, .ext7)` —
+    // a combinator-subject partial extend). Keying the skip on branch count alone would silently DROP
+    // that rewrite (the ownBuilt=false silent-drop failure mode, but via a count check); key it on
+    // VALUE equality vs the authored own form instead, so a single-branch in-place wrap installs.
+    const authoredOwn = composeTargetOwn(subject.path);
+    const projectionKey = projection.branches.map(b => String(b.valueOf())).join(',');
+    if (projectionKey === String(authoredOwn.valueOf())) {
+      continue; // no change vs authored — stream the authored header
     }
     // A NESTED subject may be overridden ONLY when its projection HOISTS (crossing) — the
     // non-hoist collapse case is handled by the parent-projection fold above. A non-hoisted nested
@@ -536,6 +543,32 @@ function descendantCompoundTokens(sel: string): string[][] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/**
+ * Split a selector STRING into its COMPOUNDS across ANY combinator (descendant space, `>`, `+`, `~`) —
+ * unlike {@link descendantCompoundTokens} which rejects a child/sibling combinator. Each compound is a
+ * list of simples (`.ext6 > .ext5` → `[['.ext6'], ['.ext5']]`). A graft paren / selector-list comma
+ * returns undefined (a richer shape the structural check won't reason about). Used to admit a
+ * COMBINATOR SUBJECT (`.p > .base`) into the partial in-place `:is`-wrap fold: the target compound
+ * matches a compound WITHIN the combinator subject, which the matcher wraps in place preserving the
+ * combinator (`.p > :is(.base, .ext)`), byte-identical to the oracle.
+ */
+function combinatorCompoundTokens(sel: string): string[][] | undefined {
+  if (/[,()]/.test(sel)) {
+    return undefined; // selector-list or graft — outside the plain-compounds shape
+  }
+  // Split on any combinator: whitespace, or a `>`/`+`/`~` (with optional surrounding space).
+  const tokens = sel.trim().split(/\s*[>+~]\s*|\s+/).filter(t => t.length > 0);
+  const out: string[][] = [];
+  for (const token of tokens) {
+    const simples = token.match(/[.#]?[^.#:[\]]+|\[[^\]]*\]|::?[^.#:[\]]+/g);
+    if (!simples || simples.length === 0) {
+      return undefined;
+    }
+    out.push(simples);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 /** True when every simple of compound `a` is present in compound `b` (a ⊆ b as sets of simples). */
 function compoundSubset(a: string[], b: string[]): boolean {
   const set = new Set(b);
@@ -694,9 +727,11 @@ function extendTargetIsSimple(node: Extend): boolean {
     return false;
   }
   const text = String(target.valueOf()).trim();
-  // Reject child/sibling combinators, selector-list commas, and grafts. Descendant space is now
-  // allowed (crossing) — the subject-correspondence check confirms it maps to a nested subject.
-  return !/[>+~,()]/.test(text);
+  // Reject selector-list commas and grafts. Descendant space (crossing) AND child/sibling
+  // combinators (`>`/`+`/`~`) are now allowed — the subject-correspondence check confirms the target
+  // maps to a real subject (a combinator target like `.ext8 + .ext9` must equal a combinator subject
+  // selector; the matcher + EMIT build the append/wrap oracle-identically, `corpus-combinator-cases`).
+  return !/[,()]/.test(text);
 }
 
 /**
@@ -760,12 +795,21 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
   // IN PLACE per branch (`:is(.foo, …) .bar`), so `.foo` is an addressable target even though it is
   // not itself a root-level subject selector. The matcher + SOLVE build this; the gate must admit it.
   const leadingCompoundTargets = new Set<string>();
+  // Root-level COMBINATOR subject selectors (`.a > .b`, `.a + .b`) — a plain compound target that
+  // sub-matches a compound WITHIN one of these is a PARTIAL in-place `:is`-wrap the matcher builds
+  // preserving the combinator (`.a > :is(.b, .ext)`), byte-identical. Collected separately since the
+  // descendant tokenizer rejects combinators.
+  const combinatorSubjectSelectors = new Set<string>();
   // Root-level subject selectors (a plain target resolves to one of these — increment 2 path).
   for (const child of root.rules) {
     if (isNode(child, N.Ruleset)) {
       const local = flatLocalSelector(child);
       if (local !== undefined) {
-        rootLevelSelectors.add(String(local.valueOf()));
+        const localText = String(local.valueOf());
+        rootLevelSelectors.add(localText);
+        if (/[>+~]/.test(localText) && !/[,()&]/.test(localText)) {
+          combinatorSubjectSelectors.add(localText);
+        }
         const lead = sharedLeadingCompound(local);
         if (lead !== undefined) {
           leadingCompoundTargets.add(lead);
@@ -929,6 +973,24 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
       && !chainsIntoExtender
       && descendantCompoundTokens(target) !== undefined
       && [...cleanSubjectPaths].some(p => compoundMatchesRootSubjectStrict(target, p, !collapseNesting));
+    // COMBINATOR SUBJECT (`.ext6 > .ext5`, `.ext8 + .ext9`). A single plain compound target that
+    // sub-matches a compound WITHIN a root-level combinator subject is a PARTIAL in-place `:is`-wrap
+    // the matcher builds preserving the combinator (`.ext6 > :is(.ext5, .ext7)`), oracle-identical
+    // (`corpus-combinator-cases`). An EXACT extend of such a sub-position correctly fires nothing
+    // (the matcher returns the subject unchanged → EMIT's no-change guard streams the authored
+    // header). Excludes an import tree. Single-compound target only (a descendant/combinator target
+    // is a distinct richer shape).
+    const isCombinatorSubjectTarget = !treeHasImport
+      && !/[>+~ ,]/.test(target)
+      && combinatorCompoundTokens(target)?.length === 1
+      && [...combinatorSubjectSelectors].some((subjSel) => {
+        const tokens = combinatorCompoundTokens(subjSel);
+        const tt = combinatorCompoundTokens(target);
+        if (tokens === undefined || tt === undefined || tt.length !== 1) {
+          return false;
+        }
+        return tokens.some(level => compoundMultisetSubset(tt[0]!, level));
+      });
     // PSEUDO-COMPOUND TARGET (`.button:hover`, `.button2:hover`): its compound base (`.button`) is a
     // root-level subject. The extend needs NO dedicated header — the base's override + the nested
     // `&`-pseudo's serializer `&`-flow produce the `:is(.base, …):pseudo` shape (or, for a genuine
@@ -956,12 +1018,13 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     // NOT inert — so it never admits a target it cannot fully reason about.
     const isInertNomatch = !treeHasImport
       && !isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
-      && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget
+      && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget && !isCombinatorSubjectTarget
       && descendantCompoundTokens(target) !== undefined
       && ![...cleanSubjectPaths].some(p => targetCouldMatchPath(target, p))
       && !rootLevelSelectors.has(target);
     if (!isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
-      && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget && !isInertNomatch) {
+      && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget
+      && !isCombinatorSubjectTarget && !isInertNomatch) {
       return false; // target maps to no addressable subject (root selector or crossing nested path)
     }
     if (extenderSelectors.has(target)) {
