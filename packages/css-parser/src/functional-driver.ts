@@ -8,7 +8,7 @@
  * building the trivia map. Every functional grammar reuses it, so their
  * `{ tree, errors, warnings, trivia }` output is identical in shape and semantics.
  */
-import { run, type FieldMap } from 'parseman';
+import { run, triviaKindMask, type FieldMap } from 'parseman';
 import { Node, Rules, nil, makeJessError, type TriviaMap, type JessError } from '@jesscss/core';
 import { buildLazyTriviaMap } from './builders.js';
 
@@ -34,6 +34,16 @@ export interface FunctionalParseHost {
   getErrors(): Array<{ message: string; offset?: number }>;
   getLiftedCommentRanges(): ReadonlyArray<readonly [number, number]>;
   captureTriviaForNode?(type: string): boolean;
+  /**
+   * Node types whose captured `triviaLog` should hold COMMENTS ONLY (whitespace
+   * skipped) — e.g. `Stylesheet`/`Ruleset`, which lift standalone comments but
+   * never consult whitespace. Returning true (with a comment-bearing trivia
+   * grammar) lets the builder read comments straight from the log instead of
+   * re-scanning source, without paying to log every space. Types NOT listed keep
+   * capturing every kind (e.g. `CompoundSelector` needs the whitespace that marks
+   * a descendant combinator).
+   */
+  commentOnlyTriviaForNode?(type: string): boolean;
   /** `ctx.build` host: construct the AST node for a structural `node(type, …)`. */
   build(
     type: string,
@@ -102,13 +112,20 @@ export function runFunctionalParse(
   // (a rule fn or combinator); loosely typing them keeps the call sites a plain
   // widening cast rather than an unsafe one here.
   /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
+  const triviaKindLabels = (options.trivia as { _meta?: { triviaKindLabels?: readonly string[] } } | undefined)?._meta?.triviaKindLabels;
+  // Mask keeping every non-whitespace trivia kind (block + line comments, and any
+  // future non-ws kind) — the per-node-type filter for comment-only capture.
+  const commentMask = triviaKindLabels
+    ? triviaKindMask(triviaKindLabels, triviaKindLabels.filter(l => l !== 'whitespace'))
+    : undefined;
   const build = Object.assign(
     (type: string, children: ReadonlyArray<unknown>, fields: FieldMap | undefined, span: { start: number; end: number }, rawChildren: ReadonlyArray<unknown>, triviaLog: readonly number[]) =>
       host.build(type, children, fields, span, rawChildren, triviaLog),
-    host.captureTriviaForNode ? { _parsemanCaptureTrivia: host.captureTriviaForNode.bind(host) } : {}
+    host.captureTriviaForNode ? { _parsemanCaptureTrivia: host.captureTriviaForNode.bind(host) } : {},
+    host.commentOnlyTriviaForNode && commentMask !== undefined
+      ? { _parsemanTriviaKinds: (type: string) => host.commentOnlyTriviaForNode!(type) ? commentMask : undefined }
+      : {}
   );
-
-  const triviaKindLabels = (options.trivia as { _meta?: { triviaKindLabels?: readonly string[] } } | undefined)?._meta?.triviaKindLabels;
   const res = run(entry as Entry, input, {
     build,
     trivia: options.trivia ? (options.trivia as Entry) : undefined
