@@ -359,17 +359,19 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     if (isNode(node, N.Ruleset)) {
       rules = node.rules;
       const local = flatLocalSelector(node);
-      // An `&`-bearing local selector (`&.sidebar4`, `&:hover`) needs frame `&`-resolution
-      // the direct bucket-path capture does NOT perform — so an extender ON such a path
-      // composes wrong. Track amp-ness down the path; disqualify only when it actually bears
-      // an extend (a plain `&` ancestor with no extend below is harmless).
+      // An `&`-bearing local selector on the path DISQUALIFIES an extender under it. A PARSED `&`
+      // node is NOT substituted by `Ruleset.composeSelector` (that relies on `Ampersand.eval`
+      // having set `hoistToRoot` during the eval pass, which the pure gather skips) — so
+      // `composeContribution` emits it as a descendant (`.type2 &.sidebar4`) instead of the
+      // compound `.type2.sidebar4`. Resolving the `&` needs the eval-time frame substitution — a
+      // later increment. Track amp-ness down the path; disqualify an extender ON it.
       if (local !== undefined && String(local.valueOf()).includes('&')) {
         amp = true;
       }
       const extendNodes = rulesetExtendNodes(node);
       if (extendNodes.length > 0) {
         if (amp) {
-          ok = false; // extender on an `&`-bearing path — direct capture can't compose it
+          ok = false; // extender on an `&`-bearing path — `&` not resolvable in the pure gather yet
           return;
         }
         if (local !== undefined) {
