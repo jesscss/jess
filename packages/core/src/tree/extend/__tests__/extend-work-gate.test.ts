@@ -6,10 +6,13 @@ import {
   engageExtendLayer,
   treeHasExtend,
   extendLayerCounter,
-  resetExtendLayerCounter
+  resetExtendLayerCounter,
+  isSpineExtendTopology
 } from '../spine-extend.js';
 import { Ruleset } from '../../ruleset.js';
 import { F_EXTENDED } from '../../node.js';
+import { Parser } from '../../../../../less-parser/src/index.js';
+import type { Rules } from '../../rules.js';
 
 /**
  * RATCHET — the EXTEND-WORK GATE (§4.0), the zero-regression safety floor for P3.
@@ -92,5 +95,45 @@ describe('extend-work gate (P3 increment 0)', () => {
     expect(extendLayerCounter.planRuns).toBe(0);
     expect(extendLayerCounter.solveRuns).toBe(0);
     expect(extendLayerCounter.subjectBuffers).toBe(0);
+  });
+});
+
+/**
+ * CASE 3 gate exclusion — the `&`-under-multi-branch-list wall (amp-test `&+&`).
+ *
+ * The gather's pure-structural `&`-resolution (`local.eval` + `normalizeResolvedAmpersand`) does NOT
+ * reproduce the serialize-time `:is(...)`-graft that a MULTI-BRANCH (`.amp-test-a, .amp-test-b`)
+ * `&`-parent requires — it distributes the list raw into the compound and leaves literal `&`s
+ * (verified 2026-07-09). So an `&`-bearing local BENEATH a multi-branch-list ancestor must stay on the
+ * eval path (the working oracle). These lock the gate exclusion so the spine never silently drops such
+ * an extend. A SINGLE-branch `&`-parent (`.type2.sidebar4 { &:extend }`) is still ADMITTED.
+ */
+describe('spine extend gate — `&`-under-multi-branch-list exclusion (CASE 3 wall)', () => {
+  const gateOf = (src: string): boolean => {
+    const { tree } = new Parser().parse(src);
+    return isSpineExtendTopology(tree as unknown as Rules, true);
+  };
+
+  it('EXCLUDES an `&`-combinator extender under a multi-branch (OR) parent (amp-test `&+&`)', () => {
+    const src = `
+.amp-test-a,
+.amp-test-b {
+  .amp-test-c &.amp-test-d&.amp-test-e {
+    .amp-test-f&+&.amp-test-g:extend(.amp-test-h) {}
+  }
+}
+.amp-test-h { test: x; }
+`;
+    expect(gateOf(src)).toBe(false);
+  });
+
+  it('EXCLUDES a plain `&` local under a multi-branch (OR) parent', () => {
+    const src = `.a, .b { &.mod { .c:extend(.ext all) {} } }\n.ext { t: 1; }`;
+    expect(gateOf(src)).toBe(false);
+  });
+
+  it('still ADMITS a single-branch `&` extender (`.type2.sidebar4 { &:extend }`)', () => {
+    const src = `.sidebar { w: 1; }\n.type2.sidebar4 { &:extend(.sidebar all); }`;
+    expect(gateOf(src)).toBe(true);
   });
 });

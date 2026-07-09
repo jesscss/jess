@@ -366,6 +366,34 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
   return false;
 }
 
+/** True when a selector local carries ANY `&` (bare, compound, or combinator-adjacent). */
+function selectorHasAmpersand(selector: unknown): boolean {
+  if (!selector || typeof selector === 'string') {
+    return false;
+  }
+  if (Array.isArray(selector)) {
+    return selector.some(item => selectorHasAmpersand(item));
+  }
+  const node = selector as { type?: string; walk?: (deep: boolean) => Iterable<Node> };
+  if (node.type === 'Ampersand') {
+    return true;
+  }
+  if (typeof node.walk === 'function') {
+    for (const descendant of node.walk(true)) {
+      if ((descendant as { type?: string }).type === 'Ampersand') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** True when a ruleset's local is a MULTI-BRANCH (OR) selector list surface (`.a, .b`). */
+function localIsMultiBranchList(ruleset: Ruleset): boolean {
+  const local = flatLocalSelector(ruleset);
+  return local !== undefined && isNode(local, N.SelectorList) && local.value.length > 1;
+}
+
 /** The Extend nodes borne by a ruleset's direct body (both `Extend` and `ExtendList.value`). */
 function rulesetExtendNodes(ruleset: Ruleset): Extend[] {
   const out: Extend[] = [];
@@ -470,7 +498,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
   // Document-wide walk: collect every extend target (checking simplicity) + every
   // extend-BEARING ruleset's selector (chain detection). At-rule bodies bearing extends
   // disqualify (clause 4).
-  const walk = (node: Node, ancestorAmpAppend: boolean): void => {
+  const walk = (node: Node, ancestorAmpAppend: boolean, ancestorMultiBranchList: boolean): void => {
     if (!ok) {
       return;
     }
@@ -480,6 +508,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     }
     let rules: readonly Node[] | undefined;
     let ampAppend = ancestorAmpAppend;
+    let multiBranchListAncestor = ancestorMultiBranchList;
     if (isNode(node, N.Ruleset)) {
       rules = node.rules;
       const local = flatLocalSelector(node);
@@ -491,6 +520,18 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
       // reproduce). Track APPEND-ness only.
       if (local !== undefined && selectorHasAmpersandAppend(local)) {
         ampAppend = true;
+      }
+      // `&`-UNDER-MULTI-BRANCH-LIST DISQUALIFIER (the amp-test `&+&` wall). When an `&`-bearing local
+      // resolves against a MULTI-BRANCH (OR) parent (`.amp-test-a, .amp-test-b`), the correct form is a
+      // serialize-time `:is(...)`-graft (`composedSelectorStack`), which the gather's isolated
+      // `local.eval` does NOT reproduce — it distributes the list raw into the compound / leaves literal
+      // `&`s (verified 2026-07-09). Such a shape must stay on the eval path (the working oracle). Track a
+      // multi-branch-list ancestor; an `&`-bearing local beneath one disqualifies the whole root.
+      if (localIsMultiBranchList(node)) {
+        multiBranchListAncestor = true;
+      } else if (multiBranchListAncestor && local !== undefined && selectorHasAmpersand(local)) {
+        ok = false;
+        return;
       }
       const extendNodes = rulesetExtendNodes(node);
       if (extendNodes.length > 0) {
@@ -518,7 +559,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     }
     if (rules) {
       for (const child of rules) {
-        walk(child, ampAppend);
+        walk(child, ampAppend, multiBranchListAncestor);
         if (!ok) {
           return;
         }
@@ -526,7 +567,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     }
   };
   for (const child of root.rules) {
-    walk(child, false);
+    walk(child, false, false);
     if (!ok) {
       return false;
     }
