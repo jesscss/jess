@@ -1467,26 +1467,29 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (treeHasMixinCall(root) && treeHasRecursiveMixinCall(root)) {
     return false;
   }
-  // MERGE-ACROSS-MIXIN (a precise deferral, byte-identical to eval — REQUIRED P4 item).
-  // A property-MERGE (`transform+:` / `+_:`) coalesces contributions from SEVERAL
-  // sources in the SAME body. When those sources arrive via MIXIN EXPANSION —
-  // `.r { .a(); .b(); }` where `.a()`/`.b()` each carry a `transform+:` decl (the
-  // `merge.less` corpus shape) — the coalescing must run over the SPLICED expansion
-  // output. The spine fold splices a mixin surface's decls into the body's statement
-  // loop AFTER `planBodyMerges` has already run, so an expansion-contributed merge
-  // decl never enters a merge chain: the spine emits each `transform+:` raw and
-  // UNMERGED (and mis-frames the block). `isSpineEligibleBody`'s `bodyHasMixinCall &&
-  // bodyHasDirectMergeDecl` guard only catches a merge decl authored DIRECTLY in the
-  // caller body, NOT one arriving through a call — so the shape slips onto the spine
-  // and mis-folds. Gate it at the tree level (mirrors the other `treeHas*` mixin
-  // gates): if any spine-eligible call targets a mixin whose body contributes a merge
-  // decl, keep the whole tree on the eval path. Byte-identical to eval (which is ALSO
-  // a known deferral vs the Less oracle — `merge.less` is corpus-excluded — so this is
-  // NOT a new correctness claim, only closing a spine mis-fold). SPEC (fold plan
-  // follow-up): run the merge coalesce AFTER the expansion splice (feed spliced decls
-  // into `planBodyMerges`), then this gate lifts. Cheap: only scanned when the tree has
-  // a mixin call; a merge-free or call-free tree pays nothing.
-  if (treeHasMixinCall(root) && treeHasMergeContributingMixinCall(root)) {
+  // MERGE-ACROSS-MIXIN (FOLDED — P4 item landed). A property-MERGE (`transform+:` /
+  // `+_:`) whose contributions arrive via MIXIN EXPANSION — `.r { .a(); .b(); }` where
+  // `.a()`/`.b()` each carry a `transform+:` decl (the `merge.less` corpus shape) —
+  // now coalesces on the spine: the container descent RE-PLANS the merge coalesce
+  // over the POST-EXPANSION `rulesToRender` sequence (`replanMergesIfExpanded` in
+  // `serialize-helper.ts`), so a spliced merge decl participates in the chain, carrying
+  // each entry's mixin-output OWNER to reproduce eval's cross-scope boundary (same
+  // mixin body coalesces; distinct mixin bodies are last-wins). Byte-identical to eval
+  // by construction (values resolved via the same `decl.eval`).
+  //
+  // RESIDUALS (kept on eval, byte-identical):
+  //  1. A merge decl authored DIRECTLY in the caller body ALONGSIDE a mixin call
+  //     (`.r { .a(); transform+: s; }`) — caught by `bodyHasMixinCall &&
+  //     bodyHasDirectMergeDecl`: eval composes the direct decl's `+:` via a positional
+  //     prior-value Reference read the static plan does not model.
+  //  2. A mixin-contributed merge whose VALUE resolves ASYNC (contains a `Call` /
+  //     `Operation` / `Reference` — e.g. `transform+: rotate(90deg)`). Such a mixin
+  //     call resolves via the EVAL-FALLBACK expansion, whose async re-resolution +
+  //     duplicate-dedup path has a PRE-EXISTING header-drop bug (reproduces WITHOUT
+  //     any merge, e.g. two `color: rgb(…)` decls from two mixins). Gating it keeps the
+  //     fold byte-identical; SPEC: lift once the eval-fallback async-dedup frame bug is
+  //     fixed (tracked separately). `treeHasAsyncMergeContributingMixinCall` below.
+  if (treeHasMixinCall(root) && treeHasAsyncMergeContributingMixinCall(root)) {
     return false;
   }
   // LEAKY-MODE MIXIN-BODY VAR LEAK (a pre-existing spine gap, gated byte-identical).
@@ -1845,34 +1848,34 @@ function treeHasRecursiveMixinCall(root: Node): boolean {
 }
 
 /**
- * True if the tree has a spine-eligible mixin CALL whose target definition
- * contributes a property-MERGE decl (`+:` / `+_:`) — the merge-across-mixin shape
- * the spine fold mis-handles (see the gate in `isSpineEligibleRoot`). A merge
- * coalesces contributions across a body, but the fold splices a call's expansion
- * AFTER `planBodyMerges` runs, so an expansion-contributed merge decl emits raw and
- * unmerged.
+ * MERGE-ACROSS-MIXIN residual gate (byte-identity guard). True if any spine-eligible
+ * mixin CALL targets a mixin whose body contributes a property-MERGE decl whose VALUE
+ * is non-static (contains a `Call` / `Operation` / `Reference` — resolves ASYNC). Such
+ * a call resolves via the EVAL-FALLBACK expansion, whose async re-resolution + the
+ * duplicate-declaration dedup pass has a PRE-EXISTING header-drop bug (it drops the
+ * enclosing block header; reproduces WITHOUT any merge — two `color: rgb(…)` decls from
+ * two mixins mis-render the same way). Keep such a tree on eval (byte-identical) until
+ * that eval-fallback async-dedup frame bug is fixed. A STATIC-valued mixin merge (the
+ * `merge.less` corpus shape, `transform+: a`) folds on the spine and is NOT gated here.
  *
  * Static name-graph over-approximation (mirrors `treeHasRecursiveMixinCall`): collect
- * the string-keyed mixin-definition names whose body (DEEP — a merge decl may sit
- * inside a nested container of the mixin body) carries a merge decl, then report true
- * iff any spine-eligible `Call` in the tree targets such a name. A call to a
- * non-merge mixin (the common shape) is untouched; a merge-free tree returns
- * immediately with an empty set.
+ * the string-keyed mixin-definition names whose body (DEEP) carries an async-valued
+ * merge decl, then report true iff any spine-eligible `Call` targets such a name.
  */
-function treeHasMergeContributingMixinCall(root: Node): boolean {
-  const mergeMixinNames = new Set<string>();
+function treeHasAsyncMergeContributingMixinCall(root: Node): boolean {
+  const asyncMergeMixinNames = new Set<string>();
   for (const node of root.walk(true)) {
     if (!isNode(node, N.Mixin) || typeof node.name !== 'string') {
       continue;
     }
     for (const inner of node.walk(true)) {
-      if (isMergeDecl(inner)) {
-        mergeMixinNames.add(node.name);
+      if (isMergeDecl(inner) && mergeValueResolvesAsync(inner)) {
+        asyncMergeMixinNames.add(node.name);
         break;
       }
     }
   }
-  if (mergeMixinNames.size === 0) {
+  if (asyncMergeMixinNames.size === 0) {
     return false;
   }
   for (const node of root.walk(true)) {
@@ -1880,8 +1883,22 @@ function treeHasMergeContributingMixinCall(root: Node): boolean {
       isSpineEligibleMixinCall(node)
       && isNode(node.name, N.Reference)
       && typeof node.name.key === 'string'
-      && mergeMixinNames.has(node.name.key)
+      && asyncMergeMixinNames.has(node.name.key)
     ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True if a merge declaration's VALUE contains a node that resolves ASYNC on the
+ * value path — a `Call` (function), `Operation`, or `Reference` (variable). A merge
+ * whose value is only static tokens (`Any` / literals) resolves sync and folds.
+ */
+function mergeValueResolvesAsync(decl: Node): boolean {
+  for (const n of decl.walk(true)) {
+    if (isNode(n, N.Call | N.Operation | N.Reference)) {
       return true;
     }
   }
@@ -1892,9 +1909,9 @@ function treeHasMergeContributingMixinCall(root: Node): boolean {
  * True for a property-MERGE declaration (`prop+:` / `prop+_:` / `&,:` / `&_:`),
  * not a var decl. Matches the RAW parser assign vocabulary (`+,:` is the parser's
  * form of a comma `+:` merge — normalized to `+:` only at eval time in
- * `declaration.ts`), so a static pre-eval scan sees it. Consulted by both the
- * direct-body merge gate (`bodyHasDirectMergeDecl`) and the merge-across-mixin
- * tree gate (`treeHasMergeContributingMixinCall`).
+ * `declaration.ts`), so a static pre-eval scan sees it. Consulted by the
+ * direct-body merge gate (`bodyHasDirectMergeDecl`) and the async residual gate
+ * (`treeHasAsyncMergeContributingMixinCall`).
  */
 function isMergeDecl(node: Node): boolean {
   if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {

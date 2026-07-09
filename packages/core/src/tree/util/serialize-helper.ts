@@ -23,7 +23,7 @@ import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from '.
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict } from './emit-walk.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
-import { planBodyMerges, type SpineMergePlan } from './spine-merge.js';
+import { planBodyMerges, planEntrySequenceMerges, type SpineMergeEntry, type SpineMergePlan } from './spine-merge.js';
 import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
 import { applyBodySetDefined, type SetDefinedApplyResult } from './spine-setdefined.js';
 import { Reference } from '../reference.js';
@@ -327,6 +327,15 @@ type RenderRuleEntry = {
    * caller frame. Undefined for authored (non-folded) entries.
    */
   spineFrame?: Rules;
+  /**
+   * MERGE-ACROSS-MIXIN fold: the OWNER scope for `+:`/`+_:` merge coalescing (see
+   * `SpineMergeEntry.ownerKey`). A merge chain only accumulates within one owner.
+   * For a FOLD expansion this is the bound surface (= `spineFrame`); for an
+   * EVAL-fallback expansion it is the per-call resolved output `Rules` (a stable
+   * object distinguishing one call's contributions from another's). Undefined for a
+   * decl authored directly in the caller body (they share the caller as owner).
+   */
+  mergeOwner?: object;
 };
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
@@ -758,6 +767,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     );
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();
+    // MERGE-ACROSS-MIXIN fold: set when a mixin-call expansion splices surface
+    // children into `rulesToRender`. Gates the post-expansion merge re-plan so a
+    // body with no expansion pays nothing (the pre-expansion plan stays valid).
+    let mixinExpansionOccurred = false;
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
       const seen = new Set<any>();
       const queue: any[] = [start];
@@ -934,11 +947,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             // the eval path already resolved it).
             const childEntries: RenderRuleEntry[] = resolved.kind === 'fold'
               ? resolved.surfaces.flatMap(surface =>
-                  surface.rules.map(child => ({ node: child, spineFrame: surface })))
+                  surface.rules.map(child => ({ node: child, spineFrame: surface, mergeOwner: surface })))
               : isNode(resolved.output, N.Rules)
+                // EVAL-fallback: tag every flattened child with the per-CALL output
+                // Rules as its merge owner, so a `+:` from THIS call does not
+                // accumulate with a same-property `+:` from a DIFFERENT call (eval is
+                // last-wins across separate call outputs; MERGE-ACROSS-MIXIN fold).
                 ? flattenVisibleRulesForRender(resolved.output, options, false)
-                : [{ node: resolved.output }];
+                    .map(e => ({ ...e, mergeOwner: e.mergeOwner ?? resolved.output }))
+                : [{ node: resolved.output, mergeOwner: resolved.output }];
             rulesToRender.splice(i, 1, ...childEntries);
+            mixinExpansionOccurred = true;
             recomputeDeclCounts();
             // FOLD C: re-scan FROM `i` (the just-spliced children), not past them —
             // so a nested mixin CALL among a folded surface's own children is expanded
@@ -1564,12 +1583,81 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return isThenable(imports) ? imports.then(runSpineMixinExpansion) : runSpineMixinExpansion();
     };
     const expand = runExpansions();
+    // MERGE-ACROSS-MIXIN fold: after mixin-call expansion has spliced surface
+    // children into `rulesToRender`, an expansion-contributed `+:`/`+_:` merge decl
+    // is now IN the render sequence but was never in the pre-expansion plan (built
+    // over `node.rules` by `withSpineMergePlan`). Re-plan the coalesce over the
+    // POST-EXPANSION entry sequence so the spliced merge decls participate, carrying
+    // each entry's mixin-output side (`spineFrame !== undefined`) so eval's
+    // cross-scope boundary is reproduced. Gated behind "expansion happened" so a
+    // body with no expansion keeps the pre-expansion plan (zero cost). Values are
+    // resolved frame-aware (the entry's `spineFrame`, mirroring `processNode`).
+    const replanMergesIfExpanded = (): MaybePromise<void> => {
+      if (!mixinExpansionOccurred || !options.spineMode || !options.context) {
+        return undefined;
+      }
+      const replanContext = options.context;
+      const entries: SpineMergeEntry[] = rulesToRender.map(entry => ({
+        node: entry.node,
+        ownerKey: entry.mergeOwner
+      }));
+      // Map each entry node to its spine frame (a decl appears once), so the
+      // resolve reads the right definition scope for a spliced mixin-body decl.
+      const frameByDecl = new WeakMap<Node, Rules>();
+      for (let i = 0; i < rulesToRender.length; i++) {
+        const f = rulesToRender[i]!.spineFrame;
+        if (f) {
+          frameByDecl.set(rulesToRender[i]!.node, f);
+        }
+      }
+      const toValue = (n: Node | undefined): Node | undefined =>
+        isNode(n, N.Declaration) ? n.valueNode() : undefined;
+      const resolveValueForReplan = (decl: Node): MaybePromise<Node | undefined> => {
+        const frame = frameByDecl.get(decl);
+        if (!frame) {
+          const resolved = decl.eval(replanContext);
+          return isThenable(resolved) ? resolved.then(toValue) : toValue(resolved);
+        }
+        const savedRulesContext = replanContext.rulesContext;
+        replanContext.rulesContext = frame;
+        const restore = <T>(v: T): T => {
+          replanContext.rulesContext = savedRulesContext;
+          return v;
+        };
+        try {
+          const resolved = decl.eval(replanContext);
+          return isThenable(resolved)
+            ? resolved.then(
+                (n: Node | undefined) => restore(toValue(n)),
+                (e: unknown) => {
+                  restore(undefined);
+                  throw e;
+                }
+              )
+            : restore(toValue(resolved));
+        } catch (error) {
+          restore(undefined);
+          throw error;
+        }
+      };
+      const planResult = planEntrySequenceMerges(entries, resolveValueForReplan);
+      const install = (plan: SpineMergePlan | undefined): void => {
+        if (plan) {
+          options.spineMergePlan = plan;
+        }
+      };
+      return isThenable(planResult) ? planResult.then(install) : install(planResult);
+    };
     const afterExpand = (): MaybePromise<string> => {
       // The duplicate-declaration dedup pass may resolve keys ASYNC in spine mode
       // (live value resolution); the body render must wait for the skip set to be
       // populated. Eval path stays fully sync (keys are static `writeSyntax`).
-      const dedup = runDedupPass();
-      return isThenable(dedup) ? dedup.then(proceed) : proceed();
+      const runDedupAndBody = (): MaybePromise<string> => {
+        const dedup = runDedupPass();
+        return isThenable(dedup) ? dedup.then(proceed) : proceed();
+      };
+      const replanned = replanMergesIfExpanded();
+      return isThenable(replanned) ? replanned.then(runDedupAndBody) : runDedupAndBody();
     };
     return isThenable(expand) ? expand.then(afterExpand) : afterExpand();
   };
