@@ -1023,4 +1023,22 @@ describe('at-rule fold ratchet (property / scope / layer / var-ref names)', () =
   }
 }`);
   });
+
+  it('folds a VAR-REF at-rule NAME byte-identical (`@keyframes @name` → resolved keyword)', async () => {
+    // The interpolated-NAME shape that actually parses is a bare var-ref in the
+    // NAME/prelude position (NOT `@{…}` in the keyword — that parse-errors). It
+    // resolves via the same prelude-eval-at-enter path; no special handling.
+    const css = await foldToBytes(
+      `@name: my-anim; @keyframes @name { from { opacity: 0; } to { opacity: 1; } }`,
+      context
+    );
+    expect(css).toBe(`@keyframes my-anim {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}`);
+  });
 });
