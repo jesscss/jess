@@ -233,7 +233,17 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       append semantics (set confluent + target-first + feed-order siblings). Byte-neutral on the 90 (every
       fixture authors target-first, where sort and append coincided — which is why the bug hid).
 
-- [ ] **EXTEND #4a — expanded-mode crossing/hoist block-relocation (SEQUENCED-OUT of the P4 terminal/sink
+- [x] **EXTEND #4a — expanded-mode crossing/hoist block-relocation — LANDED (`work/extend-4a`).** The
+      `extend-selector` fixture (`collapseNesting:false` per its `styles.config`) folds byte-identical
+      to the ratified `.css`; all-less 91→92 (only `import-remote` network remains). Scope proved
+      narrower than framed: C1/C3 root-target + `.replace`/attributes fold once the whole-file gate
+      admits the fixture; the SOLE new fold is the `&`-crossing target (`.header .header-nav`), diverted
+      to the composed-hoist projection with its block RELOCATED to root under expanded mode
+      (`Ruleset.isHoisted` returns true for the strict `spineExtendHoisted` crossing subset; the
+      collapse-only verbatim-emit guards relaxed to that subset). Ratchets flipped: `extend-selector`
+      + `&`-crossing-under-expanded now assert folding. Perf-neutral (extend-free `benchmark.less`
+      bypasses the layer). Spec/impl: `EXTEND-4A-DESIGN.md`. Superseded framing below:
+      **EXTEND #4a — expanded-mode crossing/hoist block-relocation (SEQUENCED-OUT of the P4 terminal/sink
       rework; separate extend-EMIT batch).** Under `collapseNesting:false`, a crossing/hoist target
       (`.header .header-nav`, a nested subject's composed path) is gated to eval (`spine-extend.ts:750-751`):
       the hoist verbatim-override precondition is that the nested block already emits at ROOT, true only

@@ -1448,7 +1448,14 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // `frameHeaders` in lockstep with `lastRenderedFrames`, so a following root sibling
   // (another `@media`, a plain ruleset) renders at root, not under the at-rule. See
   // `serializeRulesContainerInternal`'s close loop.)
-  const collapse = collapseNesting ?? context.output?.collapseNesting === true;
+  // Resolve collapse from the SAME source the render pass derives it from
+  // (`prepareRenderPrintState` reads `context.opts.output.collapseNesting`) so the eligibility gate
+  // and `renderRootViaSpine`'s topology re-check agree. `context.output` (a distinct optional field)
+  // is consulted only as a fallback. The two MUST agree: `isSpineExtendTopology` is now
+  // collapse-mode-dependent (#4a admits an expanded-mode nested compound target the collapse gate
+  // rejects), so a divergent collapse value here would admit-then-fail-loud in `renderRootViaSpine`.
+  const collapse = collapseNesting
+    ?? (context.opts?.output?.collapseNesting ?? context.output?.collapseNesting) === true;
   // APPEND × EXTEND (a precise deferral, REQUIRED P4 item). An `:extend` TARGET may be
   // an append-GENERATED selector (`.button { &-primary {…} }` extended by
   // `:extend(.button-primary)`). The spine's extend layer gathers subjects/targets from

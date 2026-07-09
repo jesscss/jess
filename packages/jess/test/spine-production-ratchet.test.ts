@@ -256,22 +256,38 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('P4: `extend-selector` STAYS on eval (ONE remaining shape — expanded-mode hoist — exceeds the gate)', async () => {
-    // Guardrail: after #1-#5, extend-selector's `>`/`+`-combinator, attribute + interpolated-attribute,
-    // `.replace` sibling-nesting, and standalone-`Rules` shapes all FOLD via the spine. The ONE
-    // remaining shape is the EXPANDED-MODE HOIST (`.header .header-nav` — a crossing nested block that
-    // must physically RELOCATE to root document-position under `collapseNesting:false`, machinery the
-    // spine does not yet have — HELD, owner scope). The gate keeps the WHOLE fixture on eval until it
-    // lands (byte-identical there). A regression that wrongly admitted it would trip this (the hoist
-    // block mis-emits nested). When #4a lands, this flips to a fold + all-less 91→92.
+  it('P4 #4a: the FULL `extend-selector` fixture FOLDS via the spine (expanded-mode `&`-crossing hoist landed)', async () => {
+    // #4a LANDED: the last extend-selector shape — the EXPANDED-MODE `&`-crossing hoist
+    // (`.header .header-nav` gains `.footer .footer-nav`, `.issue-2586-somepage .content` gains its
+    // crossing extender) — folds via the spine under `collapseNesting:false`. The crossing subject is
+    // diverted to the composed-hoist projection (`composeSpineSubjectHeaders`), its header emitted
+    // VERBATIM, and its block RELOCATED to root (`Ruleset.isHoisted` + `spineExtendHoisted`). Combined
+    // with the C1/C3 root-target folds and the `.replace` compound-target gate admission, the WHOLE
+    // fixture now folds byte-identical to the ratified `extend-selector.css` (all-less 91→92). This
+    // asserts the spine engages (no eval two-walk) — a regression that dropped it back to eval, or
+    // mis-placed the relocated block, trips this.
     const compiler = new Compiler({
       output: { collapseNesting: false },
       compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
     });
     const src = readFileSync(path.join(testDataRoot, 'tests-unit/extend-selector/extend-selector.less'), 'utf8');
-    const before = spineRenderCounter.rootRenders;
-    await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (advanced extend shapes excluded)
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (no eval two-walk)
+      expect(deriveCalls).toBe(0);
+      // The crossing hoist relocates the nested block to root with the composed 2-branch header.
+      expect(css).toContain('.header .header-nav,\n.footer .footer-nav');
+      expect(css).toContain('.issue-2586-bordered,\n.issue-2586-somepage .content');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
   });
 
   it('P4: a `Rules`-wrapped STANDALONE extend does NOT force the root to eval (folds via the spine)', async () => {
@@ -345,17 +361,22 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toContain('.b,\n.a'); // the root extend still applies
   });
 
-  it('P3 increment 3: `&`-crossing STAYS on eval under `collapseNesting:false` (expanded-mode precondition)', async () => {
-    // The hoist verbatim-override PRECONDITION (nested block already at root) holds ONLY under
-    // collapse. Expanded mode keeps the block nested; the gate excludes crossing there → eval.
+  it('P4 #4a: `&`-crossing FOLDS via the spine under `collapseNesting:false` (block relocation landed)', async () => {
+    // #4a LANDED: under expanded mode the crossing subject (`.header .header-nav`) is diverted to the
+    // composed-hoist projection, its header emitted VERBATIM, and its block RELOCATED to root
+    // (`Ruleset.isHoisted` returns true for a `spineExtendHoisted` member). Previously HELD on eval
+    // (the "block already at root" precondition holds only under collapse); block relocation closes
+    // that. Asserts the spine engages AND the crossing branch is composed (`.footer .footer-nav`,
+    // not the eval-path bare `.footer-nav` bug).
     const compiler = new Compiler({
       output: { collapseNesting: false },
       compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
     });
     const src = `.header {\n  .header-nav {\n    background: red;\n  }\n}\n.footer {\n  .footer-nav {\n    &:extend(.header .header-nav all);\n  }\n}`;
     const before = spineRenderCounter.rootRenders;
-    await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (expanded-mode crossing excluded)
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (crossing hoist folds)
+    expect(css).toContain('.header .header-nav,\n.footer .footer-nav');
   });
 
   it('P3 (OQ-A): an INTERPOLATED class extend target resolves against the live frame at capture', async () => {

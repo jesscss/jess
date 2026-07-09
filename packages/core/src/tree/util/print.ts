@@ -92,11 +92,13 @@ export type PrintOptions = {
    * and a crossing contribution (`.footer .footer-nav`) joins it as a root-level sibling branch.
    * For a hoisted subject the header override is emitted VERBATIM (skip the parent-frame
    * `composeSelector`) — the projection is already root-composed, so re-composing against the
-   * `.header` frame would double it. PRECONDITION (JSDoc'd at the write site): this holds ONLY
-   * under `collapseNesting:true`, where a nested block already emits at ROOT with its composed
-   * header; expanded mode keeps the block nested and is excluded (stays on eval). Strictly gated:
-   * the verbatim path fires ONLY for a ruleset in THIS set — a non-hoisted nested subject still
-   * composes normally against its parent.
+   * `.header` frame would double it. Applies in BOTH collapse modes (#4a): under
+   * `collapseNesting:true` a nested block already emits at ROOT with its composed header; under
+   * `collapseNesting:false` the crossing subject is diverted to the same composed-hoist projection
+   * and its block RELOCATES to root (`Ruleset.isHoisted` returns true for a member of this set).
+   * Strictly gated: the verbatim path + relocation fire ONLY for a ruleset in THIS set (the strict
+   * crossing subset) — a non-hoisted / non-crossing nested subject still composes normally against
+   * its parent and stays nested.
    */
   spineExtendHoisted?: Set<Ruleset>;
   /**

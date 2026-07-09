@@ -1,5 +1,48 @@
 # EXTEND #4a — expanded-mode crossing/hoist block-relocation (DESIGN)
 
+Status: **LANDED**. Branch `work/extend-4a`. all-less 91→92 (extend-selector green), core 3258/0,
+spine-production-ratchet 56/56. Byte-identical to the ratified `extend-selector.css` (owner-owned) —
+no divergence surfaced.
+
+## LANDED implementation (summary)
+
+1. **Gate admission** (`isSpineExtendTopology`, `spine-extend.ts`):
+   - `isNestedComposedTarget` dropped its `collapseNesting` guard — a crossing descendant target is
+     admitted in BOTH modes.
+   - new `isMatchableCompoundTarget` — a plain compound target that genuinely matches a subject as a
+     compound-subset (`compoundMatchesRootSubjectStrict`, MULTISET subset so `.e.e ⊄ .e`, root-only
+     under collapse / nested-allowed under expanded, `>`-combinator subjects rejected,
+     interpolated-attribute subjects admitted via `attributeSameNameInterpolated`), with a
+     `chainsIntoExtender` exclusion (a target sub-compound-matching an extender = transitive chain,
+     kept on eval).
+2. **Composed-hoist diversion** (`composeSpineSubjectHeaders`, expanded-nested branch): a nested
+   subject whose OWN composed form is a plain descendant path AND whose full-path projection HOISTS
+   with every crossing branch itself a descendant path is diverted to `runSubjectProjection` (composed
+   header + `hoistToRoot`) and added to `hoisted`. The bare-local in-place path still owns the
+   non-crossing expanded case, and now FILTERS exact (non-partial) instructions whose target ≠ the
+   subject's full composed path (an exact `.dd` extend must not over-match the nested `.aa .dd`).
+3. **Verbatim-emit + relocation** (`ruleset.ts`): the two verbatim-hoist guards
+   (`composePushedSelector`, `writeHeaderSelector`) dropped their `options.collapseNesting` condition
+   (gated to the strict `spineExtendHoisted` crossing subset in both modes); `isHoisted` returns true
+   for a `spineExtendHoisted` member so the block RELOCATES to root under expanded mode.
+4. **Gate-consistency fix** (`emit-walk.ts` `isSpineEligibleRoot`): resolve collapse from
+   `context.opts.output.collapseNesting` (the source the render pass uses via
+   `prepareRenderPrintState`), falling back to `context.output`, so the eligibility gate and
+   `renderRootViaSpine`'s topology re-check agree now that the gate is collapse-mode-dependent.
+5. **Extend-with-branch-selector** (`gatherRuleset`): a Ruleset-shaped Extend carrying its own
+   `.selector` contributes via that branch only, not the ruleset's full selector-list (a decoy
+   sibling branch no longer leaks into the target's Or-set).
+
+## PERF (A/B benchmark.less, collapse:true)
+
+Baseline median 294ms (min 283); this branch median 293–300ms (min 284) across 3 runs — within
+run-to-run noise. `benchmark.less` carries no `:extend`, so `engageExtendLayer` returns false and the
+extend path never executes; the only extend-free-path change is the `??`-chain in
+`isSpineEligibleRoot`. Perf-neutral by construction.
+
+---
+
+## design pass (below, for the record)
 Status: design pass complete; fold pending. Branch `work/extend-4a`.
 
 ## What #4a actually is (measured, not assumed)
