@@ -724,22 +724,19 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 4: a hoisting `@media` block FOLLOWED BY a root sibling STAYS on eval (pre-existing hoist-frame wall)', async () => {
-    // NOT an import bug: a root `@media {…}` that hoists and is followed by a root
-    // sibling leaves the spine's rendered-frame stack unbalanced (the sibling inherits
-    // the `@media` frame). This reproduces with ZERO imports; the import fold would
-    // EXPOSE it (`strict-imports` structure), so a foldable-import tree with a hoisting
-    // conditional-group at-rule that is not the last root child stays on eval
-    // (byte-identical). A regression that folds it wraps the sibling in the `@media`.
-    // DEFERRED (a REQUIRED P4 item, its OWN concern): the spine hoist-frame reset.
+  it('IMPORTS increment 4: a hoisting `@media` block followed by a root sibling now FOLDS correctly (hoist-frame reset)', async () => {
+    // The hoist-frame reset landed (`finishBody` pops `frameHeaders` in lockstep with
+    // `lastRenderedFrames`): a `@media {…}` that hoists and is FOLLOWED by a root
+    // sibling now renders the sibling at ROOT, not wrapped in the `@media`. The former
+    // `rootHasHoistingAtRuleBeforeSibling` eval-gate is REMOVED, so this folds.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc4-hoist-'));
     fs.writeFileSync(path.join(dir, 'imp.less'), '@c: blue;\n');
     fs.writeFileSync(path.join(dir, 'main.less'), '@import "imp.less";\n@media screen {\n  .m { color: @c; }\n}\n.after { color: black; }\n');
     const compiler = makeCompiler();
     const before = spineRenderCounter.rootRenders;
     const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (hoist-frame wall)
-    expect(result.css).toContain('.after {\n  color: black;\n}'); // sibling NOT wrapped in @media
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (gate removed)
+    expect(result.css).toBe('@media screen {\n  .m {\n    color: blue;\n  }\n}\n.after {\n  color: black;\n}\n');
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -752,5 +749,69 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     const css = await compiler.renderString('.a { color: red; }', { language: 'less' });
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
     expect(css).toBe('.a {\n  color: red;\n}\n');
+  });
+
+  // ── HOIST-FRAME RESET (spine correctness, import-independent) ───────────────
+  // A root conditional-group at-rule (`@media`/`@supports`/`@container`/
+  // `@starting-style`) hoists to root; after its body the spine must RESET the
+  // rendered-frame stack (pop `frameHeaders` in lockstep with `lastRenderedFrames`)
+  // so a FOLLOWING root child renders at root — not wrapped in the at-rule, and not
+  // reusing the at-rule's cached header. This was a pre-existing spine bug (repro'd
+  // with zero imports at the base tip): a second `@media` rendered under the first's
+  // query. These lock the fix through the Compiler spine (derive=0).
+
+  it('HOIST-FRAME: two `@media` blocks each render under THEIR OWN query (no derive)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(
+        '@media screen {\n  .a { color: red; }\n}\n@media print {\n  .b { color: blue; }\n}\n',
+        { language: 'less' }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // The SECOND block is `@media print` — NOT the first block's `@media screen`.
+      expect(css).toBe('@media screen {\n  .a {\n    color: red;\n  }\n}\n@media print {\n  .b {\n    color: blue;\n  }\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('HOIST-FRAME: `@media` then a root ruleset — the ruleset renders at ROOT, not under `@media`', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      '@media screen {\n  .a { color: red; }\n}\n.after { color: black; }\n',
+      { language: 'less' }
+    );
+    expect(css).toBe('@media screen {\n  .a {\n    color: red;\n  }\n}\n.after {\n  color: black;\n}\n');
+  });
+
+  it('HOIST-FRAME: `@media` then `@media` then a root ruleset (three-way reset)', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      '@media screen {\n  .a { c: 1; }\n}\n@media print {\n  .b { c: 2; }\n}\n.c { c: 3; }\n',
+      { language: 'less' }
+    );
+    expect(css).toBe('@media screen {\n  .a {\n    c: 1;\n  }\n}\n@media print {\n  .b {\n    c: 2;\n  }\n}\n.c {\n  c: 3;\n}\n');
+  });
+
+  it('HOIST-FRAME: `@supports` / `@container` variants reset the frame for a following sibling', async () => {
+    const compiler = makeCompiler();
+    const supportsCss = await compiler.renderString(
+      '@supports (display: grid) {\n  .a { color: red; }\n}\n.after { color: black; }\n',
+      { language: 'less' }
+    );
+    expect(supportsCss).toBe('@supports (display: grid) {\n  .a {\n    color: red;\n  }\n}\n.after {\n  color: black;\n}\n');
+    const containerCss = await compiler.renderString(
+      '@container (min-width: 1px) {\n  .a { color: red; }\n}\n.after { color: black; }\n',
+      { language: 'less' }
+    );
+    expect(containerCss).toBe('@container (min-width: 1px) {\n  .a {\n    color: red;\n  }\n}\n.after {\n  color: black;\n}\n');
   });
 });

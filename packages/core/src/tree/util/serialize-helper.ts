@@ -1408,6 +1408,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             w.add(indent(renderedLength - 1) + '}\n');
             options.depth--;
             lastRenderedFrames.pop();
+            // Pop the matching cached header (positional, keyed by frame depth) too —
+            // otherwise a stale header (e.g. `@media screen`) survives at this depth and
+            // a LATER root sibling at the same depth (a second `@media print`, a plain
+            // ruleset) reuses it instead of composing its own. The header stack must
+            // stay in lockstep with `lastRenderedFrames`.
+            if (frameHeaders.length > lastRenderedFrames.length) {
+              frameHeaders.pop();
+            }
             renderedLength = lastRenderedFrames.length;
           }
         }
@@ -1648,7 +1656,16 @@ function serializeSpineFrameAtRule(
       options.atRuleHeaderPrelude = resolvedPrelude;
     }
     assignSpineChildIndices(node);
-    node.getScopeFrame();
+    // Link this at-rule's scope frame to the ENCLOSING live frame explicitly
+    // (mirrors `serializeSpineFrameContainer`). A parsed at-rule carries no `.parent`
+    // back-pointer, so `getScopeFrame`'s default parent-discovery walk finds nothing
+    // and the frame is orphaned — a var read inside the body then can't see an
+    // ancestor-scope binding (e.g. an imported `@c` registered on the ROOT frame's
+    // fallback chain: `'c' is not defined`). Passing the live enclosing frame
+    // reproduces the eval-path lexical chain (incl. its import fallbacks) without
+    // `.parent`.
+    const enclosingFrame = savedRulesContext?.getScopeFrame();
+    node.getScopeFrame(enclosingFrame);
     context.rulesContext = node;
     const renderBody = (): MaybePromise<string> => withSpineMergePlan(node.rules, options, context, () => {
       const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);

@@ -1170,54 +1170,14 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // is marked `dedupe` (scope-only, no output) — `multiple` opts back into re-emit.
   // So a duplicate specifier no longer forces the eval path.
   //
-  // PRE-EXISTING HOIST-FRAME wall (surfaced IMPORTS increment 4, NOT import-caused).
-  // A root-level conditional-group at-rule (`@media`/`@supports`/`@container`/
-  // `@starting-style`) that HOISTS and is FOLLOWED by another root child leaves the
-  // spine's rendered-frame stack unbalanced, so the following sibling inherits the
-  // at-rule's frame (`@media screen { .a {} } .after {}` → `.after` wrongly wrapped;
-  // two `@media` blocks → the second's body renders under the FIRST's query). This
-  // reproduces with ZERO imports at the pre-increment base tip — a general spine
-  // hoist bug, not the import fold. `strict-imports` (import + `@media {…}` +
-  // `.container {…}`) would EXPOSE it, so a foldable-import tree with a hoisting
-  // conditional-group at-rule that is not the LAST root child stays on the eval path
-  // (byte-identical). DEFERRED (a REQUIRED P4 item, its OWN concern): fix the spine
-  // hoist-frame reset so a hoisting at-rule followed by a sibling balances the stack.
-  if (allowImport && rootHasHoistingAtRuleBeforeSibling(root)) {
-    return false;
-  }
+  // (The former hoist-frame gate here is REMOVED: the spine's rendered-frame stack is
+  // now correctly reset after a hoisting conditional-group at-rule — `finishBody` pops
+  // `frameHeaders` in lockstep with `lastRenderedFrames`, so a following root sibling
+  // (another `@media`, a plain ruleset) renders at root, not under the at-rule. See
+  // `serializeRulesContainerInternal`'s close loop.)
   const collapse = collapseNesting ?? context.output?.collapseNesting === true;
   const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root, collapse === true);
   return isSpineEligibleBody(root.rules, allowExtend, allowImport);
-}
-
-/**
- * True if a ROOT-child conditional-group at-rule (`@media`/`@supports`/`@container`/
- * `@starting-style` — the HOISTING family) is followed by another root child. This is
- * the pre-existing spine hoist-frame wall (see `isSpineEligibleRoot`): after such an
- * at-rule the rendered-frame stack is left unbalanced, so the following sibling
- * inherits the at-rule's frame. Direct root children only (the hoist reset is a
- * root-level accounting concern).
- */
-function rootHasHoistingAtRuleBeforeSibling(root: Rules): boolean {
-  const children = root.rules;
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (
-      isNode(child, N.AtRule)
-      && typeof (child as { name?: unknown }).name === 'string'
-      && SPINE_ELIGIBLE_AT_RULES.has((child as { name: string }).name)
-      && isNode(child, N.Rules)
-    ) {
-      // A following VISIBLE root child (not just trailing comments/whitespace) trips
-      // the imbalance. A trailing at-rule as the LAST child is safe.
-      for (let j = i + 1; j < children.length; j++) {
-        if (!isNode(children[j]!, N.Comment)) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
 }
 
 /**
