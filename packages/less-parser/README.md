@@ -1,8 +1,131 @@
-# Jess - Less parser
+# @jesscss/less-parser
 
-Translates a Less string to a Jess AST.
+A [Less](https://lesscss.org/) parser built on [parseman](https://www.npmjs.com/package/parseman). The grammar is the CSS grammar plus a Less delta: `lessGrammar = compose([cssGrammar, <Less delta>])`. It adds `@variable` / `@{interpolation}`, mixins, and the rest of Less on top of the shared CSS base in `@jesscss/css-parser`.
 
-## Ideas
+Two ways to use it:
+
+- **As part of Jess** — the default `.` entry is wired into `@jesscss/core` and produces the core AST the Jess compiler evaluates (this is what runs when Jess compiles Less). This is the internal, core-coupled path.
+- **As a standalone CST parser** — the `./cst` entry has **no dependency on `@jesscss/core`**. Install just this package and parse Less source text into a concrete syntax tree (CST). You can also plug your own builders onto the grammar to produce your own AST instead of the default CST.
+
+## Install
+
+```sh
+npm install @jesscss/less-parser
+```
+
+`@jesscss/core` is an **optional** peer dependency — needed only for the core-coupled `.` entry, not for `./cst` or `./grammar`.
+
+## Standalone usage (core-free)
+
+```js
+import { parseLessCst } from '@jesscss/less-parser/cst'
+
+const result = parseLessCst('@c: red;\n.foo { color: @c; }')
+
+result.ok               // true
+result.errors           // ParseError[] (empty when ok)
+result.unconsumedFrom   // index of first unparsed char, or null
+result.tree             // the CST root (a StyleSheet node)
+```
+
+Signature:
+
+```ts
+parseLessCst(input: string, startRule = 'Stylesheet', options?: { collapse?: boolean }): LessCstParseResult
+```
+
+Pass a different `startRule` (any capitalized grammar rule, e.g. `'SelectorList'`, `'Declaration'`) to parse a fragment.
+
+## Public API
+
+| Entry | Export | Purpose |
+| --- | --- | --- |
+| `@jesscss/less-parser/cst` | `parseLessCst` | Core-free parse of a Less string to a CST. |
+| `@jesscss/less-parser/cst` | `LessCstNode`, `LessCstLeaf`, `LessCstError`, `LessCstChild`, `LessCstParseResult`, `LessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
+| `@jesscss/less-parser/grammar` | `lessGrammar` | The compiled Less grammar (a rule map). Extend it with `compose()` or drive it directly with parseman's `run`. |
+| `@jesscss/less-parser` (`.`) | `LessParser` (also `Parser`), `parseLessFn`, `lessGrammar`, tokens, … | The Jess-internal barrel. **Core-coupled** (the functional parser builds the core AST). Prefer `./cst` if you don't need `@jesscss/core`. |
+| `@jesscss/less-parser/jess` | `LessParser`, `LessGrammar`, `parseLessFn`, … | Internal Jess-facing surface. |
+
+## Default CST shape
+
+The CST is parseman's, produced by the shared `cssCstBuildHost`. Three kinds of node:
+
+- **node** — `{ _tag: 'node', type, grammarType, span: { start, end }, state, children }` (`grammarType` = raw rule name; `type` = friendly public name).
+- **leaf** — `{ _tag: 'leaf', value, span }` for terminals.
+- **error** — `{ _tag: 'error', type, span, expected, children, state }` where recovery happened.
+
+Spans are `[start, end)` offsets; whitespace, block comments, **and Less line comments (`//`)** are trivia and do not appear as children.
+
+Parsing `@c: red;\n.foo { color: @c; }` yields (abridged):
+
+```jsonc
+{
+  "_tag": "node", "type": "StyleSheet", "grammarType": "Stylesheet",
+  "children": [
+    { "_tag": "node", "type": "VarDeclaration", "grammarType": "VarDeclaration", "span": { "start": 0, "end": 8 },
+      "children": [
+        { "_tag": "leaf", "value": "@c" }, { "_tag": "leaf", "value": ":" },
+        { "_tag": "node", "type": "NamedColor", "grammarType": "NamedColor",
+          "children": [ { "_tag": "leaf", "value": "red" } ] },
+        { "_tag": "leaf", "value": ";" }
+      ] },
+    { "_tag": "node", "type": "QualifiedRule", "grammarType": "Ruleset", "span": { "start": 9, "end": 28 },
+      "children": [
+        { "_tag": "leaf", "value": ".foo" }, { "_tag": "leaf", "value": "{" },
+        { "_tag": "node", "type": "Declaration", "grammarType": "Declaration",
+          "children": [
+            { "_tag": "leaf", "value": "color" }, { "_tag": "leaf", "value": ":" },
+            { "_tag": "node", "type": "Reference", "grammarType": "Reference",
+              "children": [ { "_tag": "leaf", "value": "@c" } ] },
+            { "_tag": "leaf", "value": ";" }
+          ] },
+        { "_tag": "leaf", "value": "}" }
+      ] }
+  ]
+}
+```
+
+Note the Less-specific nodes: a top-level `@c: …` becomes a `VarDeclaration`, a `@c` value becomes a `Reference`, and the color keyword `red` parses as `NamedColor` (the CSS-only grammar has no such rule — see `@jesscss/css-parser`).
+
+Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `NamedColor`, `InterpolatedSelector`) into their child.
+
+## Extending with your own builders
+
+The grammar is decoupled from the tree it builds. Every capitalized rule is a parseman `node()`; when you drive a grammar with a `build` host, each `node()` calls your host instead of constructing the default CST. Use parseman's `run` with your own host and the grammar's trivia rule:
+
+```js
+import { run } from 'parseman'
+import { lessGrammar } from '@jesscss/less-parser/grammar'
+
+const myHost = (type, children, fields, span) => ({ type, span, children: children.filter(Boolean) })
+
+const result = run(lessGrammar.Stylesheet, '@c: red; .foo { color: @c; }', {
+  build: myHost,
+  trivia: lessGrammar.rw   // Less trivia = whitespace + block + line comments
+})
+
+result.value   // the root node your host returned
+```
+
+The `BuildHost` signature (from parseman):
+
+```ts
+type BuildHost = (
+  type: string,
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  span: { start: number; end: number },
+  rawChildren: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown
+) => unknown
+```
+
+`parseLessCst(...)` is this pattern with the shared `cssCstBuildHost` (see `@jesscss/css-parser`, `src/cst.ts`) as a reference host.
+
+## Part of Jess
+
+This package is developed as part of [Jess](https://github.com/jesscss/jess). Jess translates a Less string into a Jess AST; the sections below track the migration rules that entails.
 
 ### Converting Less 1.x-5.x to Less 6
 
@@ -18,7 +141,6 @@ Translates a Less string to a Jess AST.
 10. Files that consume variables, mixins, or rules (like with extend) should have a `@use` added.
 11. Don't allow `.class` as a value in a declaration. Convert to `\.class` e.g. `@foo: .class` should be converted to `@foo: \.class` (or `selector(.class)`?).
 12. In a custom property value, convert `@variable` to `@{variable}`.
-
 
 ### Converting Less 1.x-4.x to Jess
 
