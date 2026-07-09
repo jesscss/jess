@@ -400,6 +400,103 @@ function sharedLeadingCompound(sel: Selector): string | undefined {
   return shared;
 }
 
+/**
+ * The COMPOUND BASE of a pseudo-suffixed target: strip a trailing pseudo-class / pseudo-element
+ * chain (`:hover`, `::before`, `:not(.x)` is excluded via the paren guard below) from a single
+ * compound, returning the leading compound (`.button:hover` → `.button`), or undefined when the
+ * target has no trailing pseudo or is not a single compound (a descendant space, a combinator, a
+ * comma, or a leading pseudo like `:hover` alone all return undefined).
+ *
+ * WHY. A pseudo-compound extend target (`&:hover:extend(.button:hover)`) is handled WITHOUT a
+ * dedicated subject header: the target's compound base (`.button`) is a root-level subject whose
+ * header the override rewrites (`.button` → `.button, .submit`), and the nested `&:hover` under it
+ * composes against that overridden list via the normal serializer `&`-flow → `:is(.button,
+ * .submit):hover` (`ruleset.ts` `composeHeaderSelector`, the `&`-recompose-against-extended-parent
+ * branch). So the gate admits the pseudo-compound target when its base is a root subject; the
+ * pipeline produces no separate header for it (SOLVE fires nothing against a root subject that does
+ * not textually contain the pseudo), and the `&`-flow does the rewrite.
+ */
+function pseudoCompoundBase(target: string): string | undefined {
+  // Only a single compound with a trailing `:pseudo` (no descendant space, combinator, or comma).
+  // A functional pseudo (`:not(...)`, `:is(...)`) carries parens — excluded (a richer find).
+  if (/[>+~,() ]/.test(target)) {
+    return undefined;
+  }
+  const idx = target.indexOf(':');
+  if (idx <= 0) {
+    return undefined; // no pseudo, or a leading pseudo (`:hover`) with no base compound
+  }
+  return target.slice(0, idx);
+}
+
+/**
+ * Split a selector STRING into its descendant-combinator tokens (`.a .b` → `['.a', '.b']`), and each
+ * token into its compound SIMPLES (`.a.b` → ['.a', '.b']; `[data="x"]:hover` → ['[data="x"]', ':hover']).
+ * A token bearing a CHILD/SIBLING combinator or a graft paren returns undefined (not a plain
+ * descendant-of-compounds shape — the inert check only reasons about those). Used to decide, purely
+ * structurally, whether an extend target could POSSIBLY match a subject composed path.
+ */
+function descendantCompoundTokens(sel: string): string[][] | undefined {
+  if (/[>+~,]/.test(sel)) {
+    return undefined; // child/sibling/list — outside the descendant-of-compounds shape
+  }
+  const tokens = sel.trim().split(/\s+/).filter(t => t.length > 0);
+  const out: string[][] = [];
+  for (const token of tokens) {
+    // Split a compound into simples at each `.`/`#`/`[`/`:` boundary (keep the delimiter). A functional
+    // pseudo with an argument (`:not(...)`) carries a paren — reject (a richer shape the check won't reason about).
+    if (/\(/.test(token)) {
+      return undefined;
+    }
+    const simples = token.match(/[.#]?[^.#:[\]]+|\[[^\]]*\]|::?[^.#:[\]]+/g);
+    if (!simples || simples.length === 0) {
+      return undefined;
+    }
+    out.push(simples);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** True when every simple of compound `a` is present in compound `b` (a ⊆ b as sets of simples). */
+function compoundSubset(a: string[], b: string[]): boolean {
+  const set = new Set(b);
+  return a.every(s => set.has(s));
+}
+
+/**
+ * STRUCTURAL no-match: could the descendant target `target` match subject composed path `subjectPath`
+ * (both plain descendant-of-compounds)? A match requires the target's compound tokens to appear as an
+ * ORDERED (not necessarily contiguous — descendant is transitive) subsequence of the subject's tokens,
+ * each target compound being a SUBSET of the aligned subject compound. Conservative: returns true on
+ * any shape it cannot tokenize (so those are treated as POSSIBLE matches → NOT inert).
+ */
+function targetCouldMatchPath(target: string, subjectPath: string): boolean {
+  const t = descendantCompoundTokens(target);
+  if (t === undefined) {
+    return true; // target not decomposable → assume a possible match (conservative)
+  }
+  // A multi-branch subject path (`.amp-test-a,.amp-test-b`) matches iff ANY branch matches — split and
+  // test each. (A comma at a nested level is joined via space-join; splitting on `,` covers the common
+  // root-level list.)
+  for (const branch of subjectPath.split(',')) {
+    const p = descendantCompoundTokens(branch);
+    if (p === undefined) {
+      return true; // a branch not decomposable → conservative possible-match
+    }
+    // Ordered subsequence match with compound-subset alignment (descendant is transitive: gaps allowed).
+    let ti = 0;
+    for (let pi = 0; pi < p.length && ti < t.length; pi++) {
+      if (compoundSubset(t[ti]!, p[pi]!)) {
+        ti++;
+      }
+    }
+    if (ti === t.length) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** The Extend nodes borne by a ruleset's direct body (both `Extend` and `ExtendList.value`). */
 function rulesetExtendNodes(ruleset: Ruleset): Extend[] {
   const out: Extend[] = [];
@@ -451,10 +548,31 @@ function extendTargetIsSimple(node: Extend): boolean {
  *      cross-subject fixpoint ordering (a later increment);
  *   4. NO extend reaching INTO an at-rule body (the subject there is at-rule-scoped, not a
  *      document-root subject).
- * A shape passing this gate is own-buildable by the pipeline with a root-level subject header
- * override; anything else routes to eval.
+ *
+ * P4 additionally admits two shapes so `extend-nest` FULLY FLIPS to the spine:
+ *   5. a PSEUDO-COMPOUND target (`.button:hover`) whose compound base is a ROOT-LEVEL subject —
+ *      the base's header override + the nested `&`-pseudo's serializer `&`-flow produce the grouped
+ *      `:is(base, …):pseudo`, no dedicated header needed (`pseudoCompoundBase`);
+ *   6. an INERT NOMATCH target that STRUCTURALLY cannot match any subject (`.button :hover`, whose
+ *      ancestor `.button` has no `:hover` descendant) — SOLVE fires nothing, so admitting it keeps
+ *      the whole (otherwise foldable) root on the spine (`targetCouldMatchPath` over clean paths).
+ * Both P4 clauses are DISABLED when the tree has imports (an imported subject the static gather
+ * can't see could match) or the target is interpolated (an eval-path resolution). Anything outside
+ * this set routes to eval, byte-identical.
  */
 export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): boolean {
+  // A tree with IMPORTS can introduce subjects (and extend targets) the static gather never sees, so
+  // the structural inert-nomatch + pseudo-base admissions below are unsound (a target that matches no
+  // VISIBLE subject may match an IMPORTED one at eval time). Disable both when any import is present.
+  // (The other admit clauses only rewrite statically-visible root/nested subjects, so they stay sound.)
+  const treeHasImport = ((): boolean => {
+    for (const node of root.walk(true)) {
+      if (node.type === 'StyleImport') {
+        return true;
+      }
+    }
+    return false;
+  })();
   const targets = new Set<string>();
   const rootLevelSelectors = new Set<string>();
   const extenderSelectors = new Set<string>();
@@ -462,6 +580,9 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
   // target (`.header .header-nav`) resolves to a NESTED subject's composed path — admitted so the
   // hoist path (`collapseNesting:true`, verbatim override) can rewrite it (increment 3).
   const subjectComposedPaths = new Set<string>();
+  // Subset of `subjectComposedPaths` with NO `&` level — the paths the structural inert scan can
+  // trust (a `&` level is a compound-merge the naive space-join mis-approximates; see below).
+  const cleanSubjectPaths = new Set<string>();
   let ok = true;
 
   // The SHARED LEADING COMPOUND of every branch of a root-level subject (SHAPE 4). When a
@@ -501,6 +622,15 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
       // descendant crossing target (`.header .header-nav`); a level with `&`/combinators would not
       // string-match, which is fine — those shapes are excluded upstream anyway.
       subjectComposedPaths.add(path.map(s => String(s.valueOf())).join(' '));
+      // CLEAN descendant path (no `&` level) for the structural inert scan. A `&`-bearing level
+      // composes into a COMPOUND MERGE, not a descendant step, so the naive space-join
+      // (`.button &:hover`) mis-approximates it as a descendant — a plain descendant target
+      // (`.button :hover`) would then spuriously "match" the bogus `&`-boundary. Since a
+      // descendant target can only match a genuine descendant path, exclude any `&`-bearing path
+      // from the scan (its real compound form is unreachable by a descendant find anyway).
+      if (!path.some(s => String(s.valueOf()).includes('&'))) {
+        cleanSubjectPaths.add(path.map(s => String(s.valueOf())).join(' '));
+      }
     }
     for (const c of node.rules) {
       collectPaths(c, path);
@@ -551,7 +681,16 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
             return;
           }
           if (ext.target !== undefined && ext.target !== null) {
-            targets.add(String(ext.target.valueOf()));
+            const targetKey = String(ext.target.valueOf());
+            // An INTERPOLATED target (`:extend(.@{name})`) is resolved against the LIVE value frame
+            // at capture — the OQ-A EVAL-PATH fix (`Extend.runEffect`), not reproducible by the
+            // eval-free static gather. Its parse node is an `InterpolatedSelector` whose `valueOf`
+            // is a `%%`-placeholder (not raw `@{…}` text). Keep the whole root on eval so it resolves.
+            if (targetKey.includes('@{') || targetKey.includes('${') || targetKey.includes('%%')) {
+              ok = false;
+              return;
+            }
+            targets.add(targetKey);
           }
         }
       }
@@ -594,7 +733,39 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     // (the SOLVE local-apply rewrites the subject's own branches; not a nested subject).
     const isLeadingCompoundTarget = leadingCompoundTargets.has(target)
       && !anyNestedRulesetMatchesSelector(root, target);
-    if (!isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget) {
+    // PSEUDO-COMPOUND TARGET (`.button:hover`, `.button2:hover`): its compound base (`.button`) is a
+    // root-level subject. The extend needs NO dedicated header — the base's override + the nested
+    // `&`-pseudo's serializer `&`-flow produce the `:is(.base, …):pseudo` shape (or, for a genuine
+    // nomatch like `.button2:hover` where the base is not textually a `:hover` compound, the pipeline
+    // fires nothing and the base's `:pseudo` child streams unchanged). Requires the base to be a root
+    // subject; a pseudo on a NON-subject base is a nomatch handled by the inert clause below.
+    const pseudoBase = pseudoCompoundBase(target);
+    const isPseudoCompoundOfRootSubject = !treeHasImport
+      && pseudoBase !== undefined
+      && rootLevelSelectors.has(pseudoBase)
+      && !anyNestedRulesetMatchesSelector(root, pseudoBase);
+    // INERT NOMATCH (STRUCTURAL, sound-by-over-rejection): a target that CANNOT possibly match any
+    // subject in the document — it extends nothing (`.button :hover`: a descendant find whose ancestor
+    // compound `.button` has no `:hover` descendant subject; the only `:hover`-descendant subject is
+    // under `.button2`). SOLVE fires nothing, so no header is built and every authored selector streams
+    // unchanged; admitting it keeps the whole (otherwise foldable) root on the spine.
+    //
+    // WHY NOT THE MATCHER. `extendByIndexOwn` (the spine matcher) reports NOT_FOUND for several shapes
+    // the EVAL path DOES extend — a `:is(...)`-graft branch, a whole-descendant crossing target
+    // (`.header .header-nav`), an attribute compound — so matcher-NOT_FOUND does NOT prove inertness.
+    // Instead reason PURELY STRUCTURALLY: the target could match subject path `P` iff the target's
+    // descendant compound tokens are an ordered compound-SUBSET subsequence of `P`'s tokens
+    // (`targetCouldMatchPath`). Inert iff the target could match NONE. The tokenizer is conservative —
+    // any shape it cannot decompose (child/sibling combinator, graft paren) returns "could match" →
+    // NOT inert — so it never admits a target it cannot fully reason about.
+    const isInertNomatch = !treeHasImport
+      && !isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
+      && !isPseudoCompoundOfRootSubject
+      && descendantCompoundTokens(target) !== undefined
+      && ![...cleanSubjectPaths].some(p => targetCouldMatchPath(target, p))
+      && !rootLevelSelectors.has(target);
+    if (!isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
+      && !isPseudoCompoundOfRootSubject && !isInertNomatch) {
       return false; // target maps to no addressable subject (root selector or crossing nested path)
     }
     if (extenderSelectors.has(target)) {

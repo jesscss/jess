@@ -149,7 +149,7 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     const css = await compiler.renderString(src, { language: 'less' });
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
     expect(css).toContain('.clearfix,\n.foo');
-    expect(css).toContain(":is(.clearfix, .foo):after");
+    expect(css).toContain(':is(.clearfix, .foo):after');
   });
 
   it('P3 increment 1: a NESTED-scope `:extend` does NOT route through the spine (deferral territory → eval path)', async () => {
@@ -226,6 +226,49 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     const css = await compiler.renderString(src, { language: 'less' });
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path (amp-APPEND excluded)
     expect(css).toContain('.base');
+  });
+
+  it('P4: the FULL `extend-nest` fixture folds BYTE-IDENTICAL through the spine (gate relaxed, no eval two-walk)', async () => {
+    // The extend-nest fixture FLIPS to the spine (all-less 90→91): the extend gate now admits its
+    // full shape set — the `.sidebar`/`.type1 .sidebar3`/`.type2.sidebar4` nested + `&`-resolved
+    // extenders (increments 2/7), the `&+&` amp-test crossing (eager `composeSelector`-reduce), the
+    // PSEUDO-COMPOUND target `.button:hover` (base `.button` overridden → `&`-flow yields
+    // `:is(.button, .submit):hover`), and the INERT descendant nomatch `.button :hover` (structurally
+    // proven to match no subject). Renders BYTE-IDENTICAL to the ratified `extend-nest.css` through
+    // the Compiler with `Rules.derive` UNCALLED (no eval two-walk / `processExtends`).
+    const compiler = makeCompiler();
+    const src = readFileSync(path.join(testDataRoot, 'tests-unit/extend-nest/extend-nest.less'), 'utf8');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-unit/extend-nest/extend-nest.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → processExtends did not run
+      expect(css).toBe(expected); // byte-identical to the ratified v5 alpha `.css`
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('P4: `extend-selector` STAYS on eval (its advanced shapes exceed the extend gate — no false-flip)', async () => {
+    // Guardrail: extend-selector's `>`/`+`-combinator targets, attribute + interpolated-attribute
+    // targets, `.replace` sibling-nesting, and expanded-mode crossing are NOT yet spine-buildable, so
+    // the gate must KEEP the whole fixture on eval (byte-identical there). A regression that wrongly
+    // widened the gate to admit it would trip this (the spine mis-renders those shapes).
+    const compiler = new Compiler({
+      output: { collapseNesting: false },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const src = readFileSync(path.join(testDataRoot, 'tests-unit/extend-selector/extend-selector.less'), 'utf8');
+    const before = spineRenderCounter.rootRenders;
+    await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (advanced extend shapes excluded)
   });
 
   it('P3 increment 3: `&`-CROSSING hoists a nested subject to root with the crossing branch (header/footer)', async () => {

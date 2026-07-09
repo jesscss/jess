@@ -485,7 +485,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
 }`.trim());
   });
 
-  it('3b. parsed-source extend-nest hover extend distributes to .button:hover, .submit:hover', async () => {
+  it('3b. parsed-source extend-nest hover extend folds to :is(.button, .submit):hover via the spine', async () => {
     const source = `
 .button {
   color: black;
@@ -503,19 +503,17 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
-    // TARGET of the hover extend is `.button:hover` (a whole selector, not a matched
-    // set), so `.submit:hover` (what `&:hover` represents in .submit's context) is added
-    // as a comma sibling — no `:is()` grouping. Matches Less 4.x exactly and the flat
-    // AST-built equivalent (test 3): `.button:hover, .submit:hover`. The earlier
-    // `:is(.button, .submit):hover` expectation was wrong (that shape only arises when
-    // the PARENT `.button` is the matched set, which is a different extend).
+    // Ratified v5 alpha shape (`test-data/tests-unit/extend-nest/extend-nest.css:22-28`):
+    // `:extend(.button)` folds `.button` → `.button, .submit`, and the nested `&:hover` composes
+    // against that overridden parent list via the serializer `&`-flow, yielding the GROUPED
+    // `:is(.button, .submit):hover`. (This is what the spine wire-in produces once the extend gate
+    // admits extend-nest — the eval path's `.button:hover, .submit:hover` was the pre-fold shape.)
     expect(css.trim()).toBeString(`
 .button,
 .submit {
   color: black;
 }
-.button:hover,
-.submit:hover {
+:is(.button, .submit):hover {
   color: inherit;
 }
 `.trim());
