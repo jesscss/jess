@@ -35,7 +35,7 @@
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
 import { asExtendSelectorNode } from '../util/extend-roots.js';
-import { extendByIndexOwn, UNSUPPORTED, type UnsupportedResult } from './extend-index.js';
+import { extendByIndexOwn, findRejectTokens, subjectPresentTokens, UNSUPPORTED, type UnsupportedResult } from './extend-index.js';
 import {
   composeTargetOwn,
   projectSubject,
@@ -160,6 +160,14 @@ function solveContributions(
     changed = false;
     rounds++;
     const branchValue = String(current.valueOf());
+    // CHEAP SOUND PRE-REJECT (root cause of the O(subjects²) fire explosion): the coarse
+    // scope-key reachability leaves every instruction "reachable" in a flat document, so each
+    // subject would run the full matcher against every instruction. A plain-token find can only
+    // match a subject that textually carries all its tokens; computing the subject's present-token
+    // set ONCE per branch value lets the loop skip the (dominant) majority of non-matching
+    // instructions WITHOUT the per-fan selector re-parse. `undefined` (non-plain subject/target)
+    // disables the filter for that pair — always run the matcher — so output stays byte-identical.
+    const subjectTokens = subjectPresentTokens(current);
     for (const inst of reachable) {
       if (firedInstructions.has(inst)) {
         continue; // already fired once against this subject — never self-re-apply
@@ -167,6 +175,21 @@ function solveContributions(
       const key = fireKey(branchValue, inst);
       if (done.has(key)) {
         continue;
+      }
+      if (subjectTokens !== undefined) {
+        const need = findRejectTokens(inst.target);
+        if (need !== undefined) {
+          let missing = false;
+          for (const t of need) {
+            if (!subjectTokens.has(t)) {
+              missing = true;
+              break;
+            }
+          }
+          if (missing) {
+            continue; // definitely NOT_FOUND in the current value — leave unfired (chain re-opens)
+          }
+        }
       }
       const result = extendByIndexOwn(current, inst.target, inst.extendWith, inst.partial);
       if (result === UNSUPPORTED) {
