@@ -273,10 +273,11 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
   // callable's DEFINITION-scope frame from the candidate node's own `.parent`
   // chain (`definitionFrame = definitionParent.getScopeFrame()`) — a lazily-built,
   // eval-free static index — so the closure body resolves against its definition
-  // scope regardless of descent order. Verified byte-identical for namespace-path,
-  // multi-level namespace, and root/param closures. The one shape still deferred —
-  // a nested mixin closing over an INTERMEDIATE (non-root) scope's local var — is
-  // gated at the root level (`treeHasNestedMixinClosingOverVarScope`), not here.
+  // scope regardless of descent order. The `.parent` chain is wired at pass entry
+  // (`wireSpineDefinitionScopeParents`) so it exists even for a scope the spine does
+  // not descend. Verified byte-identical for namespace-path, multi-level namespace,
+  // root/param closures, AND (fold #6) a nested mixin closing over an INTERMEDIATE
+  // (non-root) scope's local var/param — no shape is gated here.
   return true;
 }
 
@@ -1175,24 +1176,17 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (treeHasMixinRulesetMixedMatch(root)) {
     return false;
   }
-  // NESTED-scope mixin closure — NARROW gate. A nested mixin (defined inside a
-  // ruleset/at-rule) whose definition scope is derived from its `.parent` chain
-  // folds correctly for the common shapes: a namespace-path call (`#ns.m()`), a
-  // multi-level namespace, and a body closing over ROOT vars or its own params —
-  // all verified byte-identical (the KEPT `prepareCallableCandidateState` builds
-  // the definition-scope frame from the candidate node's own parent chain via a
-  // lazily-built, eval-free scope index; the root frame is live for the whole pass).
-  // The ONE shape still deferred is a nested mixin body closing over a var declared
-  // in an INTERMEDIATE (non-root) enclosing scope: that scope is not on the caller's
-  // emit path, so its frame is never pushed as `rulesContext` and its live binding
-  // cell is never established — the read resolves against the wrong (root) frame or
-  // throws "'x' is not defined". A mid-spine throw is unrecoverable, so keep any tree
-  // with a mixin call AND such a nested mixin on the eval path. DEFERRED (#6): seed
-  // the definition's intermediate-scope frame during descent (imports-style
-  // `prepareRegistration` + fallback link), then this gate lifts.
-  if (treeHasMixinCall(root) && treeHasNestedMixinClosingOverVarScope(root)) {
-    return false;
-  }
+  // NESTED-scope mixin closure — GATE LIFTED (fold #6). A nested mixin closing over
+  // an INTERMEDIATE (non-root) enclosing scope's local var/param used to be kept on
+  // eval (`treeHasNestedMixinClosingOverVarScope`) because the definition scope's
+  // frame was never established when the spine did not descend it. `renderRootViaSpine`
+  // now eagerly wires the definition-scope `.parent` chain
+  // (`wireSpineDefinitionScopeParents`, gated on that same predicate so a tree without
+  // the shape pays nothing), and `executeCallableCandidate` re-parents the folded
+  // surface frame to its `lexicalScopeFrame` under the spine sink — so the closure
+  // (and shadowing) resolves against the definition scope, byte-identical to eval.
+  // Namespace-path, multi-level namespace, root/param closure, and now intermediate-
+  // scope closure all fold.
   // INCREMENT 4 cross-check: a mixin DEFINITION whose body contains NESTED
   // CONTAINERS (a Ruleset/AtRule — `.mix() { .inner { … } }`) can't fold: the
   // runtime surface gate rejects a non-leaf body, so the call eval-falls-back, but
@@ -1351,10 +1345,13 @@ function treeHasNamespacePathCall(root: Node): boolean {
 }
 
 /**
- * True if the tree has a Mixin definition whose body (deep) contains a nested
- * container (Ruleset/AtRule) — the non-leaf mixin body whose eval-fallback the
- * spine cannot faithfully re-descend (see `isSpineEligibleRoot`). Direct body
- * children only need checking, but a container anywhere in the body qualifies.
+ * True if the tree has a Mixin definition whose body contains a nested CONTAINER —
+ * a Ruleset/AtRule, OR a nested Mixin DEFINITION (a mixin that defines another
+ * mixin) — the non-leaf mixin body whose eval-fallback the spine cannot faithfully
+ * re-descend (see `isSpineEligibleRoot`). A nested Mixin definition is a scope the
+ * fold's shallow surface descent does not register/emit correctly (its own body may
+ * carry an interpolated name or a nested call), so it must stay on eval — the same
+ * class as a nested Ruleset. Direct body children only need checking.
  */
 function treeHasContainerBodyMixinDefinition(root: Node): boolean {
   for (const node of root.walk(true)) {
@@ -1363,7 +1360,7 @@ function treeHasContainerBodyMixinDefinition(root: Node): boolean {
     }
     const body = node.rules;
     for (let i = 0; i < body.length; i++) {
-      if (isNode(body[i]!, N.Ruleset | N.AtRule)) {
+      if (isNode(body[i]!, N.Ruleset | N.AtRule | N.Mixin)) {
         return true;
       }
     }
@@ -1398,25 +1395,21 @@ function treeHasMixinDefinitionWithNestedCall(root: Node): boolean {
 /**
  * True if the tree has a Mixin definition nested INSIDE a container whose
  * ENCLOSING chain (strictly between the mixin and the document root) BINDS a name
- * — a variable declaration OR an enclosing mixin's params — the ONE nested-mixin
- * shape whose closure the spine does not yet resolve (see the narrow gate in
- * `isSpineEligibleRoot`).
+ * — a variable declaration OR an enclosing mixin's params.
  *
- * A nested mixin's body may close over a name bound in an intermediate (non-root)
- * enclosing scope: a `@var` declared there, or the params of an enclosing mixin.
- * Those bindings live on a value-frame the spine only establishes when it DESCENDS
- * that scope — but an intermediate scope is not on the caller's emit path, so its
- * frame is never pushed and the read resolves against the wrong (root) frame or
- * throws. This predicate is CONSERVATIVELY SOUND: it keeps such a mixin on the eval
- * path when ANY strictly-intermediate enclosing scope binds a name (the mixin MIGHT
- * close over it), while admitting the common shapes — a namespace whose scope binds
- * nothing (`#ns { .m() {} }`), a mixin closing only over ROOT vars or its OWN params
- * — which fold byte-identical. Precision is traded for soundness: a nested mixin
- * under a name-binding scope that does NOT actually read that name is kept on eval
- * too, until #6 (intermediate-scope frame-seed) lifts the gate.
+ * This USED to gate such a tree onto the eval path (its closure over an
+ * intermediate-scope binding did not resolve on the spine). Fold #6 lifted that
+ * eligibility gate: the closure now folds byte-identical (definition-scope `.parent`
+ * wiring at pass entry + surface-frame re-parent under the sink). The predicate is
+ * RETAINED as the cheap trigger for `wireSpineDefinitionScopeParents` — the eager
+ * parent-wiring pass runs ONLY when a tree actually carries a nested mixin closing
+ * over an intermediate binding, so the common corpus shape (root-level defs,
+ * var-free namespaces) pays nothing. It is a superset (conservatively sound) of the
+ * shapes that strictly need the wiring; over-triggering only costs an extra
+ * output-invisible parent-wiring walk, never a correctness or fold-coverage change.
  *
- * A ROOT-direct-child Mixin has an empty strictly-intermediate chain, so it is
- * never gated (the common corpus shape).
+ * A ROOT-direct-child Mixin has an empty strictly-intermediate chain, so it never
+ * triggers the wiring (the common corpus shape).
  */
 function treeHasNestedMixinClosingOverVarScope(root: Rules): boolean {
   // TOP-DOWN descent over scope bodies, carrying whether any STRICTLY-intermediate
@@ -1475,6 +1468,43 @@ function scopeDeclaresAnyVariable(scope: { rules: readonly Node[] }): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Establish the `.parent` chain of every nested SCOPE in the source tree (cutover
+ * MIXIN fold #6) — the definition-scope wiring a folded nested-mixin call needs.
+ *
+ * A raw parse tree leaves `.parent` UNSET on nested nodes; the eval pass wires it
+ * via `adopt` while descending each scope. A folded call to a nested mixin resolves
+ * the mixin's definition-scope frame from `candidate.parent.getScopeFrame()`, so
+ * that link must exist even when the spine never descends the definition's scope
+ * (it emits only the caller). Recursively `adopt` each scope body's children so a
+ * nested Mixin/Ruleset's `.parent` points at its enclosing scope — the SAME links
+ * eval eventually sets (verified: eval wires `.paint.parent = .util`), reached
+ * eagerly here. Output-INVISIBLE: `.parent` affects scope resolution, not bytes.
+ *
+ * `adopt` is idempotent for an already-correctly-parented / frozen child (it skips
+ * the reparent), and its flag propagation re-folds the same structural flags the
+ * parse already bubbled — so re-running it is a no-op for flags. Only descends
+ * Rules-derived scopes (Rules/Ruleset/AtRule/Mixin); leaf children are wired but not
+ * recursed into.
+ */
+function wireSpineDefinitionScopeParents(scope: Rules): void {
+  const children = scope.rules;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (child.parent === undefined) {
+      scope.adopt(child);
+    }
+    // A Rules-derived node (Rules/Ruleset/AtRule/Mixin) is itself a scope with a
+    // `.rules` body — recurse. The `N.*` union guard does not narrow to the `Rules`
+    // base in TS, so a checked assertion is needed (same pattern as elsewhere in
+    // this module); all four types extend `Rules`, so the shape is sound.
+    if (isNode(child, N.Rules | N.Ruleset | N.AtRule | N.Mixin)) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      wireSpineDefinitionScopeParents(child as unknown as Rules);
+    }
+  }
 }
 
 /**
@@ -1636,6 +1666,21 @@ export function renderRootViaSpine(
   // frame, so the frame's declaration buckets carry source indices and a
   // re-declared / `snapshot` read resolves against the binding at its position.
   assignSpineChildIndices(root);
+  // NESTED-MIXIN DEFINITION-SCOPE WIRING (cutover MIXIN fold #6). A folded call to a
+  // NESTED mixin resolves the mixin's definition-scope frame from the candidate
+  // node's `.parent` chain (`prepareCallableCandidateState` →
+  // `definitionParent.getScopeFrame()`). On a raw PARSE tree that chain is UNSET —
+  // eval wires it via `adopt` while DESCENDING the definition's scope, but the spine
+  // never descends a scope it does not emit into (e.g. `.util` when only `.consumer`
+  // calls `.util.paint()`). So a closure over an intermediate-scope local
+  // (`.util { @local: red; .paint() { color: @local } }`) or a shadowed name would
+  // resolve against the wrong (root/caller) frame. Eagerly establish the SAME
+  // parent links eval eventually sets — an output-INVISIBLE source-tree wiring
+  // (like `assignSpineChildIndices`), matching eval's end state exactly. Gated on
+  // the nested-mixin-closure shape so a tree without one pays nothing.
+  if (treeHasNestedMixinClosingOverVarScope(root)) {
+    wireSpineDefinitionScopeParents(root);
+  }
   // Value-frame push: make the root's scope frame live for the whole descent,
   // and point the document root/tree-root at the SOURCE root (what the eval pass
   // used to establish). No eval() is called — the descent below resolves each

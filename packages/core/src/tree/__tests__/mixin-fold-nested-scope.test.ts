@@ -60,19 +60,34 @@ describe('mixin fold #1 — namespace-path + nested-mixin root/param closure', (
     expect(r.css).toBe(`.consumer {\n  color: green;\n}`);
   });
 
-  it('DEFERRED: nested mixin closing over an INTERMEDIATE-scope local var stays on eval (byte-identical)', async () => {
+  // Fold #6 (intermediate-scope closure) — these previously stayed on eval; the
+  // definition-scope `.parent` wiring at pass entry + the surface-frame re-parent
+  // now fold them byte-identical.
+  it('#6: nested mixin closing over an INTERMEDIATE-scope local var folds', async () => {
     const r = await render(`.util { @local: red; .paint() { color: @local; } }\n.consumer { .util.paint(); }`);
-    // The narrow gate keeps this off the spine (the intermediate `.util` scope
-    // declares `@local`); the eval path renders it correctly.
-    expect(r.eligible).toBe(false);
-    expect(r.spineRan).toBe(false);
+    expect(r.eligible).toBe(true);
+    expect(r.spineRan).toBe(true);
     expect(r.css).toBe(`.consumer {\n  color: red;\n}`);
   });
 
-  it('DEFERRED: var-shadowing across an intermediate scope stays on eval', async () => {
+  it('#6: var-shadowing across an intermediate scope reads the DEFINITION binding', async () => {
     const r = await render(`@c: outer;\n.box { @c: inner; .tint() { content: "@{c}"; } }\n.a { .box.tint(); }`);
-    expect(r.eligible).toBe(false);
-    expect(r.spineRan).toBe(false);
+    expect(r.eligible).toBe(true);
+    expect(r.spineRan).toBe(true);
     expect(r.css).toBe(`.a {\n  content: "inner";\n}`);
+  });
+
+  it('#6: three-level shadowing reads the innermost definition binding', async () => {
+    const r = await render(`@x: 1;\n.mid { @x: 2; .inner { @x: 3; .m() { width: @x; } } }\n.a { .mid.inner.m(); }`);
+    expect(r.eligible).toBe(true);
+    expect(r.spineRan).toBe(true);
+    expect(r.css).toBe(`.a {\n  width: 3;\n}`);
+  });
+
+  it('#6: intermediate mixin PARAM closure folds (nested body reads enclosing mixin param)', async () => {
+    const r = await render(`.outer(@v) { .inner() { color: @v; } .inner(); }\n.a { .outer(teal); }`);
+    // .outer has a nested-call body (SEQUENCE) → whole tree stays on eval, but must
+    // still render correctly; this guards that #6 wiring does not corrupt it.
+    expect(r.css).toContain('color: teal');
   });
 });
