@@ -42,7 +42,7 @@ import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
-import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends } from '../extend/spine-extend.js';
+import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector } from '../extend/spine-extend.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 
 /**
@@ -1542,7 +1542,15 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (engageExtendLayer(root) && treeHasAmpersandAppend(root)) {
     return false;
   }
-  const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root, collapse === true);
+  // SPECULATIVE-ADMIT (import-spec routing). When imports are present, run the extend-topology check in
+  // SPECULATIVE mode: a plain simple extend target that maps to no VISIBLE subject may resolve to an
+  // IMPORTED root subject the sync gather can't see, so it is provisionally admitted here. The
+  // authoritative decision is the post-wire RE-GATE in `renderRootViaSpine` (which re-runs the STRICT
+  // check over the resolved imported subjects and ABORTS to eval, byte-identical, if still unmapped).
+  // A no-import tree passes `speculativeImport: false`, so the gate is byte-and-alloc identical to today
+  // for the common case (the extra Set is never allocated).
+  const allowExtend = engageExtendLayer(root)
+    && isSpineExtendTopology(root, collapse === true, allowImport ? { speculativeImport: true } : undefined);
   return isSpineEligibleBody(root.rules, allowExtend, allowImport);
 }
 
@@ -2094,11 +2102,18 @@ function renderQueuedTopImports(context: Context, options: FinalPrintOptions): s
   return out;
 }
 
+/**
+ * Sentinel returned by `renderRootViaSpine` when the post-wire RE-GATE (import-spec routing) determines
+ * the speculatively-admitted tree is not foldable — the caller (`Rules.render`) re-renders via the eval
+ * path. Distinct object identity so it is never confused with rendered text.
+ */
+export const SPINE_ABORT_TO_EVAL = Symbol('spine-abort-to-eval');
+
 export function renderRootViaSpine(
   root: Rules,
   context: Context,
   options: FinalPrintOptions
-): MaybePromise<string> {
+): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> {
   spineRenderCounter.rootRenders++;
   // EXTEND-WORK GATE (design §4.0). Decide ONCE, here, whether this render must
   // engage the extend layer or stays a pure streaming spine. When the tree carries
@@ -2109,8 +2124,18 @@ export function renderRootViaSpine(
   // override. A NON-flat extend shape is kept OFF the spine by `isSpineEligibleRoot`
   // (`isSpineExtendTopology`), so reaching this with a non-flat shape is a fail-loud
   // invariant breach — the streaming descent cannot apply nested extends.
+  //
+  // IMPORT-SPEC: when imports are present the sync gate admits SPECULATIVELY (an imported subject is
+  // invisible to the sync topology check), so this invariant check would fire a false breach. Skip it
+  // for the import case — the post-wire RE-GATE (`wireExtends`) is the authority and aborts to eval
+  // cleanly if the resolved shape is not foldable.
   const extendEngaged = engageExtendLayer(root);
-  if (extendEngaged && !isSpineExtendTopology(root, options.collapseNesting === true)) {
+  const initialWriterMark = options.writer ? options.writer.mark() : 0;
+  // Computed ONCE and reused by the extend re-gate below (the invariant check + `wireImports`), so the
+  // import-work scan runs at most once per root render.
+  const importLayer = engageImportLayer(root);
+  if (extendEngaged && !importLayer
+    && !isSpineExtendTopology(root, options.collapseNesting === true)) {
     throw new Error(
       'spine extend: unsupported topology reached renderRootViaSpine (gate admits only the proven shapes)'
     );
@@ -2118,6 +2143,11 @@ export function renderRootViaSpine(
   // Mark the whole descent spine mode: nested containers render via the
   // structural serializer against a live frame (no eval, no output tree) and
   // leaves resolve live — see serialize-helper `spineMode` + Ruleset.render.
+  // ABORT-TO-EVAL: capture the prior `spineMode` so an abort restores it — eval's serialize gates its
+  // import-fold on `spineMode` (rules.ts), so a leaked `true` would make eval BOTH fold the import via
+  // the spine path AND emit it itself → double output. The abort must hand eval a clean state.
+  const savedSpineMode = options.spineMode;
+  const savedSpineImportPlacements = options.spineImportPlacements;
   options.spineMode = true;
   // Per-position bookkeeping: number the body children BEFORE building the scope
   // frame, so the frame's declaration buckets carry source indices and a
@@ -2211,6 +2241,68 @@ export function renderRootViaSpine(
     }
     return isThenable(step) ? step.then(finish, fail) : finish(step);
   };
+  // ABORT-TO-EVAL (import-spec routing, speculative-admit-then-abort). The sync gate speculatively
+  // admits an extend-bearing import tree; the RE-GATE below re-checks the extend topology against the
+  // RESOLVED imported subjects. If the resolved shape is NOT provably foldable, abort to eval — a CLEAN
+  // pre-first-byte fall-back: reset the context (`fail`'s restore, but return instead of throw), roll
+  // back the CSS-passthrough `topImports` the wire queued (so eval does not double-count), and signal
+  // the caller (`Rules.render`) to re-render via the eval path. No byte was written (asserted below), so
+  // the abort output equals eval's exactly. Only reachable for an import+extend tree whose re-gate fails.
+  const topImportsBaseline = context.topImports?.length ?? 0;
+  const abortToEval = (): typeof SPINE_ABORT_TO_EVAL => {
+    // No byte may have been emitted before an abort (the re-gate runs before `descend`). Fail loud if
+    // the invariant is violated — a post-emit abort could not equal eval's output.
+    if (options.writer && options.writer.mark() !== initialWriterMark) {
+      throw new Error('spine abort-to-eval: bytes were emitted before the re-gate (invariant breach)');
+    }
+    // Roll back CSS-passthrough imports the wire pass queued so the eval re-render owns them once.
+    if (context.topImports && context.topImports.length > topImportsBaseline) {
+      context.topImports.length = topImportsBaseline;
+    }
+    // Restore spine-only render state so eval's serialize does not see a leaked `spineMode` (which
+    // would make it BOTH fold the import via the spine path AND emit it → double output) or a stale
+    // placement cache. Eval re-resolves imports itself.
+    options.spineMode = savedSpineMode;
+    options.spineImportPlacements = savedSpineImportPlacements;
+    context.rulesContext = savedRulesContext;
+    context.root = savedRoot;
+    context.treeRoot = savedTreeRoot;
+    context.treeContext = savedTreeContext;
+    return SPINE_ABORT_TO_EVAL;
+  };
+  // EXTEND (P3, document-wide gather). Gather every `:extend` instruction with its extender
+  // BUCKET PATH + compose the per-subject header overrides BEFORE the body descent, so
+  // `Reaching(S)` is fully known at every subject's emit position (§4.0 → header final inline,
+  // no deferral, even for nested extenders). The override map is installed on
+  // `options.spineExtendHeaders`, which `Ruleset.effectiveHeaderSelector` consults so a subject
+  // emits its composed Or-branch header. Pure structural (selector-graph) — synchronous.
+  //
+  // RE-GATE (import-spec routing). Runs AFTER `wireSpineImports` has resolved the placements, so the
+  // imported ROOT-LEVEL subjects are now known. When the tree has imports, re-run the STRICT extend
+  // topology over the union of local + imported subjects; a failure aborts to eval. Then gather over
+  // BOTH the root body and the resolved imported bodies so an imported subject receives its header.
+  const wireExtends = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
+    if (extendEngaged) {
+      let importedBodies: Rules[] | undefined;
+      if (importLayer) {
+        const { subjects, bodies } = collectImportedRootSubjects(options);
+        if (!isSpineExtendTopology(root, options.collapseNesting === true, { importedRootSubjects: subjects })) {
+          return abortToEval();
+        }
+        importedBodies = bodies;
+      }
+      try {
+        const { headers, hoisted } = wireSpineExtends(root, context, options.collapseNesting === true, importedBodies);
+        options.spineExtendHeaders = headers;
+        // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
+        // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
+        options.spineExtendHoisted = hoisted;
+      } catch (error) {
+        return fail(error);
+      }
+    }
+    return descend();
+  };
   // IMPORTS (increment 2, document-wide scope registration). Resolve every foldable
   // StyleImport at the ROOT body ONCE, REGISTER the imported placement's scope into its
   // frame (`prepareRegistration`), and LINK that frame as a fallback of the root's live
@@ -2219,30 +2311,14 @@ export function renderRootViaSpine(
   // WITHOUT the eval fallback. The resolved placement is cached on
   // `options.spineImportPlacements` so the emit fold descends the SAME registered body
   // (resolve + register exactly once). Async (`getTree`) — rides the isThenable bail.
-  const wireImports = (): MaybePromise<string> => {
-    if (!engageImportLayer(root)) {
-      return descend();
+  // The extend RE-GATE (`wireExtends`) chains AFTER this so it sees the resolved placements.
+  const wireImports = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
+    if (!importLayer) {
+      return wireExtends();
     }
     const wired = wireSpineImports(root, context, options);
-    return isThenable(wired) ? wired.then(descend, fail) : descend();
+    return isThenable(wired) ? wired.then(wireExtends, fail) : wireExtends();
   };
-  // EXTEND (P3, document-wide gather). Gather every `:extend` instruction with its extender
-  // BUCKET PATH + compose the per-subject header overrides BEFORE the body descent, so
-  // `Reaching(S)` is fully known at every subject's emit position (§4.0 → header final inline,
-  // no deferral, even for nested extenders). The override map is installed on
-  // `options.spineExtendHeaders`, which `Ruleset.effectiveHeaderSelector` consults so a subject
-  // emits its composed Or-branch header. Pure structural (selector-graph) — synchronous.
-  if (extendEngaged) {
-    try {
-      const { headers, hoisted } = wireSpineExtends(root, context, options.collapseNesting === true);
-      options.spineExtendHeaders = headers;
-      // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
-      // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
-      options.spineExtendHoisted = hoisted;
-    } catch (error) {
-      return fail(error);
-    }
-  }
   // M8 (interpolated-selector callable). When an interpolated-selector ruleset
   // (`.@{name} {}`) is present it may be a mixin CALL target — its callable identity
   // is an eval-pass side effect (`selector.eval` → `ownSelector`) the spine otherwise
@@ -2319,6 +2395,44 @@ function wireSpineImports(
   options: FinalPrintOptions
 ): MaybePromise<void> {
   return wireSpineImportsInBody(root.rules, root.getScopeFrame(), context, options);
+}
+
+/**
+ * Collect the RESOLVED imported ROOT-LEVEL subjects for the extend RE-GATE (import-spec routing).
+ *
+ * After `wireSpineImports` has cached each foldable import's resolved placement body, an imported file's
+ * root-level ruleset (`.a` in `lib.less`) is an addressable extend SUBJECT: its Ruleset node emits during
+ * the descent (`_emitSpineImportFold` → `emitNode`), so a header override keyed on it lands. Return each
+ * such subject's flat local selector TEXT (for the re-gate's target correspondence) AND its placement
+ * `Rules` body (for `wireSpineExtends` to descend). Skips `css` (no scope), `dedupe` (no output), and
+ * `reference` (reference-mode bodies emit under different rules — gated off the spine anyway) entries.
+ *
+ * The bodies are the SAME node instances the emit fold descends, so the override attaches to the emitted
+ * ruleset. Only root-DIRECT-child rulesets are collected — a nested imported subject is not addressed by
+ * a root-level header (the same restriction the local gather's root-subject clause uses).
+ */
+function collectImportedRootSubjects(options: FinalPrintOptions): { subjects: Set<string>; bodies: Rules[] } {
+  const subjects = new Set<string>();
+  const bodies: Rules[] = [];
+  const cache = options.spineImportPlacements;
+  if (!cache) {
+    return { subjects, bodies };
+  }
+  for (const entry of cache.values()) {
+    if (entry.kind !== 'fold' || entry.dedupe || entry.reference) {
+      continue;
+    }
+    bodies.push(entry.body);
+    for (const child of entry.body.rules) {
+      if (isNode(child, N.Ruleset)) {
+        const local = flatLocalSelector(child);
+        if (local !== undefined) {
+          subjects.add(String(local.valueOf()));
+        }
+      }
+    }
+  }
+  return { subjects, bodies };
 }
 
 /**

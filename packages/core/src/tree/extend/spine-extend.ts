@@ -151,6 +151,18 @@ export interface SpineSubject {
 }
 
 /**
+ * Import-awareness for `isSpineExtendTopology` (import-spec routing). Exactly one mode is used per call:
+ *   - `speculativeImport`: SYNC gate mode — provisionally admit an extend target that maps to no VISIBLE
+ *     subject (it may be imported), deferring the authoritative decision to the post-wire re-gate.
+ *   - `importedRootSubjects`: RE-GATE mode — the resolved imported root-level subject selector texts,
+ *     folded into the root-subject correspondence; the check is then STRICT (abort if still unmapped).
+ */
+export interface SpineExtendImportOptions {
+  speculativeImport?: boolean;
+  importedRootSubjects?: Set<string>;
+}
+
+/**
  * Compose each ROOT-LEVEL subject's FINAL Or-branch header from its bucket path + the
  * document-wide gathered `instructions` (each carrying its extender's bucket path). Runs the
  * validated pipeline per subject (`runSubjectProjection`: SOLVE fixpoint decides which
@@ -785,11 +797,29 @@ function valueOfSelectorLike(sel: SelectorLike): string {
  * can't see could match) or the target is interpolated (an eval-path resolution). Anything outside
  * this set routes to eval, byte-identical.
  */
-export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): boolean {
+export function isSpineExtendTopology(
+  root: Rules,
+  collapseNesting: boolean,
+  importOpts?: SpineExtendImportOptions
+): boolean {
   // A tree with IMPORTS can introduce subjects (and extend targets) the static gather never sees, so
   // the structural inert-nomatch + pseudo-base admissions below are unsound (a target that matches no
   // VISIBLE subject may match an IMPORTED one at eval time). Disable both when any import is present.
   // (The other admit clauses only rewrite statically-visible root/nested subjects, so they stay sound.)
+  //
+  // SPECULATIVE-ADMIT / RE-GATE (import-spec routing). `isSpineEligibleRoot` runs this SYNCHRONOUSLY,
+  // before any async import resolution — so an extend TARGET that lives in an imported file is invisible
+  // here. Two modes close that gap:
+  //   - `speculativeImport` (sync gate): a plain simple target that maps to no VISIBLE subject is
+  //     PROVISIONALLY admitted (so the extend-bearing import tree reaches `renderRootViaSpine`), where a
+  //     post-wire RE-GATE re-runs this check over the RESOLVED imported subjects. The re-gate is the
+  //     authority; a provisional admit that the re-gate rejects ABORTS to eval (byte-identical).
+  //   - `importedRootSubjects` (re-gate): the resolved imported ROOT-LEVEL subject selectors, folded
+  //     into the root-subject correspondence so `.x:extend(.a)` (with `.a` in an imported file) is
+  //     addressable. When this is provided the check is STRICT (no speculation) — the caller has the
+  //     resolved bodies, so any target that still maps to nothing is a genuine non-fold → abort.
+  const speculativeImport = importOpts?.speculativeImport === true;
+  const importedRootSubjects = importOpts?.importedRootSubjects;
   const treeHasImport = ((): boolean => {
     for (const node of root.walk(true)) {
       if (node.type === 'StyleImport') {
@@ -960,7 +990,14 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
   //    crossing/hoist case) — admitted; the hoist path rewrites it verbatim at collapsed-root.
   // A target that is itself an extender's subject is CHAINING (deferred).
   for (const target of targets) {
-    const isRootTarget = rootLevelSelectors.has(target) && !anyNestedRulesetMatchesSelector(root, target);
+    // A target maps to a ROOT-LEVEL subject either LOCALLY (visible in this file) or, when the re-gate
+    // supplies them, in an IMPORTED file's root body. An imported subject is addressed the SAME way — its
+    // Ruleset node receives a header override at emit (`_emitSpineImportFold` descends it through
+    // `effectiveHeaderSelector`) — so it needs no `anyNestedRulesetMatchesSelector` shadowing check
+    // (imported subjects are, by construction, root-level in their own file).
+    const isImportedRootTarget = importedRootSubjects?.has(target) === true;
+    const isRootTarget = (rootLevelSelectors.has(target) && !anyNestedRulesetMatchesSelector(root, target))
+      || isImportedRootTarget;
     // A crossing/hoist target (`.header .header-nav`) resolves to a NESTED subject's composed path.
     // Admitted in BOTH modes (#4a): under `collapseNesting:true` the nested block already emits at
     // ROOT (verbatim-override precondition holds trivially); under `collapseNesting:false` the
@@ -1066,6 +1103,16 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     if (!isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
       && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget
       && !isCombinatorSubjectTarget && !isPartialWrapOfDescendantLevel && !isInertNomatch) {
+      // SPECULATIVE ADMIT (sync gate, imports present). A plain SIMPLE target (single compound, no
+      // combinator/descendant/list) that maps to no VISIBLE subject may resolve to an IMPORTED root
+      // subject the sync gather can't see. Provisionally admit it so the tree reaches the post-wire
+      // re-gate (which re-runs this STRICT, with `importedRootSubjects` populated, and aborts to eval
+      // if the resolved shape still maps to nothing). A NON-simple target (descendant/combinator/list/
+      // pseudo) is NOT speculatively admitted — those shapes stay eval-owned exactly as today.
+      if (speculativeImport && treeHasImport && !/[>+~ ,]/.test(target)
+        && descendantCompoundTokens(target)?.length === 1) {
+        continue;
+      }
       return false; // target maps to no addressable subject (root selector or crossing nested path)
     }
     if (extenderSelectors.has(target)) {
@@ -1141,7 +1188,12 @@ function anyNestedRulesetMatchesSelector(root: Rules, selector: string): boolean
  *
  * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.0 §4.2 §4.3 §4.4.2
  */
-export function wireSpineExtends(root: Rules, context: Context, collapseNesting: boolean): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
+export function wireSpineExtends(
+  root: Rules,
+  context: Context,
+  collapseNesting: boolean,
+  importedBodies?: readonly Rules[]
+): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
   const subjects: SpineSubject[] = [];
   const instructions: PipelineInstruction[] = [];
   const frameBaseline = context.rulesetFrames.length;
@@ -1339,6 +1391,17 @@ export function wireSpineExtends(root: Rules, context: Context, collapseNesting:
   };
 
   descendChildren(root.rules, []);
+  // EXTEND-THROUGH-IMPORT (import-spec routing). Gather subjects from RESOLVED imported bodies too, so an
+  // imported ROOT-LEVEL subject (`.a` in `lib.less`) becomes an addressable subject: its Ruleset node
+  // gets a header override, applied when `_emitSpineImportFold` descends the placement body through
+  // `effectiveHeaderSelector`. Extenders in the imported body are gathered the same way (an imported
+  // `:extend` contributes its instruction). The resolved bodies are the SAME node instances the emit
+  // fold descends (cached in `spineImportPlacements`), so the override lands on the emitted ruleset.
+  if (importedBodies) {
+    for (const body of importedBodies) {
+      descendChildren(body.rules, []);
+    }
+  }
   context.rulesetFrames.length = frameBaseline; // restore (belt-and-suspenders)
   return composeSpineSubjectHeaders(subjects, instructions, collapseNesting);
 }

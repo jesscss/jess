@@ -34,7 +34,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -4939,13 +4939,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // not entered for it. (`preSerializeRoot` is a post-eval visitor hook — a
     // spine-eligible leaf-only root has no such consumer here; P2 folds the
     // visitor hook into the pass generically.)
-    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
-      const prepared = prepareRenderPrintState(context, printOptions);
-      const rendered = renderRootViaSpine(this, context, prepared);
-      return isRenderBuffer(bufferOrOptions)
-        ? writeRenderTextResult(bufferOrOptions, rendered)
-        : rendered;
-    }
     const serialize = (state: RulesRenderState): MaybePromise<string> => {
       checkValidNodes(state.output?.rules, context, sourceWasRoot);
       return isRenderBuffer(bufferOrOptions)
@@ -4961,8 +4954,30 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         serialize(replaced ? { ...state, output: replaced } : state);
       return isThenable(hooked) ? hooked.then(applyHook) : applyHook(hooked);
     };
-    const value = this.evalForRender(context, sourceWasRoot);
-    return isThenable(value) ? value.then(afterEval) : afterEval(value);
+    // The eval render path — reached directly when the root is not spine-eligible, OR as the
+    // ABORT-TO-EVAL fall-back when the spine's post-wire re-gate rejects a speculatively-admitted
+    // import+extend tree (import-spec routing). The abort has already reset the render context, so this
+    // re-render produces exactly the byte-identical eval output.
+    const evalPath = (): MaybePromise<string> => {
+      const value = this.evalForRender(context, sourceWasRoot);
+      return isThenable(value) ? value.then(afterEval) : afterEval(value);
+    };
+    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
+      const prepared = prepareRenderPrintState(context, printOptions);
+      const rendered = renderRootViaSpine(this, context, prepared);
+      // A spine render may ABORT to eval (a resolved sentinel, sync or via the async import chain). On
+      // abort, `evalPath()` owns the WHOLE render including the buffer write (its `serialize` branches
+      // on `isRenderBuffer`), so it must NOT be re-wrapped in `writeRenderTextResult` — that would write
+      // the eval output into the buffer a SECOND time (double-emit). Only genuine spine TEXT is wrapped.
+      const finishSpine = (result: string | typeof SPINE_ABORT_TO_EVAL): MaybePromise<string> => {
+        if (result === SPINE_ABORT_TO_EVAL) {
+          return evalPath();
+        }
+        return isRenderBuffer(bufferOrOptions) ? writeRenderTextResult(bufferOrOptions, result) : result;
+      };
+      return isThenable(rendered) ? rendered.then(finishSpine) : finishSpine(rendered);
+    }
+    return evalPath();
   }
 
   /** All rules, with nested rules flattened */
