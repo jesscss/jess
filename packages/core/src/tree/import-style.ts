@@ -922,18 +922,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     const io = this.options.importOptions;
     if (io) {
-      // `multiple`/`once:false` (increment 4) and `reference` (increment 5) are NOW
-      // foldable: `reference` descends the imported body with output SUPPRESSED
-      // (`referenceMode`) while registration (scope) + extend-reachability still run.
-      // Still deferred (each a REQUIRED P4 item): inline, optional, mutable
-      // (protected/extend-reach), forward, postlude/with.
+      // Foldable so far: `multiple`/`once:false` (inc 4), `reference` (inc 5),
+      // `optional` + `postlude` (inc 6 — a missing `optional` import folds to empty;
+      // a `postlude` wraps the folded body in `@media`/`@supports`/`@layer`). Still
+      // deferred (each a REQUIRED P4 item): `inline` (raw-text emission, no descent —
+      // a distinct mechanism), `mutable` (protected/extend-reach), `forward`, `with`.
       if (
         io.inline === true
-        || io.optional === true
         || io.mutable === true
         || io.mutable === false
         || io.forward === true
-        || io.postlude !== undefined
       ) {
         return false;
       }
@@ -1002,24 +1000,37 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const multiple = io.multiple === true || io.once === false;
     // `(reference)` suppresses OUTPUT (scope + extend still run) — increment 5.
     const reference = io.reference === true;
+    // An empty-surface resolution (unsupported/optional-missing) — no output, no scope.
+    const emptyFold = (resolvedPath: string | undefined): SpineImportResolution => ({
+      kind: 'fold',
+      body: this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true }),
+      resolvedPath,
+      multiple,
+      reference
+    });
     try {
-      const loaded = await context.getTree(finalPath, io);
+      let loaded: Awaited<ReturnType<Context['getTree']>>;
+      try {
+        loaded = await context.getTree(finalPath, io);
+      } catch (error) {
+        // `(optional)` swallows a resolution/parse failure and folds to empty
+        // (increment 6, mirrors `evalNode`'s optional catch). A non-optional failure
+        // propagates unchanged.
+        if (io.optional === true) {
+          return emptyFold(undefined);
+        }
+        throw error;
+      }
       if (!loaded.node) {
         // Nothing to emit (unsupported/empty) — mirror the eval path's empty surface.
-        return {
-          kind: 'fold',
-          body: this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true }),
-          resolvedPath: loaded.resolvedPath,
-          multiple,
-          reference
-        };
+        return emptyFold(loaded.resolvedPath);
       }
       const importSite = this.getImportAnchorRules(context);
       // Build the import-site placement over the parsed (un-evaled) imported body:
       // shares the canonical children, frame parent = the import site so a free var
       // resolves up the import chain (reuses `materializeImportPlacementState`'s
       // wiring). The spine descends these children resolving each leaf live.
-      const placement = this.materializeImportPlacementState(
+      let placement = this.materializeImportPlacementState(
         this.createFirstUseImportPlacementState(loaded.node),
         importSite
       );
@@ -1028,6 +1039,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (reference) {
         placement.options.referenceMode = true;
         placement._hasReferenceImports = true;
+      }
+      // A POSTLUDE (`@import "x" (min-width: …)` / `layer(…)` / `supports(…)`) wraps
+      // the folded body in the corresponding at-rule surface(s) — increment 6, reuses
+      // the eval path's `wrapRulesWithPostlude`. The wrapper is a plain at-rule the
+      // spine descends normally (its own hoist/compose). The wrap is applied AFTER
+      // reference marking so a `(reference)` postlude import stays suppressed.
+      if (io.postlude !== undefined) {
+        placement = this.wrapRulesWithPostlude(placement, io.postlude);
       }
       // `resolvedPath` is the dedup key (increment 4): the wire pass emits the
       // FIRST occurrence and scope-onlys the rest of the same path (under `once`).

@@ -903,4 +903,78 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(result.css).toBe('.card {\n  width: 5px;\n}\n'); // `.dead` suppressed, `@v` resolved
     fs.rmSync(dir, { recursive: true, force: true });
   });
+
+  // ── IMPORTS increment 6: `optional` + `postlude` ───────────────────────────
+
+  it('IMPORTS increment 6: a MISSING `(optional)` import folds to nothing (no error), siblings emit (no derive)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-opt-'));
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import (optional) "nope.less";\n.a { color: red; }\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(result.css).toBe('.a {\n  color: red;\n}\n'); // missing optional import silently skipped
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 6: a PRESENT `(optional)` import folds normally', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-optp-'));
+    fs.writeFileSync(path.join(dir, 'ok.less'), '.b { color: blue; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import (optional) "ok.less";\n');
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(result.css).toBe('.b {\n  color: blue;\n}\n');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORTS increment 6: a `postlude` wraps the folded body in `@media` (no derive)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-post-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '.a { color: red; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "lib.less" (min-width: 600px);\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(result.css).toBe('@media (min-width: 600px) {\n  .a {\n    color: red;\n  }\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 6: `(inline)` STAYS on eval (raw-text emission — a distinct mechanism, deferred)', async () => {
+    // `(inline)` emits the imported file's RAW source text verbatim (no parse, no
+    // scope, no descent) — a fundamentally different mechanism from the fold. Kept on
+    // the eval path (byte-identical). DEFERRED (a REQUIRED P4 item).
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-inline-'));
+    fs.writeFileSync(path.join(dir, 'x.css'), '.raw { color: RED; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import (inline) "x.css";\n');
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (inline deferred)
+    expect(result.css).toBe('.raw { color: RED; }\n'); // raw text verbatim
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });
