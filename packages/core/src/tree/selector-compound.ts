@@ -76,7 +76,6 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.value = value;
   }
 

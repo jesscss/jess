@@ -9,6 +9,16 @@ Grounded in `origin/dev` (`e9f018a5a`). Line numbers are from
 `packages/core/src/tree/{rules,ruleset,node-base}.ts` at that commit. Getters/setters
 live on the prototype and cost NO instance slot — only **stored fields** count.
 
+> **Update (cutover-p1, `work/cutover-p1`):** The R0 (`pendingExtends` delete) and
+> R1/R2 (`lookupVersion`/`varsByName` → `_lookup`) folds described below have all
+> LANDED — `Rules` reached the irreducible floor of **4** (`rules`, `_lookup`,
+> `rulesFlags`, `_scopeFrame`). The cutover-p1 node field-reduction pass then moved
+> `_treeContext` off base `Node` onto `Rules` (the ~39k non-Rules nodes resolve
+> context via `sourceRoot?._treeContext`, so it belongs on the only sourceRoot-bearing
+> class). That makes `Rules` **5** class-unique stored fields — AT budget — while
+> dropping a field from every non-Rules node. `_treeContext` is dropped in
+> `Rules.toJSON` alongside `_scopeFrame`.
+
 ---
 
 ## Executive summary

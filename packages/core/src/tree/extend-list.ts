@@ -27,7 +27,6 @@ export class ExtendList extends Node<Extend[], NodeOptions> {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
     this.removeFlag(F_VISIBLE);
     this.addFlag(F_ALLOW_ROOT);
   }

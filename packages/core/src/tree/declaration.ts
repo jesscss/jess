@@ -658,7 +658,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     this.name = value.name;
     this.value = value.value;
     this.important = value.important;
-    this._treeContext = treeContext;
     // Declarations (and Custom/VarDeclaration subclasses) are valid statements.
     this.addFlag(F_ALLOW_ROOT);
     // A merge declaration (`+:` / `&,:` / `&_:` or normalized-from-assign) needs
@@ -829,14 +828,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const Ctor = this.constructor as unknown as new (
       value: DeclarationValue,
       options?: Opts,
-      location?: LocationInfo,
-      treeContext?: Context['treeContext']
+      location?: LocationInfo
     ) => this;
     const node = new Ctor(
       value,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this._treeContext
+      sourceSpanOf(this)
     );
     return this.applyDerivedMetadata(node);
   }

@@ -25,7 +25,6 @@ export class Url extends Node<string | Node> {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
   }
 
   private withValue(value: string | Node): Url {

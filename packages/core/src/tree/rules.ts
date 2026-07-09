@@ -1001,6 +1001,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   readonly rules: Node[];
 
+  /**
+   * The per-source-tree context (file, options, source-map state). A Rules-only
+   * field: every node's authoritative context resolves via
+   * `sourceRoot?._treeContext`, and only Rules nodes are a `sourceRoot`, so the
+   * ~39k non-Rules nodes no longer carry this slot. Set in the ctor and
+   * maintained by `inherit`/`detachTrivia` (both Rules-guarded on the base).
+   */
+  _treeContext: TreeContext | undefined;
+
   /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
   get varsByName(): Map<string, BindingEntry[]> | undefined {
     return this._lookup?.varsByName;
@@ -1329,6 +1338,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // lookup caches hold resolved callables/frames that can also retain
     // back-refs; they are derived, non-tree data, so drop them too.
     const json = super.toJSON();
+    // `_treeContext` (context → sourceTrees → nodes) is a Rules-only back-ref;
+    // drop it here to keep `JSON.stringify` cycle-safe.
+    delete json._treeContext;
     delete json._scopeFrame;
     // The cold lookup fields now live on `_lookup` (a nested struct). Drop the raw
     // struct and re-emit only the non-cyclic, non-cache subset at top level so the

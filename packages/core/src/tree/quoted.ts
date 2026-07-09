@@ -70,7 +70,6 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
     this.quote = options?.quote;
     this.escaped = !!options?.escaped;
     if (typeof value === 'string' && !this.escaped) {

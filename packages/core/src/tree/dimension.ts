@@ -68,7 +68,6 @@ export class Dimension extends Node<DimensionValue> {
     // Invariant 7: each node owns its own fields. `number`/`unit` are plain
     // scalars (not Node children), so `childKeys = null` and Dimension carries
     // no `value` — clone() below rebuilds the {number,unit} record directly.
-    this._treeContext = treeContext;
     this.number = value.number;
     this.unit = value.unit;
     this.addFlag(F_STATIC);
@@ -82,8 +81,7 @@ export class Dimension extends Node<DimensionValue> {
     const newNode = new Dimension(
       { number: this.number, unit: this.unit },
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this._treeContext
+      sourceSpanOf(this)
     );
     newNode.inherit(this);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

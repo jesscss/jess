@@ -51,7 +51,6 @@ export class Func extends Node<FuncValue, FuncOptions> {
     this.name = value.name;
     this.params = value.params;
     this.body = value.body;
-    this._treeContext = treeContext;
     // Like mixins/functions in source languages: not emitted directly.
     this.removeFlag(F_VISIBLE);
   }

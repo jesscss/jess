@@ -27,7 +27,6 @@ export class SelectorCapture extends Node<Selector> {
 
   constructor(value: Selector, options?: undefined, location?: LocationInfo, treeContext?: Context['treeContext']) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.selector = value;
   }
 

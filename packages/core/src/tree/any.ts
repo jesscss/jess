@@ -62,7 +62,6 @@ export class Any<
     super(value, options, location);
     // Each node owns its field values (invariant 7): the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
     // Less's `Anonymous` (this node's namesake) is statement-legal by type

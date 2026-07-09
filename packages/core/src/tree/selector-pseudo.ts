@@ -122,7 +122,6 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.name = value.name;
     this.arg = value.arg;
     if (value.generatedPseudoPlacementOverride !== undefined) {
@@ -276,8 +275,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
       },
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this._treeContext
+      sourceSpanOf(this)
     ).inherit(this) as this;
     cloned.keySetLibrary = this.keySetLibrary;
     return cloned;

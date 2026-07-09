@@ -289,7 +289,6 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     // `0` is a legacy no-op location sentinel; convert to undefined for base class.
     // The Selector base stores `this.value = value`; we only add treeContext.
     super(value, options, location === 0 ? undefined : location);
-    this._treeContext = treeContext;
   }
 }
 

@@ -39,13 +39,6 @@ describe('PseudoSelector', () => {
     expect(pseudo({ name: ':hover' }).toTrimmedString()).toBe(':hover');
   });
 
-  it('preserves parser tree context on construction', () => {
-    const treeContext = new TreeContext();
-    const node = pseudo({ name: ':hover' }, undefined, undefined, treeContext);
-
-    expect(node._treeContext).toBe(treeContext);
-  });
-
   it('renders compound selector arguments without sequence spacing', () => {
     expect(pseudo({
       name: ':host',

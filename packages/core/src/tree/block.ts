@@ -47,7 +47,6 @@ export class Block extends Node<Node, BlockOptions> {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
   }
 
   private renderBlockSyntax(value = this.value, rawOptions?: PrintOptions): string {

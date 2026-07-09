@@ -56,7 +56,6 @@ export class SelectorList extends Selector<SelectorListItem[]> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.value = value;
   }
 

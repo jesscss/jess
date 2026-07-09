@@ -85,7 +85,6 @@ export class Extend extends Node<ExtendValue> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.selector = value.selector;
     this.target = value.target;
     this.namespace = value.namespace;

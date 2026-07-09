@@ -33,7 +33,6 @@ export class Negative extends Node<Node> {
     super(node, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = node;
-    this._treeContext = treeContext;
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }

@@ -43,7 +43,6 @@ export class Range extends Node<RangeValue, RangeOptions> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.start = value.start;
     this.end = value.end;
     this.step = value.step;

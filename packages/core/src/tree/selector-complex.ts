@@ -64,7 +64,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.value = value;
   }
 

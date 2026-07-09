@@ -3698,7 +3698,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       value = { key: value };
     }
     super(value, options, location);
-    this._treeContext = treeContext;
     this.key = value.key;
     if (value.target !== undefined) {
       (this as { target?: ReferenceValue['target'] }).target = value.target;

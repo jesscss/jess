@@ -493,7 +493,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       }
     }
     this.appendValue = finalValue.appendValue;
-    this._treeContext = treeContext;
 
     // Set the F_AMPERSAND flag so it bubbles up to parent value
     this.addFlag(F_AMPERSAND);

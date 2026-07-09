@@ -49,10 +49,8 @@ function hasNonWhitespaceTrivia(run: ReturnType<NonNullable<PrintOptions['trivia
 }
 
 function sequenceNodeTrivia(node: Node): PrintOptions['trivia'] | undefined {
-  const sourceTrivia = node.sourceRoot?._treeContext?.opts?.trivia;
-  return sourceTrivia && sourceTrivia !== true
-    ? sourceTrivia
-    : node._treeContext?.opts?.trivia;
+  // Context resolves via the node's sourceRoot (`_treeContext` is Rules-only).
+  return node.sourceRoot?._treeContext?.opts?.trivia;
 }
 
 function emitRenderedSequenceNodeMaybe(

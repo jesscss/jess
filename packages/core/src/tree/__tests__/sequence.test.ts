@@ -730,7 +730,11 @@ describe('Sequence', () => {
       return '';
     };
 
-    expect(seq([first, second]).toTrimmedString({ trivia })).toBe('10  20');
+    // The source-boundary trivia guard resolves each node's tree context via its
+    // sourceRoot, so the sequence must be parented under the source-tree Rules.
+    const rule = seq([first, second]);
+    rules([rule], undefined, undefined, treeContext);
+    expect(rule.toTrimmedString({ trivia })).toBe('10  20');
     expect(stringCalls).toBe(0);
   });
 

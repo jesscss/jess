@@ -118,7 +118,6 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     super(node, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = node;
-    this._treeContext = treeContext;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }

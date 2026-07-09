@@ -1558,7 +1558,6 @@ export class Call extends Node<CallValue, CallOptions> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;

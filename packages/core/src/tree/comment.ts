@@ -26,7 +26,6 @@ export class Comment extends Node<string, CommentOptions> {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
     this.lineComment = options?.lineComment === true || value.startsWith('//');
     this.addFlag(F_STATIC);
     this.addFlag(F_ALLOW_ROOT);

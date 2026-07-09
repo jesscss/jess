@@ -50,7 +50,6 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     this.name = value.name;
     this.prelude = value.prelude;
-    this._treeContext = treeContext;
     this.addFlag(F_ALLOW_ROOT);
   }
 
@@ -67,8 +66,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
         prelude
       },
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this._treeContext
+      sourceSpanOf(this)
     ).inherit(this) as this;
   }
 
@@ -97,8 +95,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
           ...(prelude !== undefined && { prelude })
         },
         this._options ? { ...this._options } : undefined,
-        sourceSpanOf(this),
-        this._treeContext
+        sourceSpanOf(this)
       ).inherit(this);
     };
     // Interpolated names resolve to a plain string; the stored name stays string | Interpolated.

@@ -190,7 +190,6 @@ export class Interpolated<
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.source = value.source;
     this.replacements = value.replacements;
     this.role = options?.role as Role | undefined;
