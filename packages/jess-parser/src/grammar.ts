@@ -291,18 +291,16 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
 
   // ── `$extend` statement ──────────────────────────────────────────────────────
   // `$extend <target> [!exact];` — a statement (NOT Less's `:extend()` pseudo).
-  // The target is a selector run: `.box`, a comma list `.a, .b`, or a namespaced
-  // `ns|.sel`. Jess/Sass default is a partial (`All`) match; `!exact` flips it to
-  // Less's exact match. Builds a core `Extend{ target, flag }` — which already
-  // serializes back with the `$extend` sigil. Extending a CAPTURED selector
-  // (`$extend $type;`, where `$type: $*[.sel]`) waits on `$*[…]` (see NOTES).
+  // The target is a selector (complex/compound/simple — incl. `&`, `$[…]` interp,
+  // and namespaced `ns|.sel`) or a variable reference (`$type`). Jess/Sass default
+  // is a partial (`All`) match; `!exact` flips it to Less's exact match. Builds a
+  // core `Extend{ target, flag }` — which serializes back with the `$extend` sigil.
+  // NOTE: a `*[…]` capture is NOT an extend target — the target position already
+  // accepts a selector directly; `*[…]` (SelectorCapture) is value-position only.
   const extendNs = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\|/);
   const extendTargetPart = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
-  // Target: a capture `*[.sel]`, a variable `$type` holding a capture, or a literal
-  // selector run (`.box` / `ns|.sel`). Capture/Reference tried first so they claim
-  // the run before the plain-selector fallback.
+  // Reference (`$type`) tried first so a `$…` is claimed before the selector fallback.
   const extendTarget = choice(
-    g.SelectorCapture,
     g.Reference,
     parser({ trivia: rw }, sequence(optional(extendNs), oneOrMore(extendTargetPart)))
   );
@@ -316,8 +314,9 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
 
   // ── Selector capture `*[…]` ──────────────────────────────────────────────────
   // `*[.notice]` / `*[.a, .b]` — a selector-VALUED payload (core `SelectorCapture`,
-  // which serializes back as `*[…]`, NO `$` sigil; adjudicated). Appears in value
-  // position (`$type: *[.notice];`) and as an `$extend` target (`$extend *[.sel];`).
+  // which serializes back as `*[…]`, NO `$` sigil; adjudicated). Appears in VALUE
+  // position only (`$type: *[.notice];`) — NOT an `$extend` target (that position
+  // takes a selector directly: `$extend .notice`).
   // The inner is a selector list; the builder coerces the (possibly string) inner
   // selector to a proper Selector node so writeSyntax/eval have a real node.
   const SelectorCapture = node(
