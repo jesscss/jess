@@ -719,6 +719,51 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(css).toContain('color: red');
   });
 
+  it('FOLD A (P4 terminal/sink): folds a LONE ruleset-as-mixin — body at the call site + standalone', async () => {
+    // `.foo { color: red }` called as `.foo()` (a `mixin-ruleset` dot-call matching a
+    // same-named RULESET, no mixin of that name). FOLD A routes the Ruleset candidate
+    // through `context.spineMixinSurfaceSink` in the special-case terminal, so its body
+    // FOLDS at the call site (`.a { color: red }`) AND the ruleset ALSO streams
+    // standalone (`.foo { color: red }`) — byte-identical to the eval path, no output
+    // tree. Before FOLD A this shape hit the `!candidateIsMixin` sink reject → eval
+    // fallback (byte-identical but on eval).
+    const root = rules([
+      ruleset({
+        selector: sel([el('.foo')]),
+        rules: [decl({ name: 'color', value: spaced([el('red')]) })]
+      }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [call({ name: ref({ key: '.foo' }, { type: 'mixin-ruleset' }) })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await root.render(context);
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      // standalone ruleset
+      expect(css).toContain('.foo');
+      // body folded at the call site
+      expect(css).toContain('.a');
+      // color: red appears TWICE (standalone + folded)
+      expect(css.match(/color: red/g)?.length).toBe(2);
+      // no raw call syntax
+      expect(css).not.toContain('.foo(');
+      // no output tree
+      expect(deriveCalls).toBe(0);
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
   it('INCREMENT 2: folds a VAR-READING mixin body (frame-threaded descent — resolves the definition scope)', async () => {
     // The body reads a variable bound in the DEFINITION scope (root). Increment 2
     // descends the bound surface under its own value-frame, so `@c` resolves to

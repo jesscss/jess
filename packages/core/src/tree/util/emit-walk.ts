@@ -356,7 +356,7 @@ export function resolveSpineMixinCall(
   call: Node,
   context: Context
 ): MaybePromise<SpineMixinCallResolution> {
-  const captured: Array<{ surface: Rules; source: Rules }> = [];
+  const captured: Array<{ surface: Rules; source: Rules; isMixin: boolean }> = [];
   let anyRejected = false;
   const savedSink = context.spineMixinSurfaceSink;
   context.spineMixinSurfaceSink = (
@@ -364,12 +364,16 @@ export function resolveSpineMixinCall(
     sourceRules: Rules,
     candidateIsMixin: boolean
   ): boolean => {
-    // Fold ONLY a spine-simple Mixin-DEFINITION body. A ruleset-as-mixin
-    // (`!candidateIsMixin` — the `mixin-ruleset` dot-call matching a same-named
-    // ruleset) needs different placement (the ruleset ALSO emits standalone) and a
-    // non-simple body both DEFER: reject → the terminal eval-materializes that
-    // candidate, and `anyRejected` routes the whole call to the eval fallback.
-    if (!candidateIsMixin || !isSpineSimpleMixinSurface(boundSurface)) {
+    // Fold a spine-simple candidate — BOTH a Mixin-DEFINITION body (emits ONLY at
+    // the call site) AND a ruleset-as-mixin (`!candidateIsMixin` — the `.foo()`
+    // dot-call matching a same-named `.foo {}` ruleset; its body folds at the call
+    // site AND the ruleset ALSO streams standalone at its own source position, left
+    // in place by the descent). A NON-simple body DEFERS: reject → the terminal
+    // eval-materializes that candidate and `anyRejected` routes the whole call to the
+    // eval fallback. FOLD A (P4 terminal/sink): the ruleset arm now routes through the
+    // sink too (`callable-special-case.ts`), so `!candidateIsMixin` is captured (with
+    // the `isMixin` tag for `finish`), NOT rejected — this fixes mixin #3/#5.
+    if (!isSpineSimpleMixinSurface(boundSurface)) {
       anyRejected = true;
       return false;
     }
@@ -382,19 +386,21 @@ export function resolveSpineMixinCall(
     // below — when a call matches MULTIPLE candidates (a guarded + unguarded
     // overload of the same name), their contributions must emit in source order,
     // NOT candidate-loop order (which `hasDefault`/guard sorting may reorder).
-    captured.push({ surface: boundSurface, source: sourceRules });
+    captured.push({ surface: boundSurface, source: sourceRules, isMixin: candidateIsMixin });
     return true;
   };
   const restore = <T>(value: T): T => {
     context.spineMixinSurfaceSink = savedSink;
     return value;
   };
-  // FOLD only when EVERY guard-passed candidate was captured by the sink (none
-  // rejected) AND at least one surface was captured. If `captured` is empty the
-  // call resolved entirely via paths the sink never saw (e.g. a ruleset-as-mixin
-  // handled by the special-case terminal) — use the eval output. `anyRejected`
-  // likewise routes to eval. Either way the `call.eval()` return carries the
-  // correct eval-path output for the fallback.
+  // FOLD only when EVERY matched candidate was captured by the sink (none rejected)
+  // AND at least one surface was captured. Since FOLD A both the Mixin-definition and
+  // the (unguarded) ruleset-as-mixin arms route through the sink, a captured set may
+  // mix both kinds — the document-order sort below assembles their call-site
+  // contributions exactly as the eval path's `compareCallableOutputPosition`. If
+  // `captured` is empty the call resolved entirely via paths the sink never saw (e.g.
+  // a GUARDED ruleset-as-mixin still handled by the special-case eval arm) — use the
+  // eval output; `anyRejected` (a non-simple body) likewise routes to eval.
   const finish = (output: Node): SpineMixinCallResolution => {
     if (anyRejected || captured.length === 0) {
       return { kind: 'eval', output };

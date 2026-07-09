@@ -231,6 +231,21 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       append semantics (set confluent + target-first + feed-order siblings). Byte-neutral on the 90 (every
       fixture authors target-first, where sort and append coincided — which is why the bug hid).
 
+- [ ] **EXTEND #4a — expanded-mode crossing/hoist block-relocation (SEQUENCED-OUT of the P4 terminal/sink
+      rework; separate extend-EMIT batch).** Under `collapseNesting:false`, a crossing/hoist target
+      (`.header .header-nav`, a nested subject's composed path) is gated to eval (`spine-extend.ts:750-751`):
+      the hoist verbatim-override precondition is that the nested block already emits at ROOT, true only
+      under collapse. Expanded mode keeps the block nested → hoist needs BLOCK RELOCATION (deferred). This is
+      the extend EMIT pipeline (`tree/extend/`, `print.ts:97`, `ruleset.ts:1480/1700`), NOT the callable
+      terminal/sink — shares no data structure with `spineMixinSurfaceSink`; assessed separable in
+      `P4-TERMINAL-SINK-DESIGN.md` §4. SPEC: when SOLVE rewrites a nested subject whose target is a
+      crossing/composed path under expanded mode, emit the nested subject's block BOTH in place (its own
+      nested header) AND hoisted-at-root under the extender's composed header — the expanded-mode analogue of
+      the collapse-mode verbatim override; coupling is EMIT-ordering only (hoist after the nested header
+      composes), bounded by the crossing-target count. Ratchet-locked on eval today
+      (`spine-wire-selector-shapes.test.ts` #2 expanded-mode nested in-place); byte-correct there. REQUIRED
+      P4 item (no permanent fallback) — dispatched separately by the orchestrator.
+
 ### P4 — delete the dead machinery (§7 + flag-walk C4)  ·  depends on P2+P3  ·  FAN-OUT across sites
 - [ ] Delete eval→output-tree staging + reuse gates + clone families + container static short-circuits.
 - [ ] Delete `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`F_CHILD_DERIVED` + `propagateFlagsFrom` (the /goal endpoint).
