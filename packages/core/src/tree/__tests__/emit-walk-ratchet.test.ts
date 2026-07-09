@@ -1177,6 +1177,42 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(isSpineEligibleRoot(root, context)).toBe(false);
   });
 
+  it('EXCLUDES merge-across-mixin: a merge decl arriving through a CALL (not the caller body) — deferred, spine==eval', async () => {
+    // `.r { .a(); .b(); }` where each mixin body carries a `transform+:` (`+,:` raw)
+    // merge decl. The merge coalesces contributions across the SPLICED expansion, but
+    // the fold splices AFTER `planBodyMerges` runs — so on the spine the shape used to
+    // mis-fold to malformed, UNMERGED bytes (a dropped `.r {` header + two raw
+    // `transform:` decls). `treeHasMergeContributingMixinCall` now gates it to eval.
+    const source = '.a(){transform+: rotate(90deg);}\n.b(){transform+: scale(2);}\n.r{ .a(); .b(); }';
+    const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root = new Parser().parse(source).tree as unknown as Rules;
+    // DEFERRED: the tree carries a merge-contributing mixin call → off the spine.
+    expect(isSpineEligibleRoot(root, context)).toBe(false);
+
+    // Byte-identity: rendering (which routes to eval, since ineligible) is well-formed
+    // — the `.r { … }` container is intact, NOT the old malformed spine mis-fold.
+    const css = (await renderNodeToString(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      root as unknown as RenderBufferNode, context, { context, collapseNesting: false }
+    )).trim();
+    // header present (not a bare leading `transform:` decl — the old mis-fold), block
+    // closed, no raw call syntax leaked.
+    expect(css.startsWith('.r {')).toBe(true);
+    expect(css.endsWith('}')).toBe(true);
+    expect(css).not.toContain('.a(');
+  });
+
+  it('a merge-contributing mixin DEFINED but never CALLED still folds (the gate is CALL-gated, not def-gated)', () => {
+    const source = '.a(){transform+: t1;}\n.r{ color: red; }';
+    const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root = new Parser().parse(source).tree as unknown as Rules;
+    // No spine-eligible call targets the merge mixin → the shape-free hot path pays
+    // nothing and the tree still folds.
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+  });
+
   it('EXCLUDES a body using a mixin as a variable value / map (`@p: .m()` — mixin-as-value deferred)', () => {
     const root = rules([
       ruleset({

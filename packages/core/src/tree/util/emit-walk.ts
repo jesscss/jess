@@ -1214,12 +1214,8 @@ function bodyHasCallInVarValue(children: readonly Node[]): boolean {
 /** True if any DIRECT child of `body` is a merge-flagged declaration. */
 function bodyHasDirectMergeDecl(children: readonly Node[]): boolean {
   for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (isNode(child, N.Declaration) && !isNode(child, N.VarDeclaration)) {
-      const assign = (child.options as { assign?: string } | undefined)?.assign;
-      if (assign && MERGE_ASSIGNS.has(assign)) {
-        return true;
-      }
+    if (isMergeDecl(children[i]!)) {
+      return true;
     }
   }
   return false;
@@ -1456,6 +1452,28 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // the container descends in-pass carrying the surface frame, so the call resolves
   // there — it no longer needs to be a direct top-level feed entry.
   if (treeHasMixinCall(root) && treeHasRecursiveMixinCall(root)) {
+    return false;
+  }
+  // MERGE-ACROSS-MIXIN (a precise deferral, byte-identical to eval — REQUIRED P4 item).
+  // A property-MERGE (`transform+:` / `+_:`) coalesces contributions from SEVERAL
+  // sources in the SAME body. When those sources arrive via MIXIN EXPANSION —
+  // `.r { .a(); .b(); }` where `.a()`/`.b()` each carry a `transform+:` decl (the
+  // `merge.less` corpus shape) — the coalescing must run over the SPLICED expansion
+  // output. The spine fold splices a mixin surface's decls into the body's statement
+  // loop AFTER `planBodyMerges` has already run, so an expansion-contributed merge
+  // decl never enters a merge chain: the spine emits each `transform+:` raw and
+  // UNMERGED (and mis-frames the block). `isSpineEligibleBody`'s `bodyHasMixinCall &&
+  // bodyHasDirectMergeDecl` guard only catches a merge decl authored DIRECTLY in the
+  // caller body, NOT one arriving through a call — so the shape slips onto the spine
+  // and mis-folds. Gate it at the tree level (mirrors the other `treeHas*` mixin
+  // gates): if any spine-eligible call targets a mixin whose body contributes a merge
+  // decl, keep the whole tree on the eval path. Byte-identical to eval (which is ALSO
+  // a known deferral vs the Less oracle — `merge.less` is corpus-excluded — so this is
+  // NOT a new correctness claim, only closing a spine mis-fold). SPEC (fold plan
+  // follow-up): run the merge coalesce AFTER the expansion splice (feed spliced decls
+  // into `planBodyMerges`), then this gate lifts. Cheap: only scanned when the tree has
+  // a mixin call; a merge-free or call-free tree pays nothing.
+  if (treeHasMixinCall(root) && treeHasMergeContributingMixinCall(root)) {
     return false;
   }
   // LEAKY-MODE MIXIN-BODY VAR LEAK (a pre-existing spine gap, gated byte-identical).
@@ -1804,6 +1822,76 @@ function treeHasRecursiveMixinCall(root: Node): boolean {
   }
   return false;
 }
+
+/**
+ * True if the tree has a spine-eligible mixin CALL whose target definition
+ * contributes a property-MERGE decl (`+:` / `+_:`) — the merge-across-mixin shape
+ * the spine fold mis-handles (see the gate in `isSpineEligibleRoot`). A merge
+ * coalesces contributions across a body, but the fold splices a call's expansion
+ * AFTER `planBodyMerges` runs, so an expansion-contributed merge decl emits raw and
+ * unmerged.
+ *
+ * Static name-graph over-approximation (mirrors `treeHasRecursiveMixinCall`): collect
+ * the string-keyed mixin-definition names whose body (DEEP — a merge decl may sit
+ * inside a nested container of the mixin body) carries a merge decl, then report true
+ * iff any spine-eligible `Call` in the tree targets such a name. A call to a
+ * non-merge mixin (the common shape) is untouched; a merge-free tree returns
+ * immediately with an empty set.
+ */
+function treeHasMergeContributingMixinCall(root: Node): boolean {
+  const mergeMixinNames = new Set<string>();
+  for (const node of root.walk(true)) {
+    if (!isNode(node, N.Mixin) || typeof node.name !== 'string') {
+      continue;
+    }
+    for (const inner of node.walk(true)) {
+      if (isMergeDecl(inner)) {
+        mergeMixinNames.add(node.name);
+        break;
+      }
+    }
+  }
+  if (mergeMixinNames.size === 0) {
+    return false;
+  }
+  for (const node of root.walk(true)) {
+    if (
+      isSpineEligibleMixinCall(node)
+      && isNode(node.name, N.Reference)
+      && typeof node.name.key === 'string'
+      && mergeMixinNames.has(node.name.key)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True for a property-MERGE declaration (`prop+:` / `prop+_:` / `&,:` / `&_:`),
+ * not a var decl. Matches the RAW parser assign vocabulary (`+,:` is the parser's
+ * form of a comma `+:` merge — normalized to `+:` only at eval time in
+ * `declaration.ts`), so a static pre-eval scan sees it. Consulted by both the
+ * direct-body merge gate (`bodyHasDirectMergeDecl`) and the merge-across-mixin
+ * tree gate (`treeHasMergeContributingMixinCall`).
+ */
+function isMergeDecl(node: Node): boolean {
+  if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+    return false;
+  }
+  const options = node.options as { assign?: string; normalizedFromAssign?: string } | undefined;
+  const assign = options?.normalizedFromAssign ?? options?.assign;
+  return assign !== undefined && RAW_MERGE_ASSIGNS.has(assign);
+}
+
+/**
+ * The RAW parser-emitted merge assign operators (pre-eval). `+,:` is the parser's
+ * comma-`+:` form (`declaration.ts` maps it to the normalized `+:` at eval); `&,:`
+ * / `&_:` are the ampersand-merge forms. A static scan (the gates) must key on
+ * these, distinct from `MERGE_ASSIGNS` (the NORMALIZED forms `isSimpleSpineLeaf`
+ * admits after eval-time normalization).
+ */
+const RAW_MERGE_ASSIGNS = new Set(['+:', '+,:', '+_:', '&,:', '&_:']);
 
 /**
  * True if the tree has a Mixin definition nested INSIDE a container whose
