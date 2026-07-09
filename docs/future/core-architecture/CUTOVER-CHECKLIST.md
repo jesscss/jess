@@ -732,3 +732,20 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   need the eval-fallback-rendered-as-is / spine-definition-scope-frame mechanism), OR — if the orchestrator
   judges the mixin coverage sufficient — this is a natural MIXINS→EXTEND HANDOFF point (the arg ladder done,
   the hard tail being lower-frequency shapes). FLAGGING the handoff decision for the orchestrator.
+- 2026-07-08 · P3 · EXTEND folded through the spine across increments 0–7: extend-work gate (§4.0 zero-cost
+  fast path); flat root-level `:extend`; buffer-then-flush mechanism (proven, used inline since the
+  document-wide pre-scan makes deferral unnecessary); document-wide gather (nested EXTENDERS compose from
+  bucket paths, `.type1 .sidebar3`); `projectSubject` list-append fix + OQ-D dead-sort deletion; `&`-crossing
+  hoist-to-root (collapse-mode verbatim override); OQ-A interpolated selector target (`.@{name}`) resolved at
+  capture; and `&`-bearing extenders (`&.sidebar4` → `.type2.sidebar4`) via SCOPED `&`-EVAL + NORMALIZATION.
+  The `&`-extender fix's KEY insight (diagnosed read-only): `Ampersand.eval` returns the node with the amp
+  STILL in the compound (stored selector, not substituted); round 1 of the extend fixpoint handles it, but the
+  PRODUCED branch carries the amp and the round-2 self-re-application trips `extendAmpersandTarget` →
+  UNSUPPORTED. `normalizeResolvedAmpersand` flattens the resolved amp to clean atoms at the gather boundary
+  (pure, on the eval COPY — no source mutation, engine untouched), so round 2 dedups. RESIDUAL (eval-fallback,
+  byte-identical): the RARE tail — `:extend(.button:hover)` pseudo-class targets, attribute-VALUE
+  interpolation (`[data=@{attr}]`), the `.amp-test` deeply-nested-`&`-crossing monster, and own-engine
+  UNSUPPORTED shapes (constructor-atom finds, extend-index.ts:3073). `extend-nest`/`extend-selector` do NOT
+  fully flip (each needs ≥1 tail shape) and correctly route to eval. Verdict: common + high-frequency extend
+  shapes fold LIVE; the rare tail is eval-routed byte-identical — recommend NOT chasing it through the spine
+  (validated-engine-rework ROI is poor; see the touch-base). all-less 90/3 throughout; 24 jess ratchets.

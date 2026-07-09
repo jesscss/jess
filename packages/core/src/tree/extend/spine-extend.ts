@@ -43,13 +43,15 @@ import { Ruleset } from '../ruleset.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import type { Rules } from '../rules.js';
-import type { Node } from '../node.js';
-import { type MaybePromise } from '@jesscss/awaitable-pipe';
-import { projectSubject, composeTargetOwn, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
+import { Node } from '../node.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { projectSubject, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
 import type { OutputWriter } from '../util/print.js';
+import type { Context } from '../../context.js';
 import type { Selector } from '../selector.js';
 import { Nil } from '../nil.js';
 import { SelectorList } from '../selector-list.js';
+import { CompoundSelector, type CompoundSelectorComponent } from '../selector-compound.js';
 import { spanStartOf } from '../util/provenance.js';
 import { asExtendSelectorNode } from '../util/extend-roots.js';
 import { Extend, ExtendFlag } from '../extend.js';
@@ -242,6 +244,87 @@ export function flatLocalSelector(ruleset: Ruleset): Selector | undefined {
   return sel;
 }
 
+/**
+ * Normalize an `&`-resolved selector into CLEAN ATOMS by replacing each `Ampersand` component with
+ * its `getResolvedSelector()` components — `[Ampersand→.type2, .sidebar4]` → `[.type2, .sidebar4]`.
+ *
+ * WHY (the fixpoint amp-target trap — diagnosed 2026-07-08). `Ampersand.eval` (non-append) does NOT
+ * structurally substitute `&`; it stores the frame selector on the Ampersand's `_selectorContainer`
+ * and returns the node with the AMPERSAND STILL IN THE COMPOUND (its `valueOf` renders `.type2.sidebar4`
+ * but the first atom is an `Ampersand`). Round 1 of the extend fixpoint handles that amp fine, but the
+ * PRODUCED Or-branch (`.sidebar, .type2.sidebar4`) then carries the amp — and the fixpoint's round-2
+ * self-re-application treats that amp-bearing branch as an amp TARGET, tripping `extendAmpersandTarget`
+ * → UNSUPPORTED → the whole subject is dropped. Flattening the amp to its resolved atoms HERE (before
+ * the pipeline) makes the produced branch amp-free, so round 2 dedups cleanly and the fixpoint
+ * terminates. PURE: operates on the `&`-eval COPY this module produced (no source mutation); the
+ * validated `extendByIndexOwn` engine is untouched.
+ */
+function normalizeResolvedAmpersand(selector: Selector): Selector {
+  if (!isNode(selector, N.CompoundSelector)) {
+    return selector;
+  }
+  let changed = false;
+  const flat: CompoundSelectorComponent[] = [];
+  for (const component of selector.value) {
+    if (typeof component !== 'string' && isNode(component, N.Ampersand)) {
+      const resolved = component.getResolvedSelector?.();
+      if (resolved && !(resolved instanceof Nil)) {
+        if (isNode(resolved, N.CompoundSelector)) {
+          flat.push(...resolved.value);
+        } else if (isSimpleOrString(resolved)) {
+          flat.push(resolved);
+        } else {
+          return selector; // resolved to a shape we can't flatten cleanly — leave amp as-is
+        }
+        changed = true;
+        continue;
+      }
+      // Unresolved amp — leave as-is (the gate/ownBuilt path handles it).
+      flat.push(component);
+    } else {
+      flat.push(component);
+    }
+  }
+  if (!changed) {
+    return selector;
+  }
+  return new CompoundSelector(flat);
+}
+
+/** A value usable as a `CompoundSelectorComponent` (a SimpleSelector node or a string). */
+function isSimpleOrString(value: unknown): value is CompoundSelectorComponent {
+  return typeof value === 'string' || (value instanceof Node && isNode(value, N.SimpleSelector));
+}
+
+/**
+ * True if `selector` contains an ampersand with an APPEND value (`&-modifier`) — the anonymous-append
+ * form whose suffix materializes only via `Ampersand.evalNode`'s `appendValue` path (its `valueOf` is
+ * bare `&`). A COMBINATOR `&` (`&.foo`, `&:hover`) is NOT an append and IS resolved by the gather's
+ * scoped `&`-eval. Local copy of the emit-walk predicate (avoids an import cycle).
+ */
+function selectorHasAmpersandAppend(selector: unknown): boolean {
+  if (!selector || typeof selector === 'string') {
+    return false;
+  }
+  if (Array.isArray(selector)) {
+    return selector.some(item => selectorHasAmpersandAppend(item));
+  }
+  const isAppendAmp = (n: { type?: string; appendValue?: unknown }): boolean =>
+    n.type === 'Ampersand' && n.appendValue !== undefined;
+  const node = selector as { type?: string; appendValue?: unknown; walk?: (deep: boolean) => Iterable<Node> };
+  if (isAppendAmp(node)) {
+    return true;
+  }
+  if (typeof node.walk === 'function') {
+    for (const descendant of node.walk(true)) {
+      if (isAppendAmp(descendant as { type?: string; appendValue?: unknown })) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /** The Extend nodes borne by a ruleset's direct body (both `Extend` and `ExtendList.value`). */
 function rulesetExtendNodes(ruleset: Ruleset): Extend[] {
   const out: Extend[] = [];
@@ -346,7 +429,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
   // Document-wide walk: collect every extend target (checking simplicity) + every
   // extend-BEARING ruleset's selector (chain detection). At-rule bodies bearing extends
   // disqualify (clause 4).
-  const walk = (node: Node, ancestorAmp: boolean): void => {
+  const walk = (node: Node, ancestorAmpAppend: boolean): void => {
     if (!ok) {
       return;
     }
@@ -355,23 +438,23 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
       return;
     }
     let rules: readonly Node[] | undefined;
-    let amp = ancestorAmp;
+    let ampAppend = ancestorAmpAppend;
     if (isNode(node, N.Ruleset)) {
       rules = node.rules;
       const local = flatLocalSelector(node);
-      // An `&`-bearing local selector on the path DISQUALIFIES an extender under it. A PARSED `&`
-      // node is NOT substituted by `Ruleset.composeSelector` (that relies on `Ampersand.eval`
-      // having set `hoistToRoot` during the eval pass, which the pure gather skips) — so
-      // `composeContribution` emits it as a descendant (`.type2 &.sidebar4`) instead of the
-      // compound `.type2.sidebar4`. Resolving the `&` needs the eval-time frame substitution — a
-      // later increment. Track amp-ness down the path; disqualify an extender ON it.
-      if (local !== undefined && String(local.valueOf()).includes('&')) {
-        amp = true;
+      // A COMBINATOR `&` local (`&.sidebar4`, `&:hover`) is now RESOLVED + NORMALIZED by the
+      // gather's scoped `&`-eval (increment 7) → clean-atom `.type2.sidebar4`, so an extender under
+      // it composes correctly (round 1 AND the round-2 fixpoint) and is ADMITTED. An `&`-APPEND
+      // local (`&-modifier`) still DISQUALIFIES: its anonymous suffix materializes only via
+      // `Ampersand.evalNode`'s `appendValue` path (eval-pass frame state the gather does not fully
+      // reproduce). Track APPEND-ness only.
+      if (local !== undefined && selectorHasAmpersandAppend(local)) {
+        ampAppend = true;
       }
       const extendNodes = rulesetExtendNodes(node);
       if (extendNodes.length > 0) {
-        if (amp) {
-          ok = false; // extender on an `&`-bearing path — `&` not resolvable in the pure gather yet
+        if (ampAppend) {
+          ok = false; // extender on an `&`-APPEND path — the append suffix can't be composed here
           return;
         }
         if (local !== undefined) {
@@ -394,7 +477,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     }
     if (rules) {
       for (const child of rules) {
-        walk(child, amp);
+        walk(child, ampAppend);
         if (!ok) {
           return;
         }
@@ -497,29 +580,59 @@ function anyNestedRulesetMatchesSelector(root: Rules, selector: string): boolean
  *
  * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.0 §4.2 §4.3 §4.4.2
  */
-export function wireSpineExtends(root: Rules): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
+export function wireSpineExtends(root: Rules, context: Context): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
   const subjects: SpineSubject[] = [];
   const instructions: PipelineInstruction[] = [];
+  const frameBaseline = context.rulesetFrames.length;
 
   // Recursive document-wide gather: descend rulesets, tracking the ancestor Selector `path`
   // (the extender's full bucket path — parse-tree nodes carry no `.parent`, so the walk is the
-  // only source of ancestry). Collect each ruleset as a candidate subject with its path, and
-  // each Extend it bears as an instruction whose `path` is the EXTENDER's bucket path — EMIT
-  // composes that relative to the target (`[.type1, .sidebar3]` → `.type1 .sidebar3`), which is
-  // exactly why the composed contribution is correct WITHOUT relying on a pre-composed
-  // `extendWith` (the flat-only `runEffect` extendWith is bare `.sidebar3` for a nested extender).
-  const gatherRuleset = (ruleset: Ruleset, parentPath: readonly Selector[]): void => {
+  // only source of ancestry).
+  //
+  // SCOPED `&`-EVAL + NORMALIZE (increment 7). An `&`-bearing local (`&.sidebar4`, `&:hover`) is NOT
+  // substituted by the pure structural compose. So PUSH each ancestor ruleset onto
+  // `context.rulesetFrames` as the walk descends (save/restore, exactly the spine's own descent) and
+  // RESOLVE an `&`-bearing local via `selector.eval(context)` (P1's `&`-resolution — reads the live
+  // frame, returns a COPY, no source mutation), then NORMALIZE the resolved amp to clean atoms
+  // (`normalizeResolvedAmpersand`) so the fixpoint's produced branch is amp-free (the round-2
+  // amp-target trap). The resolved+normalized compound (`.type2.sidebar4`) is the full composed
+  // form, so its bucket path is `[resolved]` (it REPLACES the ancestor chain, not appends).
+  const resolveLocal = (ruleset: Ruleset): { selector: Selector; ampResolved: boolean } | undefined => {
     const local = flatLocalSelector(ruleset);
-    const path: readonly Selector[] = local !== undefined ? [...parentPath, local] : parentPath;
-    // Collect a ruleset as a candidate subject with its full bucket path — EXCEPT an `&`-bearing
-    // local (`&:after`, `&:hover`). An `&`-selector is NOT a standalone subject: it composes from
-    // its parent via the existing `&`-flow, and the `all`-propagation reaches it through the
-    // parent's (possibly overridden) header — collecting it would mis-flag it as hoisted and emit
-    // its header verbatim (dropping the `&`-compose). `composeSpineSubjectHeaders` decides how to
-    // apply the override by depth + hoist: a ROOT subject → normal override; a NESTED subject →
-    // override ONLY when its projection HOISTS (crossing), emitted verbatim at collapsed-root.
-    const localIsAmp = local !== undefined && String(local.valueOf()).includes('&');
-    if (local !== undefined && !localIsAmp) {
+    if (local === undefined) {
+      return undefined;
+    }
+    if (!String(local.valueOf()).includes('&')) {
+      return { selector: local, ampResolved: false };
+    }
+    const evaled = local.eval(context);
+    if (isThenable(evaled) || evaled instanceof Nil) {
+      return undefined; // async / nil `&`-resolution — exclude (gate/ownBuilt handles it)
+    }
+    return { selector: normalizeResolvedAmpersand(evaled), ampResolved: true };
+  };
+
+  const gatherRuleset = (ruleset: Ruleset, parentPath: readonly Selector[]): void => {
+    // Resolve THIS ruleset's local against the ALREADY-pushed ancestors. An `&`-resolved local is
+    // the FULL composed form (ancestor INCLUDED), so it REPLACES the ancestor chain — its path is
+    // `[resolvedLocal]`, NOT `parentPath + resolvedLocal` (that would double `.type2`). A structural
+    // (non-`&`) local APPENDS to the ancestor path.
+    const resolved = resolveLocal(ruleset);
+    const local = resolved?.selector;
+    const path: readonly Selector[] = local === undefined
+      ? parentPath
+      : resolved!.ampResolved
+        ? [local]
+        : [...parentPath, local];
+    // Collect a ruleset as a candidate SUBJECT only when its local is a plain (non-`&`) selector.
+    // An `&`-originated local — whether still-amp (bare `&`, `&:after`) or resolved
+    // (`&.sidebar4` → `.type2.sidebar4`) — is NOT a standalone subject: it emits its own block AND
+    // receives any `all`-propagated extend via the existing `&`-composition from its parent's
+    // (possibly overridden) header (the `extend-clearfix` `:is(.clearfix,.foo,.bar):after` case).
+    // Making it a subject would install a header override that double-composes / drops the
+    // `&`-flow. Its role as an EXTENDER (bearing `:extend`) is still captured below as an
+    // instruction with its resolved path — that is the increment-7 win, independent of subjecthood.
+    if (local !== undefined && resolved?.ampResolved !== true && !String(local.valueOf()).includes('&')) {
       subjects.push({ ruleset, path, order: orderOf(ruleset) });
     }
     for (const ext of rulesetExtendNodes(ruleset)) {
@@ -532,15 +645,19 @@ export function wireSpineExtends(root: Rules): { headers: Map<Ruleset, Selector>
         : rawTarget;
       instructions.push({
         target,
-        // `extendWith` (SOLVE local-apply) is the extender's OWN local selector; `path` (EMIT
-        // compose-relative-to-target) is the full ancestor chain — EMIT owns the composition.
+        // `extendWith` (SOLVE local-apply, fire-detection ONLY — EMIT composes from `path`) is the
+        // extender's RESOLVED + NORMALIZED own local (`&.sidebar4` → clean-atom `.type2.sidebar4`),
+        // so the produced branch is amp-free and the round-2 fixpoint dedups (no amp-target trap).
         extendWith: local ?? target,
         partial: ext.flag === ExtendFlag.All,
         path: [...path],
         order: orderOf(ruleset)
       });
     }
+    // Push this ruleset's frame for its subtree's `&`-resolution, descend, then pop (save/restore).
+    context.rulesetFrames.push(ruleset);
     descendChildren(ruleset.rules, path);
+    context.rulesetFrames.length = Math.max(frameBaseline, context.rulesetFrames.length - 1);
   };
 
   const descendChildren = (children: readonly Node[], path: readonly Selector[]): void => {
@@ -554,6 +671,7 @@ export function wireSpineExtends(root: Rules): { headers: Map<Ruleset, Selector>
   };
 
   descendChildren(root.rules, []);
+  context.rulesetFrames.length = frameBaseline; // restore (belt-and-suspenders)
   return composeSpineSubjectHeaders(subjects, instructions);
 }
 

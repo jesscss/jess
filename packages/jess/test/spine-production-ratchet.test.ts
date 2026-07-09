@@ -184,16 +184,41 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('P3 increment 2: an `&`-bearing nested extender (`&.sidebar4`) STAYS on eval (needs frame `&`-resolution)', async () => {
-    // A `.type2 { &.sidebar4 { &:extend(.sidebar all) } }` extender's local `&.sidebar4` needs
-    // frame `&`-resolution the direct bucket-path capture does not do — excluded by the gate,
-    // stays on eval (byte-identical). A later increment resolves `&` on the gather path.
+  it('P3 increment 7: an `&`-bearing extender (`&.sidebar4`) RESOLVES + composes via the spine (round-1 + round-2 clean)', async () => {
+    // A `.type2 { &.sidebar4 { &:extend(.sidebar all) } }` extender's local `&.sidebar4` is RESOLVED
+    // (scoped `&`-eval against the tracked ancestor frame) + NORMALIZED to clean atoms → the subject
+    // `.sidebar` gains `.type2.sidebar4`. The normalization is what makes the round-2 fixpoint dedup
+    // cleanly instead of tripping the amp-target trap (`extendAmpersandTarget` → UNSUPPORTED). Routes
+    // via the spine, no eval two-walk.
     const compiler = makeCompiler();
     const src = `.sidebar {\n  width: 300px;\n}\n.type2 {\n  &.sidebar4 {\n    &:extend(.sidebar all);\n    background: red;\n  }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk (round-2 fixpoint terminated cleanly, not UNSUPPORTED)
+      expect(css).toContain('.sidebar,\n.type2.sidebar4'); // resolved amp composed into the subject header
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('P3 increment 7: an `&`-APPEND extender (`&-modifier`) STAYS on eval (append suffix not gather-resolvable)', async () => {
+    // The gate still excludes `&`-APPEND (`&-modifier`): its anonymous suffix materializes only via
+    // `Ampersand.evalNode`'s `appendValue` path (eval-pass state the gather does not reproduce). A
+    // combinator `&` resolves (above); append stays on eval, byte-identical.
+    const compiler = makeCompiler();
+    const src = `.base {\n  color: red;\n}\n.x {\n  &-modifier {\n    &:extend(.base);\n  }\n}`;
     const before = spineRenderCounter.rootRenders;
     const css = await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (amp-extender excluded)
-    expect(css).toContain('.sidebar');
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (amp-APPEND excluded)
+    expect(css).toContain('.base');
   });
 
   it('P3 increment 3: `&`-CROSSING hoists a nested subject to root with the crossing branch (header/footer)', async () => {
