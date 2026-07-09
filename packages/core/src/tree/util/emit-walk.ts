@@ -355,14 +355,22 @@ export function resolveSpineMixinCall(
   context.spineMixinSurfaceSink = (
     boundSurface: Rules,
     sourceRules: Rules,
-    candidateIsMixin: boolean
+    // Retained for the sink CONTRACT (the callable terminal passes it) but no longer
+    // gates the fold: a lone ruleset-as-mixin match folds too (#3). The MIXED case is
+    // excluded upstream (`treeHasMixinRulesetMixedMatch`).
+    _candidateIsMixin: boolean
   ): boolean => {
-    // Fold ONLY a spine-simple Mixin-DEFINITION body. A ruleset-as-mixin
-    // (`!candidateIsMixin` — the `mixin-ruleset` dot-call matching a same-named
-    // ruleset) needs different placement (the ruleset ALSO emits standalone) and a
-    // non-simple body both DEFER: reject → the terminal eval-materializes that
-    // candidate, and `anyRejected` routes the whole call to the eval fallback.
-    if (!candidateIsMixin || !isSpineSimpleMixinSurface(boundSurface)) {
+    // Fold a spine-simple Mixin-DEFINITION body OR a spine-simple RULESET-as-mixin
+    // body (fold #3). A `mixin-ruleset` dot-call matching a same-named ruleset
+    // (`.foo` used as `.foo()`) contributes that ruleset's declarations at the call
+    // site; the ruleset ALSO emits standalone (its own structural rule), which the
+    // spine already emits on the container descent — so folding the CALL-SITE
+    // contribution here is additive and correct. Verified byte-identical for a LONE
+    // ruleset-as-mixin match: the MIXED case (a same-named Mixin AND ruleset both
+    // matching one call — #5) is kept off the spine by the root gate
+    // `treeHasMixinRulesetMixedMatch`, so any ruleset-as-mixin reaching this sink is
+    // the sole matched candidate. A NON-simple body still DEFERS (eval fallback).
+    if (!isSpineSimpleMixinSurface(boundSurface)) {
       anyRejected = true;
       return false;
     }
