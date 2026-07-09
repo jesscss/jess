@@ -647,7 +647,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
     const sel = rs.selector;
-    const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);
+    // A bare `&` is transparent; an APPEND ampersand (`&-modifier`, carrying
+    // `appendValue`) is NOT — it materializes a new hoisted selector
+    // (`.a-modifier`) and must emit its OWN header. Distinguish by `appendValue`.
+    const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand)
+      && (sel as { appendValue?: string }).appendValue === undefined;
     if (isBareAmp) {
       isTransparentWrapper = true;
     } else {
@@ -1611,6 +1615,7 @@ function serializeSpineFrameContainer(
     options.spineSelectorNode = savedSelectorNode;
     options.spineSelector = savedSelector;
     context.rulesetFrames.length = rulesetFrameBaseline;
+    context.spineResolvedFrameSelector?.delete(node);
     return text;
   };
   // Descend with the override MARKER set on this node (`spineSelectorNode`), so
@@ -1623,6 +1628,13 @@ function serializeSpineFrameContainer(
   const descend = (resolvedSelector: Selector | Nil | undefined): MaybePromise<string> => {
     options.spineSelectorNode = node;
     options.spineSelector = resolvedSelector;
+    // Expose the RESOLVED concrete selector to a descendant's `&` append eval (see
+    // `Context.spineResolvedFrameSelector`): a nested `&-c` under `&-b` must compose
+    // against the resolved `.a-b`, not the raw authored `&-b`. Only record when the
+    // resolution produced a concrete selector (interpolation / `&` / append).
+    if (resolvedSelector !== undefined) {
+      (context.spineResolvedFrameSelector ??= new WeakMap()).set(node, resolvedSelector);
+    }
     context.rulesetFrames.push(node);
     const renderBody = (): MaybePromise<string> => withSpineMergePlan(node.rules, options, context, () => {
       const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);

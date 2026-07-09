@@ -674,6 +674,20 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   isHoisted(options: PrintOptions) {
+    // Spine mode (P1 §2, ampersand-append fold): the eval pass sets `hoistToRoot`
+    // on the OUTPUT ruleset node when its resolved selector is hoist-marked
+    // (`_finishRulesetSelectorPrep`: `if (sel.hoistToRoot) node.hoistToRoot = true`,
+    // set by `Ampersand.evalNode`'s append path). The spine has no output node — the
+    // resolved selector lives on the render-local override (`options.spineSelector`).
+    // Read the override's `hoistToRoot` here so an append ruleset (`&-modifier` →
+    // `.a-modifier`) places at ROOT through the KEPT hoist path, exactly like the eval
+    // pass — output-invisible (read from the override, no canonical-node mutation).
+    if (this.hoistToRoot === undefined && options.spineSelectorNode === this) {
+      const resolved = options.spineSelector;
+      if (resolved !== undefined && !(resolved instanceof Nil) && resolved.hoistToRoot === true) {
+        return true;
+      }
+    }
     return this.hoistToRoot ?? options.collapseNesting ?? false;
   }
 

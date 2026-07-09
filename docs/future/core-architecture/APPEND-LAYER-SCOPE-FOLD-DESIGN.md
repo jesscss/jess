@@ -133,3 +133,44 @@ benchmark.less before landing (no expectation of regression — the fold removes
 Not expected — the mechanism is a flag propagation into the already-folded hoist path. If step B
 proves to need eval-pass frame state the spine cannot reproduce, it will be surfaced as a GAP with a
 spec (defer + ratchet-lock on eval), never left silently.
+
+---
+
+## LANDED (this session)
+
+Steps A + B landed; the common append shapes fold byte-identical, three edge-shapes deferred precise.
+
+- **Step A (hoist propagation)** — `Ruleset.isHoisted` (ruleset.ts) now reads the resolved spine
+  override selector's `hoistToRoot` (`options.spineSelector` when `spineSelectorNode === this`), the
+  spine analogue of `_finishRulesetSelectorPrep`'s output-node flag. Output-invisible (read from the
+  transient override, no canonical mutation).
+- **Transparent-wrapper fix** — `serialize-helper.ts`'s bare-`&` transparent-wrapper detection now
+  excludes an APPEND ampersand (`appendValue !== undefined`): an append materializes its own hoisted
+  header and must NOT be treated as a selector-transparent bare `&` (that bug inlined `.a-modifier`'s
+  body into `.a` under collapse).
+- **Step B (nested-append frame)** — new `Context.spineResolvedFrameSelector` WeakMap side-channel:
+  `serializeSpineFrameContainer` records each frame's RESOLVED selector at descend; `Ampersand.evalNode`'s
+  append path reads it before the raw `frame.selector`, so `.a { &-b { &-c {…} } }` → `.a-b-c` (each
+  level appends against the resolved `.a-b`). No canonical mutation (the eval pass gets this by pushing
+  the resolved output node).
+- **Eligibility lift** — the `selectorHasAmpersandAppend` blanket gate in `isSpineEligibleContainer`
+  (emit-walk.ts) is replaced by three PRECISE deferrals (ratchet-locked, byte-identical on eval,
+  REQUIRED P4 items — not a permanent fallback):
+  1. append ruleset with a nested NON-APPEND container child (`&-x { .inner {…} }`) — expanded-mode
+     frame-split gap (SPEC: thread the resolved append selector into the nested-child compose frame).
+  2. append child under a SELECTOR-LIST parent (`.a, .b { &-x {…} }`) — eval itself renders this
+     unusually (list-append under-specified upstream; SPEC: per-branch append, pending owner pin).
+  3. append × extend (`treeHasAmpersandAppend` + `engageExtendLayer`) — an append-generated selector
+     may be an extend target the static gather can't see (SPEC: resolve append into the extend target
+     index before SOLVE, mirroring OQ-A interpolated-target resolution).
+
+**Verification.** 12 append shapes × 2 collapse modes: spine output BYTE-IDENTICAL to the eval baseline
+(differential clean). Core suite 3255/0 (2 new ratchet tests: append-fold + edge-shape-deferrals). all-less
+91/93 (unchanged — same pre-existing `extend-selector`/`import-remote`, zero new byte-diffs). Ratchet
+`emit-walk-ratchet.test.ts` flipped: append now ADMITS + hoists + folds nested; deferrals locked. tsc:
+374 errors both base and after (ZERO new). PERF A/B (synthetic 400-block heavy-nesting + append + `@media`,
+collapse): base ~44.2ms vs folded ~44.5ms median — perf-neutral, identical output length.
+
+Two PRE-EXISTING jess `spine-production-ratchet` failures (`@property` and nested-scope-mixin negative
+routing ratchets) are UNRELATED to append — confirmed failing at base `cb19de6bc` (stale ratchets from
+earlier `@property`/nested-mixin fold commits; out of scope for this fold).

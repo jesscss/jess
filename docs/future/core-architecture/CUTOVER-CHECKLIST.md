@@ -834,3 +834,28 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   shapes are REQUIRED P4 items (each ratchet-locked on eval, byte-identical, dies at P4 — no permanent
   fallback). NEVER `git stash`; committed with `--no-verify` only past PRE-EXISTING whole-file lint (my hunk
   clean; matches the prepush-retests-dependents note).
+- 2026-07-09 · P1 · AMPERSAND-APPEND folded (`&-modifier`/`&-primary` → `.a-modifier`). Reconciled the
+  stale P1/P2 prose: `@scope` (`0c72e21bf`) and `@layer` (`a7982e3a2`) were ALREADY folded on this branch
+  after the prose was written, so of the checklist's grouped 3, only append remained. ROOT CAUSE (probed):
+  `serializeSpineFrameContainer` already resolves the append selector (`Ampersand.evalNode`'s appendValue
+  path via the live `rulesetFrames`), but did NOT honor the resolved selector's `hoistToRoot` for BLOCK
+  PLACEMENT — the eval path sets `node.hoistToRoot` on the OUTPUT node (`_finishRulesetSelectorPrep`) which
+  drives `isHoisted`; the spine has no output node. FIX (3 parts): (A) `Ruleset.isHoisted` reads the
+  resolved override's `hoistToRoot` off `options.spineSelector` (spine analogue, output-invisible); (fix)
+  the bare-`&` transparent-wrapper detection in serialize-helper excludes an APPEND ampersand (it
+  materializes its own header — the bug inlined `.a-modifier` into `.a`); (B) new
+  `Context.spineResolvedFrameSelector` side-channel so nested append (`.a { &-b { &-c } }` → `.a-b-c`)
+  appends against the RESOLVED parent, not the raw `&-b` (which threw). Lifted the blanket
+  `selectorHasAmpersandAppend` gate; DEFERRED 3 precise edge-shapes (ratchet-locked, byte-identical on eval,
+  REQUIRED P4 items): (1) append with a nested NON-APPEND container child (expanded-mode frame split); (2)
+  append under a selector-LIST parent (eval renders it unusually — under-specified upstream); (3) append ×
+  extend (append-generated target invisible to the static gather). SPECs for all three in
+  `APPEND-LAYER-SCOPE-FOLD-DESIGN.md`. VERIFIED: 12 shapes × 2 collapse modes byte-identical to eval; core
+  3255/0 (+2 ratchet tests: fold + deferrals); all-less 91/93 (unchanged, zero new byte-diffs); tsc 374
+  both (0 new); PERF A/B neutral (synthetic heavy-nesting+append+`@media`: base ~44.2ms vs folded ~44.5ms,
+  identical output). The 2 jess `spine-production-ratchet` failures (`@property`, nested-scope-mixin
+  negative routing) are PRE-EXISTING (confirmed at base `cb19de6bc`) — stale ratchets from earlier folds,
+  out of scope. Backpedal self-check: no dual path for the covered shapes (folded append has one path: the
+  spine); the 3 deferrals are precise coverage gaps, not safety fallbacks; no canonical mutation (hoist +
+  resolved-frame read from transient override/side-channel); NEVER `git stash` (used file-copy backups +
+  `git show` for base comparison).

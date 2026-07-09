@@ -485,6 +485,46 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
 }
 
 /**
+ * True if ANY ruleset ANYWHERE in `root` carries an ampersand-APPEND selector
+ * (`&-modifier`). Used to defer the append × extend interaction (see
+ * `isSpineEligibleRoot`): an append-generated selector may be an extend target the
+ * static gather cannot see. A single recursive scan over ruleset/at-rule bodies.
+ */
+function treeHasAmpersandAppend(root: Rules): boolean {
+  const scan = (children: readonly Node[]): boolean => {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]!;
+      if (isNode(child, N.Ruleset) && selectorHasAmpersandAppend((child as Ruleset).selector)) {
+        return true;
+      }
+      if ((isNode(child, N.Ruleset) || isNode(child, N.AtRule)) && isNode(child, N.Rules)) {
+        if (scan((child as unknown as Rules).rules)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  return scan(root.rules);
+}
+
+/**
+ * True if any direct child of `children` is a `Ruleset` whose selector carries an
+ * ampersand-APPEND (`&-modifier`). Used to defer the SELECTOR-LIST-parent + append
+ * shape (`.a, .b { &-x {…} }`), which the eval pass renders unusually (see
+ * `isSpineEligibleContainer`).
+ */
+function bodyHasAppendChild(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isNode(child, N.Ruleset) && selectorHasAmpersandAppend((child as Ruleset).selector)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * A nested CONTAINER child THIS phase can descend through the spine: a plain
  * `Ruleset` with a non-Nil selector, no guard, a spine-eligible body, and a
  * selector whose composition the spine folds. Admitted: plain `&` composition
@@ -520,14 +560,48 @@ function isSpineEligibleContainer(node: Node, allowExtend = false, allowImport =
   if (!allowExtend && Ruleset.hasExtendedTopLevelSelector(ruleset.selector)) {
     return false;
   }
-  // Ampersand-APPEND (`&-modifier`) is not folded — its anonymous-append suffix
-  // materializes + hoists only via `Ampersand.evalNode`'s appendValue path (eval
-  // frame state the spine does not reproduce). Plain `&` composition + interp ARE
-  // folded: `serializeSpineFrameContainer` resolves the selector against the live
-  // stacks at ruleset-enter (`&` reads `context.rulesetFrames` via
-  // `Ampersand.eval`; interpolation via `selector.eval`). The resolved form is
-  // the header AND what extend sees (OQ-A).
+  // Ampersand-APPEND (`&-modifier` → `.a-modifier`) FOLDS through the spine: its
+  // suffix is materialized by `Ampersand.evalNode`'s append path (which the spine
+  // already invokes via `serializeSpineFrameContainer`'s selector eval against the
+  // live `rulesetFrames`), the resolved hoist-marked selector drives block placement
+  // through `Ruleset.isHoisted` (reading `options.spineSelector.hoistToRoot`), and a
+  // nested append composes against the RESOLVED parent via
+  // `context.spineResolvedFrameSelector`. Two append SUB-shapes stay on the eval path
+  // (precise deferrals, byte-identical, ratchet-locked — REQUIRED P4 items, not a
+  // safety fallback):
+  //   (1) an append ruleset with a NESTED-CONTAINER child (`&-x { .inner {…} }`): the
+  //       hoisted append frame is split from its nested child's frame in expanded mode
+  //       (the child re-wraps under the raw `&-x` instead of the resolved `.a-x`).
+  //   (2) an append child under a SELECTOR-LIST parent (`.a, .b { &-x {…} }`): the eval
+  //       pass itself renders this unusually (`.a, .b { color }` collapse / a raw
+  //       `&(-x)` expanded — append against a list is under-specified upstream), so the
+  //       spine defers to it rather than reproduce a not-canonical shape.
+  // SPEC (fold plan §3 step B follow-up): (1) thread the resolved append selector into
+  //   the expanded-mode nested-child frame compose (make the pushed composed frame carry
+  //   the resolved `.a-x` for BOTH the direct-decl block and the nested container child);
+  //   (2) resolve list-parent append per-branch (append the suffix to each list item)
+  //   once the upstream list-append shape is pinned with the owner.
   if (selectorHasAmpersandAppend(ruleset.selector)) {
+    // (1) append ruleset with a nested NON-APPEND container child (`&-x { .inner {…} }`
+    //     or `&-x { @media {…} }`). A nested APPEND child (`&-b { &-c {…} }` → `.a-b-c`)
+    //     DOES fold (each level appends against the resolved-frame side-channel), so it
+    //     is NOT a deferral — only a plain-selector / at-rule child under an append parent
+    //     hits the expanded-mode frame-split gap.
+    for (let i = 0; i < ruleset.rules.length; i++) {
+      const child = ruleset.rules[i]!;
+      if (isNode(child, N.AtRule)) {
+        return false;
+      }
+      if (isNode(child, N.Ruleset) && !selectorHasAmpersandAppend((child as Ruleset).selector)) {
+        return false;
+      }
+    }
+  }
+  // (2) a SELECTOR-LIST-selector container whose body has an append child.
+  if (
+    (isNode(ruleset.selector, N.SelectorList) || Array.isArray(ruleset.selector))
+    && bodyHasAppendChild(ruleset.rules)
+  ) {
     return false;
   }
   // ANCESTOR RE-WRAP on at-rule HOIST (a scoped frontier). A conditional-group
@@ -1257,6 +1331,18 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // (another `@media`, a plain ruleset) renders at root, not under the at-rule. See
   // `serializeRulesContainerInternal`'s close loop.)
   const collapse = collapseNesting ?? context.output?.collapseNesting === true;
+  // APPEND × EXTEND (a precise deferral, REQUIRED P4 item). An `:extend` TARGET may be
+  // an append-GENERATED selector (`.button { &-primary {…} }` extended by
+  // `:extend(.button-primary)`). The spine's extend layer gathers subjects/targets from
+  // the STATIC source tree, where the append target (`.button-primary`) exists only
+  // after resolution — so the static gather misses it and the extend contribution is
+  // dropped. Keep an extend-bearing tree that also carries an append selector on the
+  // eval path (byte-identical), where the append materializes before extend runs.
+  // SPEC (fold plan follow-up): resolve append selectors into the extend target index
+  // before SOLVE (mirrors OQ-A interpolated-target resolution at capture).
+  if (engageExtendLayer(root) && treeHasAmpersandAppend(root)) {
+    return false;
+  }
   const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root, collapse === true);
   return isSpineEligibleBody(root.rules, allowExtend, allowImport);
 }

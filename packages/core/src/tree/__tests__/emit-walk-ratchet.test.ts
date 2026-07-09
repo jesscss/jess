@@ -122,16 +122,58 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
-  it('eligibility boundary excludes AMPERSAND-APPEND (the eval-pass materialize+hoist shape)', () => {
-    // `&-mod` (anonymous append) stays on the eval path — its suffix materializes
-    // + hoists only via Ampersand.evalNode's appendValue path. A scoped frontier,
-    // not a safety fallback. (Plain `&` composition IS admitted — see below.)
+  it('ADMITS + hoists AMPERSAND-APPEND (`&-modifier` → `.a-modifier`) through the spine (no eval/derive)', () => {
+    // `.a { &-mod { color: red } }` → `.a-mod` HOISTED to root: the resolved
+    // append selector carries `hoistToRoot` (from `Ampersand.evalNode`'s append path),
+    // which `Ruleset.isHoisted` reads off `options.spineSelector` so the block places
+    // at root exactly like the eval pass — in ONE downward pass, no output tree.
     const appendRoot = rules([
       ruleset({ selector: sel([el('.a')]), rules: [
         ruleset({ selector: sel([amp('-mod')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
       ] })
     ]);
-    expect(isSpineEligibleRoot(appendRoot, context)).toBe(false);
+    const appendContext = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(appendRoot, appendContext)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = appendRoot.render(appendContext) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0); // no output tree
+      expect(css).toContain('.a-mod'); // append materialized + hoisted
+      expect(css).not.toContain('&'); // the `&` is resolved away, not emitted raw
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('folds NESTED append (`.a { &-b { &-c {…} } }` → `.a-b-c`) via the resolved-frame side-channel', () => {
+    // Each level appends against the RESOLVED parent (`.a-b`), read from
+    // `context.spineResolvedFrameSelector`, not the raw authored `&-b` (which throws).
+    const nested = new Parser().parse('.a { &-b { &-c { color: red; } } }').tree;
+    const ctx = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(nested, ctx)).toBe(true);
+    const css = nested.render(ctx) as string;
+    expect(css).toContain('.a-b-c');
+  });
+
+  it('DEFERS the append edge-shapes to eval (precise, ratchet-locked P4 items)', () => {
+    // (1) append ruleset with a NESTED-CONTAINER child.
+    const containerChild = new Parser().parse('.a { &-x { color: red; .inner { color: green; } } }').tree;
+    expect(isSpineEligibleRoot(containerChild, new Context())).toBe(false);
+    // (2) append child under a SELECTOR-LIST parent.
+    const listParent = new Parser().parse('.a, .b { &-x { color: red; } }').tree;
+    expect(isSpineEligibleRoot(listParent, new Context())).toBe(false);
+    // (3) append × extend — an append-generated selector may be an extend target the
+    //     static gather can't see.
+    const appendExtend = new Parser().parse('.button { &-primary { color: red; } } .theme:extend(.button-primary) {}').tree;
+    expect(isSpineEligibleRoot(appendExtend, new Context())).toBe(false);
   });
 
   it('ADMITS + composes plain `&` selectors through the spine (no eval/derive)', () => {
