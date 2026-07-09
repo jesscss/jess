@@ -241,8 +241,14 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
   if (node.contentNode) {
     return false;
   }
+  // INCREMENT 8 (fold #4): a `!important` mixin call (`markImportant`) is admitted —
+  // `resolveSpineMixinCall` applies the KEPT `Call.makeImportant` to each captured
+  // surface (deriving every folded declaration with the `!important` flag), byte-
+  // identical to the eval path. `silentFail` (`.m() ?`, suppress "no matching mixins")
+  // is still DEFERRED — its no-match suppression is an eval-terminal behavior the
+  // fold does not yet reproduce.
   const options = node.options as { markImportant?: boolean; silentFail?: boolean } | undefined;
-  if (options?.markImportant || options?.silentFail) {
+  if (options?.silentFail) {
     return false;
   }
   const name = node.name;
@@ -412,7 +418,18 @@ export function resolveSpineMixinCall(
       }
       return comparePosition(a.source, b.source);
     });
-    return { kind: 'fold', surfaces: ordered.map(entry => entry.surface) };
+    const surfaces = ordered.map(entry => entry.surface);
+    // `!important` on the call (fold #4): apply the KEPT `Call.makeImportant` to each
+    // folded surface — it derives every declaration (recursing into nested Rules)
+    // with the `!important` flag, exactly as the eval path's post-resolution transform
+    // (`call.ts` `makeImportant(evald)`). Byte-identical; only runs when the call is
+    // marked important (the common case pays nothing).
+    if (isNode(call, N.Call) && call.options?.markImportant) {
+      for (let i = 0; i < surfaces.length; i++) {
+        call.makeImportant(surfaces[i]!);
+      }
+    }
+    return { kind: 'fold', surfaces };
   };
   try {
     // Drive the call's own resolution: the caller frame + candidate match + arg
