@@ -709,6 +709,37 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(result.css).toContain('width: 800px'); // namespace lookup resolved (eval path)
   });
 
+  it('IMPORTS increment 3: a TRANSITIVE import var chain (main->lib->inner) folds via the spine (no derive)', async () => {
+    // Transitive-wiring fix: `main.less` imports `lib.less`, which itself imports
+    // `inner.less` (defining `@z`) and reads it (`@pad: @z`); `main` then reads `lib`'s
+    // `@pad`. Before the fix, the nested `@import` inside `lib`'s placement body was
+    // never linked into `lib`'s own frame on the spine, so `@pad: @z` threw
+    // `'z' is not defined` (empty output). The wire pass now recursively wires a
+    // placement body's own top-level imports into the placement frame, so the chain
+    // resolves — byte-identical to the eval path (`.x { padding: 3px; }`), derive=0.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc3-transitive-'));
+    fs.writeFileSync(path.join(dir, 'inner.less'), '@z: 3px;\n');
+    fs.writeFileSync(path.join(dir, 'lib.less'), '@import "inner.less";\n@pad: @z;\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "lib.less";\n.x { padding: @pad; }\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(result.css).toBe('.x {\n  padding: 3px;\n}\n'); // transitive `@z` resolved through the chain
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('IMPORTS increment 3: an `@import` inside a RULESET registers its scope into the container frame and folds (no derive)', async () => {
     // Nested-scope registration: an `@import` inside `.card` links its imported scope
     // to `.card`'s frame (`wireSpineContainerImports` at container-enter), so a consumer

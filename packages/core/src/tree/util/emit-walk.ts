@@ -1879,9 +1879,26 @@ function wireSpineImportsInBody(
         const body = resolved.body;
         const dedupe = spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options);
         const registered = body.prepareRegistration(context);
-        const finishRegister = (): void => {
-          linkImportFallbackFrame(targetFrame, body.getScopeFrame());
-          cache.set(child, { kind: 'fold', body, dedupe, multiple: resolved.multiple, reference: resolved.reference });
+        const finishRegister = (): MaybePromise<void> => {
+          const placementFrame = body.getScopeFrame();
+          // TRANSITIVE wiring: a Less import whose OWN body carries a top-level
+          // `@import` (an imported file that itself imports another) must link that
+          // nested import's scope into THIS placement's frame BEFORE we link the
+          // placement upward — otherwise a sibling in the intermediate file
+          // (`lib.less`'s `@pad: @z`, where `@z` lives in the transitively-imported
+          // `inner.less`) resolves against a frame with no fallback to the nested
+          // scope and throws `'z' is not defined`. The nested imports are wired into
+          // the placement's own frame (their scope is a fallback consulted after the
+          // placement's primary scope), recursively — so an N-deep import chain links
+          // each level into its importer. Registration seeds NAMES only (no output
+          // tree; `Rules.derive` stays 0). Same document-order/isolation discipline as
+          // the outer pass since it reuses `wireSpineImportsInBody`.
+          const link = (): void => {
+            linkImportFallbackFrame(targetFrame, placementFrame);
+            cache.set(child, { kind: 'fold', body, dedupe, multiple: resolved.multiple, reference: resolved.reference });
+          };
+          const wiredNested = wireSpineImportsInBody(body.rules, placementFrame, context, options);
+          return isThenable(wiredNested) ? wiredNested.then(link) : link();
         };
         return isThenable(registered) ? registered.then(finishRegister) : finishRegister();
       };
