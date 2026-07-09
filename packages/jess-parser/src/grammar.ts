@@ -321,10 +321,10 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // The inner is a selector list; the builder coerces the (possibly string) inner
   // selector to a proper Selector node so writeSyntax/eval have a real node.
   const SelectorCapture = node(
-    noTrivia(sequence(
-      literal('*'), literal('['),
-      parser({ trivia: rw }, sequence(g.SelectorList, expect(literal(']'), ']')))
-    )));
+    sequence(
+      literal('*['),
+      g.SelectorList, expect(literal(']'), ']')
+    ));
 
   // ── `$apply` — selectors as mixins ───────────────────────────────────────────
   // `$apply .rounded, .shadow;` — applies (calls) rulesets as mixins. Surface is
