@@ -136,7 +136,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const declPropName = regex(/[0-9]+|\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|[@$]\{[^}]*\})*/);
   const refKey = choice(nestedRef, lessVar, propRef, interpKey, ident);
   // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
-  const refIndex = sequence(literal('['), sequence(optional(refKey), literal(']')));
+  const refIndex = sequence(literal('['), optional(refKey), literal(']'));
   const refCall = sequence(literal('('), optional(mixinArgsContent), literal(')'));
   // varReference + lookupOrCall: a @variable OR $property glued to a chain of
   // [accessor]/(call). `$color` is a bare property reference (read declaration
