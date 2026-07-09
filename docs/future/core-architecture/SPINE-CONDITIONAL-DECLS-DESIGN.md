@@ -229,3 +229,120 @@ rebind. Two paths:
 Recommend (i) now — do not spend the spine increment on a shape whose oracle is
 undefined; revisit only if a real `:=` case appears. Owner decides whether `:=` is a
 committed language feature or a parser-accepted no-op.
+
+---
+
+# ADDENDUM — `nearestOuter` (`:=`) eval oracle NOW EXISTS; spine-fold analysis
+
+Status: EVAL IMPLEMENTED (branch `work/nearest-outer`, base `587d56140`). Commits
+`05050e06b` (eval) + `289deb624` (binding-surface skip + tests). The Open Question
+above is RESOLVED in favor of path (ii): `:=` is a committed feature with defined
+semantics and a working eval oracle. This addendum specs the mechanism-(B) fold. **No
+`emit-walk.ts` change is made here** (that file is owned by the extend-#4a agent; the
+orchestrator sequences the actual gate-lift). This is DESIGN ONLY.
+
+## What the eval oracle now does (the shape to match byte-for-byte)
+
+`Rules.registerNode`, `rules.ts` (the `isNode(node, N.Declaration)` branch, immediately
+BEFORE the `setDefined` block). Fires only on a `nearestOuter` VarDeclaration:
+
+1. `lookupScopeFrameVariable(this._scopeFrame, key, { searchParents: true,
+   includeAssignmentTargets: true, bailOnPendingDeclarations: true,
+   blockedSource: s => s === node, filter: s => s !== node })` — walks the parent chain
+   OUTWARD and returns the FIRST (nearest) enclosing binding, excluding the `:=` node's
+   own binding.
+2. `live`/`declaration` hit → `hit.cell.value = evalSetDefinedAssignedValue(node, ctx)`;
+   readonly → `ReferenceError("x" is readonly)`.
+3. `miss` → located `JessError` via `ERR.nameNotFound({ ctx, node:{spanStart,spanEnd},
+   meta:{symbol} })` (code `resolve/name-not-found`) — one error, stop.
+4. `uncovered` → occurrence crawl `findWritableSetDefinedDeclarationOccurrence(this, key,
+   true, { searchParents: true, excludedDeclarations: [node] })`; on hit write via
+   `owner.writeSetDefinedBindingCell`; on no hit → the same `nameNotFound` error.
+
+Additionally `:=` is now treated as a binding-REASSIGNMENT, not a new binding, at every
+site that already skips `setDefined` (`isBindingReassignment(node) = setDefined ||
+nearestOuter`): `prepareScopeFrameDeclarationIndex`, the declaration-surface probes,
+public-var surface, imported-readonly guard. So a `:=` node NEVER enters a
+`declarationBucketsByName` bucket — exactly like `setDefined`.
+
+**Net: the eval frame walk for `nearestOuter` is byte-identical to `setDefined`'s**
+(both use `lookupScopeFrameVariable` returning the first/nearest hit up the parent
+chain; both skip bucket indexing; both write the resolved cell). The ONLY differences
+are (a) the surface marker/print (`:=` vs `!global`, already handled), and (b) the
+DESIGN intent — `!global` conceptually targets the outermost binding, `:=` the nearest —
+which coincide at the frame level because `lookupScopeFrameVariable` already stops at the
+first (nearest) hit. They diverge observably ONLY with ≥2 nested bindings of the same
+name; verified by test `targets the NEAREST enclosing binding, not a farther (global)
+one` (root binding left untouched when an intermediate scope binds the name).
+
+## Measured cross-scope divergence (the fold gate)
+
+I A/B-probed `setDefined` and `nearestOuter` on the identical nested shape
+`@x:outerA; .b { @x:innerB; .c { @x <op> reassigned } }` (both operators). Result:
+**identical for both** — the in-descent write lands on `.b`'s binding cell, but a sibling
+READ in `.b` after `.c` still resolves `innerB` in the single-pass model, because eval's
+two-pass does NOT leak a nested write to an outer binding into a later same-scope outer
+read. This is the SAME divergence `bodyHasPriorSameNameDecl` (`emit-walk.ts:1103`) was
+built to gate for `setDefined`. Because `:=`'s eval walk equals `setDefined`'s, the
+foldable/sequenced partition is IDENTICAL.
+
+## Sub-shape partition — what folds vs stays on eval
+
+| `:=` sub-shape | Folds via (B)? | Rule |
+|----------------|----------------|------|
+| SAME-scope target: a prior same-body non-reassign `@x:` before the `:=` | **YES, byte-identical** | in-descent cell write matches eval's same-scope update; `bodyHasPriorSameNameDecl(children, i, child) === true` |
+| CROSS-scope target: no same-body prior; nearest binding is in an OUTER frame | **NO — SEQUENCE to eval** | outer-frame write diverges from eval's two-pass (proven above), exactly as cross-scope `setDefined` |
+| UNBOUND: no enclosing binding anywhere | folds trivially as the ERROR | both spine and eval must throw `resolve/name-not-found`; a static pre-scan can detect "no prior + no outer binding" but the simplest correct path is to let the (B) write reach `miss`/no-crawl-hit and throw the same `JessError` |
+| `uncovered` frame surface (optional/dynamic targets) | **NO — SEQUENCE** | same runtime bail as `setDefined`'s `uncovered` → root re-render on eval |
+| non-static (interpolated) name | **NO** | `typeof child.name !== 'string'` already returns false at `emit-walk.ts:920` |
+
+## Concrete fold plan (mechanism B, mirrors the `setDefined` increment exactly)
+
+This is a near-verbatim extension of the already-landed `setDefined` fold (increment 2
+in the Fold plan above). Three edits, ALL in `emit-walk.ts` (sequenced behind
+extend-#4a; do NOT apply from this branch):
+
+1. **`isSimpleSpineLeaf` (`emit-walk.ts:1077`)** — replace the unconditional
+   `if (options?.nearestOuter) return false;` bail with the `setDefined`-shaped admit:
+   `if (options?.nearestOuter) return isNode(node, N.VarDeclaration);`. Update the stale
+   comment at 1075-1076 ("no eval implementation, no oracle") — the oracle now exists.
+
+2. **`isSpineEligibleBody` (`emit-walk.ts:930`)** — extend the same-scope gate to cover
+   `nearestOuter`: change the guard to fire for `isBindingReassignment(child)` (i.e.
+   `child.options?.setDefined || child.options?.nearestOuter`) `&& !bodyHasPriorSameName
+   Decl(children, i, child)` → `return false`. This statically sequences cross-scope
+   `:=` to eval, so the runtime never reaches an `uncovered`/outer-write divergence.
+   NOTE: `bodyHasPriorSameNameDecl`'s inner filter (`!prior.options?.setDefined`,
+   `emit-walk.ts:1111`) must also exclude `nearestOuter` priors (a prior `:=` is itself a
+   reassignment, not the binding a later `:=` targets) — switch it to
+   `!isBindingReassignment(prior)`.
+
+3. **Mixin-body cross-scope guard (`emit-walk.ts:319`)** — the existing
+   `if (isNode(child, N.VarDeclaration) && child.options?.setDefined) { ...route to eval }`
+   inside a mixin body applies verbatim to `nearestOuter` (a `:=` in a mixin body writes
+   a caller/outer binding — always cross-scope). Extend it to `isBindingReassignment(child)`.
+
+The actual WRITE reuses the `setDefined` spine path unchanged: the descent write helper
+(`applyBodySetDefined` / the `spine-setdefined.ts` mechanism-B path) already calls
+`lookupScopeFrameVariable(includeAssignmentTargets)` + `writeSetDefinedBindingCell`.
+Because the same-scope gate (edit 2) guarantees the target is in the CURRENT frame, the
+`searchParents` difference between `:=` (nearest-outward) and `!global` (resolve) is moot
+at the fold boundary — both resolve the same same-scope cell. So the mechanism-B write
+needs NO nearestOuter-specific branch; only the eligibility gates (edits 1-3) change.
+
+## Ratchet strategy (extends the existing `emit-walk-ratchet.test.ts` frontier test)
+
+- FLIP the `nearestOuter` assertion in `STILL EXCLUDES ... nearestOuter (the frontier)`
+  (`emit-walk-ratchet.test.ts:666`): a SAME-scope `:=` (`@x:red; @x:=blue`) becomes
+  spine-eligible and byte-identical to eval; a CROSS-scope `:=` (nested, no same-body
+  prior) STAYS excluded (`isSpineEligibleRoot === false`).
+- Correctness oracle = the eval path on the same source (the eval impl on this branch),
+  asserting identical bytes — NOT a golden `.css`.
+- The negative ratchet on the pure read-time side-table (no hot-path tax) is UNCHANGED —
+  mechanism (B) touches only the `:=` node, never the variable-read path.
+
+## Perf
+
+Zero hot-path cost, identical to the `setDefined` fold: reads are untouched; the write
+fires only at the `:=` node, as rare as the shape. The eval eval-path change likewise
+gates on `node.options?.nearestOuter`, so the common variable path pays nothing.
