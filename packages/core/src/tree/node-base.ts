@@ -301,6 +301,17 @@ export const F_MERGE_SUPPRESSED = 0b10000000000000000;
 export { F_HAS_VALUESPANS, F_HAS_FIELDSPANS };
 
 /**
+ * `requiredSemi` is a tri-state (`undefined` | `true` | `false`) backing the
+ * `requiredSemi` getter — folds into TWO bits exactly like `hoistToRoot`:
+ * `F_SEMI_SET` marks "a value was assigned", `F_SEMI_VALUE` carries that value.
+ * Saves one own property on every node (the field was `declare`, so only the
+ * assigned instances — Call and parser-touched nodes — actually paid a slot,
+ * but the flag path removes even that). Bits 19/20.
+ */
+export const F_SEMI_SET = 0b10000000000000000000;
+export const F_SEMI_VALUE = 0b100000000000000000000;
+
+/**
  * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
  * faithful copy (`clone()`) PRESERVES these from its source — same structure ⇒
  * same flags — rather than recomputing them from children (that is eval-path
@@ -548,16 +559,25 @@ export abstract class Node<
   /**
    * If the node must have a semi separator before
    * the next node when in a declaration list or main
-   * rules list. Backed by `_requiredSemi`; exposed as a getter so
-   * subclasses (e.g. Declaration) can override with computed logic.
+   * rules list. Tri-state backed by the `F_SEMI_SET`/`F_SEMI_VALUE` flag bits
+   * rather than a per-instance field; exposed as a getter so subclasses (e.g.
+   * Declaration) can override with computed logic.
    */
-  declare _requiredSemi: boolean | undefined;
   get requiredSemi(): boolean | undefined {
-    return this._requiredSemi;
+    if ((this.flags & F_SEMI_SET) === 0) {
+      return undefined;
+    }
+    return (this.flags & F_SEMI_VALUE) !== 0;
   }
 
   set requiredSemi(value: boolean | undefined) {
-    this._requiredSemi = value;
+    if (value === undefined) {
+      this.flags &= ~(F_SEMI_SET | F_SEMI_VALUE);
+    } else if (value) {
+      this.flags |= F_SEMI_SET | F_SEMI_VALUE;
+    } else {
+      this.flags = (this.flags | F_SEMI_SET) & ~F_SEMI_VALUE;
+    }
   }
 
   /**

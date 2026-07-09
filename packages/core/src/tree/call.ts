@@ -1,5 +1,5 @@
 import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_SEMI_SET, F_SEMI_VALUE, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { coerceNodeArray } from './util/evaluate-node-array.js';
@@ -562,8 +562,6 @@ export class Call extends Node<CallValue, CallOptions> {
    * is purely a call-render concern, not a re-eval gate.
    */
   _evaluatedCallOutput = false;
-
-  override _requiredSemi = true;
 
   private createEvalState(): CallEvalState {
     const preservesRulesLikeVariableTarget = isNode(this.name, N.Reference) && this.name.options?.type === 'variable';
@@ -1564,8 +1562,9 @@ export class Call extends Node<CallValue, CallOptions> {
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
-    // Function calls are always non-static
-    this.addFlags(F_VISIBLE, F_NON_STATIC);
+    // Function calls are always non-static, and always require a semi
+    // separator (was `_requiredSemi = true`; now the F_SEMI_* bits).
+    this.addFlags(F_VISIBLE, F_NON_STATIC, F_SEMI_SET, F_SEMI_VALUE);
   }
 
   protected override ownStaticFlag(): number {
