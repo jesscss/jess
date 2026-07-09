@@ -2979,6 +2979,61 @@ function extendAmpersandFind(
 }
 
 /**
+ * CHEAP SOUND PRE-REJECT SIGNATURE for a FIND selector (the target being matched-against).
+ *
+ * Returns the set of plain id/class/element `raw` tokens that MUST all appear textually in a
+ * subject for `find` to possibly match it — but ONLY when `find` is a purely-plain selector
+ * (every atom is a plain `id`, no `:is`/graft/`&`/pseudo-arg). For anything non-plain it returns
+ * `undefined`, meaning "cannot cheaply pre-reject — always run the full matcher". SOUNDNESS: a
+ * plain find matches a target only as a sub-sequence of plain compounds, so any required token
+ * absent from the subject text guarantees NOT_FOUND. Memoized per Selector node (the same fan's
+ * find is queried once per fixpoint fire across the whole SOLVE — this collapses that to one lift).
+ * @see EXTEND-INDEX-DESIGN.md (REJECT — union-bitset guaranteed-false test).
+ */
+const findRejectTokensCache = new WeakMap<Selector, Set<string> | null>();
+function selectorPlainTokens(sel: Selector): Set<string> | null {
+  const ir = liftSel(sel, new SymbolTable());
+  const tokens = new Set<string>();
+  for (const branch of ir.branches) {
+    for (const step of branch) {
+      for (const a of step.compound.atoms) {
+        if (a.kind === 'id') {
+          tokens.add(String(a.raw));
+        } else {
+          return null; // non-plain (graft/amp/pseudo-arg) — cannot cheaply pre-reject
+        }
+      }
+    }
+  }
+  return tokens;
+}
+export function findRejectTokens(find: Selector): Set<string> | undefined {
+  const cached = findRejectTokensCache.get(find);
+  if (cached !== undefined) {
+    return cached ?? undefined;
+  }
+  const result = selectorPlainTokens(find);
+  findRejectTokensCache.set(find, result);
+  return result ?? undefined;
+}
+
+/**
+ * The set of plain id/class/element tokens PRESENT anywhere in `subject` (undefined when the
+ * subject is non-plain and thus cannot be used to pre-reject). Memoized per node — a subject's
+ * evolving branch values are fresh nodes, so each distinct value is lifted at most once.
+ */
+const subjectTokensCache = new WeakMap<Selector, Set<string> | null>();
+export function subjectPresentTokens(subject: Selector): Set<string> | undefined {
+  const cached = subjectTokensCache.get(subject);
+  if (cached !== undefined) {
+    return cached ?? undefined;
+  }
+  const result = selectorPlainTokens(subject);
+  subjectTokensCache.set(subject, result);
+  return result ?? undefined;
+}
+
+/**
  * PUBLIC ENTRY (own construction). Same contract as `extendSelector`, but never delegates:
  * it either builds the output itself (byte-identical to the oracle on covered shapes) or
  * returns UNSUPPORTED. `&`-FIND is resolved (rung 6, find side); list-parent / non-amp

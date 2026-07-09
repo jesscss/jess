@@ -44,15 +44,13 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   constructor(
     value: ConditionValue,
     options?: ConditionOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.left = value[0];
     this.operator = value[1];
     this.right = value[2];
     this.negate = options?.negate === true;
-    this._treeContext = treeContext;
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
@@ -73,10 +71,9 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     const Ctor = this.constructor as new (
       value: ConditionValue,
       options?: ConditionOptions,
-      location?: NodeLocation,
-      treeContext?: Context['treeContext']
+      location?: NodeLocation
     ) => this;
-    const cloned = new Ctor(value, { negate: this.negate }, sourceSpanOf(this), this._treeContext);
+    const cloned = new Ctor(value, { negate: this.negate }, sourceSpanOf(this));
     cloned.inherit(this);
     return cloned;
   }

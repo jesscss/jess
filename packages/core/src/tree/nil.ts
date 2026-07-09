@@ -38,11 +38,9 @@ export class Nil extends Node<''> {
   constructor(
     value?: '',
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super('', options, location);
-    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
     this.addFlag(F_ALLOW_ROOT);
     this.removeFlag(F_VISIBLE);

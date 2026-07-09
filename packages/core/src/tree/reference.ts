@@ -2500,8 +2500,7 @@ function resolveAmbiguousReferenceTarget(args: {
     const refNode = new Reference(
       targetKey,
       { type: 'mixin-ruleset' },
-      undefined,
-      referenceNode.sourceRoot?._treeContext
+      undefined
     );
     referenceNode.adopt(refNode);
     return refNode.eval(context);
@@ -3691,14 +3690,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   constructor(
     value: ReferenceValue | string,
     options?: ReferenceOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     if (typeof value === 'string') {
       value = { key: value };
     }
     super(value, options, location);
-    this._treeContext = treeContext;
     this.key = value.key;
     if (value.target !== undefined) {
       (this as { target?: ReferenceValue['target'] }).target = value.target;

@@ -481,8 +481,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   constructor(
     value?: AmpersandValue | string,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     let finalValue: AmpersandValue = {};
     if (typeof value === 'string') {
@@ -499,7 +498,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       }
     }
     this.appendValue = finalValue.appendValue;
-    this._treeContext = treeContext;
 
     // Set the F_AMPERSAND flag so it bubbles up to parent value
     this.addFlag(F_AMPERSAND);
@@ -598,9 +596,17 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
     if (appendValue !== undefined || this.hoistToRoot) {
-      // Use the stored selector if available, otherwise fall back to frame selector
+      // Use the stored selector if available, otherwise fall back to frame selector.
+      // In spine mode the parent frame's `frame.selector` is the RAW authored selector
+      // (a nested `&-b`), so prefer the spine-resolved concrete selector for the frame
+      // (`.a-b`) when present — nested append (`.a { &-b { &-c {…} } }` → `.a-b-c`)
+      // must append against the RESOLVED parent, not the raw `&-b` (which would throw
+      // `Cannot append`). The eval pass gets this for free by pushing the resolved
+      // OUTPUT node; the spine uses the `spineResolvedFrameSelector` side-channel to
+      // avoid mutating the shared canonical source node.
       let frame = atIndex(context.rulesetFrames, -1);
-      let selectorRaw = storedSelector ?? frame?.selector;
+      const resolvedFrameSelector = frame ? context.spineResolvedFrameSelector?.get(frame) : undefined;
+      let selectorRaw = storedSelector ?? resolvedFrameSelector ?? frame?.selector;
       if (!selectorRaw) {
         return createPublicNil();
       }

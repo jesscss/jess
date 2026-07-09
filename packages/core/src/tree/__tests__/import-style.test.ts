@@ -36,7 +36,7 @@ import { Rules as RulesClass } from '../index.js';
 import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSegmentSourceChild, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder, getImportPostludeRenderState } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import type { CallableFindOptions, DeclarationFindOptions } from '../util/lookup-utils.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
@@ -46,17 +46,6 @@ import { createTestContext } from './import-style-test-helpers.js';
 import { findPropertyDeclarationOccurrence, findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
 
 let context: Context;
-
-describe('Style import construction', () => {
-  it('preserves parser tree context on construction', () => {
-    const treeContext = new TreeContext();
-    const node = style({
-      path: quoted('module.jess')
-    }, { type: 'compose' }, undefined, treeContext);
-
-    expect(node._treeContext).toBe(treeContext);
-  });
-});
 
 function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;

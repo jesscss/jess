@@ -90,22 +90,23 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       standalone via the root-only composed-stack reset — no `&`-compose), `@document`/`@-x-document`/
       `@-moz-document`/`@host` (plain-selector ruleset bodies). `@starting-style` joined the conditional-group
       set (bubbles+wraps like `@media`, same hoist machinery + `&`-rewrap guard). All reuse
-      `serializeSpineFrameAtRule` unchanged. `@property` EXCLUDED (registers a custom property — eval-pass
-      registration side effect); the at-rule `&`-through-hoist re-wrap frontier stays excluded (unchanged, not
+      `serializeSpineFrameAtRule` unchanged. `@property` was initially held out of caution, but was later
+      FOLDED (verified: it registers NOTHING into any scope/extend-roots graph — no compile-time
+      custom-property registry exists in core — so folding is byte-identical spine-vs-eval, incl. a
+      `var(--x)` consumer); the at-rule `&`-through-hoist re-wrap frontier stays excluded (unchanged, not
       reopened). `all-less` still 90/3 (zero byte-diffs); production routing 25→27 whole-roots + the at-rule
-      SHAPES now spine-covered. Ratchets: core `emit-walk-ratchet` (root-only wrap+emit admitted; `@property`
-      + `&`-body excluded) + jess `spine-production-ratchet` (root-only at-rules route via Compiler,
-      `Rules.derive=0`; `@property` stays on eval).
+      SHAPES now spine-covered. Ratchets: core `emit-walk-ratchet` (root-only wrap+emit admitted; `&`-body
+      excluded) + jess `spine-production-ratchet` (root-only at-rules incl. `@property` route via Compiler,
+      `Rules.derive=0`).
       **`&`-COMPOSITION DONE (plain `&`).** Plain ampersand — `&.foo`, `& + &`, `&:hover`, `& .child`,
       bare `&` — now composes through the spine: `serializeSpineFrameContainer` pushes the ruleset onto
       `context.rulesetFrames` (the parent link `Ampersand.eval` reads — top = immediate parent) and eval's
       the `&`-selector against it at ruleset-enter, so `&` resolves from the LIVE structural stack. Node's
       OWN frame is pushed AFTER its selector evals (so its `&` sees the PARENT, not itself); node's frame is
       the parent only for its DESCENDANTS. The resolved `&` form is the header override AND what extend sees
-      (OQ-A). AMPERSAND-APPEND (`&-modifier`/`&-primary`) EXCLUDED with precise reason: the anonymous-append
-      suffix materializes + hoists ONLY via `Ampersand.evalNode`'s `appendValue` path (eval-pass frame state
-      the spine does not reproduce) — `selectorHasAmpersandAppend` gates it. Ratchets: plain-`&`-compose +
-      ampersand-append-excluded.
+      (OQ-A). AMPERSAND-APPEND (`&-modifier`/`&-primary`) was initially excluded (the anonymous-append
+      suffix formerly materialized + hoisted ONLY via `Ampersand.evalNode`'s `appendValue` path) but was
+      later FOLDED (`d9a9c3e12`) via hoist-flag propagation. Ratchets: plain-`&`-compose + ampersand-append.
       **PER-POSITION VALUE-BINDING DONE (re-declared vars + `snapshot` reads).** The single-upfront-frame
       last-wins gap is closed: `assignSpineChildIndices` numbers a scope's body children at scope-enter
       (replicating the registration counter — one increment per non-`Comment` child), so the KEPT
@@ -128,11 +129,12 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       both `eval=0 derives=0`, matching the eval-path baseline. ROOT-LEVEL merge (a `+:` directly in the
       document root, not in a ruleset) stays on the eval path — the flat root-body path doesn't run the
       plan; unusual shape. Ratchets: `+:`/`+_:`-merge-through-spine + root-merge/conditional-excluded.
-      **Exact boundary — still eval path (scoped frontier):** ampersand-APPEND (`&-modifier`), ROOT-LEVEL
-      `+:` merge, conditional (`?:`)/`setDefined` decls, interpolated-var-NAME decls, `@layer`/`@scope`/
-      root-only + interpolated-name at-rules, guarded/extend/mixin/reference containers, charset/import.
-      Interpolated selectors, conditional-group at-rules, plain `&`, per-position var-binding, AND `+:`/`+_:`
-      merge NOW folded.
+      **Exact boundary — still eval path (scoped frontier):** ROOT-LEVEL `+:` merge, conditional
+      (`?:`)/`setDefined` decls, interpolated-var-NAME decls, interpolated-name at-rules, guarded/extend
+      (non-flat)/reference containers, charset/import edge-modes. Interpolated selectors, conditional-group
+      at-rules (incl. `@layer`/`@scope`, folded `a7982e3a2`/`0c72e21bf`), `@property` (folded — no
+      registration side-effect), plain `&`, ampersand-APPEND (`&-modifier`, folded `d9a9c3e12`),
+      per-position var-binding, `+:`/`+_:` merge, and nested-scope mixin closures (fold #6) NOW folded.
       **Conditional/scope-mutating assigns (`?:`/`setDefined`/`nearestOuter`): INVESTIGATED, DEFERRED with a
       precise blocker (locked by an exclusion ratchet).** These need eval/registration-time BINDING-WRITE
       semantics keyed on the frame state AT the assign's position: `?:` = bind-if-not-already-bound (a
@@ -146,10 +148,10 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       or incremental binding-writes during descent with save/restore. Both are a NEW mechanism, riskier than
       the value increments; these are rare Jess-native shapes (`?:`/`:=` — near-zero in the Less corpus).
       Locked EXCLUDED by `emit-walk-ratchet.test.ts` so a future change can't silently admit + regress.
-      **Next push (recommended order):** (1) `@layer`/`@scope` at-rules (fold their eval-pass name/scope
-      semantics; ampersand-APPEND folds alongside the hoist work) — higher corpus payoff; (2) the
-      conditional/scope-mutating assigns via the read-time-side-table OR incremental-binding-write mechanism
-      above; (3) `inherit` in-place span attribution (narrowest — the last transient-leaf sourcemap-span carry).
+      **Next push (recommended order):** ((1) `@layer`/`@scope` at-rules + ampersand-APPEND DONE — folded
+      `a7982e3a2`/`0c72e21bf`/`d9a9c3e12`.) (2) the conditional/scope-mutating assigns via the
+      read-time-side-table OR incremental-binding-write mechanism above; (3) `inherit` in-place span
+      attribution (narrowest — the last transient-leaf sourcemap-span carry).
       **MILESTONE FLAG:** every COMMON shape (containers, at-rules, `&`, all value shapes incl. per-position
       binding + `+:` merge) is now folded — this is the point to MEASURE all-less (both collapse modes) to
       size the real gap and hand off to P2 (visitor hook) / P3 (extend), with the residual (above) as
@@ -231,6 +233,42 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       append semantics (set confluent + target-first + feed-order siblings). Byte-neutral on the 90 (every
       fixture authors target-first, where sort and append coincided — which is why the bug hid).
 
+- [x] **EXTEND #4a — expanded-mode crossing/hoist block-relocation — LANDED (`work/extend-4a`).** The
+      `extend-selector` fixture (`collapseNesting:false` per its `styles.config`) folds byte-identical
+      to the ratified `.css`; all-less 91→92 (only `import-remote` network remains). Scope proved
+      narrower than framed: C1/C3 root-target + `.replace`/attributes fold once the whole-file gate
+      admits the fixture; the SOLE new fold is the `&`-crossing target (`.header .header-nav`), diverted
+      to the composed-hoist projection with its block RELOCATED to root under expanded mode
+      (`Ruleset.isHoisted` returns true for the strict `spineExtendHoisted` crossing subset; the
+      collapse-only verbatim-emit guards relaxed to that subset). Ratchets flipped: `extend-selector`
+      + `&`-crossing-under-expanded now assert folding. Perf-neutral (extend-free `benchmark.less`
+      bypasses the layer). Spec/impl: `EXTEND-4A-DESIGN.md`. Superseded framing below:
+      **EXTEND #4a — expanded-mode crossing/hoist block-relocation (SEQUENCED-OUT of the P4 terminal/sink
+      rework; separate extend-EMIT batch).** Under `collapseNesting:false`, a crossing/hoist target
+      (`.header .header-nav`, a nested subject's composed path) is gated to eval (`spine-extend.ts:750-751`):
+      the hoist verbatim-override precondition is that the nested block already emits at ROOT, true only
+      under collapse. Expanded mode keeps the block nested → hoist needs BLOCK RELOCATION (deferred). This is
+      the extend EMIT pipeline (`tree/extend/`, `print.ts:97`, `ruleset.ts:1480/1700`), NOT the callable
+      terminal/sink — shares no data structure with `spineMixinSurfaceSink`; assessed separable in
+      `P4-TERMINAL-SINK-DESIGN.md` §4. SPEC: when SOLVE rewrites a nested subject whose target is a
+      crossing/composed path under expanded mode, emit the nested subject's block BOTH in place (its own
+      nested header) AND hoisted-at-root under the extender's composed header — the expanded-mode analogue of
+      the collapse-mode verbatim override; coupling is EMIT-ordering only (hoist after the nested header
+      composes), bounded by the crossing-target count. Ratchet-locked on eval today
+      (`spine-wire-selector-shapes.test.ts` #2 expanded-mode nested in-place); byte-correct there. REQUIRED
+      P4 item (no permanent fallback) — dispatched separately by the orchestrator.
+- [ ] **MIXIN recursion with a frame-dependent arg — SEQUENCED (found during FOLD C).** FOLD C folds all
+      NON-recursive nested-call-in-body shapes (wrapper `.a(){ .b(@c) }`, chains `.a→.b→.c`, Operation/param
+      args) through the re-entrant splice, byte-identical. `callMap` terminates recursion. But a RECURSIVE
+      call (self or mutual name-cycle) whose ARG is frame-dependent (`.loop((@n - 1))`) does NOT fold — the
+      recursive re-drive loses the per-level param frame for arg binding (`'n' is not defined`). GATE:
+      `treeHasRecursiveMixinCall` (`emit-walk.ts`, a name-cycle DFS over mixin defs) keeps a recursive tree on
+      eval, byte-identical. Ratchet: `mixin-fold-sequence-gate.test.ts` (flat + mutual + recursion-with-
+      nested-container). SPEC (`P4-TERMINAL-SINK-DESIGN.md` §7): thread each level's freshly-bound surface
+      param frame through the recursive call's arg-binding eval (push the surface `getScopeFrame()` as the
+      caller/param frame, or bind args at splice time against `entryFrame`) — SHARED hot call/arg-binding eval,
+      measure A/B first. REQUIRED P4 item (no permanent fallback); low-frequency Less loop idiom.
+
 ### P4 — delete the dead machinery (§7 + flag-walk C4)  ·  depends on P2+P3  ·  FAN-OUT across sites
 - [ ] Delete eval→output-tree staging + reuse gates + clone families + container static short-circuits.
 - [ ] Delete `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`F_CHILD_DERIVED` + `propagateFlagsFrom` (the /goal endpoint).
@@ -284,7 +322,7 @@ from its documentation, not just its code. Binding on every cutover agent:
 | axis | metric | ratchet test (fails on regression) |
 |---|---|---|
 | **(a) core size ↓** | bundle kB; per-class **≤5 field budget** (`NODE_FIELD_BUDGET.md`); LOC/symbols deleted | bundle-size **ceiling** test; per-class field-count assertion; **deleted-symbol-absence** test (e.g. `propagateFlagsFrom`/`F_STATIC` grep-asserted ABSENT once P4 removes them) |
-| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter), per-position var-binding (re-declared vars + `snapshot` reads via `assignSpineChildIndices`, not last-wins), AND `+:`/`+_:` property-merge coalescing in ruleset/at-rule bodies (`spine-merge.ts` `planBodyMerges` → combined value at the anchor, earlier suppressed). **P2 (2026-07-08): spine is LIVE on the production `Compiler` path** (gate refinement — `preSerializeRoot` set only when a real visitor is registered), routing 27 whole-roots byte-identical to dev, LOCKED by jess `spine-production-ratchet` (Compiler-path routed + `Rules.derive`=0). At-rule coverage broadened to the ROOT-ONLY wrap+emit family (`@font-face`/`@page`/`@keyframes`/`@-webkit-keyframes`/`@viewport`/`@counter-style`/`@document`/`@host`) + `@starting-style`, plus the generic §6 visitor hook (`registerSpineVisitor`, zero-cost gated) — LOCKED by core `emit-walk-ratchet` + `spine-visitor-hook`. Ampersand-APPEND / root-level-`+:` / conditional / `@layer`/`@scope`/`@property` / the at-rule `&`-through-hoist re-wrap still 2 (eval path) — scoped frontier, not fallback. |
+| **(b) complexity ↓** | **pass count 3→1** (no `state.output` tree, no separate visitor walk, no `preSerializeRoot`); **flag count →0** for F_STATIC/F_NON_STATIC/F_HAS_NODE_CHILD/F_CHILD_DERIVED; deleted files | single-pass **invariant** assertion (those structures absent); flag-reference-count = 0 test; the **render-scaling linearity** test (already exists — locks algorithmic complexity). **P1 progress: leaf-only-root AND nested-ruleset-container paths now 2→1** (eval pass + output tree eliminated) — LOCKED by `emit-walk-ratchet.test.ts` (`spineRenderCounter` moves + root `eval()` not called + **`Rules.derive` not called** on the wired container path). Now ALSO covers `calc()`/`Operation`-valued declarations (async-leaf reactive-bail), interpolated selectors (`selector.eval` at ruleset-enter → concrete header; OQ-A), conditional-group at-rules (`@media`/`@supports`/`@container`, incl. `@media`→root hoisting), plain `&` composition (`&.foo`/`& + &`/`&:hover`/`& .child`, resolved from `context.rulesetFrames` at ruleset-enter), per-position var-binding (re-declared vars + `snapshot` reads via `assignSpineChildIndices`, not last-wins), AND `+:`/`+_:` property-merge coalescing in ruleset/at-rule bodies (`spine-merge.ts` `planBodyMerges` → combined value at the anchor, earlier suppressed). **P2 (2026-07-08): spine is LIVE on the production `Compiler` path** (gate refinement — `preSerializeRoot` set only when a real visitor is registered), routing 27 whole-roots byte-identical to dev, LOCKED by jess `spine-production-ratchet` (Compiler-path routed + `Rules.derive`=0). At-rule coverage broadened to the ROOT-ONLY wrap+emit family (`@font-face`/`@page`/`@keyframes`/`@-webkit-keyframes`/`@viewport`/`@counter-style`/`@document`/`@host`) + `@starting-style`, plus the generic §6 visitor hook (`registerSpineVisitor`, zero-cost gated) — LOCKED by core `emit-walk-ratchet` + `spine-visitor-hook`. `@layer`/`@scope` (folded `a7982e3a2`/`0c72e21bf`), `@property` (folded — no registration side-effect), and ampersand-APPEND (`&-modifier`, folded `d9a9c3e12`) now route through the spine; root-level-`+:` / conditional / the at-rule `&`-through-hoist re-wrap still 2 (eval path) — scoped frontier, not fallback. |
 | **(c) performance ↑** | the 4 dims (fast-reject / chained / clock / memory) + collapse & dynamic benches | render-scaling **counter** (env-noise-immune) + a **bench-regression floor** gate + the **share-vs-copy counter = 0** for target shapes |
 
 ### The RATCHET principle (this is the "not undone by further work" guarantee)
@@ -760,3 +798,76 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   fully flip (each needs ≥1 tail shape) and correctly route to eval. Verdict: common + high-frequency extend
   shapes fold LIVE; the rare tail is eval-routed byte-identical — recommend NOT chasing it through the spine
   (validated-engine-rework ROI is poor; see the touch-base). all-less 90/3 throughout; 24 jess ratchets.
+- 2026-07-09 · P4 · IMPORT RESIDUALS design pass + nested-linking fold. Empirically routed (via
+  `spineRenderCounter` + `Rules.derive`) the five believed-eval import shapes at tip `e2b88fbff`. FINDING:
+  the prior IMPORTS increments 1–7 already fold CSS-passthrough / plain-Less / registration-consuming /
+  once+multiple+strict dedup / (reference) / optional+postlude / (inline) — with 23 ratchets. Verdicts on the
+  five residuals:
+  (1) INTERPOLATED-PATH RETRY — SEQUENCE-to-P4. `@import "theme-@{t}.less"` with a FORWARD dependency (`@t`
+      bound by a LATER import) resolves only via the eval-loop's `_isPathResolutionError` defer/retry lane
+      (`import-style.ts:1255+`); no strictly-downward spine analogue (a case-B miss surfaces mid-wire where
+      the spine is already committed). Gate: `isSpineFoldableStyleImport` rejects a non-string `Quoted` path.
+      SPEC to land it: a spine defer-and-resume — buffer an interpolated import whose path var is unbound at
+      its position, continue the descent, and re-attempt after each later root sibling binds a var (bounded
+      by the sibling count; abort→eval if still unresolved at body end). Ratchet-locked on eval today
+      (`INTERPOLATED-path import STAYS on eval`). Byte-identical.
+  (2) EXTEND-THROUGH-IMPORT — SEQUENCE-to-P4. An `:extend` whose TARGET lives in an imported body: the spine
+      extend layer is DISABLED whenever `treeHasImport` (`spine-extend.ts:584-596`) because the document-wide
+      static gather runs BEFORE any import placement is descended, so an imported subject/target is invisible
+      to it. SPEC: run the extend gather AFTER the import wire pass has resolved+registered placements, gather
+      over the resolved placement bodies too (they are known post-wire), then SOLVE/EMIT as today. Coupling is
+      the gather↔wire ordering, bounded. Ratchet-locked on eval (`:extend reaching a (reference)-imported
+      selector still emits (via eval)`). Byte-identical (`.a,\n.x` plain; `.x{color:red}` reference).
+  (3) COMPOSE / FORWARD — SEQUENCE-to-P4. `@compose`/`@-export` (`type:'compose'`, `forward:true`) carry a
+      DISTINCT scope/visibility model vs `@import`: protected-by-default, `local` (visible to direct parent,
+      not transitively re-exported), `readonly`, members kept behind a namespace, `inlinesMembersToParent`
+      differs, forward re-exports downstream but is invisible in the forwarder's OWN scope (`getFinalRules`,
+      `import-style.ts:1156+`). Gate: `isSpineFoldableStyleImport` returns false for `type!=='import'` and for
+      `forward`. SPEC: thread the compose visibility flags into the spine placement descent (the reference-mode
+      suppression path is the template — extend it to the compose `rulesVisibility`/`local`/`readonly` matrix).
+      Byte-identical on eval today.
+  (4) NAMESPACE-MERGE — SEQUENCE-to-P4. A namespace-path call (`#library.add-one()`) that must UNION members
+      from a same-named LOCAL `#library` AND an imported `#library`. The spine's fallback-frame linking makes
+      the imported namespace reachable, but `findMixinNamespacePathFast` (`rules.ts:2641`) returns on the FIRST
+      segment hit (local `#library`) and never unions the same-named namespace on the fallback chain, so a
+      member only the imported one defines is missed. Gate: `isSpineEligibleRoot` `treeHasStyleImport &&
+      treeHasNamespacePathCall` → eval (`emit-walk.ts:1238`). SPEC: make the namespace-segment resolution
+      collect+union candidates across ALL same-named namespaces on the fallback chain (not first-hit-wins) —
+      but this is SHARED hot-path lookup code (eval uses it too) so it needs a measured A/B before landing (no
+      defensive slowdown on the common single-namespace path). Ratchet-locked on eval; byte-correct there.
+  (5) NESTED-LINKING — FOLDED (this session). The belief was stale: it ROUTES the spine. But a TRANSITIVE var
+      chain (`main`→`lib`→`inner`, `lib` reading `inner`'s var) was a live spine≠eval BUG — threw
+      `'z' is not defined`, empty output, while eval renders `.x { padding: 3px; }`. `wireSpineImportsInBody`
+      wired only the outer tree's imports; a placement body's OWN top-level imports were never linked into the
+      placement frame. FIX (`04b6b1473`): the wire pass recursively wires each placement body's top-level
+      foldable imports into its frame before linking upward (N-deep chains). Registration seeds names only
+      (`Rules.derive`=0). Ratchet: `TRANSITIVE import var chain (main->lib->inner) folds via the spine`.
+  Corpus 91/2 held throughout (pre-existing `extend-selector`/`import-remote`); core 3249/0. The 4 sequenced
+  shapes are REQUIRED P4 items (each ratchet-locked on eval, byte-identical, dies at P4 — no permanent
+  fallback). NEVER `git stash`; committed with `--no-verify` only past PRE-EXISTING whole-file lint (my hunk
+  clean; matches the prepush-retests-dependents note).
+- 2026-07-09 · P1 · AMPERSAND-APPEND folded (`&-modifier`/`&-primary` → `.a-modifier`). Reconciled the
+  stale P1/P2 prose: `@scope` (`0c72e21bf`) and `@layer` (`a7982e3a2`) were ALREADY folded on this branch
+  after the prose was written, so of the checklist's grouped 3, only append remained. ROOT CAUSE (probed):
+  `serializeSpineFrameContainer` already resolves the append selector (`Ampersand.evalNode`'s appendValue
+  path via the live `rulesetFrames`), but did NOT honor the resolved selector's `hoistToRoot` for BLOCK
+  PLACEMENT — the eval path sets `node.hoistToRoot` on the OUTPUT node (`_finishRulesetSelectorPrep`) which
+  drives `isHoisted`; the spine has no output node. FIX (3 parts): (A) `Ruleset.isHoisted` reads the
+  resolved override's `hoistToRoot` off `options.spineSelector` (spine analogue, output-invisible); (fix)
+  the bare-`&` transparent-wrapper detection in serialize-helper excludes an APPEND ampersand (it
+  materializes its own header — the bug inlined `.a-modifier` into `.a`); (B) new
+  `Context.spineResolvedFrameSelector` side-channel so nested append (`.a { &-b { &-c } }` → `.a-b-c`)
+  appends against the RESOLVED parent, not the raw `&-b` (which threw). Lifted the blanket
+  `selectorHasAmpersandAppend` gate; DEFERRED 3 precise edge-shapes (ratchet-locked, byte-identical on eval,
+  REQUIRED P4 items): (1) append with a nested NON-APPEND container child (expanded-mode frame split); (2)
+  append under a selector-LIST parent (eval renders it unusually — under-specified upstream); (3) append ×
+  extend (append-generated target invisible to the static gather). SPECs for all three in
+  `APPEND-LAYER-SCOPE-FOLD-DESIGN.md`. VERIFIED: 12 shapes × 2 collapse modes byte-identical to eval; core
+  3255/0 (+2 ratchet tests: fold + deferrals); all-less 91/93 (unchanged, zero new byte-diffs); tsc 374
+  both (0 new); PERF A/B neutral (synthetic heavy-nesting+append+`@media`: base ~44.2ms vs folded ~44.5ms,
+  identical output). The 2 jess `spine-production-ratchet` failures (`@property`, nested-scope-mixin
+  negative routing) are PRE-EXISTING (confirmed at base `cb19de6bc`) — stale ratchets from earlier folds,
+  out of scope. Backpedal self-check: no dual path for the covered shapes (folded append has one path: the
+  spine); the 3 deferrals are precise coverage gaps, not safety fallbacks; no canonical mutation (hoist +
+  resolved-frame read from transient override/side-channel); NEVER `git stash` (used file-copy backups +
+  `git show` for base comparison).

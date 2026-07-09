@@ -15,8 +15,8 @@ import { type Operator } from './util/calculate.js';
 export class Num extends Dimension {
   // Numbers are static and don't need evaluation
 
-  constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
-    super(typeof value === 'number' ? { number: value } : value, options, location, treeContext);
+  constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo) {
+    super(typeof value === 'number' ? { number: value } : value, options, location);
   }
 
   // Method overloads for better type safety
@@ -43,6 +43,5 @@ defineType(Num, 'Num');
 export const num = (
   value: number,
   options?: NodeOptions,
-  location?: LocationInfo,
-  treeContext?: Context['treeContext']
-) => new Num(value, options, location, treeContext);
+  location?: LocationInfo
+) => new Num(value, options, location);

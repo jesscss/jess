@@ -51,6 +51,22 @@ export async function evaluateCallableSpecialCaseCandidate({
     // the candidate itself is the source rules for the callable surface.
     const sourceRules = getRootSourceRules(candidate);
     let rules = createCallableRules(sourceRules);
+    // Spine mixin-fold (FOLD A, P4 terminal/sink, UNIFIED-EVAL-EMIT-DESIGN §2/§3).
+    // When the emit-walk driver installed a surface sink AND this ruleset-as-mixin is
+    // UNGUARDED (`rulesetGuard === undefined`; a genuine `when`-guard defers — its
+    // outcome is not yet reproduced in the fold), hand the sink the bound surface so
+    // its body folds INLINE at the call site instead of building an output tree. The
+    // ruleset ALSO streams standalone at its own source position (the spine descent
+    // leaves the authored `.foo {}` in place — the fold adds only the call-site copy).
+    // `candidateIsMixin=false` tags it for `resolveSpineMixinCall.finish`. Returning
+    // `true` → no output tree (`{handled:true}` with no `output`, mirroring the mixin
+    // arm). `false` (non-simple body) falls through to the eval-materialize below
+    // (byte-identical; the eval arm dies in P4). Off the spine (`sink === undefined`)
+    // this is skipped — the eval arm is unchanged.
+    const surfaceSink = context.spineMixinSurfaceSink;
+    if (surfaceSink && rulesetGuard === undefined && surfaceSink(rules, sourceRules, false)) {
+      return { handled: true };
+    }
     // A detached ruleset called from a variable has no tree parent (neither the
     // caller nor the candidate is parented); the call-site Rules is its natural
     // placement parent — same fallback the non-Ruleset branch below uses.

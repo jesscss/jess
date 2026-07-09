@@ -19,7 +19,7 @@ import { el, compound } from '../../index.js';
 import { projectSubject, emitSubjectHeader } from '../emit.js';
 
 async function render(src: string, collapseNesting: boolean): Promise<string> {
-  const context = new Context({ output: { collapseNesting }, leakyRules: true });
+  const context = new Context({ output: { collapseNesting }, leakyScope: true });
   const parser = new Parser();
   const { tree } = parser.parse(src);
   // Force the EVAL path (identity `preSerializeRoot`): this probe pins the EVAL-engine bug for

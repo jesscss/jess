@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest, condition } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest, condition, extend, ExtendFlag, compound, co } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import { spineRenderCounter, isSpineEligibleRoot } from '../util/emit-walk.js';
+import { bodyHasConditionalAssign } from '../util/spine-cond.js';
+import { bodyHasSetDefined } from '../util/spine-setdefined.js';
+import { Parser } from '../../../../less-parser/src/index.js';
+import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer.js';
 
 /**
  * RATCHET (metric axis (b): pass count 3→1). These tests LOCK the wire-in gain:
@@ -120,16 +124,58 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
-  it('eligibility boundary excludes AMPERSAND-APPEND (the eval-pass materialize+hoist shape)', () => {
-    // `&-mod` (anonymous append) stays on the eval path — its suffix materializes
-    // + hoists only via Ampersand.evalNode's appendValue path. A scoped frontier,
-    // not a safety fallback. (Plain `&` composition IS admitted — see below.)
+  it('ADMITS + hoists AMPERSAND-APPEND (`&-modifier` → `.a-modifier`) through the spine (no eval/derive)', () => {
+    // `.a { &-mod { color: red } }` → `.a-mod` HOISTED to root: the resolved
+    // append selector carries `hoistToRoot` (from `Ampersand.evalNode`'s append path),
+    // which `Ruleset.isHoisted` reads off `options.spineSelector` so the block places
+    // at root exactly like the eval pass — in ONE downward pass, no output tree.
     const appendRoot = rules([
       ruleset({ selector: sel([el('.a')]), rules: [
         ruleset({ selector: sel([amp('-mod')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
       ] })
     ]);
-    expect(isSpineEligibleRoot(appendRoot, context)).toBe(false);
+    const appendContext = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(appendRoot, appendContext)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = appendRoot.render(appendContext) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0); // no output tree
+      expect(css).toContain('.a-mod'); // append materialized + hoisted
+      expect(css).not.toContain('&'); // the `&` is resolved away, not emitted raw
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('folds NESTED append (`.a { &-b { &-c {…} } }` → `.a-b-c`) via the resolved-frame side-channel', () => {
+    // Each level appends against the RESOLVED parent (`.a-b`), read from
+    // `context.spineResolvedFrameSelector`, not the raw authored `&-b` (which throws).
+    const nested = new Parser().parse('.a { &-b { &-c { color: red; } } }').tree;
+    const ctx = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(nested, ctx)).toBe(true);
+    const css = nested.render(ctx) as string;
+    expect(css).toContain('.a-b-c');
+  });
+
+  it('DEFERS the append edge-shapes to eval (precise, ratchet-locked P4 items)', () => {
+    // (1) append ruleset with a NESTED-CONTAINER child.
+    const containerChild = new Parser().parse('.a { &-x { color: red; .inner { color: green; } } }').tree;
+    expect(isSpineEligibleRoot(containerChild, new Context())).toBe(false);
+    // (2) append child under a SELECTOR-LIST parent.
+    const listParent = new Parser().parse('.a, .b { &-x { color: red; } }').tree;
+    expect(isSpineEligibleRoot(listParent, new Context())).toBe(false);
+    // (3) append × extend — an append-generated selector may be an extend target the
+    //     static gather can't see.
+    const appendExtend = new Parser().parse('.button { &-primary { color: red; } } .theme:extend(.button-primary) {}').tree;
+    expect(isSpineEligibleRoot(appendExtend, new Context())).toBe(false);
   });
 
   it('ADMITS + composes plain `&` selectors through the spine (no eval/derive)', () => {
@@ -288,6 +334,157 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
+  it('folds a NESTED-CHILD `:is()`-COLLAPSE through the spine (extend-nest `.box`, no eval/derive)', () => {
+    // §5 collapse: `.sidebar { .box {…} }` with two PARTIAL extenders of `.sidebar`
+    // (`.sidebar2`, `.type1 .sidebar3`). The parent `.sidebar` gains an Or-set; the nested
+    // `.box` folds into it → `:is(.sidebar, .sidebar2, .type1 .sidebar3) .box`. Wired via the
+    // spine's parent-projection fold (`foldNestedChildHeaderNode`), NOT the eval-path
+    // `extend-roots.ts` re-derivation. RATCHET: shape folds via the Compiler with `Rules.derive`=0.
+    const root = rules([
+      ruleset({
+        selector: el('.sidebar'),
+        rules: [
+          decl({ name: 'width', value: any('300px') }),
+          ruleset({ selector: el('.box'), rules: [decl({ name: 'background', value: any('#FFF') })] })
+        ]
+      }),
+      ruleset({ selector: el('.sidebar2'), rules: [extend({ target: el('.sidebar'), flag: ExtendFlag.All })] }),
+      ruleset({
+        selector: el('.type1'),
+        rules: [ruleset({ selector: el('.sidebar3'), rules: [extend({ target: el('.sidebar'), flag: ExtendFlag.All })] })]
+      })
+    ]);
+    const collapseContext = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(root, collapseContext)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(collapseContext) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0); // shape folds via the Compiler, no output tree
+      // `.box` folded into the parent Or-set — the ratified alpha collapse shape.
+      expect(css).toContain(':is(.sidebar, .sidebar2, .type1 .sidebar3) .box');
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('folds a PARTIAL-extend-into-nested-child under an OR-parent through the spine (extend-selector `.ext`/`.c`, no eval/derive)', () => {
+    // `.a, .b { .c:extend(.ext all) {…} }` — `.c` nested under a MULTI-BRANCH (OR) parent
+    // partial-extends root `.ext`. `.ext` gains the composed contribution `:is(.a, .b) .c`
+    // (the list parent grouped under `:is`). Wired via the CASE-2 `flatLocalSelector`
+    // materialization of the `.a, .b` list surface into a path level, so
+    // `composeContribution`'s `wrapIsIfMultiList` produces the grouped form. RATCHET: folds via
+    // the Compiler with `Rules.derive`=0.
+    const root = rules([
+      ruleset({ selector: el('.ext'), rules: [decl({ name: 'test', value: any('1') })] }),
+      ruleset({
+        selector: [el('.a'), el('.b')],
+        rules: [
+          decl({ name: 'test', value: any('2') }),
+          ruleset({ selector: el('.c'), rules: [extend({ target: el('.ext'), flag: ExtendFlag.All }), decl({ name: 'test', value: any('3') })] })
+        ]
+      })
+    ]);
+    const collapseContext = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(root, collapseContext)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(collapseContext) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0);
+      // `.ext` gains the grouped composed contribution — the ratified alpha shape.
+      expect(css).toContain('.ext,\n:is(.a, .b) .c');
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('wraps a PARTIAL-OF-LEADING-COMPOUND in place through the spine (extend-selector `.foo .bar`, no eval/derive)', () => {
+    // `.foo .bar, .foo .baz` with root-level partial extenders of the LEADING compound `.foo`
+    // (`.ext1 .ext2`, `.ext3`, `.ext4`) → each branch wraps `.foo` IN PLACE:
+    // `:is(.foo, .ext1 .ext2, .ext3, .ext4) .bar`. SHAPE 4: `.foo` is recognized as an addressable
+    // leading-compound subject (gate), and the header comes from SOLVE's local-apply rewrite (not
+    // EMIT's branch-append, which would wrongly add siblings). RATCHET: folds via the Compiler,
+    // `Rules.derive`=0.
+    const root = rules([
+      ruleset({ selector: [sel([el('.foo'), co(' '), el('.bar')]), sel([el('.foo'), co(' '), el('.baz')])], rules: [decl({ name: 'display', value: any('none') })] }),
+      ruleset({ selector: sel([el('.ext1'), co(' '), el('.ext2')]), rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })] }),
+      ruleset({ selector: [el('.ext3'), el('.ext4')], rules: [extend({ target: el('.foo'), flag: ExtendFlag.All })] })
+    ]);
+    const partialCtx = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(root, partialCtx)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(partialCtx) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0);
+      // Leading `.foo` wrapped in place per branch — the ratified alpha shape.
+      expect(css).toContain(':is(.foo, .ext1 .ext2, .ext3, .ext4) .bar');
+      expect(css).toContain(':is(.foo, .ext1 .ext2, .ext3, .ext4) .baz');
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('folds the amp-test `&+&`-crossing graft through the spine (CASE 3, eager composeSelector, no derive)', async () => {
+    // `.amp-test-a, .amp-test-b { .amp-test-c &.amp-test-d&.amp-test-e { .amp-test-f&+&.amp-test-g:extend(.amp-test-h) } }`
+    // The `&`-bearing extender under a MULTI-BRANCH parent folds — via the gather's PURE
+    // `Ruleset.composeSelector`-reduce (F_AMPERSAND propagated up) — to the ratified `:is`-graft, then
+    // appends as a sibling of `.amp-test-h`. No eval, no frames. RATCHET: folds via the Compiler,
+    // `Rules.derive`=0; byte-identical to the ratified `.css`.
+    const src = `
+.amp-test-a,
+.amp-test-b {
+  .amp-test-c &.amp-test-d&.amp-test-e {
+    .amp-test-f&+&.amp-test-g:extend(.amp-test-h) {}
+  }
+}
+.amp-test-h {
+  test: extended by masses of selectors;
+}
+`;
+    const context = new Context({ output: { collapseNesting: true }, leakyScope: true });
+    const { tree } = new Parser().parse(src);
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const css = (await renderNodeToString(tree as unknown as RenderBufferNode, context, { context })).trim();
+      expect(deriveCalls).toBe(0);
+      expect(css).toBe(`.amp-test-h,
+.amp-test-f:is(.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e) + :is(.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e).amp-test-g {
+  test: extended by masses of selectors;
+}`);
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
   it('resolves a RE-DECLARED var + `snapshot` read PER-POSITION through the spine (no eval/derive)', () => {
     // @color: red; seen(snapshot): @color; @color: blue; later: @color
     //   → seen sees red (binding at its source position), later sees blue.
@@ -377,38 +574,152 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     expect(isSpineEligibleRoot(condRoot, context)).toBe(false);
   });
 
-  it('EXCLUDES conditional `?:` + scope-mutating `setDefined`/`nearestOuter` (the frontier, correctness-gated)', () => {
-    // `?:` (assign-if-undefined), `setDefined` (Sass !global), `nearestOuter`
-    // (Jess :=) all need eval/registration-time BINDING-WRITE semantics — a
-    // conditional or outer-scope cell write keyed on the frame state AT the
-    // assign's position — that the spine's upfront-frame + position-gated-READ
-    // model does not yet perform (it would need a read-time side table threaded
-    // into `lookupScopeFrameVariable`, or incremental binding-writes during
-    // descent). Admitting them WITHOUT that regresses (a `@x ?: v` after `@x: u`
-    // wrongly resolves to `v` — last-wins — instead of keeping `u`). Locked here
-    // so a future change can't silently admit them and regress.
-    const condVar = rules([
+  it('FOLDS conditional `@x ?: v` (variable, assign-if-undefined) through the spine, byte-identical to eval', () => {
+    // `?:` on a VARIABLE is the eval-path VALUE REWRITE (a self-reference with a
+    // `fallbackValue`, position-gated to the `?:` node's index) reproduced as a
+    // body plan (`planBodyConditionals`): the prior binding wins, else the
+    // fallback. Byte-identical to eval by construction (same reference, same
+    // position-gated read); no eval pass, no output tree (`derive` not called).
+    const buildPriorWins = () => rules([
       ruleset({ selector: sel([el('.a')]), rules: [
         vardecl({ name: 'x', value: any('red') }),
         vardecl({ name: 'x', value: any('blue') }, { assign: '?:' }),
         decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) })
       ] })
     ]);
-    expect(isSpineEligibleRoot(condVar, context)).toBe(false);
-
-    const globalAssign = rules([
+    const buildFallback = () => rules([
       ruleset({ selector: sel([el('.a')]), rules: [
-        vardecl({ name: 'x', value: any('red') }, { setDefined: true })
+        vardecl({ name: 'x', value: any('blue') }, { assign: '?:' }),
+        decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) })
       ] })
     ]);
-    expect(isSpineEligibleRoot(globalAssign, context)).toBe(false);
+    // Eval oracle: a `preSerializeRoot` hook forces the two-walk eval path.
+    const evalOracle = (build: () => Rules): string =>
+      String(build().render(new Context(), { preSerializeRoot: (r: Rules): Rules => r })).trim();
 
+    for (const build of [buildPriorWins, buildFallback]) {
+      const root = build();
+      expect(isSpineEligibleRoot(root, context)).toBe(true);
+      const original = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return original.apply(this, args);
+      } as Rules['derive'];
+      const before = spineRenderCounter.rootRenders;
+      try {
+        const css = String(root.render(new Context())).trim();
+        expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine ran
+        expect(deriveCalls).toBe(0); // no output tree
+        expect(css).toBe(evalOracle(build)); // byte-identical to eval
+      } finally {
+        Rules.prototype.derive = original;
+      }
+    }
+    // Prior wins → `red`; no-prior → fallback `blue`.
+    expect(String(buildPriorWins().render(new Context())).trim()).toContain('color: red');
+    expect(String(buildFallback().render(new Context())).trim()).toContain('color: blue');
+  });
+
+  it('FOLDS a SAME-SCOPE `setDefined` (Sass !global) through the spine, byte-identical to eval', () => {
+    // `setDefined` on a variable with a PRIOR same-body binding is an incremental
+    // binding-WRITE (`spine-setdefined.ts`, mechanism B): resolve the existing
+    // SAME-frame cell and write it in-descent. Byte-identical to eval's same-scope
+    // update; no eval pass, no output tree.
+    const build = () => rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        vardecl({ name: 'color', value: any('red') }),
+        vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+        decl({ name: 'seen', value: ref({ key: 'color' }, { type: 'variable' }) })
+      ] })
+    ]);
+    const evalOracle = String(build().render(new Context(), { preSerializeRoot: (r: Rules): Rules => r })).trim();
+    const root = build();
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    const before = spineRenderCounter.rootRenders;
+    try {
+      const css = String(root.render(new Context())).trim();
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine ran
+      expect(deriveCalls).toBe(0); // no output tree
+      expect(css).toBe(evalOracle); // byte-identical
+      expect(css).toContain('seen: blue'); // the !global write is observed
+    } finally {
+      Rules.prototype.derive = original;
+    }
+    // Miss (no enclosing binding) throws `"x" is not defined` — like eval.
+    const miss = () => rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        vardecl({ name: 'y', value: any('blue') }, { setDefined: true })
+      ] })
+    ]);
+    // A bare cross-scope `setDefined` is NOT same-scope-covered, so it stays on
+    // eval; assert eligibility false so it is not folded (miss still throws in eval).
+    expect(isSpineEligibleRoot(miss(), context)).toBe(false);
+  });
+
+  it('STILL EXCLUDES a plain-PROPERTY `?:`, a CROSS-SCOPE `setDefined`, and `nearestOuter` (the frontier)', () => {
+    // A `?:` on a plain PROPERTY (`color ?: v`) is NOT a binding rewrite — eval
+    // keeps BOTH the prior property decl AND the fallback as a new decl. The body
+    // plan models the VARIABLE-binding shape only, so a property `?:` stays on
+    // eval (SEQUENCED — spec in `spine-cond.ts`).
+    const propCond = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        decl({ name: 'color', value: any('green') }),
+        decl({ name: 'color', value: any('red') }, { assign: '?:' })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(propCond, context)).toBe(false);
+
+    // A CROSS-SCOPE `setDefined` (no same-body prior — the write resolves to an
+    // OUTER frame) diverges from eval's two-pass (which does not leak an outer
+    // write to a later same-scope read). SEQUENCED to eval (`spine-setdefined.ts`);
+    // a nested-scope !global writing an outer binding stays off the spine.
+    const crossScope = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        vardecl({ name: 'x', value: any('red') }),
+        ruleset({ selector: sel([el('.inner')]), rules: [
+          vardecl({ name: 'x', value: any('blue') }, { setDefined: true })
+        ] })
+      ] })
+    ]);
+    expect(isSpineEligibleRoot(crossScope, context)).toBe(false);
+
+    // `nearestOuter` (Jess :=) has NO eval implementation — no correctness oracle
+    // — so it stays EXCLUDED (owner decision pending). NOT silently no-op'd.
     const nearestOuter = rules([
       ruleset({ selector: sel([el('.a')]), rules: [
         vardecl({ name: 'x', value: any('red') }, { nearestOuter: true })
       ] })
     ]);
     expect(isSpineEligibleRoot(nearestOuter, context)).toBe(false);
+  });
+
+  it('NEGATIVE ratchet: a tree WITHOUT `?:`/`setDefined` adds NO read-time tax (no plan / no write-pass)', () => {
+    // The `?:` fold is a per-body PLAN and `setDefined` is a per-body WRITE-pass,
+    // each built/run ONLY when a body contains that shape (fast pre-scan bail). A
+    // plain tree must build NO cond plan, run NO setDefined write-pass, and consult
+    // NO side-table on the variable-READ hot path — this locks the "no hot-path tax"
+    // decision (the read-time side-table mechanism was REJECTED precisely to avoid
+    // taxing every read). A future change that threads a conditional/outer-write
+    // overlay into `lookupScopeFrameVariable` (mechanism A) trips this.
+    const plain = rules([
+      vardecl({ name: 'x', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) }),
+      decl({ name: 'margin', value: any('0') })
+    ]);
+    expect(isSpineEligibleRoot(plain, context)).toBe(true);
+    // The pre-scan bails: no cond plan, no setDefined write-pass on a plain body.
+    expect(bodyHasConditionalAssign(plain.rules)).toBe(false);
+    expect(bodyHasSetDefined(plain.rules)).toBe(false);
+    const css = String(plain.render(new Context())).trim();
+    expect(css).toContain('color: red');
+    expect(css).toContain('margin: 0');
   });
 
   it('ADMITS root-only WRAP+EMIT at-rules through the spine (declaration + keyframe bodies)', () => {
@@ -451,16 +762,18 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     expect(isSpineEligibleRoot(webkitKeyframes, context)).toBe(true);
   });
 
-  it('EXCLUDES `@property` (custom-property registration is an eval-pass side effect)', () => {
-    // `@property --x { … }` REGISTERS a custom property during eval — a side effect
-    // the spine does not replicate. Kept on the eval path; locked here.
+  it('ADMITS `@property` (declaration-bodied root-only, NO eval-pass registration)', () => {
+    // `@property --x { … }` was formerly deferred on the assumption it registers a
+    // custom property during eval — but it carries NO such side effect (it registers
+    // nothing into a scope or the extend-roots graph, verified against the eval pass).
+    // It is structurally a `@font-face`-like declaration block, so it folds.
     const property = rules([
       atrule({ name: '@property', prelude: any('--x'), rules: [
         decl({ name: 'syntax', value: any('"<color>"') }),
         decl({ name: 'inherits', value: any('false') })
       ] })
     ]);
-    expect(isSpineEligibleRoot(property, context)).toBe(false);
+    expect(isSpineEligibleRoot(property, context)).toBe(true);
   });
 
   it('EXCLUDES a root-only at-rule whose body carries an `&` (the composed-frontier guard)', () => {
@@ -562,6 +875,91 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(spineRenderCounter.rootRenders).toBe(before + 1);
     expect(css).toContain('.a');
     expect(css).toContain('color: red');
+  });
+
+  it('FOLD A (P4 terminal/sink): folds a LONE ruleset-as-mixin — body at the call site + standalone', async () => {
+    // `.foo { color: red }` called as `.foo()` (a `mixin-ruleset` dot-call matching a
+    // same-named RULESET, no mixin of that name). FOLD A routes the Ruleset candidate
+    // through `context.spineMixinSurfaceSink` in the special-case terminal, so its body
+    // FOLDS at the call site (`.a { color: red }`) AND the ruleset ALSO streams
+    // standalone (`.foo { color: red }`) — byte-identical to the eval path, no output
+    // tree. Before FOLD A this shape hit the `!candidateIsMixin` sink reject → eval
+    // fallback (byte-identical but on eval).
+    const root = rules([
+      ruleset({
+        selector: sel([el('.foo')]),
+        rules: [decl({ name: 'color', value: spaced([el('red')]) })]
+      }),
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: [call({ name: ref({ key: '.foo' }, { type: 'mixin-ruleset' }) })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await root.render(context);
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      // standalone ruleset
+      expect(css).toContain('.foo');
+      // body folded at the call site
+      expect(css).toContain('.a');
+      // color: red appears TWICE (standalone + folded)
+      expect(css.match(/color: red/g)?.length).toBe(2);
+      // no raw call syntax
+      expect(css).not.toContain('.foo(');
+      // no output tree
+      expect(deriveCalls).toBe(0);
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('FOLD C (P4 terminal/sink): folds a nested CHAIN mixin body (.a(){ .b() }) — re-entrant splice, no output tree', async () => {
+    // `.b(){ inner } .a(){ .b(); x } .k{ .a() }` — the fold splice is RE-ENTRANT, so the
+    // nested `.b()` call inside `.a()`'s folded surface is expanded in turn. Byte-
+    // identical to eval (`.k { inner; x }` in document order), no output tree. A
+    // RECURSIVE call (name-cycle) stays on eval (see mixin-fold-sequence-gate.test.ts).
+    const root = rules([
+      mixin({ name: '.b', rules: [decl({ name: 'inner', value: spaced([el('9')]) })] }),
+      mixin({ name: '.a', rules: [
+        call({ name: ref({ key: '.b' }, { type: 'mixin' }) }),
+        decl({ name: 'x', value: spaced([el('1')]) })
+      ] }),
+      ruleset({
+        selector: sel([el('.k')]),
+        rules: [call({ name: ref({ key: '.a' }, { type: 'mixin' }) })]
+      })
+    ]);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await root.render(context);
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(css).toContain('inner: 9');
+      expect(css).toContain('x: 1');
+      // the nested call expanded (no raw call syntax)
+      expect(css).not.toContain('.b(');
+      expect(css).not.toContain('.a(');
+      // no output tree
+      expect(deriveCalls).toBe(0);
+    } finally {
+      Rules.prototype.derive = original;
+    }
   });
 
   it('INCREMENT 2: folds a VAR-READING mixin body (frame-threaded descent — resolves the definition scope)', async () => {
@@ -781,5 +1179,164 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
       })
     ]);
     expect(isSpineEligibleRoot(root, context)).toBe(false);
+  });
+});
+
+/**
+ * AT-RULE FOLD ratchet (design pass: `@property`/`@scope`/`@layer` + var-ref names).
+ * Each newly-folded at-rule shape renders through the SINGLE spine pass with NO
+ * output tree (`Rules.derive`=0) and byte-identical output to the (former) eval
+ * path. A later change that re-defers one of these — or re-introduces the output
+ * tree — trips the relevant test RED. The expected CSS strings are the eval-path
+ * baselines captured during the design pass.
+ */
+describe('at-rule fold ratchet (property / scope / layer / var-ref names)', () => {
+  let context: Context;
+
+  beforeEach(() => {
+    context = new Context();
+  });
+
+  /**
+   * Parse `src`, assert it is spine-eligible, render through the single pass with
+   * NO output tree (`Rules.derive`=0), and return the trimmed CSS for a BYTE-EXACT
+   * `.toBe(...)` assertion against the eval-path baseline. Any `Rules.derive` call
+   * (an output tree) fails the ratchet — the fold is proven, not merely allowed.
+   */
+  const foldToBytes = async (src: string, ctx: Context): Promise<string> => {
+    const { tree } = new Parser().parse(src);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root = tree as unknown as Rules;
+    expect(isSpineEligibleRoot(root, ctx)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const css = (await renderNodeToString(tree as unknown as RenderBufferNode, ctx, { context: ctx })).trim();
+      expect(spineRenderCounter.rootRenders).toBe(before + 1); // single pass ran
+      expect(deriveCalls).toBe(0); // no output tree — fold, not eval fall-back
+      return css;
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  };
+
+  it('folds `@property` byte-identical (static + `initial-value: @c`, no registration)', async () => {
+    const css = await foldToBytes(
+      `@c: red; @property --foo { syntax: "<color>"; inherits: false; initial-value: @c; }`,
+      context
+    );
+    expect(css).toBe(`@property --foo {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: red;
+}`);
+  });
+
+  it('folds a BARE `@scope` byte-identical', async () => {
+    const css = await foldToBytes(`@scope { :scope { color: red; } }`, context);
+    expect(css).toBe(`@scope {
+  :scope {
+    color: red;
+  }
+}`);
+  });
+
+  it('folds `@scope (.card) to (.content)` byte-identical (start/end prelude)', async () => {
+    // The `(start) to (end)` prelude rides the existing `rawPrelude.eval`
+    // at-enter path — no special handling; body composes as a normal container.
+    const css = await foldToBytes(`@scope (.card) to (.content) { .a { color: red; } }`, context);
+    expect(css).toBe(`@scope (.card) to(.content) {
+  .a {
+    color: red;
+  }
+}`);
+  });
+
+  it('folds `@scope` with a variable resolved in its body byte-identical', async () => {
+    const css = await foldToBytes(`@w: 10px; @scope (.card) { .a { width: @w; } }`, context);
+    expect(css).toBe(`@scope (.card) {
+  .a {
+    width: 10px;
+  }
+}`);
+  });
+
+  it('folds a VAR-REF at-rule NAME byte-identical (`@keyframes @name` → resolved keyword)', async () => {
+    // The interpolated-NAME shape that actually parses is a bare var-ref in the
+    // NAME/prelude position (NOT `@{…}` in the keyword — that parse-errors). It
+    // resolves via the same prelude-eval-at-enter path; no special handling.
+    const css = await foldToBytes(
+      `@name: my-anim; @keyframes @name { from { opacity: 0; } to { opacity: 1; } }`,
+      context
+    );
+    expect(css).toBe(`@keyframes my-anim {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}`);
+  });
+
+  it('folds a simple `@layer` byte-identical', async () => {
+    const css = await foldToBytes(`@layer base { .a { color: red; } }`, context);
+    expect(css).toBe(`@layer base {
+  .a {
+    color: red;
+  }
+}`);
+  });
+
+  it('folds a NESTED-NAME `@layer` byte-identical', async () => {
+    const css = await foldToBytes(`@layer a { @layer b { .x { color: red; } } }`, context);
+    expect(css).toBe(`@layer a {
+  @layer b {
+    .x {
+      color: red;
+    }
+  }
+}`);
+  });
+
+  it('folds a `@layer` with a variable resolved in its body byte-identical', async () => {
+    const css = await foldToBytes(`@w: 10px; @layer base { .a { width: @w; } }`, context);
+    expect(css).toBe(`@layer base {
+  .a {
+    width: 10px;
+  }
+}`);
+  });
+
+  it('folds a VAR-REF `@layer` NAME byte-identical (`@layer @ln`)', async () => {
+    const css = await foldToBytes(`@ln: base; @layer @ln { .a { color: red; } }`, context);
+    expect(css).toBe(`@layer base {
+  .a {
+    color: red;
+  }
+}`);
+  });
+
+  it('keeps an EXTEND-bearing `@layer` OFF the spine (layer-scoped registration is eval-pass)', () => {
+    // GUARANTEE for the `@layer` fold: layer-NAME registration only scopes
+    // extend-reach, and `isSpineExtendTopology` keeps ANY extend-bearing at-rule
+    // body off the spine — so an extend-under-`@layer` runs on the eval path where
+    // registration happens. Verified for both an in-layer extend and a cross-layer
+    // extend (which must NOT reach across layers). If a future change admitted these
+    // to the spine, the layer-name registration would be skipped and extend-reach
+    // would break — this test trips RED first.
+    const inLayer = new Parser().parse(`@layer base { .a { color: red; } .b:extend(.a) {} }`).tree;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(isSpineEligibleRoot(inLayer as unknown as Rules, context)).toBe(false);
+
+    const crossLayer = new Parser().parse(`@layer one { .a { color: red; } } @layer two { .b:extend(.a) {} }`).tree;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(isSpineEligibleRoot(crossLayer as unknown as Rules, context)).toBe(false);
   });
 });

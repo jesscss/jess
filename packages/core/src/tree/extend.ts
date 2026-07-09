@@ -81,11 +81,9 @@ export class Extend extends Node<ExtendValue> {
   constructor(
     value: ExtendValue,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.selector = value.selector;
     this.target = value.target;
     this.namespace = value.namespace;
@@ -126,6 +124,8 @@ export class Extend extends Node<ExtendValue> {
     options.suppressBoundaryTrivia = 'pre';
     if (isSelectorListLike(target)) {
       emitSelectorListLike(target, options, true);
+    } else if (typeof target === 'string') {
+      w.add(target, this);
     } else {
       target.writeSyntax(options);
     }

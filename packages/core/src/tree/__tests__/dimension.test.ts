@@ -1,6 +1,6 @@
 import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { color, dimension, num, op } from '../index.js';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { type Operator } from '../util/calculate.js';
 import { OutputWriter } from '../util/print.js';
@@ -54,15 +54,6 @@ describe('Dimension', () => {
       let rule = num(10);
       expect(rule.number).toBe(10);
       expect(rule.toString()).toBe('10');
-    });
-
-    it('preserves parser tree context on numeric constructors', () => {
-      const treeContext = new TreeContext();
-      const sized = dimension([10, 'px'], undefined, undefined, treeContext);
-      const unitless = num(10, undefined, undefined, treeContext);
-
-      expect(sized._treeContext).toBe(treeContext);
-      expect(unitless._treeContext).toBe(treeContext);
     });
 
     it('renders dimension syntax through toTrimmedString()', () => {

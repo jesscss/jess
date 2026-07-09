@@ -18,13 +18,11 @@ export class Bool extends Node<boolean> {
   constructor(
     value: boolean,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }
 

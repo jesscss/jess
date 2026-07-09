@@ -101,8 +101,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   constructor(
     value: ColorData | string | ColorValues,
     options?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[1],
-    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2],
-    treeContext?: Context['treeContext']
+    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2]
   ) {
     let colorData: ColorData;
     let colorOptions: ColorOptions = options ?? {};
@@ -151,7 +150,6 @@ export class Color extends Node<ColorData, ColorOptions> {
     // Keep value focused on channels/node; rendering intent is held in options.
     colorData.format = undefined;
     super(colorData, colorOptions, location);
-    this._treeContext = treeContext;
     this.node = colorData.node;
     this._rgbChannels = colorData.rgb;
     this._hslChannels = colorData.hsl;

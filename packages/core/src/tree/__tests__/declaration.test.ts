@@ -40,25 +40,6 @@ describe('Declaration', () => {
     context = new Context();
   });
 
-  it('preserves parser tree context on Declaration and VarDeclaration construction', () => {
-    const treeContext = new Context().treeContext;
-    const declaration = new Declaration(
-      { name: 'color', value: any('red') },
-      undefined,
-      undefined,
-      treeContext
-    );
-    const varDeclaration = new VarDeclaration(
-      { name: 'color', value: any('red') },
-      undefined,
-      undefined,
-      treeContext
-    );
-
-    expect(declaration.sourceRoot?._treeContext).toBe(treeContext);
-    expect(varDeclaration.sourceRoot?._treeContext).toBe(treeContext);
-  });
-
   it('should serialize to CSS', () => {
     let rule = decl({ name: 'color', value: color('#eee') });
     expect(rule.toTrimmedString()).toBe('color: #eee');

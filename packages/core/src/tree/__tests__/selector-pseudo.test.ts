@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
@@ -39,13 +39,6 @@ describe('PseudoSelector', () => {
     expect(pseudo({ name: ':hover' }).toTrimmedString()).toBe(':hover');
   });
 
-  it('preserves parser tree context on construction', () => {
-    const treeContext = new TreeContext();
-    const node = pseudo({ name: ':hover' }, undefined, undefined, treeContext);
-
-    expect(node._treeContext).toBe(treeContext);
-  });
-
   it('renders compound selector arguments without sequence spacing', () => {
     expect(pseudo({
       name: ':host',
@@ -58,9 +51,8 @@ describe('PseudoSelector', () => {
       before: new Map([[10, makeTrivia('\n  ', 0, 3)]]),
       after: new Map()
     }) satisfies TriviaMap;
-    const treeContext = new TreeContext({ trivia });
     const inner = sel([
-      el('.a', undefined, { start: 10, end: 12 }, treeContext),
+      el('.a', undefined, { start: 10, end: 12 }),
       co(' '),
       el('.b')
     ]);

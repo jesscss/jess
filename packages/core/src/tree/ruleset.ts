@@ -674,6 +674,28 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   isHoisted(options: PrintOptions) {
+    // Spine mode (P1 §2, ampersand-append fold): the eval pass sets `hoistToRoot`
+    // on the OUTPUT ruleset node when its resolved selector is hoist-marked
+    // (`_finishRulesetSelectorPrep`: `if (sel.hoistToRoot) node.hoistToRoot = true`,
+    // set by `Ampersand.evalNode`'s append path). The spine has no output node — the
+    // resolved selector lives on the render-local override (`options.spineSelector`).
+    // Read the override's `hoistToRoot` here so an append ruleset (`&-modifier` →
+    // `.a-modifier`) places at ROOT through the KEPT hoist path, exactly like the eval
+    // pass — output-invisible (read from the override, no canonical-node mutation).
+    if (this.hoistToRoot === undefined && options.spineSelectorNode === this) {
+      const resolved = options.spineSelector;
+      if (resolved !== undefined && !(resolved instanceof Nil) && resolved.hoistToRoot === true) {
+        return true;
+      }
+    }
+    // #4a expanded-mode `&`-crossing hoist: a nested subject whose crossing extend contribution
+    // makes its header the full root-composed projection must RELOCATE to root even under
+    // `collapseNesting:false`. `spineExtendHoisted` is the strict crossing subset (installed by
+    // `composeSpineSubjectHeaders`'s expanded-crossing branch), so relocate its block to root the
+    // same way collapse flattens all nesting. A non-crossing nested subject is not in the set.
+    if (this.hoistToRoot === undefined && options.spineExtendHoisted?.has(this)) {
+      return true;
+    }
     return this.hoistToRoot ?? options.collapseNesting ?? false;
   }
 
@@ -1476,9 +1498,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // P3 §4.3 hoist: a HOISTED extend subject's override is ALREADY the full root-composed
     // projection (`.header .header-nav, .footer .footer-nav`). Emit/push it VERBATIM — skip the
     // parent-frame compose that would double `.header`. Strictly gated to `spineExtendHoisted`
-    // (a non-hoisted nested subject still composes normally). PRECONDITION: `collapseNesting:true`
-    // (the nested block already emits at root); expanded mode is excluded upstream.
-    if (options.collapseNesting && options.spineExtendHoisted?.has(this) && sel instanceof Selector) {
+    // (a non-hoisted nested subject still composes normally), which is the crossing subset in BOTH
+    // modes — so the verbatim skip is sound regardless of `collapseNesting` (#4a: under expanded the
+    // crossing subject is diverted to the same composed-hoist projection and RELOCATED to root).
+    if (options.spineExtendHoisted?.has(this) && sel instanceof Selector) {
       return sel;
     }
     if (!Array.isArray(sel)) {
@@ -1695,13 +1718,12 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     // P3 §4.3 hoist: a HOISTED extend subject's override is ALREADY the full root-composed
     // projection — emit it VERBATIM (skip `composeHeaderSelector`, which would prepend the
-    // parent frame and double `.header`). Strictly gated to `spineExtendHoisted`. PRECONDITION:
-    // `collapseNesting:true` (the nested block already emits at root, so its header is the full
-    // composed form); expanded mode is excluded upstream. A non-hoisted subject falls through to
-    // normal composition below.
+    // parent frame and double `.header`). Strictly gated to `spineExtendHoisted` (the crossing
+    // subset in BOTH modes) — so the verbatim skip is sound regardless of `collapseNesting` (#4a:
+    // under expanded the crossing subject is diverted to the same composed-hoist projection and
+    // RELOCATED to root). A non-hoisted subject falls through to normal composition below.
     if (
-      options.collapseNesting
-      && options.spineExtendHoisted?.has(this)
+      options.spineExtendHoisted?.has(this)
       && renderSelector instanceof Selector
       && !(renderSelector instanceof Nil)
     ) {

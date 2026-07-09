@@ -6,10 +6,13 @@ import {
   engageExtendLayer,
   treeHasExtend,
   extendLayerCounter,
-  resetExtendLayerCounter
+  resetExtendLayerCounter,
+  isSpineExtendTopology
 } from '../spine-extend.js';
 import { Ruleset } from '../../ruleset.js';
 import { F_EXTENDED } from '../../node.js';
+import { Parser } from '../../../../../less-parser/src/index.js';
+import type { Rules } from '../../rules.js';
 
 /**
  * RATCHET — the EXTEND-WORK GATE (§4.0), the zero-regression safety floor for P3.
@@ -93,4 +96,41 @@ describe('extend-work gate (P3 increment 0)', () => {
     expect(extendLayerCounter.solveRuns).toBe(0);
     expect(extendLayerCounter.subjectBuffers).toBe(0);
   });
+});
+
+/**
+ * CASE 3 — `&`-under-multi-branch-list is now ADMITTED (the wall is solved).
+ *
+ * The gather resolves an `&`-bearing local by the EAGER STATIC `Ruleset.composeSelector`-reduce over
+ * its ancestor path (a pure function of selector nodes: `_substituteAmpInComplex`/`_substituteAmpInCompound`
+ * wrap a multi-branch `SelectorList` parent as `:is(...)` with no eval/frames), after propagating
+ * `F_AMPERSAND` up the container chain. So the amp-test `&+&` under `.amp-test-a, .amp-test-b` folds to
+ * the ratified `:is`-graft and is ADMITTED (was gate-excluded). An `&`-APPEND local (`&-modifier`) still
+ * DISQUALIFIES — `composeSelector` does not build the anonymous-suffix append.
+ */
+describe('spine extend gate — `&`-under-multi-branch-list now ADMITTED (CASE 3 solved)', () => {
+  const gateOf = (src: string): boolean => {
+    const { tree } = new Parser().parse(src);
+    return isSpineExtendTopology(tree as unknown as Rules, true);
+  };
+
+  it('ADMITS an `&`-combinator extender under a multi-branch (OR) parent (amp-test `&+&`)', () => {
+    const src = `
+.amp-test-a,
+.amp-test-b {
+  .amp-test-c &.amp-test-d&.amp-test-e {
+    .amp-test-f&+&.amp-test-g:extend(.amp-test-h) {}
+  }
+}
+.amp-test-h { test: x; }
+`;
+    expect(gateOf(src)).toBe(true);
+  });
+
+  it('ADMITS a single-branch `&` extender (`.type2.sidebar4 { &:extend }`)', () => {
+    const src = `.sidebar { w: 1; }\n.type2.sidebar4 { &:extend(.sidebar all); }`;
+    expect(gateOf(src)).toBe(true);
+  });
+  // (The `&`-APPEND `&-mod` exclusion — composeSelector cannot build the anonymous suffix — is
+  // ratcheted in emit-walk-ratchet.test.ts via the `amp('-mod')` AST builder.)
 });

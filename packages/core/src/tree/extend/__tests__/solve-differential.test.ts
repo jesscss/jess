@@ -46,7 +46,7 @@ interface Built {
 }
 
 async function build(src: string, collapseNesting = false): Promise<Built> {
-  const context = new Context({ output: { collapseNesting }, leakyRules: true });
+  const context = new Context({ output: { collapseNesting }, leakyScope: true });
   const parser = new Parser();
   const { tree } = parser.parse(src);
   // Force the EVAL path (identity `preSerializeRoot` pins off the single-pass spine): this

@@ -71,8 +71,7 @@ function createEvaluatedPseudoSelector(
       generatedPseudoPlacementOverride: source.generatedPseudoPlacementOverride
     },
     source.options ? { ...source.options } : undefined,
-    sourceSpanOf(source),
-    source.sourceRoot?._treeContext
+    sourceSpanOf(source)
   ).inherit(source);
   node.generated = source.generated;
   return node;
@@ -118,11 +117,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   constructor(
     value: PseudoSelectorValue,
     options?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[1],
-    location?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[2],
-    treeContext?: Context['treeContext']
+    location?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[2]
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.name = value.name;
     this.arg = value.arg;
     if (value.generatedPseudoPlacementOverride !== undefined) {
@@ -276,8 +273,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         generatedPseudoPlacementOverride: this.generatedPseudoPlacementOverride
       },
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this._treeContext
+      sourceSpanOf(this)
     ).inherit(this) as this;
     cloned.keySetLibrary = this.keySetLibrary;
     return cloned;

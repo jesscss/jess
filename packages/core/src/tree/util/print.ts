@@ -5,7 +5,25 @@ import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import type { Nil } from '../nil.js';
+import type { Node } from '../node.js';
+import type { Rules } from '../rules.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+
+/**
+ * A resolved spine import placement (IMPORTS increment 2/4). `css` — a CSS-passthrough
+ * import already queued to `context.topImports` (emits nothing inline). `fold` — a
+ * Less import whose registered placement `body` the spine descends inline; its scope
+ * frame is already linked as an importer fallback by `wireSpineImports`. `dedupe`
+ * (increment 4) — true when this is a SECOND+ import of the same resolved file under
+ * `once`: its SCOPE is already registered/linked, so the emit fold emits NO output
+ * (Less `once` semantics: emit the first occurrence, scope-only the rest). `reference`
+ * (increment 5) — true for a `(reference)` import: the body descends with output
+ * SUPPRESSED (`referenceMode`) while its scope + extend-reachability still register;
+ * only an extend-reached selector emits.
+ */
+export type SpineImportPlacementEntry =
+  | { kind: 'css' }
+  | { kind: 'fold'; body: Rules; dedupe: boolean; multiple: boolean; reference: boolean };
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -74,11 +92,13 @@ export type PrintOptions = {
    * and a crossing contribution (`.footer .footer-nav`) joins it as a root-level sibling branch.
    * For a hoisted subject the header override is emitted VERBATIM (skip the parent-frame
    * `composeSelector`) — the projection is already root-composed, so re-composing against the
-   * `.header` frame would double it. PRECONDITION (JSDoc'd at the write site): this holds ONLY
-   * under `collapseNesting:true`, where a nested block already emits at ROOT with its composed
-   * header; expanded mode keeps the block nested and is excluded (stays on eval). Strictly gated:
-   * the verbatim path fires ONLY for a ruleset in THIS set — a non-hoisted nested subject still
-   * composes normally against its parent.
+   * `.header` frame would double it. Applies in BOTH collapse modes (#4a): under
+   * `collapseNesting:true` a nested block already emits at ROOT with its composed header; under
+   * `collapseNesting:false` the crossing subject is diverted to the same composed-hoist projection
+   * and its block RELOCATES to root (`Ruleset.isHoisted` returns true for a member of this set).
+   * Strictly gated: the verbatim path + relocation fire ONLY for a ruleset in THIS set (the strict
+   * crossing subset) — a non-hoisted / non-crossing nested subject still composes normally against
+   * its parent and stays nested.
    */
   spineExtendHoisted?: Set<Ruleset>;
   /**
@@ -97,6 +117,14 @@ export type PrintOptions = {
    * (the common case pays nothing).
    */
   spineMergePlan?: import('./spine-merge.js').SpineMergePlan;
+  /**
+   * Spine-mode `?:` conditional-assign plan for the CURRENT body. Keyed by source
+   * declaration: an `anchor` entry emits the resolved value (the eval-path self-
+   * reference read — prior binding or fallback). Built at body-enter by
+   * `planBodyConditionals`; consulted by the leaf resolver. Undefined when the
+   * body has no `?:` declaration (the common case pays nothing).
+   */
+  spineCondPlan?: import('./spine-cond.js').SpineCondPlan;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
@@ -119,6 +147,36 @@ export type PrintOptions = {
    * `calc()`/`Operation` whose subtree is fully sync pays ZERO async cost.
    */
   spineMode?: boolean;
+  /**
+   * Spine import-fold cache (IMPORTS increment 2). Maps each spine-foldable
+   * `StyleImport` to its resolved placement (`resolveForSpine` result), populated
+   * ONCE by the root pre-registration pass (`wireSpineImports`) which registers the
+   * imported body's scope into the placement frame and links it as an importer
+   * fallback. The emit fold (`_emitSpineImportFold` / `runSpineImportExpansion`)
+   * reads from here to descend the SAME registered placement — so an import is
+   * resolved + registered exactly once, and a consumer (`#library.sizes[@width]`,
+   * an imported `@var`) resolves against the linked scope. Keyed by node identity.
+   */
+  spineImportPlacements?: Map<Node, SpineImportPlacementEntry>;
+  /**
+   * Spine import DEDUP ledger (IMPORTS increment 4). The set of RESOLVED import
+   * paths already emitted-as-output during this render. Populated as the wire pass
+   * (`wireSpineImportsInBody`) resolves each import in document order: the FIRST
+   * import of a path adds it and emits output; a later import of the SAME path (under
+   * `once`, default) finds it present and is marked `dedupe` (scope-only, no output)
+   * — Less import-once semantics. `multiple` bypasses the ledger (always emits, never
+   * recorded as the once-owner). Same render lifetime as `spineImportPlacements`.
+   */
+  spineEmittedImportPaths?: Set<string>;
+  /**
+   * Spine MULTIPLE-import scope depth (IMPORTS increment 4). Incremented while
+   * descending a `@import (multiple)` / `once:false` import's body: a nested import
+   * inside a multiple-scoped body ALSO re-emits (does not dedup), mirroring the eval
+   * path's `context.inMultipleImportScope`. `spineImportDedupeVerdict` returns
+   * "emit" (never `dedupe`) whenever this depth is > 0. Zero (the default) = normal
+   * `once` dedup applies.
+   */
+  spineMultipleImportDepth?: number;
   /** Output syntax target, e.g. 'jess' for Jess canonical output. */
   syntax?: string;
   /** Jess conversion options for rewriting import paths during serialization. */

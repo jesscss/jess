@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-import type { Selector } from '../selector.js';
+import type { Selector, SelectorLike } from '../selector.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
@@ -40,7 +40,7 @@ export function getRulesEntryTraversalState(
   };
 }
 
-export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): string[] {
+export function getOrderedSelectorKeys(selector: SelectorLike | Nil | undefined): string[] {
   if (!selector || isNode(selector, N.Nil)) {
     return [];
   }
@@ -78,7 +78,15 @@ export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): st
       }
     }
   };
-  visit(selector);
+  if (isArray(selector)) {
+    // A bare array IS a selector list (lean strings-not-nodes surface); visit each
+    // member so the list registers under every member's leading key.
+    for (const item of selector) {
+      visit(item as CompoundSelectorComponent | Selector | Nil | undefined);
+    }
+  } else {
+    visit(selector);
+  }
   return keys;
 }
 

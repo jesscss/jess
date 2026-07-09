@@ -33,13 +33,11 @@ export class Log extends Node<LogValue, NodeOptions> {
   constructor(
     value: LogValue,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super(value, options, location);
     this.level = value.level;
     this.message = value.message;
-    this._treeContext = treeContext;
     // Log nodes should not be visible (they serialize to empty strings)
     this.removeFlag(F_VISIBLE);
     this.addFlag(F_ALLOW_ROOT);

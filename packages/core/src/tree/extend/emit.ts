@@ -271,14 +271,28 @@ export function emitNestedChildHeader(
   childLocal: Selector,
   collapseNesting: boolean
 ): string {
+  return selectorKey(foldNestedChildHeaderNode(parent, childLocal, collapseNesting));
+}
+
+/**
+ * The NODE form of {@link emitNestedChildHeader} — the folded child header as a Selector, so a live
+ * consumer (the spine wire-in) can install it directly as a subject's header override without
+ * re-parsing a stringified selector. Under collapse the child is folded into the parent's Or-set
+ * (multi-branch parent wrapped in `:is(...)` via the same `wrapIsIfMultiList` guard EMIT uses for
+ * every compose); under expanded it is the child local verbatim (the block stays nested).
+ */
+export function foldNestedChildHeaderNode(
+  parent: EmitProjection,
+  childLocal: Selector,
+  collapseNesting: boolean
+): Selector {
   if (!collapseNesting) {
-    return selectorKey(childLocal);
+    return childLocal;
   }
   const parentBranches = parent.branches;
   const parentLike: SelectorLike =
     parentBranches.length === 1
       ? parentBranches[0]!
       : new SelectorList(parentBranches as SelectorListItem[]);
-  const composed = Ruleset.composeSelector(childLocal, parentLike);
-  return selectorKey(asSelector(composed));
+  return asSelector(Ruleset.composeSelector(childLocal, parentLike));
 }

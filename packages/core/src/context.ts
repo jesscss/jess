@@ -6,7 +6,8 @@ import type {
   Node,
   Any,
   AtRuleStatement,
-  Selector
+  Selector,
+  Nil
 } from './tree/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
@@ -485,6 +486,17 @@ export class Context {
 
   /** Frames for nested rulesets, used for selector evaluation */
   rulesetFrames: Ruleset[] = [];
+  /**
+   * Spine-mode (P1 §2, ampersand-append fold) resolved-selector side-channel. Maps a
+   * SOURCE ruleset frame node to the CONCRETE selector the spine resolved for it at
+   * ruleset-enter. `Ampersand.evalNode` reads this before the raw `frame.selector` so a
+   * nested append (`.a { &-b { &-c {…} } }` → `.a-b-c`) composes each level against the
+   * RESOLVED parent (`.a-b`), not the raw authored `&-b`. This reproduces the eval
+   * pass, which pushes the resolved OUTPUT node onto `rulesetFrames` — without mutating
+   * the shared canonical source node (the output-affecting-resolution invariant). Set +
+   * cleared per frame push/pop by `serializeSpineFrameContainer`.
+   */
+  spineResolvedFrameSelector: WeakMap<Ruleset, Selector | Nil> | undefined;
   /** Unified frames array for flat rendering when collapseNesting is true */
   frames: (Ruleset | AtRule)[] = [];
 

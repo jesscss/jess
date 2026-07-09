@@ -99,16 +99,14 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return new Paren(
       value,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this.sourceRoot?._treeContext
+      sourceSpanOf(this)
     ).inherit(this);
   }
 
   constructor(
     value?: NodeArrayItem,
     options?: ParenOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     // A parser space-group arrives as a raw string/array; normalize to the
     // canonical node form so paren eval/render stays node-only.
@@ -118,7 +116,6 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     super(node, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = node;
-    this._treeContext = treeContext;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }

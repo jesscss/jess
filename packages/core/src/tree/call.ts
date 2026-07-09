@@ -1,5 +1,5 @@
 import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_SEMI_SET, F_SEMI_VALUE, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { coerceNodeArray } from './util/evaluate-node-array.js';
@@ -82,10 +82,6 @@ function isTriviaMap(value: unknown): value is NonNullable<PrintOptions['trivia'
 function sourceTriviaForNode(node: Node): PrintOptions['trivia'] | undefined {
   const trivia = node.sourceRoot?._treeContext?.opts?.trivia;
   return isTriviaMap(trivia) ? trivia : undefined;
-}
-
-function createImportantFlag(): Any<'flag'> {
-  return new Any<'flag'>('!important', { role: 'flag' });
 }
 
 function startsWithWhitespace(text: string): boolean {
@@ -184,8 +180,7 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
         mixinRulesetCall: true,
         mixinRulesetCallHasArgs: hasArgs || undefined
       },
-      sourceSpanOf(name),
-      name.sourceRoot?._treeContext
+      sourceSpanOf(name)
     );
   }
   return name;
@@ -564,8 +559,6 @@ export class Call extends Node<CallValue, CallOptions> {
    */
   _evaluatedCallOutput = false;
 
-  override _requiredSemi = true;
-
   private createEvalState(): CallEvalState {
     const preservesRulesLikeVariableTarget = isNode(this.name, N.Reference) && this.name.options?.type === 'variable';
     let name = this.name;
@@ -584,8 +577,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ...name.options,
           preserveRulesLike: true
         },
-        sourceSpanOf(name),
-        name.sourceRoot?._treeContext
+        sourceSpanOf(name)
       );
     }
     name = withMixinRulesetCallArgsHint(name, this.args);
@@ -1570,16 +1562,15 @@ export class Call extends Node<CallValue, CallOptions> {
   constructor(
     value: CallValue,
     options?: CallOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
-    // Function calls are always non-static
-    this.addFlags(F_VISIBLE, F_NON_STATIC);
+    // Function calls are always non-static, and always require a semi
+    // separator (was `_requiredSemi = true`; now the F_SEMI_* bits).
+    this.addFlags(F_VISIBLE, F_NON_STATIC, F_SEMI_SET, F_SEMI_VALUE);
   }
 
   protected override ownStaticFlag(): number {
@@ -1764,7 +1755,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
-    const important = createImportantFlag();
+    const important = '!important';
     for (let index = 0; index < rules.rules.length; index++) {
       const rule = rules.rules[index]!;
       if (isNode(rule, N.Declaration)) {
@@ -1992,8 +1983,7 @@ export class Call extends Node<CallValue, CallOptions> {
             const node = new Call(
               { name: 'calc', args: list([innerArgs.value[0]!]), contentNode: state.contentNode },
               { silentFail: false },
-              sourceSpanOf(this),
-              this.sourceRoot?._treeContext
+              sourceSpanOf(this)
             );
             return this.markCallOutput(node);
           }
@@ -2016,8 +2006,7 @@ export class Call extends Node<CallValue, CallOptions> {
         this._options
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
-        sourceSpanOf(this),
-        this.sourceRoot?._treeContext
+        sourceSpanOf(this)
       );
       return this.markCallOutput(node);
     };

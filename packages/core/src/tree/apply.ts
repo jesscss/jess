@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
 import { Node, defineType, type LocationInfo } from './node.js';
-import { Selector } from './selector.js';
+import { type SelectorValue } from './selector.js';
 import { Rules, resolveRulesetBySelector } from './rules.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -13,7 +13,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 
-export interface Apply extends Node<Selector[]> {
+export interface Apply extends Node<SelectorValue[]> {
   eval(context: Context): MaybePromise<Rules>;
 }
 
@@ -29,14 +29,13 @@ export interface Apply extends Node<Selector[]> {
  * to inline its rules, into a `Rules` container of the matched rulesets' bodies —
  * a LIVE binding to the referenced rulesets, not a frozen copy (see `evalNode`).
  */
-export class Apply extends Node<Selector[]> {
+export class Apply extends Node<SelectorValue[]> {
   static override childKeys = ['selectors'] as const;
 
-  readonly selectors: Selector[];
+  readonly selectors: SelectorValue[];
 
-  constructor(value: Selector[], options?: undefined, location?: LocationInfo, treeContext?: Context['treeContext']) {
+  constructor(value: SelectorValue[], options?: undefined, location?: LocationInfo) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.selectors = value;
   }
 
@@ -50,13 +49,17 @@ export class Apply extends Node<Selector[]> {
       if (i > 0) {
         w.add(', ');
       }
-      selector.writeSyntax(options);
+      if (typeof selector === 'string') {
+        w.add(selector, this);
+      } else {
+        selector.writeSyntax(options);
+      }
     });
     w.add(';', this);
   }
 
   override valueOf(): string {
-    return `$apply ${this.selectors.map(s => String(s.valueOf())).join(', ')}`;
+    return `$apply ${this.selectors.map(s => typeof s === 'string' ? s : String(s.valueOf())).join(', ')}`;
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {

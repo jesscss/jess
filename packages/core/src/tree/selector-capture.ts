@@ -1,6 +1,8 @@
 import { type Context } from '../context.js';
 import { Node, F_STATIC, defineType, type LocationInfo } from './node.js';
-import { Selector } from './selector.js';
+import { Selector, type SelectorLike } from './selector.js';
+import { asExtendSelectorNode } from './util/extend-roots.js';
+import { isSelectorListLike, emitSelectorListLike, selectorListValueOf, selectorListItems } from './selector-list.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
@@ -8,7 +10,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 
-export interface SelectorCapture extends Node<Selector> {
+export interface SelectorCapture extends Node<SelectorLike> {
   eval(context: Context): MaybePromise<Selector>;
 }
 
@@ -19,28 +21,55 @@ const isSelectorNode = (value: unknown): value is Selector => (
 /**
  * Explicit selector-capture wrapper used by parsers for selector-valued payloads
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
+ *
+ * The payload is stored in the lean parser-delivered form — a bare STRING for a
+ * simple selector (no `BasicSelector` allocation at parse time) — and lifted to a
+ * `Selector` node on demand only where the eval/render contract structurally needs
+ * one (`asNode`, cached).
  */
-export class SelectorCapture extends Node<Selector> {
+export class SelectorCapture extends Node<SelectorLike> {
   static override childKeys = ['selector'] as const;
 
-  readonly selector: Selector;
+  readonly selector: SelectorLike;
+  private _selectorNode?: Selector;
 
-  constructor(value: Selector, options?: undefined, location?: LocationInfo, treeContext?: Context['treeContext']) {
+  constructor(value: SelectorLike, options?: undefined, location?: LocationInfo) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.selector = value;
+  }
+
+  /** Lift a lean string/array payload to a `Selector` node once, on demand. */
+  private asNode(): Selector {
+    if (this.selector instanceof Selector) {
+      return this.selector;
+    }
+    return (this._selectorNode ??= asExtendSelectorNode(this.selector));
   }
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
+    const sel = this.selector;
     w.add('*[', this);
-    this.selector.writeSyntax(options);
+    if (typeof sel === 'string') {
+      w.add(sel, this);
+    } else if (isSelectorListLike(sel)) {
+      emitSelectorListLike(sel, options, true);
+    } else {
+      sel.writeSyntax(options);
+    }
     w.add(']', this);
   }
 
   override valueOf(): string {
-    return String(this.selector.valueOf());
+    const sel = this.selector;
+    if (typeof sel === 'string') {
+      return sel;
+    }
+    if (isSelectorListLike(sel)) {
+      return selectorListValueOf(selectorListItems(sel));
+    }
+    return String(sel.valueOf());
   }
 
   override toTrimmedString(rawOptions?: PrintOptions): string {
@@ -73,7 +102,7 @@ export class SelectorCapture extends Node<Selector> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.selector.eval(context);
+    const out = this.asNode().eval(context);
     if (isThenable(out)) {
       return out.then(value => this.requireSelector(value));
     }
@@ -85,10 +114,11 @@ export class SelectorCapture extends Node<Selector> {
   }
 
   private resolveValue(context: Context): MaybePromise<Selector> {
+    const node = this.asNode();
     if (this.hasFlag(F_STATIC)) {
-      return this.selector;
+      return node;
     }
-    const out = this.selector.resolve(context);
+    const out = node.resolve(context);
     if (isThenable(out)) {
       return out.then(value => this.requireSelector(value));
     }
@@ -101,6 +131,5 @@ type Params = ConstructorParameters<typeof SelectorCapture>;
 export const selcap = defineType(SelectorCapture, 'SelectorCapture', 'selcap') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
+  location?: Params[2]
 ) => SelectorCapture;
