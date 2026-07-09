@@ -3,6 +3,39 @@ import type { Node } from '../node.js';
 import type { Rules } from '../rules.js';
 import type { CallSignature } from './recursion-helper.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
+import { makeJessError } from '../../jess-error.js';
+
+/**
+ * Spine-root parity with `checkValidNodes`' `isRoot && fromCallOutput` rule: a
+ * mixin / detached-ruleset CALL that folds a bare property `Declaration` to the
+ * document root is invalid ("Properties must be inside selector blocks"). The eval
+ * path walks the post-eval output tree; the spine emits call output as text inline
+ * (no such tree), so the same rejection is made on the single fold/eval drive when
+ * the caller marked the call as a document-root emit. VarDeclaration `@x:` /
+ * custom props are distinct node types and are not flagged — only `Declaration`,
+ * exactly as `checkValidNodes`. Recurses through call-output `Rules` blocks so an
+ * `@import`ed / nested-Rules call output is caught too.
+ */
+function assertNoRootPropertyDeclaration(rules: readonly Node[] | undefined, context: Context): void {
+  if (!rules) {
+    return;
+  }
+  for (let i = 0; i < rules.length; i++) {
+    const node = rules[i]!;
+    if (node.type === 'Declaration') {
+      throw makeJessError({
+        code: 'eval/property-in-root',
+        phase: 'eval',
+        ctx: context.treeContext,
+        node,
+        meta: { what: String((node as { name?: unknown }).name ?? 'property') }
+      });
+    }
+    if (node.type === 'Rules') {
+      assertNoRootPropertyDeclaration((node as { rules?: readonly Node[] }).rules, context);
+    }
+  }
+}
 
 type EvaluateCallableCandidateOutputOptions = {
   context: Context;
@@ -54,6 +87,9 @@ export async function evaluateCallableCandidateOutput({
       return undefined;
     }
     const newRules = await rules.eval(context);
+    if (context.spineRootCallEmit) {
+      assertNoRootPropertyDeclaration(newRules.rules, context);
+    }
     candidateParent.adopt(newRules);
     newRules.index = candidateIndex;
     attachMixinOutputSlot(newRules, sourceRules, restrictMixinOutputLookup);

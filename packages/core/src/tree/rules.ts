@@ -34,7 +34,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -4784,8 +4784,34 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         markEmitted(n);
         return;
       }
-      const output = n.render(context!, options);
+      // A document-ROOT-level mixin CALL: mark the drive so the callable terminal
+      // rejects a body that drops a bare property at the root (eval-path parity with
+      // `checkValidNodes`' `isRoot && fromCallOutput` rule; the spine emits the call
+      // as text with no output tree to walk post-hoc). Scoped to this render only —
+      // a call nested in a selector container never sets it (folded property legal).
+      const marksRootCallEmit = mode === 'render'
+        && options.spineMode === true
+        && !!context
+        && this === context.root
+        && isSpineEligibleMixinCall(n);
+      const savedRootCallEmit = context?.spineRootCallEmit;
+      const restoreRootCallEmit = (): void => {
+        if (marksRootCallEmit) {
+          context!.spineRootCallEmit = savedRootCallEmit;
+        }
+      };
+      if (marksRootCallEmit) {
+        context!.spineRootCallEmit = true;
+      }
+      let output: string | MaybePromise<string>;
+      try {
+        output = n.render(context!, options);
+      } catch (error) {
+        restoreRootCallEmit();
+        throw error;
+      }
       const finishOutput = (resolvedOutput: string): void => {
+        restoreRootCallEmit();
         restorePrintState(options, leafSaved);
         if (!w.hasContentSince(leafMark)) {
           w.restore(leafMark);
@@ -4800,7 +4826,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         markEmitted(n);
       };
       return isThenable(output)
-        ? output.then(finishOutput)
+        ? output.then(finishOutput, (error: unknown) => { restoreRootCallEmit(); throw error; })
         : finishOutput(output);
     };
     const finish = (): void => {

@@ -398,6 +398,19 @@ export class Context {
    */
   spineMixinSurfaceSink?: (boundSurface: Rules, sourceRules: Rules, candidateIsMixin: boolean) => boolean;
 
+  /**
+   * Set by the spine root descent (`_emitRulesBody`) around the render of a
+   * document-ROOT-level mixin CALL. When the callable terminal builds that call's
+   * output tree it consults this flag: an output that drops a bare property
+   * `Declaration` at the document root is invalid ("Properties must be inside
+   * selector blocks") — the same rejection the eval path's `checkValidNodes`
+   * (`isRoot && fromCallOutput`) makes. The spine emits call output as text inline
+   * (no post-eval output tree to walk), so the check moves to the single fold/eval
+   * drive. Scoped save/restore around the root call render; unset for a call nested
+   * inside a selector container (where a folded property is legal).
+   */
+  spineRootCallEmit?: boolean;
+
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
 
