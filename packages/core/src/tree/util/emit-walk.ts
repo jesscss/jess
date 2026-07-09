@@ -42,7 +42,7 @@ import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeF
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
 import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends } from '../extend/spine-extend.js';
 import type { Selector } from '../selector.js';
-import type { StyleImport } from '../import-style.js';
+import type { StyleImport, SpineImportResolution } from '../import-style.js';
 
 /**
  * IMPORT-WORK GATE (design §4.0, IMPORTS increment 1). True iff the tree carries
@@ -1164,16 +1164,25 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (allowImport && treeHasStyleImport(root) && treeHasNamespacePathCall(root)) {
     return false;
   }
-  // DEDUP / `once` wall (surfaced IMPORTS increment 3). Less imports the same file
-  // only ONCE per compilation (`once` default): a file imported at several positions
-  // emits its content at the FIRST and contributes SCOPE-ONLY (no output) at the
-  // rest. The fold does not model `once` — it would emit the imported body at EVERY
-  // position (`strict-imports`: `imported.less` imported at root + inside `@media` +
-  // inside `.container` → duplicated `.imported` output). So a tree that imports the
-  // SAME static specifier more than once stays on the eval path (byte-identical).
-  // DEFERRED (a REQUIRED P4 item, with the `multiple`/dedupe mode): `once` dedup in
-  // the fold — emit the first, scope-only the rest.
-  if (allowImport && treeHasDuplicateImportSpecifier(root)) {
+  // DEDUP / `once` is now MODELED by the fold (IMPORTS increment 4): the wire pass
+  // records each resolved import path in document order (`spineEmittedImportPaths`),
+  // the FIRST occurrence emits + owns the output, and a later import of the SAME path
+  // is marked `dedupe` (scope-only, no output) — `multiple` opts back into re-emit.
+  // So a duplicate specifier no longer forces the eval path.
+  //
+  // PRE-EXISTING HOIST-FRAME wall (surfaced IMPORTS increment 4, NOT import-caused).
+  // A root-level conditional-group at-rule (`@media`/`@supports`/`@container`/
+  // `@starting-style`) that HOISTS and is FOLLOWED by another root child leaves the
+  // spine's rendered-frame stack unbalanced, so the following sibling inherits the
+  // at-rule's frame (`@media screen { .a {} } .after {}` → `.after` wrongly wrapped;
+  // two `@media` blocks → the second's body renders under the FIRST's query). This
+  // reproduces with ZERO imports at the pre-increment base tip — a general spine
+  // hoist bug, not the import fold. `strict-imports` (import + `@media {…}` +
+  // `.container {…}`) would EXPOSE it, so a foldable-import tree with a hoisting
+  // conditional-group at-rule that is not the LAST root child stays on the eval path
+  // (byte-identical). DEFERRED (a REQUIRED P4 item, its OWN concern): fix the spine
+  // hoist-frame reset so a hoisting at-rule followed by a sibling balances the stack.
+  if (allowImport && rootHasHoistingAtRuleBeforeSibling(root)) {
     return false;
   }
   const collapse = collapseNesting ?? context.output?.collapseNesting === true;
@@ -1182,35 +1191,92 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
 }
 
 /**
- * True if two imports in the tree name the SAME static specifier — the `once`/dedup
- * shape the fold does not model (see the dedup wall). Compares the authored path
- * string of every `StyleImport` (its `path.valueOf()`) and CSS `@import` statement.
- * A dynamic/interpolated specifier (non-string valueOf) is skipped — those imports
- * are already off the fold (a StyleImport with an interpolated path isn't foldable;
- * a CSS `@import` statement with a non-static prelude isn't admitted).
+ * True if a ROOT-child conditional-group at-rule (`@media`/`@supports`/`@container`/
+ * `@starting-style` — the HOISTING family) is followed by another root child. This is
+ * the pre-existing spine hoist-frame wall (see `isSpineEligibleRoot`): after such an
+ * at-rule the rendered-frame stack is left unbalanced, so the following sibling
+ * inherits the at-rule's frame. Direct root children only (the hoist reset is a
+ * root-level accounting concern).
  */
-function treeHasDuplicateImportSpecifier(root: Node): boolean {
-  const seen = new Set<string>();
-  for (const node of root.walk(true)) {
-    let spec: string | undefined;
-    if (node.type === 'StyleImport') {
-      const path = (node as unknown as StyleImport).path;
-      const raw = path?.valueOf?.();
-      spec = typeof raw === 'string' ? raw : undefined;
-    } else if (isSpineFoldableCssImportStatement(node)) {
-      const prelude = (node as unknown as { prelude?: { valueOf?: () => unknown } }).prelude;
-      const raw = prelude?.valueOf?.();
-      spec = typeof raw === 'string' ? raw : undefined;
+function rootHasHoistingAtRuleBeforeSibling(root: Rules): boolean {
+  const children = root.rules;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (
+      isNode(child, N.AtRule)
+      && typeof (child as { name?: unknown }).name === 'string'
+      && SPINE_ELIGIBLE_AT_RULES.has((child as { name: string }).name)
+      && isNode(child, N.Rules)
+    ) {
+      // A following VISIBLE root child (not just trailing comments/whitespace) trips
+      // the imbalance. A trailing at-rule as the LAST child is safe.
+      for (let j = i + 1; j < children.length; j++) {
+        if (!isNode(children[j]!, N.Comment)) {
+          return true;
+        }
+      }
     }
-    if (spec === undefined) {
-      continue;
-    }
-    if (seen.has(spec)) {
-      return true;
-    }
-    seen.add(spec);
   }
   return false;
+}
+
+/**
+ * The Less `once` DEDUP verdict for one resolved import (IMPORTS increment 4). A
+ * `multiple`/`once:false` import ALWAYS emits (returns false, never recorded). Else
+ * the FIRST import of a `resolvedPath` becomes the once-owner (records it, returns
+ * false = emit); a later import of the SAME path returns true = `dedupe` (scope-only,
+ * no output). The ledger is `options.spineEmittedImportPaths`, shared for the whole
+ * render — so a transitive re-import nested INSIDE another imported file dedups
+ * against a root-position import of the same file too (mirrors the eval path's
+ * document-global `context.evaldTrees`). Consulted at EVERY resolve point: the wire
+ * pass AND the emit fold's fresh-resolve fallback.
+ */
+export function spineImportDedupeVerdict(
+  resolvedPath: string | undefined,
+  multiple: boolean,
+  options: FinalPrintOptions
+): boolean {
+  // Inside a MULTIPLE-scoped body (a nested import within a `@import (multiple)`
+  // body), every import re-emits — mirrors `context.inMultipleImportScope`.
+  if (multiple || resolvedPath === undefined || (options.spineMultipleImportDepth ?? 0) > 0) {
+    return false;
+  }
+  const emittedPaths = (options.spineEmittedImportPaths ??= new Set());
+  if (emittedPaths.has(resolvedPath)) {
+    return true;
+  }
+  emittedPaths.add(resolvedPath);
+  return false;
+}
+
+/**
+ * Run `fn` with the MULTIPLE-import scope depth bumped (IMPORTS increment 4) — used
+ * while descending a `@import (multiple)` body so its NESTED imports also re-emit
+ * (no `once` dedup), then restore on the outbound edge (chaining on the async path,
+ * never a sync `finally` that would restore before an async leaf resolves).
+ */
+export function withSpineMultipleScope<T>(
+  options: FinalPrintOptions,
+  multiple: boolean,
+  fn: () => MaybePromise<T>
+): MaybePromise<T> {
+  if (!multiple) {
+    return fn();
+  }
+  options.spineMultipleImportDepth = (options.spineMultipleImportDepth ?? 0) + 1;
+  const restore = <R>(value: R): R => {
+    options.spineMultipleImportDepth = (options.spineMultipleImportDepth ?? 1) - 1;
+    return value;
+  };
+  try {
+    const result = fn();
+    return isThenable(result)
+      ? result.then(restore, (error: unknown) => { restore(undefined); throw error; })
+      : restore(result);
+  } catch (error) {
+    restore(undefined);
+    throw error;
+  }
 }
 
 /** True if the tree carries a `StyleImport` (a Less import that registers scope). */
@@ -1630,16 +1696,17 @@ function wireSpineImportsInBody(
         return value;
       };
       const resolution = importNode.resolveForSpine(context);
-      const registerAndLink = (resolved: { kind: 'css' } | { kind: 'fold'; body: Rules }): MaybePromise<void> => {
+      const registerAndLink = (resolved: SpineImportResolution): MaybePromise<void> => {
         if (resolved.kind === 'css') {
           cache.set(child, { kind: 'css' });
           return undefined;
         }
         const body = resolved.body;
+        const dedupe = spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options);
         const registered = body.prepareRegistration(context);
         const finishRegister = (): void => {
           linkImportFallbackFrame(targetFrame, body.getScopeFrame());
-          cache.set(child, { kind: 'fold', body });
+          cache.set(child, { kind: 'fold', body, dedupe, multiple: resolved.multiple });
         };
         return isThenable(registered) ? registered.then(finishRegister) : finishRegister();
       };

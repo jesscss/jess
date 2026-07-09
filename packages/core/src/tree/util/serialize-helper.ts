@@ -21,7 +21,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
-import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports } from './emit-walk.js';
+import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict } from './emit-walk.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, type SpineMergePlan } from './spine-merge.js';
 
@@ -887,19 +887,20 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             continue;
           }
           const importNode = entryNode as unknown as StyleImport;
-          const apply = (resolved: SpineImportResolution): MaybePromise<void> => {
-            if (resolved.kind === 'css') {
-              // CSS-passthrough: nothing inline — drop the entry (queued top-of-doc).
-              rulesToRender.splice(i, 1);
-              recomputeDeclCounts();
-              return expandFrom(i);
-            }
-            // Less import: fold the parsed body inline when spine-simple, else
-            // fall back to the eval terminal (byte-identical) and flatten it.
-            if (isSpineFoldableImportBody(resolved.body)) {
-              assignSpineChildIndices(resolved.body);
-              const childEntries: RenderRuleEntry[] = resolved.body.rules.map(
-                child => ({ node: child, spineFrame: resolved.body })
+          const dropEntry = (): MaybePromise<void> => {
+            // Emit nothing inline — CSS-passthrough (queued top-of-doc) or a `dedupe`
+            // re-import (scope already registered, `once` suppresses output).
+            rulesToRender.splice(i, 1);
+            recomputeDeclCounts();
+            return expandFrom(i);
+          };
+          const foldBody = (body: Rules): MaybePromise<void> => {
+            // Fold the parsed body inline when spine-simple, else fall back to the
+            // eval terminal (byte-identical) and flatten it.
+            if (isSpineFoldableImportBody(body)) {
+              assignSpineChildIndices(body);
+              const childEntries: RenderRuleEntry[] = body.rules.map(
+                child => ({ node: child, spineFrame: body })
               );
               rulesToRender.splice(i, 1, ...childEntries);
               recomputeDeclCounts();
@@ -916,16 +917,31 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             };
             return isThenable(evalOutput) ? evalOutput.then(applyEval) : applyEval(evalOutput);
           };
-          // Reuse the root pre-registration pass's resolved + registered + linked
-          // placement (IMPORTS increment 2) when present, so a nested-container
-          // descent folds the SAME scope-linked body; else resolve here (a nested
-          // import not covered by the root pre-wire).
+          // Reuse the wire pass's resolved + registered + linked placement (IMPORTS
+          // increment 2/3/4) when present — every foldable import is pre-wired, so the
+          // cache carries the dedup verdict. A `dedupe` re-import emits nothing (its
+          // scope is already linked). The fresh-resolve is a defensive fallback.
           const cached = options.spineImportPlacements?.get(importNode);
           if (cached) {
-            return apply(cached);
+            if (cached.kind === 'css' || cached.dedupe) {
+              return dropEntry();
+            }
+            return foldBody(cached.body);
           }
+          const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
+            if (resolved.kind === 'css') {
+              return dropEntry();
+            }
+            // Once-dedup on the fresh path too (a not-pre-wired import, e.g. nested
+            // inside another imported file): a re-import of an already-emitted path is
+            // scope-only (drop). `multiple`/`once:false` always emits.
+            if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
+              return dropEntry();
+            }
+            return foldBody(resolved.body);
+          };
           const resolution = importNode.resolveForSpine(spineContext);
-          return isThenable(resolution) ? resolution.then(apply) : apply(resolution);
+          return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);
         }
         return undefined;
       };

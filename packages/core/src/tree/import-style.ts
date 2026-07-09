@@ -274,10 +274,14 @@ export type ImportPlacementChildSegment = PlacementChildSegment;
  * (`resolveForSpine`, UNIFIED-EVAL-EMIT-DESIGN §2/§4.0 IMPORTS increment 1):
  *   - `css` — CSS-passthrough, already queued to `context.topImports`; emit nothing inline.
  *   - `fold` — a plain Less import whose parsed body (`body`) the spine descends inline.
+ *     `resolvedPath` is the file the specifier resolved to — the dedup key (IMPORTS
+ *     increment 4): a second import of the same `resolvedPath` under `once` (default)
+ *     registers SCOPE but emits NO output. `multiple` is the authored opt-out that
+ *     re-emits at every position (never deduped).
  */
 export type SpineImportResolution =
   | { kind: 'css' }
-  | { kind: 'fold'; body: Rules };
+  | { kind: 'fold'; body: Rules; resolvedPath: string | undefined; multiple: boolean };
 
 type ImportPlacementOptionsState = {
   referenceMode: RulesOptions['referenceMode'];
@@ -918,16 +922,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     const io = this.options.importOptions;
     if (io) {
+      // `multiple` / `once: false` are NOW foldable (IMPORTS increment 4): the fold
+      // models re-emit via the `multiple` flag on the resolution (bypasses the once
+      // dedup ledger). Still deferred (each a REQUIRED P4 item): reference, inline,
+      // optional, mutable (protected/extend-reach), forward, postlude/with.
       if (
         io.reference === true
         || io.inline === true
-        || io.multiple === true
         || io.optional === true
         || io.mutable === true
         || io.mutable === false
         || io.forward === true
         || io.postlude !== undefined
-        || io.once === false
       ) {
         return false;
       }
@@ -992,11 +998,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (nodeTreeContext) {
       context.treeContext = nodeTreeContext;
     }
+    // `multiple` OR `once: false` both opt out of `once` dedup (always re-emit).
+    const multiple = io.multiple === true || io.once === false;
     try {
       const loaded = await context.getTree(finalPath, io);
       if (!loaded.node) {
         // Nothing to emit (unsupported/empty) — mirror the eval path's empty surface.
-        return { kind: 'fold', body: this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true }) };
+        return {
+          kind: 'fold',
+          body: this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true }),
+          resolvedPath: loaded.resolvedPath,
+          multiple
+        };
       }
       const importSite = this.getImportAnchorRules(context);
       // Build the import-site placement over the parsed (un-evaled) imported body:
@@ -1007,7 +1020,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         this.createFirstUseImportPlacementState(loaded.node),
         importSite
       );
-      return { kind: 'fold', body: placement };
+      // `resolvedPath` is the dedup key (increment 4): the wire pass emits the
+      // FIRST occurrence and scope-onlys the rest of the same path (under `once`).
+      return { kind: 'fold', body: placement, resolvedPath: loaded.resolvedPath, multiple };
     } finally {
       context.treeContext = previousTreeContext;
     }

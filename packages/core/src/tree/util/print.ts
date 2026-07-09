@@ -10,14 +10,17 @@ import type { Rules } from '../rules.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 /**
- * A resolved spine import placement (IMPORTS increment 2). `css` — a CSS-passthrough
+ * A resolved spine import placement (IMPORTS increment 2/4). `css` — a CSS-passthrough
  * import already queued to `context.topImports` (emits nothing inline). `fold` — a
  * Less import whose registered placement `body` the spine descends inline; its scope
- * frame is already linked as an importer fallback by `wireSpineImports`.
+ * frame is already linked as an importer fallback by `wireSpineImports`. `dedupe`
+ * (increment 4) — true when this is a SECOND+ import of the same resolved file under
+ * `once`: its SCOPE is already registered/linked, so the emit fold emits NO output
+ * (Less `once` semantics: emit the first occurrence, scope-only the rest).
  */
 export type SpineImportPlacementEntry =
   | { kind: 'css' }
-  | { kind: 'fold'; body: Rules };
+  | { kind: 'fold'; body: Rules; dedupe: boolean; multiple: boolean };
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -142,6 +145,25 @@ export type PrintOptions = {
    * an imported `@var`) resolves against the linked scope. Keyed by node identity.
    */
   spineImportPlacements?: Map<Node, SpineImportPlacementEntry>;
+  /**
+   * Spine import DEDUP ledger (IMPORTS increment 4). The set of RESOLVED import
+   * paths already emitted-as-output during this render. Populated as the wire pass
+   * (`wireSpineImportsInBody`) resolves each import in document order: the FIRST
+   * import of a path adds it and emits output; a later import of the SAME path (under
+   * `once`, default) finds it present and is marked `dedupe` (scope-only, no output)
+   * — Less import-once semantics. `multiple` bypasses the ledger (always emits, never
+   * recorded as the once-owner). Same render lifetime as `spineImportPlacements`.
+   */
+  spineEmittedImportPaths?: Set<string>;
+  /**
+   * Spine MULTIPLE-import scope depth (IMPORTS increment 4). Incremented while
+   * descending a `@import (multiple)` / `once:false` import's body: a nested import
+   * inside a multiple-scoped body ALSO re-emits (does not dedup), mirroring the eval
+   * path's `context.inMultipleImportScope`. `spineImportDedupeVerdict` returns
+   * "emit" (never `dedupe`) whenever this depth is > 0. Zero (the default) = normal
+   * `once` dedup applies.
+   */
+  spineMultipleImportDepth?: number;
   /** Output syntax target, e.g. 'jess' for Jess canonical output. */
   syntax?: string;
   /** Jess conversion options for rewriting import paths during serialization. */

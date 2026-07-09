@@ -644,19 +644,103 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it('IMPORTS increment 3: the SAME file imported more than once STAYS on eval (dedup / `once` wall)', async () => {
-    // `strict-imports.less` imports `imported.less` at root + inside `@media` + inside
-    // `.container`. Less `once`-dedups: emit the content at the FIRST, scope-only at the
-    // rest. The fold does not model `once` — it would emit the body at EVERY position.
-    // So a duplicate static specifier stays on the eval path (byte-identical). A
-    // regression that folds it duplicates the imported `.imported` output. DEFERRED (P4,
-    // with `multiple`/dedupe): `once` dedup in the fold.
+  it('IMPORTS increment 4: the SAME file imported twice at root EMITS ONCE via the spine (`once` dedup, no derive)', async () => {
+    // Less `once` (default): a file imported at several positions emits its content at
+    // the FIRST and is scope-only at the rest. The wire pass records each resolved path
+    // (`spineEmittedImportPaths`); the second import of the same path is `dedupe`
+    // (emits nothing). Folds through the spine, no eval two-walk.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc4-once-'));
+    fs.writeFileSync(path.join(dir, 'imp.less'), '.imported {\n  color: green;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "imp.less";\n.a { color: red; }\n@import "imp.less";\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // `.imported` emitted ONCE (the second `@import` is deduped, scope-only).
+      expect(result.css).toBe('.imported {\n  color: green;\n}\n.a {\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 4: `@import (multiple)` opts back into RE-EMIT at each position', async () => {
+    // `multiple` is the authored opt-out of `once`: it re-emits at every position and is
+    // never recorded as the once-owner. Folds through the spine.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc4-multi-'));
+    fs.writeFileSync(path.join(dir, 'imp.less'), '.imported {\n  color: green;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "imp.less";\n@import (multiple) "imp.less";\n');
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    // Emitted TWICE — `multiple` bypasses the once ledger.
+    expect(result.css).toBe('.imported {\n  color: green;\n}\n.imported {\n  color: green;\n}\n');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORTS increment 4: `strict-imports` (dedup across root/@media/ruleset) folds byte-identically', async () => {
+    // The corpus dedup fixture: `imported.less` imported at root + inside `@media` +
+    // inside `.container`. Emit at root, scope-only at the nested positions. Byte-
+    // identical to the Less golden `.css`.
     const compiler = makeCompiler();
     const lessPath = path.join(testDataRoot, 'tests-config/strict-imports/strict-imports.less');
-    const before = spineRenderCounter.rootRenders;
+    const expected = readFileSync(path.join(testDataRoot, 'tests-config/strict-imports/strict-imports.css'), 'utf8');
     const result = await compiler.renderToResult(lessPath, {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (dedup wall)
-    expect(result.css).toContain('.container .nested'); // dedup handled correctly (eval path)
+    expect(result.css).toBe(expected);
+  });
+
+  it('IMPORTS increment 4: `import-once` corpus fixture folds via the spine, byte-identical (once + multiple + transitive dedup, no derive)', async () => {
+    // The corpus once/multiple fixture: the same file imported 3× via different
+    // specifiers (once → one `#import`), a transitive re-import nested inside another
+    // imported file (dedups against the root one via the shared ledger), and a
+    // `(multiple)` import twice (re-emits, and its NESTED `once` import re-emits too via
+    // the multiple scope). Folds through the spine, byte-identical, no eval two-walk.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-unit/import/import-once.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-unit/import/import-once.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(result.css).toBe(expected);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('IMPORTS increment 4: a hoisting `@media` block FOLLOWED BY a root sibling STAYS on eval (pre-existing hoist-frame wall)', async () => {
+    // NOT an import bug: a root `@media {…}` that hoists and is followed by a root
+    // sibling leaves the spine's rendered-frame stack unbalanced (the sibling inherits
+    // the `@media` frame). This reproduces with ZERO imports; the import fold would
+    // EXPOSE it (`strict-imports` structure), so a foldable-import tree with a hoisting
+    // conditional-group at-rule that is not the last root child stays on eval
+    // (byte-identical). A regression that folds it wraps the sibling in the `@media`.
+    // DEFERRED (a REQUIRED P4 item, its OWN concern): the spine hoist-frame reset.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc4-hoist-'));
+    fs.writeFileSync(path.join(dir, 'imp.less'), '@c: blue;\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "imp.less";\n@media screen {\n  .m { color: @c; }\n}\n.after { color: black; }\n');
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (hoist-frame wall)
+    expect(result.css).toContain('.after {\n  color: black;\n}'); // sibling NOT wrapped in @media
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it('IMPORTS increment 1: the import-work gate is ZERO-cost when the tree has no imports', async () => {

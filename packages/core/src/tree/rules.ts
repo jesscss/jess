@@ -33,7 +33,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -48,7 +48,7 @@ import {
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
-import type { StyleImport } from './import-style.js';
+import type { StyleImport, SpineImportResolution } from './import-style.js';
 import {
   buildScopeFrame,
   copyScopeFrameLiveBindingSlots,
@@ -4430,7 +4430,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     emitNode: (n: Node) => MaybePromise<void>
   ): MaybePromise<void> {
     const w = options.writer!;
-    const foldBody = (body: Rules): MaybePromise<void> => {
+    const foldBody = (body: Rules, multiple: boolean): MaybePromise<void> => {
       assignSpineChildIndices(body);
       const savedRulesContext = context.rulesContext;
       context.rulesContext = body;
@@ -4448,8 +4448,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         return undefined;
       };
+      // A `multiple` import's body descends inside a MULTIPLE scope, so its NESTED
+      // imports also re-emit (no `once` dedup) — mirrors `inMultipleImportScope`.
       try {
-        const step = emitChild(0);
+        const step = withSpineMultipleScope(options, multiple, () => emitChild(0));
         return isThenable(step)
           ? step.then(restore, (error: unknown) => { restore(undefined); throw error; })
           : restore(step);
@@ -4470,22 +4472,38 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       };
       return isThenable(rendered) ? rendered.then(finishRendered) : finishRendered(rendered);
     };
-    const apply = (resolved: { kind: 'css' } | { kind: 'fold'; body: Rules }): MaybePromise<void> => {
+    // Reuse the placement the wire pass already resolved + registered + frame-linked
+    // (IMPORTS increment 2/3), so the import is resolved once and its OUTPUT descends
+    // against the SAME scope its consumers see. Every foldable import (root + nested)
+    // is pre-wired, so `cached` is expected; the fresh-resolve below is a defensive
+    // fallback for a lone import the wire pass didn't reach (no dedup — it is its own
+    // only occurrence).
+    const cached = options.spineImportPlacements?.get(importNode);
+    if (cached) {
+      if (cached.kind === 'css') {
+        return undefined;
+      }
+      // DEDUP (increment 4): a `dedupe` re-import's scope is already registered/linked
+      // by the wire pass; emit NO output (Less `once`). Otherwise fold its body.
+      if (cached.dedupe) {
+        return undefined;
+      }
+      return isSpineFoldableImportBody(cached.body) ? foldBody(cached.body, cached.multiple) : evalFallback();
+    }
+    const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
       if (resolved.kind === 'css') {
         return undefined;
       }
-      return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body) : evalFallback();
+      // Consult the once-dedup ledger even on the fresh path (a not-pre-wired import,
+      // e.g. one nested INSIDE another imported file): a re-import of an already-emitted
+      // path is scope-only. `multiple`/`once:false` always emits.
+      if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
+        return undefined;
+      }
+      return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body, resolved.multiple) : evalFallback();
     };
-    // Reuse the placement the root pre-registration pass already resolved +
-    // registered + frame-linked (IMPORTS increment 2), so the import is resolved
-    // once and its OUTPUT descends against the SAME scope its consumers see. A
-    // nested import not pre-wired (only root imports are wired today) resolves here.
-    const cached = options.spineImportPlacements?.get(importNode);
-    if (cached) {
-      return apply(cached);
-    }
     const resolution = importNode.resolveForSpine(context);
-    return isThenable(resolution) ? resolution.then(apply) : apply(resolution);
+    return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);
   }
 
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
