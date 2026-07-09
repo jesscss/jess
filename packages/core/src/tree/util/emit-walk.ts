@@ -1035,12 +1035,19 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   if (isNode(node, N.Declaration)) {
     const options = node.options as { assign?: string; setDefined?: boolean; nearestOuter?: boolean } | undefined;
     const assign = options?.assign ?? ':';
-    // Folded: `:` (plain) and the property-MERGE assigns (`+:`/`+_:`/`&,:`/`&_:`,
-    // coalesced by `planBodyMerges`). Still excluded (a scoped frontier): the
-    // conditional/scope-mutating assigns `?:` / `setDefined` (Sass `!global`) /
-    // `nearestOuter` (Jess `:=`) — all three depend on eval/registration-time
-    // binding-write semantics (conditional-bind-if-undefined; write a binding
-    // cell in an OUTER scope) that the spine does not yet replicate in-descent.
+    // Folded: `:` (plain), the property-MERGE assigns (`+:`/`+_:`/`&,:`/`&_:`,
+    // coalesced by `planBodyMerges`), and the CONDITIONAL assign `?:` on a
+    // VARIABLE (`@x ?: v` — assign-if-undefined, resolved by `planBodyConditionals`:
+    // the eval-path self-reference read, position-gated against the live frame +
+    // a single write-forward onto the node's own cell). Still excluded (the
+    // frontier): a `?:` on a plain PROPERTY (`color ?: v` — eval keeps BOTH the
+    // prior property decl AND the fallback as a NEW decl; a non-binding shape the
+    // body plan does not model — SEQUENCED, see `spine-cond.ts`), and the
+    // scope-mutating assigns `setDefined` (Sass `!global` — an OUTER-scope binding
+    // write) / `nearestOuter` (Jess `:=` — no eval implementation, no oracle).
+    if (CONDITIONAL_ASSIGNS.has(assign)) {
+      return isNode(node, N.VarDeclaration);
+    }
     if (assign !== ':' && !MERGE_ASSIGNS.has(assign)) {
       return false;
     }
@@ -1054,6 +1061,9 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
 
 /** Property-merge assign operators the spine coalesces (see `planBodyMerges`). */
 const MERGE_ASSIGNS = new Set(['+:', '+_:', '&,:', '&_:']);
+
+/** Conditional assign-if-undefined operator the spine folds (see `planBodyConditionals`). */
+const CONDITIONAL_ASSIGNS = new Set(['?:']);
 
 /** True if any DIRECT child of `body` is a spine-eligible mixin call. */
 function bodyHasMixinCall(children: readonly Node[]): boolean {
@@ -1102,6 +1112,25 @@ function bodyHasDirectMergeDecl(children: readonly Node[]): boolean {
     if (isNode(child, N.Declaration) && !isNode(child, N.VarDeclaration)) {
       const assign = (child.options as { assign?: string } | undefined)?.assign;
       if (assign && MERGE_ASSIGNS.has(assign)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * True if any DIRECT child of `body` is a `?:` conditional-assign declaration.
+ * Root-level `?:` is excluded like root-level `+:`: the conditional fold is built
+ * on the CONTAINER descent path (`withSpineMergePlan` → `planBodyConditionals`),
+ * which the flat root-body path (`toRenderString`) does not run.
+ */
+function bodyHasDirectConditionalDecl(children: readonly Node[]): boolean {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isNode(child, N.VarDeclaration)) {
+      const assign = (child.options as { assign?: string } | undefined)?.assign;
+      if (assign && CONDITIONAL_ASSIGNS.has(assign)) {
         return true;
       }
     }
@@ -1237,6 +1266,9 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
     return false;
   }
   if (bodyHasDirectMergeDecl(root.rules)) {
+    return false;
+  }
+  if (bodyHasDirectConditionalDecl(root.rules)) {
     return false;
   }
   // INCREMENT 2 cross-check: a mixin CALL whose target might be an INTERPOLATED-

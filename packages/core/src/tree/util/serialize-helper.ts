@@ -24,6 +24,8 @@ import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict } from './emit-walk.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, type SpineMergePlan } from './spine-merge.js';
+import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
+import { Reference } from '../reference.js';
 
 type TriviaSide = 'before' | 'after';
 type SerializeProfileCounter =
@@ -175,6 +177,27 @@ function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybeProm
     const evaluatedAnchor = node.eval(options.context!);
     return isThenable(evaluatedAnchor) ? evaluatedAnchor.then(withMergedValue) : withMergedValue(evaluatedAnchor);
   }
+  // `?:` conditional-assign: the plan resolved the eval-path self-reference (prior
+  // binding wins; else fallback) at body-enter. Emit that value with the `?:`
+  // normalized to a plain `:` — a VarDeclaration serializes to nothing (a scope
+  // binding); a plain Declaration emits `prop: <resolved>`. The write-forward onto
+  // the node's own binding cell (done in the plan) is what a LATER read sees.
+  const condEntry = options.spineCondPlan?.get(node);
+  if (condEntry) {
+    const withCondValue = (resolved: Node | Nil | undefined): string => {
+      if (isNode(resolved, N.Declaration)) {
+        const anchorDecl = resolved.deriveWithParts({ value: condEntry.value });
+        const anchorOptions = anchorDecl.options as { assign?: string; normalizedFromAssign?: string };
+        if (anchorOptions.normalizedFromAssign === undefined && anchorOptions.assign && anchorOptions.assign !== ':') {
+          anchorOptions.normalizedFromAssign = anchorOptions.assign;
+        }
+        return serialize(anchorDecl);
+      }
+      return serialize(resolved);
+    };
+    const evaluatedAnchor = node.eval(options.context!);
+    return isThenable(evaluatedAnchor) ? evaluatedAnchor.then(withCondValue) : withCondValue(evaluatedAnchor);
+  }
   const resolved = node.eval(options.context!);
   return isThenable(resolved) ? resolved.then(serialize) : serialize(resolved);
 }
@@ -199,21 +222,42 @@ function withSpineMergePlan(
       isNode(node, N.Declaration) ? node.valueNode() : undefined;
     return isThenable(resolved) ? resolved.then(toValue) : toValue(resolved);
   };
-  const planResult = planBodyMerges(children, resolveValue);
-  const run = (plan: SpineMergePlan | undefined): MaybePromise<string> => {
-    if (!plan) {
-      return fn();
-    }
-    const saved = options.spineMergePlan;
-    options.spineMergePlan = plan;
-    const restorePlan = (text: string): string => {
-      options.spineMergePlan = saved;
-      return text;
-    };
-    const out = fn();
-    return isThenable(out) ? out.then(restorePlan) : restorePlan(out);
+  // `?:` conditional-assign (assign-if-undefined): resolve the eval-path self-
+  // reference against the live frame (prior binding wins; else fallback). Undefined
+  // when the body has no `?:` decl (the common case allocates + touches nothing).
+  const resolveReference = (ref: Reference): MaybePromise<Node | undefined> => {
+    const resolved = ref.eval(context);
+    return isThenable(resolved)
+      ? resolved.then((node: Node | undefined) => node ?? undefined)
+      : resolved ?? undefined;
   };
-  return isThenable(planResult) ? planResult.then(run) : run(planResult);
+  const condFrame = context.rulesContext?.getScopeFrame();
+  const mergePlanResult = planBodyMerges(children, resolveValue);
+  const runWithMerge = (mergePlan: SpineMergePlan | undefined): MaybePromise<string> => {
+    const condPlanResult = planBodyConditionals(children, condFrame, resolveReference);
+    const run = (condPlan: SpineCondPlan | undefined): MaybePromise<string> => {
+      if (!mergePlan && !condPlan) {
+        return fn();
+      }
+      const savedMerge = options.spineMergePlan;
+      const savedCond = options.spineCondPlan;
+      if (mergePlan) {
+        options.spineMergePlan = mergePlan;
+      }
+      if (condPlan) {
+        options.spineCondPlan = condPlan;
+      }
+      const restorePlan = (text: string): string => {
+        options.spineMergePlan = savedMerge;
+        options.spineCondPlan = savedCond;
+        return text;
+      };
+      const out = fn();
+      return isThenable(out) ? out.then(restorePlan) : restorePlan(out);
+    };
+    return isThenable(condPlanResult) ? condPlanResult.then(run) : run(condPlanResult);
+  };
+  return isThenable(mergePlanResult) ? mergePlanResult.then(runWithMerge) : runWithMerge(mergePlanResult);
 }
 
 function renderNodeText(

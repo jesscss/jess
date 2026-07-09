@@ -115,6 +115,14 @@ export type PrintOptions = {
    * (the common case pays nothing).
    */
   spineMergePlan?: import('./spine-merge.js').SpineMergePlan;
+  /**
+   * Spine-mode `?:` conditional-assign plan for the CURRENT body. Keyed by source
+   * declaration: an `anchor` entry emits the resolved value (the eval-path self-
+   * reference read — prior binding or fallback). Built at body-enter by
+   * `planBodyConditionals`; consulted by the leaf resolver. Undefined when the
+   * body has no `?:` declaration (the common case pays nothing).
+   */
+  spineCondPlan?: import('./spine-cond.js').SpineCondPlan;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
