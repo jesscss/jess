@@ -230,7 +230,7 @@ describe('Dimension', () => {
     it('should cancel units in strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      context.opts.unitMode = 'strict';
+      context.setOption('unitMode', 'strict');
       await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
     });
   });
@@ -258,7 +258,7 @@ describe('Dimension', () => {
 
   describe('strict mode', () => {
     beforeEach(() => {
-      context.opts.unitMode = 'strict';
+      context.setOption('unitMode', 'strict');
     });
     it('should throw when adding incompatible units', () => {
       let left = dimension([10, 'px']);
@@ -289,7 +289,7 @@ describe('Dimension', () => {
 
   describe('preserve mode', () => {
     beforeEach(() => {
-      context.opts.unitMode = 'preserve';
+      context.setOption('unitMode', 'preserve');
     });
     // In preserve mode, `operate()` does NOT fuse operands into a fabricated
     // compound-unit Dimension. It throws TypeError so the caller (Operation)

@@ -255,7 +255,7 @@ export class Operation extends Node<OperationValue> {
         if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           return renderOperands();
         }
-        const unitMode = context?.opts?.unitMode ?? 'preserve';
+        const unitMode = context?.options.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
         if (isPreserveMode && isNode(l, N.Dimension) && isNode(r, N.Dimension)) {
           try {
@@ -385,7 +385,7 @@ export class Operation extends Node<OperationValue> {
           }
           return n.withOperands(l, r);
         }
-        const unitMode = context?.opts?.unitMode ?? 'preserve';
+        const unitMode = context?.options.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
 
         // In preserve mode, catch unit errors and return calc() call

@@ -9,9 +9,6 @@ Current topics:
   current eval/render architecture routing and pass rules
 - [Core architecture focii](./core-architecture/FOCII.md) — goal-settable focus
   prompts, boundaries, stop rules, and queue ownership
-- [Eliminating `preEval`](./pre-eval-elimination.md)
-- [Static eval optimizations](./static-eval-optimizations.md)
-- [Whitespace token proposal](./whitespace-token-proposal.md)
 
 Historical transition docs were removed from the working tree. Use git history
 for archaeology.

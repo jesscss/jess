@@ -1748,7 +1748,7 @@ describe('Control Nodes', () => {
 
   it('keeps nested eval state isolated across mixin calls and $for iterations', async () => {
     const context = new Context({
-      leakyRules: true
+      leakyScope: true
     });
 
     const loopRules = rules([

@@ -13,7 +13,7 @@ describe('mixin guard filtering', () => {
   let context: Context;
 
   beforeEach(() => {
-    context = new Context({ leakyRules: true });
+    context = new Context({ leakyScope: true });
     context.depth = 2;
   });
 

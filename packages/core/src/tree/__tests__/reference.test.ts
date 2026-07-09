@@ -4148,7 +4148,7 @@ describe('reference', () => {
             }
           })
         ]);
-        await expect(async () => await node.eval(new Context({ leakyRules: true }))).rejects.toThrow();
+        await expect(async () => await node.eval(new Context({ leakyScope: true }))).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
       } finally {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -5630,11 +5630,11 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('static declaration handles stay cold while leakyRules disqualifies lookup', async () => {
+    it('static declaration handles stay cold while leakyScope disqualifies lookup', async () => {
       const declaration = decl({ name: 'color', value: any('blue') });
       const node = rules([declaration]);
       const root = setRulesContext(await node.eval(context));
-      const leakyContext = new Context({ leakyRules: true });
+      const leakyContext = new Context({ leakyScope: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const lookupRef = ref({ key: 'color' }, {
@@ -5658,11 +5658,11 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('static property handles stay cold while leakyRules disqualifies lookup', async () => {
+    it('static property handles stay cold while leakyScope disqualifies lookup', async () => {
       const declaration = decl({ name: 'color', value: any('blue') });
       const node = rules([declaration]);
       const root = setRulesContext(await node.eval(context));
-      const leakyContext = new Context({ leakyRules: true });
+      const leakyContext = new Context({ leakyScope: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const lookupRef = ref({ key: 'color' }, {
@@ -5686,11 +5686,11 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('static variable handles stay cold while leakyRules disqualifies lookup', async () => {
+    it('static variable handles stay cold while leakyScope disqualifies lookup', async () => {
       const declaration = vardecl({ name: 'color', value: any('blue') });
       const node = rules([declaration]);
       const root = setRulesContext(await node.eval(context));
-      const leakyContext = new Context({ leakyRules: true });
+      const leakyContext = new Context({ leakyScope: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const lookupRef = ref({ key: 'color' }, {
@@ -5714,14 +5714,14 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('static function handles stay cold while leakyRules disqualifies lookup', async () => {
+    it('static function handles stay cold while leakyScope disqualifies lookup', async () => {
       const node = rules([]);
       node.setFunctionBinding('paint', new JsFunction({
         name: 'paint',
         fn: () => any('blue')
       }));
       const root = setRulesContext(await node.eval(context));
-      const leakyContext = new Context({ leakyRules: true });
+      const leakyContext = new Context({ leakyScope: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const lookupRef = ref({ key: 'paint' }, { type: 'function' });
@@ -5768,14 +5768,14 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('static callable handles stay cold while leakyRules disqualifies lookup', async () => {
+    it('static callable handles stay cold while leakyScope disqualifies lookup', async () => {
       const callable = mixin({
         name: '.paint',
         rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([callable]);
       const root = setRulesContext(await node.eval(context));
-      const leakyContext = new Context({ leakyRules: true });
+      const leakyContext = new Context({ leakyScope: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
@@ -5822,14 +5822,14 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('static mixin-ruleset handles stay cold while leakyRules disqualifies lookup', async () => {
+    it('static mixin-ruleset handles stay cold while leakyScope disqualifies lookup', async () => {
       const callable = ruleset({
         selector: el('.paint'),
         rules: [decl({ name: 'color', value: any('green') })]
       });
       const node = rules([callable]);
       const root = setRulesContext(await node.eval(context));
-      const leakyContext = new Context({ leakyRules: true });
+      const leakyContext = new Context({ leakyScope: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const lookupRef = ref({ key: '.paint' }, { type: 'mixin-ruleset' });
@@ -5876,7 +5876,7 @@ describe('reference', () => {
       expect(lookupRef._rulesLookupHandle).not.toBe(handle);
     });
 
-    it('searchScope and leakyRules stale declaration handles rebuild without public declaration bridges', async () => {
+    it('searchScope and leakyScope stale declaration handles rebuild without public declaration bridges', async () => {
       const ignoredDeclaration = decl({ name: 'ignored', value: any('0') });
       const node = rules([
         ignoredDeclaration,
@@ -5885,7 +5885,7 @@ describe('reference', () => {
         decl({ name: 'border', value: any('1px solid black') })
       ]);
       const root = setRulesContext(await node.eval(context));
-      const leakyContext = new Context({ leakyRules: true });
+      const leakyContext = new Context({ leakyScope: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const variableRef = ref({ key: 'tone' }, { type: 'variable' });
@@ -5932,7 +5932,7 @@ describe('reference', () => {
       }
     });
 
-    it('searchScope and leakyRules stale callable handles rebuild without broad callable bridges', async () => {
+    it('searchScope and leakyScope stale callable handles rebuild without broad callable bridges', async () => {
       const ignoredDeclaration = decl({ name: 'ignored', value: any('0') });
       const node = rules([
         ignoredDeclaration,
@@ -5946,7 +5946,7 @@ describe('reference', () => {
         })
       ]);
       const root = setRulesContext(await node.eval(context));
-      const leakyContext = new Context({ leakyRules: true });
+      const leakyContext = new Context({ leakyScope: true });
       leakyContext.root = root;
       leakyContext.rulesContext = root;
       const mixinRef = ref({ key: '.paint-mixin' }, { type: 'mixin' });
@@ -7010,7 +7010,7 @@ describe('reference', () => {
       const parser = new Parser();
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const tree = parser.parse(src).tree as unknown as RulesClass;
-      const localContext = new Context({ leakyRules: true });
+      const localContext = new Context({ leakyScope: true });
       localContext.depth = 2;
       localContext.root = tree;
       return renderNodeToString(tree, localContext, { context: localContext });

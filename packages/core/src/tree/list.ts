@@ -308,7 +308,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override compare(other: Node) {
     if (other instanceof List) {
-      const equalityMode = this.sourceRoot?._treeContext?.equalityMode ?? 'coerce';
+      const equalityMode = this.sourceRoot?._treeContext?.options.equalityMode ?? 'less';
       const result = compareNodeArray(this.value, other.value, equalityMode);
       return result;
     }

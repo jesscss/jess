@@ -32,7 +32,7 @@ describe('callable candidate state helper', () => {
     const state = prepareCallableCandidateState({
       candidate,
       callSiteRules,
-      leakyRules: true,
+      leakyScope: true,
       resolvedBindingInfo,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
@@ -62,7 +62,7 @@ describe('callable candidate state helper', () => {
     const state = prepareCallableCandidateState({
       candidate,
       callSiteRules,
-      leakyRules: false,
+      leakyScope: false,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
@@ -87,7 +87,7 @@ describe('callable candidate state helper', () => {
     const state = prepareCallableCandidateState({
       candidate,
       callSiteRules,
-      leakyRules: false,
+      leakyScope: false,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
@@ -119,7 +119,7 @@ describe('callable candidate state helper', () => {
     const state = prepareCallableCandidateState({
       candidate,
       callSiteRules,
-      leakyRules: false,
+      leakyScope: false,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });
@@ -148,7 +148,7 @@ describe('callable candidate state helper', () => {
     const state = prepareCallableCandidateState({
       candidate,
       callSiteRules: undefined,
-      leakyRules: false,
+      leakyScope: false,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });

@@ -71,7 +71,7 @@ describe('Func', () => {
   });
 
   it('evaluates a stylesheet function and returns return: value', async () => {
-    const ctx = new Context({ leakyRules: true });
+    const ctx = new Context({ leakyScope: true });
     ctx.depth = 2;
 
     const tree = rules([
@@ -95,7 +95,7 @@ describe('Func', () => {
   });
 
   it('evaluates a zero-arg stylesheet function without a synthetic mixin wrapper', async () => {
-    const ctx = new Context({ leakyRules: true });
+    const ctx = new Context({ leakyScope: true });
     ctx.depth = 2;
 
     const answer = fn({

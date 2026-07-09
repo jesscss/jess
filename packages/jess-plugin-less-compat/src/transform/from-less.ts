@@ -1,4 +1,4 @@
-import { Any, Collection, Declaration, Dimension, Node, Quoted, Rules } from '@jesscss/core';
+import { Any, Collection, Color, ColorFormat, Declaration, Dimension, Node, Quoted, Rules } from '@jesscss/core';
 import { LessAdapterBase } from './less-adapter.js';
 
 // Less.js types
@@ -73,6 +73,15 @@ export function fromLessNode(
       const n = typeof lessNode.value === 'number' ? lessNode.value : Number(lessNode.value);
       const u = typeof lessNode.unit === 'string' ? lessNode.unit : '';
       const out = new Dimension({ number: n, unit: u || undefined });
+      cache.set(lessNode, out);
+      return out;
+    }
+
+    if (lessNode.type === 'Color') {
+      const rgb = Array.isArray(lessNode.rgb) ? lessNode.rgb : [0, 0, 0];
+      const [r = 0, g = 0, b = 0] = rgb;
+      const alpha = typeof lessNode.alpha === 'number' ? lessNode.alpha : 1;
+      const out = new Color({ rgb: [r, g, b], alpha }, { format: ColorFormat.HEX });
       cache.set(lessNode, out);
       return out;
     }

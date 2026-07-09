@@ -13,9 +13,8 @@ This is one of the core-architecture coordination docs:
 
 - `HANDOFF.md` is the short router.
 - `FOCII.md` owns goal-settable focus prompts, boundaries, and stop rules.
-- Focus trackers own active queues and completion gates.
-- `PERFORMANCE-HANDOFF.md` owns benchmark/profile protocol and performance
-  evidence.
+- `CORE-CLEANUP.md` owns active queues, completion gates, benchmark/profile
+  protocol, and performance evidence.
 - This file owns architecture and patch-shape review: whether a proposed edit
   keeps responsibilities on the right owner, avoids repeated methods with tiny
   deltas, avoids helper/API growth, and avoids machinery, materialization,

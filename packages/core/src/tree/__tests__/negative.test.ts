@@ -216,7 +216,7 @@ describe('Negative', () => {
   });
 
   it('negates a dimension on the public operation boundary', async () => {
-    context.opts.unitMode = 'preserve';
+    context.setOption('unitMode', 'preserve');
     const value = dimension({ number: 10, unit: 'px' });
     const negativeNode = negative(value);
 

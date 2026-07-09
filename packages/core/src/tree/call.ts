@@ -6,6 +6,7 @@ import { coerceNodeArray } from './util/evaluate-node-array.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
+import { WARN, toDiagnostic } from '../jess-error.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -631,6 +632,17 @@ export class Call extends Node<CallValue, CallOptions> {
     return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
   }
 
+  /** Warn that a matched registered function was left as-is (functionMode 'preserve'). */
+  private warnUnresolvedFunction(context: Context, name: Node | string | unknown, error: unknown): void {
+    const fnName = isNode(name, N.Reference) ? String(name.key.valueOf()) : String(name);
+    const file = this.sourceRoot?._treeContext?.file;
+    context.warnings.push(toDiagnostic(WARN.unresolvedFunction({
+      ctx: file ? { file } : undefined,
+      filePath: file?.fullPath,
+      meta: { name: fnName, reason: String((error as { message?: unknown })?.message ?? error).split('\n')[0] }
+    })));
+  }
+
   private async evalArgNodes(
     context: Context,
     nodes?: List<Node>,
@@ -856,10 +868,11 @@ export class Call extends Node<CallValue, CallOptions> {
               : await callWithContext(context, fn);
             return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
-            const unitMode = context?.opts?.unitMode ?? 'loose';
-            if (unitMode === 'strict') {
+            const functionMode = context?.options.functionMode ?? 'preserve';
+            if (functionMode === 'error') {
               throw error;
             }
+            this.warnUnresolvedFunction(context, this.name, error);
             const fallbackName = isNode(this.name, N.Reference) && this.name.options.fallbackValue === true
               ? String(this.name.key)
               : stringifyValueOf(fn);
@@ -1425,10 +1438,11 @@ export class Call extends Node<CallValue, CallOptions> {
                 if (
                   isMetadataFunction
                   || !this.options?.silentFail
-                  || (context?.opts?.unitMode ?? 'loose') === 'strict'
+                  || (context?.options.functionMode ?? 'preserve') === 'error'
                 ) {
                   throw error;
                 }
+                this.warnUnresolvedFunction(context, this.name, error);
                 const fallbackName = isNode(this.name, N.Reference) && this.name.options.fallbackValue === true
                   ? String(this.name.key)
                   : stringifyValueOf(fn);
@@ -1920,8 +1934,6 @@ export class Call extends Node<CallValue, CallOptions> {
             markImportant
           });
         } catch (e) {
-          const unitMode = context?.opts?.unitMode ?? 'loose';
-          const shouldRethrowForMode = unitMode === 'strict';
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
             if (this.parent?.type === 'SelectorCapture') {
               return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
@@ -1931,9 +1943,16 @@ export class Call extends Node<CallValue, CallOptions> {
             }
             throw e;
           }
-          if (!this._options?.silentFail || shouldRethrowForMode) {
+          // A registered function matched (isExtendedFn) but couldn't produce a
+          // value. `functionMode: 'error'` throws it; the default 'preserve'
+          // renders the call as-is (like an unknown CSS function) and warns —
+          // but only for an optional (fallback) reference, i.e. a bare/global
+          // call. A non-fallback reference (explicit import) always throws.
+          const functionMode = context?.options.functionMode ?? 'preserve';
+          if (!this._options?.silentFail || functionMode === 'error') {
             throw e;
           }
+          this.warnUnresolvedFunction(context, name, e);
           return this.evalOptionalFallbackCallSyntax(context, state, name, n);
         }
       });

@@ -22,6 +22,10 @@ class Dimension {
     return this.unit ? `${this.value}${this.unit}` : this.value;
   }
 
+  toString() {
+    return String(this.valueOf());
+  }
+
   toCSS() {
     return String(this.valueOf());
   }
@@ -75,6 +79,41 @@ class Anonymous {
   }
 }
 
+class Declaration {
+  type = 'Declaration';
+  name;
+  value;
+
+  constructor(name, value) {
+    this.name = name;
+    this.value = value;
+  }
+
+  eval() {
+    return this;
+  }
+
+  toCSS() {
+    const v = this.value?.toCSS ? this.value.toCSS() : String(this.value);
+    return `${this.name}: ${v}`;
+  }
+}
+
+// Less-compat detached ruleset / map. Legacy @plugin helpers read these via
+// `arg.ruleset.rules`, iterate Declarations, and call `rule.eval(context)`.
+class DetachedRuleset {
+  type = 'DetachedRuleset';
+  ruleset;
+
+  constructor(rules) {
+    this.ruleset = { rules };
+  }
+
+  eval() {
+    return this;
+  }
+}
+
 class Keyword extends Anonymous {
   type = 'Keyword';
 }
@@ -107,6 +146,8 @@ const lessFacade = {
   tree: {
     Anonymous,
     Color,
+    Declaration,
+    DetachedRuleset,
     Dimension,
     Expression,
     Keyword,
@@ -162,6 +203,17 @@ const decodeBridgeValue = (value) => {
       return new Value((value.items ?? []).map(decodeBridgeValue), value.separator ?? ',');
     case 'sequence':
       return new Expression((value.items ?? []).map(decodeBridgeValue));
+    case 'detached': {
+      const rules = (value.rules ?? []).map((decl) => {
+        const decoded = decodeBridgeValue(decl.value);
+        // Legacy Less @plugin map helpers read the declaration's `.value.value`
+        // as the raw CSS string (e.g. "576px"), then parseFloat it. Mirror the
+        // less.js Anonymous shape so that access pattern keeps working.
+        const cssText = decoded?.toCSS ? decoded.toCSS() : String(decoded);
+        return new Declaration(decl.name, new Anonymous(cssText));
+      });
+      return new DetachedRuleset(rules);
+    }
     default:
       return value;
   }

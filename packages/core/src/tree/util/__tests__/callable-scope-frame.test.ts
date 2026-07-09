@@ -64,7 +64,7 @@ describe('callable scope frame helper', () => {
     wireCallableScopeFrames({
       rules: callableRules,
       parentFrame,
-      leakyRules: true
+      leakyScope: true
     });
 
     expect(callableRules.getScopeFrame().fallbackFrame).toBe(parentFrame);

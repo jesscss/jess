@@ -32,17 +32,17 @@ class CountingWriter extends OutputWriter {
 }
 
 describe('List compare', () => {
-  it('treats separator differences as equal in strict mode', () => {
-    const strictContext = new TreeContext({ equalityMode: 'strict' });
-    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, strictContext);
-    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, strictContext);
+  it('treats separator differences as equal in exact mode', () => {
+    const exactContext = new TreeContext({ equalityMode: 'exact' });
+    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, exactContext);
+    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, exactContext);
     expect(commaList.compare(semicolonList)).toBe(0);
   });
 
-  it('treats separator differences as equal in coerce mode', () => {
-    const coerceContext = new TreeContext({ equalityMode: 'coerce' });
-    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, coerceContext);
-    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, coerceContext);
+  it('treats separator differences as equal in less mode', () => {
+    const lessContext = new TreeContext({ equalityMode: 'less' });
+    const commaList = list([num(1), num(2), num(3)], { sep: ',' }, undefined, lessContext);
+    const semicolonList = list([num(1), num(2), num(3)], { sep: ';' }, undefined, lessContext);
     expect(commaList.compare(semicolonList)).toBe(0);
   });
 });

@@ -377,7 +377,7 @@ describe('Operation', () => {
     ]);
 
     const fallbackContext = new Context();
-    fallbackContext.opts.mathMode = 'always';
+    fallbackContext.setOption('mathMode', 'always');
     expect(fallbackContext.opts.unitMode ?? 'preserve').toBe('preserve');
 
     const resolved = await operationNode.resolve(fallbackContext);
@@ -583,7 +583,7 @@ describe('Operation', () => {
 
     it('preserve mode yields a composable calc() fallback', async () => {
       const context = new Context();
-      context.opts.unitMode = 'preserve';
+      context.setOption('unitMode', 'preserve');
       const out = await mul().eval(context);
       expect(out.render(context)).toBe('calc(4px * 3px)');
       // and composing it further nests into a single flat calc
@@ -593,13 +593,13 @@ describe('Operation', () => {
 
     it('strict mode still throws on the unit misuse', () => {
       const context = new Context();
-      context.opts.unitMode = 'strict';
+      context.setOption('unitMode', 'strict');
       expect(() => mul().eval(context)).toThrow(TypeError);
     });
 
     it('loose mode folds to the left unit', async () => {
       const context = new Context();
-      context.opts.unitMode = 'loose';
+      context.setOption('unitMode', 'loose');
       const out = await mul().eval(context);
       expect(out.render(context)).toBe('12px');
     });

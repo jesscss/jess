@@ -898,7 +898,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
       return;
     }
 
-    // Set rulesVisibility for detached rulesets based on leakyRules
+    // Set rulesVisibility for detached rulesets based on leakyScope
     // Less, for whatever reason, has slightly different lookup rules for
     // "detached rulesets".
 
@@ -906,7 +906,7 @@ export function anonymousMixinDefinition(this: P, T: TokenMap) {
     if (!rules.options.rulesVisibility) {
       rules.options.rulesVisibility = {};
     }
-    if ($.leakyRules) {
+    if ($.leakyScope) {
       rules.options.rulesVisibility.Mixin = 'public';
       rules.options.rulesVisibility.VarDeclaration = 'private';
     } else {

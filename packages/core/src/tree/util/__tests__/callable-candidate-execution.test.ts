@@ -16,7 +16,7 @@ import { executeCallableCandidate } from '../callable-candidate-execution.js';
 
 describe('callable candidate execution helper', () => {
   it('evaluates a parameterized callable candidate and returns output', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     const candidate = mixin({
       name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
@@ -39,7 +39,7 @@ describe('callable candidate execution helper', () => {
     const candidateState = prepareCallableCandidateState({
       candidate,
       callSiteRules,
-      leakyRules: true,
+      leakyScope: true,
       resolvedBindingInfo: bindingInfo,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
@@ -65,7 +65,7 @@ describe('callable candidate execution helper', () => {
   });
 
   it('defers passing default-guard candidates into default-state bookkeeping', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -87,7 +87,7 @@ describe('callable candidate execution helper', () => {
     const candidateState = prepareCallableCandidateState({
       candidate,
       callSiteRules,
-      leakyRules: true,
+      leakyScope: true,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules: rulesNode => rulesNode
     });

@@ -140,7 +140,7 @@ describe('guardDefault', () => {
   it('evaluates parsed default() guards without using public Bool rendering', async () => {
     const { errors, tree } = parse(`
       .mixin() when (default()) { color: green; }
-      .mixin();
+      .a { .mixin(); }
     `, 'Stylesheet');
     const context = new Context();
     const originalToTrimmedString = Bool.prototype.toTrimmedString;
@@ -169,7 +169,7 @@ describe('guardDefault', () => {
       .mixin() when (default()) { color: green; }
       .mixin() { color: blue; }
       .mixin() when not (default()) { color: red; }
-      .mixin();
+      .a { .mixin(); }
     `, 'Stylesheet');
     const context = new Context();
     const originalToTrimmedString = Bool.prototype.toTrimmedString;

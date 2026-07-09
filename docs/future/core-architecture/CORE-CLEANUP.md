@@ -5,9 +5,8 @@ set of focus-trackers and audit docs that had drifted out of sync with the code
 (several claimed "done" for work that wasn't, or "todo" for work that had landed).
 
 - **Live queue** = the OPEN items below, grouped by focus.
-- **History** for each focus (the long completed logs / prosecution blocks) lives in
-  `docs/archive/` — see [Archived sources](#archived-sources). Don't re-read those to
-  find work; read them only for forensic "why did we do X" context.
+- **History** for removed focus trackers lives in git history. Don't resurrect
+  those files to find work; read this tracker instead.
 - **Guides that are NOT trackers** (invariants, review rules, the router) stay where
   they are — see [Standing guides](#standing-guides).
 
@@ -254,7 +253,7 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
 > Core has been through many refactors and carries accreted work: multiple structural passes, per-placement
 > copies, fat nodes, redundant flag/registration crawls. **Target: 10× less work per render for byte-identical
 > output.** This is a forcing function — every pass, allocation, field, and flag-crawl must justify itself or die.
-> - **"Work" = a product of three axes, each measured against the `REPROFILE_CURRENT.md` baseline:**
+> - **"Work" = a product of three axes, measured against the latest profile summary below:**
 >   (1) **traversals** — N structural passes → ONE render-driven walk (single-render-pass);
 >   (2) **allocations** — per-placement copies → zero (always-share); fat nodes → slim (SLIM_NODES audits);
 >   (3) **redundant compute** — delete the flag walk (`propagateFlagsFrom`), pre-pass registration, reuse gates,
@@ -281,10 +280,10 @@ removed, `_passedRulesWrapper` gone, loop subsystem staged). Remaining:
 >      has-interpolation) so the common shape runs a fraction of the machinery.
 >    The unit of the 10× isn't only "make the pass cheaper" — it's "for THIS input, don't run the pass at all."
 
-> **▶ ACTIVE DRIVE: [FLAG-WALK-DELETION.md](FLAG-WALK-DELETION.md)** — single-render-pass / always-share
-> eval → zero copy-based eval → delete `propagateFlagsFrom`. Root lever: `adopt()` stops reparenting
-> source children (`node-base.ts:669`). Full phased sequence (A→B→C→D) + orchestration protocol (branch
-> off dev, gate byte-identical + suite-green, pull-before-spawn/merge, push-when-green) live in that doc.
+> **▶ ACTIVE DRIVE: this file.** Single-render-pass / always-share eval remains
+> a cleanup direction, but the latest real Bootstrap profile does not justify a
+> broad flag-walk rewrite as the next speed slice. Treat flag deletion as code
+> health unless fresh profiles put it back on the hot path.
 
 ### ★ GOVERNING PRINCIPLE — eval evaluates VALUES; STRUCTURE belongs to serialize/render
 **Eval evaluates VALUES. Every STRUCTURAL transform — selector composition/collapse, declaration
@@ -414,7 +413,7 @@ right fix depends on **how granular span tracking needs to be**, and the consume
 
 ### DRY + dead-code sweep (NEW standing task — requested)
 Systematic pass for (1) **repeated code → shared slim util functions/structures** (esp. the copy/surface/selector
-helper families that accreted — see archived SURFACE_PRIMITIVES_AUDIT), and (2) **dead-code removal** (like
+helper families that accreted), and (2) **dead-code removal** (like
 `cstState`/`cstChildren` above: exported accessors with zero callers, unused fields, dead branches). Read-only
 AUDIT first → ranked target list, then gated removal stages. Ties into SLIM (fewer fields) + FAST-V8 + DRY.
 
@@ -493,14 +492,14 @@ to land forward into the trunk** (feature/parseman → dev → feature/less-v5-a
 all structural/less-integration WIP, verified NOT caused by any perf change; they resolve upstream.)
 
 ### RE-PROFILE (current state — the core-render hotspots are CRUSHED; PARSE is now #1)
-Fresh CPU+heap profile of the integrated branch (`perf/reprofile`, `REPROFILE.md`). What moved: serialize
+Fresh CPU+heap profile of the integrated branch (`perf/reprofile`). What moved: serialize
 `refreshPositions` **51%→1.3%** (W2); GC **14-17%→~9%** (provenance+SLIM); eval `createRulesLikeReferenceSurface`
 + `ensureProv` (old #1/#2, 921/711ms) **GONE from the top 18**; PROV `set`/WeakMap **0 heap frames**. New ranking
 (both shapes): **PARSE ~42% · eval ~18-22% · GC ~9% · serialize 2-7%**. New #1 = the Parséman selector-reify
 chain (`_r_InterpolatedSelector` less-parser/grammar.ts:249, `_r_value` css-parser/grammar.ts:152,
 `_r_ComplexSelector`/`_r_CompoundSelector`/`_r_LessAmpersand`) + `buildNode` (CST→AST) + node ctors.
 **STRATEGIC INFLECTION:** the core eval/serialize/allocation drive has largely achieved its goal. What's left:
-- **Parse (#1, ~42%)** — a DIFFERENT subsystem (parser packages, `parser-parse-speed-plan.md`), owned by the
+- **Parse (#1, ~42%)** — a DIFFERENT subsystem (parser packages), owned by the
   parser/less-integration teams, and **benchmark-INFLATED** (these benches re-parse every render; real-world is
   parse-once/render-many). **MEASURE a parse-once/render-many split before investing** — even discounted it's the
   biggest bucket, but the honest real-world share is much smaller. Cross-package: coordinate, don't reach in.
@@ -541,7 +540,7 @@ is dead-commented). But its **state** stayed in eval:
 The one **real** eval→serialize collapse dependency is `getHoistedParent` (`serialize-helper.ts:396`)
 reading a hoisted nested at-rule's captured `AtRule.frames` to recover its severed selector header.
 
-**`F_EVAL_FREE` is NOT needed** — this supersedes `static-eval-optimizations.md`'s second-flag proposal.
+**`F_EVAL_FREE` is NOT needed** — this supersedes the old second-flag proposal.
 That flag only existed to name "`F_STATIC` but eval still holds collapse state." Remove the state from
 eval and `F_STATIC` alone is the eval-free signal; the scan collapses to a bare flag read.
 
@@ -691,10 +690,48 @@ Triage verdict:
   dynamic input; the deferred item below is confirmed real. Its own stage after W1/W2.
 - **[new] provenance `ensureProv`** — cross-cutting alloc in both shapes (~488–711ms). Characterize separately.
 - **parse reify (`_r_*`) 30% on dynamic** — amortized in parse-once usage; a parser-perf concern
-  (`parser-parse-speed-plan.md`), not core-render. Note, don't chase here.
+  not core-render. Note, don't chase here.
 - **C1–C4 walk/collapse-state** — small on both shapes (the specific collapse bookkeeping is a slice of the
   2.4–4% serialize); keep as correctness-hygiene, not a headline perf win. eval's 22% (dynamic) is spread
   across surface-creation + provenance, NOT the collapse frame juggling C1 targets.
+
+### Latest real-world Bootstrap profile (current perf priority)
+
+The latest honest workload is a Bootstrap 4 composite: ~92 KB emitted CSS from
+29 passing components with `lessPlugin()`, `jsPlugin()`, and
+`lessCompatPlugin()`. It supersedes the old synthetic-only profile docs for
+priority ordering.
+
+- Full-entry stock Bootstrap still has the `_grid`/`_utilities` mixin-guard
+  wall, but the 29-component composite is a real large Less sheet.
+- Warm render is ~300-340 ms for the composite; Less 4.x is ~49 ms, so this is
+  the current real ~6-7x gap on the compiled subset.
+- Parse is effectively gone as a render bottleneck here: ~0.44 ms with import
+  parse cache. Serialize is also tiny, around 0.9% active time.
+- Active-time buckets: core eval ~50%, deferred value parse during eval ~12%,
+  node/plugin process overhead ~10%, scope lookup ~7.5%, extend ~6.3%, GC ~3%.
+- Confirmed gone on this workload: `commentRunsWithinSpan`, `entries`,
+  `isSameOrDescendantRoot`, `findChainedExtendsWithSkips`, and
+  `wouldExtendChange` are no longer priority targets.
+
+Current ordered targets:
+
+1. **Scope-frame variable lookup.** `lookupScopeFrameVariable` is the largest
+   core hotspot. Optimize, do not delete: cache negative lookups per
+   `(frame, name)` within an eval pass or flatten resolved scope views for hot
+   mixin bodies.
+2. **Generic tree walking.** `visit` and predicate scans such as
+   `rulesMayContainReferenceImports` are necessary but specializable. Prefer
+   construction/adoption-time bits or tight iterators over repeated generic
+   visitor passes.
+3. **`plugin-js` process/module overhead.** `spawn`, module stat, and CJS loader
+   time are real Bootstrap cost and largely non-core. Reuse an in-process worker
+   or VM context when the security model allows it.
+
+Old synthetic profile conclusions now live here only as history: comment-scan
+quadratic was fixed, extend-visibility walk was fixed, chained-extend matching
+was fixed enough to drop from the Bootstrap top list, and parse throughput is a
+parser/Parséman concern rather than a core-render chase.
 
 ### Provenance side-table — the WeakMap is the SMELL, not a thing to optimize (NEW item)
 Heap profile: native `set` = **58.9%** of sampled allocation. Source: the `PROV` WeakMap in
@@ -1076,8 +1113,7 @@ Guardrail throughout: stable core set must not move; string selectors emit. (bas
 Past LLM passes accreted many narrow methods/fields on `Ruleset` / `Rules` / `AtRule`
 (e.g. `needsVisibleSelectorClone`). Audit method + field surface of these three,
 collapse near-duplicates, and (per the concise-naming rule) shorten burmese-python
-identifiers. (Copy/surface/frame helper sprawl was tracked in the archived
-SURFACE_PRIMITIVES_AUDIT; fold survivors here.)
+identifiers. Fold any surviving copy/surface/frame helper sprawl here.)
 
 **Audit done (cleanup/serial-f, read-only).** Candidates below. ⚠️ **Caveat:** the audit
 conflated "0 *external* call sites" with "dead" — a `private` method with internal callers
@@ -1147,14 +1183,11 @@ F-consolidate is therefore rename + genuine-refactor only, no free deletions.
 - `FOCII.md` — focus/goal menu.
 - `AGGRESSIVE-CUTTING-REVIEW.md` — the architecture-review guardrail checklist.
 - `packages/core/src/tree/LIVE_BINDING_ARCHITECTURE.md` — single-frame target invariants.
-- `docs/future/pre-eval-elimination.md`, `docs/future/static-eval-optimizations.md` —
-  runtime contract + static-eval design.
 
 ## Separate live concerns (own docs, not core cleanup)
 
-`parser-parse-speed-plan.md`, `whitespace-token-proposal.md`,
-`trivia-offset-inference-model.md`, and the `packages/core/src/tree/util/**/EXTEND_*`
-set.
+`trivia-offset-inference-model.md` and the
+`packages/core/src/tree/util/**/EXTEND_*` set.
 
 ### Friendly recursion detection (roadmap — belongs with less-integration/trunk, NOT the perf branch)
 Owner-requested: integrate Less-4.x-style friendly errors for runaway loops/recursion. **Current jess state
@@ -1172,10 +1205,15 @@ perf branch:** eval-semantics that OVERLAPS the active less-integration work + L
 (the less-integration team will hit these tests getting Less green). Do it on the trunk/less-integration side
 (dev / feature/less-v5-alpha-readiness), not perf/walk-collapse.
 
-## Archived sources
+## Removed sources
 
-Moved to `docs/archive/` (history preserved; open items lifted above):
-`SINGLE_FRAME_PLAN.md`, `NODE-REWRITE-TRACKER.md`, `PERFORMANCE-HANDOFF.md`,
-`BINDING-LOOKUP-REMAINING.md`, `SURFACE_PRIMITIVES_AUDIT.md`, `LOOKUP_CHAINS.md`,
-`ponytail-core-audit.md`, `BINDING-INDEX-PROPOSAL.md`, `tree/README.md` (abandoned 2.0
-fragment).
+Removed from the working tree; history preserved in git and open items lifted
+above: `SINGLE_FRAME_PLAN.md`, `NODE-REWRITE-TRACKER.md`,
+`PERFORMANCE-HANDOFF.md`, `BINDING-LOOKUP-REMAINING.md`,
+`SURFACE_PRIMITIVES_AUDIT.md`, `LOOKUP_CHAINS.md`, `ponytail-core-audit.md`,
+`BINDING-INDEX-PROPOSAL.md`, `FLAG-WALK-DELETION.md`,
+`SINGLE-RENDER-PASS-PLAN.md`, the old `REPROFILE_*` reports,
+`DEV-PERF-INTEGRATION-EVIDENCE.md`, `parser-parse-speed-plan.md`,
+`pre-eval-elimination.md`, `static-eval-optimizations.md`,
+`whitespace-token-proposal.md`, the scanner-first parser investigations, and
+the abandoned `tree/README.md` 2.0 fragment.

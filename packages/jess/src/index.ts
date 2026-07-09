@@ -24,6 +24,7 @@ import {
 } from '@jesscss/core';
 import {
   getOptions,
+  applyStrictPreset,
   type StylesConfig,
   type OutputOptions
 } from 'styles-config';
@@ -527,6 +528,13 @@ export class Compiler {
       renderOptions || {},
       arrayConcatCustomizer
     );
+    // Expand the `strict` convenience preset once, on the compile config, so the
+    // bundle it sets (unitMode/equalityMode/leakyScope/allowOverloadedImport)
+    // reaches eval via `context.opts` (contextOptions spreads compile). Individual
+    // options already set always win.
+    if (effectiveConfig.compile?.strict) {
+      effectiveConfig.compile = applyStrictPreset(effectiveConfig.compile);
+    }
     const jsPluginConfig: JsPluginConfig = {
       jsReadRoot: resolveJsReadRoot(filePath, configFilePath)
     };
@@ -621,7 +629,7 @@ export class Compiler {
       unitMode: lessOptions.unitMode,
       equalityMode: lessOptions.equalityMode,
       allowExtendSelectors: lessOptions.allowExtendSelectors,
-      leakyRules: lessOptions.leakyRules,
+      leakyScope: lessOptions.leakyScope,
       bubbleRootAtRules: lessOptions.bubbleRootAtRules,
       collapseNesting: lessOptions.collapseNesting
     });
@@ -641,7 +649,7 @@ export class Compiler {
    * The default SCSS plugin. Registered on every render so `.scss` sources parse
    * out of the box (extension routing sends only `.scss` here; `.less`/default
    * still route to the Less plugin). Its own defaults — `unitMode: 'preserve'`,
-   * `equalityMode: 'strict'`, nesting preserved — are the SCSS-correct semantics;
+   * `equalityMode: 'sass'`, nesting preserved — are the SCSS-correct semantics;
    * `allowExtendSelectors` is picked up per-parse from the compiler options.
    * A consumer-configured `scss` plugin in `compile.plugins` overrides this one
    * (same `name` key in `buildPlugins`).

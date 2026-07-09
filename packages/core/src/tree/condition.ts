@@ -1,4 +1,5 @@
 import { type Context } from '../context.js';
+import type { EqualityMode } from '../types/modes.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType, type NodeLocation } from './node.js';
 import { Bool, createPublicBool } from './bool.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
@@ -153,7 +154,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     return Condition.getBoolValue(node as ConditionResultValue, false);
   }
 
-  static getResult(a: ConditionResultValue, b: ConditionResultValue, op: ConditionOperator): boolean {
+  static getResult(a: ConditionResultValue, b: ConditionResultValue, op: ConditionOperator, equalityMode: EqualityMode = 'less'): boolean {
     switch (op) {
       case 'and': return Condition.getBoolValue(a, false) && Condition.getBoolValue(b, false);
       case 'or': return Condition.getBoolValue(a, false) || Condition.getBoolValue(b, false);
@@ -161,22 +162,71 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (typeof a === 'boolean' || typeof b === 'boolean') {
           return op === '=' && Condition.getBoolValue(a, false) === Condition.getBoolValue(b, false);
         }
-        switch (a.compare(b)) {
-          case -1:
-            return op === '<' || op === '<=';
-          case 0:
-            return op === '=' || op === '>=' || op === '<=';
-          case 1:
-            return op === '>' || op === '>=';
-          default:
-            return false;
+        // The comparison itself is dialect-aware — each dialect ports the real
+        // algorithm of the engine it names (verified vs Less 4.6.3 + Dart Sass).
+        const cmp = Condition.compareUnder(a, b, equalityMode);
+        switch (op) {
+          case '=': return cmp === 0;
+          case '<': return cmp === -1;
+          case '>': return cmp === 1;
+          case '<=': return cmp === 0 || cmp === -1;
+          case '>=': return cmp === 0 || cmp === 1;
+          default: return false;
         }
+    }
+  }
+
+  /**
+   * Dialect-aware three-way comparison (`0` equal, `-1`/`1` ordered, `undefined`
+   * incomparable). Each dialect ports the *actual* algorithm of the engine it
+   * names, not a curve-fit — verified against Less 4.6.3 and Dart Sass:
+   *
+   * - `less`: Less's own `Node.compare` dispatch. When one side is a `Quoted`,
+   *   the comparison is driven from the quoted side (a `toString()`/CSS-text
+   *   compare via {@link Quoted.compare}), so quoted↔unquoted text never coerces
+   *   — everything else uses the node's typed compare (numbers coerce
+   *   unit↔unitless, colors compare RGBA). `2px = 2` ✓, `a = "a"` ✗, `red = "red"` ✗.
+   * - `sass`: Dart Sass equality. Strings (`Quoted`/`Keyword`) compare
+   *   quote-insensitively by content; every other pairing requires the same node
+   *   kind, so `unit↔unitless` and cross-type never match. `a == "a"` ✓,
+   *   `2px == 2` ✗, `red == "red"` ✗.
+   * - `exact`: no coercion at all — operands must be the same node type.
+   */
+  private static compareUnder(a: Node, b: Node, mode: EqualityMode): 0 | 1 | -1 | undefined {
+    switch (mode) {
+      case 'sass': {
+        // Sass: `Quoted` and unquoted `Keyword` are both strings; compare by
+        // content, quote-insensitively. Anything else must share a node kind.
+        const aStr = a.type === 'Quoted' || a.type === 'Keyword';
+        const bStr = b.type === 'Quoted' || b.type === 'Keyword';
+        if (aStr && bStr) {
+          const l = String(a.valueOf?.() ?? a);
+          const r = String(b.valueOf?.() ?? b);
+          return l === r ? 0 : l > r ? 1 : -1;
+        }
+        return a.type === b.type ? a.compare(b) : undefined;
+      }
+      case 'exact':
+        return a.type === b.type ? a.compare(b) : undefined;
+      case 'less':
+      default: {
+        // Less `Node.compare`: force the toCSS-based comparison of a `Quoted`
+        // when it's the right operand (`-b.compare(a)`), matching Less's
+        // "symmetric results" rule; otherwise use the left node's typed compare.
+        if (b.type === 'Quoted') {
+          const r = b.compare(a);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          return r === undefined ? undefined : (-r as 0 | 1 | -1);
+        }
+        return a.compare(b);
+      }
     }
   }
 
   evaluateBoolean(context: Context): MaybePromise<boolean> {
     const { left, operator: op, right } = this;
     const negated = this.negate;
+    const equalityMode: EqualityMode = context.options.equalityMode;
     const leftResult = left.eval(context);
     if (isThenable(leftResult)) {
       return (leftResult as Promise<Node>).then((resolvedLeft) => {
@@ -188,12 +238,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (isThenable(rightResult)) {
           return (rightResult as Promise<Node>).then((resolvedRight) => {
             const b = getDefaultGuardValue(resolvedRight, context) ?? resolvedRight;
-            const result = Condition.getResult(a, b, op!);
+            const result = Condition.getResult(a, b, op!, equalityMode);
             return negated ? !result : result;
           });
         }
         const b = getDefaultGuardValue(rightResult, context) ?? rightResult;
-        const result = Condition.getResult(a, b, op!);
+        const result = Condition.getResult(a, b, op!, equalityMode);
         return negated ? !result : result;
       });
     }
@@ -205,12 +255,12 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     if (isThenable(rightResult)) {
       return (rightResult as Promise<Node>).then((resolvedRight) => {
         const b = getDefaultGuardValue(resolvedRight, context) ?? resolvedRight;
-        const result = Condition.getResult(a, b, op!);
+        const result = Condition.getResult(a, b, op!, equalityMode);
         return negated ? !result : result;
       });
     }
     const b = getDefaultGuardValue(rightResult, context) ?? rightResult;
-    const result = Condition.getResult(a, b, op!);
+    const result = Condition.getResult(a, b, op!, equalityMode);
     return negated ? !result : result;
   }
 

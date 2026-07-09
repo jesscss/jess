@@ -4810,7 +4810,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         : rendered;
     }
     const serialize = (state: RulesRenderState): MaybePromise<string> => {
-      checkValidNodes(state.output?.rules, context);
+      checkValidNodes(state.output?.rules, context, sourceWasRoot);
       return isRenderBuffer(bufferOrOptions)
         ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
         : renderRulesStateToString(state, context, bufferOrOptions);
@@ -6004,7 +6004,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const treeContext = context.treeContext;
     // Only switch treeContext if the rules have one AND it's different
     // Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
-    // and we don't want to lose leakyRules and other settings
+    // and we don't want to lose leakyScope and other settings
     // IMPORTANT: Check the explicit tree context, not treeContext (getter that lazily creates).
     const rulesTreeContext = rules._treeContext;
     if (rulesTreeContext && (!treeContext || treeContext !== rulesTreeContext)) {
@@ -6108,7 +6108,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             rulesVisibility: result.options.rulesVisibility,
             readonly: result.options.readonly
           }, context);
-          if (context.leakyRules && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
+          if (context.options.leakyScope && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
             out.injectLeakyMixinOutputBindings(result, idx);
           }
           if (result.hoistToRoot) {

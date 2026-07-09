@@ -9,9 +9,20 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
 export type UnitMode = 'loose' | 'preserve' | 'strict';
 
 /**
- * Equality/coercion modes for guard comparisons.
+ * Function-call resolution modes — mirrors {@link UnitMode}. Governs an optional
+ * (global) function call that matched a registered function but couldn't be
+ * evaluated: `preserve` renders it as-is (+ warning), `error` throws.
  */
-export type EqualityMode = 'coerce' | 'strict';
+export type FunctionMode = 'preserve' | 'error';
+
+/**
+ * Equality dialects for guard comparisons — named by dialect (Less 4.x and Sass
+ * diverge in opposite directions), not by strictness:
+ * - `less`: Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
+ * - `sass`: Dart Sass equality (unit-strict; quote-insensitive strings)
+ * - `exact`: no coercion — operands must be the same node type
+ */
+export type EqualityMode = 'less' | 'sass' | 'exact';
 export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 /**
@@ -135,10 +146,21 @@ export interface LessOptions {
   unitMode?: UnitMode;
 
   /**
+   * How to handle an optional/global function call that matched a registered
+   * function but couldn't be evaluated (no matching signature, or it threw) —
+   * e.g. `unit(80/16)`, `color("x")`. Mirrors {@link unitMode}.
+   * - 'preserve': render the call as-is (like an unknown CSS function) + warn
+   * - 'error': throw the underlying function error (Less 4.x behavior)
+   * Unknown function names always render as-is regardless.
+   * @default 'preserve'
+   */
+  functionMode?: FunctionMode;
+
+  /**
    * How to handle equality/coercion in guards and comparisons.
-   * - 'coerce': Less-compatible coercion behavior
+   * - 'loose': Less-compatible loose (coercive) equality (JS '==')
    * - 'strict': type-strict behavior
-   * @default 'coerce'
+   * @default 'loose'
    */
   equalityMode?: EqualityMode;
 
@@ -223,6 +245,28 @@ export interface LessOptions {
   quiet?: boolean;
 
   /**
+   * Convenience preset. When `true`, sets the strict bundle for any of the
+   * following left `undefined` (individual options always win):
+   * - `unitMode: 'strict'`
+   * - `equalityMode: 'exact'` (the no-coercion dialect)
+   * - `leakyScope: false`
+   * - `allowOverloadedImport: false`
+   *
+   * Modeled after `tsconfig` `strict`: it only *sets* semantic options, it is not
+   * itself a mode.
+   * @default false
+   */
+  strict?: boolean;
+
+  /**
+   * Whether re-importing a file/namespace may contribute *overloaded* (duplicated,
+   * additively-merged) definitions rather than being de-duplicated like Less's
+   * `@import (once)`. `strict` sets this to `false`.
+   * @default true
+   */
+  allowOverloadedImport?: boolean;
+
+  /**
    * @deprecated This is legacy Less behavior.
    *
    * Controls whether mixins and detached rulesets "leak" their inner rules.
@@ -233,7 +277,7 @@ export interface LessOptions {
    * - Both mixins and detached rulesets: Mixin and VarDeclaration nodes are 'private'
    * @default true
    */
-  leakyRules?: boolean;
+  leakyScope?: boolean;
 
   /**
    * Whether to collapse nested selectors (Less 1.x-4.x style flattening)
@@ -279,7 +323,10 @@ export interface InputOptions extends FileMatchOptions {
   // Compile-level options that can be overridden per-input
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  functionMode?: FunctionMode;
   equalityMode?: EqualityMode;
+  strict?: boolean;
+  allowOverloadedImport?: boolean;
   allowExtendSelectors?: ExtendSelectorKind[];
   disableScriptModules?: boolean;
   /**
@@ -296,7 +343,7 @@ export interface InputOptions extends FileMatchOptions {
   strictImports?: boolean | 'error';
   rewriteUrls?: boolean | 'all' | 'local' | 'off';
   rootpath?: string;
-  leakyRules?: boolean;
+  leakyScope?: boolean;
   collapseNesting?: boolean;
   bubbleRootAtRules?: boolean;
 
@@ -340,7 +387,14 @@ export interface StylesConfig {
     searchPaths?: string[];
     mathMode?: MathMode;
     unitMode?: UnitMode;
+    functionMode?: FunctionMode;
     equalityMode?: EqualityMode;
+    /** See {@link LessOptions.strict}. Expanded onto the other compile modes. */
+    strict?: boolean;
+    /** See {@link LessOptions.allowOverloadedImport}. */
+    allowOverloadedImport?: boolean;
+    /** See {@link LessOptions.leakyScope}. */
+    leakyScope?: boolean;
     allowExtendSelectors?: ExtendSelectorKind[];
     disableScriptModules?: boolean;
     /**

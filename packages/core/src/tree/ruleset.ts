@@ -1881,7 +1881,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return;
     }
     node.options.rulesVisibility ??= {};
-    if (context.leakyRules) {
+    if (context.options.leakyScope) {
       node.options.rulesVisibility.Mixin = 'public';
       node.options.rulesVisibility.VarDeclaration = 'optional';
     } else {

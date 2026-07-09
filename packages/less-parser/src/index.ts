@@ -1,9 +1,10 @@
 export * from './lessTokens.js';
-export * from './lessRecursiveParser.js';
-// Explicit exports from lessParser.ts — LessParser (Chevrotain) re-exported as
-// LessParserChevrotain so the functional LessParser can own the LessParser name.
-export type { LessRules, SyntacticContentAssistSuggestion } from './lessParser.js';
-export { LessParser as LessParserChevrotain } from './lessParser.js';
+
+// The legacy Chevrotain parser (lessRecursiveParser / lessParser / productions) is
+// no longer exported — the functional macro parser (LessParser / lessGrammar below)
+// IS the parser now. Dropping these re-exports lets the bundler tree-shake ~130 KB
+// of the old parser out of the shipped library. (The source files can be deleted
+// as a follow-up.)
 
 export { LessGrammar } from './builders.js';
 

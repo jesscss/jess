@@ -792,7 +792,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       return this.hoistToRoot;
     }
     if (
-      opts.context?.bubbleRootAtRules
+      opts.context?.options.bubbleRootAtRules
       && this.isRootOnly()
       && this.hasRulesetAncestor()
     ) {
@@ -903,7 +903,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         }
       }
     }
-    const hasHoistedRulesetParent = context.bubbleRootAtRules
+    const hasHoistedRulesetParent = context.options.bubbleRootAtRules
       && this.isRootOnly()
       && hasRulesetFrame;
     const bodyRules = createAtRuleBodyEvalSurface(this, context);
@@ -1597,7 +1597,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         break;
       }
     }
-    const hasHoistedRulesetParent = context.bubbleRootAtRules
+    const hasHoistedRulesetParent = context.options.bubbleRootAtRules
       && this.isRootOnly()
       && hasRulesetFrame;
     const record = {

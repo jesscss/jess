@@ -13,6 +13,7 @@ type EvaluateCallableCandidateOutputOptions = {
   rules: Rules;
   sourceRules: Rules;
   restrictMixinOutputLookup: boolean;
+  allowSpineFold?: boolean;
   /** True when the resolved candidate is a Mixin DEFINITION (not a ruleset-as-mixin). */
   candidateIsMixin?: boolean;
 };
@@ -26,6 +27,7 @@ export async function evaluateCallableCandidateOutput({
   rules,
   sourceRules,
   restrictMixinOutputLookup,
+  allowSpineFold = true,
   candidateIsMixin
 }: EvaluateCallableCandidateOutputOptions): Promise<Rules | undefined> {
   if (currentCall && context.callMap.add(currentCall, getParamsSignature())) {
@@ -43,7 +45,7 @@ export async function evaluateCallableCandidateOutput({
     // to the eval terminal for this candidate (byte-identical transition; the
     // eval terminal dies in P4).
     candidateParent.adopt(rules);
-    const sink = context.spineMixinSurfaceSink;
+    const sink = allowSpineFold ? context.spineMixinSurfaceSink : undefined;
     // The sink is consulted for EVERY guard-passed candidate so `resolveSpineMixin
     // Call` sees each one; it returns false (→ eval this candidate) for a
     // ruleset-as-mixin (`!candidateIsMixin`) or a non-simple surface, and true

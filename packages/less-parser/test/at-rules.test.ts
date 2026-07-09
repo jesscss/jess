@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- test inspects parser tree internals structurally. */
 import { Context, serializeTypes, N, isNode, type Node } from '@jesscss/core';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';

@@ -22,7 +22,7 @@ export type PreparedCallableCandidateState = {
 type PrepareCallableCandidateStateOptions = {
   candidate: CallableEntry;
   callSiteRules?: Node;
-  leakyRules: boolean;
+  leakyScope: boolean;
   resolvedBindingInfo?: CallableParamMatch;
   createCallableRules: (sourceRules: Rules) => Rules;
   getRootSourceRules: (rules: Rules) => Rules;
@@ -51,7 +51,7 @@ function findInlinedImportPlacementFrame(
 export function prepareCallableCandidateState({
   candidate,
   callSiteRules,
-  leakyRules,
+  leakyScope,
   resolvedBindingInfo,
   createCallableRules,
   getRootSourceRules
@@ -70,7 +70,7 @@ export function prepareCallableCandidateState({
   }
 
   rules.options.rulesVisibility ??= {};
-  rules.options.rulesVisibility.VarDeclaration = leakyRules ? 'public' : 'private';
+  rules.options.rulesVisibility.VarDeclaration = leakyScope ? 'public' : 'private';
   candidateParent.adopt(rules);
 
   const parentFrame: ScopeFrame | undefined = isNode(callSiteRules, N.Rules)
@@ -102,7 +102,7 @@ export function prepareCallableCandidateState({
     }
   }
   const fallbackScopeFrame = (
-    (leakyRules || parentFrame?.hasLiveBindings === true)
+    (leakyScope || parentFrame?.hasLiveBindings === true)
     && parentFrame
     && parentFrame !== lexicalScopeFrame
   )

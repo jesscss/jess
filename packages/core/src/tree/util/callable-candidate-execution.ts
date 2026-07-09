@@ -106,11 +106,11 @@ export async function executeCallableCandidate({
       liveSlots,
       usesPreboundParamGuardOuterRules
     });
-  } else if (context.leakyRules === true && parentFrame) {
+  } else if (context.options.leakyScope === true && parentFrame) {
     wireCallableScopeFrames({
       rules,
       parentFrame,
-      leakyRules: true
+      leakyScope: true
     });
   } else if (definedInImportedSurface) {
     // Param-less callable defined inside an imported/composed surface: no live
@@ -190,6 +190,7 @@ export async function executeCallableCandidate({
     rules,
     sourceRules,
     restrictMixinOutputLookup,
+    allowSpineFold: !hasDefault,
     candidateIsMixin: isNode(candidate, N.Mixin)
   });
 
