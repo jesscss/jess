@@ -7125,7 +7125,7 @@ export const rules = defineType(Rules, 'Rules');
  * A capture whose selector has no plain basic key (e.g. `*`, `:hover`) yields `[]`.
  */
 export function resolveRulesetBySelector(
-  selector: Selector | undefined,
+  selector: Selector | string | undefined,
   scope: Rules
 ): Ruleset[] {
   const keys = getOrderedSelectorKeys(selector);

@@ -124,6 +124,8 @@ export class Extend extends Node<ExtendValue> {
     options.suppressBoundaryTrivia = 'pre';
     if (isSelectorListLike(target)) {
       emitSelectorListLike(target, options, true);
+    } else if (typeof target === 'string') {
+      w.add(target, this);
     } else {
       target.writeSyntax(options);
     }
