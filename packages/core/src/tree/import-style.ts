@@ -281,7 +281,7 @@ export type ImportPlacementChildSegment = PlacementChildSegment;
  */
 export type SpineImportResolution =
   | { kind: 'css' }
-  | { kind: 'fold'; body: Rules; resolvedPath: string | undefined; multiple: boolean };
+  | { kind: 'fold'; body: Rules; resolvedPath: string | undefined; multiple: boolean; reference: boolean };
 
 type ImportPlacementOptionsState = {
   referenceMode: RulesOptions['referenceMode'];
@@ -922,13 +922,13 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     const io = this.options.importOptions;
     if (io) {
-      // `multiple` / `once: false` are NOW foldable (IMPORTS increment 4): the fold
-      // models re-emit via the `multiple` flag on the resolution (bypasses the once
-      // dedup ledger). Still deferred (each a REQUIRED P4 item): reference, inline,
-      // optional, mutable (protected/extend-reach), forward, postlude/with.
+      // `multiple`/`once:false` (increment 4) and `reference` (increment 5) are NOW
+      // foldable: `reference` descends the imported body with output SUPPRESSED
+      // (`referenceMode`) while registration (scope) + extend-reachability still run.
+      // Still deferred (each a REQUIRED P4 item): inline, optional, mutable
+      // (protected/extend-reach), forward, postlude/with.
       if (
-        io.reference === true
-        || io.inline === true
+        io.inline === true
         || io.optional === true
         || io.mutable === true
         || io.mutable === false
@@ -1000,6 +1000,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
     // `multiple` OR `once: false` both opt out of `once` dedup (always re-emit).
     const multiple = io.multiple === true || io.once === false;
+    // `(reference)` suppresses OUTPUT (scope + extend still run) — increment 5.
+    const reference = io.reference === true;
     try {
       const loaded = await context.getTree(finalPath, io);
       if (!loaded.node) {
@@ -1008,7 +1010,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           kind: 'fold',
           body: this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true }),
           resolvedPath: loaded.resolvedPath,
-          multiple
+          multiple,
+          reference
         };
       }
       const importSite = this.getImportAnchorRules(context);
@@ -1020,9 +1023,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         this.createFirstUseImportPlacementState(loaded.node),
         importSite
       );
+      // A `(reference)` placement carries `referenceMode` (mirrors `getFinalRules`):
+      // the descent SUPPRESSES its output while registration + extend-reach still run.
+      if (reference) {
+        placement.options.referenceMode = true;
+        placement._hasReferenceImports = true;
+      }
       // `resolvedPath` is the dedup key (increment 4): the wire pass emits the
       // FIRST occurrence and scope-onlys the rest of the same path (under `once`).
-      return { kind: 'fold', body: placement, resolvedPath: loaded.resolvedPath, multiple };
+      return { kind: 'fold', body: placement, resolvedPath: loaded.resolvedPath, multiple, reference };
     } finally {
       context.treeContext = previousTreeContext;
     }

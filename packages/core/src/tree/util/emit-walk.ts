@@ -1666,7 +1666,7 @@ function wireSpineImportsInBody(
         const registered = body.prepareRegistration(context);
         const finishRegister = (): void => {
           linkImportFallbackFrame(targetFrame, body.getScopeFrame());
-          cache.set(child, { kind: 'fold', body, dedupe, multiple: resolved.multiple });
+          cache.set(child, { kind: 'fold', body, dedupe, multiple: resolved.multiple, reference: resolved.reference });
         };
         return isThenable(registered) ? registered.then(finishRegister) : finishRegister();
       };

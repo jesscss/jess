@@ -16,11 +16,14 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
  * frame is already linked as an importer fallback by `wireSpineImports`. `dedupe`
  * (increment 4) — true when this is a SECOND+ import of the same resolved file under
  * `once`: its SCOPE is already registered/linked, so the emit fold emits NO output
- * (Less `once` semantics: emit the first occurrence, scope-only the rest).
+ * (Less `once` semantics: emit the first occurrence, scope-only the rest). `reference`
+ * (increment 5) — true for a `(reference)` import: the body descends with output
+ * SUPPRESSED (`referenceMode`) while its scope + extend-reachability still register;
+ * only an extend-reached selector emits.
  */
 export type SpineImportPlacementEntry =
   | { kind: 'css' }
-  | { kind: 'fold'; body: Rules; dedupe: boolean; multiple: boolean };
+  | { kind: 'fold'; body: Rules; dedupe: boolean; multiple: boolean; reference: boolean };
 
 export type PrintOptions = {
   /** The actual tree frames we started from */

@@ -814,4 +814,93 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     );
     expect(containerCss).toBe('@container (min-width: 1px) {\n  .a {\n    color: red;\n  }\n}\n.after {\n  color: black;\n}\n');
   });
+
+  // ── IMPORTS increment 5: `(reference)` mode ────────────────────────────────
+  // A `@import (reference) "lib"` REGISTERS its scope + is extend-reachable, but its
+  // body emits NO output unless something extends into it. The fold descends the
+  // placement as a child `Rules` carrying `referenceMode`, so the container
+  // serializer suppresses plain output while a consumer (var/mixin) still resolves
+  // against the registered scope.
+
+  it('IMPORTS increment 5: a `(reference)` import REGISTERS scope but EMITS NOTHING (no derive)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc5-ref-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '.a { color: red; }\n@v: 10px;\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import (reference) "lib.less";\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(result.css).toBe(''); // reference body suppressed — nothing emitted
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 5: a later rule RESOLVES a `(reference)`-imported var + mixin (scope visible, suppressed output)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc5-scope-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '@v: 10px;\n.m() { color: teal; }\n.unused { display: none; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import (reference) "lib.less";\n.x {\n  width: @v;\n  .m();\n}\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // `@v` + `.m()` resolved against the registered reference scope; `.unused`
+      // (a plain reference-body ruleset) emits nothing.
+      expect(result.css).toBe('.x {\n  width: 10px;\n  color: teal;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 5: an `:extend` reaching a `(reference)`-imported selector still emits (via eval — extend-through-import reachability wall)', async () => {
+    // The reference fold + the extend fold's flat topology collide: an `:extend`
+    // whose TARGET lives inside an imported body is not in the spine extend fold's
+    // reachability (true for a plain import too, not reference-specific), so the tree
+    // stays on the eval path — byte-identical: the extender `.x` gains the reference
+    // selector's declarations while the reference `.a` itself stays suppressed.
+    // DEFERRED (a REQUIRED P4 item): extend-reachability through imported bodies in
+    // the spine fold.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc5-ext-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '.a { color: red; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import (reference) "lib.less";\n.x:extend(.a) {}\n');
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (extend-through-import wall)
+    expect(result.css).toBe('.x {\n  color: red;\n}\n'); // extend reached the suppressed `.a`
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORTS increment 5: a `(reference)` import INSIDE a ruleset suppresses output but the ruleset consumes its scope', async () => {
+    // Nested reference: the placement descends as a child `Rules` carrying
+    // `referenceMode` inside the container body, so a reference-body ruleset (`.dead`)
+    // emits nothing while the enclosing `.card` resolves the imported `@v`.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc5-nested-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '@v: 5px;\n.dead { x: 1; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '.card {\n  @import (reference) "lib.less";\n  width: @v;\n}\n');
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(result.css).toBe('.card {\n  width: 5px;\n}\n'); // `.dead` suppressed, `@v` resolved
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

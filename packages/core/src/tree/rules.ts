@@ -4430,7 +4430,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     emitNode: (n: Node) => MaybePromise<void>
   ): MaybePromise<void> {
     const w = options.writer!;
-    const foldBody = (body: Rules, multiple: boolean): MaybePromise<void> => {
+    const foldBody = (body: Rules, multiple: boolean, reference: boolean): MaybePromise<void> => {
       assignSpineChildIndices(body);
       const savedRulesContext = context.rulesContext;
       context.rulesContext = body;
@@ -4438,6 +4438,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         context.rulesContext = savedRulesContext;
         return value;
       };
+      // A `(reference)` import descends the placement AS A CHILD `Rules` (increment 5),
+      // NOT by splicing its children: the `isChildRules` emit branch reads the
+      // placement's own `options.referenceMode` (set in `_foldLessImportForSpine`) and
+      // gates output via the container serializer's `renderEnabled` — a plain
+      // ruleset/decl emits nothing, while an EXTEND-reached selector still emits.
+      // Scope registration already ran (wire pass), so consumers resolve regardless.
+      // A non-reference import splices its children directly (ordering + dedup + frame
+      // exactly as increments 1–4).
+      const emitReference = (): MaybePromise<void> => emitNode(body);
       const children = body.rules;
       const emitChild = (i: number): MaybePromise<void> => {
         for (let idx = i; idx < children.length; idx++) {
@@ -4451,7 +4460,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // A `multiple` import's body descends inside a MULTIPLE scope, so its NESTED
       // imports also re-emit (no `once` dedup) — mirrors `inMultipleImportScope`.
       try {
-        const step = withSpineMultipleScope(options, multiple, () => emitChild(0));
+        const step = withSpineMultipleScope(options, multiple, () => reference ? emitReference() : emitChild(0));
         return isThenable(step)
           ? step.then(restore, (error: unknown) => { restore(undefined); throw error; })
           : restore(step);
@@ -4488,7 +4497,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (cached.dedupe) {
         return undefined;
       }
-      return isSpineFoldableImportBody(cached.body) ? foldBody(cached.body, cached.multiple) : evalFallback();
+      return isSpineFoldableImportBody(cached.body) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback();
     }
     const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
       if (resolved.kind === 'css') {
@@ -4500,7 +4509,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
         return undefined;
       }
-      return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body, resolved.multiple) : evalFallback();
+      return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
     };
     const resolution = importNode.resolveForSpine(context);
     return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);

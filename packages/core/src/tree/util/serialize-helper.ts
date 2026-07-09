@@ -894,7 +894,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             recomputeDeclCounts();
             return expandFrom(i);
           };
-          const foldBody = (body: Rules): MaybePromise<void> => {
+          const foldBody = (body: Rules, reference: boolean): MaybePromise<void> => {
+            // A `(reference)` import (increment 5) splices the placement AS A SINGLE
+            // `Rules` entry, NOT its children: the body loop's Rules-child path reads
+            // the placement's own `options.referenceMode` and the container serializer
+            // SUPPRESSES its output while scope + extend-reach still register. A
+            // non-reference import splices its children directly (ordering + dedup +
+            // frame exactly as increments 1–4).
+            if (reference) {
+              rulesToRender.splice(i, 1, { node: body });
+              recomputeDeclCounts();
+              return expandFrom(i + 1);
+            }
             // Fold the parsed body inline when spine-simple, else fall back to the
             // eval terminal (byte-identical) and flatten it.
             if (isSpineFoldableImportBody(body)) {
@@ -918,15 +929,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             return isThenable(evalOutput) ? evalOutput.then(applyEval) : applyEval(evalOutput);
           };
           // Reuse the wire pass's resolved + registered + linked placement (IMPORTS
-          // increment 2/3/4) when present — every foldable import is pre-wired, so the
-          // cache carries the dedup verdict. A `dedupe` re-import emits nothing (its
-          // scope is already linked). The fresh-resolve is a defensive fallback.
+          // increment 2/3/4/5) when present — every foldable import is pre-wired, so the
+          // cache carries the dedup + reference verdict. A `dedupe` re-import emits
+          // nothing (its scope is already linked). The fresh-resolve is a defensive fallback.
           const cached = options.spineImportPlacements?.get(importNode);
           if (cached) {
             if (cached.kind === 'css' || cached.dedupe) {
               return dropEntry();
             }
-            return foldBody(cached.body);
+            return foldBody(cached.body, cached.reference);
           }
           const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
             if (resolved.kind === 'css') {
@@ -938,7 +949,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
               return dropEntry();
             }
-            return foldBody(resolved.body);
+            return foldBody(resolved.body, resolved.reference);
           };
           const resolution = importNode.resolveForSpine(spineContext);
           return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);
