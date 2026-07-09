@@ -1172,16 +1172,13 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (treeHasMixinCall(root) && treeHasInterpolatedSelectorRuleset(root)) {
     return false;
   }
-  // INCREMENT 2 cross-check: a `mixin-ruleset` dot-call whose key names BOTH a
-  // Mixin definition AND a same-named Ruleset (`.foo() {}` mixin + `.foo {}`
-  // ruleset) matches BOTH — the call must emit the mixin body AND the ruleset-as-
-  // mixin body. The spine folds only the Mixin candidate; suppressing it while the
-  // ruleset candidate falls back to eval would drop the mixin's contribution from
-  // the assembled output. Keep such a MIXED-match tree on the eval path. DEFERRED:
-  // multi-candidate (mixin + ruleset) matches.
-  if (treeHasMixinRulesetMixedMatch(root)) {
-    return false;
-  }
+  // FOLD B (P4 terminal/sink): a `mixin-ruleset` dot-call whose key names BOTH a
+  // Mixin definition AND a same-named Ruleset (`.foo() {}` mixin + `.foo {}` ruleset)
+  // matches BOTH — the call emits the mixin body AND the ruleset-as-mixin body. Since
+  // FOLD A routes the Ruleset candidate through the sink too, BOTH candidates are now
+  // captured and `resolveSpineMixinCall.finish` assembles their call-site
+  // contributions in source DOCUMENT ORDER (the existing sort). Folds through the
+  // spine; the `treeHasMixinRulesetMixedMatch` gate is DELETED (dead after FOLD B).
   // NESTED-scope mixin closure — GATE LIFTED (fold #6). A nested mixin closing over
   // an INTERMEDIATE (non-root) enclosing scope's local var/param used to be kept on
   // eval (`treeHasNestedMixinClosingOverVarScope`) because the definition scope's
@@ -1511,50 +1508,6 @@ function wireSpineDefinitionScopeParents(scope: Rules): void {
       wireSpineDefinitionScopeParents(child as unknown as Rules);
     }
   }
-}
-
-/**
- * True if the tree has a `mixin-ruleset` CALL whose key names BOTH a Mixin
- * definition and a same-named Ruleset — the multi-candidate mixed match the fold
- * defers (see `isSpineEligibleRoot`). Conservative: keys compared by string value.
- */
-function treeHasMixinRulesetMixedMatch(root: Node): boolean {
-  const mixinNames = new Set<string>();
-  const rulesetSelectorKeys = new Set<string>();
-  const dotCallKeys = new Set<string>();
-  for (const node of root.walk(true)) {
-    if (isNode(node, N.Mixin) && typeof node.name === 'string') {
-      mixinNames.add(node.name);
-    } else if (isNode(node, N.Ruleset)) {
-      const key = simpleSelectorKey((node as Ruleset).selector);
-      if (key !== undefined) {
-        rulesetSelectorKeys.add(key);
-      }
-    } else if (
-      isNode(node, N.Call)
-      && isNode(node.name, N.Reference)
-      && node.name.options?.type === 'mixin-ruleset'
-      && typeof node.name.key === 'string'
-    ) {
-      dotCallKeys.add(node.name.key);
-    }
-  }
-  for (const key of dotCallKeys) {
-    if (mixinNames.has(key) && rulesetSelectorKeys.has(key)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/** The single class/id selector string of a plain ruleset selector, else undefined. */
-function simpleSelectorKey(selector: unknown): string | undefined {
-  const raw = typeof selector === 'string'
-    ? selector
-    : selector instanceof Node
-      ? selector.valueOf()
-      : undefined;
-  return typeof raw === 'string' ? raw.trim() : undefined;
 }
 
 /** Deep: any Call in the tree that is a spine-eligible mixin call. */
