@@ -27,6 +27,14 @@ describe('corpus/selector-capture', () => {
       )`);
   });
 
+  it('allows trivia around the selector list inside `*[…]`', () => {
+    expectAstContains('$type: *[ .notice ];', `
+      (SelectorCapture
+        selector:
+          (BasicSelector '.notice')
+      )`);
+  });
+
   it('`*[.a, .b]` → SelectorCapture wrapping a SelectorList', () => {
     expectAstContains('$type: *[.a, .b];', `
       (SelectorCapture
