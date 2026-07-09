@@ -271,6 +271,37 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path (advanced extend shapes excluded)
   });
 
+  it('P4: a `Rules`-wrapped STANDALONE extend does NOT force the root to eval (folds via the spine)', async () => {
+    // The empty-body selector-list-extend block (`.nope, .yes:extend(.zzz all) {}`) parses as a bare
+    // `Rules` node (not a `Ruleset`), which `isSpineEligibleBody` rejected — forcing the WHOLE root
+    // to eval, where the nested-extender bug re-appeared: a following subject's crossing contribution
+    // (`.ext` gains `:is(.a, .b) .c`) lost its descendant prefix (`.ext, .c`). Now the `Rules`-wrapped
+    // standalone extend is spine-eligible (its `Extend` is gathered; its empty body emits nothing), so
+    // the root folds via the spine and the crossing header is byte-correct. `.zzz` is an inert nomatch,
+    // so the block itself contributes nothing.
+    const compiler = new Compiler({
+      output: { collapseNesting: false },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const src = `.nope, .yes:extend(.zzz all) {}\n.ext { test: 1; }\n.a, .b { .c:extend(.ext all) { test: 3; } }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // The crossing contribution keeps its descendant prefix (`:is(.a, .b) .c`, not the bare `.c`).
+      expect(css).toBe('.ext,\n:is(.a, .b) .c {\n  test: 1;\n}\n.a,\n.b {\n  .c {\n    test: 3;\n  }\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
   it('P3 increment 3: `&`-CROSSING hoists a nested subject to root with the crossing branch (header/footer)', async () => {
     // The crossing/hoist case (extend-selector.css:45-46): a nested subject `.header .header-nav`
     // gains a crossing contribution `.footer .footer-nav` (an extender nested in a DIFFERENT

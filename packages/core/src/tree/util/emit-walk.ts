@@ -796,6 +796,22 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false, all
       }
       return false;
     }
+    // A PURE `Rules` container (type `Rules`, not a `Ruleset`/`AtRule`) is a TRANSPARENT GROUP the
+    // parser emits for an empty-body selector-list block carrying a per-branch `:extend` — the
+    // `.should-not-exist, .ext7:extend(.ext5 all) {}` shape parses as `Rules` holding a standalone
+    // `Extend` (its extender own is the `Extend`'s branch selector, gathered by `wireSpineExtends`)
+    // plus the empty-body `Ruleset`. It emits nothing but its mere presence must not force the whole
+    // root to eval (where the nested-extender bug re-appears). Admit it under `allowExtend` when
+    // every child is itself eligible (the invisible-effect Extend + a simple/empty Ruleset). Not a
+    // `Ruleset` (has no own selector to compose) → recurse its body directly.
+    if (allowExtend && child.type === 'Rules' && isNode(child, N.Rules)) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const rulesChild = child as unknown as Rules;
+      if (isSpineEligibleBody(rulesChild.rules, allowExtend, allowImport)) {
+        continue;
+      }
+      return false;
+    }
     if (!isSpineEligibleContainer(child, allowExtend, allowImport)) {
       return false;
     }
