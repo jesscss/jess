@@ -196,6 +196,59 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toContain('.sidebar');
   });
 
+  it('P3 increment 3: `&`-CROSSING hoists a nested subject to root with the crossing branch (header/footer)', async () => {
+    // The crossing/hoist case (extend-selector.css:45-46): a nested subject `.header .header-nav`
+    // gains a crossing contribution `.footer .footer-nav` (an extender nested in a DIFFERENT
+    // parent). Under `collapseNesting:true` the subject block already emits at ROOT; its header is
+    // overridden VERBATIM with the projected 2-branch set. Eval gets this WRONG (bare `.footer-nav`,
+    // missing `.footer`) — the spine composes the full path. Nested `&:before` composes against the
+    // hoisted multi-branch header via the existing `&`-flow → `:is(...)`-grouped.
+    const compiler = makeCompiler();
+    const src = `.header {\n  .header-nav {\n    background: red;\n    &:before { background: blue; }\n  }\n}\n.footer {\n  .footer-nav {\n    &:extend(.header .header-nav all);\n  }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(css).toContain('.header .header-nav,\n.footer .footer-nav');
+      expect(css).toContain(':is(.header .header-nav, .footer .footer-nav):before');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('P3 increment 3: skip-compose fires ONLY for hoisted subjects — a plain nested subject is unaffected (collateral)', async () => {
+    // Guardrail: a NON-hoisted nested subject (`.wrap .inner`, no extend) in the SAME document as
+    // a root extend must still compose normally against its parent — the verbatim skip-compose is
+    // strictly gated to `spineExtendHoisted`. No collateral.
+    const compiler = makeCompiler();
+    const src = `.wrap {\n  .inner {\n    color: red;\n  }\n}\n.a:extend(.b) {}\n.b {\n  color: green;\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toContain('.wrap .inner'); // nested subject composed normally (not hoisted/verbatim)
+    expect(css).toContain('.b,\n.a'); // the root extend still applies
+  });
+
+  it('P3 increment 3: `&`-crossing STAYS on eval under `collapseNesting:false` (expanded-mode precondition)', async () => {
+    // The hoist verbatim-override PRECONDITION (nested block already at root) holds ONLY under
+    // collapse. Expanded mode keeps the block nested; the gate excludes crossing there → eval.
+    const compiler = new Compiler({
+      output: { collapseNesting: false },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const src = `.header {\n  .header-nav {\n    background: red;\n  }\n}\n.footer {\n  .footer-nav {\n    &:extend(.header .header-nav all);\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (expanded-mode crossing excluded)
+  });
+
   it('routes ROOT-ONLY wrap+emit at-rules through the spine on the COMPILER path (no eval two-walk)', async () => {
     // Broadened coverage: a root that is a `@font-face` / `@keyframes` / `@page`
     // wrap+emit at-rule now renders LIVE through the spine in production, byte-

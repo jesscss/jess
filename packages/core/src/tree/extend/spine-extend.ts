@@ -45,7 +45,7 @@ import { N } from '../node-type.js';
 import type { Rules } from '../rules.js';
 import type { Node } from '../node.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
-import { projectSubject, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
+import { projectSubject, composeTargetOwn, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
 import type { OutputWriter } from '../util/print.js';
 import type { Selector } from '../selector.js';
 import { Nil } from '../nil.js';
@@ -173,9 +173,10 @@ export interface SpineSubject {
 export function composeSpineSubjectHeaders(
   subjects: SpineSubject[],
   instructions: PipelineInstruction[]
-): Map<Ruleset, Selector> {
+): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
   extendLayerCounter.planRuns++;
   const headers = new Map<Ruleset, Selector>();
+  const hoisted = new Set<Ruleset>();
   for (let i = 0; i < subjects.length; i++) {
     const subject = subjects[i]!;
     const pipelineSubject: PipelineSubject = {
@@ -190,24 +191,31 @@ export function composeSpineSubjectHeaders(
       // eval-path fallback (still live in P3) covers it.
       continue;
     }
-    if (projection.hoistToRoot) {
-      throw new Error(
-        'spine extend: hoistToRoot not wired (crossing is a later increment; the gate excludes it)'
-      );
-    }
     // Only override when the subject actually gained a branch (else stream authored header).
-    if (projection.branches.length > 1) {
-      // Build the multi-branch header NODE so the normal serializer emits `,\n` (the
-      // eval-path byte shape) — never a re-parsed string. The projected branches are the
-      // authored own form + composed contributions, document-order sorted + deduped (EMIT).
-      // NOTE: `projection.branches[0]` is the subject's OWN composed form (its full bucket
-      // path composed); for a nested subject the normal serializer would ALSO compose the
-      // parent frame, so we install ONLY the subject's LOCAL branch shape — handled by the
-      // caller keying the override to the subject's local emit position.
-      headers.set(subject.ruleset, new SelectorList(projection.branches as SelectorList['value']));
+    if (projection.branches.length <= 1) {
+      continue;
+    }
+    const isNested = subject.path.length > 1;
+    // A NESTED subject may be overridden ONLY when its projection HOISTS (crossing). A non-hoisted
+    // nested subject that gained a same-parent branch is left to the `&`-composition flow-through
+    // (an override would double-compose the parent) — the gate keeps such shapes off the spine, so
+    // this is a defensive skip.
+    if (isNested && !projection.hoistToRoot) {
+      continue;
+    }
+    // Build the multi-branch header NODE (the normal serializer emits `,\n`). The projected
+    // branches are the subject's own composed form (branch 0) + composed contributions.
+    const header = new SelectorList(projection.branches as SelectorList['value']);
+    headers.set(subject.ruleset, header);
+    if (projection.hoistToRoot) {
+      // §4.3 hoist: a crossing contribution makes branch 0 (the subject's own FULL composed
+      // path, e.g. `.header .header-nav`) the whole root-composed header — so the override is
+      // emitted VERBATIM at the subject's collapsed-root position (skip parent compose). The
+      // gate admits this ONLY under `collapseNesting:true` (block already at root).
+      hoisted.add(subject.ruleset);
     }
   }
-  return headers;
+  return { headers, hoisted };
 }
 
 /**
@@ -248,21 +256,22 @@ function rulesetExtendNodes(ruleset: Ruleset): Extend[] {
 }
 
 /**
- * True when an extend's TARGET is a SIMPLE find the flat single-subject override handles:
- * a single compound selector against a ROOT-LEVEL subject — NO descendant/child/sibling
- * combinator (a target like `.a .b` matches a NESTED subject the root-child override cannot
- * reach), NO selector-list (`,`) target (multi-subject), NO pseudo/`:is()` graft. Increment 1
- * routes only these; any richer target keeps the whole root on the eval path (byte-identical).
- * Conservative string check on the target's `valueOf` — a combinator/comma/paren disqualifies.
+ * True when an extend's TARGET is a find the header-override handles: a single compound
+ * (`.a`, `.a.b`) matching a ROOT-LEVEL subject, OR a DESCENDANT compound (`.header .header-nav`)
+ * matching a NESTED subject's composed path (the crossing/hoist case, increment 3). Still EXCLUDED
+ * (a richer shape keeps the whole root on eval): child/sibling combinators (`>`, `+`, `~`),
+ * selector-list commas (multi-subject), and `:is()`/pseudo grafts. The caller separately verifies
+ * the target resolves to a real subject (root selector or nested composed path).
  */
 function extendTargetIsSimple(node: Extend): boolean {
   const target = node.target;
   if (target === undefined || target === null) {
     return false;
   }
-  const text = String(target.valueOf());
-  // Reject descendant/child/sibling combinators, selector-list commas, and grafts.
-  return !/[ >+~,()]/.test(text.trim());
+  const text = String(target.valueOf()).trim();
+  // Reject child/sibling combinators, selector-list commas, and grafts. Descendant space is now
+  // allowed (crossing) — the subject-correspondence check confirms it maps to a nested subject.
+  return !/[>+~,()]/.test(text);
 }
 
 /**
@@ -287,13 +296,17 @@ function extendTargetIsSimple(node: Extend): boolean {
  * A shape passing this gate is own-buildable by the pipeline with a root-level subject header
  * override; anything else routes to eval.
  */
-export function isSpineExtendTopology(root: Rules): boolean {
+export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): boolean {
   const targets = new Set<string>();
   const rootLevelSelectors = new Set<string>();
   const extenderSelectors = new Set<string>();
+  // Composed-path strings of EVERY subject (root: local; nested: `.header .header-nav`). A crossing
+  // target (`.header .header-nav`) resolves to a NESTED subject's composed path — admitted so the
+  // hoist path (`collapseNesting:true`, verbatim override) can rewrite it (increment 3).
+  const subjectComposedPaths = new Set<string>();
   let ok = true;
 
-  // Root-level subject selectors (targets must resolve to one of these).
+  // Root-level subject selectors (a plain target resolves to one of these — increment 2 path).
   for (const child of root.rules) {
     if (isNode(child, N.Ruleset)) {
       const local = flatLocalSelector(child);
@@ -301,6 +314,33 @@ export function isSpineExtendTopology(root: Rules): boolean {
         rootLevelSelectors.add(String(local.valueOf()));
       }
     }
+  }
+  // All subjects' composed-path strings (document-wide) — for crossing target resolution.
+  const collectPaths = (node: Node, parentPath: readonly Selector[]): void => {
+    if (!isNode(node, N.Ruleset)) {
+      if ((isNode(node, N.Rules) || (isNode(node, N.AtRule) && 'rules' in node)) && Array.isArray((node as { rules?: Node[] }).rules)) {
+        for (const c of (node as { rules: Node[] }).rules) {
+          collectPaths(c, parentPath);
+        }
+      }
+      return;
+    }
+    const local = flatLocalSelector(node);
+    const path = local !== undefined ? [...parentPath, local] : parentPath;
+    if (local !== undefined) {
+      // Approximate the composed descendant path by joining each level's `valueOf` with a space
+      // — a PURE string op (the gate MUST NOT mutate the source tree, so it never calls
+      // `composeTargetOwn`, which reparents via `Ruleset.composeSelector`). This matches a plain
+      // descendant crossing target (`.header .header-nav`); a level with `&`/combinators would not
+      // string-match, which is fine — those shapes are excluded upstream anyway.
+      subjectComposedPaths.add(path.map(s => String(s.valueOf())).join(' '));
+    }
+    for (const c of node.rules) {
+      collectPaths(c, path);
+    }
+  };
+  for (const child of root.rules) {
+    collectPaths(child, []);
   }
 
   // Document-wide walk: collect every extend target (checking simplicity) + every
@@ -366,14 +406,21 @@ export function isSpineExtendTopology(root: Rules): boolean {
     }
   }
 
-  // STRICT SUBJECT CORRESPONDENCE (clauses 2 + 3). Each target must be a ROOT-LEVEL subject, not
-  // shadowed by a nested ruleset of the same selector, and not itself an extender (no chaining).
+  // STRICT SUBJECT CORRESPONDENCE. Each target must resolve to a subject the override can rewrite:
+  //  - a ROOT-LEVEL subject (plain target, increment 2 path), unshadowed by a nested ruleset of the
+  //    same selector; OR
+  //  - a NESTED subject's COMPOSED PATH (a descendant target like `.header .header-nav`, the
+  //    crossing/hoist case) — admitted; the hoist path rewrites it verbatim at collapsed-root.
+  // A target that is itself an extender's subject is CHAINING (deferred).
   for (const target of targets) {
-    if (!rootLevelSelectors.has(target)) {
-      return false; // target's subject is nested / cross-scope — override can't reach it
-    }
-    if (anyNestedRulesetMatchesSelector(root, target)) {
-      return false; // a deeper ruleset shares the target selector — override would miss it
+    const isRootTarget = rootLevelSelectors.has(target) && !anyNestedRulesetMatchesSelector(root, target);
+    // A crossing/hoist target (`.header .header-nav`) resolves to a NESTED subject's composed path.
+    // It is admitted ONLY under `collapseNesting:true` — the hoist verbatim-override PRECONDITION
+    // is that the nested block already emits at ROOT (which holds only under collapse). In expanded
+    // mode the block stays nested and hoist would need block relocation (deferred) → stays on eval.
+    const isNestedComposedTarget = collapseNesting && subjectComposedPaths.has(target) && target.includes(' ');
+    if (!isRootTarget && !isNestedComposedTarget) {
+      return false; // target maps to no addressable subject (root selector or crossing nested path)
     }
     if (extenderSelectors.has(target)) {
       return false; // chaining — deferred to a later increment
@@ -448,7 +495,7 @@ function anyNestedRulesetMatchesSelector(root: Rules, selector: string): boolean
  *
  * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.0 §4.2 §4.3 §4.4.2
  */
-export function wireSpineExtends(root: Rules): Map<Ruleset, Selector> {
+export function wireSpineExtends(root: Rules): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
   const subjects: SpineSubject[] = [];
   const instructions: PipelineInstruction[] = [];
 
@@ -462,13 +509,15 @@ export function wireSpineExtends(root: Rules): Map<Ruleset, Selector> {
   const gatherRuleset = (ruleset: Ruleset, parentPath: readonly Selector[]): void => {
     const local = flatLocalSelector(ruleset);
     const path: readonly Selector[] = local !== undefined ? [...parentPath, local] : parentPath;
-    // SUBJECTS are ROOT-LEVEL only (the gate guarantees every target resolves to a root-level
-    // subject). A NESTED subject/target is NOT collected: its header composes from its parent's
-    // (possibly overridden) header via the existing `&`-composition flow-through — exactly how
-    // `extend-clearfix`'s `:is(.clearfix, .foo, .bar):after` falls out of the `.clearfix` header
-    // override with NO nested-subject machinery. (EXTENDERS, by contrast, ARE gathered at any
-    // depth below — that is the document-wide widening this increment adds.)
-    if (local !== undefined && parentPath.length === 0) {
+    // Collect a ruleset as a candidate subject with its full bucket path — EXCEPT an `&`-bearing
+    // local (`&:after`, `&:hover`). An `&`-selector is NOT a standalone subject: it composes from
+    // its parent via the existing `&`-flow, and the `all`-propagation reaches it through the
+    // parent's (possibly overridden) header — collecting it would mis-flag it as hoisted and emit
+    // its header verbatim (dropping the `&`-compose). `composeSpineSubjectHeaders` decides how to
+    // apply the override by depth + hoist: a ROOT subject → normal override; a NESTED subject →
+    // override ONLY when its projection HOISTS (crossing), emitted verbatim at collapsed-root.
+    const localIsAmp = local !== undefined && String(local.valueOf()).includes('&');
+    if (local !== undefined && !localIsAmp) {
       subjects.push({ ruleset, path, order: orderOf(ruleset) });
     }
     for (const ext of rulesetExtendNodes(ruleset)) {

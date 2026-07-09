@@ -68,6 +68,20 @@ export type PrintOptions = {
    */
   spineExtendHeaders?: Map<Ruleset, Selector>;
   /**
+   * Spine-mode EXTEND HOIST marker (P3 §4.3 increment 3 — `&`-crossing hoist-to-root). The
+   * subset of `spineExtendHeaders` subjects whose override is a HOISTED projection — the
+   * subject's own composed form is ALREADY the full root-composed selector (`.header .header-nav`)
+   * and a crossing contribution (`.footer .footer-nav`) joins it as a root-level sibling branch.
+   * For a hoisted subject the header override is emitted VERBATIM (skip the parent-frame
+   * `composeSelector`) — the projection is already root-composed, so re-composing against the
+   * `.header` frame would double it. PRECONDITION (JSDoc'd at the write site): this holds ONLY
+   * under `collapseNesting:true`, where a nested block already emits at ROOT with its composed
+   * header; expanded mode keeps the block nested and is excluded (stays on eval). Strictly gated:
+   * the verbatim path fires ONLY for a ruleset in THIS set — a non-hoisted nested subject still
+   * composes normally against its parent.
+   */
+  spineExtendHoisted?: Set<Ruleset>;
+  /**
    * Spine-mode at-rule marker (P1 §4/§7). When `spineAtRuleNode === this` at-rule,
    * its value-frame has already been pushed by `serializeSpineFrameAtRule` and its
    * prelude resolved-at-enter (handed to the header via the existing

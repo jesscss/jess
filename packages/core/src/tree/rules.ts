@@ -4802,7 +4802,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // not entered for it. (`preSerializeRoot` is a post-eval visitor hook — a
     // spine-eligible leaf-only root has no such consumer here; P2 folds the
     // visitor hook into the pass generically.)
-    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context)) {
+    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
       const prepared = prepareRenderPrintState(context, printOptions);
       const rendered = renderRootViaSpine(this, context, prepared);
       return isRenderBuffer(bufferOrOptions)

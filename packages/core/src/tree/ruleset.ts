@@ -1473,6 +1473,14 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     if (!sel || sel instanceof Nil) {
       return undefined;
     }
+    // P3 §4.3 hoist: a HOISTED extend subject's override is ALREADY the full root-composed
+    // projection (`.header .header-nav, .footer .footer-nav`). Emit/push it VERBATIM — skip the
+    // parent-frame compose that would double `.header`. Strictly gated to `spineExtendHoisted`
+    // (a non-hoisted nested subject still composes normally). PRECONDITION: `collapseNesting:true`
+    // (the nested block already emits at root); expanded mode is excluded upstream.
+    if (options.collapseNesting && options.spineExtendHoisted?.has(this) && sel instanceof Selector) {
+      return sel;
+    }
     if (!Array.isArray(sel)) {
       return this.composeHeaderSelector(
         options,
@@ -1683,6 +1691,23 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       } finally {
         options.trivia = savedTrivia;
       }
+      return options.writer.position() !== position;
+    }
+    // P3 §4.3 hoist: a HOISTED extend subject's override is ALREADY the full root-composed
+    // projection — emit it VERBATIM (skip `composeHeaderSelector`, which would prepend the
+    // parent frame and double `.header`). Strictly gated to `spineExtendHoisted`. PRECONDITION:
+    // `collapseNesting:true` (the nested block already emits at root, so its header is the full
+    // composed form); expanded mode is excluded upstream. A non-hoisted subject falls through to
+    // normal composition below.
+    if (
+      options.collapseNesting
+      && options.spineExtendHoisted?.has(this)
+      && renderSelector instanceof Selector
+      && !(renderSelector instanceof Nil)
+    ) {
+      const position = options.writer.position();
+      renderSelector.writeSyntax(options);
+      options.writer.trimEndSince(position);
       return options.writer.position() !== position;
     }
     const canReferenceFilter = !(renderSelector instanceof Nil)

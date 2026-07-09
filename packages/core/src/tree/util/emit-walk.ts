@@ -997,7 +997,7 @@ export const spineRenderCounter = { rootRenders: 0 };
  * (`toRenderString`) does not run. Root-level property merges are unusual
  * (properties belong in rulesets); a real one routes to the eval path.
  */
-export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
+export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesting?: boolean): boolean {
   if (context.currentCharset || context.topImports?.length) {
     return false;
   }
@@ -1055,7 +1055,8 @@ export function isSpineEligibleRoot(root: Rules, context: Context): boolean {
   // subjects/extenders (no nested extend) is spine-eligible — the pre-scan gathers and the
   // subject header is composed as an override. `allowExtend` admits the extend-bearing root
   // children + their ExtendList effect nodes. A NON-flat extend shape stays on the eval path.
-  const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root);
+  const collapse = collapseNesting ?? context.output?.collapseNesting === true;
+  const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root, collapse === true);
   return isSpineEligibleBody(root.rules, allowExtend);
 }
 
@@ -1218,9 +1219,9 @@ export function renderRootViaSpine(
   // (`isSpineExtendTopology`), so reaching this with a non-flat shape is a fail-loud
   // invariant breach — the streaming descent cannot apply nested extends.
   const extendEngaged = engageExtendLayer(root);
-  if (extendEngaged && !isSpineExtendTopology(root)) {
+  if (extendEngaged && !isSpineExtendTopology(root, options.collapseNesting === true)) {
     throw new Error(
-      'spine extend: non-flat topology reached renderRootViaSpine (P3 increment 1 handles root-direct-child only)'
+      'spine extend: unsupported topology reached renderRootViaSpine (gate admits only the proven shapes)'
     );
   }
   // Mark the whole descent spine mode: nested containers render via the
@@ -1304,7 +1305,11 @@ export function renderRootViaSpine(
   // emits its composed Or-branch header. Pure structural (selector-graph) — synchronous.
   if (extendEngaged) {
     try {
-      options.spineExtendHeaders = wireSpineExtends(root);
+      const { headers, hoisted } = wireSpineExtends(root);
+      options.spineExtendHeaders = headers;
+      // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
+      // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
+      options.spineExtendHoisted = hoisted;
     } catch (error) {
       return fail(error);
     }
