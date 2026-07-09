@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { quoted, ref, rules, vardecl, any, Rules as RulesClass, color, interpolated, list, Quoted } from '../index.js';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -142,12 +142,11 @@ describe('quoted', () => {
       before: new Map([[10, makeTrivia(' ', 0, 1)]]),
       after: new Map()
     }) satisfies TriviaMap;
-    const treeContext = new TreeContext({ trivia });
     const value = color({
       node: 'red',
       rgb: [255, 0, 0],
       alpha: 1
-    }, undefined, { start: 10, end: 12 }, treeContext);
+    }, undefined, { start: 10, end: 12 });
 
     expect(quoted(value).toTrimmedString({ trivia })).toBe('"red"');
   });

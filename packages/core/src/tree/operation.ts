@@ -134,8 +134,7 @@ export class Operation extends Node<OperationValue> {
   constructor(
     value: OperationValue,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.left = value[0];

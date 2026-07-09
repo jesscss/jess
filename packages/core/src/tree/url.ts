@@ -19,8 +19,7 @@ export class Url extends Node<string | Node> {
   constructor(
     value: string | Node,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
@@ -31,8 +30,7 @@ export class Url extends Node<string | Node> {
     return new Url(
       value,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this.sourceRoot?._treeContext
+      sourceSpanOf(this)
     ).inherit(this);
   }
 

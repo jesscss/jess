@@ -648,8 +648,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   constructor(
     value: DeclarationValue,
     options?: Opts,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super();
     setSourceSpan(this, location);
@@ -1870,7 +1869,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               '+,:',
               '+_:'
             ]
-          }, undefined, this.sourceRoot?._treeContext);
+          }, undefined);
           // Positional bound for the prior-value lookup: eval-time nodes don't
           // parent (invariant 7), so carry the referring decl's index directly.
           ref.index = this.index;
@@ -1918,7 +1917,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   && !sameConcreteLocation(sourceSpanOf(n), outputNode?.location)
                   && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
               }
-            }, undefined, this.sourceRoot?._treeContext);
+            }, undefined);
             // The merge ref reads the PRIOR value of this property. Its lookup
             // start comes from `getLookupStartIndex(ref)`, which walks the parent
             // chain — but eval-time nodes don't parent (invariant 7), so carry the
@@ -1940,7 +1939,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           } else {
             setValue(
               new Operation([
-                new Reference({ key: referenceKey }, { type }, undefined, this.sourceRoot?._treeContext),
+                new Reference({ key: referenceKey }, { type }, undefined),
                 '+',
                 inputValue
               ])
@@ -1953,7 +1952,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             new Reference({ key: referenceKey }, {
               type,
               fallbackValue: inputValue
-            }, undefined, this.sourceRoot?._treeContext)
+            }, undefined)
           );
           break;
         }

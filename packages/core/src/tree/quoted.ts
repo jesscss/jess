@@ -37,8 +37,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return new Quoted(
       value,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this.sourceRoot?._treeContext
+      sourceSpanOf(this)
     ).inherit(this);
   }
 
@@ -64,8 +63,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   constructor(
     value: string | Any | Interpolated,
     options?: QuotedOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.

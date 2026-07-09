@@ -1,5 +1,4 @@
 import {
-  type TreeContext,
   type Context
 } from '../context.js';
 import type { TriviaMap } from '../types/index.js';

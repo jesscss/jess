@@ -34,7 +34,7 @@ export class Apply extends Node<Selector[]> {
 
   readonly selectors: Selector[];
 
-  constructor(value: Selector[], options?: undefined, location?: LocationInfo, treeContext?: Context['treeContext']) {
+  constructor(value: Selector[], options?: undefined, location?: LocationInfo) {
     super(value, options, location);
     this.selectors = value;
   }

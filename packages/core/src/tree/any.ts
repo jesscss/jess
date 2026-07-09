@@ -56,8 +56,7 @@ export class Any<
   constructor(
     value: string,
     options?: AnyOptions<Role>,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super(value, options, location);
     // Each node owns its field values (invariant 7): the base stores nothing.
@@ -131,10 +130,9 @@ export class Any<
 export function any<Role extends AnyRole = AnyRole>(
   value: string,
   options?: AnyOptions<Role>,
-  location?: LocationInfo,
-  treeContext?: Context['treeContext']
+  location?: LocationInfo
 ): Any<Role> {
-  return new Any(value, options, location, treeContext);
+  return new Any(value, options, location);
 }
 defineType(Any, 'Any');
 
@@ -158,11 +156,10 @@ export class Keyword extends Any<'keyword'> {
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     // Force role to 'keyword'
-    super(value, { ...options, role: 'keyword' }, location, treeContext);
+    super(value, { ...options, role: 'keyword' }, location);
     // Less's `Keyword` is NOT statement-legal (no `allowRoot`), unlike the
     // `Anonymous`/`Any` base. A bare keyword in statement position stays an
     // eval/invalid-statement error, matching Less.
@@ -177,8 +174,7 @@ defineType(Keyword, 'Keyword');
 export function keyword(
   value: string,
   options?: Omit<NodeOptions, 'role'>,
-  location?: LocationInfo,
-  treeContext?: Context['treeContext']
+  location?: LocationInfo
 ): Keyword {
-  return new Keyword(value, options, location, treeContext);
+  return new Keyword(value, options, location);
 }

@@ -26,7 +26,7 @@ export class Negative extends Node<Node> {
     this.value.writeSyntax(options);
   }
 
-  constructor(value: NodeArrayItem, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
+  constructor(value: NodeArrayItem, options?: NodeOptions, location?: LocationInfo) {
     // A parser space-group arrives as a raw string/array; normalize to the
     // canonical node form so negation stays node-only.
     const node = value == null || value instanceof Node ? value : coerceValueNode(value);

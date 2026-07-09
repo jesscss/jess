@@ -183,8 +183,7 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
         mixinRulesetCall: true,
         mixinRulesetCallHasArgs: hasArgs || undefined
       },
-      sourceSpanOf(name),
-      name.sourceRoot?._treeContext
+      sourceSpanOf(name)
     );
   }
   return name;
@@ -581,8 +580,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ...name.options,
           preserveRulesLike: true
         },
-        sourceSpanOf(name),
-        name.sourceRoot?._treeContext
+        sourceSpanOf(name)
       );
     }
     name = withMixinRulesetCallArgsHint(name, this.args);
@@ -1554,8 +1552,7 @@ export class Call extends Node<CallValue, CallOptions> {
   constructor(
     value: CallValue,
     options?: CallOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.name = value.name;
@@ -1971,8 +1968,7 @@ export class Call extends Node<CallValue, CallOptions> {
             const node = new Call(
               { name: 'calc', args: list([innerArgs.value[0]!]), contentNode: state.contentNode },
               { silentFail: false },
-              sourceSpanOf(this),
-              this.sourceRoot?._treeContext
+              sourceSpanOf(this)
             );
             return this.markCallOutput(node);
           }
@@ -1995,8 +1991,7 @@ export class Call extends Node<CallValue, CallOptions> {
         this._options
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
-        sourceSpanOf(this),
-        this.sourceRoot?._treeContext
+        sourceSpanOf(this)
       );
       return this.markCallOutput(node);
     };

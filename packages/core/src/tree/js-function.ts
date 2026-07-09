@@ -14,8 +14,7 @@ export class JsFunction extends Node<Fn> {
   constructor(
     value: { name: string; fn: Fn } | Fn,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     const fn = typeof value === 'function' ? value : value.fn;
 

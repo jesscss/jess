@@ -18,8 +18,7 @@ export class Rest extends Node<Node | string | undefined> {
   constructor(
     value?: Node | string,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.

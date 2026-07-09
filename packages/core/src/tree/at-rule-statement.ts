@@ -41,8 +41,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
   constructor(
     value: AtRuleStatementValue,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super();
     setSourceSpan(this, location);

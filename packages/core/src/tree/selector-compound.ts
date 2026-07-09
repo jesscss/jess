@@ -72,8 +72,7 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   constructor(
     value: CompoundSelectorComponent[],
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.value = value;

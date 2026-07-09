@@ -44,8 +44,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
   constructor(
     value: FuncValue,
     options?: FuncOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super(value, options, location);
     this.name = value.name;

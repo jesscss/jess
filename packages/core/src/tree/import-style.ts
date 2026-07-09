@@ -1092,7 +1092,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
   }
 
-  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
+  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation) {
     super(value, options, location);
     this.path = value.path;
     this.with = value.with;

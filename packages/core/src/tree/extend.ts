@@ -81,8 +81,7 @@ export class Extend extends Node<ExtendValue> {
   constructor(
     value: ExtendValue,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.selector = value.selector;

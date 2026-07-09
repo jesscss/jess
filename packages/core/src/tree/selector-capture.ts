@@ -25,7 +25,7 @@ export class SelectorCapture extends Node<Selector> {
 
   readonly selector: Selector;
 
-  constructor(value: Selector, options?: undefined, location?: LocationInfo, treeContext?: Context['treeContext']) {
+  constructor(value: Selector, options?: undefined, location?: LocationInfo) {
     super(value, options, location);
     this.selector = value;
   }
@@ -100,6 +100,5 @@ type Params = ConstructorParameters<typeof SelectorCapture>;
 export const selcap = defineType(SelectorCapture, 'SelectorCapture', 'selcap') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
+  location?: Params[2]
 ) => SelectorCapture;

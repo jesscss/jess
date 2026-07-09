@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { any, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
@@ -51,9 +51,8 @@ describe('PseudoSelector', () => {
       before: new Map([[10, makeTrivia('\n  ', 0, 3)]]),
       after: new Map()
     }) satisfies TriviaMap;
-    const treeContext = new TreeContext({ trivia });
     const inner = sel([
-      el('.a', undefined, { start: 10, end: 12 }, treeContext),
+      el('.a', undefined, { start: 10, end: 12 }),
       co(' '),
       el('.b')
     ]);

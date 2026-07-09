@@ -23,8 +23,7 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   constructor(
     value: Interpolated,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
   }

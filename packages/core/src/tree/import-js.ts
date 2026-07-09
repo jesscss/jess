@@ -39,8 +39,7 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
   constructor(
     value: JsImportValue,
     options?: JsImportOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.path = value.path;

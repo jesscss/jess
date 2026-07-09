@@ -43,8 +43,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   constructor(
     value: ConditionValue,
     options?: ConditionOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.left = value[0];

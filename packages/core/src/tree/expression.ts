@@ -28,8 +28,7 @@ export class Expression extends Node<Node> {
   constructor(
     value: Node,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
@@ -103,6 +102,5 @@ type Params = ConstructorParameters<typeof Expression>;
 export const expr = defineType(Expression, 'Expression', 'expr') as (
   value: Params[0],
   options?: Params[1],
-  location?: Params[2],
-  treeContext?: Params[3]
+  location?: Params[2]
 ) => Expression;

@@ -95,7 +95,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   readonly value: Node[];
   readonly preserveWhitespace: boolean | undefined;
 
-  constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
+  constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;

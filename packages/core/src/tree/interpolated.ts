@@ -186,8 +186,7 @@ export class Interpolated<
   constructor(
     value: InterpolatedValue,
     options?: InterpolatedOptions<Role>,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.source = value.source;
@@ -514,8 +513,7 @@ export class Interpolated<
         replacements: evaluatedReplacements
       },
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this.sourceRoot?._treeContext
+      sourceSpanOf(this)
     ).inherit(this);
   }
 }

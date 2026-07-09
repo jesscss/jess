@@ -33,8 +33,7 @@ export class Log extends Node<LogValue, NodeOptions> {
   constructor(
     value: LogValue,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super(value, options, location);
     this.level = value.level;

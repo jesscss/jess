@@ -132,7 +132,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
     const matches = [...source.matchAll(/@([_a-zA-Z\xA0-\uFFFF][-_a-zA-Z0-9\xA0-\uFFFF]*)/g)];
 
     if (matches.length === 0) {
-      return new Any(source, { type: token.tokenType?.name }, location, this.context);
+      return new Any(source, { type: token.tokenType?.name }, location);
     }
 
     const templatedSource = source.replace(
@@ -155,8 +155,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
         )
       },
       { role: 'any' },
-      location,
-      this.context
+      location
     );
   }
 
@@ -212,14 +211,14 @@ export class LessRecursiveParser extends CssRecursiveParser {
           token,
           'variable-in-unknown-value'
         );
-        return new Any(token.image, { role: 'any' }, this.getLocationInfo(token), this.context);
+        return new Any(token.image, { role: 'any' }, this.getLocationInfo(token));
       }
       if (ctx?.atRulePreludeBareVariableAs === 'index') {
         const nextToken = this.LA(1).tokenType;
         const hasExplicitAccessorOrCall = this.noSep()
           && (nextToken === T.LSquare || nextToken === T.LParen);
         if (hasExplicitAccessorOrCall) {
-          return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
+          return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token));
         }
         const atName = token.image;
         const ident = token.image.slice(1);
@@ -231,11 +230,10 @@ export class LessRecursiveParser extends CssRecursiveParser {
         return new Reference(
           { key: ident },
           { type: 'index', role: 'ident' },
-          this.getLocationInfo(token),
-          this.context
+          this.getLocationInfo(token)
         );
       }
-      return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token), this.context);
+      return new Reference(token.image.slice(1), { type: 'variable' }, this.getLocationInfo(token));
     } else if (tokenType.name === 'PropertyReference') {
       if (ctx?.inCustomPropertyValue) {
         const atName = token.image;
@@ -245,7 +243,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
           token,
           'property-in-unknown-value'
         );
-        return new Any(token.image, { role: 'any' }, this.getLocationInfo(token), this.context);
+        return new Any(token.image, { role: 'any' }, this.getLocationInfo(token));
       }
       return super.processValueToken(token, ctx);
     } else if (tokenType === T['DefaultGuardFunc']) {
@@ -262,14 +260,14 @@ export class LessRecursiveParser extends CssRecursiveParser {
       if (result instanceof Interpolated) {
         return result;
       } else {
-        return new Any(result, { role: 'ident' }, this.getLocationInfo(token), this.context);
+        return new Any(result, { role: 'ident' }, this.getLocationInfo(token));
       }
     } else if (tokenType === T['LegacyMSFilter']) {
       return this.processLegacyMSFilterToken(token);
     } else if (tokenType === T['PlainIdent']) {
       const image = token.image;
       if (image === 'true' || image === 'false') {
-        return new Bool(image === 'true', undefined, this.getLocationInfo(token), this.context);
+        return new Bool(image === 'true', undefined, this.getLocationInfo(token));
       }
     }
     return super.processValueToken(token, ctx);

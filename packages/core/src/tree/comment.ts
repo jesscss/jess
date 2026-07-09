@@ -22,7 +22,7 @@ export class Comment extends Node<string, CommentOptions> {
 
   readonly lineComment: boolean;
 
-  constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
+  constructor(value: string, options?: CommentOptions, location?: LocationInfo) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;

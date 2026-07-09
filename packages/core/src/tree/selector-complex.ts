@@ -60,8 +60,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   constructor(
     value: ComplexSelectorValue,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.value = value;
@@ -514,8 +513,7 @@ type SelectorParams = ConstructorParameters<typeof ComplexSelector>;
 export const sel = defineType<ComplexSelectorValue>(ComplexSelector, 'ComplexSelector', 'sel') as (
   value: ComplexSelectorValue,
   options?: SelectorParams[1],
-  location?: SelectorParams[2],
-  treeContext?: SelectorParams[3]
+  location?: SelectorParams[2]
 ) => ComplexSelector;
 
 /** A selector branch that starts with a combinator and is resolved relative to a parent selector. */
@@ -524,6 +522,5 @@ export class RelativeSelector extends ComplexSelector {}
 export const rel = defineType<ComplexSelectorValue, typeof RelativeSelector>(RelativeSelector, 'RelativeSelector', 'rel') as (
   value: ComplexSelectorValue,
   options?: SelectorParams[1],
-  location?: SelectorParams[2],
-  treeContext?: SelectorParams[3]
+  location?: SelectorParams[2]
 ) => RelativeSelector;

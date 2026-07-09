@@ -61,8 +61,7 @@ export class Dimension extends Node<DimensionValue> {
   constructor(
     value: DimensionValue,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its own fields. `number`/`unit` are plain
@@ -357,12 +356,11 @@ defineType(Dimension, 'Dimension');
 export const dimension = (
   value: DimensionValue | [number, string] | number,
   options?: NodeOptions,
-  location?: LocationInfo,
-  treeContext?: Context['treeContext']
+  location?: LocationInfo
 ) => {
   if (isArray(value)) {
     let [number, unit] = value;
-    return new Dimension({ number, unit }, options, location, treeContext);
+    return new Dimension({ number, unit }, options, location);
   }
-  return new Dimension(typeof value === 'number' ? { number: value } : value, options, location, treeContext);
+  return new Dimension(typeof value === 'number' ? { number: value } : value, options, location);
 };

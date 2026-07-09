@@ -52,8 +52,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
   constructor(
     value: SelectorListItem[],
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.value = value;

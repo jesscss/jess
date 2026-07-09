@@ -475,8 +475,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   constructor(
     value?: AmpersandValue | string,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     let finalValue: AmpersandValue = {};
     if (typeof value === 'string') {

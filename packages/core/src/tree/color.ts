@@ -101,8 +101,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   constructor(
     value: ColorData | string | ColorValues,
     options?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[1],
-    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2],
-    treeContext?: Context['treeContext']
+    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2]
   ) {
     let colorData: ColorData;
     let colorOptions: ColorOptions = options ?? {};

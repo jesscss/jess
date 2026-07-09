@@ -47,11 +47,10 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   constructor(
     value: DeclarationValue<AnyRole>,
     options?: VarDeclarationOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    super(value as DeclarationValue, options, location as LocationInfo | undefined, treeContext);
+    super(value as DeclarationValue, options, location as LocationInfo | undefined);
     this.removeFlag(F_VISIBLE);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
@@ -127,6 +126,5 @@ defineType<DeclarationValue>(VarDeclaration, 'VarDeclaration', 'vardecl');
 export const vardecl = (
   value: DeclarationValue<AnyRole>,
   options?: VarDeclarationOptions,
-  location?: NodeLocation,
-  treeContext?: Context['treeContext']
-) => new VarDeclaration(value, options, location, treeContext).parentChildren();
+  location?: NodeLocation
+) => new VarDeclaration(value, options, location).parentChildren();

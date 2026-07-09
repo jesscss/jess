@@ -71,8 +71,7 @@ function createEvaluatedPseudoSelector(
       generatedPseudoPlacementOverride: source.generatedPseudoPlacementOverride
     },
     source.options ? { ...source.options } : undefined,
-    sourceSpanOf(source),
-    source.sourceRoot?._treeContext
+    sourceSpanOf(source)
   ).inherit(source);
   node.generated = source.generated;
   return node;
@@ -118,8 +117,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   constructor(
     value: PseudoSelectorValue,
     options?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[1],
-    location?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[2],
-    treeContext?: Context['treeContext']
+    location?: ConstructorParameters<typeof SimpleSelector<PseudoSelectorValue>>[2]
   ) {
     super(value, options, location);
     this.name = value.name;

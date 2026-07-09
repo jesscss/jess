@@ -21,8 +21,7 @@ export class Combinator extends Selector<Combinators> {
   constructor(
     value: Combinators,
     options?: ConstructorParameters<typeof Selector<Combinators>>[1],
-    location?: ConstructorParameters<typeof Selector<Combinators>>[2],
-    treeContext?: Context['treeContext']
+    location?: ConstructorParameters<typeof Selector<Combinators>>[2]
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
