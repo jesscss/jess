@@ -45,7 +45,7 @@ import { N } from '../node-type.js';
 import type { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { projectSubject, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
+import { projectSubject, foldNestedChildHeaderNode, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
 import type { OutputWriter } from '../util/print.js';
 import type { Context } from '../../context.js';
 import type { Selector } from '../selector.js';
@@ -174,13 +174,46 @@ export interface SpineSubject {
  */
 export function composeSpineSubjectHeaders(
   subjects: SpineSubject[],
-  instructions: PipelineInstruction[]
+  instructions: PipelineInstruction[],
+  collapseNesting: boolean
 ): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
   extendLayerCounter.planRuns++;
   const headers = new Map<Ruleset, Selector>();
   const hoisted = new Set<Ruleset>();
   for (let i = 0; i < subjects.length; i++) {
     const subject = subjects[i]!;
+    const isNested = subject.path.length > 1;
+
+    // NESTED-CHILD `:is()`-COLLAPSE (§5 collapse policy, `collapseNesting:true`). A nested subject
+    // (`.sidebar { .box { … } }`) does NOT project its OWN path — that would seed `.sidebar .box` and
+    // treat the PARENT's extenders as crossing (a bogus hoist). Instead project the PARENT path
+    // (`[.sidebar]`) to the parent's Or-set, then FOLD this child's local into it —
+    // `:is(.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4) .box` — the exact EMIT
+    // `foldNestedChildHeaderNode` primitive (SAME `Ruleset.composeSelector` as authored nesting).
+    // Only when the parent actually gained a branch (else the child streams its authored header via
+    // the normal `&`-flow). The folded header ALREADY contains the full parent path, so it emits
+    // VERBATIM at the child's collapsed-root position (added to `hoisted` → skip parent compose).
+    if (isNested && collapseNesting) {
+      const parentPath = subject.path.slice(0, -1);
+      const childLocal = subject.path[subject.path.length - 1]!;
+      extendLayerCounter.solveRuns++;
+      const parentProjection = runSubjectProjection(
+        { id: `p${i}`, path: parentPath, order: subject.order },
+        instructions
+      );
+      if (
+        parentProjection.ownBuilt
+        && parentProjection.projection
+        && !parentProjection.projection.hoistToRoot
+        && parentProjection.projection.branches.length > 1
+      ) {
+        const folded = foldNestedChildHeaderNode(parentProjection.projection, childLocal, true);
+        headers.set(subject.ruleset, folded);
+        hoisted.add(subject.ruleset);
+        continue;
+      }
+    }
+
     const pipelineSubject: PipelineSubject = {
       id: `s${i}`,
       path: subject.path,
@@ -197,11 +230,9 @@ export function composeSpineSubjectHeaders(
     if (projection.branches.length <= 1) {
       continue;
     }
-    const isNested = subject.path.length > 1;
-    // A NESTED subject may be overridden ONLY when its projection HOISTS (crossing). A non-hoisted
-    // nested subject that gained a same-parent branch is left to the `&`-composition flow-through
-    // (an override would double-compose the parent) — the gate keeps such shapes off the spine, so
-    // this is a defensive skip.
+    // A NESTED subject may be overridden ONLY when its projection HOISTS (crossing) — the
+    // non-hoist collapse case is handled by the parent-projection fold above. A non-hoisted nested
+    // subject reaching here has no gained parent branch, so leave it to the `&`-flow.
     if (isNested && !projection.hoistToRoot) {
       continue;
     }
@@ -580,7 +611,7 @@ function anyNestedRulesetMatchesSelector(root: Rules, selector: string): boolean
  *
  * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.0 §4.2 §4.3 §4.4.2
  */
-export function wireSpineExtends(root: Rules, context: Context): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
+export function wireSpineExtends(root: Rules, context: Context, collapseNesting: boolean): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
   const subjects: SpineSubject[] = [];
   const instructions: PipelineInstruction[] = [];
   const frameBaseline = context.rulesetFrames.length;
@@ -672,7 +703,7 @@ export function wireSpineExtends(root: Rules, context: Context): { headers: Map<
 
   descendChildren(root.rules, []);
   context.rulesetFrames.length = frameBaseline; // restore (belt-and-suspenders)
-  return composeSpineSubjectHeaders(subjects, instructions);
+  return composeSpineSubjectHeaders(subjects, instructions, collapseNesting);
 }
 
 /** Document order of a ruleset = its source span start offset (matches the extend tuple's docOrder). */

@@ -1562,7 +1562,7 @@ export function renderRootViaSpine(
   // emits its composed Or-branch header. Pure structural (selector-graph) — synchronous.
   if (extendEngaged) {
     try {
-      const { headers, hoisted } = wireSpineExtends(root, context);
+      const { headers, hoisted } = wireSpineExtends(root, context, options.collapseNesting === true);
       options.spineExtendHeaders = headers;
       // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
       // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.

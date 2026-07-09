@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest, condition } from '../index.js';
+import { rules, decl, spaced, el, vardecl, ref, ruleset, sel, amp, call, list, op, dimension, num, attr, any, atrule, mixin, nil, rest, condition, extend, ExtendFlag, compound } from '../index.js';
 import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
@@ -283,6 +283,47 @@ describe('emit-walk wire-in ratchet (P1)', () => {
       // The @media block is hoisted OUT of `.card` (root-level), so `.card`'s own
       // block closes before the @media opens.
       expect(css.indexOf('padding: 1rem')).toBeLessThan(css.indexOf('@media'));
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('folds a NESTED-CHILD `:is()`-COLLAPSE through the spine (extend-nest `.box`, no eval/derive)', () => {
+    // §5 collapse: `.sidebar { .box {…} }` with two PARTIAL extenders of `.sidebar`
+    // (`.sidebar2`, `.type1 .sidebar3`). The parent `.sidebar` gains an Or-set; the nested
+    // `.box` folds into it → `:is(.sidebar, .sidebar2, .type1 .sidebar3) .box`. Wired via the
+    // spine's parent-projection fold (`foldNestedChildHeaderNode`), NOT the eval-path
+    // `extend-roots.ts` re-derivation. RATCHET: shape folds via the Compiler with `Rules.derive`=0.
+    const root = rules([
+      ruleset({
+        selector: el('.sidebar'),
+        rules: [
+          decl({ name: 'width', value: any('300px') }),
+          ruleset({ selector: el('.box'), rules: [decl({ name: 'background', value: any('#FFF') })] })
+        ]
+      }),
+      ruleset({ selector: el('.sidebar2'), rules: [extend({ target: el('.sidebar'), flag: ExtendFlag.All })] }),
+      ruleset({
+        selector: el('.type1'),
+        rules: [ruleset({ selector: el('.sidebar3'), rules: [extend({ target: el('.sidebar'), flag: ExtendFlag.All })] })]
+      })
+    ]);
+    const collapseContext = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(root, collapseContext)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(collapseContext) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0); // shape folds via the Compiler, no output tree
+      // `.box` folded into the parent Or-set — the ratified alpha collapse shape.
+      expect(css).toContain(':is(.sidebar, .sidebar2, .type1 .sidebar3) .box');
     } finally {
       Rules.prototype.derive = original;
     }
