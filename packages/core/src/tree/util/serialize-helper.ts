@@ -21,7 +21,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
-import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody } from './emit-walk.js';
+import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports } from './emit-walk.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, type SpineMergePlan } from './spine-merge.js';
 
@@ -1559,10 +1559,20 @@ function serializeSpineFrameContainer(
     options.spineSelectorNode = node;
     options.spineSelector = resolvedSelector;
     context.rulesetFrames.push(node);
-    return withSpineMergePlan(node.rules, options, context, () => {
+    const renderBody = (): MaybePromise<string> => withSpineMergePlan(node.rules, options, context, () => {
       const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
       return isThenable(out) ? out.then(restore) : restore(out);
     });
+    // Nested-scope import registration (IMPORTS increment 3): if this container's
+    // body has a foldable `@import`, REGISTER + LINK its imported scope into THIS
+    // container's frame BEFORE the body descends — so a consumer inside the body
+    // resolves the imported symbol on the container's fallback chain. `rulesContext`
+    // is `node` here, so a nested import's placement parents to this container. A
+    // no-op (sync undefined) when the body has no import (the common case).
+    const wired = wireSpineContainerImports(node.rules, node.getScopeFrame(), context, options);
+    return isThenable(wired)
+      ? wired.then(renderBody, (error: unknown) => { restore(''); throw error; })
+      : renderBody();
   };
   // Resolve the selector against the live frame. A Selector node carries either
   // interpolation (`@{…}` → concrete via `eval`) or ampersand (`&-x` → the
@@ -1624,10 +1634,18 @@ function serializeSpineFrameAtRule(
     assignSpineChildIndices(node);
     node.getScopeFrame();
     context.rulesContext = node;
-    return withSpineMergePlan(node.rules, options, context, () => {
+    const renderBody = (): MaybePromise<string> => withSpineMergePlan(node.rules, options, context, () => {
       const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
       return isThenable(out) ? out.then(restore) : restore(out);
     });
+    // Nested-scope import registration inside an at-rule body (IMPORTS increment 3):
+    // an `@import` inside `@media`/`@supports`/… links its imported scope into THIS
+    // at-rule's frame before the body descends, so a body consumer resolves it. A
+    // no-op (sync undefined) when the body has no import.
+    const wired = wireSpineContainerImports(node.rules, node.getScopeFrame(), context, options);
+    return isThenable(wired)
+      ? wired.then(renderBody, (error: unknown) => { restore(''); throw error; })
+      : renderBody();
   };
   const rawPrelude = node.prelude;
   try {

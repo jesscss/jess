@@ -602,6 +602,63 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(result.css).toContain('width: 800px'); // namespace lookup resolved (eval path)
   });
 
+  it('IMPORTS increment 3: an `@import` inside a RULESET registers its scope into the container frame and folds (no derive)', async () => {
+    // Nested-scope registration: an `@import` inside `.card` links its imported scope
+    // to `.card`'s frame (`wireSpineContainerImports` at container-enter), so a consumer
+    // INSIDE `.card` (`@pad` read, `.mk()` mixin call) resolves against the container's
+    // fallback chain — folding through the spine with no eval two-walk.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc3-rs-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '@pad: 10px;\n.mk() {\n  margin: 1px;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '.card {\n  @import "lib.less";\n  padding: @pad;\n  .mk();\n}\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // registration seeds NAMES only — no output tree
+      expect(result.css).toBe('.card {\n  padding: 10px;\n  margin: 1px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 3: an `@import` inside `@media` registers its scope into the at-rule frame and folds', async () => {
+    // The at-rule analogue: an `@import` inside `@media` links its scope to the at-rule
+    // frame (`serializeSpineFrameAtRule` → `wireSpineContainerImports`), so a body
+    // consumer (`@c`) resolves. Folds through the spine, byte-identical.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc3-md-'));
+    fs.writeFileSync(path.join(dir, 'lib.less'), '@c: blue;\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@media screen {\n  @import "lib.less";\n  .x { color: @c; }\n}\n');
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(result.css).toBe('@media screen {\n  .x {\n    color: blue;\n  }\n}\n');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORTS increment 3: the SAME file imported more than once STAYS on eval (dedup / `once` wall)', async () => {
+    // `strict-imports.less` imports `imported.less` at root + inside `@media` + inside
+    // `.container`. Less `once`-dedups: emit the content at the FIRST, scope-only at the
+    // rest. The fold does not model `once` — it would emit the body at EVERY position.
+    // So a duplicate static specifier stays on the eval path (byte-identical). A
+    // regression that folds it duplicates the imported `.imported` output. DEFERRED (P4,
+    // with `multiple`/dedupe): `once` dedup in the fold.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-config/strict-imports/strict-imports.less');
+    const before = spineRenderCounter.rootRenders;
+    const result = await compiler.renderToResult(lessPath, {});
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (dedup wall)
+    expect(result.css).toContain('.container .nested'); // dedup handled correctly (eval path)
+  });
+
   it('IMPORTS increment 1: the import-work gate is ZERO-cost when the tree has no imports', async () => {
     // A no-import render must never touch import machinery — `engageImportLayer` is
     // false, so the spine stays a pure streaming descent. (Proven indirectly: the

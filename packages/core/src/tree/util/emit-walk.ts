@@ -460,7 +460,7 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
  */
 function isSpineEligibleContainer(node: Node, allowExtend = false, allowImport = false): boolean {
   if (isNode(node, N.AtRule)) {
-    return isSpineEligibleAtRule(node);
+    return isSpineEligibleAtRule(node, allowImport);
   }
   if (!isNode(node, N.Ruleset)) {
     return false;
@@ -629,7 +629,7 @@ const SPINE_KEYFRAMES_AT_RULES = new Set(['@keyframes', '@-webkit-keyframes']);
  * `@property` — registers a custom property (eval-pass registration side effect);
  * interpolated at-rule NAMES; non-nestable / document-framing forms.
  */
-function isSpineEligibleAtRule(node: Node): boolean {
+function isSpineEligibleAtRule(node: Node, allowImport = false): boolean {
   if (!isNode(node, N.AtRule) || !isNode(node, N.Rules)) {
     return false;
   }
@@ -663,7 +663,7 @@ function isSpineEligibleAtRule(node: Node): boolean {
   if (atRuleBodyHasAmpersandRuleset(atRule.rules)) {
     return false;
   }
-  return isSpineEligibleBody(atRule.rules);
+  return isSpineEligibleBody(atRule.rules, false, allowImport);
 }
 
 /**
@@ -1144,19 +1144,12 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // subjects/extenders (no nested extend) is spine-eligible — the pre-scan gathers and the
   // subject header is composed as an override. `allowExtend` admits the extend-bearing root
   // children + their ExtendList effect nodes. A NON-flat extend shape stays on the eval path.
-  // IMPORTS increment 2 SCOPE GUARD (nested-import scope not yet registered). The
-  // fold now REGISTERS a ROOT-level import's scope into its placement frame and
-  // LINKS it as an importer fallback (`wireSpineImports`), so a consumer of a
-  // ROOT-imported symbol (`#library.sizes[@width]`, an imported `@var`/mixin)
-  // resolves correctly and folds — `namespacing-2` is now covered. What is NOT yet
-  // registered is a NESTED-scope StyleImport (inside a ruleset/at-rule body): the
-  // root pre-registration pass wires only root-direct-child imports. So a tree that
-  // has a NESTED StyleImport whose imported scope could be consumed stays on the
-  // eval path (byte-identical). DEFERRED (a REQUIRED P4 item): nested-scope import
-  // registration during the descent.
-  if (allowImport && treeHasNestedStyleImport(root)) {
-    return false;
-  }
+  // NESTED-scope imports are now REGISTERED during the descent (IMPORTS increment 3):
+  // `wireSpineContainerImports` links a body `@import`'s scope into the ENCLOSING
+  // container's frame at container-enter, so a consumer inside a `@media`/ruleset
+  // resolves the imported symbol. Root imports are wired by `wireSpineImports`. So a
+  // nested StyleImport no longer forces the eval path — the container's own
+  // eligibility (`isSpineEligibleContainer` with `allowImport`) admits it.
   // NAMESPACE-MERGE wall (surfaced IMPORTS increment 2). A NAMESPACE-PATH call
   // (`#library.add-one()`, `name.target` set) can MERGE a same-named namespace
   // across the local scope AND an imported file (`namespacing-2`: a local
@@ -1171,25 +1164,51 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (allowImport && treeHasStyleImport(root) && treeHasNamespacePathCall(root)) {
     return false;
   }
+  // DEDUP / `once` wall (surfaced IMPORTS increment 3). Less imports the same file
+  // only ONCE per compilation (`once` default): a file imported at several positions
+  // emits its content at the FIRST and contributes SCOPE-ONLY (no output) at the
+  // rest. The fold does not model `once` — it would emit the imported body at EVERY
+  // position (`strict-imports`: `imported.less` imported at root + inside `@media` +
+  // inside `.container` → duplicated `.imported` output). So a tree that imports the
+  // SAME static specifier more than once stays on the eval path (byte-identical).
+  // DEFERRED (a REQUIRED P4 item, with the `multiple`/dedupe mode): `once` dedup in
+  // the fold — emit the first, scope-only the rest.
+  if (allowImport && treeHasDuplicateImportSpecifier(root)) {
+    return false;
+  }
   const collapse = collapseNesting ?? context.output?.collapseNesting === true;
   const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root, collapse === true);
   return isSpineEligibleBody(root.rules, allowExtend, allowImport);
 }
 
 /**
- * True if the tree has a `StyleImport` NESTED inside a container (a ruleset/at-rule
- * body), i.e. NOT a direct child of the document root. The root pre-registration
- * pass (`wireSpineImports`, IMPORTS increment 2) wires only ROOT-level imports, so a
- * nested import's scope is not yet seeded — a consumer of it would resolve wrong.
- * Keep such a tree on the eval path (deferred). A root-only import set folds even
- * with scope consumers, since registration now covers it.
+ * True if two imports in the tree name the SAME static specifier — the `once`/dedup
+ * shape the fold does not model (see the dedup wall). Compares the authored path
+ * string of every `StyleImport` (its `path.valueOf()`) and CSS `@import` statement.
+ * A dynamic/interpolated specifier (non-string valueOf) is skipped — those imports
+ * are already off the fold (a StyleImport with an interpolated path isn't foldable;
+ * a CSS `@import` statement with a non-static prelude isn't admitted).
  */
-function treeHasNestedStyleImport(root: Rules): boolean {
-  const rootChildren = new Set<Node>(root.rules);
+function treeHasDuplicateImportSpecifier(root: Node): boolean {
+  const seen = new Set<string>();
   for (const node of root.walk(true)) {
-    if (node.type === 'StyleImport' && !rootChildren.has(node)) {
+    let spec: string | undefined;
+    if (node.type === 'StyleImport') {
+      const path = (node as unknown as StyleImport).path;
+      const raw = path?.valueOf?.();
+      spec = typeof raw === 'string' ? raw : undefined;
+    } else if (isSpineFoldableCssImportStatement(node)) {
+      const prelude = (node as unknown as { prelude?: { valueOf?: () => unknown } }).prelude;
+      const raw = prelude?.valueOf?.();
+      spec = typeof raw === 'string' ? raw : undefined;
+    }
+    if (spec === undefined) {
+      continue;
+    }
+    if (seen.has(spec)) {
       return true;
     }
+    seen.add(spec);
   }
   return false;
 }
@@ -1556,9 +1575,39 @@ function wireSpineImports(
   context: Context,
   options: FinalPrintOptions
 ): MaybePromise<void> {
+  return wireSpineImportsInBody(root.rules, root.getScopeFrame(), context, options);
+}
+
+/**
+ * Register + link every foldable import that is a DIRECT child of `children` into
+ * `targetFrame` (IMPORTS increment 3 — generalized nested-scope wiring). The root
+ * pass (`wireSpineImports`) passes the root body + root frame; a NESTED container
+ * (a ruleset / at-rule with a body import) passes its own body + own frame from
+ * `serializeSpineFrameContainer` at container-enter — so an `@import` inside a
+ * `@media`/ruleset links its imported scope to the ENCLOSING container's frame, and
+ * a consumer in that container body resolves the imported symbol on the fallback
+ * chain (consulted AFTER the container's primary scope, so a local binding wins).
+ *
+ * Per DIRECT-child foldable import, in document order, each isolated from the next:
+ *   - CSS-passthrough → cached `{ kind: 'css' }` (queued top-of-doc; no scope).
+ *   - Less import → `resolveForSpine` yields the parsed placement (parented to the
+ *     current `context.rulesContext` — the container at wire time), `prepareRegistration`
+ *     seeds its frame with the imported vars/mixins/namespaces, then
+ *     `linkImportFallbackFrame(targetFrame, placementFrame)`. Cached so the emit fold
+ *     descends the SAME registered body.
+ *
+ * REGISTRATION-DURING-DESCENT INVARIANT: registration seeds NAMES only — no body
+ * eval, no output tree (`Rules.derive` = 0). The placement's OUTPUT is emitted later
+ * by the descent against the now-linked frame; its SCOPE is available the instant
+ * the container body descent begins. Async (`getTree` / `prepareRegistration`).
+ */
+function wireSpineImportsInBody(
+  children: readonly Node[],
+  targetFrame: ScopeFrame,
+  context: Context,
+  options: FinalPrintOptions
+): MaybePromise<void> {
   const cache = (options.spineImportPlacements ??= new Map());
-  const rootFrame = root.getScopeFrame();
-  const children = root.rules;
   const wireFrom = (start: number): MaybePromise<void> => {
     for (let i = start; i < children.length; i++) {
       const child = children[i]!;
@@ -1569,7 +1618,7 @@ function wireSpineImports(
       // ISOLATE per-import context (design §2 async discipline). Each import's
       // resolve + registration transiently mutates `context.treeContext`/`depth`
       // (relative-path resolution + registration setup). Sequentially wiring
-      // several root imports must not leak one import's treeContext into the NEXT
+      // several imports must not leak one import's treeContext into the NEXT
       // sibling's relative resolution (a deeply-nested import would otherwise
       // resolve its sibling against the wrong directory → dropped output). Snapshot
       // + restore around EACH import's whole wire, on every exit path.
@@ -1589,7 +1638,7 @@ function wireSpineImports(
         const body = resolved.body;
         const registered = body.prepareRegistration(context);
         const finishRegister = (): void => {
-          linkImportFallbackFrame(rootFrame, body.getScopeFrame());
+          linkImportFallbackFrame(targetFrame, body.getScopeFrame());
           cache.set(child, { kind: 'fold', body });
         };
         return isThenable(registered) ? registered.then(finishRegister) : finishRegister();
@@ -1614,4 +1663,27 @@ function wireSpineImports(
     return undefined;
   };
   return wireFrom(0);
+}
+
+/**
+ * Wire a NESTED container's direct foldable imports at container-enter (IMPORTS
+ * increment 3). Called by `serializeSpineFrameContainer` AFTER the container's scope
+ * frame is built and BEFORE its body descends, so a consumer inside the container
+ * resolves an imported symbol against the container frame's fallback chain. A no-op
+ * (returns undefined synchronously) when the body has no foldable import — the
+ * common case pays nothing. `targetFrame` is the container's own scope frame.
+ */
+export function wireSpineContainerImports(
+  children: readonly Node[],
+  targetFrame: ScopeFrame,
+  context: Context,
+  options: FinalPrintOptions
+): MaybePromise<void> {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (child.type === 'StyleImport' && isSpineFoldableImport(child)) {
+      return wireSpineImportsInBody(children, targetFrame, context, options);
+    }
+  }
+  return undefined;
 }
