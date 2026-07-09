@@ -44,11 +44,11 @@ import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import type { Rules } from '../rules.js';
 import { Node, F_AMPERSAND } from '../node.js';
-import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { projectSubject, foldNestedChildHeaderNode, composeTargetOwn, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
 import type { OutputWriter } from '../util/print.js';
 import type { Context } from '../../context.js';
-import type { Selector } from '../selector.js';
+import { Selector } from '../selector.js';
 import { Nil } from '../nil.js';
 import { SelectorList } from '../selector-list.js';
 import { spanStartOf } from '../util/provenance.js';
@@ -878,9 +878,23 @@ export function wireSpineExtends(root: Rules, context: Context, collapseNesting:
   // is `[resolved]` (not appended). composeSelector returns amp-free atoms, so the fixpoint's produced
   // branch carries no amp (the former round-2 amp-target trap cannot arise — no normalize step needed).
   const resolveLocal = (ruleset: Ruleset, parentPath: readonly Selector[]): { selector: Selector; ampResolved: boolean } | undefined => {
-    const local = flatLocalSelector(ruleset);
+    let local = flatLocalSelector(ruleset);
     if (local === undefined) {
       return undefined;
+    }
+    // ATTRIBUTE-VALUE INTERPOLATION (`[data=@{attr-data}]`). A raw `@{…}` token in an
+    // `AttributeSelector` value must resolve against the enclosing scope BEFORE it participates in
+    // extend — else the raw subject (`[data="@{attr-data}"]`) never matches a literal target
+    // (`[data="test3"]`) and the extend silently no-ops. The ancestor frames are already pushed on
+    // `context.rulesetFrames` by the enclosing `gatherRuleset`, and `AttributeSelector.eval` now
+    // resolves the token via that frame stack (no `.parent` needed — the spine `.parent`-free path).
+    // A SYNC resolution only (the corpus's attr interpolation binds a literal string); a thenable
+    // (async binding) is left raw and defers to eval. Class/`&` interpolation is handled elsewhere.
+    if (!String(local.valueOf()).includes('&') && /[@$]\{/.test(String(local.valueOf()))) {
+      const evaluated = local.eval(context);
+      if (!isThenable(evaluated) && evaluated instanceof Selector && !(evaluated instanceof Nil)) {
+        local = evaluated;
+      }
     }
     if (!String(local.valueOf()).includes('&')) {
       return { selector: local, ampResolved: false };

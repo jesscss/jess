@@ -256,11 +256,14 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('P4: `extend-selector` STAYS on eval (its advanced shapes exceed the extend gate — no false-flip)', async () => {
-    // Guardrail: extend-selector's `>`/`+`-combinator targets, attribute + interpolated-attribute
-    // targets, `.replace` sibling-nesting, and expanded-mode crossing are NOT yet spine-buildable, so
-    // the gate must KEEP the whole fixture on eval (byte-identical there). A regression that wrongly
-    // widened the gate to admit it would trip this (the spine mis-renders those shapes).
+  it('P4: `extend-selector` STAYS on eval (ONE remaining shape — expanded-mode hoist — exceeds the gate)', async () => {
+    // Guardrail: after #1-#5, extend-selector's `>`/`+`-combinator, attribute + interpolated-attribute,
+    // `.replace` sibling-nesting, and standalone-`Rules` shapes all FOLD via the spine. The ONE
+    // remaining shape is the EXPANDED-MODE HOIST (`.header .header-nav` — a crossing nested block that
+    // must physically RELOCATE to root document-position under `collapseNesting:false`, machinery the
+    // spine does not yet have — HELD, owner scope). The gate keeps the WHOLE fixture on eval until it
+    // lands (byte-identical there). A regression that wrongly admitted it would trip this (the hoist
+    // block mis-emits nested). When #4a lands, this flips to a fold + all-less 91→92.
     const compiler = new Compiler({
       output: { collapseNesting: false },
       compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
@@ -377,6 +380,36 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     const src = `.base {\n  color: red;\n}\n.derived:extend(.base) {\n  font-weight: bold;\n}`;
     const css = await compiler.renderString(src, { language: 'less' });
     expect(css).toBe('.base,\n.derived {\n  color: red;\n}\n.derived {\n  font-weight: bold;\n}\n');
+  });
+
+  it('P4 #5: an ATTRIBUTE-VALUE interpolation (`[data=@{var}]`) resolves on the spine via the FRAME STACK', async () => {
+    // A raw `@{key}` token in an `AttributeSelector` value resolved (in `AttributeSelector.eval`) via
+    // `rulesParent`, which walks `.parent` — back-pointers the eval pass sets but the SPINE never
+    // does. So `[data=@{attr-data}]` rendered RAW on the spine (a general bug: `.@{name}` class
+    // interpolation resolves via `InterpolatedSelector.eval`, but the attribute-value token did not).
+    // The fix adds a FRAME-STACK fallback (`context.rulesetFrames`, the live scope chain the spine
+    // maintains) when `rulesParent` is undefined, resolving the token exactly as eval does — no
+    // `.parent`. Renders `[data="test3"]` via the spine (rootRenders>0, derive=0).
+    const compiler = makeCompiler();
+    const src = `.attributes {\n  @attr-data: "test3";\n  [data=@{attr-data}] { c: red; }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (no `.parent`)
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // `makeCompiler` collapses nesting → `.attributes [data="test3"]`. The load-bearing assertion:
+      // `@{attr-data}` RESOLVED to `test3` (not the raw `@{attr-data}`) via the frame stack.
+      expect(css).toBe('.attributes [data="test3"] {\n  c: red;\n}\n');
+      expect(css).not.toContain('@{');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
   });
 
   it('routes ROOT-ONLY wrap+emit at-rules through the spine on the COMPILER path (no eval two-walk)', async () => {

@@ -35,6 +35,42 @@ function findAttributeVarDeclaration(rules: Rules, key: string): VarDeclaration 
 }
 
 /**
+ * Resolve the var declaration behind an attribute-value interpolation token (`[data=@{key}]`),
+ * first via the node's `.parent`-derived `rulesParent`, then — when that is undefined — via the
+ * LIVE FRAME STACK (`context.rulesetFrames`, innermost → outermost).
+ *
+ * WHY THE FRAME-STACK FALLBACK. The `rulesParent` walk relies on `.parent` back-pointers, which are
+ * established only by the EVAL pass; the single-downward SPINE (which replaces that pass) never sets
+ * them, so on the spine `rulesParent` is undefined and `[data=@{key}]` was left UNRESOLVED (a general
+ * spine bug — `.@{name}` class interpolation resolves via `InterpolatedSelector.eval`, but the raw
+ * `@{…}` token inside an `AttributeSelector` value does not). The spine DOES maintain the live scope
+ * chain in `context.rulesetFrames` (the same stack `&`/interpolation resolution reads), so falling
+ * back to it resolves the token exactly as the eval path does — WITHOUT any `.parent` dependency.
+ *
+ * SAFETY (shared node, both paths). The fallback fires ONLY when `rulesParent` is undefined. On the
+ * EVAL path `.parent` is always set, so `rulesParent` is defined and the fallback never runs — the
+ * eval path is byte-untouched. Verified empirically across the corpus.
+ */
+function findAttributeVarDeclarationInScope(
+  node: { rulesParent: Rules | undefined },
+  key: string,
+  context: Context
+): VarDeclaration | undefined {
+  const rules = node.rulesParent;
+  if (rules) {
+    return findAttributeVarDeclaration(rules, key);
+  }
+  const frames = context.rulesetFrames;
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const decl = findAttributeVarDeclaration(frames[i]!, key);
+    if (decl) {
+      return decl;
+    }
+  }
+  return undefined;
+}
+
+/**
  * An attribute selector
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors
  *   e.g. [id="foo"]
@@ -57,20 +93,17 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       const m = raw.match(/^@\{([^}]+)\}$/);
       if (m) {
         const key = m[1]!;
-        const rules = this.rulesParent;
-        if (rules) {
-          const decl = findAttributeVarDeclaration(rules, key);
-          if (decl) {
-            const declValue = decl.value;
-            if (!(declValue instanceof Node)) {
-              return undefined;
-            }
-            const out = declValue.resolve(context);
-            if (isThenable(out)) {
-              return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
-            }
-            return quoted(String((out as Node).valueOf()));
+        const decl = findAttributeVarDeclarationInScope(this, key, context);
+        if (decl) {
+          const declValue = decl.value;
+          if (!(declValue instanceof Node)) {
+            return undefined;
           }
+          const out = declValue.resolve(context);
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
+          }
+          return quoted(String((out as Node).valueOf()));
         }
       }
     }
@@ -145,20 +178,17 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       const m = raw.match(/^@\{([^}]+)\}$/);
       if (m) {
         const key = m[1]!;
-        const rules = this.rulesParent;
-        if (rules) {
-          const decl = findAttributeVarDeclaration(rules, key);
-          if (decl) {
-            const declValue = decl.value;
-            if (!(declValue instanceof Node)) {
-              return undefined;
-            }
-            const out = declValue.eval(context);
-            if (isThenable(out)) {
-              return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
-            }
-            return quoted(String((out as Node).valueOf()));
+        const decl = findAttributeVarDeclarationInScope(this, key, context);
+        if (decl) {
+          const declValue = decl.value;
+          if (!(declValue instanceof Node)) {
+            return undefined;
           }
+          const out = declValue.eval(context);
+          if (isThenable(out)) {
+            return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
+          }
+          return quoted(String((out as Node).valueOf()));
         }
       }
     }
