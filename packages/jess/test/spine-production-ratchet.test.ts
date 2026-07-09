@@ -249,6 +249,30 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path (expanded-mode crossing excluded)
   });
 
+  it('P3 (OQ-A): an INTERPOLATED class extend target resolves against the live frame at capture', async () => {
+    // OQ-A (design §9): `:extend(.@{name})` must resolve `@{name}` (→ `.foo`) BEFORE matching, else
+    // the raw interpolated target matches nothing and the extend silently no-ops. `Extend.runEffect`
+    // now evals an interpolation-bearing target against the live frame at capture. This is an
+    // EVAL-PATH fix (the byte-identical fallback + the real `.@{name}` shape); no corpus fixture
+    // exercises an interpolated TARGET, so it's pinned here. RESIDUAL: attribute-VALUE interpolation
+    // (`[data=@{name}]`) is a distinct attribute-selector shape (raw `@{…}` token in the value), not
+    // fixed here — see the remaining-shapes map.
+    const compiler = makeCompiler();
+    const src = `@name: foo;\n.foo {\n  color: red;\n}\n.bar:extend(.@{name}) {\n  color: blue;\n}`;
+    const css = await compiler.renderString(src, { language: 'less' });
+    // The interpolated target resolved to `.foo` and the extend applied (`.foo` gains `.bar`).
+    expect(css).toBe('.foo,\n.bar {\n  color: red;\n}\n.bar {\n  color: blue;\n}\n');
+  });
+
+  it('P3 (OQ-A): a LITERAL extend target is byte-unchanged (interpolation eval skipped)', async () => {
+    // Guardrail: the OQ-A target-eval fires ONLY for an interpolation-bearing target; a literal
+    // target skips it entirely (byte-unchanged). No collateral on the common case.
+    const compiler = makeCompiler();
+    const src = `.base {\n  color: red;\n}\n.derived:extend(.base) {\n  font-weight: bold;\n}`;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(css).toBe('.base,\n.derived {\n  color: red;\n}\n.derived {\n  font-weight: bold;\n}\n');
+  });
+
   it('routes ROOT-ONLY wrap+emit at-rules through the spine on the COMPILER path (no eval two-walk)', async () => {
     // Broadened coverage: a root that is a `@font-face` / `@keyframes` / `@page`
     // wrap+emit at-rule now renders LIVE through the spine in production, byte-

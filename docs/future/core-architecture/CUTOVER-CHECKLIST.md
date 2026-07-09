@@ -205,7 +205,11 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       per-subject buffer, headers deferred, early-flush per the §4.4.3 predicate.
 - [ ] EMIT projects (B): `placement`/`origin`(`F_EXTENDED`/`F_EXTEND_TARGET`)/`order`/`visible`/`generated`
       onto branches (the B2 flag work — on the branch, never the shared source selector).
-- [ ] Resolve interpolated extend TARGET at capture (OQ-A fix, `extend.ts:341`) so `:extend([data=@{attr}])` works.
+- [~] OQ-A: resolve interpolated extend TARGET at capture. DONE for SELECTOR-level interpolation
+      (`:extend(.@{name})` → resolves `@{name}` against the live frame in `Extend.runEffect`, byte-neutral
+      on the 90, pinned by a jess ratchet). RESIDUAL: attribute-VALUE interpolation (`[data=@{name}]` — raw
+      `@{…}` token in the `AttributeSelector` value) not yet resolved/matched (distinct attribute-selector
+      shape + a pre-existing `[data=\n"foo"]` formatting quirk).
 - [x] **OQ-D CORRECTED + DONE (owner 2026-07-08): extend is LIST-APPEND (target leads, no sort).** The
       "document-order sort deliverable" was mis-scoped scaffolding around a `projectSubject` bug — there was
       never a sort to build. FIX: `projectSubject` (`emit.ts`) drops the `ordered.sort`; the target's own

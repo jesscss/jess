@@ -1096,13 +1096,17 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   already-resolved selector. "Vars are resolved early" (owner) is exactly the mechanism: the
   value-dependent part is discharged during the eval descent BEFORE the selector participates in extend,
   which is WHY the extend layer is cleanly decoupled from the value-frame — no staged sub-pass, no
-  entanglement. **Concrete consequence (bug to fix in the cutover):** jess currently captures the extend
-  TARGET unresolved — it pushes the raw `[data="@{attr}"]` at `extend.ts:341` before interpolation runs,
-  so `:extend([data=@{attr}])` silently no-ops today. The fix is bounded: resolve the target's
-  interpolation at capture time (frame live) so the instruction carries the concrete target. (Fixing
-  this is also what makes interpolated extend targets actually work. When building it, use Less 4.x only
-  to affirm BEHAVIOR — does the interpolated target extend, what does it match — NOT output shape: Jess
-  emits `:is()` and supports nesting, so the SHAPE is the v5/alpha form, not 4.x's expansion.)
+  entanglement. **Concrete consequence — FIXED (2026-07-08, P3):** jess captured the extend TARGET
+  unresolved, so a SELECTOR-level interpolated target (`:extend(.@{name})`) silently no-op'd.
+  `Extend.runEffect` now resolves an interpolation-bearing target against the LIVE frame at capture
+  (`extend.ts`): it detects interpolation by node type (`InterpolatedSelector`/`Interpolated`) OR a raw
+  `@{`/`${` token (attribute-value interpolation), evals the target when present, and carries the
+  concrete resolved target into the instruction. A literal target skips the eval (byte-unchanged). This
+  is an EVAL-PATH fix (the byte-identical fallback); no corpus fixture exercises an interpolated target,
+  so it is pinned by a jess ratchet. **RESIDUAL:** attribute-VALUE interpolation (`[data=@{name}]` —
+  the `@{…}` is a raw token INSIDE the `AttributeSelector` value string) does not yet resolve/match —
+  a distinct attribute-selector-value interpolation shape (with a pre-existing `[data=\n"foo"]`
+  formatting quirk), tracked separately from the selector-level target fix.
 
 - **OQ-B — RESOLVED (§4.4).** The flush discipline is SETTLED: (1) decls resolve against the live
   frame and stream as bytes into a per-subject buffer during descent — only the rule HEADER is deferred
