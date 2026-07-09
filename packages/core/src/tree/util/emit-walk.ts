@@ -576,7 +576,7 @@ function atRuleBodyNeedsAncestorRewrap(children: readonly Node[]): boolean {
  * path `serializeSpineFrameAtRule` uses for `@media (@w)`, and its body is
  * composed rulesets/declarations.
  */
-const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container', '@starting-style', '@scope']);
+const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container', '@starting-style', '@scope', '@layer']);
 
 /**
  * The ROOT-ONLY "wrap + emit" at-rules THIS phase folds through the spine. Unlike
@@ -622,10 +622,10 @@ const SPINE_KEYFRAMES_AT_RULES = new Set(['@keyframes', '@-webkit-keyframes']);
  * A nested AT-RULE child THIS phase can descend through the spine: a
  * block at-rule from one of two families, with a string name (not interpolated —
  * an interpolated at-rule NAME is not folded yet) and a spine-eligible body:
- *   - CONDITIONAL-GROUP (`@media`/`@supports`/`@container`/`@starting-style`) —
- *     bubbles to root + composes its body's selectors (the `@media`→root hoist +
- *     composed-stack machinery, §7); subject to the `&`-through-hoist re-wrap
- *     frontier guard (`atRuleBodyHasAmpersandRuleset`).
+ *   - CONDITIONAL-GROUP (`@media`/`@supports`/`@container`/`@starting-style`/
+ *     `@scope`/`@layer`) — bubbles to root + composes its body's selectors (the
+ *     `@media`→root hoist + composed-stack machinery, §7); subject to the
+ *     `&`-through-hoist re-wrap frontier guard (`atRuleBodyHasAmpersandRuleset`).
  *   - ROOT-ONLY WRAP+EMIT (`@font-face`/`@page`/`@keyframes`/`@-webkit-keyframes`/
  *     `@viewport`/`@counter-style`/`@document`/`@host`, `SPINE_ELIGIBLE_ROOT_ONLY_
  *     AT_RULES`) — no hoist, no composition; body is declarations / keyframe-
@@ -634,11 +634,19 @@ const SPINE_KEYFRAMES_AT_RULES = new Set(['@keyframes', '@-webkit-keyframes']);
  *     `isSpineEligibleRootOnlyAtRuleBody`.
  * The prelude is resolved-at-enter by `serializeSpineFrameAtRule`.
  *
- * EXCLUDED (still eval path, precise reasons): `@layer` — nested layer-NAME
- * registration (`@layer a.b`) is an eval-pass side effect the spine does not
- * replicate; `@scope` — special `(start)`/`(end)` prelude + scoped-body binding;
- * `@property` — registers a custom property (eval-pass registration side effect);
- * interpolated at-rule NAMES; non-nestable / document-framing forms.
+ * `@layer` folds as a conditional-group. Its ONLY eval-pass side effect is
+ * layer-NAME registration into the extend-roots graph (`@layer a.b` →
+ * `registerRoot(body, parent, { layerName })`), which exists SOLELY to scope
+ * extend-reach per layer. And any at-rule body BEARING an extend is kept off the
+ * spine entirely by `isSpineExtendTopology` (it sets `ok = false` for an
+ * extend-bearing at-rule) — so an extend-under-`@layer` runs on the eval path
+ * where the layer-name registration happens. On the spine (a no-extend `@layer`)
+ * the registration has no consumer, so skipping it is output-invisible.
+ *
+ * EXCLUDED (still eval path, precise reasons): a genuinely interpolated at-rule
+ * KEYWORD (`name` is an `Interpolated` node — the string-name check below gates
+ * it; a bare var-ref NAME like `@keyframes @name` DOES fold via prelude-eval);
+ * non-nestable / document-framing forms (`@charset`/`@import`/`@namespace`).
  */
 function isSpineEligibleAtRule(node: Node, allowImport = false): boolean {
   if (!isNode(node, N.AtRule) || !isNode(node, N.Rules)) {

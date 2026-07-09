@@ -501,6 +501,12 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
+  // Layer-NAME registration is an EVAL-PASS concern: it feeds the extend-roots
+  // graph so an `:extend` inside a layer reaches only same-layer subjects. A
+  // no-extend `@layer` now folds onto the render spine (which skips registration —
+  // nothing consumes it), so these tests drive the registration machinery via the
+  // eval pass directly (`root.eval`), the path a real extend-under-`@layer` takes
+  // (see the spine ratchet asserting extend-bearing `@layer` stays on eval).
   it('registers nested layer names from invocation records without mutating source children', async () => {
     const nestedBody = rules([
       ruleset({
@@ -530,7 +536,7 @@ describe('AtRule', () => {
 
     const root = rules([outerLayer]);
 
-    await Promise.resolve(root.render(context));
+    await Promise.resolve(root.eval(context));
 
     expect(registeredLayers).toContain('parent');
     expect(registeredLayers).toContain('parent.child');
@@ -582,7 +588,7 @@ describe('AtRule', () => {
 
     const root = rules([outerLayer]);
 
-    await Promise.resolve(root.render(context));
+    await Promise.resolve(root.eval(context));
 
     expect(registeredLayers).toContain('parent');
     expect(registeredLayers).toContain('parent.child');
@@ -622,7 +628,7 @@ describe('AtRule', () => {
 
     const root = rules([outerLayer]);
 
-    await Promise.resolve(root.render(context));
+    await Promise.resolve(root.eval(context));
 
     expect(registeredLayers).toContain('parent');
     expect(registeredLayers).toContain('parent.child');

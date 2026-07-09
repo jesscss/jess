@@ -1041,4 +1041,59 @@ describe('at-rule fold ratchet (property / scope / layer / var-ref names)', () =
   }
 }`);
   });
+
+  it('folds a simple `@layer` byte-identical', async () => {
+    const css = await foldToBytes(`@layer base { .a { color: red; } }`, context);
+    expect(css).toBe(`@layer base {
+  .a {
+    color: red;
+  }
+}`);
+  });
+
+  it('folds a NESTED-NAME `@layer` byte-identical', async () => {
+    const css = await foldToBytes(`@layer a { @layer b { .x { color: red; } } }`, context);
+    expect(css).toBe(`@layer a {
+  @layer b {
+    .x {
+      color: red;
+    }
+  }
+}`);
+  });
+
+  it('folds a `@layer` with a variable resolved in its body byte-identical', async () => {
+    const css = await foldToBytes(`@w: 10px; @layer base { .a { width: @w; } }`, context);
+    expect(css).toBe(`@layer base {
+  .a {
+    width: 10px;
+  }
+}`);
+  });
+
+  it('folds a VAR-REF `@layer` NAME byte-identical (`@layer @ln`)', async () => {
+    const css = await foldToBytes(`@ln: base; @layer @ln { .a { color: red; } }`, context);
+    expect(css).toBe(`@layer base {
+  .a {
+    color: red;
+  }
+}`);
+  });
+
+  it('keeps an EXTEND-bearing `@layer` OFF the spine (layer-scoped registration is eval-pass)', () => {
+    // GUARANTEE for the `@layer` fold: layer-NAME registration only scopes
+    // extend-reach, and `isSpineExtendTopology` keeps ANY extend-bearing at-rule
+    // body off the spine — so an extend-under-`@layer` runs on the eval path where
+    // registration happens. Verified for both an in-layer extend and a cross-layer
+    // extend (which must NOT reach across layers). If a future change admitted these
+    // to the spine, the layer-name registration would be skipped and extend-reach
+    // would break — this test trips RED first.
+    const inLayer = new Parser().parse(`@layer base { .a { color: red; } .b:extend(.a) {} }`).tree;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(isSpineEligibleRoot(inLayer as unknown as Rules, context)).toBe(false);
+
+    const crossLayer = new Parser().parse(`@layer one { .a { color: red; } } @layer two { .b:extend(.a) {} }`).tree;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    expect(isSpineEligibleRoot(crossLayer as unknown as Rules, context)).toBe(false);
+  });
 });
