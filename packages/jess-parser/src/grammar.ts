@@ -11,6 +11,17 @@
  * compile time, so it cannot be an external by-name ref. To get `//` line comments
  * inside a context we must re-declare that context's rule here with Jess `rw`.
  *
+ * That re-declaration is only needed at the ENTRY into a Jess-`rw` region:
+ * `Stylesheet` installs Jess `rw` once, and every Jess rule reached from it
+ * inherits that ambient (sequence/repeat read `ctx.trivia` dynamically; refs pass
+ * ctx through). A Jess-rule→Jess-rule `parser({ trivia: rw }, …)` re-establishing
+ * the SAME Jess `rw` is a no-op and was dropped from most rules. Only three keep it:
+ * `Stylesheet` (the establisher) plus `VarDeclaration` and `AnonMixin`, where
+ * parseman's deferred-trivia-commit boundaries interact across nested grammar
+ * scopes so dropping the wrapper changed what parsed (measured, not reasoned).
+ * (Composed CSS rules keep their own baked CSS `rw`, so a `//` inside a construct
+ * that stays entirely in a CSS rule is still not skipped — unchanged by this.)
+ *
  * The build host + parse entry live in ./functional-parser.ts; the shared driver
  * in @jesscss/css-parser.
  */
@@ -46,7 +57,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // Bracket key as ONE leaf: `$var` (dynamic) | quoted string | number | keyword.
   const refIndexKey = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|[+-]?\d+(?:\.\d+)?|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const refDot = sequence(literal('.'), ident);
-  const refIndex = sequence(literal('['), parser({ trivia: rw }, sequence(refIndexKey, literal(']'))));
+  const refIndex = sequence(literal('['), sequence(refIndexKey, literal(']')));
   const Reference = node(
     noTrivia(sequence(dollarVar, many(choice(refDot, refIndex)), optional(literal('?')))));
 
@@ -56,7 +67,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // position. Renders back as `$[foo]` / `$['foo']`.
   const interpKey = regex(/'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const DollarInterp = node(
-    noTrivia(sequence(literal('$'), literal('['), parser({ trivia: rw }, sequence(interpKey, expect(literal(']'), ']'))))));
+    noTrivia(sequence(literal('$'), literal('['), sequence(interpKey, expect(literal(']'), ']')))));
 
   // ── Interpolation in SELECTORS ───────────────────────────────────────────────
   // `.widget-$[side]` → InterpolatedSelector wrapping an Interpolated (source with
@@ -122,7 +133,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const exprCompare = node('Condition',
     noTrivia(sequence(g.exprSum, optional(sequence(compareOp, g.exprSum)))), undefined, { collapse: true });
   const Expression = node(
-    parser({ trivia: rw }, sequence(literal('$('), g.exprCompare, expect(literal(')'), ')'))));
+    sequence(literal('$('), g.exprCompare, expect(literal(')'), ')')));
 
   // ── Unwrapped leading-`$var` arithmetic (value position) ─────────────────────
   // A targeted relaxation of the double-`$` rule: in value position, arithmetic
@@ -178,11 +189,11 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // VarDeclaration RHS or a nested entry), never as a top-level statement.
   const collKey = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const CollectionEntry = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       collKey, literal(':'), choice(g.JessCollection, g.valueList), optional(literal(';'))
-    )));
+    ));
   const JessCollection = node('Collection',
-    parser({ trivia: rw }, sequence(literal('{'), many(g.CollectionEntry), expect(literal('}')))));
+    sequence(literal('{'), many(g.CollectionEntry), expect(literal('}'))));
 
   // ── Control flow: `$if` / `$else` / `$for` / `$while` ────────────────────────
   // Control-flow keywords start with `$`, but the parenthesised header EXITS
@@ -197,34 +208,34 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const condKeyword = node('JessKeyword', regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/));
   const condAtom = choice(g.Reference, g.Dimension, g.Num, g.Color, g.Quoted, condKeyword);
   const condNot = node('Condition',
-    parser({ trivia: rw }, sequence(regex(/not(?![-\w])/), literal('('), g.condOr, expect(literal(')')))));
+    sequence(regex(/not(?![-\w])/), literal('('), g.condOr, expect(literal(')'))));
   const condPrimary = choice(
     g.condNot,
-    parser({ trivia: rw }, sequence(literal('('), g.condOr, literal(')'))),
+    sequence(literal('('), g.condOr, literal(')')),
     condAtom
   );
   const condCompare = node('Condition',
-    parser({ trivia: rw }, sequence(g.condPrimary, optional(sequence(condCmpOp, g.condPrimary)))),
+    sequence(g.condPrimary, optional(sequence(condCmpOp, g.condPrimary))),
     undefined, { collapse: true });
   const condAnd = node('Condition',
-    parser({ trivia: rw }, sequence(g.condCompare, many(sequence(regex(/and(?![-\w])/), g.condCompare)))),
+    sequence(g.condCompare, many(sequence(regex(/and(?![-\w])/), g.condCompare))),
     undefined, { collapse: true });
   const condOr = node('Condition',
-    parser({ trivia: rw }, sequence(g.condAnd, many(sequence(regex(/or(?![-\w])/), g.condAnd)))),
+    sequence(g.condAnd, many(sequence(regex(/or(?![-\w])/), g.condAnd))),
     undefined, { collapse: true });
-  const controlBody = parser({ trivia: rw }, sequence(literal('{'), g.declarationList, expect(literal('}'))));
+  const controlBody = sequence(literal('{'), g.declarationList, expect(literal('}')));
 
   // `$if (cond) { … } [$else if (cond) { … }]* [$else { … }]`
-  const elseClause = parser({ trivia: rw }, sequence(regex(/\$else(?![-\w])/),
-    choice(sequence(regex(/if(?![-\w])/), literal('('), g.condOr, expect(literal(')'), ')'), controlBody), controlBody)));
+  const elseClause = sequence(regex(/\$else(?![-\w])/),
+    choice(sequence(regex(/if(?![-\w])/), literal('('), g.condOr, expect(literal(')'), ')'), controlBody), controlBody));
   const If = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/\$if(?![-\w])/), literal('('), g.condOr, expect(literal(')')), controlBody, many(g.elseClause)
-    )));
+    ));
 
   // `$while (cond) { … }`
   const While = node(
-    parser({ trivia: rw }, sequence(regex(/\$while(?![-\w])/), literal('('), g.condOr, expect(literal(')'), ')'), controlBody)));
+    sequence(regex(/\$while(?![-\w])/), literal('('), g.condOr, expect(literal(')'), ')'), controlBody));
 
   // `$for (<binding> of <iterable>) { … }`
   //   binding : `$x` | `$x, $i` | `[$k, $v]`  (destructure)
@@ -239,16 +250,16 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // as a unit (`Dimension(1, "to")`). Num's `(?![a-zA-Z…%])` guard keeps `1px`
   // (glued unit) falling through to Dimension while a space-followed `1` is a Num.
   const rangeBound = choice(g.Reference, g.Num, g.Dimension);
-  const forRange = parser({ trivia: rw }, sequence(
+  const forRange = sequence(
     optional(literal('>')), rangeBound, regex(/to(?![-\w])/), optional(literal('<')), rangeBound,
     optional(sequence(regex(/step(?![-\w])/), rangeBound))
-  ));
+  );
   const For = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/\$for(?![-\w])/), literal('('),
       forBinding, regex(/of(?![-\w])/), choice(g.forRange, g.Reference, g.value),
       expect(literal(')')), controlBody
-    )));
+    ));
 
   // ── Mixins ───────────────────────────────────────────────────────────────────
   // DEFINITION: `name(params) [when guard] { body }`. Names are Less-style
@@ -262,32 +273,32 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   const mixinName = regex(/[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const mixinParamName = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const MixinParam = node(
-    parser({ trivia: rw }, sequence(mixinParamName, optional(sequence(literal(':'), g.valueSequence)))));
-  const mixinParams = parser({ trivia: rw }, optional(sequence(
+    sequence(mixinParamName, optional(sequence(literal(':'), g.valueSequence))));
+  const mixinParams = optional(sequence(
     g.MixinParam, many(sequence(literal(','), g.MixinParam))
-  )));
-  const mixinGuard = parser({ trivia: rw }, sequence(regex(/when(?![-\w])/), g.condOr));
+  ));
+  const mixinGuard = sequence(regex(/when(?![-\w])/), g.condOr);
   const Mixin = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       mixinName, literal('('), mixinParams, literal(')'),
       optional(g.mixinGuard),
       literal('{'), g.declarationList, expect(literal('}'))
-    )));
+    ));
 
   // CALL: `$ > <chain>(args)`. The call operator is `$ >` ONLY. A chain step is a
   // mixin name (`.m`/`#ns`/`name`); intermediate steps may omit `()`, the final
   // step takes `(args)`. Builds `Call{ name: nested mixin-References, args }`.
   const callStep = regex(/[.#]?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const callArgs = parser({ trivia: rw }, optional(sequence(
+  const callArgs = optional(sequence(
     g.valueSequence, many(sequence(literal(','), g.valueSequence))
-  )));
+  ));
   const MixinCall = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       literal('$'), literal('>'),
       callStep, many(sequence(literal('>'), callStep)),
       literal('('), callArgs, expect(literal(')')),
       optional(literal(';'))
-    )));
+    ));
 
   // ── `$extend` statement ──────────────────────────────────────────────────────
   // `$extend <target> [!exact];` — a statement (NOT Less's `:extend()` pseudo).
@@ -302,15 +313,15 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // Reference (`$type`) tried first so a `$…` is claimed before the selector fallback.
   const extendTarget = choice(
     g.Reference,
-    parser({ trivia: rw }, sequence(optional(extendNs), oneOrMore(extendTargetPart)))
+    sequence(optional(extendNs), oneOrMore(extendTargetPart))
   );
   const Extend = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/\$extend(?![-\w])/),
       extendTarget, many(sequence(literal(','), extendTarget)),
       optional(regex(/!exact(?![-\w])/)),
       optional(literal(';'))
-    )));
+    ));
 
   // ── Selector capture `*[…]` ──────────────────────────────────────────────────
   // `*[.notice]` / `*[.a, .b]` — a selector-VALUED payload (core `SelectorCapture`,
@@ -332,13 +343,13 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // `Call` whose name is a base-less `type:'mixin'` Reference keyed by a selector
   // capture (`$apply .foo` ≈ `$ > *[.foo]`). A comma list → one Call per selector.
   const applyTargetPart = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
-  const applyTarget = parser({ trivia: rw }, oneOrMore(applyTargetPart));
+  const applyTarget = oneOrMore(applyTargetPart);
   const Apply = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/\$apply(?![-\w])/),
       applyTarget, many(sequence(literal(','), applyTarget)),
       optional(literal(';'))
-    )));
+    ));
 
   // ── Jess `@-` at-rules (compiler at-rules; dash-prefixed for future-CSS safety) ─
   //   @-compose 'path' [as ns|*];   → StyleImport{ type:'compose' }
@@ -350,29 +361,29 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // Path is a Quoted string; namespace / import names are bare idents (or `*`).
   const importPath = g.Quoted;
   const importNs = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|\*/);
-  const asClause = parser({ trivia: rw }, sequence(regex(/as(?![-\w])/), importNs));
+  const asClause = sequence(regex(/as(?![-\w])/), importNs);
   // Import specifier: `name` | `name as alias` | `* as ns`.
   const importName = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|\*/);
-  const importSpec = parser({ trivia: rw }, sequence(importName, optional(asClause)));
+  const importSpec = sequence(importName, optional(asClause));
 
   const ComposeAtRule = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/@-compose(?![-\w])/), importPath, optional(asClause), optional(literal(';'))
-    )));
+    ));
   const ExportAtRule = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/@-export(?![-\w])/), importPath, optional(literal(';'))
-    )));
+    ));
   const ImportAtRule = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/@-import(?![-\w])/), importPath, optional(literal(';'))
-    )));
+    ));
   const UseAtRule = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/@-use(?![-\w])/), importPath, optional(asClause), optional(literal(';'))
-    )));
+    ));
   const FromAtRule = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       regex(/@-from(?![-\w])/), importPath, regex(/import(?![-\w])/),
       choice(
         // `import * as ns`
@@ -381,7 +392,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
         sequence(literal('('), importSpec, many(sequence(literal(','), importSpec)), literal(')'))
       ),
       optional(literal(';'))
-    )));
+    ));
 
   // ── Anonymous mixins & functions ─────────────────────────────────────────────
   // A nameless Mixin in VALUE position, started with `@(` or `@{`. Four shapes:
@@ -426,14 +437,14 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
     ))));
 
   const Ruleset = node(
-    parser({ trivia: rw }, sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}'))));
+    sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}')));
 
-  const declarationList = parser({ trivia: rw }, many(choice(
+  const declarationList = many(choice(
     g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
     g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
     g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
-  )));
+  ));
 
   return {
     rw,
