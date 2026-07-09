@@ -1288,4 +1288,25 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
     expect(css).toBe('div:is(.base, .ext) {\n  c: 1;\n}\n.p > :is(.base, .ext) {\n  c: 2;\n}\n.ext {\n  x: 1;\n}\n');
   });
+
+  it('PARTIAL SELECTOR-LIST target: `:extend(.dd, .bb all)` splits per-branch through the spine', async () => {
+    // A multi-target extend — the extender extends EACH branch independently. `decodeInstructions`
+    // splits only NON-partial lists; the spine gather (`pushExtendInstructions`) splits BOTH, so a
+    // PARTIAL list target folds — each branch is the plain per-target extend the pipeline builds.
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(`.dd {\n  c: 1;\n}\n.bb {\n  c: 2;\n}\n.ff:extend(.dd, .bb all) {\n  x: 1;\n}`, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.dd,\n.ff {\n  c: 1;\n}\n.bb,\n.ff {\n  c: 2;\n}\n.ff {\n  x: 1;\n}\n');
+  });
+
+  it('PARTIAL WRAP of a TRAILING compound in a root-level descendant subject folds through the spine', async () => {
+    // `.foo .bar` extended partially by `.ext3` on the TRAILING compound `.bar` wraps it in place
+    // (`.foo :is(.bar, .ext3)`), generalizing the leading/root-single compound clauses to any level.
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(`.foo .bar {\n  display: none;\n}\n.ext3:extend(.bar all) {\n  x: 1;\n}`, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.foo :is(.bar, .ext3) {\n  display: none;\n}\n.ext3 {\n  x: 1;\n}\n');
+  });
 });
