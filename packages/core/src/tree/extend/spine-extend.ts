@@ -255,14 +255,24 @@ export function composeSpineSubjectHeaders(
  * Extract a ruleset's local selector as a Selector NODE for a flat bucket path, or undefined.
  * At the spine's pre-eval stage a plain selector is a raw STRING (strings-not-nodes model),
  * so a string is materialized to a Selector node (`asExtendSelectorNode`, the same
- * materializer the eval gather uses for string targets, `extend.ts:157`). A Nil / array
- * (multi-selector list surface) / undefined selector returns undefined → the subject stays
- * on the eval path (increment 1 is single-selector root subjects only).
+ * materializer the eval gather uses for string targets, `extend.ts:157`). A MULTI-BRANCH LIST
+ * surface (`.a, .b` — a raw `SelectorListItem[]`) is likewise materialized to a `SelectorList`
+ * node (CASE 2): an extender nested under an OR-parent (`.a, .b { .c:extend(.ext all) }`) then
+ * carries the list as a path level, so `composeContribution`'s `wrapIsIfMultiList` produces the
+ * grouped `:is(.a, .b) .c` contribution. A Nil / undefined selector returns undefined.
  */
 export function flatLocalSelector(ruleset: Ruleset): Selector | undefined {
   const sel = ruleset.selector;
-  if (sel === undefined || sel instanceof Nil || Array.isArray(sel)) {
+  if (sel === undefined || sel instanceof Nil) {
     return undefined;
+  }
+  if (Array.isArray(sel)) {
+    // A raw multi-branch list surface. An interpolated branch is not concrete pre-eval — defer
+    // the whole list (a later increment resolves selectors at ruleset-enter).
+    if (sel.some(item => typeof item === 'string' && (item.includes('@{') || item.includes('${')))) {
+      return undefined;
+    }
+    return asExtendSelectorNode(sel);
   }
   if (typeof sel === 'string') {
     // Interpolated selectors (`@{…}`) are not concrete pre-eval — defer them (a later

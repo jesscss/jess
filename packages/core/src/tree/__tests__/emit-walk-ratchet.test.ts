@@ -329,6 +329,44 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
+  it('folds a PARTIAL-extend-into-nested-child under an OR-parent through the spine (extend-selector `.ext`/`.c`, no eval/derive)', () => {
+    // `.a, .b { .c:extend(.ext all) {…} }` — `.c` nested under a MULTI-BRANCH (OR) parent
+    // partial-extends root `.ext`. `.ext` gains the composed contribution `:is(.a, .b) .c`
+    // (the list parent grouped under `:is`). Wired via the CASE-2 `flatLocalSelector`
+    // materialization of the `.a, .b` list surface into a path level, so
+    // `composeContribution`'s `wrapIsIfMultiList` produces the grouped form. RATCHET: folds via
+    // the Compiler with `Rules.derive`=0.
+    const root = rules([
+      ruleset({ selector: el('.ext'), rules: [decl({ name: 'test', value: any('1') })] }),
+      ruleset({
+        selector: [el('.a'), el('.b')],
+        rules: [
+          decl({ name: 'test', value: any('2') }),
+          ruleset({ selector: el('.c'), rules: [extend({ target: el('.ext'), flag: ExtendFlag.All }), decl({ name: 'test', value: any('3') })] })
+        ]
+      })
+    ]);
+    const collapseContext = new Context({ output: { collapseNesting: true } });
+    expect(isSpineEligibleRoot(root, collapseContext)).toBe(true);
+
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(collapseContext) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1);
+      expect(deriveCalls).toBe(0);
+      // `.ext` gains the grouped composed contribution — the ratified alpha shape.
+      expect(css).toContain('.ext,\n:is(.a, .b) .c');
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
   it('resolves a RE-DECLARED var + `snapshot` read PER-POSITION through the spine (no eval/derive)', () => {
     // @color: red; seen(snapshot): @color; @color: blue; later: @color
     //   → seen sees red (binding at its source position), later sees blue.
