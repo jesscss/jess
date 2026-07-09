@@ -34,6 +34,7 @@
  */
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
+import { asExtendSelectorNode } from '../util/extend-roots.js';
 import { extendByIndexOwn, UNSUPPORTED, type UnsupportedResult } from './extend-index.js';
 import {
   composeTargetOwn,
@@ -212,10 +213,20 @@ export function runSubjectProjection(
   // unaffected.)
   const allFiredRootLevel = fired.every(inst => inst.path.length === 1);
   if (allFiredRootLevel && fired.length > 0 && !projection.hoistToRoot) {
-    const solvedBranches = solved instanceof SelectorList ? solved.value as Selector[] : [solved];
+    const solvedBranches: Selector[] = solved instanceof SelectorList
+      ? solved.value.map(item => (typeof item === 'string' ? asExtendSelectorNode(item) : item))
+      : [solved];
+    const ownForm = composeTargetOwn(subject.path);
+    const ownBranchCount = ownForm instanceof SelectorList ? ownForm.value.length : 1;
+    // IN-PLACE WRAP vs APPEND. An in-place `:is`-wrap of a sub-compound REWRITES the subject's own
+    // branches without adding any (`.foo .bar, .foo .baz` → `:is(.foo, …) .bar, :is(…) .baz`: 2→2).
+    // A full-mode APPEND adds sibling branch(es) (`.amp-test-h` → `.amp-test-h, <composed>`: 1→2+),
+    // which EMIT's `projectSubject` already builds — and dedups — from the extender path; SOLVE's raw
+    // fixpoint would re-append the still-present full-match target each round (no path-dedup). So use
+    // SOLVE's result ONLY for the in-place case: its branch count equals the subject's own count.
     const solvedKey = solvedBranches.map(b => String(b.valueOf())).join(',');
     const projectionKey = projection.branches.map(b => String(b.valueOf())).join(',');
-    if (solvedKey !== projectionKey) {
+    if (solvedBranches.length === ownBranchCount && solvedKey !== projectionKey) {
       return { projection: { branches: solvedBranches, hoistToRoot: false }, ownBuilt: true, unsupported };
     }
   }

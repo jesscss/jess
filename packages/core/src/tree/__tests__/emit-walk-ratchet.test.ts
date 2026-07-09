@@ -4,6 +4,8 @@ import { Context } from '../../context.js';
 import { Rules } from '../rules.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import { spineRenderCounter, isSpineEligibleRoot } from '../util/emit-walk.js';
+import { Parser } from '../../../../less-parser/src/index.js';
+import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer.js';
 
 /**
  * RATCHET (metric axis (b): pass count 3→1). These tests LOCK the wire-in gain:
@@ -396,6 +398,44 @@ describe('emit-walk wire-in ratchet (P1)', () => {
       // Leading `.foo` wrapped in place per branch — the ratified alpha shape.
       expect(css).toContain(':is(.foo, .ext1 .ext2, .ext3, .ext4) .bar');
       expect(css).toContain(':is(.foo, .ext1 .ext2, .ext3, .ext4) .baz');
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  });
+
+  it('folds the amp-test `&+&`-crossing graft through the spine (CASE 3, eager composeSelector, no derive)', async () => {
+    // `.amp-test-a, .amp-test-b { .amp-test-c &.amp-test-d&.amp-test-e { .amp-test-f&+&.amp-test-g:extend(.amp-test-h) } }`
+    // The `&`-bearing extender under a MULTI-BRANCH parent folds — via the gather's PURE
+    // `Ruleset.composeSelector`-reduce (F_AMPERSAND propagated up) — to the ratified `:is`-graft, then
+    // appends as a sibling of `.amp-test-h`. No eval, no frames. RATCHET: folds via the Compiler,
+    // `Rules.derive`=0; byte-identical to the ratified `.css`.
+    const src = `
+.amp-test-a,
+.amp-test-b {
+  .amp-test-c &.amp-test-d&.amp-test-e {
+    .amp-test-f&+&.amp-test-g:extend(.amp-test-h) {}
+  }
+}
+.amp-test-h {
+  test: extended by masses of selectors;
+}
+`;
+    const context = new Context({ output: { collapseNesting: true }, leakyRules: true });
+    const { tree } = new Parser().parse(src);
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const css = (await renderNodeToString(tree as unknown as RenderBufferNode, context, { context })).trim();
+      expect(deriveCalls).toBe(0);
+      expect(css).toBe(`.amp-test-h,
+.amp-test-f:is(.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e) + :is(.amp-test-c :is(.amp-test-a, .amp-test-b).amp-test-d:is(.amp-test-a, .amp-test-b).amp-test-e).amp-test-g {
+  test: extended by masses of selectors;
+}`);
     } finally {
       Rules.prototype.derive = original;
     }

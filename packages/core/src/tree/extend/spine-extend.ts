@@ -43,15 +43,14 @@ import { Ruleset } from '../ruleset.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import type { Rules } from '../rules.js';
-import { Node } from '../node.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { projectSubject, foldNestedChildHeaderNode, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
+import { Node, F_AMPERSAND } from '../node.js';
+import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import { projectSubject, foldNestedChildHeaderNode, composeTargetOwn, type BucketPath, type EmitContribution, type EmitSubject } from './emit.js';
 import type { OutputWriter } from '../util/print.js';
 import type { Context } from '../../context.js';
 import type { Selector } from '../selector.js';
 import { Nil } from '../nil.js';
 import { SelectorList } from '../selector-list.js';
-import { CompoundSelector, type CompoundSelectorComponent } from '../selector-compound.js';
 import { spanStartOf } from '../util/provenance.js';
 import { asExtendSelectorNode } from '../util/extend-roots.js';
 import { Extend, ExtendFlag } from '../extend.js';
@@ -286,58 +285,6 @@ export function flatLocalSelector(ruleset: Ruleset): Selector | undefined {
 }
 
 /**
- * Normalize an `&`-resolved selector into CLEAN ATOMS by replacing each `Ampersand` component with
- * its `getResolvedSelector()` components — `[Ampersand→.type2, .sidebar4]` → `[.type2, .sidebar4]`.
- *
- * WHY (the fixpoint amp-target trap — diagnosed 2026-07-08). `Ampersand.eval` (non-append) does NOT
- * structurally substitute `&`; it stores the frame selector on the Ampersand's `_selectorContainer`
- * and returns the node with the AMPERSAND STILL IN THE COMPOUND (its `valueOf` renders `.type2.sidebar4`
- * but the first atom is an `Ampersand`). Round 1 of the extend fixpoint handles that amp fine, but the
- * PRODUCED Or-branch (`.sidebar, .type2.sidebar4`) then carries the amp — and the fixpoint's round-2
- * self-re-application treats that amp-bearing branch as an amp TARGET, tripping `extendAmpersandTarget`
- * → UNSUPPORTED → the whole subject is dropped. Flattening the amp to its resolved atoms HERE (before
- * the pipeline) makes the produced branch amp-free, so round 2 dedups cleanly and the fixpoint
- * terminates. PURE: operates on the `&`-eval COPY this module produced (no source mutation); the
- * validated `extendByIndexOwn` engine is untouched.
- */
-function normalizeResolvedAmpersand(selector: Selector): Selector {
-  if (!isNode(selector, N.CompoundSelector)) {
-    return selector;
-  }
-  let changed = false;
-  const flat: CompoundSelectorComponent[] = [];
-  for (const component of selector.value) {
-    if (typeof component !== 'string' && isNode(component, N.Ampersand)) {
-      const resolved = component.getResolvedSelector?.();
-      if (resolved && !(resolved instanceof Nil)) {
-        if (isNode(resolved, N.CompoundSelector)) {
-          flat.push(...resolved.value);
-        } else if (isSimpleOrString(resolved)) {
-          flat.push(resolved);
-        } else {
-          return selector; // resolved to a shape we can't flatten cleanly — leave amp as-is
-        }
-        changed = true;
-        continue;
-      }
-      // Unresolved amp — leave as-is (the gate/ownBuilt path handles it).
-      flat.push(component);
-    } else {
-      flat.push(component);
-    }
-  }
-  if (!changed) {
-    return selector;
-  }
-  return new CompoundSelector(flat);
-}
-
-/** A value usable as a `CompoundSelectorComponent` (a SimpleSelector node or a string). */
-function isSimpleOrString(value: unknown): value is CompoundSelectorComponent {
-  return typeof value === 'string' || (value instanceof Node && isNode(value, N.SimpleSelector));
-}
-
-/**
  * True if `selector` contains an ampersand with an APPEND value (`&-modifier`) — the anonymous-append
  * form whose suffix materializes only via `Ampersand.evalNode`'s `appendValue` path (its `valueOf` is
  * bare `&`). A COMBINATOR `&` (`&.foo`, `&:hover`) is NOT an append and IS resolved by the gather's
@@ -366,32 +313,39 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
   return false;
 }
 
-/** True when a selector local carries ANY `&` (bare, compound, or combinator-adjacent). */
-function selectorHasAmpersand(selector: unknown): boolean {
-  if (!selector || typeof selector === 'string') {
+/**
+ * Propagate `F_AMPERSAND` from leaf `Ampersand` nodes UP every container that transitively holds
+ * one, returning true when the subtree contains an `&`. A PARSER-delivered (pre-eval) selector sets
+ * the flag only on the leaf `Ampersand` nodes; `Ruleset.composeSelector`'s substitution dispatch
+ * (`_substituteAmpInComplex`/`_substituteAmpInCompound`) tests `hasFlag(F_AMPERSAND)` on the
+ * CONTAINER compound/complex to decide whether to recurse. Real eval bubbles the flag up via the
+ * `Ampersand` constructor; the eager static gather must do the same so a materialized `&`-local
+ * composes (substitutes) instead of taking the implicit-descendant-prepend branch. Mutates only the
+ * gather's own materialized copy (a `flatLocalSelector` node), never a shared/source node.
+ */
+function propagateAmpersandFlag(node: unknown): boolean {
+  if (!node || typeof node === 'string') {
     return false;
   }
-  if (Array.isArray(selector)) {
-    return selector.some(item => selectorHasAmpersand(item));
-  }
-  const node = selector as { type?: string; walk?: (deep: boolean) => Iterable<Node> };
-  if (node.type === 'Ampersand') {
+  const n = node as { addFlag?: (f: number) => void; value?: unknown; type?: string };
+  if (n.type === 'Ampersand') {
+    n.addFlag?.(F_AMPERSAND);
     return true;
   }
-  if (typeof node.walk === 'function') {
-    for (const descendant of node.walk(true)) {
-      if ((descendant as { type?: string }).type === 'Ampersand') {
-        return true;
+  let has = false;
+  if (Array.isArray(n.value)) {
+    for (const child of n.value) {
+      if (propagateAmpersandFlag(child)) {
+        has = true;
       }
     }
+  } else if (n.value !== undefined && propagateAmpersandFlag(n.value)) {
+    has = true;
   }
-  return false;
-}
-
-/** True when a ruleset's local is a MULTI-BRANCH (OR) selector list surface (`.a, .b`). */
-function localIsMultiBranchList(ruleset: Ruleset): boolean {
-  const local = flatLocalSelector(ruleset);
-  return local !== undefined && isNode(local, N.SelectorList) && local.value.length > 1;
+  if (has) {
+    n.addFlag?.(F_AMPERSAND);
+  }
+  return has;
 }
 
 /**
@@ -559,7 +513,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
   // Document-wide walk: collect every extend target (checking simplicity) + every
   // extend-BEARING ruleset's selector (chain detection). At-rule bodies bearing extends
   // disqualify (clause 4).
-  const walk = (node: Node, ancestorAmpAppend: boolean, ancestorMultiBranchList: boolean): void => {
+  const walk = (node: Node, ancestorAmpAppend: boolean): void => {
     if (!ok) {
       return;
     }
@@ -569,30 +523,18 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     }
     let rules: readonly Node[] | undefined;
     let ampAppend = ancestorAmpAppend;
-    let multiBranchListAncestor = ancestorMultiBranchList;
     if (isNode(node, N.Ruleset)) {
       rules = node.rules;
       const local = flatLocalSelector(node);
-      // A COMBINATOR `&` local (`&.sidebar4`, `&:hover`) is now RESOLVED + NORMALIZED by the
-      // gather's scoped `&`-eval (increment 7) → clean-atom `.type2.sidebar4`, so an extender under
-      // it composes correctly (round 1 AND the round-2 fixpoint) and is ADMITTED. An `&`-APPEND
-      // local (`&-modifier`) still DISQUALIFIES: its anonymous suffix materializes only via
-      // `Ampersand.evalNode`'s `appendValue` path (eval-pass frame state the gather does not fully
-      // reproduce). Track APPEND-ness only.
+      // A COMBINATOR `&` local (`&.sidebar4`, `&+&`, even under a MULTI-BRANCH `.a, .b` parent) is
+      // resolved by the gather's EAGER STATIC `Ruleset.composeSelector`-reduce (`resolveLocal`) into
+      // the fully-composed `:is(...)`-graft — a pure function of the selector nodes, no eval/frames.
+      // So the former `&`-under-multi-branch-list disqualifier is GONE (the amp-test `&+&` is now
+      // admitted). An `&`-APPEND local (`&-modifier`) still DISQUALIFIES: its anonymous suffix
+      // materializes only via `Ampersand.evalNode`'s `appendValue` path (composeSelector does not
+      // build it), so it stays on eval.
       if (local !== undefined && selectorHasAmpersandAppend(local)) {
         ampAppend = true;
-      }
-      // `&`-UNDER-MULTI-BRANCH-LIST DISQUALIFIER (the amp-test `&+&` wall). When an `&`-bearing local
-      // resolves against a MULTI-BRANCH (OR) parent (`.amp-test-a, .amp-test-b`), the correct form is a
-      // serialize-time `:is(...)`-graft (`composedSelectorStack`), which the gather's isolated
-      // `local.eval` does NOT reproduce — it distributes the list raw into the compound / leaves literal
-      // `&`s (verified 2026-07-09). Such a shape must stay on the eval path (the working oracle). Track a
-      // multi-branch-list ancestor; an `&`-bearing local beneath one disqualifies the whole root.
-      if (localIsMultiBranchList(node)) {
-        multiBranchListAncestor = true;
-      } else if (multiBranchListAncestor && local !== undefined && selectorHasAmpersand(local)) {
-        ok = false;
-        return;
       }
       const extendNodes = rulesetExtendNodes(node);
       if (extendNodes.length > 0) {
@@ -620,7 +562,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     }
     if (rules) {
       for (const child of rules) {
-        walk(child, ampAppend, multiBranchListAncestor);
+        walk(child, ampAppend);
         if (!ok) {
           return;
         }
@@ -628,7 +570,7 @@ export function isSpineExtendTopology(root: Rules, collapseNesting: boolean): bo
     }
   };
   for (const child of root.rules) {
-    walk(child, false, false);
+    walk(child, false);
     if (!ok) {
       return false;
     }
@@ -737,15 +679,13 @@ export function wireSpineExtends(root: Rules, context: Context, collapseNesting:
   // (the extender's full bucket path — parse-tree nodes carry no `.parent`, so the walk is the
   // only source of ancestry).
   //
-  // SCOPED `&`-EVAL + NORMALIZE (increment 7). An `&`-bearing local (`&.sidebar4`, `&:hover`) is NOT
-  // substituted by the pure structural compose. So PUSH each ancestor ruleset onto
-  // `context.rulesetFrames` as the walk descends (save/restore, exactly the spine's own descent) and
-  // RESOLVE an `&`-bearing local via `selector.eval(context)` (P1's `&`-resolution — reads the live
-  // frame, returns a COPY, no source mutation), then NORMALIZE the resolved amp to clean atoms
-  // (`normalizeResolvedAmpersand`) so the fixpoint's produced branch is amp-free (the round-2
-  // amp-target trap). The resolved+normalized compound (`.type2.sidebar4`) is the full composed
-  // form, so its bucket path is `[resolved]` (it REPLACES the ancestor chain, not appends).
-  const resolveLocal = (ruleset: Ruleset): { selector: Selector; ampResolved: boolean } | undefined => {
+  // EAGER STATIC `&`-COMPOSITION. An `&`-bearing local (`&.sidebar4`, `&+&`, even under a MULTI-BRANCH
+  // `.a, .b` parent) is resolved by a PURE `Ruleset.composeSelector`-reduce over the ancestor `path`
+  // (`resolveLocal` below) — no eval, no frames, no registration. The resulting fully-composed form
+  // (`.type2.sidebar4`, or the amp-test `:is`-graft) REPLACES the ancestor chain, so its bucket path
+  // is `[resolved]` (not appended). composeSelector returns amp-free atoms, so the fixpoint's produced
+  // branch carries no amp (the former round-2 amp-target trap cannot arise — no normalize step needed).
+  const resolveLocal = (ruleset: Ruleset, parentPath: readonly Selector[]): { selector: Selector; ampResolved: boolean } | undefined => {
     const local = flatLocalSelector(ruleset);
     if (local === undefined) {
       return undefined;
@@ -753,11 +693,26 @@ export function wireSpineExtends(root: Rules, context: Context, collapseNesting:
     if (!String(local.valueOf()).includes('&')) {
       return { selector: local, ampResolved: false };
     }
-    const evaled = local.eval(context);
-    if (isThenable(evaled) || evaled instanceof Nil) {
-      return undefined; // async / nil `&`-resolution — exclude (gate/ownBuilt handles it)
+    // EAGER STATIC `&`-COMPOSITION (Case 3). Resolve the `&`-bearing local by composing it against
+    // the already-resolved ancestor chain via the PURE `Ruleset.composeSelector` — the SAME graft
+    // primitive the render uses, but a pure function of two selector NODES: it wraps a multi-branch
+    // (`SelectorList`) parent as `:is(...)` in `_substituteAmpInComplex`/`_substituteAmpInCompound`
+    // with NO reads of `ownSelector`/`composedSelectorStack`/frames/registration. A parser-delivered
+    // selector flags only its leaf `Ampersand` nodes, so PROPAGATE `F_AMPERSAND` up the container
+    // chain first (real eval bubbles it via the `Ampersand` ctor) — otherwise composeSelector takes
+    // the implicit-descendant-prepend branch and leaves literal `&`s. No eval, no frames, no source
+    // mutation (operates on the `flatLocalSelector` copy; composeSelector returns fresh nodes).
+    propagateAmpersandFlag(local);
+    if (parentPath.length === 0) {
+      return undefined; // a root-level `&` has no parent to resolve against — defer to eval
     }
-    return { selector: normalizeResolvedAmpersand(evaled), ampResolved: true };
+    const parent = composeTargetOwn(parentPath);
+    const composed = Ruleset.composeSelector(local, parent);
+    const composedNode = Array.isArray(composed) ? SelectorList.create(composed) : composed;
+    if (typeof composedNode === 'string') {
+      return undefined; // unexpected string surface — defer to eval
+    }
+    return { selector: composedNode, ampResolved: true };
   };
 
   const gatherRuleset = (ruleset: Ruleset, parentPath: readonly Selector[]): void => {
@@ -765,7 +720,7 @@ export function wireSpineExtends(root: Rules, context: Context, collapseNesting:
     // the FULL composed form (ancestor INCLUDED), so it REPLACES the ancestor chain — its path is
     // `[resolvedLocal]`, NOT `parentPath + resolvedLocal` (that would double `.type2`). A structural
     // (non-`&`) local APPENDS to the ancestor path.
-    const resolved = resolveLocal(ruleset);
+    const resolved = resolveLocal(ruleset, parentPath);
     const local = resolved?.selector;
     const path: readonly Selector[] = local === undefined
       ? parentPath

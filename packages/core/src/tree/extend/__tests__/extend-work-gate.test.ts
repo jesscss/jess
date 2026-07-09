@@ -99,22 +99,22 @@ describe('extend-work gate (P3 increment 0)', () => {
 });
 
 /**
- * CASE 3 gate exclusion — the `&`-under-multi-branch-list wall (amp-test `&+&`).
+ * CASE 3 — `&`-under-multi-branch-list is now ADMITTED (the wall is solved).
  *
- * The gather's pure-structural `&`-resolution (`local.eval` + `normalizeResolvedAmpersand`) does NOT
- * reproduce the serialize-time `:is(...)`-graft that a MULTI-BRANCH (`.amp-test-a, .amp-test-b`)
- * `&`-parent requires — it distributes the list raw into the compound and leaves literal `&`s
- * (verified 2026-07-09). So an `&`-bearing local BENEATH a multi-branch-list ancestor must stay on the
- * eval path (the working oracle). These lock the gate exclusion so the spine never silently drops such
- * an extend. A SINGLE-branch `&`-parent (`.type2.sidebar4 { &:extend }`) is still ADMITTED.
+ * The gather resolves an `&`-bearing local by the EAGER STATIC `Ruleset.composeSelector`-reduce over
+ * its ancestor path (a pure function of selector nodes: `_substituteAmpInComplex`/`_substituteAmpInCompound`
+ * wrap a multi-branch `SelectorList` parent as `:is(...)` with no eval/frames), after propagating
+ * `F_AMPERSAND` up the container chain. So the amp-test `&+&` under `.amp-test-a, .amp-test-b` folds to
+ * the ratified `:is`-graft and is ADMITTED (was gate-excluded). An `&`-APPEND local (`&-modifier`) still
+ * DISQUALIFIES — `composeSelector` does not build the anonymous-suffix append.
  */
-describe('spine extend gate — `&`-under-multi-branch-list exclusion (CASE 3 wall)', () => {
+describe('spine extend gate — `&`-under-multi-branch-list now ADMITTED (CASE 3 solved)', () => {
   const gateOf = (src: string): boolean => {
     const { tree } = new Parser().parse(src);
     return isSpineExtendTopology(tree as unknown as Rules, true);
   };
 
-  it('EXCLUDES an `&`-combinator extender under a multi-branch (OR) parent (amp-test `&+&`)', () => {
+  it('ADMITS an `&`-combinator extender under a multi-branch (OR) parent (amp-test `&+&`)', () => {
     const src = `
 .amp-test-a,
 .amp-test-b {
@@ -124,16 +124,13 @@ describe('spine extend gate — `&`-under-multi-branch-list exclusion (CASE 3 wa
 }
 .amp-test-h { test: x; }
 `;
-    expect(gateOf(src)).toBe(false);
+    expect(gateOf(src)).toBe(true);
   });
 
-  it('EXCLUDES a plain `&` local under a multi-branch (OR) parent', () => {
-    const src = `.a, .b { &.mod { .c:extend(.ext all) {} } }\n.ext { t: 1; }`;
-    expect(gateOf(src)).toBe(false);
-  });
-
-  it('still ADMITS a single-branch `&` extender (`.type2.sidebar4 { &:extend }`)', () => {
+  it('ADMITS a single-branch `&` extender (`.type2.sidebar4 { &:extend }`)', () => {
     const src = `.sidebar { w: 1; }\n.type2.sidebar4 { &:extend(.sidebar all); }`;
     expect(gateOf(src)).toBe(true);
   });
+  // (The `&`-APPEND `&-mod` exclusion — composeSelector cannot build the anonymous suffix — is
+  // ratcheted in emit-walk-ratchet.test.ts via the `amp('-mod')` AST builder.)
 });
