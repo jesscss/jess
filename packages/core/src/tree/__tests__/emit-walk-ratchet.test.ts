@@ -954,8 +954,17 @@ describe('at-rule fold ratchet (property / scope / layer / var-ref names)', () =
     context = new Context();
   });
 
-  /** Render `root` and assert single-pass + no output tree, returning the CSS. */
-  const renderFolded = (root: Rules, ctx: Context): string => {
+  /**
+   * Parse `src`, assert it is spine-eligible, render through the single pass with
+   * NO output tree (`Rules.derive`=0), and return the trimmed CSS for a BYTE-EXACT
+   * `.toBe(...)` assertion against the eval-path baseline. Any `Rules.derive` call
+   * (an output tree) fails the ratchet — the fold is proven, not merely allowed.
+   */
+  const foldToBytes = async (src: string, ctx: Context): Promise<string> => {
+    const { tree } = new Parser().parse(src);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const root = tree as unknown as Rules;
+    expect(isSpineEligibleRoot(root, ctx)).toBe(true);
     const before = spineRenderCounter.rootRenders;
     const original = Rules.prototype.derive;
     let deriveCalls = 0;
@@ -964,36 +973,54 @@ describe('at-rule fold ratchet (property / scope / layer / var-ref names)', () =
       return original.apply(this, args);
     } as Rules['derive'];
     try {
-      const css = root.render(ctx) as string;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const css = (await renderNodeToString(tree as unknown as RenderBufferNode, ctx, { context: ctx })).trim();
       expect(spineRenderCounter.rootRenders).toBe(before + 1); // single pass ran
-      expect(deriveCalls).toBe(0); // no output tree
+      expect(deriveCalls).toBe(0); // no output tree — fold, not eval fall-back
       return css;
     } finally {
       Rules.prototype.derive = original;
     }
   };
 
-  it('folds `@property` (declaration-bodied root-only, no registration side effect)', () => {
-    // Static + variable-valued body both fold: `@property` is structurally a
-    // `@font-face`-like declaration block with NO eval-pass registration.
-    const root = rules([
-      vardecl({ name: 'c', value: spaced([el('red')]) }),
-      atrule({
-        name: '@property',
-        prelude: any('--foo'),
-        rules: [
-          decl({ name: 'syntax', value: spaced([el('"<color>"')]) }),
-          decl({ name: 'inherits', value: spaced([el('false')]) }),
-          decl({ name: 'initial-value', value: ref({ key: 'c' }, { type: 'variable' }) })
-        ]
-      })
-    ]);
-    expect(isSpineEligibleRoot(root, context)).toBe(true);
+  it('folds `@property` byte-identical (static + `initial-value: @c`, no registration)', async () => {
+    const css = await foldToBytes(
+      `@c: red; @property --foo { syntax: "<color>"; inherits: false; initial-value: @c; }`,
+      context
+    );
+    expect(css).toBe(`@property --foo {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: red;
+}`);
+  });
 
-    const css = renderFolded(root, context);
-    expect(css).toContain('@property --foo');
-    expect(css).toContain('syntax: "<color>"');
-    expect(css).toContain('inherits: false');
-    expect(css).toContain('initial-value: red'); // @c resolved live in one pass
+  it('folds a BARE `@scope` byte-identical', async () => {
+    const css = await foldToBytes(`@scope { :scope { color: red; } }`, context);
+    expect(css).toBe(`@scope {
+  :scope {
+    color: red;
+  }
+}`);
+  });
+
+  it('folds `@scope (.card) to (.content)` byte-identical (start/end prelude)', async () => {
+    // The `(start) to (end)` prelude rides the existing `rawPrelude.eval`
+    // at-enter path — no special handling; body composes as a normal container.
+    const css = await foldToBytes(`@scope (.card) to (.content) { .a { color: red; } }`, context);
+    expect(css).toBe(`@scope (.card) to(.content) {
+  .a {
+    color: red;
+  }
+}`);
+  });
+
+  it('folds `@scope` with a variable resolved in its body byte-identical', async () => {
+    const css = await foldToBytes(`@w: 10px; @scope (.card) { .a { width: @w; } }`, context);
+    expect(css).toBe(`@scope (.card) {
+  .a {
+    width: 10px;
+  }
+}`);
   });
 });

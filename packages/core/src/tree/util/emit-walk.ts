@@ -568,8 +568,15 @@ function atRuleBodyNeedsAncestorRewrap(children: readonly Node[]): boolean {
  * bubbles + wraps exactly like `@media`: nested it hoists to root carrying its
  * ancestor selector, and its body is composed rulesets/declarations. It rides
  * the same hoist machinery and the same `&`-rewrap frontier guard.
+ *
+ * `@scope` is likewise a nestable conditional-group: its `(start) to (end)`
+ * prelude carries NO extra eval-pass side effect (no scope/extend-roots
+ * registration — verified against the eval pass); the prelude — bare, or
+ * `(.card) to (.content)`, or var-bearing — rides the SAME prelude-eval-at-enter
+ * path `serializeSpineFrameAtRule` uses for `@media (@w)`, and its body is
+ * composed rulesets/declarations.
  */
-const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container', '@starting-style']);
+const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container', '@starting-style', '@scope']);
 
 /**
  * The ROOT-ONLY "wrap + emit" at-rules THIS phase folds through the spine. Unlike
