@@ -81,10 +81,21 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   // canonical `value` (stored + typed by the Selector base, childKeys=['value']).
   // The base walks it for parenting/clone; parts are exposed as getters so call
   // sites keep reading `this.name` / `this.attributeValue`.
-  get name(): AttributeSelectorValue['name'] { return this.value.name; }
-  get op(): string | undefined { return this.value.op; }
-  get attributeValue(): Node | undefined { return this.value.value; }
-  get mod(): string | undefined { return this.value.mod; }
+  get name(): AttributeSelectorValue['name'] {
+    return this.value.name;
+  }
+
+  get op(): string | undefined {
+    return this.value.op;
+  }
+
+  get attributeValue(): Node | undefined {
+    return this.value.value;
+  }
+
+  get mod(): string | undefined {
+    return this.value.mod;
+  }
 
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
     const value = this.attributeValue;
@@ -101,9 +112,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
           }
           const out = declValue.resolve(context);
           if (isThenable(out)) {
-            return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
+            return out.then(evaluated => quoted(String(evaluated.valueOf())));
           }
-          return quoted(String((out as Node).valueOf()));
+          return quoted(String(out.valueOf()));
         }
       }
     }
@@ -155,17 +166,17 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       return this.createResolvedAttributeSelector(currentName, currentValue, evaluatedName, evaluatedValue);
     };
     if (isThenable(name)) {
-      return (name as Promise<string | Node>).then((evaluatedName) => {
+      return name.then((evaluatedName) => {
         if (isThenable(value)) {
-          return (value as Promise<Node | undefined>).then(evaluatedValue => finalize(evaluatedName, evaluatedValue));
+          return value.then(evaluatedValue => finalize(evaluatedName, evaluatedValue));
         }
-        return finalize(evaluatedName, value as Node | undefined);
+        return finalize(evaluatedName, value);
       });
     }
     if (isThenable(value)) {
-      return (value as Promise<Node | undefined>).then(evaluatedValue => finalize(name as string | Node, evaluatedValue));
+      return value.then(evaluatedValue => finalize(name, evaluatedValue));
     }
-    return finalize(name as string | Node, value as Node | undefined);
+    return finalize(name, value);
   }
 
   private evaluateAttributeValue(context: Context): MaybePromise<Node | undefined> {
@@ -186,9 +197,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
           }
           const out = declValue.eval(context);
           if (isThenable(out)) {
-            return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
+            return out.then(evaluated => quoted(String(evaluated.valueOf())));
           }
-          return quoted(String((out as Node).valueOf()));
+          return quoted(String(out.valueOf()));
         }
       }
     }
@@ -240,26 +251,25 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       return this.createResolvedAttributeSelector(currentName, currentValue, resolvedName, resolvedValue);
     };
     if (isThenable(name)) {
-      return (name as Promise<string | Node>).then((resolvedName) => {
+      return name.then((resolvedName) => {
         if (isThenable(value)) {
-          return (value as Promise<Node | undefined>).then((resolvedValue) => {
+          return value.then((resolvedValue) => {
             return finalize(resolvedName, resolvedValue);
           });
         }
-        return finalize(resolvedName, value as Node | undefined);
+        return finalize(resolvedName, value);
       });
     }
     if (isThenable(value)) {
-      return (value as Promise<Node | undefined>).then((resolvedValue) => {
-        return finalize(name as string | Node, resolvedValue);
+      return value.then((resolvedValue) => {
+        return finalize(name, resolvedValue);
       });
     }
-    return finalize(name as string | Node, value as Node | undefined);
+    return finalize(name, value);
   }
 
-  override resolve(context: Context): MaybePromise<this> {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return this.resolveForRender(context) as MaybePromise<this>;
+  override resolve(context: Context): MaybePromise<AttributeSelector> {
+    return this.resolveForRender(context);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
@@ -278,17 +288,17 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       return buffer ? writeRenderText(buffer, out) : out;
     };
     if (isThenable(name)) {
-      return (name as Promise<string | Node>).then((resolvedName) => {
+      return name.then((resolvedName) => {
         if (isThenable(value)) {
-          return (value as Promise<Node | undefined>).then(resolvedValue => finalize(resolvedName, resolvedValue));
+          return value.then(resolvedValue => finalize(resolvedName, resolvedValue));
         }
-        return finalize(resolvedName, value as Node | undefined);
+        return finalize(resolvedName, value);
       });
     }
     if (isThenable(value)) {
-      return (value as Promise<Node | undefined>).then(resolvedValue => finalize(name as string | Node, resolvedValue));
+      return value.then(resolvedValue => finalize(name, resolvedValue));
     }
-    return finalize(name as string | Node, value as Node | undefined);
+    return finalize(name, value);
   }
 
   override toTrimmedString(options?: PrintOptions) {

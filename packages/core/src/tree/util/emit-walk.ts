@@ -38,11 +38,27 @@ import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import type { AtRule } from '../at-rule.js';
+import type { AtRuleStatement } from '../at-rule-statement.js';
+import type { VarDeclaration } from '../declaration-var.js';
 import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
 import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends } from '../extend/spine-extend.js';
-import type { Selector } from '../selector.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
+
+/**
+ * `.type`-discriminant guards — narrow a base `Node` to a leaf class WITHOUT a
+ * runtime (value) import of that class. A value import of `import-style.ts` /
+ * `at-rule-statement.ts` here would pull those modules into this file's eager
+ * init graph and reintroduce the `Rules`-not-yet-defined load cycle. Mirrors
+ * `rules.ts`'s `isStyleImportRegistrationNode`.
+ */
+function isStyleImportNode(node: Node): node is StyleImport {
+  return node.type === 'StyleImport';
+}
+
+function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
+  return node.type === 'AtRuleStatement';
+}
 
 /**
  * IMPORT-WORK GATE (design §4.0, IMPORTS increment 1). True iff the tree carries
@@ -71,17 +87,16 @@ export function engageImportLayer(root: Node): boolean {
  * (the interpolated-import lane, a REQUIRED P4 item).
  */
 export function isSpineFoldableCssImportStatement(node: Node): boolean {
-  if (node.type !== 'AtRuleStatement') {
+  if (!isAtRuleStatementNode(node)) {
     return false;
   }
-  const stmt = node as unknown as { name?: unknown; prelude?: unknown };
-  const name = typeof stmt.name === 'string' ? stmt.name : (stmt.name as Node | undefined)?.valueOf?.();
+  const name = typeof node.name === 'string' ? node.name : node.name.valueOf();
   if (name !== '@import') {
     return false;
   }
   // The prelude must be static (a plain quoted/url specifier, maybe with a static
   // media/supports postlude) — no interpolation to resolve against a frame.
-  const prelude = stmt.prelude;
+  const prelude = node.prelude;
   if (prelude === undefined) {
     return true;
   }
@@ -97,8 +112,7 @@ export function isSpineFoldableCssImportStatement(node: Node): boolean {
  * REQUIRED P4 item) keeps its enclosing body OFF the spine.
  */
 export function isSpineFoldableImport(node: Node): boolean {
-  return node.type === 'StyleImport'
-    && (node as unknown as StyleImport).isSpineFoldableStyleImport();
+  return isStyleImportNode(node) && node.isSpineFoldableStyleImport();
 }
 
 /**
@@ -503,11 +517,11 @@ function treeHasAmpersandAppend(root: Rules): boolean {
   const scan = (children: readonly Node[]): boolean => {
     for (let i = 0; i < children.length; i++) {
       const child = children[i]!;
-      if (isNode(child, N.Ruleset) && selectorHasAmpersandAppend((child as Ruleset).selector)) {
+      if (isNode(child, N.Ruleset) && selectorHasAmpersandAppend(child.selector)) {
         return true;
       }
       if ((isNode(child, N.Ruleset) || isNode(child, N.AtRule)) && isNode(child, N.Rules)) {
-        if (scan((child as unknown as Rules).rules)) {
+        if (scan(child.rules)) {
           return true;
         }
       }
@@ -641,10 +655,10 @@ function bodyHasAtRuleNeedingAncestorRewrap(children: readonly Node[]): boolean 
     const child = children[i]!;
     if (
       isNode(child, N.AtRule)
-      && typeof (child as { name?: unknown }).name === 'string'
-      && SPINE_ELIGIBLE_AT_RULES.has((child as { name: string }).name)
+      && typeof child.name === 'string'
+      && SPINE_ELIGIBLE_AT_RULES.has(child.name)
       && isNode(child, N.Rules)
-      && atRuleBodyNeedsAncestorRewrap((child as unknown as Rules).rules)
+      && atRuleBodyNeedsAncestorRewrap(child.rules)
     ) {
       return true;
     }
@@ -816,7 +830,7 @@ function isSpineEligibleAtRule(node: Node, allowImport = false): boolean {
  */
 function isSpineEligibleRootOnlyAtRuleBody(atRule: Pick<AtRule, 'name' | 'rules'>): boolean {
   const children = atRule.rules;
-  if (SPINE_KEYFRAMES_AT_RULES.has(atRule.name as string)) {
+  if (typeof atRule.name === 'string' && SPINE_KEYFRAMES_AT_RULES.has(atRule.name)) {
     for (let i = 0; i < children.length; i++) {
       const child = children[i]!;
       if (isNode(child, N.Comment)) {
@@ -828,7 +842,7 @@ function isSpineEligibleRootOnlyAtRuleBody(atRule: Pick<AtRule, 'name' | 'rules'
         return false;
       }
       const ruleset = child;
-      if (ruleset.guard || (ruleset.options as { referenceMode?: boolean } | undefined)?.referenceMode === true) {
+      if (ruleset.guard || ruleset.options?.referenceMode === true) {
         return false;
       }
       if (selectorHasAmpersand(ruleset.selector)) {
@@ -1100,11 +1114,11 @@ const CONDITIONAL_ASSIGNS = new Set(['?:']);
  * (foldable; see `spine-setdefined.ts`). A `setDefined` with no same-body prior
  * resolves to an OUTER frame (cross-scope) and is kept on eval.
  */
-function bodyHasPriorSameNameDecl(children: readonly Node[], index: number, decl: Node): boolean {
-  if (typeof (decl as Node & { name?: unknown }).name !== 'string') {
+function bodyHasPriorSameNameDecl(children: readonly Node[], index: number, decl: VarDeclaration): boolean {
+  if (typeof decl.name !== 'string') {
     return false;
   }
-  const name = (decl as Node & { name: string }).name;
+  const name = decl.name;
   for (let i = 0; i < index; i++) {
     const prior = children[i]!;
     if (isNode(prior, N.VarDeclaration)
@@ -1502,7 +1516,10 @@ export function withSpineMultipleScope<T>(
   try {
     const result = fn();
     return isThenable(result)
-      ? result.then(restore, (error: unknown) => { restore(undefined); throw error; })
+      ? result.then(restore, (error: unknown) => {
+          restore(undefined);
+          throw error;
+        })
       : restore(result);
   } catch (error) {
     restore(undefined);
@@ -2056,10 +2073,10 @@ function wireSpineImportsInBody(
   const wireFrom = (start: number): MaybePromise<void> => {
     for (let i = start; i < children.length; i++) {
       const child = children[i]!;
-      if (child.type !== 'StyleImport' || !isSpineFoldableImport(child) || cache.has(child)) {
+      if (!isStyleImportNode(child) || !isSpineFoldableImport(child) || cache.has(child)) {
         continue;
       }
-      const importNode = child as unknown as StyleImport;
+      const importNode = child;
       // ISOLATE per-import context (design §2 async discipline). Each import's
       // resolve + registration transiently mutates `context.treeContext`/`depth`
       // (relative-path resolution + registration setup). Sequentially wiring
@@ -2117,8 +2134,14 @@ function wireSpineImportsInBody(
       }
       if (isThenable(step)) {
         return step.then(
-          (value) => { restoreImportContext(value); return wireFrom(i + 1); },
-          (error: unknown) => { restoreImportContext(undefined); throw error; }
+          (value) => {
+            restoreImportContext(value);
+            return wireFrom(i + 1);
+          },
+          (error: unknown) => {
+            restoreImportContext(undefined);
+            throw error;
+          }
         );
       }
       restoreImportContext(step);
