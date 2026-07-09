@@ -445,13 +445,41 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('does NOT route `@property` through the spine (custom-property registration → eval path)', async () => {
-    const compiler = makeCompiler();
-    const src = '@property --x { syntax: "<color>"; inherits: false; initial-value: red; }';
-    const before = spineRenderCounter.rootRenders;
-    const css = await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    expect(css).toContain('@property --x');
+  it('folds `@property` through the spine (root-only wrap+emit, no registration side-effect, no derive)', async () => {
+    // `@property` is a plain DECLARATION-bodied root-only at-rule, structurally identical
+    // to `@font-face`. Its eval pass registers NOTHING into any scope or the extend-roots
+    // graph — jess does no compile-time custom-property substitution (no property registry
+    // exists in core), so a later `var(--x)` is emitted verbatim regardless. Verified
+    // byte-identical spine-vs-eval for the bare form, a `var(--x)` consumer, and mixed
+    // sibling rulesets. So folding it drops no output-affecting side-effect.
+    const cases: Array<{ src: string; out: string }> = [
+      {
+        src: '@property --x { syntax: "<color>"; inherits: false; initial-value: red; }',
+        out: '@property --x {\n  syntax: "<color>";\n  inherits: false;\n  initial-value: red;\n}\n'
+      },
+      {
+        src: '@property --x { syntax: "<color>"; inherits: false; initial-value: red; }\n.a { color: var(--x); }',
+        out: '@property --x {\n  syntax: "<color>";\n  inherits: false;\n  initial-value: red;\n}\n.a {\n  color: var(--x);\n}\n'
+      }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before); // spine path
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0); // no eval two-walk
+        expect(css, `output: ${c.src}`).toBe(c.out); // byte-identical to the eval oracle
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
   });
 
   it('INCREMENT 2: folds a root-level Less `.mixin()` dot-call through the spine on the COMPILER path (mixin-ruleset, no derive)', async () => {
@@ -491,16 +519,31 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toContain('color: blue');
   });
 
-  it('does NOT route a NESTED-scope mixin definition through the spine (closure/namespace → eval path)', async () => {
-    // A mixin defined inside a ruleset captures its enclosing scope; folding a call
-    // to it from another scope needs the definition-scope frame the spine does not
-    // yet establish — deferred, stays on the eval path (byte-identical).
+  it('folds a NESTED-scope mixin closure through the spine (intermediate-scope closure, fold #6, no derive)', async () => {
+    // A mixin defined inside `.scope` closes over `.scope`'s local `@v`; a namespace-path
+    // call `.scope > .m()` from another scope resolves the body against the DEFINITION
+    // scope. Fold #6 lifted the former eval-only gate: `renderRootViaSpine` eagerly wires
+    // the definition-scope `.parent` chain (`wireSpineDefinitionScopeParents`) and
+    // `executeCallableCandidate` re-parents the folded surface to its lexical frame, so the
+    // intermediate-scope closure resolves under the spine sink — byte-identical to eval
+    // (verified spine-vs-eval: both emit `.a { width: 9px; }`), no output tree.
     const compiler = makeCompiler();
     const src = `.scope {\n  @v: 9px;\n  .m() { width: @v; }\n}\n.a {\n  .scope > .m();\n}`;
-    const before = spineRenderCounter.rootRenders;
-    const css = await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    expect(css).toContain('width: 9px');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(css).toBe('.a {\n  width: 9px;\n}\n'); // byte-identical to the eval oracle
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
   });
 
   it('INCREMENT 3: folds a POSITIONAL-arg Less mixin call through the spine on the COMPILER path (no derive)', async () => {
