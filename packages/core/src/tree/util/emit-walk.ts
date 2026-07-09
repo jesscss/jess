@@ -261,15 +261,16 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
   if ((type !== 'mixin' && type !== 'mixin-ruleset') || typeof name.key !== 'string') {
     return false;
   }
-  // EXCLUDED: a NAMESPACE-PATH / cross-scope call (`.scope > .mixin()`, `#ns.m()`)
-  // — `name.target` names an enclosing namespace whose scope frame must be
-  // established (with its captured `@var`s) for the closure to resolve. The spine
-  // does not fully establish a not-yet-descended sibling namespace's frame, so the
-  // closure body would fail to resolve its definition-scope vars. DEFERRED: the
-  // namespace/closure-capture path (a later increment).
-  if (name.target !== undefined) {
-    return false;
-  }
+  // NAMESPACE-PATH / cross-scope call (`.scope > .mixin()`, `#ns.m()`, `#a > #b >
+  // .m()`) is ADMITTED. `name.target` names an enclosing namespace; the KEPT
+  // resolution machinery (`prepareCallableCandidateState`) derives the matched
+  // callable's DEFINITION-scope frame from the candidate node's own `.parent`
+  // chain (`definitionFrame = definitionParent.getScopeFrame()`) — a lazily-built,
+  // eval-free static index — so the closure body resolves against its definition
+  // scope regardless of descent order. Verified byte-identical for namespace-path,
+  // multi-level namespace, and root/param closures. The one shape still deferred —
+  // a nested mixin closing over an INTERMEDIATE (non-root) scope's local var — is
+  // gated at the root level (`treeHasNestedMixinClosingOverVarScope`), not here.
   return true;
 }
 
@@ -1150,17 +1151,22 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (treeHasMixinRulesetMixedMatch(root)) {
     return false;
   }
-  // INCREMENT 2 cross-check: a NESTED-scope mixin DEFINITION (defined inside a
-  // ruleset/at-rule, not a direct document-root child) is a closure-capture /
-  // namespace shape whose definition-scope frame the spine does not fully
-  // establish for a call in a DIFFERENT scope — resolution can throw
-  // "'x' is not defined" or bind the wrong scope. A mid-spine throw is
-  // unrecoverable (no fallback once committed to the pass), so keep any tree that
-  // has BOTH a mixin call and a nested mixin definition on the eval path. Root-
-  // level mixin defs (the common corpus shape) still fold. DEFERRED: the
-  // nested-scope closure/namespace path (needs spine definition-scope frame
-  // establishment — a later increment).
-  if (treeHasMixinCall(root) && treeHasNestedMixinDefinition(root)) {
+  // NESTED-scope mixin closure — NARROW gate. A nested mixin (defined inside a
+  // ruleset/at-rule) whose definition scope is derived from its `.parent` chain
+  // folds correctly for the common shapes: a namespace-path call (`#ns.m()`), a
+  // multi-level namespace, and a body closing over ROOT vars or its own params —
+  // all verified byte-identical (the KEPT `prepareCallableCandidateState` builds
+  // the definition-scope frame from the candidate node's own parent chain via a
+  // lazily-built, eval-free scope index; the root frame is live for the whole pass).
+  // The ONE shape still deferred is a nested mixin body closing over a var declared
+  // in an INTERMEDIATE (non-root) enclosing scope: that scope is not on the caller's
+  // emit path, so its frame is never pushed as `rulesContext` and its live binding
+  // cell is never established — the read resolves against the wrong (root) frame or
+  // throws "'x' is not defined". A mid-spine throw is unrecoverable, so keep any tree
+  // with a mixin call AND such a nested mixin on the eval path. DEFERRED (#6): seed
+  // the definition's intermediate-scope frame during descent (imports-style
+  // `prepareRegistration` + fallback link), then this gate lifts.
+  if (treeHasMixinCall(root) && treeHasNestedMixinClosingOverVarScope(root)) {
     return false;
   }
   // INCREMENT 4 cross-check: a mixin DEFINITION whose body contains NESTED
@@ -1327,15 +1333,81 @@ function treeHasContainerBodyMixinDefinition(root: Node): boolean {
 }
 
 /**
- * True if the tree has a Mixin definition nested INSIDE a container (a
- * ruleset/at-rule body), i.e. NOT a direct child of the document root. A nested
- * mixin captures its enclosing scope; folding a call to it from another scope
- * needs the definition-scope frame the spine does not yet establish (deferred).
+ * True if the tree has a Mixin definition nested INSIDE a container whose
+ * ENCLOSING chain (strictly between the mixin and the document root) BINDS a name
+ * — a variable declaration OR an enclosing mixin's params — the ONE nested-mixin
+ * shape whose closure the spine does not yet resolve (see the narrow gate in
+ * `isSpineEligibleRoot`).
+ *
+ * A nested mixin's body may close over a name bound in an intermediate (non-root)
+ * enclosing scope: a `@var` declared there, or the params of an enclosing mixin.
+ * Those bindings live on a value-frame the spine only establishes when it DESCENDS
+ * that scope — but an intermediate scope is not on the caller's emit path, so its
+ * frame is never pushed and the read resolves against the wrong (root) frame or
+ * throws. This predicate is CONSERVATIVELY SOUND: it keeps such a mixin on the eval
+ * path when ANY strictly-intermediate enclosing scope binds a name (the mixin MIGHT
+ * close over it), while admitting the common shapes — a namespace whose scope binds
+ * nothing (`#ns { .m() {} }`), a mixin closing only over ROOT vars or its OWN params
+ * — which fold byte-identical. Precision is traded for soundness: a nested mixin
+ * under a name-binding scope that does NOT actually read that name is kept on eval
+ * too, until #6 (intermediate-scope frame-seed) lifts the gate.
+ *
+ * A ROOT-direct-child Mixin has an empty strictly-intermediate chain, so it is
+ * never gated (the common corpus shape).
  */
-function treeHasNestedMixinDefinition(root: Rules): boolean {
-  const rootChildren = new Set<Node>(root.rules);
-  for (const node of root.walk(true)) {
-    if (isNode(node, N.Mixin) && !rootChildren.has(node)) {
+function treeHasNestedMixinClosingOverVarScope(root: Rules): boolean {
+  // TOP-DOWN descent over scope bodies, carrying whether any STRICTLY-intermediate
+  // enclosing scope (below root, above the mixin) declares a variable. A raw parse
+  // tree does NOT wire `.parent` on nested nodes, so ancestry must be tracked on the
+  // way DOWN, not walked up. Root's own body children are visited with
+  // `intermediateHasVar = false` (root is not an intermediate scope — its frame is
+  // live for the whole pass).
+  const visit = (children: readonly Node[], intermediateHasVar: boolean): boolean => {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]!;
+      if (isNode(child, N.Mixin)) {
+        // This mixin is nested (visited below root). If any intermediate scope
+        // between root and here binds a name (a var-decl OR an enclosing mixin's
+        // PARAMS), its closure lives on a live frame the spine does not establish
+        // mid-descent — defer.
+        if (intermediateHasVar) {
+          return true;
+        }
+        // Descend the mixin body: this mixin is an intermediate scope for any
+        // DEEPER mixin, and it binds names iff it declares direct var-decls OR takes
+        // params (a nested mixin reading an enclosing mixin's param — a live-frame
+        // closure the spine defers, same as an intermediate var).
+        const params = child.params;
+        const bindsNames = scopeDeclaresAnyVariable(child) || (params !== undefined && params.value.length > 0);
+        if (visit(child.rules, intermediateHasVar || bindsNames)) {
+          return true;
+        }
+        continue;
+      }
+      if (isNode(child, N.Rules)) {
+        // A nested Rules scope (ruleset / at-rule body / pure group). Its own body's
+        // mixins see this scope as intermediate; propagate whether it declares a var.
+        if (visit(child.rules, intermediateHasVar || scopeDeclaresAnyVariable(child))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  return visit(root.rules, false);
+}
+
+/**
+ * True if a Rules-derived scope (Rules / Ruleset / AtRule / Mixin) declares any
+ * variable as a DIRECT child (`@x: …`). Used by the narrow nested-mixin-closure
+ * gate — a strictly-intermediate enclosing scope with a variable is a potential
+ * closure the spine defers. Direct children only: a variable in a deeper nested
+ * scope belongs to THAT scope, not this one.
+ */
+function scopeDeclaresAnyVariable(scope: { rules: readonly Node[] }): boolean {
+  const children = scope.rules;
+  for (let i = 0; i < children.length; i++) {
+    if (isNode(children[i]!, N.VarDeclaration)) {
       return true;
     }
   }
