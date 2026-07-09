@@ -78,21 +78,224 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('does NOT route an EXTEND-bearing root through the spine (stays on the eval path — extend is P3)', async () => {
-    // `:extend` in a selector makes the root spine-INELIGIBLE (extend application
-    // is not wired into the spine yet). It must render on the eval path — the
-    // spine counter must NOT move for it, and the extend must still apply.
+  it('P3 increment 1: ROUTES a FLAT root-level `:extend` through the spine (extend folded into the pass)', async () => {
+    // The P3 milestone: a root-direct-child `:extend` subject now renders THROUGH the
+    // single pass — the pre-scan gathers the instruction, SOLVE/EMIT composes the subject's
+    // final Or-branch header, installed as a render-local override. The spine counter MOVES
+    // and `processExtends` is NOT called on this path (asserted below).
     const compiler = makeCompiler();
     const src = `.base {\n  color: red;\n}\n.derived:extend(.base) {\n  font-weight: bold;\n}`;
 
     const before = spineRenderCounter.rootRenders;
     const css = await compiler.renderString(src, { language: 'less' });
 
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path, not spine
-    // Extend applied correctly on the eval path.
-    expect(css).toContain('.base');
-    expect(css).toContain('.derived');
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (P3)
+    // The subject `.base` gained the `.derived` branch; the extender emits its own block.
+    expect(css).toBe('.base,\n.derived {\n  color: red;\n}\n.derived {\n  font-weight: bold;\n}\n');
+  });
+
+  it('P3 increment 1: flat `:extend` does NOT enter the eval two-walk (Rules.derive uncalled)', async () => {
+    // The extend is applied by the spine PLAN/SOLVE/EMIT, NOT the eval-path
+    // gather-and-mutate `processExtends` — which runs INSIDE the eval two-walk. `Rules.derive`
+    // (the copy-on-write output-tree surface) fires on that eval path and never on the spine,
+    // so `derive` uncalled + the spine counter moving proves `processExtends` did not run.
+    const compiler = makeCompiler();
+    const src = `.base {\n  color: red;\n}\n.derived:extend(.base) {\n  font-weight: bold;\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → processExtends did not run
+      expect(css).toBe('.base,\n.derived {\n  color: red;\n}\n.derived {\n  font-weight: bold;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('extend is LIST-APPEND: an extender authored BEFORE its target still leads with the target', async () => {
+    // The projectSubject sort-bug fix (OQ-D corrected): extend appends to the target's list, the
+    // target's own selector LEADS unconditionally. A `.b:extend(.a)` authored BEFORE `.a` yields
+    // `.a,\n.b` (target-first), NOT `.b,\n.a` (the old sort-among-contributions bug). No corpus
+    // fixture exercised this (all author target-first), so it's pinned here.
+    const compiler = makeCompiler();
+    const src = `.b:extend(.a) {\n  color: blue;\n}\n.a {\n  color: red;\n}\n`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.b {\n  color: blue;\n}\n.a,\n.b {\n  color: red;\n}\n');
+  });
+
+  it('P3 increment 1: `&:extend(... all)` with a nested block folds through the spine byte-identically (extend-clearfix shape)', async () => {
+    // A root-level `&:extend(.x all)` whose target has a NESTED block: the subject header
+    // override (`.clearfix, .foo, .bar`) flows through the existing `&`-composition, so the
+    // nested `&:after` composes against the multi-branch parent → `:is(...)`-grouped — no
+    // extra nested-composition machinery. Byte-identical to the ratified alpha `.css`.
+    const compiler = makeCompiler();
+    const src = `.clearfix {\n  *zoom: 1;\n  &:after { content: ''; }\n}\n.foo {\n  &:extend(.clearfix all);\n  color: red;\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toContain('.clearfix,\n.foo');
+    expect(css).toContain(":is(.clearfix, .foo):after");
+  });
+
+  it('P3 increment 1: a NESTED-scope `:extend` does NOT route through the spine (deferral territory → eval path)', async () => {
+    // An extend nested inside a ruleset (not a root-direct child) is NOT the flat topology
+    // increment 1 handles — it stays on the eval path (byte-identical), reclaimed by a later
+    // increment (nested-subject interception / deferral).
+    const compiler = makeCompiler();
+    const src = `.wrap {\n  .base {\n    color: red;\n  }\n  .derived:extend(.base) {\n    font-weight: bold;\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (nested extend deferred)
     expect(css).toContain('font-weight: bold');
+  });
+
+  it('P3 increment 2: a NESTED EXTENDER composes as its BUCKET PATH through the spine (`.type1 .sidebar3`)', async () => {
+    // The document-wide gather (increment 2) descends nested rulesets, so a NESTED extender
+    // (`.type1 { .sidebar3 { &:extend(.sidebar all) } }`) contributes its COMPOSED form
+    // `.type1 .sidebar3` — NOT the bare `.sidebar3` the eval engine emits (the extend-nest bug).
+    // This is the pipeline's designed fix, now live through the Compiler. The SUBJECT `.sidebar`
+    // is root-level; the widening is that the EXTENDER may be nested.
+    const compiler = makeCompiler();
+    const src = `.sidebar {\n  width: 300px;\n}\n.sidebar2 {\n  &:extend(.sidebar all);\n  background: blue;\n}\n.type1 {\n  .sidebar3 {\n    &:extend(.sidebar all);\n    background: green;\n  }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // The subject `.sidebar` gained the nested extender's COMPOSED form, not the bare fragment.
+      expect(css).toContain('.type1 .sidebar3');
+      expect(css).toMatch(/\.sidebar,\n\.sidebar2,\n\.type1 \.sidebar3 \{/);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('P3 increment 7: an `&`-bearing extender (`&.sidebar4`) RESOLVES + composes via the spine (round-1 + round-2 clean)', async () => {
+    // A `.type2 { &.sidebar4 { &:extend(.sidebar all) } }` extender's local `&.sidebar4` is RESOLVED
+    // (scoped `&`-eval against the tracked ancestor frame) + NORMALIZED to clean atoms → the subject
+    // `.sidebar` gains `.type2.sidebar4`. The normalization is what makes the round-2 fixpoint dedup
+    // cleanly instead of tripping the amp-target trap (`extendAmpersandTarget` → UNSUPPORTED). Routes
+    // via the spine, no eval two-walk.
+    const compiler = makeCompiler();
+    const src = `.sidebar {\n  width: 300px;\n}\n.type2 {\n  &.sidebar4 {\n    &:extend(.sidebar all);\n    background: red;\n  }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk (round-2 fixpoint terminated cleanly, not UNSUPPORTED)
+      expect(css).toContain('.sidebar,\n.type2.sidebar4'); // resolved amp composed into the subject header
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('P3 increment 7: an `&`-APPEND extender (`&-modifier`) STAYS on eval (append suffix not gather-resolvable)', async () => {
+    // The gate still excludes `&`-APPEND (`&-modifier`): its anonymous suffix materializes only via
+    // `Ampersand.evalNode`'s `appendValue` path (eval-pass state the gather does not reproduce). A
+    // combinator `&` resolves (above); append stays on eval, byte-identical.
+    const compiler = makeCompiler();
+    const src = `.base {\n  color: red;\n}\n.x {\n  &-modifier {\n    &:extend(.base);\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (amp-APPEND excluded)
+    expect(css).toContain('.base');
+  });
+
+  it('P3 increment 3: `&`-CROSSING hoists a nested subject to root with the crossing branch (header/footer)', async () => {
+    // The crossing/hoist case (extend-selector.css:45-46): a nested subject `.header .header-nav`
+    // gains a crossing contribution `.footer .footer-nav` (an extender nested in a DIFFERENT
+    // parent). Under `collapseNesting:true` the subject block already emits at ROOT; its header is
+    // overridden VERBATIM with the projected 2-branch set. Eval gets this WRONG (bare `.footer-nav`,
+    // missing `.footer`) — the spine composes the full path. Nested `&:before` composes against the
+    // hoisted multi-branch header via the existing `&`-flow → `:is(...)`-grouped.
+    const compiler = makeCompiler();
+    const src = `.header {\n  .header-nav {\n    background: red;\n    &:before { background: blue; }\n  }\n}\n.footer {\n  .footer-nav {\n    &:extend(.header .header-nav all);\n  }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(css).toContain('.header .header-nav,\n.footer .footer-nav');
+      expect(css).toContain(':is(.header .header-nav, .footer .footer-nav):before');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('P3 increment 3: skip-compose fires ONLY for hoisted subjects — a plain nested subject is unaffected (collateral)', async () => {
+    // Guardrail: a NON-hoisted nested subject (`.wrap .inner`, no extend) in the SAME document as
+    // a root extend must still compose normally against its parent — the verbatim skip-compose is
+    // strictly gated to `spineExtendHoisted`. No collateral.
+    const compiler = makeCompiler();
+    const src = `.wrap {\n  .inner {\n    color: red;\n  }\n}\n.a:extend(.b) {}\n.b {\n  color: green;\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toContain('.wrap .inner'); // nested subject composed normally (not hoisted/verbatim)
+    expect(css).toContain('.b,\n.a'); // the root extend still applies
+  });
+
+  it('P3 increment 3: `&`-crossing STAYS on eval under `collapseNesting:false` (expanded-mode precondition)', async () => {
+    // The hoist verbatim-override PRECONDITION (nested block already at root) holds ONLY under
+    // collapse. Expanded mode keeps the block nested; the gate excludes crossing there → eval.
+    const compiler = new Compiler({
+      output: { collapseNesting: false },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const src = `.header {\n  .header-nav {\n    background: red;\n  }\n}\n.footer {\n  .footer-nav {\n    &:extend(.header .header-nav all);\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (expanded-mode crossing excluded)
+  });
+
+  it('P3 (OQ-A): an INTERPOLATED class extend target resolves against the live frame at capture', async () => {
+    // OQ-A (design §9): `:extend(.@{name})` must resolve `@{name}` (→ `.foo`) BEFORE matching, else
+    // the raw interpolated target matches nothing and the extend silently no-ops. `Extend.runEffect`
+    // now evals an interpolation-bearing target against the live frame at capture. This is an
+    // EVAL-PATH fix (the byte-identical fallback + the real `.@{name}` shape); no corpus fixture
+    // exercises an interpolated TARGET, so it's pinned here. RESIDUAL: attribute-VALUE interpolation
+    // (`[data=@{name}]`) is a distinct attribute-selector shape (raw `@{…}` token in the value), not
+    // fixed here — see the remaining-shapes map.
+    const compiler = makeCompiler();
+    const src = `@name: foo;\n.foo {\n  color: red;\n}\n.bar:extend(.@{name}) {\n  color: blue;\n}`;
+    const css = await compiler.renderString(src, { language: 'less' });
+    // The interpolated target resolved to `.foo` and the extend applied (`.foo` gains `.bar`).
+    expect(css).toBe('.foo,\n.bar {\n  color: red;\n}\n.bar {\n  color: blue;\n}\n');
+  });
+
+  it('P3 (OQ-A): a LITERAL extend target is byte-unchanged (interpolation eval skipped)', async () => {
+    // Guardrail: the OQ-A target-eval fires ONLY for an interpolation-bearing target; a literal
+    // target skips it entirely (byte-unchanged). No collateral on the common case.
+    const compiler = makeCompiler();
+    const src = `.base {\n  color: red;\n}\n.derived:extend(.base) {\n  font-weight: bold;\n}`;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(css).toBe('.base,\n.derived {\n  color: red;\n}\n.derived {\n  font-weight: bold;\n}\n');
   });
 
   it('routes ROOT-ONLY wrap+emit at-rules through the spine on the COMPILER path (no eval two-walk)', async () => {

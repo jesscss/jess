@@ -1,4 +1,3 @@
-/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
 // @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
 // shape removed from Node in the provenance-side-table refactor; the functional
 // Parséman grammar (grammar-rules.ts + builders.ts) is the maintained parser.

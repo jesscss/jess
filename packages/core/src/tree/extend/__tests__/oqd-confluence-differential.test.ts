@@ -249,12 +249,13 @@ describe('OQ-D — extend confluence: branch SET is order-independent (batch == 
     expect(siblingSet(String(batched.valueOf()))).toBe(siblingSet(String(sequential.valueOf())));
   });
 
-  it('DOCUMENTS the boundary: comma-SIBLING ORDER is apply-order-sensitive (design EMIT sort not yet wired)', () => {
-    // Same fan-out, two adjacencies. The BRANCH SET is confluent (asserted above); the ORDER is not.
-    // This pins the fact the OQ-D verdict rests on: today only the document-order FEED pins order —
-    // the design's EMIT document-order SORT (setExtendOrderMap / extendOrderMap, extend.ts:155/842)
-    // has zero callers, so it cannot be what canonicalizes. The cutover must WIRE that sort; this
-    // case will flip to "orders equal" once it does, and is the guard that it was actually built.
+  it('EXTEND IS LIST-APPEND: the target LEADS; siblings follow in FEED (document) order — no sort', () => {
+    // OQ-D CORRECTED (owner 2026-07-08): there was never a "document-order sort" to build. Extend
+    // = append the extender to the target's list; the target's own selector always LEADS, and
+    // extenders follow in the order they are fed. The former `setExtendOrderMap`/`extendOrderMap`
+    // scaffolding (a canonicalizing sort) was DEAD (no callers) and is DELETED — it modeled a sort
+    // append semantics have no use for. So: the branch SET is confluent (above); the ORDER is
+    // deterministically the FEED order (= document order in production, which never permutes).
     const mk = (): ExtendInstruction[] => [
       instr(el('.btn'), el('.x')),
       instr(el('.btn'), el('.y'))
@@ -267,11 +268,10 @@ describe('OQ-D — extend confluence: branch SET is order-independent (batch == 
     const b = String(
       applyExtendsToSelector(el('.btn'), [reverse[1]!, reverse[0]!], reverse).valueOf()
     );
-
-    // Same set…
+    // SAME set; order follows the (reversed) feed. NOT a bug and NOT a missing sort — production
+    // feeds in document order, so order is pinned there. Target-first is invariant in both.
     expect(siblingSet(a)).toBe(siblingSet(b));
-    // …but raw order differs — the current engine has NO order canonicalization installed.
-    // (If a future change wires the EMIT sort, delete this negative assertion and assert a === b.)
-    expect(a).not.toBe(b);
+    expect(a.startsWith('.btn')).toBe(true);
+    expect(b.startsWith('.btn')).toBe(true);
   });
 });

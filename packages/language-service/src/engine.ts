@@ -351,6 +351,12 @@ type ChevTok = {
   tokenType?: { name?: string; CATEGORIES?: Array<{ name?: string }> };
 };
 
+function isChevTok(value: unknown): value is ChevTok {
+  return typeof value === 'object'
+    && value !== null
+    && typeof nodeField(value, 'image') === 'string';
+}
+
 function tokenTypeFromChevrotain(tok: ChevTok, lang: JessLang): SemanticTokenType | null {
   const name = String(tok?.tokenType?.name ?? '');
   const cats: string[] = Array.isArray(tok?.tokenType?.CATEGORIES)
@@ -2183,7 +2189,7 @@ export function createEngine(): JessLanguageServiceEngine {
       const pending: Pending[] = [];
 
       // Chevrotain uses 1-based line/column.
-      const tokens = parse.lexerResult.tokens as ChevTok[];
+      const tokens = parse.lexerResult.tokens.filter(isChevTok);
       const index = tracked.index;
       const varRefTokens = new WeakSet<object>();
 

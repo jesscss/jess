@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-type-assertion -- test inspects parser tree internals structurally. */
 import { Parser } from '../src/jess.js';
 
 const parser = new Parser();

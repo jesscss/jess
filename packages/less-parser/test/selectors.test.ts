@@ -19,7 +19,7 @@ function rulesetSelector(n: Node | string | undefined): Selector {
 // collapseNesting is a render-time option that the Context constructor's public
 // option type does not declare, although the runtime accepts it.
 function contextOptions(opts: Record<string, unknown>): ConstructorParameters<typeof Context>[0] {
-  return opts as ConstructorParameters<typeof Context>[0];
+  return opts;
 }
 
 describe('Selector Productions', () => {

@@ -22,6 +22,17 @@ old structure instead of building the target*. Guardrails, binding on every cuto
    each work session, so the orchestrator catches backpedaling early.
 5. Work on the **cutover branch**, never dev. `.css`/warning expectations are the working oracle but not
    gospel — reason to the intended v5 shape (see the "no sacred expectations" rule).
+6. **NO PERMANENT EVAL FALLBACK — 100% spine coverage is the P4 precondition.** The eval path
+   (two-walk + output tree + clone families + `propagateFlagsFrom` + the flags + `treeContext`) is
+   MONOLITHIC: it cannot be half-deleted. If *any* shape still routes through eval, P4 cannot delete it,
+   and the cutover is a NET LOSS (we added the spine — bigger, more complex — with none of the deletion
+   payoff). So a transitional eval fallback for a not-yet-folded shape is fine (it dies in P4); declaring
+   a shape *permanently* eval-routed is NOT — that abandons the whole point. Every deferred shape (the
+   extend hard-tail, mixin hard-tail, `@layer`/`@scope`, import edge-modes, …) stays on the roadmap as
+   REQUIRED P4-blocking work. "Harder / poor ROI / rare / byte-identical-on-eval" is a SEQUENCING reason
+   to defer, NEVER a reason to abandon. If a shape proves *genuinely* unfoldable under the design, that is
+   a design GAP to surface to the owner — not something to silently leave on eval. The P4
+   deleted-symbol-absence ratchets enforce this: they cannot go green until the eval path carries nothing.
 
 ## Branch / gate strategy
 - Long-lived integration branch **`work/cutover`** off `dev`. Phase work happens on `work/cutover-<phase>`
@@ -205,14 +216,20 @@ old structure instead of building the target*. Guardrails, binding on every cuto
       per-subject buffer, headers deferred, early-flush per the §4.4.3 predicate.
 - [ ] EMIT projects (B): `placement`/`origin`(`F_EXTENDED`/`F_EXTEND_TARGET`)/`order`/`visible`/`generated`
       onto branches (the B2 flag work — on the branch, never the shared source selector).
-- [ ] Resolve interpolated extend TARGET at capture (OQ-A fix, `extend.ts:341`) so `:extend([data=@{attr}])` works.
-- [ ] **Wire the comma-sibling document-order determinism (OQ-D finding).** The branch SET is confluent, but
-      sibling ORDER is not order-independent — and the design's EMIT document-order sort is **dead code today**
-      (`setExtendOrderMap` has zero callers; `extendOrderMap` always null). Production is deterministic only via a
-      document-order FEED. So the cutover MUST either build the EMIT order sort (install the value→document-order
-      map the §4.2/§4.4 sort branches read) OR preserve the document-order feed. Lock: the pinned
-      `oqd-confluence-differential.test.ts` negative assertion (raw sibling order NOT confluent) flips to
-      `a === b` when the sort is wired — activate it then (it's the guard that the sort actually got built).
+- [~] OQ-A: resolve interpolated extend TARGET at capture. DONE for SELECTOR-level interpolation
+      (`:extend(.@{name})` → resolves `@{name}` against the live frame in `Extend.runEffect`, byte-neutral
+      on the 90, pinned by a jess ratchet). RESIDUAL: attribute-VALUE interpolation (`[data=@{name}]` — raw
+      `@{…}` token in the `AttributeSelector` value) not yet resolved/matched (distinct attribute-selector
+      shape + a pre-existing `[data=\n"foo"]` formatting quirk).
+- [x] **OQ-D CORRECTED + DONE (owner 2026-07-08): extend is LIST-APPEND (target leads, no sort).** The
+      "document-order sort deliverable" was mis-scoped scaffolding around a `projectSubject` bug — there was
+      never a sort to build. FIX: `projectSubject` (`emit.ts`) drops the `ordered.sort`; the target's own
+      form leads, contributions append in feed order (a before-authored extender no longer floats ahead —
+      `.a, .b` not `.b, .a`). DELETED: the dead `setExtendOrderMap`/`extendOrderMap` path (zero callers,
+      always null) + its two always-false-guarded sort branches in `extend.ts`. The
+      `oqd-confluence-differential.test.ts` "sort not yet wired" negative assertion is REWRITTEN to assert
+      append semantics (set confluent + target-first + feed-order siblings). Byte-neutral on the 90 (every
+      fixture authors target-first, where sort and append coincided — which is why the bug hid).
 
 ### P4 — delete the dead machinery (§7 + flag-walk C4)  ·  depends on P2+P3  ·  FAN-OUT across sites
 - [ ] Delete eval→output-tree staging + reuse gates + clone families + container static short-circuits.
@@ -726,3 +743,20 @@ target hit (size↓, complexity↓, perf↑) · every ratchet test green (all ga
   need the eval-fallback-rendered-as-is / spine-definition-scope-frame mechanism), OR — if the orchestrator
   judges the mixin coverage sufficient — this is a natural MIXINS→EXTEND HANDOFF point (the arg ladder done,
   the hard tail being lower-frequency shapes). FLAGGING the handoff decision for the orchestrator.
+- 2026-07-08 · P3 · EXTEND folded through the spine across increments 0–7: extend-work gate (§4.0 zero-cost
+  fast path); flat root-level `:extend`; buffer-then-flush mechanism (proven, used inline since the
+  document-wide pre-scan makes deferral unnecessary); document-wide gather (nested EXTENDERS compose from
+  bucket paths, `.type1 .sidebar3`); `projectSubject` list-append fix + OQ-D dead-sort deletion; `&`-crossing
+  hoist-to-root (collapse-mode verbatim override); OQ-A interpolated selector target (`.@{name}`) resolved at
+  capture; and `&`-bearing extenders (`&.sidebar4` → `.type2.sidebar4`) via SCOPED `&`-EVAL + NORMALIZATION.
+  The `&`-extender fix's KEY insight (diagnosed read-only): `Ampersand.eval` returns the node with the amp
+  STILL in the compound (stored selector, not substituted); round 1 of the extend fixpoint handles it, but the
+  PRODUCED branch carries the amp and the round-2 self-re-application trips `extendAmpersandTarget` →
+  UNSUPPORTED. `normalizeResolvedAmpersand` flattens the resolved amp to clean atoms at the gather boundary
+  (pure, on the eval COPY — no source mutation, engine untouched), so round 2 dedups. RESIDUAL (eval-fallback,
+  byte-identical): the RARE tail — `:extend(.button:hover)` pseudo-class targets, attribute-VALUE
+  interpolation (`[data=@{attr}]`), the `.amp-test` deeply-nested-`&`-crossing monster, and own-engine
+  UNSUPPORTED shapes (constructor-atom finds, extend-index.ts:3073). `extend-nest`/`extend-selector` do NOT
+  fully flip (each needs ≥1 tail shape) and correctly route to eval. Verdict: common + high-frequency extend
+  shapes fold LIVE; the rare tail is eval-routed byte-identical — recommend NOT chasing it through the spine
+  (validated-engine-rework ROI is poor; see the touch-base). all-less 90/3 throughout; 24 jess ratchets.
