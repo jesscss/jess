@@ -57,7 +57,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // Bracket key as ONE leaf: `$var` (dynamic) | quoted string | number | keyword.
   const refIndexKey = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|[+-]?\d+(?:\.\d+)?|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const refDot = sequence(literal('.'), ident);
-  const refIndex = sequence(literal('['), sequence(refIndexKey, literal(']')));
+  const refIndex = sequence(literal('['), refIndexKey, literal(']'));
   const Reference = node(
     noTrivia(sequence(dollarVar, many(choice(refDot, refIndex)), optional(literal('?')))));
 
@@ -67,7 +67,7 @@ export const jessGrammar = compose([cssGrammar, rules((g: any) => {
   // position. Renders back as `$[foo]` / `$['foo']`.
   const interpKey = regex(/'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const DollarInterp = node(
-    noTrivia(sequence(literal('$'), literal('['), sequence(interpKey, expect(literal(']'), ']')))));
+    noTrivia(sequence(literal('$'), literal('['), interpKey, expect(literal(']'), ']'))));
 
   // ── Interpolation in SELECTORS ───────────────────────────────────────────────
   // `.widget-$[side]` → InterpolatedSelector wrapping an Interpolated (source with
