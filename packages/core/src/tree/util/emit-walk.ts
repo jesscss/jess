@@ -576,7 +576,10 @@ const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container', '@
  * the conditional-group family they do NOT hoist/compose selectors: they emit at
  * their document position with a prelude + a self-contained body —
  *   - DECLARATION-bodied: `@font-face`, `@page` (+ margin-box at-rules), `@viewport`,
- *     `@counter-style` — body is `:`-declarations / comments.
+ *     `@counter-style`, `@property` — body is `:`-declarations / comments. `@property`
+ *     carries NO eval-pass side effect (it does not register anything into a scope
+ *     or the extend-roots graph — verified against the eval pass); it is a plain
+ *     declaration-bodied root-only at-rule, structurally identical to `@font-face`.
  *   - KEYFRAME-bodied: `@keyframes` / `@-webkit-keyframes` — body is keyframe-
  *     selector rulesets (`0%`, `from`, `to`, `from,to`) that DO NOT `&`-compose;
  *     the root-only composed-stack reset (`isRootOnly()` in the kept serializer)
@@ -584,12 +587,12 @@ const SPINE_ELIGIBLE_AT_RULES = new Set(['@media', '@supports', '@container', '@
  *   - RULESET-bodied conditional-ish: `@document`/`@-x-document`/`@-moz-document`,
  *     `@host` — body is plain-selector rulesets emitted inside the block.
  *
- * EXCLUDED (still eval path, precise reasons): `@property` — registers a custom
- * property (an eval-pass registration side effect the spine does not replicate);
- * `@charset`/`@import`/`@namespace` — document-framing / non-block (already gated
- * out by `isSpineEligibleRoot`'s charset/topImports check and having no `Rules`
- * body). Interpolated NAMES are handled where the prelude resolves at-enter; an
- * interpolated at-rule keyword itself is not folded (name is a Node, gated below).
+ * EXCLUDED (still eval path, precise reasons): `@charset`/`@import`/`@namespace` —
+ * document-framing / non-block (already gated out by `isSpineEligibleRoot`'s
+ * charset/topImports check and having no `Rules` body). A genuinely interpolated
+ * at-rule KEYWORD (`name` is an `Interpolated` node, not a string) is gated out by
+ * the string-name check in `isSpineEligibleAtRule`; a bare var-ref in the NAME/
+ * prelude position (`@keyframes @name`) IS folded via the prelude-eval-at-enter path.
  */
 const SPINE_ELIGIBLE_ROOT_ONLY_AT_RULES = new Set([
   '@font-face',
@@ -601,7 +604,8 @@ const SPINE_ELIGIBLE_ROOT_ONLY_AT_RULES = new Set([
   '@document',
   '@-x-document',
   '@-moz-document',
-  '@host'
+  '@host',
+  '@property'
 ]);
 
 /** True for the keyframes family, whose children are keyframe-selector rulesets. */

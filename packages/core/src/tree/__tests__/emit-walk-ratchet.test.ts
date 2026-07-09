@@ -604,16 +604,18 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     expect(isSpineEligibleRoot(webkitKeyframes, context)).toBe(true);
   });
 
-  it('EXCLUDES `@property` (custom-property registration is an eval-pass side effect)', () => {
-    // `@property --x { … }` REGISTERS a custom property during eval — a side effect
-    // the spine does not replicate. Kept on the eval path; locked here.
+  it('ADMITS `@property` (declaration-bodied root-only, NO eval-pass registration)', () => {
+    // `@property --x { … }` was formerly deferred on the assumption it registers a
+    // custom property during eval — but it carries NO such side effect (it registers
+    // nothing into a scope or the extend-roots graph, verified against the eval pass).
+    // It is structurally a `@font-face`-like declaration block, so it folds.
     const property = rules([
       atrule({ name: '@property', prelude: any('--x'), rules: [
         decl({ name: 'syntax', value: any('"<color>"') }),
         decl({ name: 'inherits', value: any('false') })
       ] })
     ]);
-    expect(isSpineEligibleRoot(property, context)).toBe(false);
+    expect(isSpineEligibleRoot(property, context)).toBe(true);
   });
 
   it('EXCLUDES a root-only at-rule whose body carries an `&` (the composed-frontier guard)', () => {
@@ -934,5 +936,64 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
       })
     ]);
     expect(isSpineEligibleRoot(root, context)).toBe(false);
+  });
+});
+
+/**
+ * AT-RULE FOLD ratchet (design pass: `@property`/`@scope`/`@layer` + var-ref names).
+ * Each newly-folded at-rule shape renders through the SINGLE spine pass with NO
+ * output tree (`Rules.derive`=0) and byte-identical output to the (former) eval
+ * path. A later change that re-defers one of these — or re-introduces the output
+ * tree — trips the relevant test RED. The expected CSS strings are the eval-path
+ * baselines captured during the design pass.
+ */
+describe('at-rule fold ratchet (property / scope / layer / var-ref names)', () => {
+  let context: Context;
+
+  beforeEach(() => {
+    context = new Context();
+  });
+
+  /** Render `root` and assert single-pass + no output tree, returning the CSS. */
+  const renderFolded = (root: Rules, ctx: Context): string => {
+    const before = spineRenderCounter.rootRenders;
+    const original = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return original.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = root.render(ctx) as string;
+      expect(spineRenderCounter.rootRenders).toBe(before + 1); // single pass ran
+      expect(deriveCalls).toBe(0); // no output tree
+      return css;
+    } finally {
+      Rules.prototype.derive = original;
+    }
+  };
+
+  it('folds `@property` (declaration-bodied root-only, no registration side effect)', () => {
+    // Static + variable-valued body both fold: `@property` is structurally a
+    // `@font-face`-like declaration block with NO eval-pass registration.
+    const root = rules([
+      vardecl({ name: 'c', value: spaced([el('red')]) }),
+      atrule({
+        name: '@property',
+        prelude: any('--foo'),
+        rules: [
+          decl({ name: 'syntax', value: spaced([el('"<color>"')]) }),
+          decl({ name: 'inherits', value: spaced([el('false')]) }),
+          decl({ name: 'initial-value', value: ref({ key: 'c' }, { type: 'variable' }) })
+        ]
+      })
+    ]);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+
+    const css = renderFolded(root, context);
+    expect(css).toContain('@property --foo');
+    expect(css).toContain('syntax: "<color>"');
+    expect(css).toContain('inherits: false');
+    expect(css).toContain('initial-value: red'); // @c resolved live in one pass
   });
 });
