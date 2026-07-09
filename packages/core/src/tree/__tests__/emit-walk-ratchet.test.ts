@@ -1093,10 +1093,11 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(css).toContain('color: red');
   });
 
-  it('EXCLUDES a mixin definition with a NESTED-CONTAINER body (deferred — eval-fallback can\'t re-descend)', () => {
-    // `.m() { .inner { … } }` — a non-leaf body eval-falls-back, but the fallback's
-    // resolved tree can't be re-spine-descended without losing the surface frame
-    // for deeply-nested calls. Kept on the eval path.
+  it('FOLDS a mixin definition with a spine-eligible NESTED-CONTAINER body (surface descends the container carrying the frame)', async () => {
+    // `.m() { .inner { … } }` — a non-leaf body now FOLDS: the captured surface's
+    // container child descends via `serializeSpineFrameContainer` carrying the surface
+    // frame. Only UNFOLDABLE container-body sub-shapes (at-rule ancestor-rewrap, nested
+    // Mixin def, non-eligible container) still force eval.
     const root = rules([
       mixin({
         name: '.m',
@@ -1104,7 +1105,15 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
       }),
       ruleset({ selector: sel([el('.a')]), rules: [call({ name: ref({ key: '.m' }, { type: 'mixin' }) })] })
     ]);
-    expect(isSpineEligibleRoot(root, context)).toBe(false);
+    context.root = root;
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = await root.render(context);
+    expect(spineRenderCounter.rootRenders).toBe(before + 1); // spine path
+    // Expanded mode (this harness's default): the nested container emits nested.
+    expect(css).toContain('.a');
+    expect(css).toContain('.inner');
+    expect(css).toContain('color: red');
   });
 
   it('INCREMENT 7: folds GUARDED mixin overloads — the passing guard SELECTS, the failing one emits nothing', async () => {

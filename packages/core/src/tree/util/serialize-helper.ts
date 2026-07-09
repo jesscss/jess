@@ -1667,8 +1667,20 @@ function serializeSpineFrameContainer(
   // the walk finds no enclosing `Rules` and the frame is orphaned — a var read
   // then can't see an ancestor-scope (e.g. root-level) binding. Passing the live
   // enclosing frame reproduces the eval-path lexical chain without `.parent`.
+  //
+  // PER-CALL RE-POINT: `node.getScopeFrame` MEMOIZES `_scopeFrame` on the node, so a
+  // container SHARED across repeated mixin calls (a nested container in a mixin body —
+  // the same canonical child descended once per call) would reuse the FIRST call's
+  // parent frame, resolving its free vars (e.g. a `.@{name}` selector interpolation)
+  // against the first call's params. Re-point the frame's parent to the CURRENT
+  // enclosing (surface) frame each descent — mirrors the eval path's placement re-point
+  // (`rules.getScopeFrame().parent = placementFrame`). A no-op for an authored container
+  // (the parent already matches); load-bearing for a repeated mixin-surface child.
   const enclosingFrame = savedRulesContext?.getScopeFrame();
-  node.getScopeFrame(enclosingFrame);
+  const nodeFrame = node.getScopeFrame(enclosingFrame);
+  if (enclosingFrame !== undefined && nodeFrame.parent !== enclosingFrame) {
+    nodeFrame.parent = enclosingFrame;
+  }
   context.rulesContext = node;
   const rulesetFrameBaseline = context.rulesetFrames.length;
   const restore = (text: string): string => {

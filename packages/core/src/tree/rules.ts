@@ -4820,7 +4820,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           }
           return;
         }
-        if (n.requiredSemi && n.options.semi !== false) {
+        // A spine-eligible mixin CALL that folded to BLOCK output (a nested-container
+        // body — ends in `}`) must NOT append its own statement `;`: the expansion
+        // supplies its own terminators, and a `;` after a `}` is spurious (`.m() { .x
+        // {…} } … .m();` → `.x {…}` with no trailing `;`). A flat/decl-producing call's
+        // decls carry their own `;`. Detect the block close on the just-emitted text.
+        const emittedBlock = /\}\s*$/.test(w.getSince(leafMark));
+        if (n.requiredSemi && n.options.semi !== false && !emittedBlock) {
           w.add(';', n);
         }
         markEmitted(n);

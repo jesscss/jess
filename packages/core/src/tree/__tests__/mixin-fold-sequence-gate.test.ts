@@ -13,15 +13,15 @@ import type { Rules } from '../rules.js';
  * `.wrapper(@c){ .base(@c) }`, a chain `.a(){ .b() }`, incl. frame-dependent args —
  * FOLDS through the spine byte-identical. `callMap` terminates genuine recursion.
  *
- * Two sub-shapes STAY on eval (byte-identical, REQUIRED P4 items, gate-locked here):
- *   - RECURSIVE calls (a name-cycle among mixin defs, `treeHasRecursiveMixinCall`): a
- *     recursive call's frame-dependent ARG (`.loop((@n - 1))`) loses the per-level
- *     param frame on the recursive re-drive (spec in `P4-TERMINAL-SINK-DESIGN.md` §7).
- *   - NESTED-CONTAINER mixin bodies (`treeHasContainerBodyMixinDefinition`): a call
- *     inside a nested container is not a direct feed entry.
- * The self-recursive `.stripe` below is BOTH (recursion + nested container). A change
- * that folds these (before the frame-threaded recursive re-drive exists) trips RED;
- * a change that RE-DEFERS the wrapper to eval also trips RED.
+ * RECURSIVE calls STAY on eval (byte-identical, REQUIRED P4 item, gate-locked here):
+ * a name-cycle among mixin defs (`treeHasRecursiveMixinCall`) — a recursive call's
+ * frame-dependent ARG (`.loop((@n - 1))`) loses the per-level param frame on the
+ * recursive re-drive (spec in `P4-TERMINAL-SINK-DESIGN.md` §7).
+ * (NESTED-CONTAINER mixin bodies now FOLD — see `spine-production-ratchet.test.ts`;
+ * the recursive `.stripe` below is BOTH recursion + nested container and stays on
+ * eval via the recursion gate alone.) A change that folds a recursive loop (before
+ * the frame-threaded recursive re-drive exists) trips RED; a change that RE-DEFERS
+ * the wrapper to eval also trips RED.
  */
 async function render(source: string): Promise<{ css: string; eligible: boolean; spineRan: boolean }> {
   const context = new Context({ output: { collapseNesting: false }, leakyScope: true });

@@ -622,16 +622,102 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('does NOT route a NESTED-CONTAINER-body mixin through the spine (eval-fallback re-descent gap → eval path)', async () => {
-    // `.mix() { .inner { … } }` — a non-leaf body; the eval-fallback's resolved tree
-    // can't be re-spine-descended without losing the surface frame for deeply-nested
-    // calls, so the whole tree stays on the eval path (byte-identical).
+  it('NESTED-CONTAINER-body mixin FOLDS through the spine byte-identical (surface descends nested containers carrying the frame, no derive)', async () => {
+    // `.mix(@a) { .inner { … .innest { .mi((@a*2)) } } }` — a non-leaf body with a
+    // DEEPLY-NESTED call reading the mixin's param. The captured surface's container
+    // child descends via `serializeSpineFrameContainer` carrying the surface frame, so
+    // its body resolves `@a` at arbitrary depth AND expands its own nested call in-pass
+    // — no eval-fallback re-descent, no frame loss. Folds byte-identical to eval.
     const compiler = makeCompiler();
     const src = `.mi(@v) { border-width: @v; }\n.mix(@a: 10) { .inner { height: (@a * 10); .innest { .mi((@a * 2)); } } }\n.class { .mix(30); }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk, no output tree
+      // byte-identical to the eval oracle: `@a`=30 → height 300, deeply-nested `.mi`=60
+      expect(css).toBe('.class .inner {\n  height: 300;\n}\n.class .inner .innest {\n  border-width: 60;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-CONTAINER-body: a plain-selector container + a leaf sibling folds (byte-identical, no derive)', async () => {
+    const compiler = makeCompiler();
+    const src = `.mix() { color: red; .inner { color: blue; } }\n.class { .mix(); }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0);
+      expect(css).toBe('.class {\n  color: red;\n}\n.class .inner {\n  color: blue;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-CONTAINER-body: a plain-selector-child at-rule (no ancestor rewrap) folds (byte-identical)', async () => {
+    // `@media { .plain { … } }` inside a mixin body — the at-rule hoists, its plain-
+    // selector child composes against the call-site selector correctly (no rewrap
+    // needed), so it folds. (`@media { color: … }` — a DIRECT decl needing the call-
+    // site wrapper on hoist — is the DEFER case below.)
+    const compiler = makeCompiler();
+    const src = `.mix() { @media screen { .plain { color: green; } } }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .class .plain {\n    color: green;\n  }\n}\n');
+  });
+
+  it('DEFERRED: a mixin body with an at-rule child needing CALL-SITE ancestor rewrap stays on eval (byte-identical)', async () => {
+    // `@media screen { color: green }` inside the mixin body — a DIRECT declaration; on
+    // hoist to root the CALL-SITE `.class` selector must re-wrap the at-rule body
+    // (`@media { .class { color: green } }`). The spine hoist doesn't reproduce that
+    // rewrap yet, so the whole tree stays on eval (byte-identical). REQUIRED P4 item.
+    const compiler = makeCompiler();
+    const src = `.mix() { color: red; @media screen { color: green; } }\n.class { .mix(); }`;
     const before = spineRenderCounter.rootRenders;
     const css = await compiler.renderString(src, { language: 'less' });
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    expect(css).toContain('border-width: 60'); // the deeply-nested call still emits
+    expect(css).toBe('.class {\n  color: red;\n}\n@media screen {\n  .class {\n    color: green;\n  }\n}\n');
+  });
+
+  it('DEFERRED: a mixin body containing a nested Mixin DEFINITION stays on eval (byte-identical)', async () => {
+    // `.mix() { … .inner() { … } .inner() }` — a nested mixin DEFINITION in a mixin
+    // body. The fold's shallow surface descent doesn't register/emit a nested def, so
+    // the whole tree stays on eval (byte-identical). REQUIRED P4 item.
+    const compiler = makeCompiler();
+    const src = `.mix() { color: red; .inner() { color: blue; } .inner(); }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
+    expect(css).toBe('.class {\n  color: red;\n  color: blue;\n}\n');
+  });
+
+  it('DEFERRED: a self-recursive mixin (recursion + nested container) stays on eval (byte-identical)', async () => {
+    // `.stripe(@n) when (@n>0) { a { … } .stripe(@n-1) }` — recursion via a name-cycle
+    // AND a nested container. `treeHasRecursiveMixinCall` gates it to eval: a recursive
+    // call's frame-dependent arg (`@n - 1`) loses the per-level param frame on the
+    // recursive re-drive (`P4-TERMINAL-SINK-DESIGN.md` §7). REQUIRED P4 item.
+    const compiler = makeCompiler();
+    const src = `.stripe(@n) when (@n > 0) {\n  a { border-width: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(2); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
+    expect(css).toContain('border-width: 2');
+    expect(css).toContain('border-width: 1');
   });
 
   it('INCREMENT 7: folds GUARDED (`when`) mixin calls through the spine on the COMPILER path (no derive)', async () => {

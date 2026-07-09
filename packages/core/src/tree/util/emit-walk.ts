@@ -301,17 +301,36 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
  * candidate (byte-identical). A `false` from ANY candidate routes the whole call
  * to eval-fallback (`resolveSpineMixinCall`).
  *
- * INCREMENT 2 (frame-threaded descent): the body must be LEAF-ONLY spine-simple
- * children (`:`/merge declarations + comments — `isSimpleSpineLeaf`) with NO
- * nested container and NO further mixin call. VAR-READING decls are NOW ADMITTED —
- * increment 2 descends each surface with `context.rulesContext` pushed to the
- * surface, so a body reference resolves against the mixin's DEFINITION scope (its
- * wired lexical/closure/param frame). The literal-only restriction (increment 1)
- * is lifted. DEFERRED (still fall back): nested containers in a mixin body, a
- * mixin body that itself calls a mixin, parametric/guarded defs (gated earlier).
+ * INCREMENT 2 (frame-threaded descent): a body reference resolves against the
+ * mixin's DEFINITION scope — increment 2 descends each surface with
+ * `context.rulesContext` pushed to the surface (its wired lexical/closure/param
+ * frame). Leaf children (`:`/merge declarations + comments — `isSimpleSpineLeaf`)
+ * and a further mixin CALL (FOLD C) are admitted.
+ *
+ * NESTED-CONTAINER MIXIN BODY (this fold): a nested Ruleset/AtRule child is ADMITTED
+ * when it is `isSpineEligibleContainer` — the SAME predicate authored containers use.
+ * The captured surface's children are spliced with `spineFrame = surface`
+ * (`runSpineMixinExpansion`), so a container child descends via
+ * `serializeSpineFrameContainer` with its `enclosingFrame` = the surface frame; its
+ * body then resolves the mixin's params (`@a` at arbitrary container depth) and runs
+ * its OWN `runSpineMixinExpansion`, so a mixin call INSIDE the nested container
+ * (`.inner { .mi((@a*2)) }`) expands in-pass against the surface frame — no re-descent,
+ * no frame loss. DEFERRED (fall back, byte-identical): a hoisting at-rule child whose
+ * body needs the CALL-SITE selector re-wrapped on hoist (`bodyHasAtRuleNeedingAncestorRewrap`
+ * — the mixin body plays the enclosing-scope role; the spine hoist doesn't yet
+ * reproduce that rewrap), a nested container that is not spine-eligible (guarded /
+ * extend-bearing / append sub-shape), parametric/guarded defs (gated earlier). A
+ * nested Mixin DEFINITION and recursion stay gated at the tree level
+ * (`treeHasUnfoldableContainerBodyMixin` / `treeHasRecursiveMixinCall`).
  */
 function isSpineSimpleMixinSurface(surface: Rules): boolean {
   const children = surface.rules;
+  // A hoisting at-rule child needs the CALL-SITE selector re-wrapped on hoist (the
+  // mixin body plays the enclosing-scope role) — the spine hoist doesn't yet reproduce
+  // that rewrap, so defer such a surface (same guard authored containers use).
+  if (bodyHasAtRuleNeedingAncestorRewrap(children)) {
+    return false;
+  }
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     // A further mixin CALL inside the body IS admitted (FOLD C): the re-entrant
@@ -319,6 +338,13 @@ function isSpineSimpleMixinSurface(surface: Rules): boolean {
     // and `callMap` terminates genuine recursion. A call is not an `isSimpleSpineLeaf`,
     // so admit it explicitly before the leaf check rejects it.
     if (isSpineEligibleMixinCall(child)) {
+      continue;
+    }
+    // A nested CONTAINER the spine can descend (same predicate authored containers
+    // use). The spliced surface-child container descends via
+    // `serializeSpineFrameContainer` carrying the surface frame, so its body resolves
+    // params + expands its own nested calls in-pass (see the doc block above).
+    if (isNode(child, N.Ruleset | N.AtRule | N.Rules) && isSpineEligibleContainer(child)) {
       continue;
     }
     if (!isSimpleSpineLeaf(child)) {
@@ -1399,16 +1425,20 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // (and shadowing) resolves against the definition scope, byte-identical to eval.
   // Namespace-path, multi-level namespace, root/param closure, and now intermediate-
   // scope closure all fold.
-  // INCREMENT 4 cross-check: a mixin DEFINITION whose body contains NESTED
-  // CONTAINERS (a Ruleset/AtRule — `.mix() { .inner { … } }`) can't fold: the
-  // runtime surface gate rejects a non-leaf body, so the call eval-falls-back, but
-  // the eval fallback's output is a resolved TREE that the spine then re-descends —
-  // losing the eval-time frame for any DEEPLY-NESTED mixin call (`.mix-inner((@a*2))`
-  // reads `@a` from the surface frame the re-descent doesn't carry), dropping its
-  // output. Keep such a tree on the eval path entirely. DEFERRED: nested-container
-  // mixin bodies (needs the eval-fallback output rendered as-is, not re-spine-
-  // descended — a later mechanism). Flat (leaf-only) mixin bodies still fold.
-  if (treeHasMixinCall(root) && treeHasContainerBodyMixinDefinition(root)) {
+  // NESTED-CONTAINER MIXIN BODY (FOLDED): a mixin DEFINITION whose body contains
+  // NESTED CONTAINERS (`.mix() { .inner { … } }`) — including a deeply-nested call
+  // reading the mixin's params (`.inner { .mi((@a*2)) }`) — now FOLDS. The captured
+  // surface's container child descends via `serializeSpineFrameContainer` carrying the
+  // surface frame (its `enclosingFrame` = the surface), so its body resolves the
+  // mixin's params at arbitrary depth AND runs its own `runSpineMixinExpansion` — a
+  // nested call inside the container expands in-pass against the surface frame, no
+  // re-descent, no frame loss (the gap the OLD eval-fallback re-descent had).
+  // `isSpineSimpleMixinSurface` admits a nested container via the same
+  // `isSpineEligibleContainer` predicate authored containers use. Only the UNFOLDABLE
+  // sub-shapes stay on eval (`treeHasUnfoldableContainerBodyMixin`, byte-identical):
+  // a hoisting at-rule child needing call-site ancestor rewrap, a nested Mixin
+  // DEFINITION, and a non-spine-eligible nested container. Recursion is gated below.
+  if (treeHasMixinCall(root) && treeHasUnfoldableContainerBodyMixin(root)) {
     return false;
   }
   // FOLD C (P4 terminal/sink): recursion / nested-call-in-body. A mixin DEFINITION
@@ -1422,10 +1452,21 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   //     `callMap` terminates the recursion, but a recursive call's frame-dependent ARG
   //     (`.loop((@n - 1))`) loses the per-level param frame on the recursive re-drive
   //     (a genuine gap — spec in `P4-TERMINAL-SINK-DESIGN.md` §7).
-  //   - NESTED-CONTAINER bodies (`treeHasContainerBodyMixinDefinition`, above) — a call
-  //     inside a nested container is not a direct feed entry, so the flat re-scan does
-  //     not reach it.
+  // A call inside a nested CONTAINER now folds (see the nested-container gate above):
+  // the container descends in-pass carrying the surface frame, so the call resolves
+  // there — it no longer needs to be a direct top-level feed entry.
   if (treeHasMixinCall(root) && treeHasRecursiveMixinCall(root)) {
+    return false;
+  }
+  // LEAKY-MODE MIXIN-BODY VAR LEAK (a pre-existing spine gap, gated byte-identical).
+  // In leaky Less mode a mixin body's plain `@x: …` VarDeclaration LEAKS into the
+  // CALLER scope, so a later consumer (`.a { width: @x }`, or a call arg `@x`) reads
+  // it. The spine fold descends the surface under its OWN frame and does NOT propagate
+  // that write outward, so the consumer throws `'x' is not defined`. Keep such a tree
+  // on the eval path (which reproduces the leak) until the fold models leaky
+  // cross-scope propagation. Cheap: only scanned in leaky mode when the tree has a
+  // mixin call; a non-leaky render (and the common non-leak shape) pays nothing.
+  if (context.options.leakyScope && treeHasMixinCall(root) && treeHasLeakyConsumedMixinBodyVar(root)) {
     return false;
   }
   // FLAT extend topology (P3 increment 1): a root whose ONLY extends are root-direct-child
@@ -1581,22 +1622,107 @@ function treeHasNamespacePathCall(root: Node): boolean {
 }
 
 /**
- * True if the tree has a Mixin definition whose body contains a nested CONTAINER —
- * a Ruleset/AtRule, OR a nested Mixin DEFINITION (a mixin that defines another
- * mixin) — the non-leaf mixin body whose eval-fallback the spine cannot faithfully
- * re-descend (see `isSpineEligibleRoot`). A nested Mixin definition is a scope the
- * fold's shallow surface descent does not register/emit correctly (its own body may
- * carry an interpolated name or a nested call), so it must stay on eval — the same
- * class as a nested Ruleset. Direct body children only need checking.
+ * True (LEAKY MODE ONLY) if a Mixin body declares a plain `@x: …` var whose NAME is
+ * also referenced somewhere OUTSIDE that mixin — the leaky cross-scope leak the spine
+ * fold does not propagate (see `isSpineEligibleRoot`). Conservative static
+ * over-approximation: gather every non-param VarDeclaration name declared inside ANY
+ * mixin body, then report true if any of those names is referenced by a Reference
+ * anywhere in the tree that is NOT inside the SAME mixin body. `setDefined` decls are
+ * already excluded at the surface gate; a var used only internally to its mixin (no
+ * outside reference) is NOT flagged, so an internal-only var body still folds.
  */
-function treeHasContainerBodyMixinDefinition(root: Node): boolean {
+function treeHasLeakyConsumedMixinBodyVar(root: Node): boolean {
+  const leakedNames = new Set<string>();
+  const declaringMixinOf = new Map<string, Node>();
+  for (const node of root.walk(true)) {
+    if (!isNode(node, N.Mixin)) {
+      continue;
+    }
+    for (let i = 0; i < node.rules.length; i++) {
+      const child = node.rules[i]!;
+      if (
+        isNode(child, N.VarDeclaration)
+        && typeof child.name === 'string'
+        && !child.options?.setDefined
+      ) {
+        leakedNames.add(child.name);
+        declaringMixinOf.set(child.name, node);
+      }
+    }
+  }
+  if (leakedNames.size === 0) {
+    return false;
+  }
+  // A reference to a leaked name that is NOT lexically inside its declaring mixin is a
+  // cross-scope consumer. Track the enclosing mixin on the way DOWN (raw parse tree has
+  // no `.parent`), so a body-internal read is excluded.
+  const scan = (node: Node, enclosingMixin: Node | undefined): boolean => {
+    const nextMixin = isNode(node, N.Mixin) ? node : enclosingMixin;
+    if (
+      isNode(node, N.Reference)
+      && typeof node.key === 'string'
+      && leakedNames.has(node.key)
+      && declaringMixinOf.get(node.key) !== nextMixin
+    ) {
+      return true;
+    }
+    for (const child of node.walk()) {
+      if (scan(child, nextMixin)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  return scan(root, undefined);
+}
+
+/**
+ * True if the tree has a Mixin definition whose body contains a nested container the
+ * spine CANNOT fold — the only sub-shapes that still force the whole tree to eval.
+ *
+ * A FOLDABLE nested-container mixin body (`.mix(){ .inner{ … } }`, incl. a deeply-
+ * nested call reading the mixin's params — `.inner{ .mi((@a*2)) }`) NOW folds through
+ * the spine: the captured surface's container child descends via
+ * `serializeSpineFrameContainer` carrying the surface frame, resolving params +
+ * expanding its own nested calls in-pass (see `isSpineSimpleMixinSurface`). So this
+ * gate no longer flags every container-body mixin — only the UNFOLDABLE ones:
+ *   - a body with a hoisting at-rule child needing CALL-SITE ancestor rewrap
+ *     (`bodyHasAtRuleNeedingAncestorRewrap` — the spine hoist doesn't reproduce it yet);
+ *   - a nested Mixin DEFINITION ANYWHERE inside a mixin body, at any depth (the fold's
+ *     surface descent doesn't register a DYNAMICALLY-created nested callable — e.g.
+ *     `.Person(@n){ .@{n}{ .sayGender(){…} } }` then `.person.sayGender()` — so a later
+ *     call to it can't resolve);
+ *   - a body with a hoisting at-rule child needing CALL-SITE ancestor rewrap
+ *     (`bodyHasAtRuleNeedingAncestorRewrap` — the spine hoist doesn't reproduce it yet);
+ *   - a nested Ruleset/AtRule that is not `isSpineEligibleContainer` (guarded /
+ *     extend-bearing / append sub-shape — inherits those existing deferrals).
+ * A tree whose container-body mixins are ALL spine-eligible returns false → folds.
+ * Recursion is gated separately (`treeHasRecursiveMixinCall`).
+ */
+function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
   for (const node of root.walk(true)) {
     if (!isNode(node, N.Mixin)) {
       continue;
     }
     const body = node.rules;
+    // A Mixin DEFINITION nested ANYWHERE inside this mixin body (deep) is a dynamically
+    // created callable the fold doesn't register — defer the whole tree. Checked deep
+    // because the nested def may sit inside a container (`.@{n} { .sayGender() {} }`).
+    for (const inner of node.walk(true)) {
+      if (inner !== node && isNode(inner, N.Mixin)) {
+        return true;
+      }
+    }
+    // A hoisting at-rule child needing ancestor rewrap can't fold (call-site rewrap
+    // gap) — the whole tree stays on eval, byte-identical.
+    if (bodyHasAtRuleNeedingAncestorRewrap(body)) {
+      return true;
+    }
     for (let i = 0; i < body.length; i++) {
-      if (isNode(body[i]!, N.Ruleset | N.AtRule | N.Mixin)) {
+      const child = body[i]!;
+      // A nested CONTAINER the spine can't descend (extend-bearing, guarded, append
+      // sub-shapes) — defer. A foldable container does NOT force eval.
+      if (isNode(child, N.Ruleset | N.AtRule) && !isSpineEligibleContainer(child)) {
         return true;
       }
     }
