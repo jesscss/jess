@@ -13,8 +13,8 @@ import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
-import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { ERR, WARN, toDiagnostic, JessError } from '../jess-error.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { WARN, toDiagnostic } from '../jess-error.js';
 
 export type AmpersandValue = {
   /**
@@ -87,39 +87,6 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
   return false;
 };
 
-function splitTopLevelCommas(str: string): string[] {
-  const items: string[] = [];
-  let depth = 0;
-  let inQuote: string | null = null;
-  let start = 0;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str[i]!;
-    if (inQuote) {
-      if (ch === inQuote && str[i - 1] !== '\\') {
-        inQuote = null;
-      }
-    // eslint-disable-next-line @stylistic/quotes
-    } else if (ch === '"' || ch === "'") {
-      inQuote = ch;
-    } else if (ch === '(' || ch === '[') {
-      depth++;
-    } else if (ch === ')' || ch === ']') {
-      depth--;
-    } else if (ch === ',' && depth === 0) {
-      const item = str.slice(start, i).trim();
-      if (item) {
-        items.push(item);
-      }
-      start = i + 1;
-    }
-  }
-  const last = str.slice(start).trim();
-  if (last) {
-    items.push(last);
-  }
-  return items;
-}
-
 type AppendSelectorResult<T extends Selector = Selector> = {
   selector: T;
   appended: boolean;
@@ -129,8 +96,6 @@ type AmpersandAppendPlacementState = {
   source: Ampersand;
   selector: Selector | Nil;
   appendValue?: string;
-  templateMerge: boolean;
-  templateParts?: string[];
   hoistToRoot: boolean;
   result?: Selector | Nil;
   selectorBits: Context['selectorBits'];
@@ -146,162 +111,17 @@ function createAmpersandAppendPlacementState(
     source,
     selector,
     appendValue,
-    templateMerge: appendValue?.includes('&') === true,
-    templateParts: appendValue?.includes('&') === true ? appendValue.split('&') : undefined,
     hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
     selectorBits: context.selectorBits
   };
-}
-
-function isIdentJoinChar(char: string | undefined): boolean {
-  return !!char && /[a-zA-Z0-9_-]/.test(char);
-}
-
-function assertValidAmpersandTemplateJoin(template: string, replacement: string): void {
-  if (!replacement) {
-    return;
-  }
-  let searchFrom = 0;
-  while (true) {
-    const idx = template.indexOf('&', searchFrom);
-    if (idx === -1) {
-      break;
-    }
-    const before = idx > 0 ? template[idx - 1] : undefined;
-    const after = idx < template.length - 1 ? template[idx + 1] : undefined;
-    const first = replacement[0];
-    const last = replacement[replacement.length - 1];
-    const invalidHeadJoin = (first === '.' || first === '#') && isIdentJoinChar(before);
-    const invalidTailJoin = (last === '.' || last === '#') && isIdentJoinChar(after);
-    if (invalidHeadJoin || invalidTailJoin) {
-      throw new SyntaxError(`Invalid ampersand merge template "${template}" with parent selector "${replacement}"`);
-    }
-    searchFrom = idx + 1;
-  }
 }
 
 function throwCannotAppendSelector(appendValue: string): never {
   throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
 }
 
-function getExactBasicSelectorText(selector: Selector): string | undefined {
-  return selector.constructor === BasicSelector
-    ? (selector as BasicSelector).valueOf()
-    : undefined;
-}
-
-function getSelectorSyntaxText(selector: Selector): string {
-  const exactBasicText = getExactBasicSelectorText(selector);
-  if (exactBasicText !== undefined) {
-    return exactBasicText;
-  }
-  const writer = new OutputWriter(false);
-  selector.writeSyntax(getPrintOptions({ writer }));
-  return writer.toString();
-}
-
 function selectorListItemForAmpersand(item: SelectorList['value'][number]): Selector {
   return typeof item === 'string' ? new BasicSelector(item) : item;
-}
-
-function selectorListValueForAmpersand(value: SelectorList['value']): Selector[] {
-  const selectors = new Array<Selector>(value.length);
-  for (let i = 0; i < value.length; i++) {
-    selectors[i] = selectorListItemForAmpersand(value[i]!);
-  }
-  return selectors;
-}
-
-/**
- * A single selector whose text carries top-level commas can only have come from
- * interpolating a comma-list value (`@{list}` = `~'a, b'`) — a genuine multi-
- * selector parent arrives as a `SelectorList` node, handled above. Less 4.x split
- * such an interpolated value and glued `&` onto each part; Less 5 rejects it as an
- * invalid merge template (the golden prints the parent comma-joined, no spaces).
- * @see tests-error/eval/ampersand-merge-template-invalid.less
- */
-function assertNotCommaMergeTemplate(selectorText: string, appendValue: string): void {
-  const parts = splitTopLevelCommas(selectorText);
-  if (parts.length > 1) {
-    const parent = parts.map(part => part.trim()).join(',');
-    throw ERR.invalidAmpersandMerge({ meta: { template: appendValue, parent } });
-  }
-}
-
-function getAmpersandTemplateReplacements(baseSelector: Selector, appendValue: string): Selector[] {
-  if (
-    isNode(baseSelector, N.PseudoSelector)
-    && baseSelector.name === ':is'
-    && baseSelector.arg
-    && isNode(baseSelector.arg, N.SelectorList)
-  ) {
-    return selectorListValueForAmpersand(baseSelector.arg.value);
-  }
-  if (isNode(baseSelector, N.SelectorList)) {
-    return selectorListValueForAmpersand(baseSelector.value);
-  }
-  const exactBasicText = getExactBasicSelectorText(baseSelector);
-  if (exactBasicText !== undefined) {
-    if (exactBasicText.includes(',')) {
-      assertNotCommaMergeTemplate(exactBasicText, appendValue);
-    }
-    return [baseSelector];
-  }
-  if (isNode(baseSelector, N.SimpleSelector)) {
-    const selectorText = baseSelector.toTrimmedString();
-    if (selectorText.includes(',')) {
-      assertNotCommaMergeTemplate(selectorText, appendValue);
-    }
-    return [baseSelector];
-  }
-  return [baseSelector];
-}
-
-function mergeAmpersandTemplateSelector(
-  baseSelector: Selector,
-  placement: AmpersandAppendPlacementState
-): Selector {
-  const { appendValue, templateParts } = placement;
-  if (appendValue === undefined) {
-    return baseSelector;
-  }
-  const replacements = getAmpersandTemplateReplacements(baseSelector, appendValue);
-  const merged = new Array<Selector>(replacements.length);
-  for (let i = 0; i < replacements.length; i++) {
-    const item = replacements[i]!;
-    const value = getSelectorSyntaxText(item);
-    assertValidAmpersandTemplateJoin(appendValue, value);
-    if (templateParts?.length === 2 && templateParts[0] === '' && templateParts[1]) {
-      const result = appendSelector(item, templateParts[1]);
-      if (result.appended) {
-        merged[i] = result.selector;
-        continue;
-      }
-    }
-    merged[i] = new BasicSelector((templateParts ?? [appendValue]).join(value)).inherit(baseSelector);
-  }
-  if (merged.length === 1) {
-    return merged[0]!;
-  }
-  return new SelectorList(merged).inherit(baseSelector);
-}
-
-function mergeAmpersandTemplateSelectorList(
-  selector: SelectorList,
-  placement: AmpersandAppendPlacementState
-): SelectorList {
-  const mergedItems: Selector[] = [];
-  for (const item of selector.value) {
-    const merged = mergeAmpersandTemplateSelector(selectorListItemForAmpersand(item), placement);
-    if (isNode(merged, N.SelectorList)) {
-      for (let i = 0; i < merged.value.length; i++) {
-        mergedItems.push(selectorListItemForAmpersand(merged.value[i]!));
-      }
-    } else {
-      mergedItems.push(merged);
-    }
-  }
-  return new SelectorList(mergedItems).inherit(selector);
 }
 
 function createAmpersandWithSelectorContainer(
@@ -613,33 +433,14 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       let selector: Selector | Nil = typeof selectorRaw === 'string' ? new BasicSelector(selectorRaw) : selectorRaw;
       const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
-        if (placement.templateMerge) {
-          try {
-            if (isNode(selector, N.SelectorList)) {
-              selector = mergeAmpersandTemplateSelectorList(selector, placement);
-            } else {
-              selector = mergeAmpersandTemplateSelector(selector, placement);
-            }
-          } catch (error) {
-            // A hard merge error (e.g. an invalid comma-list parent) fires during
-            // selector-identity prep, whose catch treats throws as "defer to eval".
-            // Record it on context so renderToResult surfaces it, then rethrow so
-            // direct-eval callers still see the throw.
-            if (error instanceof JessError) {
-              const diagnostic = toDiagnostic(error);
-              if ('errors' in diagnostic) {
-                context.errors.push(diagnostic);
-              }
-            }
-            throw error;
-          }
-        } else {
-          const result = appendSelector(selector, appendValue);
-          if (!result.appended) {
-            throwCannotAppendSelector(appendValue);
-          }
-          selector = result.selector;
+        // `&` is always leading, so `appendValue` is a plain suffix (`&-bar` → `-bar`,
+        // `&1` → `1`, `&(-foo)` → `-foo`) — never an embedded-`&` template. Just append
+        // it to the parent's trailing selector.
+        const result = appendSelector(selector, appendValue);
+        if (!result.appended) {
+          throwCannotAppendSelector(appendValue);
         }
+        selector = result.selector;
       }
 
       // No `:is()` wrapping here: for the append/hoist case, the result is

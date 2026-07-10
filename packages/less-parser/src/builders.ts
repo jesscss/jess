@@ -944,11 +944,9 @@ export class LessGrammar extends CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const hasParen = ls.some(l => l.value === '(');
     if (!hasParen) {
-      // Glued-suffix (`&-bar`, `&1`) or prefix (`.foo-&`) template: the first leaf
-      // is the whole ampersand-token image. Mirror the reference's
-      // getAmpersandTemplateValue (selectors.ts): bare `&` → undefined; a `&`-led
-      // image keeps everything after the `&` (`&-bar` → '-bar'); a non-`&`-led image
-      // that still contains `&` keeps the full image (`.foo-&` → '.foo-&').
+      // The ampersand token is always `&`-led (`&`, `&-bar`, `&1`) — a `.`/`#` prefix
+      // like `.foo-&` parses as a separate BasicSelector + a bare `&`, not one token.
+      // The suffix after `&` is the append value; a bare `&` has none.
       const image = ls[0]?.value ?? '&';
       const appendValue = this._ampersandTemplateValue(image);
       return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
@@ -961,18 +959,10 @@ export class LessGrammar extends CssParser {
     return new Ampersand(appendValue, {}, loc) as unknown as JessNode;
   }
 
-  /** Port of selectors.ts getAmpersandTemplateValue (reference parser). */
+  /** The append value of a `&`-led ampersand token: the suffix after `&` (`&-bar` →
+   * `-bar`, `&1` → `1`), or undefined for a bare `&`. */
   private _ampersandTemplateValue(image: string): string | undefined {
-    if (image === '&') {
-      return undefined;
-    }
-    if (image.startsWith('&')) {
-      return image.slice(1) || undefined;
-    }
-    if (image.includes('&')) {
-      return image;
-    }
-    return undefined;
+    return image === '&' ? undefined : image.slice(1) || undefined;
   }
 
   /**

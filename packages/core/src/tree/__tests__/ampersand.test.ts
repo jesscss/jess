@@ -209,7 +209,7 @@ describe('Ampersand', () => {
     };
 
     try {
-      const resolved = await amp('&-theme').resolve(context);
+      const resolved = await amp('-theme').resolve(context);
 
       expect(resolved.valueOf()).toBe('.foo-theme');
       expect(resolved.hoistToRoot).toBe(true);
@@ -548,7 +548,7 @@ describe('Ampersand', () => {
       };
     }
 
-    const resolved = await amp('&-theme').resolve(context);
+    const resolved = await amp('-theme').resolve(context);
     for (let index = 0; index < sourceSelector.value.length; index++) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (sourceSelector.value[index]! as Selector).toTrimmedString = originals[index]!;
