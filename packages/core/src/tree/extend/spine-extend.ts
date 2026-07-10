@@ -329,6 +329,33 @@ export function composeSpineSubjectHeaders(
         hoisted.add(subject.ruleset);
         continue;
       }
+      // EXPANDED-MODE COLLAPSE-RELOCATION (descendant-nested target). A nested descendant subject
+      // (`.ext8 { .ext9 {…} }` → composed `.ext8 .ext9`) whose FULL COMPOSED PATH is itself an extend
+      // target reached by a ROOT extender (`.buu:extend(.ext8 .ext9 all)`) must RELOCATE to root: the
+      // gained branch (`.buu`) is a bare compound with NO shared parent context, so it cannot live
+      // nested under `.ext8` — the whole group hoists (`.ext8 .ext9, .buu` at root). This differs from
+      // the bare-child sibling graft (`.aa { .dd {…} }` + `.ee:extend(.dd all)` → `.dd, .ee` stays
+      // NESTED) precisely by the target FORM: a full-composed-path target relocates; a bare-child-local
+      // target grafts in place. Gate on an instruction targeting the full composed own form EXACTLY,
+      // then run the full-path projection filtered to those instructions (drops the bare-child grafts
+      // the in-place path owns) and hoist the composed header verbatim (same `hoisted`-set relocation
+      // the `&`-crossing path uses above).
+      const relocOwn = String(ownForm.valueOf());
+      const relocInstructions = ownIsDescendant
+        ? instructions.filter(inst => String(inst.target.valueOf()) === relocOwn)
+        : [];
+      if (relocInstructions.length > 0) {
+        extendLayerCounter.solveRuns++;
+        const reloc = runSubjectProjection(
+          { id: `r${i}`, path: subject.path, order: subject.order },
+          relocInstructions
+        );
+        if (reloc.ownBuilt && reloc.projection && reloc.projection.branches.length > 1) {
+          headers.set(subject.ruleset, new SelectorList(reloc.projection.branches as SelectorList['value']));
+          hoisted.add(subject.ruleset);
+          continue;
+        }
+      }
       const bareLocal = subject.path[subject.path.length - 1]!;
       // FILTER for the bare-local seed. Seeding SOLVE with the BARE local (`.dd`) strips the nested
       // subject's parent context (`.aa .dd`), which over-matches an EXACT extend: `.ff:extend(.dd)`
@@ -424,7 +451,13 @@ export function composeSpineSubjectHeaders(
       const ampKey = ampProj.projection
         ? ampProj.projection.branches.map(b => String(b.valueOf())).join(',')
         : ampFullOwn;
-      if (collapseNesting && !parentGainedBranch && ampProj.ownBuilt && ampProj.projection && ampKey !== ampFullOwn) {
+      // Fires in BOTH modes: the graft target is the full composed compound (`.ext8.ext9`), a ROOT
+      // extender (`.fuu`) sharing no parent context, so the block RELOCATES to root as
+      // `.ext8.ext9, .fuu` verbatim (hoisted) even under `collapseNesting:false`. When the parent
+      // gained a branch the `&`-flow owns the collapsed grouped form (`:is(...):hover`) — deferred via
+      // `!parentGainedBranch`; when no full-form target exists (`ampKey === ampFullOwn`) the block
+      // keeps its authored `&`-flow output.
+      if (!parentGainedBranch && ampProj.ownBuilt && ampProj.projection && ampKey !== ampFullOwn) {
         headers.set(subject.ruleset, new SelectorList(ampProj.projection.branches as SelectorList['value']));
         hoisted.add(subject.ruleset);
       }
@@ -1143,63 +1176,20 @@ export function isSpineExtendTopology(
     }
   }
 
-  // EXPANDED-MODE NESTED-TARGET COLLAPSE-RELOCATION RESIDUAL. A NESTED-ruleset subject whose composed
-  // form is itself an extend target (`.ext8 { .ext9 {…} }` / `.ext8 { &.ext9 {…} }`, both composing to
-  // an `.ext8 .ext9` / `.ext8.ext9` the document extends) must COLLAPSE-and-group to ROOT even under
-  // `collapseNesting:false` so it can carry its extender branches (`.ext8 .ext9, .buu`). That is a
-  // block RELOCATION the expanded spine path does not reproduce (it keeps the block nested). Under
-  // COLLAPSE mode the flatten already relocates it, so the fold is sound. Reject the whole tree in
-  // expanded mode when such a subject exists (byte-identical to eval; precise residual, IOU).
-  if (!collapseNesting) {
-    for (const p of cleanSubjectPaths) {
-      if (!p.includes(' ')) {
-        continue;
-      }
-      // A nested descendant subject path (`.aa .dd`) whose LAST compound OR whole path is an extend
-      // target relocates only for a target that crosses/collapses to root. `.aa .dd` stays nested in
-      // the `.css` (its grafts `.ee` render nested), so gate NARROWLY: reject only when the nested
-      // subject's parent compound is ALSO a standalone nested block extended into root (the `.ext8`
-      // family). Detect via: some target equals the composed path AND the parent compound is a root
-      // subject with its OWN root block (a duplicate nested block that must merge to root).
-      const tokens = p.split(/\s+/);
-      const lastTok = tokens[tokens.length - 1]!;
-      const parentTok = tokens.slice(0, -1).join(' ');
-      if (
-        (targets.has(p) || targets.has(lastTok) || targets.has(normalizeCombinatorSpacing(p)))
-        && rootLevelSelectors.has(parentTok)
-        && [...rootLevelSelectors].some(s => s !== parentTok && s !== p
-          && splitTopLevelBranches(s).some(b => normalizeCombinatorSpacing(b.trim()) === normalizeCombinatorSpacing(p)
-            || normalizeCombinatorSpacing(b.trim()) === lastTok))
-      ) {
-        return false;
-      }
-    }
-    // AMP-COMPOSED nested subject (`.ext8 { &.ext9 {…} }` → `.ext8.ext9`) that is a target with a
-    // root-level duplicate block: same collapse-relocation residual (`.ext8.ext9, .fuu`).
-    for (const child of root.rules) {
-      if (!isNode(child, N.Ruleset)) {
-        continue;
-      }
-      const hasAmpTargetChild = ((): boolean => {
-        for (const gc of child.rules) {
-          if (isNode(gc, N.Ruleset)) {
-            const gl = flatLocalSelector(gc);
-            if (gl !== undefined && String(gl.valueOf()).includes('&')) {
-              const composed = Ruleset.composeSelector(gl, composeTargetOwn([flatLocalSelector(child)!]));
-              const composedStr = normalizeCombinatorSpacing(String((Array.isArray(composed) ? SelectorList.create(composed) : composed).valueOf()));
-              if (targets.has(composedStr) || [...targets].some(t => normalizeCombinatorSpacing(t) === composedStr)) {
-                return true;
-              }
-            }
-          }
-        }
-        return false;
-      })();
-      if (hasAmpTargetChild) {
-        return false;
-      }
-    }
-  }
+  // EXPANDED-MODE NESTED-TARGET COLLAPSE-RELOCATION (formerly a hard reject). A NESTED-ruleset subject
+  // whose composed form is itself an extend target (`.ext8 { .ext9 {…} }` / `.ext8 { &.ext9 {…} }`,
+  // composing to `.ext8 .ext9` / `.ext8.ext9` the document extends via ROOT extenders `.buu`/`.fuu`)
+  // must COLLAPSE-and-group to ROOT even under `collapseNesting:false` — the gained branch shares no
+  // parent context so it cannot stay nested (`.ext8 .ext9, .buu` at root). `composeSpineSubjectHeaders`
+  // now BUILDS this on the SPINE: the `isNested && !collapseNesting` full-composed-path relocation
+  // (descendant) and the `ampComposed` full-form relocation (amp) each hoist the composed header
+  // verbatim via the `hoisted`-set (block relocation to root, the expanded-mode analogue of the
+  // collapse-mode flatten). Both relocations key STRICTLY on an instruction targeting the subject's
+  // FULL composed own form; a NON-relocating nested subject (bare-child graft like `.aa { .dd {…} }` +
+  // `.ee:extend(.dd all)` → `.dd, .ee`, or a subject reached by no full-form target) is left to the
+  // in-place bare-local / authored `&`-flow, which emits the correct NESTED block. So the whole reject
+  // is gone — an unbuildable shape now streams its authored nested form rather than routing the tree to
+  // eval, and every extend fixture stays byte-identical.
 
   // STRICT SUBJECT CORRESPONDENCE. Each target must resolve to a subject the override can rewrite:
   //  - a ROOT-LEVEL subject (plain target, increment 2 path), unshadowed by a nested ruleset of the
