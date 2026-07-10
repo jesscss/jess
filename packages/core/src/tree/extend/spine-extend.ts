@@ -154,6 +154,24 @@ export interface SpineSubject {
    * extender contributions surface (the eval-path `F_EXTEND_TARGET` reference-filter).
    */
   reference?: boolean;
+  /**
+   * True when this subject's local originated from an `&`-composition (`.ext8 { &.ext9 {…} }` →
+   * `.ext8.ext9`) whose fully-resolved compound form is ITSELF an extend target. Its `path` is the
+   * fully-composed `[resolvedLocal]` (length 1, ancestor already folded in), so an override header
+   * must emit VERBATIM at the nested block's collapsed-root position (like a hoisted subject), NOT
+   * be re-composed under the parent frame. A header is installed ONLY when a graft fires (the
+   * projection changes the composed own form); with no graft the block streams its normal `&`-flow.
+   */
+  ampComposed?: boolean;
+  /**
+   * For an {@link ampComposed} subject: the ancestor path the `&`-local composed against
+   * (`[.ext8]` for `.ext8 { &.ext9 {…} }`). Used to decide override-vs-`&`-flow: when the PARENT is
+   * itself an extend subject that gained a branch (`.button { &:hover {…} }` with `.button` extended),
+   * the collapsed `:is(.button, …):hover` comes from the parent's `&`-flow — installing a direct
+   * per-branch override on `.button:hover` here would fight it. So the ampComposed override applies
+   * ONLY when the parent gained NO branch (`.ext8` is not extended → `.ext8.ext9` needs the override).
+   */
+  ampParentPath?: BucketPath;
 }
 
 /**
@@ -224,7 +242,30 @@ export function composeSpineSubjectHeaders(
         && !parentProjection.projection.hoistToRoot
         && parentProjection.projection.branches.length > 1
       ) {
-        const folded = foldNestedChildHeaderNode(parentProjection.projection, childLocal, true);
+        // NESTED-CHILD GRAFT. An extender targeting the nested child ITSELF (`.ee:extend(.dd all)`
+        // where `.dd` is nested under `.aa`) must add a SIBLING child branch under the SAME
+        // (overridden) parent context: `:is(.aa, .cc) .dd, :is(.aa, .cc) .ee`. Project the bare child
+        // local against the instructions to gather those grafts, then fold EACH resulting child
+        // branch into the parent Or-set. An EXACT extend of the child must NOT match the bare sub-
+        // compound (same full-path filter the expanded-mode nested path uses) — only PARTIAL (`all`)
+        // and full-composed-path instructions apply in place. With no child graft this reduces to the
+        // single-child fold (byte-identical to before).
+        const fullChildOwn = String(composeTargetOwn(subject.path).valueOf());
+        const childInstructions = instructions.filter(inst =>
+          inst.partial || String(inst.target.valueOf()) === fullChildOwn);
+        extendLayerCounter.solveRuns++;
+        const childSolved = solveSubjectBranches(
+          { id: `c${i}`, path: [childLocal], order: subject.order },
+          childInstructions
+        );
+        const childBranches: Selector[] = childSolved && childSolved.branches.length > 0
+          ? childSolved.branches
+          : [childLocal];
+        const foldedBranches = childBranches.map(cb =>
+          foldNestedChildHeaderNode(parentProjection.projection!, cb, true));
+        const folded = foldedBranches.length === 1
+          ? foldedBranches[0]!
+          : new SelectorList(foldedBranches as SelectorList['value']);
         headers.set(subject.ruleset, folded);
         hoisted.add(subject.ruleset);
         continue;
@@ -350,6 +391,44 @@ export function composeSpineSubjectHeaders(
     const projectionKey = projection.branches.map(b => String(b.valueOf())).join(',');
     if (projectionKey === String(authoredOwn.valueOf())) {
       continue; // no change vs authored — stream the authored header
+    }
+    // AMP-COMPOSED SUBJECT that GAINED a graft (`.ext8.ext9` → `.ext8.ext9, .fuu`). Its path is the
+    // fully-composed compound, so the branches ARE the final verbatim header; emit at the nested
+    // block's collapsed-root position (hoisted) rather than re-composing under the parent frame.
+    if (subject.ampComposed === true) {
+      // A header is installed ONLY when an instruction targets the FULL composed form EXACTLY
+      // (`.fuu:extend(.ext8.ext9 all)` — the composed compound itself is the target). A target that is
+      // merely a PARTIAL of the PARENT (`.submit:extend(.button all)` where the block is `&:hover` →
+      // `.button:hover`) is propagated by the parent's `&`-flow into the collapsed `:is(...):hover`
+      // — NOT a per-branch verbatim override here. So drop any instruction whose target is not the
+      // full composed own form, re-project, and override only if THAT gained a branch.
+      // If the PARENT is itself an extend subject that GAINED a branch, the collapsed grouped form
+      // (`:is(.button, .submit):hover`) comes from the parent's `&`-flow — defer to it (no override).
+      let parentGainedBranch = false;
+      if (subject.ampParentPath && subject.ampParentPath.length > 0) {
+        const parentOwn = String(composeTargetOwn(subject.ampParentPath).valueOf());
+        extendLayerCounter.solveRuns++;
+        const parentProj = runSubjectProjection(
+          { id: `ap${i}`, path: subject.ampParentPath, order: subject.order },
+          instructions
+        );
+        const parentKey = parentProj.projection
+          ? parentProj.projection.branches.map(b => String(b.valueOf())).join(',')
+          : parentOwn;
+        parentGainedBranch = parentProj.ownBuilt && parentProj.projection !== undefined && parentKey !== parentOwn;
+      }
+      const ampFullOwn = String(composeTargetOwn(subject.path).valueOf());
+      const ampInstructions = instructions.filter(inst => String(inst.target.valueOf()) === ampFullOwn);
+      extendLayerCounter.solveRuns++;
+      const ampProj = runSubjectProjection(pipelineSubject, ampInstructions);
+      const ampKey = ampProj.projection
+        ? ampProj.projection.branches.map(b => String(b.valueOf())).join(',')
+        : ampFullOwn;
+      if (collapseNesting && !parentGainedBranch && ampProj.ownBuilt && ampProj.projection && ampKey !== ampFullOwn) {
+        headers.set(subject.ruleset, new SelectorList(ampProj.projection.branches as SelectorList['value']));
+        hoisted.add(subject.ruleset);
+      }
+      continue;
     }
     // A NESTED subject may be overridden ONLY when its projection HOISTS (crossing) — the
     // non-hoist collapse case is handled by the parent-projection fold above. A non-hoisted nested
@@ -770,6 +849,35 @@ function extendTargetIsSimple(node: Extend): boolean {
   return !/[()]/.test(text);
 }
 
+/** Collapse whitespace around child/sibling combinators (`.a > .b` → `.a>.b`) and runs of internal
+ * whitespace to single spaces, so an extend TARGET string and a subject BRANCH string compare equal
+ * regardless of authored spacing. Descendant whitespace is preserved (single space). */
+function normalizeCombinatorSpacing(sel: string): string {
+  return sel.replace(/\s*([>+~])\s*/g, '$1').replace(/\s+/g, ' ').trim();
+}
+
+/** Split a selector-list string into its top-level branches, respecting parens (`:not(.a, .b)`, an
+ * `:is(...)` graft) so a comma INSIDE a paren does not split. (`.foo .bar, :is(.a, .b).c` →
+ * `['.foo .bar', ':is(.a, .b).c']`.) Used for per-branch subject collection in the topology gate. */
+function splitTopLevelBranches(text: string): string[] {
+  const branches: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(') {
+      depth++;
+    } else if (ch === ')') {
+      depth = Math.max(0, depth - 1);
+    } else if (ch === ',' && depth === 0) {
+      branches.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  branches.push(text.slice(start));
+  return branches;
+}
+
 /** Split a target selector's `valueOf()` into per-branch keys at top-level commas (`.dd,.bb` →
  * `['.dd', '.bb']`). A comma inside a graft paren cannot occur here — grafts are rejected upstream by
  * {@link extendTargetIsSimple} — so a naive split is sound for the admitted shapes. */
@@ -874,6 +982,20 @@ export function isSpineExtendTopology(
   // preserving the combinator (`.a > :is(.b, .ext)`), byte-identical. Collected separately since the
   // descendant tokenizer rejects combinators.
   const combinatorSubjectSelectors = new Set<string>();
+  // Individual DESCENDANT branches of root-level subjects, split on top-level commas (`.foo .bar,
+  // .foo .baz` → `.foo .bar`, `.foo .baz`). A trailing/middle compound target (`.bar`) sub-matches
+  // one of these branches as an in-place `:is`-wrap per branch — the multi-branch selector-LIST
+  // subject shape the single-branch `rootDescendantSelectors` filter (below) excludes on the comma.
+  const rootDescendantBranches = new Set<string>();
+  // Individual COMBINATOR branches of root-level list subjects (`.ext8+.ext9` out of the 3-branch
+  // `.ext8 .ext9,.ext8+.ext9,.ext8>.ext9`) — a compound target sub-matching a combinator branch is a
+  // per-branch in-place `:is`-wrap preserving the combinator.
+  const combinatorBranchSelectors = new Set<string>();
+  // EVERY top-level branch of EVERY root-level subject (compound, descendant, combinator), normalized
+  // (whitespace-collapsed). A target that EXACTLY equals a branch (`.ext8+.ext9` ≡ the `.ext8+.ext9`
+  // branch of the 3-branch list subject) is an APPEND of the extender as a NEW Or-branch, which EMIT's
+  // `projectSubject` builds oracle-identically (`.zap` joins `.ext8 + .ext9`).
+  const rootLevelBranches = new Set<string>();
   // Root-level subject selectors (a plain target resolves to one of these — increment 2 path).
   for (const child of root.rules) {
     if (isNode(child, N.Ruleset)) {
@@ -883,6 +1005,20 @@ export function isSpineExtendTopology(
         rootLevelSelectors.add(localText);
         if (/[>+~]/.test(localText) && !/[,()&]/.test(localText)) {
           combinatorSubjectSelectors.add(localText);
+        }
+        // Split the (possibly multi-branch) local into per-branch selectors. A `&`/paren branch is
+        // skipped (its composed form is unreachable by a plain descendant/combinator find here).
+        for (const branch of splitTopLevelBranches(localText)) {
+          const b = branch.trim();
+          if (b === '' || /[()&]/.test(b)) {
+            continue;
+          }
+          rootLevelBranches.add(normalizeCombinatorSpacing(b));
+          if (/\s/.test(b) && !/[>+~,]/.test(b)) {
+            rootDescendantBranches.add(b);
+          } else if (/[>+~]/.test(b) && !/,/.test(b)) {
+            combinatorBranchSelectors.add(b);
+          }
         }
         const lead = sharedLeadingCompound(local);
         if (lead !== undefined) {
@@ -1007,6 +1143,64 @@ export function isSpineExtendTopology(
     }
   }
 
+  // EXPANDED-MODE NESTED-TARGET COLLAPSE-RELOCATION RESIDUAL. A NESTED-ruleset subject whose composed
+  // form is itself an extend target (`.ext8 { .ext9 {…} }` / `.ext8 { &.ext9 {…} }`, both composing to
+  // an `.ext8 .ext9` / `.ext8.ext9` the document extends) must COLLAPSE-and-group to ROOT even under
+  // `collapseNesting:false` so it can carry its extender branches (`.ext8 .ext9, .buu`). That is a
+  // block RELOCATION the expanded spine path does not reproduce (it keeps the block nested). Under
+  // COLLAPSE mode the flatten already relocates it, so the fold is sound. Reject the whole tree in
+  // expanded mode when such a subject exists (byte-identical to eval; precise residual, IOU).
+  if (!collapseNesting) {
+    for (const p of cleanSubjectPaths) {
+      if (!p.includes(' ')) {
+        continue;
+      }
+      // A nested descendant subject path (`.aa .dd`) whose LAST compound OR whole path is an extend
+      // target relocates only for a target that crosses/collapses to root. `.aa .dd` stays nested in
+      // the `.css` (its grafts `.ee` render nested), so gate NARROWLY: reject only when the nested
+      // subject's parent compound is ALSO a standalone nested block extended into root (the `.ext8`
+      // family). Detect via: some target equals the composed path AND the parent compound is a root
+      // subject with its OWN root block (a duplicate nested block that must merge to root).
+      const tokens = p.split(/\s+/);
+      const lastTok = tokens[tokens.length - 1]!;
+      const parentTok = tokens.slice(0, -1).join(' ');
+      if (
+        (targets.has(p) || targets.has(lastTok) || targets.has(normalizeCombinatorSpacing(p)))
+        && rootLevelSelectors.has(parentTok)
+        && [...rootLevelSelectors].some(s => s !== parentTok && s !== p
+          && splitTopLevelBranches(s).some(b => normalizeCombinatorSpacing(b.trim()) === normalizeCombinatorSpacing(p)
+            || normalizeCombinatorSpacing(b.trim()) === lastTok))
+      ) {
+        return false;
+      }
+    }
+    // AMP-COMPOSED nested subject (`.ext8 { &.ext9 {…} }` → `.ext8.ext9`) that is a target with a
+    // root-level duplicate block: same collapse-relocation residual (`.ext8.ext9, .fuu`).
+    for (const child of root.rules) {
+      if (!isNode(child, N.Ruleset)) {
+        continue;
+      }
+      const hasAmpTargetChild = ((): boolean => {
+        for (const gc of child.rules) {
+          if (isNode(gc, N.Ruleset)) {
+            const gl = flatLocalSelector(gc);
+            if (gl !== undefined && String(gl.valueOf()).includes('&')) {
+              const composed = Ruleset.composeSelector(gl, composeTargetOwn([flatLocalSelector(child)!]));
+              const composedStr = normalizeCombinatorSpacing(String((Array.isArray(composed) ? SelectorList.create(composed) : composed).valueOf()));
+              if (targets.has(composedStr) || [...targets].some(t => normalizeCombinatorSpacing(t) === composedStr)) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      })();
+      if (hasAmpTargetChild) {
+        return false;
+      }
+    }
+  }
+
   // STRICT SUBJECT CORRESPONDENCE. Each target must resolve to a subject the override can rewrite:
   //  - a ROOT-LEVEL subject (plain target, increment 2 path), unshadowed by a nested ruleset of the
   //    same selector; OR
@@ -1074,7 +1268,14 @@ export function isSpineExtendTopology(
     // subject is `.foo .bar` on ONE ruleset, path length 1 — NOT a nested `.foo { .bar {} }`, whose
     // header the collapse-fold composes differently). An EXACT extend of a sub-position fires nothing
     // (matcher NOT_FOUND → EMIT no-change guard). Single-compound target only.
-    const rootDescendantSelectors = [...rootLevelSelectors].filter(s => /\s/.test(s.trim()) && !/[>+~,()&]/.test(s));
+    // Single-branch root descendant subjects PLUS per-branch descendants split out of a multi-branch
+    // selector-LIST subject (`.foo .bar,.foo .baz` → `.foo .bar`, `.foo .baz`). A trailing/middle
+    // compound target sub-matches ANY branch; SOLVE's local-apply rewrites each branch in place per
+    // branch (`:is(.foo, …) .bar, :is(…) .baz`), oracle-identical (force-A/B verified on `extend.less`).
+    const rootDescendantSelectors = [
+      ...[...rootLevelSelectors].filter(s => /\s/.test(s.trim()) && !/[>+~,()&]/.test(s)),
+      ...rootDescendantBranches
+    ];
     const isPartialWrapOfDescendantLevel = !treeHasImport
       && !/[>+~ ,]/.test(target)
       && descendantCompoundTokens(target)?.length === 1
@@ -1084,7 +1285,7 @@ export function isSpineExtendTopology(
     const isCombinatorSubjectTarget = !treeHasImport
       && !/[>+~ ,]/.test(target)
       && combinatorCompoundTokens(target)?.length === 1
-      && [...combinatorSubjectSelectors].some((subjSel) => {
+      && [...combinatorSubjectSelectors, ...combinatorBranchSelectors].some((subjSel) => {
         const tokens = combinatorCompoundTokens(subjSel);
         const tt = combinatorCompoundTokens(target);
         if (tokens === undefined || tt === undefined || tt.length !== 1) {
@@ -1092,6 +1293,34 @@ export function isSpineExtendTopology(
         }
         return tokens.some(level => compoundMultisetSubset(tt[0]!, level));
       });
+    // EXACT ROOT-BRANCH TARGET. A descendant/combinator target (`.ext8 + .ext9`, `.ext8 .ext9`) that
+    // EXACTLY equals a top-level branch of a root-level subject (a branch of the 3-branch list subject
+    // `.ext8 .ext9,.ext8+.ext9,.ext8>.ext9`) is an APPEND of the extender as a new Or-branch — EMIT's
+    // `projectSubject` builds it (`.zap` joins the `.ext8 + .ext9` branch). Shadowed by a nested
+    // ruleset of the same composed form is possible, but that case still resolves at root (the branch
+    // is a root-level subject); the SOLVE local-apply targets the composed own form.
+    const isExactRootBranchTarget = !treeHasImport
+      && rootLevelBranches.has(normalizeCombinatorSpacing(target));
+    // PARTIAL-WRAP OF A NESTED SUBJECT'S COMPOUND (`.dd` targets the nested `.aa { .dd {} }`, composed
+    // path `.aa .dd`). A single-compound target that compound-subset-matches ANY level of a NESTED
+    // clean subject path (length > 1 descendant path) is an in-place graft into that nested subject's
+    // composed header — the nested-child-graft the collapse-mode `composeSpineSubjectHeaders` builds
+    // (`.ee:extend(.dd all)` → `:is(.aa, .cc) .dd, :is(.aa, .cc) .ee`; an EXACT `.dd` fires nothing via
+    // the full-path filter). Force-A/B verified on `extend.less`. Restricted to a genuinely NESTED path
+    // (` `-joined, no combinators/graft) so it does not overlap the root-level clauses above.
+    // COLLAPSE-MODE ONLY. A NESTED-ruleset subject renders differently per mode: under collapse it is
+    // flattened to root (`composeSpineSubjectHeaders`'s nested-child fold builds `:is(.aa, .cc) .dd`
+    // + the nested-child graft), so the projection is placement-correct. Under EXPANDED mode a nested
+    // extend TARGET must COLLAPSE-and-group to root to carry its extender branches (`.ext8 { .ext9 {…}}`
+    // extended → `.ext8 .ext9, .buu`), a relocation the expanded spine path does not reproduce — that
+    // shape stays eval-owned (precise residual, IOU: expanded-mode nested-target collapse-relocation).
+    const isPartialWrapOfNestedLevel = collapseNesting
+      && !treeHasImport
+      && !/[>+~ ,]/.test(target)
+      && descendantCompoundTokens(target)?.length === 1
+      && !chainsIntoExtender
+      && [...cleanSubjectPaths].some(p =>
+        p.includes(' ') && !/[>+~,()&]/.test(p) && targetCouldMatchPath(target, p));
     // PSEUDO-COMPOUND TARGET (`.button:hover`, `.button2:hover`): its compound base (`.button`) is a
     // root-level subject. The extend needs NO dedicated header — the base's override + the nested
     // `&`-pseudo's serializer `&`-flow produce the `:is(.base, …):pseudo` shape (or, for a genuine
@@ -1120,13 +1349,14 @@ export function isSpineExtendTopology(
     const isInertNomatch = !treeHasImport
       && !isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
       && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget && !isCombinatorSubjectTarget
-      && !isPartialWrapOfDescendantLevel
+      && !isPartialWrapOfDescendantLevel && !isExactRootBranchTarget && !isPartialWrapOfNestedLevel
       && descendantCompoundTokens(target) !== undefined
       && ![...cleanSubjectPaths].some(p => targetCouldMatchPath(target, p))
       && !rootLevelSelectors.has(target);
     if (!isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
       && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget
-      && !isCombinatorSubjectTarget && !isPartialWrapOfDescendantLevel && !isInertNomatch) {
+      && !isCombinatorSubjectTarget && !isPartialWrapOfDescendantLevel
+      && !isExactRootBranchTarget && !isPartialWrapOfNestedLevel && !isInertNomatch) {
       // SPECULATIVE ADMIT (sync gate, imports present). A plain SIMPLE target (single compound, no
       // combinator/descendant/list) that maps to no VISIBLE subject may resolve to an IMPORTED root
       // subject the sync gather can't see. Provisionally admit it so the tree reaches the post-wire
@@ -1329,6 +1559,18 @@ export function wireSpineExtends(
     // instruction with its resolved path — that is the increment-7 win, independent of subjecthood.
     if (local !== undefined && resolved?.ampResolved !== true && !String(local.valueOf()).includes('&')) {
       subjects.push({ ruleset, path, order: orderOf(ruleset), reference: gatheringReference });
+    } else if (
+      local !== undefined
+      && resolved?.ampResolved === true
+      && !String(local.valueOf()).includes('&')
+    ) {
+      // AMP-COMPOSED SUBJECT (`.ext8 { &.ext9 {…} }` → `.ext8.ext9`). The resolved compound is an
+      // addressable target (`.fuu:extend(.ext8.ext9 all)` must graft `.fuu` here too). Register it
+      // as a subject on its fully-composed path (`[.ext8.ext9]`, ancestor already folded). A header
+      // installs ONLY if the projection changes the composed own form (a graft fired); otherwise the
+      // block keeps its normal `&`-flow output (the `extend-clearfix` `&:after` case — no target
+      // `.clearfix:after` exists, so no override, `&`-flow untouched).
+      subjects.push({ ruleset, path, order: orderOf(ruleset), reference: gatheringReference, ampComposed: true, ampParentPath: [...parentPath] });
     }
     for (const ext of rulesetExtendNodes(ruleset)) {
       const rawTarget = ext.target;

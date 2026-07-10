@@ -152,16 +152,68 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toContain(':is(.clearfix, .foo):after');
   });
 
-  it('P3 increment 1: a NESTED-scope `:extend` does NOT route through the spine (deferral territory → eval path)', async () => {
-    // An extend nested inside a ruleset (not a root-direct child) is NOT the flat topology
-    // increment 1 handles — it stays on the eval path (byte-identical), reclaimed by a later
-    // increment (nested-subject interception / deferral).
+  it('EXTEND HARD-TAIL: a NESTED-scope `:extend` (exact, no match) FOLDS through the spine byte-identically', async () => {
+    // RECLAIMED (extend hard-tail fold). An extend nested inside a ruleset (not a root-direct child)
+    // now routes through the spine: the collapse-mode gate admits a nested-subject target
+    // (`isPartialWrapOfNestedLevel`) and `composeSpineSubjectHeaders` builds the nested-child fold +
+    // graft. Here `.derived:extend(.base)` is EXACT and the nested `.wrap .base` is NOT exactly `.base`,
+    // so the extend fires nothing — byte-identical to less@4 (which warns `extend '.base' has no
+    // matches` and emits `.wrap .base` + `.wrap .derived` as separate blocks). No eval two-walk.
     const compiler = makeCompiler();
     const src = `.wrap {\n  .base {\n    color: red;\n  }\n  .derived:extend(.base) {\n    font-weight: bold;\n  }\n}`;
-    const before = spineRenderCounter.rootRenders;
-    const css = await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (nested extend deferred)
-    expect(css).toContain('font-weight: bold');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (nested extend folded)
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      // Exact `.base` matches nothing (nested `.wrap .base` ≠ `.base`) — both blocks stay separate.
+      expect(css).toMatch(/\.wrap \.base \{\n\s*color: red;\n\s*\}/);
+      expect(css).toMatch(/\.wrap \.derived \{\n\s*font-weight: bold;\n\s*\}/);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('EXTEND HARD-TAIL: `extend.less` full multi-branch/nested/append-list cluster FOLDS byte-identically (collapse mode)', async () => {
+    // The full extend.less hard-tail cluster (multi-branch selector-LIST subjects `.foo .bar, .foo
+    // .baz`; nested-ruleset-subject targets `.dd`/`.ee`/`.ff`; `&`-composed subject `.ext8.ext9` as an
+    // extend target; combinator list branches `.ext8 + .ext9`) folds on the spine, byte-identical to
+    // the eval oracle (all-less 105/0 owner-maintained expectation) with NO eval two-walk.
+    const compiler = makeCompiler();
+    const src = [
+      '.foo .bar, .foo .baz { display: none; }',
+      '.ext3, .ext4 { &:extend(.foo all); &:extend(.bar all); }',
+      '.aa { color: black; .dd { background: red; } }',
+      '.bb { background: red; }',
+      '.ee:extend(.dd all, .bb) {}',
+      '.ff:extend(.dd, .bb all) {}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0);
+      // Multi-branch descendant-list subject gains the `.ext3`/`.ext4` grafts in each position.
+      expect(css).toContain(':is(.foo, .ext3, .ext4) :is(.bar, .ext3, .ext4)');
+      // Nested `.dd` (`all`-extended by `.ee`) gains the `.ee` sibling child branch.
+      expect(css).toMatch(/\.aa \.dd,\n\.ee \{/);
+      // `.bb all` grafts `.ff` (and `.ee`'s exact `.bb` also joins the `.bb` block).
+      expect(css).toMatch(/\.bb,\n\.ee,\n\.ff \{/);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
   });
 
   it('P3 increment 2: a NESTED EXTENDER composes as its BUCKET PATH through the spine (`.type1 .sidebar3`)', async () => {

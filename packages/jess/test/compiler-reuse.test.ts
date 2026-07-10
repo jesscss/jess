@@ -291,10 +291,12 @@ describe('Compiler reuse', () => {
     // NOTE (cutover P2): a spine-ELIGIBLE root is rendered by the single-pass
     // spine WITHOUT any `eval` (that is the wire-in — no eval pass, no output
     // tree; `evaluated` stays false), so this D3 eval-driver contract is now
-    // exercised with a root the spine does NOT cover. An `:extend` selector keeps
-    // the root on the eval path (extend application is P3), so render still drives
-    // eval to completion exactly as the pre-pass used to.
-    const source = '.base { color: red; }\n.a:extend(.base) { font-weight: bold; }';
+    // exercised with a root the spine does NOT cover. An `:extend` INSIDE an
+    // `@media` at-rule keeps the root on the eval path (at-rule-scoped extend
+    // gather is an EXTEND HARD-TAIL residual — the static gather does not descend
+    // into at-rule bodies), so render still drives eval to completion exactly as
+    // the pre-pass used to. (A plain root-level `:extend` now FOLDS on the spine.)
+    const source = '.base { color: red; }\n@media (tv) {\n  .a:extend(.base) { font-weight: bold; }\n}';
     const testFile = path.join(tempDir, 'evaluated-render-root.less');
     fs.writeFileSync(testFile, source);
     const originalRender = Rules.prototype.render;
