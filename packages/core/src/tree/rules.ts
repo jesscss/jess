@@ -34,7 +34,8 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, isSpineFoldableCssImportStatement, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, isSpineFoldableCssImportStatement, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall, resolveSpineMixinCall } from './util/emit-walk.js';
+import type { SpineMixinCallResolution } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -4918,6 +4919,121 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         // reassigns `context.root`, so a later injection can't recover it.
         context!.spineRootCallEmitFrame = this;
       }
+      // ROOT-LEVEL mixin CALL fold (cutover P4, UNIFIED-EVAL-EMIT-DESIGN §2/§3). A
+      // document-root-direct mixin call (`.m();`) folds through the SAME
+      // `resolveSpineMixinCall` sink the CONTAINER descent uses — driving the call's
+      // resolution ONCE and, when every guard-passed candidate was spine-simple,
+      // emitting each bound surface's children INLINE (no output tree, `Rules.derive`
+      // = 0). A nested-container surface child (`.m() { .test { … } }`) descends via
+      // `Ruleset.render`'s spineMode branch (`serializeRulesContainer`), a leaf via
+      // `n.render` — both against `context.rulesContext` pushed to the surface, so a
+      // body reference resolves against the mixin's DEFINITION/param frame (increment
+      // 2). A NON-simple body (or a call the sink never saw) resolves `kind:'eval'` and
+      // falls through to the byte-identical eval terminal (`n.render`) below. This
+      // closes the residual where a root call always eval-materialized while a
+      // container-nested call already folded (the ONLY structural gap between the two).
+      const emitEvalTerminal = (): MaybePromise<void> => {
+        let output: string | MaybePromise<string>;
+        try {
+          output = n.render(context!, options);
+        } catch (error) {
+          restoreRootCallEmit();
+          throw error;
+        }
+        const finishOutput = (resolvedOutput: string): void => {
+          restoreRootCallEmit();
+          restorePrintState(options, leafSaved);
+          if (!w.hasContentSince(leafMark)) {
+            w.restore(leafMark);
+            if (resolvedOutput) {
+              emitCaptured(resolvedOutput, n, prefix);
+            }
+            return;
+          }
+          // A spine-eligible mixin CALL that folded to BLOCK output (a nested-container
+          // body — ends in `}`) must NOT append its own statement `;`: the expansion
+          // supplies its own terminators, and a `;` after a `}` is spurious (`.m() { .x
+          // {…} } … .m();` → `.x {…}` with no trailing `;`). A flat/decl-producing call's
+          // decls carry their own `;`. Detect the block close on the just-emitted text.
+          const emittedBlock = /\}\s*$/.test(w.getSince(leafMark));
+          if (n.requiredSemi && n.options.semi !== false && !emittedBlock) {
+            w.add(';', n);
+          }
+          markEmitted(n);
+        };
+        return isThenable(output)
+          ? output.then(finishOutput, (error: unknown) => { restoreRootCallEmit(); throw error; })
+          : finishOutput(output);
+      };
+      if (marksRootCallEmit) {
+        const applyResolution = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
+          // A NON-simple body (or a call the sink never saw) → byte-identical eval
+          // terminal. No byte was written before the resolve (the drive is
+          // side-effect free on the writer), so the terminal owns the emit intact.
+          if (resolved.kind !== 'fold') {
+            return emitEvalTerminal();
+          }
+          // FOLD: the call emits nothing itself; each bound surface's children emit
+          // inline against `context.rulesContext` pushed to the surface (its wired
+          // definition/param frame). Roll back the boundary/prefix so a block child
+          // starts clean, exactly as the container path's fold splice.
+          restoreRootCallEmit();
+          restorePrintState(options, leafSaved);
+          w.restore(leafMark);
+          // LEAKY forward-propagation (spine fold, root parity): in leaky Less mode a
+          // folded surface's plain `@x: …` VarDeclaration LEAKS into the CALLER scope
+          // — here the ROOT — so a later root sibling (`.heightIsSet { height: @x }`,
+          // a following call arg `@x`) reads it. Mirror the container path's
+          // `injectSpineLeakyMixinSurfaceBindings` at the call's source index. Zero-cost
+          // off leaky mode; no-ops when a surface has no plain var.
+          if (context!.options.leakyScope === true && n.index !== undefined) {
+            for (const surface of resolved.surfaces) {
+              this.injectSpineLeakyMixinSurfaceBindings(surface, n.index, context!);
+            }
+          }
+          // A bare property `Declaration` dropped at the ROOT by a mixin/DR call is
+          // invalid Less ("Properties must be inside selector blocks"). The eval path
+          // catches this in `checkValidNodes` (`isRoot && fromCallOutput`); the fold
+          // emits no call-output tree to walk post-hoc, so run the SAME check over each
+          // folded surface's children here — reproducing the exact error byte-for-byte
+          // (tests-error/eval/property-in-root{,2}, detached-ruleset-3). A legitimate
+          // root node (a nested `.rule {}`) passes; only a bare `Declaration` throws.
+          for (const surface of resolved.surfaces) {
+            checkValidNodes(surface.rules, context, true, true);
+          }
+          // Each folded surface child emits itself through `emitNode` (which calls
+          // `markEmitted` on the child it emits); the CALL node itself emits nothing,
+          // so no `markEmitted(n)` here — mirrors the container path where a folded
+          // call contributes no node of its own to the boundary tracking.
+          const savedCtx = context!.rulesContext;
+          const emitChildren = (children: Node[], ci: number): MaybePromise<void> => {
+            for (let c = ci; c < children.length; c++) {
+              const res = emitNode(children[c]!);
+              if (isThenable(res)) {
+                return res.then(() => emitChildren(children, c + 1));
+              }
+            }
+            return undefined;
+          };
+          const emitSurface = (s: number): MaybePromise<void> => {
+            if (s >= resolved.surfaces.length) {
+              context!.rulesContext = savedCtx;
+              return undefined;
+            }
+            const surface = resolved.surfaces[s]!;
+            context!.rulesContext = surface;
+            const done = emitChildren(surface.rules, 0);
+            const next = (): MaybePromise<void> => {
+              context!.rulesContext = savedCtx;
+              return emitSurface(s + 1);
+            };
+            return isThenable(done) ? done.then(next) : next();
+          };
+          return emitSurface(0);
+        };
+        const resolution = resolveSpineMixinCall(n, context!);
+        return isThenable(resolution) ? resolution.then(applyResolution) : applyResolution(resolution);
+      }
       // ROOT-BODY merge/`?:` fold (cutover root-fold, gates 3/4). A `+:`/`+_:`
       // merge or `@x ?: v` conditional-assign DIRECTLY in the root body is planned
       // by the `withSpineMergePlan` wrap installed at the root spine descent (below).
@@ -4947,37 +5063,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         };
         return isThenable(planned) ? planned.then(finishPlanned) : finishPlanned(planned);
       }
-      let output: string | MaybePromise<string>;
-      try {
-        output = n.render(context!, options);
-      } catch (error) {
-        restoreRootCallEmit();
-        throw error;
-      }
-      const finishOutput = (resolvedOutput: string): void => {
-        restoreRootCallEmit();
-        restorePrintState(options, leafSaved);
-        if (!w.hasContentSince(leafMark)) {
-          w.restore(leafMark);
-          if (resolvedOutput) {
-            emitCaptured(resolvedOutput, n, prefix);
-          }
-          return;
-        }
-        // A spine-eligible mixin CALL that folded to BLOCK output (a nested-container
-        // body — ends in `}`) must NOT append its own statement `;`: the expansion
-        // supplies its own terminators, and a `;` after a `}` is spurious (`.m() { .x
-        // {…} } … .m();` → `.x {…}` with no trailing `;`). A flat/decl-producing call's
-        // decls carry their own `;`. Detect the block close on the just-emitted text.
-        const emittedBlock = /\}\s*$/.test(w.getSince(leafMark));
-        if (n.requiredSemi && n.options.semi !== false && !emittedBlock) {
-          w.add(';', n);
-        }
-        markEmitted(n);
-      };
-      return isThenable(output)
-        ? output.then(finishOutput, (error: unknown) => { restoreRootCallEmit(); throw error; })
-        : finishOutput(output);
+      return emitEvalTerminal();
     };
     const finish = (): void => {
       while (lastRenderedFrames.length > renderedFrameBaseline) {

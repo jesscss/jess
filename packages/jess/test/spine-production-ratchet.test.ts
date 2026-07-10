@@ -2763,4 +2763,64 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('ROOTCALL: a document-ROOT-level mixin call FOLDS (derive=0), parity with a nested call', async () => {
+    // The residual structural gap between a ROOT-direct mixin call and a CONTAINER-nested
+    // one: the container descent (`serializeRulesContainer` → `runSpineMixinExpansion`)
+    // folds a call via `resolveSpineMixinCall`, but the ROOT body emitter (`_emitRulesBody`)
+    // used to emit a root call via the eval-based `Call.render` (a `Rules.derive` two-walk).
+    // The root emitter now folds through the SAME sink — a nested-container surface body and
+    // a leaf both resolve against the mixin's param frame. A regression re-arming the root
+    // `n.render` eval terminal for a foldable call trips this RED. Guard has no bearing (any
+    // root call folded; the guard resolves inside the same drive).
+    const compiler = makeCompiler();
+    const src = `.m(@a: white) when (@a = white) {\n  .test { color: @a; }\n}\n.m();`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the root call folded
+      expect(css).toBe('.test {\n  color: white;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('WHOLE-FIXTURE lock: `comments.less` FOLDS byte-identically (derive=0)', async () => {
+    // The `comments` corpus fixture's last residual: a ROOT-level guarded mixin call
+    // (`.mixin_def_with_colors() when (@a = white)`) alongside a comment-prelude keyframes
+    // (`@-webkit-keyframes /* Safari */ hover`). The keyframes already folded; the root mixin
+    // call was the only eval two-walk left (it emitted a `.test-rule` output tree via
+    // `Call.render`). With the root-level mixin-call fold the whole fixture renders through
+    // the single spine pass. A regression re-arming an eval fallback trips this RED; byte-
+    // identity is also asserted by all-less, this locks the FOLD (derive=0).
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const lessPath = path.join(testDataRoot, 'tests-unit/comments/comments.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // whole fixture folds — no eval two-walk
+      expect(result.css).toBe(expected);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });
