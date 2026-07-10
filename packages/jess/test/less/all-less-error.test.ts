@@ -39,9 +39,10 @@ const acceptedDivergences = new Map<string, string>([
   ['tests-error/eval/multiple-guards-on-css-selectors.less', 'GAP: a guard on a multi-selector rule should error'],
   ['tests-error/eval/multiple-guards-on-css-selectors2.less', 'GAP: a guard on a multi-selector rule should error'],
   ['tests-error/eval/root-func-undefined-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
-  // ampersand-merge-template-invalid GRADUATED — gluing `&` onto a single
-  // interpolated comma-value parent now throws "Invalid ampersand merge template"
-  // (v5 reversal of Less 4's silent split; ampersand.ts assertNotCommaMergeTemplate).
+  // ampersand-merge-template-invalid GRADUATED — its parent `@{list-quoted}` is a
+  // comma-list value in selector position, so it now throws selector/comma-list-interpolation
+  // (interpolated.ts). `.foo-&` itself is a plain compound; the old merge-template throw
+  // (assertNotCommaMergeTemplate) was removed with the merge surface.
   ['tests-error/eval/mixin-not-visible-in-scope-1.less', 'GAP: mixin not visible across sibling & scopes should error'],
   // invalid-color-with-comment GRADUATED — colorHex now only matches 3/4/6/8-digit hex.
   ['tests-error/parse/mixins-guards-cond-expected.less', 'GAP: guard without a parenthesized condition should be a parse error']

@@ -276,10 +276,23 @@ describe('Selector Productions', () => {
       expect(s).toContainString('(Ampersand');
     });
 
-    it('should parse ampersand merge template with explicit insertion point', () => {
-      const { errors, tree } = parser.parse('.parent { &(.foo-&) { color: red; } }');
+    // `&(…)` is a suffix-append only (`&(-foo)`, `&(1)`, `&(-1)`) — it appends the
+    // parenthesized suffix to the parent. It is NOT an "insertion point" that splices the
+    // parent inside the parens; that merge-template behavior was removed. An embedded `&`
+    // inside `&(…)` is not a supported form.
+    it('parses and renders `&(-foo)` as a suffix-append onto the parent', async () => {
+      const { errors, tree } = parser.parse('.parent { &(-foo) { color: red; } }');
+      const context = new Context(contextOptions({ collapseNesting: true }));
+
       expect(errors.length).toBe(0);
       expect(serializeTypes(tree)).toContainString('(Ampersand');
+      const css = await tree.render(context, { context, collapseNesting: true });
+
+      expect(css).toBeString(`
+        .parent-foo {
+          color: red;
+        }
+      `);
     });
 
     // `.foo-` is a valid dash-ending identifier, so `.foo-&` is a compound of `.foo-` and
@@ -294,22 +307,6 @@ describe('Selector Productions', () => {
 
       expect(css).toBeString(`
         .foo-.parent {
-          color: red;
-        }
-      `);
-    });
-
-    // SKIPPED — same reason as above: wrong expected output; plain-`&` compound, not a
-    // merge template. Reconcile with the plain-`&` selector fix.
-    it.skip('keeps parsed ampersand mid-template forms on the current parser-to-core semantics', async () => {
-      const { errors, tree } = parser.parse('.parent { &(.foo-&-bar) { color: red; } }');
-      const context = new Context(contextOptions({ collapseNesting: true }));
-
-      expect(errors.length).toBe(0);
-      const css = await tree.render(context, { context, collapseNesting: true });
-
-      expect(css).toBeString(`
-        .parent {
           color: red;
         }
       `);

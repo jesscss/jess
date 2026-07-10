@@ -15,4 +15,12 @@ describe('comma-list value in selector interpolation', () => {
     await expect(render('@list: apple, satsuma; .fruit-@{list} { color: red; }'))
       .rejects.toThrow(/comma|list|each\(\)/i);
   });
+
+  // A value with an unbalanced closer (`)`/`]`) must not drive the comma-scan depth
+  // negative and mask the top-level comma — else it renders the exact dangling
+  // `.fooa),` selector this guard exists to prevent.
+  it('errors on an unbalanced-closer comma value (scan depth clamps at 0)', async () => {
+    await expect(render('@x: ~"a), b"; .foo@{x} { color: red; }'))
+      .rejects.toThrow(/comma|list|each\(\)/i);
+  });
 });
