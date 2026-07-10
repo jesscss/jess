@@ -2331,12 +2331,16 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('RUNG-1 RESIDUAL (2nd stacked reject): a detached ruleset passed as a mixin ARG stays on eval (byte-identical)', async () => {
-    // `namespacing-6` mixes RUNG-1 (`@alias()`, now folded) with a SEPARATE rung: passing the
-    // detached-ruleset value AS a mixin arg (`.wrapper(@alias)`). Arg-binding CLONES the bound
-    // `Rules` value (`cloneDefinedBoundValue` → `cloneBoundValue` → `Rules.clone` → derive) to
-    // isolate it from the callee's eval — a clone the spine does not yet elide. So this shape
-    // stays on eval (byte-identical, NOT a silent fold); `derive` fires. Distinct P4 rung.
+  it('DRARG-1 (detached ruleset passed as a mixin ARG): a variable-aliased DR arg FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-6` rule-2: a detached-ruleset value passed AS a mixin arg
+    // (`.wrapper(@alias)`, where `@alias: .something(foo)`). Arg-binding used to CLONE
+    // the bound `Rules` value (`cloneDefinedBoundValue` → `cloneBoundValue` → `Rules.clone`
+    // → derive) and the param-var reference READ cloned it again (`evaluateReferenceValueNode`
+    // → `cloneForPlacement` → derive) — two eval-route clones. The DR closes over the surface
+    // where it was WRITTEN (`_closureScope`, captured at arg-binding), so neither clone added
+    // isolation the call path needs. `cloneBoundValue` now binds the Rules surface directly and
+    // the param-var read routes through the shared-children preserved surface, folding onto the
+    // spine (`derive === 0`).
     const compiler = makeCompiler();
     const src = [
       '.wrapper(@another-mixin) { @another-mixin(); }',
@@ -2354,8 +2358,38 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     } as Rules['derive'];
     try {
       const css = await compiler.renderString(src, { language: 'less' });
-      expect(deriveCalls).toBeGreaterThan(0); // DR-arg clone → eval, residual not a fold
+      expect(deriveCalls).toBe(0); // DR-arg binding + read fold onto the spine
       expect(css).toBe('.rule-2 {\n  width: 10px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('DRARG-1 (inline DR-call as a mixin ARG): a literal `.mixin(.dr())` arg FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-6` rule-3: the detached-ruleset value is produced INLINE at the call site
+    // (`.wrapper(.something(foo))` / `.wrapper(.output-height())`) rather than aliased through a
+    // variable — the arg is the evaluated DR-call result, bound to the callee's param and called.
+    // Same fold: no bind-time clone, param-var read through the preserved surface (`derive === 0`).
+    const compiler = makeCompiler();
+    const src = [
+      '.wrapper(@another-mixin) { @another-mixin(); }',
+      '.something(foo) { width: 10px; }',
+      '.output-height() { height: 10px; }',
+      '.rule-3 {',
+      '  .wrapper(.something(foo));',
+      '  .wrapper(.output-height());',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(deriveCalls).toBe(0); // both inline DR-call args fold onto the spine
+      expect(css).toBe('.rule-3 {\n  width: 10px;\n  height: 10px;\n}\n');
     } finally {
       Rules.prototype.derive = originalDerive;
     }

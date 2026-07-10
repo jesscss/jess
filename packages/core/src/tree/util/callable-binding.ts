@@ -1,5 +1,7 @@
 import { sourceSpanOf } from './provenance.js';
 import { F_HAS_NODE_CHILD, F_STATIC, Node } from '../node.js';
+import { N } from '../node-type.js';
+import { isNode } from './is-node.js';
 import { Sequence } from '../sequence.js';
 
 function canReuseStaticScalarLeaf(value: Node): boolean {
@@ -10,6 +12,17 @@ function canReuseStaticScalarLeaf(value: Node): boolean {
 
 export function cloneBoundValue(value: Node): Node {
   if (canReuseStaticScalarLeaf(value)) {
+    return value;
+  }
+  // Detached-ruleset arg-binding fold: a Rules passed AS a mixin argument is a
+  // lexical closure whose free-var scope is already captured on the evaluated
+  // surface (`_closureScope`, set in evaluateCallableArgs BEFORE binding). The
+  // placement clone here only produced a fresh derive surface — the eval-route
+  // marker — without adding isolation the closure/call path needs. Bind the
+  // captured surface directly (same as the VarDeclaration DR path), which the
+  // no-clone `@alias()` call site already relies on. Keeps `deriveCalls` off the
+  // DR-as-arg path and folds it onto the spine.
+  if (isNode(value, N.Rules)) {
     return value;
   }
   return value.cloneForPlacement().detachTrivia(true);

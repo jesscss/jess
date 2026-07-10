@@ -2922,6 +2922,18 @@ function finalizeScopeFrameVariableBindingResult(
       && isNode(bindingSource, N.VarDeclaration)
       && !bindingSource.options?.paramVar
     )
+    // DR-as-mixin-arg fold: a detached ruleset bound to a mixin PARAMETER
+    // (`.wrapper(@alias)` / `.wrapper(.something(foo))`) is read as a rules-like
+    // value. The default path clones-for-placement (a `Rules.derive` — the eval
+    // route). It closes over the surface where it was WRITTEN, already recorded on
+    // `_closureScope` at arg-binding; the placement clone added no isolation the
+    // call path needs. Route it through the shared-children preserved surface so it
+    // folds onto the spine (no derive), matching the non-paramVar DR read above.
+    || (
+      isNode(bindingSource, N.VarDeclaration)
+      && bindingSource.options?.paramVar === true
+      && isNode(bindingValue, N.Rules)
+    )
   ) {
     evalFlags |= REF_EVAL_PRESERVE_RULES_LIKE;
   }
