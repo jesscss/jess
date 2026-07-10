@@ -1227,42 +1227,6 @@ function bodyHasDirectMergeDecl(children: readonly Node[]): boolean {
 }
 
 /**
- * True if any DIRECT child of `body` is a `?:` conditional-assign declaration.
- * Root-level `?:` is excluded like root-level `+:`: the conditional fold is built
- * on the CONTAINER descent path (`withSpineMergePlan` → `planBodyConditionals`),
- * which the flat root-body path (`toRenderString`) does not run.
- */
-function bodyHasDirectConditionalDecl(children: readonly Node[]): boolean {
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (isNode(child, N.VarDeclaration)) {
-      const assign = (child.options as { assign?: string } | undefined)?.assign;
-      if (assign && CONDITIONAL_ASSIGNS.has(assign)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/**
- * True if any DIRECT child of `body` is a `setDefined` VarDeclaration. Root-level
- * `setDefined` is excluded like root-level `+:`/`?:`: the incremental
- * binding-write runs on the CONTAINER descent path (`withSpineMergePlan` →
- * `applyBodySetDefined`), which the flat root-body path (`toRenderString`) does
- * not run.
- */
-function bodyHasDirectSetDefined(children: readonly Node[]): boolean {
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (isNode(child, N.VarDeclaration) && child.options?.setDefined) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
  * Descend a SHARED body under a pushed value-frame. `bodyOwner` is the source
  * Rules whose children are emitted; `frameRules` is the Rules whose
  * `_scopeFrame` carries the per-placement bindings (params / loop counter) as
@@ -1360,17 +1324,16 @@ export const spineRenderCounter = { rootRenders: 0 };
  * conditional-group at-rules (`@media`/`@supports`/`@container`/`@starting-style`),
  * and ROOT-ONLY wrap+emit at-rules (`@font-face`/`@page`/`@keyframes`/`@-webkit-
  * keyframes`/`@viewport`/`@counter-style`/`@document`/`@host`); re-declared vars +
- * `snapshot` reads resolve per-position. Excluded (still eval path — a scoped
- * frontier, NOT a safety fallback): charset/import document framing, reference
- * mode, conditional (`?:`)/`setDefined` declarations, ampersand-append,
- * `@layer`/`@scope`/`@property`, the at-rule `&`-through-hoist re-wrap frontier,
- * guarded/extend/mixin/reference containers, interpolated var/at-rule NAMES.
- *
- * ROOT-LEVEL merge guard: a `+:`/`+_:` declaration DIRECTLY in the root body (not
- * inside a ruleset) is excluded — property-merge coalescing is applied on the
- * CONTAINER descent path (`withSpineMergePlan`), which the flat root-body path
- * (`toRenderString`) does not run. Root-level property merges are unusual
- * (properties belong in rulesets); a real one routes to the eval path.
+ * `snapshot` reads resolve per-position. An `@x ?: v` conditional-assign and a
+ * same-scope `!global` `setDefined` DIRECTLY in the root body ALSO fold (cutover
+ * root-fold gates 4/5): the root body descends through the same `withSpineMergePlan`
+ * machinery the container path uses. Excluded (still eval path — a scoped frontier,
+ * NOT a safety fallback): charset/import document framing, reference mode, a
+ * root-direct `+:`/`+_:` property-MERGE (gate 3 — `planBodyMerges` edge-shape gaps,
+ * see body comment), a `?:` on a plain PROPERTY, a CROSS-SCOPE `setDefined`,
+ * `nearestOuter` (`:=`), ampersand-append, `@layer`/`@scope`/`@property`, the
+ * at-rule `&`-through-hoist re-wrap frontier, guarded/extend/mixin/reference
+ * containers, interpolated var/at-rule NAMES.
  */
 export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesting?: boolean): boolean {
   if (context.currentCharset) {
@@ -1389,13 +1352,32 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (root.options?.referenceMode === true) {
     return false;
   }
+  // ROOT-BODY `?:` + same-scope `setDefined` (cutover root-fold, gates 4/5 FOLDED).
+  // An `@x ?: v` conditional-assign or a same-scope `!global` `setDefined` DIRECTLY
+  // in the root body now folds on the spine — the root body is just another entry
+  // sequence. `renderRootViaSpine` reaches the root body through `Rules._emitRulesBody`,
+  // which installs the SAME `withSpineMergePlan` machinery the CONTAINER descent uses
+  // (`?:` plan + `setDefined` binding-write), and the root leaf path consumes the `?:`
+  // plan via `resolveSpineLeafText`. The per-leaf gate below (`isSpineEligibleBody` →
+  // `isSimpleSpineLeaf`) keeps the UNFOLDABLE variants on eval byte-identical: a `?:`
+  // on a plain PROPERTY, a CROSS-SCOPE `setDefined` (no prior same-body binding —
+  // `bodyHasPriorSameNameDecl`), and `nearestOuter` (Jess `:=`, no eval oracle — the
+  // deferred mechanism-B, NOT pulled forward here).
+  //
+  // ROOT-LEVEL property-MERGE (gate 3) STAYS on eval (oracle-verified residual,
+  // ratchet-spec'd). Root-direct `+:`/`+_:` merges are unusual (a bare property at
+  // document root is not valid CSS; properties belong in rulesets) AND the spine's
+  // `planBodyMerges` diverges from eval on three edge sub-shapes a root merge can hit:
+  // (a) an Add-`+:` merge pulling in a PRIOR PLAIN same-named decl (eval seeds the
+  // chain from it — `red;` then `red, blue` — `planBodyMerges` resets on the plain
+  // decl and drops it); (b) a DECLARATION-reference read of the coalesced property
+  // (`background: $background-color` resolves the raw last binding, not the merge);
+  // (c) source-value node-parent preservation (`combineMergeValue`'s `spaced`/`List`
+  // adopts the authored value node). These are latent `planBodyMerges` gaps the
+  // CONTAINER fold already ships (untested there); folding root merge would newly
+  // expose them. Keeping gate 3 on eval is byte-identical; SPEC: lift once
+  // `planBodyMerges` models the Add-pull-prior + decl-ref-to-merged shapes.
   if (bodyHasDirectMergeDecl(root.rules)) {
-    return false;
-  }
-  if (bodyHasDirectConditionalDecl(root.rules)) {
-    return false;
-  }
-  if (bodyHasDirectSetDefined(root.rules)) {
     return false;
   }
   // M8 (FOLDED): a mixin CALL whose target is an INTERPOLATED-SELECTOR ruleset

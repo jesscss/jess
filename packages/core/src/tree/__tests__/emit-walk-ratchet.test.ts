@@ -556,22 +556,88 @@ describe('emit-walk wire-in ratchet (P1)', () => {
     }
   });
 
-  it('still EXCLUDES ROOT-LEVEL `+:` merge + conditional/`setDefined` (scoped frontier)', () => {
-    // Root-level property-merge is applied on the CONTAINER descent path only, so
-    // a `+:` DIRECTLY in the root body routes to the eval path (unusual shape).
-    const rootMerge = rules([
-      decl({ name: 'background', value: any('red') }, { assign: '+:' }),
-      decl({ name: 'background', value: any('blue') }, { assign: '+:' })
-    ]);
-    expect(isSpineEligibleRoot(rootMerge, context)).toBe(false);
+  it('FOLDS ROOT-LEVEL `?:` + same-scope `setDefined` through the spine, byte-identical to eval (cutover root-fold, gates 4/5); KEEPS root `+:`/`+_:` merge on eval (gate 3 residual)', () => {
+    // The root body is just another entry sequence: an `@x ?: v` conditional-assign
+    // or a same-scope `!global` `setDefined` DIRECTLY in the root body folds via the
+    // SAME `withSpineMergePlan` machinery the container descent uses (installed at the
+    // root spine descent in `Rules._emitRulesBody`), byte-identical to eval. A
+    // root-direct property-MERGE stays on eval (gate 3 residual — `planBodyMerges`
+    // edge-shape gaps; see `isSpineEligibleRoot`).
+    const evalOracle = (build: () => Rules): string =>
+      String(build().render(new Context(), { preSerializeRoot: (r: Rules): Rules => r })).trim();
+    const foldsByteIdentical = (build: () => Rules): void => {
+      expect(isSpineEligibleRoot(build(), context)).toBe(true);
+      const original = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return original.apply(this, args);
+      } as Rules['derive'];
+      const before = spineRenderCounter.rootRenders;
+      try {
+        const css = String(build().render(new Context())).trim();
+        expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine ran
+        expect(deriveCalls).toBe(0); // no output tree
+        expect(css).toBe(evalOracle(build)); // byte-identical to eval
+      } finally {
+        Rules.prototype.derive = original;
+      }
+    };
 
-    // Conditional `?:` stays on the eval path.
-    const condRoot = rules([
-      ruleset({ selector: sel([el('.a')]), rules: [
-        decl({ name: 'color', value: any('red') }, { assign: '?:' })
-      ] })
+    // GATE 3 residual — a root-direct `+:` / `+_:` merge STAYS on eval (byte-identical).
+    const rootMergeAdd = rules([
+      decl({ name: 'background', value: any('red') }, { assign: '+:' }),
+      decl({ name: 'background', value: any('blue') }, { assign: '+:' }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: any('green') })] })
     ]);
-    expect(isSpineEligibleRoot(condRoot, context)).toBe(false);
+    expect(isSpineEligibleRoot(rootMergeAdd, context)).toBe(false);
+    const rootMergeSeq = rules([
+      decl({ name: 'transform', value: any('scale(1)') }, { assign: '+_:' }),
+      decl({ name: 'transform', value: any('rotate(5deg)') }, { assign: '+_:' }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: any('green') })] })
+    ]);
+    expect(isSpineEligibleRoot(rootMergeSeq, context)).toBe(false);
+
+    // GATE 4 — root-direct `@x ?: v` on a VARIABLE (prior wins; else fallback), read
+    // by a following ruleset.
+    foldsByteIdentical(() => rules([
+      vardecl({ name: 'x', value: any('red') }),
+      vardecl({ name: 'x', value: any('blue') }, { assign: '?:' }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) })] })
+    ]));
+    foldsByteIdentical(() => rules([
+      vardecl({ name: 'x', value: any('blue') }, { assign: '?:' }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: ref({ key: 'x' }, { type: 'variable' }) })] })
+    ]));
+
+    // GATE 5 — root-direct same-scope `!global` `setDefined` (prior same-body binding),
+    // read by a following ruleset.
+    foldsByteIdentical(() => rules([
+      vardecl({ name: 'color', value: any('red') }),
+      vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'seen', value: ref({ key: 'color' }, { type: 'variable' }) })] })
+    ]));
+
+    // A `?:` on a plain PROPERTY at root is NOT a binding rewrite — stays on eval.
+    const propCondRoot = rules([
+      decl({ name: 'color', value: any('green') }),
+      decl({ name: 'color', value: any('red') }, { assign: '?:' })
+    ]);
+    expect(isSpineEligibleRoot(propCondRoot, context)).toBe(false);
+
+    // A CROSS-SCOPE root `setDefined` (no same-body prior) stays on eval.
+    const crossScopeRoot = rules([
+      vardecl({ name: 'y', value: any('blue') }, { setDefined: true }),
+      ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'seen', value: ref({ key: 'y' }, { type: 'variable' }) })] })
+    ]);
+    expect(isSpineEligibleRoot(crossScopeRoot, context)).toBe(false);
+
+    // `nearestOuter` (Jess `:=`) has no eval oracle — the deferred mechanism-B is NOT
+    // pulled forward; a root-direct `:=` stays EXCLUDED.
+    const nearestOuterRoot = rules([
+      vardecl({ name: 'x', value: any('red') }, { nearestOuter: true })
+    ]);
+    expect(isSpineEligibleRoot(nearestOuterRoot, context)).toBe(false);
   });
 
   it('FOLDS conditional `@x ?: v` (variable, assign-if-undefined) through the spine, byte-identical to eval', () => {

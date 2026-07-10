@@ -45,7 +45,9 @@ import {
   normalizeBlockTrivia,
   normalizeIndent,
   serializeRulesContainerInline,
-  hasPrintableTriviaAt
+  hasPrintableTriviaAt,
+  withSpineMergePlan,
+  resolveSpineLeafText
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
@@ -4803,6 +4805,35 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (marksRootCallEmit) {
         context!.spineRootCallEmit = true;
       }
+      // ROOT-BODY merge/`?:` fold (cutover root-fold, gates 3/4). A `+:`/`+_:`
+      // merge or `@x ?: v` conditional-assign DIRECTLY in the root body is planned
+      // by the `withSpineMergePlan` wrap installed at the root spine descent (below).
+      // The plan is consumed by `resolveSpineLeafText` (the SAME leaf resolver the
+      // container descent uses): a `suppress` member returns '' (no output); the
+      // anchor / resolved-conditional returns its coalesced bytes. Unlike a plain
+      // `n.render` leaf (which WRITES into the buffer and returns a fallback), the
+      // resolver returns bytes WITHOUT writing — so a planned leaf is emitted here by
+      // writing the returned text explicitly (empty ⇒ nothing, no stray `;`). This
+      // matches the container path's `finishLeaf`. `setDefined` (gate 5) needs no
+      // leaf hook: its binding-WRITE happens at body-enter in the wrap, and the
+      // VarDeclaration itself emits nothing.
+      const hasPlanEntry = options.spineMode && !!context
+        && isNode(n, N.Declaration)
+        && (options.spineMergePlan?.get(n) !== undefined || options.spineCondPlan?.get(n) !== undefined);
+      if (hasPlanEntry) {
+        const planned = resolveSpineLeafText(n, options);
+        const finishPlanned = (text: string): void => {
+          restorePrintState(options, leafSaved);
+          // No content written yet (the resolver does not touch the buffer). Roll the
+          // boundary/prefix back so a suppressed member leaves NO trace, then emit the
+          // anchor/resolved text (with its own `;`) via the shared capture path.
+          w.restore(leafMark);
+          if (text) {
+            emitCaptured(text, n, prefix);
+          }
+        };
+        return isThenable(planned) ? planned.then(finishPlanned) : finishPlanned(planned);
+      }
       let output: string | MaybePromise<string>;
       try {
         output = n.render(context!, options);
@@ -4854,6 +4885,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         return finish();
       };
+      // ROOT-BODY `?:`/`setDefined` fold (cutover root-fold, gates 4/5). The
+      // CONTAINER descent wraps each body in `withSpineMergePlan` (which runs the
+      // `setDefined` binding-write at body-enter and installs the `?:` plan the leaf
+      // resolver consumes). The root spine descent reaches the body HERE — not
+      // through that wrap — so install the SAME plan machinery over the root body.
+      // Scoped to the root spine body; a container/nested Rules descent (already
+      // wrapped by the caller) is untouched. `withSpineMergePlan` fast-bails when
+      // the body has no `?:`/`setDefined` child (a root-direct property MERGE is
+      // gated OFF the spine — gate 3 residual — so the merge plan is never populated
+      // at root). The common case pays a single pre-scan, no plan allocation, and
+      // its return string is unused here — the emit is the `emitRest` side-effect.
+      if (options.spineMode && context && this === context.root) {
+        const wrapped = withSpineMergePlan(value, options, context, () => {
+          const done = emitRest(0);
+          return isThenable(done) ? done.then(() => '') : '';
+        });
+        return isThenable(wrapped) ? wrapped.then(() => undefined) : undefined;
+      }
       return emitRest(0);
     }
     for (const n of value) {

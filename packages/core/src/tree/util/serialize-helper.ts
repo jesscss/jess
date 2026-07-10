@@ -131,7 +131,7 @@ function applySpineVisitorsEnter(
   return shape;
 }
 
-function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
+export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
   const serialize = (resolved: Node | Nil | undefined): string => {
     if (!resolved || resolved instanceof Nil) {
       return '';
@@ -211,7 +211,7 @@ function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybeProm
  * (`node.eval`) to combine — so it runs AFTER the frame is pushed. No plan is
  * built (and no cost paid) when the body has no merge-flagged declarations.
  */
-function withSpineMergePlan(
+export function withSpineMergePlan(
   children: readonly Node[],
   options: FinalPrintOptions,
   context: NonNullable<FinalPrintOptions['context']>,
