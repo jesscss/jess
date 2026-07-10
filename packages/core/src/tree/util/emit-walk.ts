@@ -1035,15 +1035,6 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false, all
   if (bodyHasMixinCall(children) && bodyHasDirectMergeDecl(children)) {
     return false;
   }
-  // INCREMENT 1 cross-check: a mixin used other than as a BARE foldable call —
-  // a var-decl bound to a mixin call (`@p: .mk-map()`), a map-lookup on such a
-  // value (`@p[text]`), a detached-ruleset call — is NOT folded. Admitting a
-  // Mixin DEFINITION below would otherwise pull the whole enclosing body onto the
-  // spine even though the mixin is consumed by machinery the spine does not yet
-  // cover. Keep such a body on the eval path. DEFERRED: mixin-as-value / map-lookup.
-  if (bodyHasMixinDefinition(children) && bodyHasCallInVarValue(children)) {
-    return false;
-  }
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     if (isSimpleSpineLeaf(child, allowExtend, allowImport)) {
@@ -1293,36 +1284,6 @@ function bodyHasMixinCall(children: readonly Node[]): boolean {
   for (let i = 0; i < children.length; i++) {
     if (isSpineEligibleMixinCall(children[i]!)) {
       return true;
-    }
-  }
-  return false;
-}
-
-/** True if any DIRECT child of `body` is a mixin DEFINITION. */
-function bodyHasMixinDefinition(children: readonly Node[]): boolean {
-  for (let i = 0; i < children.length; i++) {
-    if (isNode(children[i]!, N.Mixin)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * True if any DIRECT child is a VarDeclaration whose VALUE contains a `Call`
- * (`@p: .mk-map()` — a mixin bound to a variable, later map-looked-up `@p[text]`).
- * This is the mixin-as-value shape increment 1 does not fold.
- */
-function bodyHasCallInVarValue(children: readonly Node[]): boolean {
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (!isNode(child, N.VarDeclaration)) {
-      continue;
-    }
-    for (const descendant of child.walk(true)) {
-      if (isNode(descendant, N.Call)) {
-        return true;
-      }
     }
   }
   return false;
