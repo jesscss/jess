@@ -2269,4 +2269,95 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('RUNG-1 (detached-ruleset call): a bound-mixin-call `@alias()` FOLDS byte-identically (derive=0)', async () => {
+    // The mixin-as-value fold (`528d465fc`) left the detached-ruleset CALL itself eval-routed.
+    // `@alias: .something(foo); @alias();` — the variable resolves to a detached-ruleset value
+    // (here a bound mixin-call surface), then `@alias()` calls it. The Less parser shapes the
+    // call as an `Expression` wrapping a `variable`-Reference `Call`; the spine now unwraps it
+    // (`unwrapDetachedRulesetCall`), gates the inner call as a mixin call, and drives it through
+    // the SAME `resolveSpineMixinCall` sink — the resolved surface folds inline, no output tree.
+    const compiler = makeCompiler();
+    const src = [
+      '.something(foo) { width: 10px; }',
+      '.rule-1 {',
+      '  @alias: .something(foo);',
+      '  @alias();',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (DR-call fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → true fold
+      expect(css).toBe('.rule-1 {\n  width: 10px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('RUNG-1 (detached-ruleset call): a literal detached-ruleset `@r()` FOLDS byte-identically (derive=0)', async () => {
+    // The functions-corpus shape: `@r: { c: 3 }; @r();` — a LITERAL detached ruleset bound to a
+    // variable then called. Resolves to a `Rules` surface routed through the callable
+    // special-case "detached ruleset called from a variable" arm, which now hands the wired
+    // surface to the spine sink instead of eval-materializing it.
+    const compiler = makeCompiler();
+    const src = [
+      '.host {',
+      '  @r: { c: 3; };',
+      '  @r();',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before);
+      expect(deriveCalls).toBe(0); // literal detached-ruleset call folds through the sink
+      expect(css).toBe('.host {\n  c: 3;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('RUNG-1 RESIDUAL (2nd stacked reject): a detached ruleset passed as a mixin ARG stays on eval (byte-identical)', async () => {
+    // `namespacing-6` mixes RUNG-1 (`@alias()`, now folded) with a SEPARATE rung: passing the
+    // detached-ruleset value AS a mixin arg (`.wrapper(@alias)`). Arg-binding CLONES the bound
+    // `Rules` value (`cloneDefinedBoundValue` → `cloneBoundValue` → `Rules.clone` → derive) to
+    // isolate it from the callee's eval — a clone the spine does not yet elide. So this shape
+    // stays on eval (byte-identical, NOT a silent fold); `derive` fires. Distinct P4 rung.
+    const compiler = makeCompiler();
+    const src = [
+      '.wrapper(@another-mixin) { @another-mixin(); }',
+      '.something(foo) { width: 10px; }',
+      '.rule-2 {',
+      '  @alias: .something(foo);',
+      '  .wrapper(@alias);',
+      '}'
+    ].join('\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(deriveCalls).toBeGreaterThan(0); // DR-arg clone → eval, residual not a fold
+      expect(css).toBe('.rule-2 {\n  width: 10px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });

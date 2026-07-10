@@ -109,6 +109,20 @@ export async function evaluateCallableSpecialCaseCandidate({
       fallbackFrame: context.options.leakyScope === true ? parentFrame : undefined
     });
     unlocked.index = candidate.index;
+    // Spine DR-call fold (RUNG-1). A detached-ruleset call (`@alias()` / `@1()`)
+    // reaches this UNLOCKED arm as a param-/guard-less `callable-rules` entry. When
+    // the emit-walk driver installed a surface sink, hand it the WIRED callable
+    // surface (its scope frame chains to the detached ruleset's closure/lexical
+    // parent — the free-var resolution the eval `unlocked.eval` would perform) so
+    // its body folds INLINE at the call site instead of building an output tree.
+    // `candidateIsMixin=false` tags it for `resolveSpineMixinCall.finish`. Returning
+    // `true` → no eval materialization. A NON-simple body (`false`) falls through to
+    // the eval-materialize below (byte-identical). Off the spine (`sink===undefined`)
+    // this is skipped — the eval arm is unchanged.
+    const surfaceSink = context.spineMixinSurfaceSink;
+    if (surfaceSink && surfaceSink(unlocked, sourceRules, false)) {
+      return { handled: true };
+    }
     const evaledUnlocked = unlocked.eval(context);
     unlocked = (isThenable(evaledUnlocked) ? await evaledUnlocked : evaledUnlocked) as Rules;
     return { handled: true, output: unlocked };

@@ -286,6 +286,28 @@ export function isValueLeaf(node: Node): boolean {
 }
 
 /**
+ * The inner `Call` of a detached-ruleset call (`@alias()` / `@1()`), which the
+ * Less parser shapes as an `Expression` wrapping a single `Call` whose name is a
+ * `variable`-type `Reference`. Returns the wrapped `Call` for that shape, else
+ * `undefined`. A plain (non-wrapped) `Call` is NOT unwrapped here — the caller
+ * handles it directly.
+ */
+export function unwrapDetachedRulesetCall(node: Node): Node | undefined {
+  if (!isNode(node, N.Expression)) {
+    return undefined;
+  }
+  const inner = node.value;
+  if (!isNode(inner, N.Call)) {
+    return undefined;
+  }
+  const name = inner.name;
+  if (!isNode(name, N.Reference) || name.options?.type !== 'variable') {
+    return undefined;
+  }
+  return inner;
+}
+
+/**
  * True for a plain no-arg mixin CALL the spine may attempt to fold (cutover
  * P3-precursor, UNIFIED-EVAL-EMIT-DESIGN §2/§3). STATIC admissibility only — the
  * candidate's body shape is checked at RUNTIME by `isSpineSimpleMixinSurface`
@@ -293,9 +315,20 @@ export function isValueLeaf(node: Node): boolean {
  * the call site). Admitted: a `Call` whose name is a mixin `Reference`, with NO
  * args, NO content block, and none of the legacy `markImportant`/`silentFail`
  * options. This is INCREMENT 1's shape — parametric/guarded/named/rest calls
- * widen this gate in later increments.
+ * widen this gate in later increments. A detached-ruleset call (`@alias()`) is an
+ * `Expression`-wrapped `variable`-Reference `Call` (RUNG-1) — unwrapped and gated
+ * via `unwrapDetachedRulesetCall`.
  */
 export function isSpineEligibleMixinCall(node: Node): boolean {
+  // RUNG-1: a detached-ruleset call `@alias()` parses as an `Expression` wrapping a
+  // single `variable`-Reference `Call`. Unwrap it and gate the inner `Call` — its
+  // resolution (`resolveSpineMixinCall` drives `expr.eval` → the wrapped `Call.eval`)
+  // routes the resolved detached-ruleset / bound-call surface through the SAME
+  // callable-candidate sink as an authored mixin call.
+  const unwrapped = unwrapDetachedRulesetCall(node);
+  if (unwrapped !== undefined) {
+    return isSpineEligibleMixinCall(unwrapped);
+  }
   if (!isNode(node, N.Call)) {
     return false;
   }
@@ -339,7 +372,27 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
     return false;
   }
   const type = name.options?.type;
-  if ((type !== 'mixin' && type !== 'mixin-ruleset') || typeof name.key !== 'string') {
+  // RUNG-1 (detached-ruleset call): a `Call` whose name is a `variable`-type
+  // Reference (`@alias()` / `@1()` / `@conditional()`) is a detached-ruleset call —
+  // the variable resolves to a detached ruleset (`@r: { … }`), a detached collection,
+  // or a bound mixin-call expression (`@alias: .something(foo)`). It is ADMITTED here
+  // and driven through the SAME `resolveSpineMixinCall` sink: `call.eval` resolves the
+  // reference then routes the resolved surface through the callable-candidate sink
+  // (`callable-special-case.ts` — the "detached ruleset called from a variable" arm)
+  // or, for a bound-call value, re-evals the inner `.something(foo)` (itself a
+  // mixin-ruleset call that hits the sink). A non-simple resolved body falls back to
+  // the byte-identical eval terminal (`kind:'eval'`). The mixin-as-value fold
+  // (`528d465fc`) left this call itself eval-routed; this closes that residual.
+  if (type !== 'mixin' && type !== 'mixin-ruleset' && type !== 'variable') {
+    return false;
+  }
+  // A `mixin`/`mixin-ruleset` name carries a STRING key; a `variable`-Reference
+  // DR-call key is a `Keyword` node (an `Any` subclass whose `valueOf()` is the var
+  // name). Both static forms are fine — resolution is by `call.eval`, not the key
+  // text — but a NON-string, non-Keyword key (a SelectorCapture `*[.foo]()`) stays
+  // deferred.
+  const keyIsKeyword = name.key instanceof Node && name.key.type === 'Keyword';
+  if (typeof name.key !== 'string' && !(type === 'variable' && keyIsKeyword)) {
     return false;
   }
   // NAMESPACE-PATH / cross-scope call (`.scope > .mixin()`, `#ns.m()`, `#a > #b >
@@ -462,9 +515,14 @@ export type SpineMixinCallResolution =
  * surfaces are folded. Exactly ONE drive either way — no double execution.
  */
 export function resolveSpineMixinCall(
-  call: Node,
+  entry: Node,
   context: Context
 ): MaybePromise<SpineMixinCallResolution> {
+  // RUNG-1: a detached-ruleset call arrives as an `Expression` wrapping the real
+  // `Call` — drive the wrapped `Call` so the `!important`/eval logic below sees the
+  // Call directly. `Expression.eval` delegates to its value's eval, so driving the
+  // inner `Call` is identical output with the important flag on the right node.
+  const call = unwrapDetachedRulesetCall(entry) ?? entry;
   const captured: Array<{ surface: Rules; source: Rules; isMixin: boolean }> = [];
   let anyRejected = false;
   const savedSink = context.spineMixinSurfaceSink;
