@@ -2230,9 +2230,21 @@ export class LessGrammar extends CssParser {
       if (mediaNode) {
         preludeItems.push(mediaNode as unknown as JessNode);
       }
-      const prelude: JessNode | string = preludeItems.length === 1
-        ? preludeItems[0]!
-        : preludeItems.map(item => item.toTrimmedString()).join(' ');
+      let prelude: JessNode | string;
+      if (preludeItems.length === 1) {
+        prelude = preludeItems[0]!;
+      } else {
+        const joined = preludeItems.map(item => item.toTrimmedString()).join(' ');
+        // A multi-item prelude (path + trailing media/supports/layer tail) whose
+        // parts are ALL static (no `@{…}`/`$…` interpolation) is itself a static
+        // token: wrap it in an `Any` so it carries `F_STATIC` and the spine can
+        // fold the bodyless CSS `@import` statement inline (byte-identical — `Any`
+        // re-serializes its value, its `evalNode` is a no-op). A non-static part
+        // (interpolated path/media) keeps the raw string, deferring to eval where
+        // the interpolation resolves.
+        const allStatic = preludeItems.every(item => item.structuralStaticFlag());
+        prelude = allStatic ? (new Any(joined, undefined, loc) as unknown as JessNode) : joined;
+      }
       return new AtRuleStatement({ name, prelude }, undefined, loc) as unknown as JessNode;
     }
     const isForward = name === '@-export';

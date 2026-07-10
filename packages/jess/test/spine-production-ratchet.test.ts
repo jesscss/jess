@@ -2550,4 +2550,60 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('ATSTMT-1 (bodyless CSS `@import` statement): `at-rules-keyword-comments` FOLDS byte-identically (derive=0)', async () => {
+    // A bodyless CSS `@import "x.css" screen /* c */, print;` statement parses as an
+    // `AtRuleStatement` (not a `StyleImport`) whose MULTI-item prelude (path + media/comment
+    // tail) the builder now wraps in an `Any` (F_STATIC) — so the spine admits it as a leaf
+    // and HOISTS it to the top-of-doc emitter via `queueTopImport` (eval parity), rather than
+    // emitting it at its authored source position (after the `@media` block). Was the
+    // `atRule:notAtRuleWithBody [@import]` first-reject (string prelude never F_STATIC).
+    const lessPath = path.join(testDataRoot, 'tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the CSS-import statement folded + hoisted
+      expect(result.css).toBe(expected); // byte-identical (import prepended before the @media block)
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('ATSTMT-2 (`@import`-in-`@layer` + bodyless `@layer` statement): `layer` FOLDS byte-identically (derive=0)', async () => {
+    // The full `layer` fixture: top-level CSS `@import url(...) layer(foo);` statements (multi-item
+    // static prelude → `Any` F_STATIC, hoisted), a bodyless `@layer reset, base, …;` and `@layer
+    // theme;` LAYER-ORDER statement (emitted INLINE at position via `isSpineFoldableStatementAtRule`),
+    // block `@layer name { … }` (incl. interpolated `@layer @layer-name`), a Less `@import` inside
+    // `@layer legacy { … }`, and deep nesting. Was the stacked `atRule:notAtRuleWithBody [AtRuleStatement
+    // @import]` / `[@layer]` first-rejects; folds byte-identically to the owner-maintained expectation.
+    const lessPath = path.join(testDataRoot, 'tests-unit/layer/layer.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the whole layer file folded
+      expect(result.css).toBe(expected); // byte-identical to the owner-maintained expectation
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });

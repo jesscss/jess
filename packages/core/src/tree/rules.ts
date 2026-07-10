@@ -34,7 +34,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, isSpineFoldableCssImportStatement, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -4768,6 +4768,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // imported body falls through to the eval terminal below (byte-identical).
       if (mode === 'render' && context && options.spineMode && isSpineFoldableImport(n)) {
         return this._emitSpineImportFold(n as unknown as StyleImport, options, context, emitNode);
+      }
+      // Bodyless CSS `@import` STATEMENT (`AtRuleStatement`, e.g. `@import "x.css"
+      // screen;` or `@import url(...) layer(foo);`). Eval hoists it to the top-of-doc
+      // emitter via `prepareRegistration` → `queueTopImport` (see below); the spine
+      // does the SAME here so it prepends in document order rather than emitting at
+      // its authored source position (which may follow a `@media`/`@layer` block).
+      // `renderRootViaSpine` flushes `context.topImports` ahead of the body. Only a
+      // static prelude reaches here (`isSpineFoldableCssImportStatement`).
+      if (mode === 'render' && context && options.spineMode && isSpineFoldableCssImportStatement(n)) {
+        queueTopImport(context, n as unknown as AtRuleStatement);
+        return;
       }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {

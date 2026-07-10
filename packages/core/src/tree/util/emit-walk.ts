@@ -155,6 +155,35 @@ export function isSpineFoldableCssImportStatement(node: Node): boolean {
 }
 
 /**
+ * A bodyless STATEMENT at-rule the spine emits INLINE at its authored position —
+ * the `@layer name, name;` / `@layer name;` (bodyless layer-order declaration) and
+ * `@namespace`-style passthrough shapes. Parsed as an `AtRuleStatement` (no `Rules`
+ * body); its bytes serialize verbatim at their source position (no hoist, unlike
+ * `@import`, which reorders to the top-of-doc emitter). No scope effect, no eval
+ * side effect — a pure token statement, admitted only when its NAME is a static
+ * string and its prelude is absent or a static Node (an interpolated prelude needs
+ * frame eval and is deferred). `@import` is EXCLUDED here (it hoists via
+ * `isSpineFoldableCssImportStatement` + `queueTopImport`); `@charset` never reaches
+ * this shape (it parses to a role-`charset` `Any`, gated by `isSpineEligibleRoot`).
+ */
+export function isSpineFoldableStatementAtRule(node: Node): boolean {
+  if (!isAtRuleStatementNode(node)) {
+    return false;
+  }
+  if (typeof node.name !== 'string') {
+    return false;
+  }
+  if (node.name === '@import' || node.name === '@-import' || node.name === '@-export') {
+    return false;
+  }
+  const prelude = node.prelude;
+  if (prelude === undefined) {
+    return true;
+  }
+  return prelude instanceof Node && prelude.hasFlag(F_STATIC);
+}
+
+/**
  * STATIC spine-fold admissibility for a `StyleImport` child (IMPORTS increment 1).
  * Delegates the whole shape decision to `StyleImport.isSpineFoldableStyleImport`
  * (owned by `import-style.ts`, where the import options live) — CSS-passthrough OR
@@ -1193,6 +1222,12 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   // with a byte-identical eval fall-back for a non-simple imported body. Admitted
   // only under `allowImport` (the import-work gate — `engageImportLayer`).
   if (allowImport && (isSpineFoldableImport(node) || isSpineFoldableCssImportStatement(node))) {
+    return true;
+  }
+  // A bodyless STATEMENT at-rule (`@layer name;`, `@namespace …;`) emits its bytes
+  // inline at its source position — no scope, no eval, no import machinery, so it
+  // is admitted independent of `allowImport`.
+  if (isSpineFoldableStatementAtRule(node)) {
     return true;
   }
   // Extend / ExtendList are invisible effect nodes (they emit nothing; their gather
