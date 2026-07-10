@@ -104,6 +104,40 @@ describe('corpus/foundation', () => {
       )`);
   });
 
+  it('// line comment inside a value list is skipped as trivia', () => {
+    expectAst('$c: red // c\n green;', `
+      (Rules
+        rules:
+          [
+            (VarDeclaration
+              name: 'c'
+              value:
+                [
+                  (Keyword [role=keyword] 'red')
+                  (Keyword [role=keyword] 'green')
+                ]
+            )
+          ]
+      )`);
+  });
+
+  it('block comment inside a value list is skipped as trivia', () => {
+    expectAst('$c: red /* c */ green;', `
+      (Rules
+        rules:
+          [
+            (VarDeclaration
+              name: 'c'
+              value:
+                [
+                  (Keyword [role=keyword] 'red')
+                  (Keyword [role=keyword] 'green')
+                ]
+            )
+          ]
+      )`);
+  });
+
   it('space-separated value list', () => {
     expectAst('.a { margin: 1px solid red; }', `
       (Rules
