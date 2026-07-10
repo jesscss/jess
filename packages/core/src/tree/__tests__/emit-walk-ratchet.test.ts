@@ -1315,7 +1315,11 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(isSpineEligibleRoot(root, context)).toBe(true);
   });
 
-  it('EXCLUDES a body using a mixin as a variable value / map (`@p: .m()` — mixin-as-value deferred)', () => {
+  it('FOLDS a body using a mixin as a variable value / map (`@p: .m()` — mixin-as-value)', () => {
+    // A mixin DEFINITION bound to a variable then map-subscripted (`@p[key]`) folds on
+    // the spine: the var cell binds at scope-enter and the lookup resolves via the KEPT
+    // `Reference.eval` against the live value-frame, byte-identical to eval + less@4. The
+    // old conservative `bodyHasMixinDefinition && bodyHasCallInVarValue` reject is removed.
     const root = rules([
       ruleset({
         selector: sel([el('.a')]),
@@ -1325,7 +1329,7 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
         ]
       })
     ]);
-    expect(isSpineEligibleRoot(root, context)).toBe(false);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
   });
 });
 

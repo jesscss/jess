@@ -2435,4 +2435,53 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('MIXVAL-1 (mixin-as-value / map-lookup): `@p: .mk-map(); …@p[key]` FOLDS byte-identically (derive=0)', async () => {
+    // A mixin DEFINITION bound to a variable (`@p: .mk-map()`) then map-subscripted
+    // (`@p[text]`) folds on the spine WITHOUT dedicated machinery: the var cell binds
+    // at scope-enter and `@p[key]` resolves via the KEPT `Reference.eval` against the
+    // live value-frame (`emitLeaf` → `node.eval`), exactly like the eval path. Was a
+    // first-reject (`bodyHasMixinDefinition && bodyHasCallInVarValue`); that gate was
+    // conservative and is removed. Byte-identical to eval + less@4.
+    const compiler = makeCompiler();
+    const src = '.mk-map() {\n  text: red;\n}\n@p: .mk-map();\n.x {\n  color: @p[text];\n}';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (mixin-as-value fold)
+      expect(deriveCalls).toBe(0); // map-lookup resolved in-pass, no output tree
+      expect(css).toBe('.x {\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('MIXVAL-1 (nested container): a nested mixin-def + `@p: .mk-map()` + `@p[key]` FOLDS byte-identically (derive=0)', async () => {
+    // The same mixin-as-value/map-lookup shape nested one level under a container
+    // ruleset (d=3). The container descent threads the value-frame the same way, so
+    // the nested `@p[text]` resolves in-pass. Byte-identical to eval + less@4.
+    const compiler = makeCompiler();
+    const src = '.outer {\n  .mk-map() {\n    text: red;\n  }\n  @p: .mk-map();\n  .x {\n    color: @p[text];\n  }\n}';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0);
+      expect(css).toBe('.outer .x {\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });
