@@ -743,8 +743,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     );
     const inReferenceMode = previousReferenceMode || ownReferenceMode;
     const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
+    // REFERENCE-UNLOCK signal (eval-path parity). A reference-mode ruleset is render-enabled when
+    // an `:extend` reaches it. Two forms carry that signal:
+    //   - eval / own-body extender: the node bears `F_EXTENDED` (or an extended top-level selector);
+    //   - SPINE FOLD: the node is an extend TARGET (not itself the extender) whose header override
+    //     `wireSpineExtends` installed on `options.spineExtendHeaders` — the extender lives in the
+    //     importing file, so the reference target carries no `F_EXTENDED` of its own. The presence of
+    //     a header override IS the reaching-extend signal (see `emit-walk` `collectImportedRootSubjects`).
     const nodeExtendsReference = isNode(node, N.Ruleset)
-      && (node.hasFlag(F_EXTENDED) || (node.selector != null && Ruleset.hasExtendedTopLevelSelector(node.selector)));
+      && (node.hasFlag(F_EXTENDED)
+        || (node.selector != null && Ruleset.hasExtendedTopLevelSelector(node.selector))
+        || options.spineExtendHeaders?.has(node) === true);
     const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
     const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
     options.referenceMode = inReferenceMode;
