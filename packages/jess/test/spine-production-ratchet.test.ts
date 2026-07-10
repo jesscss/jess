@@ -681,6 +681,70 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toBe('@media screen {\n  .class .plain {\n    color: green;\n  }\n}\n');
   });
 
+  it('AT-RULE `&`-THROUGH-HOIST: a bare-`&` child ruleset in a nested `@media` re-wraps the ancestor selector on hoist (folds, byte-identical)', async () => {
+    // `.a { color: black; @media screen { & { color: red; } &:hover { color: blue; } } }` —
+    // the `@media` hoists to root and each `&`-bearing child re-materializes the ancestor
+    // `.a` around its body (`@media { .a { color: red } .a:hover { color: blue } }`). On the
+    // spine `getHoistedParent` recovers the enclosing ruleset frame from
+    // `context.rulesetFrames` (no `.parent` back-pointer) and the composed parent selector
+    // from `composedSelectorStack`, emitting the hoisted wrapper header. Byte-identical to
+    // eval AND less@4. A re-deferral to eval trips the counter (no move) RED.
+    const compiler = makeCompiler();
+    const src = `.a {\n  color: black;\n  @media screen {\n    & { color: red; }\n    &:hover { color: blue; }\n  }\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(css).toBe('.a {\n  color: black;\n}\n@media screen {\n  .a {\n    color: red;\n  }\n  .a:hover {\n    color: blue;\n  }\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('AT-RULE DIRECT-DECL THROUGH HOIST: a direct declaration in a nested `@supports` re-wraps the ancestor selector (folds, byte-identical)', async () => {
+    // `html { @supports (display: grid) { display: grid; } }` — a DIRECT declaration inside
+    // a hoisting at-rule. On hoist the ancestor `html` must wrap the decl
+    // (`@supports { html { display: grid } }`). The spine's `getHoistedParent` frame-stack
+    // recovery supplies the `html` wrapper header. Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `html {\n  @supports (display: grid) {\n    display: grid;\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@supports (display: grid) {\n  html {\n    display: grid;\n  }\n}\n');
+  });
+
+  it('AT-RULE `&`-THROUGH-HOIST: an `&`-collapsing ancestor (`.inside &`) composes correctly through a nested `@supports` (folds)', async () => {
+    // `.top { .inside & { @supports (x: y) { & { color: red; } } } }` — the inner `&` resolves
+    // against the COMPOSED `.inside .top`, and the hoisted `@supports` wraps it
+    // (`@supports { .inside .top { color: red } }`). Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `.top {\n  .inside & {\n    @supports (x: y) {\n      & { color: red; }\n    }\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@supports (x: y) {\n  .inside .top {\n    color: red;\n  }\n}\n');
+  });
+
+  it('AT-RULE `&`-THROUGH-HOIST: a MIXED body (bare-`&` + plain-selector child + `&:hover`) composes each child on hoist (folds)', async () => {
+    // `.card { @media screen { & {…} .inner {…} &:hover {…} } }` — bare-`&`→`.card`, plain
+    // `.inner`→`.card .inner`, `&:hover`→`.card:hover`, all inside the hoisted `@media`.
+    // Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `.card {\n  @media screen {\n    & { color: red; }\n    .inner { color: green; }\n    &:hover { color: blue; }\n  }\n}`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .card {\n    color: red;\n  }\n  .card .inner {\n    color: green;\n  }\n  .card:hover {\n    color: blue;\n  }\n}\n');
+  });
+
   it('DEFERRED: a mixin body with an at-rule child needing CALL-SITE ancestor rewrap stays on eval (byte-identical)', async () => {
     // `@media screen { color: green }` inside the mixin body — a DIRECT declaration; on
     // hoist to root the CALL-SITE `.class` selector must re-wrap the at-rule body

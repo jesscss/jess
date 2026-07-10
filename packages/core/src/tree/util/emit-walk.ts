@@ -714,28 +714,31 @@ function isSpineEligibleContainer(node: Node, allowExtend = false, allowImport =
   ) {
     return false;
   }
-  // ANCESTOR RE-WRAP on at-rule HOIST (a scoped frontier). A conditional-group
-  // at-rule nested inside THIS ruleset hoists to root; its content that is NOT a
-  // plain-selector child ruleset must be RE-WRAPPED in this ruleset's (composed)
-  // selector — a DIRECT declaration (`html { @supports { d: v } }` → `@supports {
-  // html { d: v } }`) or a bare-`&` / `&`-collapsing child ruleset (`.c { @media {
-  // & { … } } }` → `@media { .c { … } }`). The spine hoist does not yet reproduce
-  // that ancestor re-wrap; it drops the wrapper and emits the content bare. Plain-
-  // selector child rulesets (`.card { @media { .inner { … } } }` → `.card .inner`)
-  // DO compose correctly. So exclude this ruleset when it holds a hoisting at-rule
-  // whose body needs re-wrapping (`atRuleBodyNeedsAncestorRewrap`).
-  if (bodyHasAtRuleNeedingAncestorRewrap(ruleset.rules)) {
-    return false;
-  }
+  // ANCESTOR RE-WRAP on at-rule HOIST (folded — was a scoped frontier). A
+  // conditional-group at-rule nested inside THIS ruleset hoists to root under
+  // collapse; content that is NOT a plain-selector child ruleset — a DIRECT
+  // declaration (`html { @supports { d: v } }` → `@supports { html { d: v } }`) or
+  // a bare-`&` / `&`-collapsing child ruleset (`.c { @media { & { … } } }` →
+  // `@media { .c { … } }`) — is RE-WRAPPED in this ruleset's composed selector by
+  // the spine hoist: `getHoistedParent` recovers the enclosing ruleset frame from
+  // `context.rulesetFrames` (no `.parent` back-pointer needed) and the composed
+  // parent selector from `composedSelectorStack`, then emits it as the hoisted
+  // wrapper header. So no ruleset-level exclusion is needed here.
   return isSpineEligibleBody(ruleset.rules, allowExtend, allowImport);
 }
 
 /**
  * True if any direct child of `body` is a hoisting conditional-group at-rule whose
- * own body would need the enclosing ruleset's selector re-wrapped around it on
- * hoist — i.e. it has a DIRECT declaration/comment leaf or an `&`-bearing child
- * ruleset. An at-rule whose children are ALL plain-selector rulesets composes
- * correctly through the spine hoist and does NOT force exclusion.
+ * own body would need the enclosing scope's selector re-wrapped around it on hoist
+ * — a DIRECT declaration/comment leaf or an `&`-bearing child ruleset. An at-rule
+ * whose children are ALL plain-selector rulesets composes correctly through the
+ * spine hoist and does NOT force exclusion.
+ *
+ * SCOPE: this guard remains only on the MIXIN-SURFACE path
+ * (`isSpineSimpleMixinSurface`), where the mixin body plays the enclosing-scope
+ * role and the CALL-SITE selector rewrap on hoist is not yet reproduced. The
+ * authored-ruleset path folds this shape (`getHoistedParent` recovers the
+ * enclosing ruleset frame from `context.rulesetFrames`).
  */
 function bodyHasAtRuleNeedingAncestorRewrap(children: readonly Node[]): boolean {
   for (let i = 0; i < children.length; i++) {
@@ -754,7 +757,7 @@ function bodyHasAtRuleNeedingAncestorRewrap(children: readonly Node[]): boolean 
 }
 
 /**
- * True if a (hoisting) at-rule body contains anything the enclosing ruleset's
+ * True if a (hoisting) at-rule body contains anything the enclosing scope's
  * selector must be re-wrapped around: a direct declaration/non-ruleset leaf, or a
  * child ruleset whose selector carries `&`. A body of only plain-selector rulesets
  * returns false (composes correctly through the hoist).
@@ -896,19 +899,17 @@ function isSpineEligibleAtRule(node: Node, allowImport = false): boolean {
   if (!SPINE_ELIGIBLE_AT_RULES.has(atRule.name)) {
     return false;
   }
-  // Nested conditional-group at-rules HOIST to root; when their body contains a
-  // ruleset whose selector carries an `&`, the hoist must RE-MATERIALIZE the
-  // ancestor selector around the (possibly `&`-collapsed) child — e.g.
-  // `.c { @media { & { … } } }` → `@media { .c { … } }`, and `.top { .inside & {
-  // @supports { … } } }` → `@supports { .inside .top { … } }`. The spine's hoist
-  // does not yet reproduce that ancestor re-wrap for `&`-bearing inner selectors
-  // (it drops the wrapper, emitting the leaf bare). Plain-selector inner rulesets
-  // (`.card { @media { .inner { … } } }` → `.card .inner`) ARE correct and stay
-  // eligible. So exclude an at-rule whose body has an `&`-bearing child ruleset —
-  // a scoped frontier (the `&`-through-hoist re-wrap), NOT a safety fallback.
-  if (atRuleBodyHasAmpersandRuleset(atRule.rules)) {
-    return false;
-  }
+  // Nested conditional-group at-rules HOIST to root (under collapse); when their
+  // body contains a ruleset whose selector carries an `&`, the hoist RE-
+  // MATERIALIZES the ancestor selector around the (possibly `&`-collapsed) child —
+  // e.g. `.c { @media { & { … } } }` → `@media { .c { … } }`, and `.top { .inside &
+  // { @supports { … } } }` → `@supports { .inside .top { … } }`. FOLDED: the spine
+  // hoist reproduces the ancestor re-wrap via `getHoistedParent` (which recovers
+  // the enclosing ruleset frame from `context.rulesetFrames` and the composed
+  // parent selector from `composedSelectorStack`), so a bare-`&` / `&`-collapsing
+  // inner ruleset AND a direct declaration both wrap in the composed parent header.
+  // Plain-selector inner rulesets (`.card { @media { .inner { … } } }` →
+  // `.card .inner`) compose the same way. No `&`-body exclusion needed here.
   return isSpineEligibleBody(atRule.rules, false, allowImport);
 }
 

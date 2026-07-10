@@ -618,14 +618,26 @@ function getHoistedParent(
   // structural context. Under collapse every ruleset ancestor is folded into the
   // composed selector and dropped from the live frame stack, so recover it from
   // the at-rule's structural parent chain.
-  let frameCandidate: Node | undefined = atRule.parent;
-  while (frameCandidate && !isNode(frameCandidate, N.Ruleset)) {
-    frameCandidate = frameCandidate.parent;
+  let frameNode: Node | undefined = atRule.parent;
+  while (frameNode && !isNode(frameNode, N.Ruleset)) {
+    frameNode = frameNode.parent;
   }
-  if (!frameCandidate) {
+  let frame: Ruleset | undefined = frameNode && isNode(frameNode, N.Ruleset) ? frameNode : undefined;
+  // SPINE: a PARSED source tree carries no `.parent` back-pointer (only the eval
+  // pass, which the spine replaces, set them), so the walk above finds nothing.
+  // The spine descent pushes each enclosing ruleset onto `context.rulesetFrames`
+  // before reaching this at-rule, so its top IS the nearest enclosing ruleset —
+  // the same structural frame the `.parent` walk recovers on the eval path.
+  if (!frame) {
+    const frames = options.context?.rulesetFrames;
+    if (frames && frames.length > 0) {
+      frame = frames[frames.length - 1];
+    }
+  }
+  if (!frame) {
     return undefined;
   }
-  return { frame: frameCandidate as Ruleset, selector: parentSelector as SelectorLike };
+  return { frame, selector: parentSelector as SelectorLike };
 }
 
 /**
