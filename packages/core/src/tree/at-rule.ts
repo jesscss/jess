@@ -1339,10 +1339,16 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
 
   getComparableHeaderString(options: FinalPrintOptions): string {
     if (typeof this.name === 'string' && options.atRuleHeaderNode !== this) {
-      const prelude = typeof this.prelude === 'string'
-        ? this.prelude
-        : this.prelude !== undefined
-          ? renderAtRuleHeaderNodeSyntax(this.prelude, options, true)
+      // Match on the spine-resolved prelude when present, so a hoisted-ancestor
+      // re-materialization (`@media (max-width: @bpMedium)` → `1000px`) compares
+      // equal to the node's own resolved emission and MERGES into one block, as on
+      // eval. Without this the raw prelude (`$[bpMedium]`) would mismatch the
+      // resolved header and split the block. See `spineResolvedPreludes`.
+      const headerPrelude = options.spineResolvedPreludes?.get(this) ?? this.prelude;
+      const prelude = typeof headerPrelude === 'string'
+        ? headerPrelude
+        : headerPrelude !== undefined
+          ? renderAtRuleHeaderNodeSyntax(headerPrelude, options, true)
           : undefined;
       return buildComparableAtRuleHeader(this.name, prelude);
     }
@@ -1389,16 +1395,21 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         w.add(idt);
       }
       w.add(this.name, this);
-      const preludeOut = typeof this.prelude === 'string'
-        ? this.prelude
-        : this.prelude !== undefined
-          ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
+      // Prefer the spine-resolved prelude when this ancestor at-rule is on the
+      // descent stack (a hoisted-descendant re-materialization reaches here with the
+      // single `atRuleHeaderNode` override no longer targeting this node — see
+      // `spineResolvedPreludes`). Otherwise the raw prelude.
+      const headerPrelude = options.spineResolvedPreludes?.get(this) ?? this.prelude;
+      const preludeOut = typeof headerPrelude === 'string'
+        ? headerPrelude
+        : headerPrelude !== undefined
+          ? renderAtRuleHeaderNodeSyntax(headerPrelude, options, withoutComments)
           : undefined;
       if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
         if (!endsWithAtRuleWhitespace(this.name) && !startsWithAtRuleWhitespace(preludeOut)) {
           w.add(' ');
         }
-        w.add(preludeOut, this.prelude ?? this);
+        w.add(preludeOut, headerPrelude ?? this);
       }
       w.add(' {\n');
       return true;
@@ -1467,10 +1478,13 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         : this.getRenderRules();
       const idt = indent(options.depth);
       let out = idt + this.name;
-      const preludeOut = typeof this.prelude === 'string'
-        ? this.prelude
-        : this.prelude !== undefined
-          ? renderAtRuleHeaderNodeSyntax(this.prelude, options, withoutComments)
+      // Prefer the spine-resolved prelude (hoisted-ancestor re-materialization; see
+      // `spineResolvedPreludes` / `writeHeader`), else the raw prelude.
+      const headerPrelude = options.spineResolvedPreludes?.get(this) ?? this.prelude;
+      const preludeOut = typeof headerPrelude === 'string'
+        ? headerPrelude
+        : headerPrelude !== undefined
+          ? renderAtRuleHeaderNodeSyntax(headerPrelude, options, withoutComments)
           : undefined;
       if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
         const normalizedPrelude = trimAtRuleLeadingWhitespace(preludeOut);

@@ -584,6 +584,49 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
+  it('folds `@page` MARGIN-BOX at-rules through the spine (in-place wrap+emit child of `@page`, no derive)', async () => {
+    // PAGE MARGIN-BOX FOLD. A margin-box at-rule (`@top-left`/`@top-center`/… — the 16
+    // CSS Paged-Media §5 boxes) is a declaration-bodied, non-hoisting child of `@page`;
+    // it emits IN PLACE inside the `@page` block. Before this fold the margin-box NAME
+    // was rejected by `isSpineEligibleAtRule` (not in any eligible set) — the whole
+    // `@page` root dropped to the eval two-walk. Now the shape folds byte-identical to
+    // the eval oracle. Covers: flat `@page` + one box; `@page :first` (prelude) + box;
+    // media-nested `@page` + several boxes (the media.less shape). A regression trips
+    // the counter (no move) or `Rules.derive` (fires) RED.
+    const cases: Array<{ src: string; out: string }> = [
+      {
+        src: '@page { margin: 2cm; @top-left { content: "Page " counter(page); } }',
+        out: '@page {\n  margin: 2cm;\n  @top-left {\n    content: "Page " counter(page);\n  }\n}\n'
+      },
+      {
+        src: '@page :first { margin: 3cm; @top-center { content: "First Page"; } }',
+        out: '@page :first {\n  margin: 3cm;\n  @top-center {\n    content: "First Page";\n  }\n}\n'
+      },
+      {
+        src: '@media print {\n  @page :first {\n    size: 8.5in 11in;\n    @top-left { margin: 1cm; }\n    @bottom-right-corner { margin: 1cm; }\n    @left-middle { margin: 1cm; }\n  }\n}',
+        out: '@media print {\n  @page :first {\n    size: 8.5in 11in;\n    @top-left {\n      margin: 1cm;\n    }\n    @bottom-right-corner {\n      margin: 1cm;\n    }\n    @left-middle {\n      margin: 1cm;\n    }\n  }\n}\n'
+      }
+    ];
+    for (const c of cases) {
+      const compiler = makeCompiler();
+      const originalDerive = Rules.prototype.derive;
+      let deriveCalls = 0;
+      Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      } as Rules['derive'];
+      try {
+        const before = spineRenderCounter.rootRenders;
+        const css = await compiler.renderString(c.src, { language: 'less' });
+        expect(spineRenderCounter.rootRenders, `routed: ${c.src}`).toBeGreaterThan(before); // spine path
+        expect(deriveCalls, `no derive: ${c.src}`).toBe(0); // no eval two-walk
+        expect(css, `output: ${c.src}`).toBe(c.out); // byte-identical to the eval oracle
+      } finally {
+        Rules.prototype.derive = originalDerive;
+      }
+    }
+  });
+
   it('folds `@property` through the spine (root-only wrap+emit, no registration side-effect, no derive)', async () => {
     // `@property` is a plain DECLARATION-bodied root-only at-rule, structurally identical
     // to `@font-face`. Its eval pass registers NOTHING into any scope or the extend-roots

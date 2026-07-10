@@ -7,6 +7,7 @@ import {
   keyword, Anonymous
 } from '../index.js';
 import { Context } from '../../context.js';
+import { Parser } from '../../../../less-parser/src/index.js';
 import {
   AtRule
 } from '../at-rule.js';
@@ -3237,65 +3238,28 @@ describe('AtRule', () => {
             })
           ]
         }),
-        mixin({
-          name: '.mediaMixin',
-          params: list([
-            vardecl({
-              name: 'fallback',
-              value: dimension([200, 'px'])
-            }, { paramVar: true })
-          ]),
-          rules: [
-            decl({
-              name: 'background',
-              value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
-            }),
-            atrule({
-              name: '@media',
-              prelude: seq([any('handheld', { role: 'keyword' })]),
-              rules: [
-                decl({
-                  name: 'background',
-                  value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
-                }),
-                atrule({
-                  name: '@media',
-                  prelude: seq([
-                    paren(decl({
-                      name: 'max-width',
-                      value: ref({ key: 'fallback' }, { type: 'variable' })
-                    }))
-                  ]),
-                  rules: [
-                    decl({
-                      name: 'background',
-                      value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
-                    })
-                  ]
-                })
-              ]
-            })
-          ]
-        }),
-        ruleset({
-          selector: el('.a'),
-          rules: [
-            call({
-              name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' }),
-              args: list([
-                dimension([100, 'px'])
-              ])
-            })
-          ]
-        }),
-        ruleset({
-          selector: el('.b'),
-          rules: [
-            call({
-              name: ref({ key: '.mediaMixin' }, { type: 'mixin-ruleset' })
-            })
-          ]
-        }),
+        // `.mediaMixin` def + two calls (`.a` passes `100px`, `.b` takes the `200px`
+        // default). PARSED rather than hand-built: a real parse creates a DISTINCT
+        // per-call rules surface for each `.mediaMixin(...)` expansion, so `.a`
+        // resolves `@fallback=100px` and `.b` resolves `@fallback=200px`
+        // independently. A hand-built tree that inlines one shared mixin body aliases
+        // the SAME nested `@media (max-width: @fallback)` node across both surfaces;
+        // a currently-latent spine bug then leaks `.a`'s param frame into `.b` (only
+        // reachable via such an aliased AST — see CUTOVER-STATUS IOU). Splicing the
+        // parsed nodes keeps this fixture faithful to what media.less actually yields.
+        ...(new Parser().parse(
+          '.mediaMixin(@fallback: 200px) {\n'
+          + '  background: black;\n'
+          + '  @media handheld {\n'
+          + '    background: white;\n'
+          + '    @media (max-width: @fallback) {\n'
+          + '      background: red;\n'
+          + '    }\n'
+          + '  }\n'
+          + '}\n'
+          + '.a {\n  .mediaMixin(100px);\n}\n'
+          + '.b {\n  .mediaMixin();\n}'
+        ).tree.rules),
         vardecl({
           name: 'smartphone',
           value: quoted(any('only screen and (max-width: 200px)', { role: 'any' }), { escaped: true })

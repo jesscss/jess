@@ -2150,11 +2150,20 @@ function serializeSpineFrameAtRule(
   const savedAtRuleNode = options.spineAtRuleNode;
   const savedHeaderNode = options.atRuleHeaderNode;
   const savedHeaderPrelude = options.atRuleHeaderPrelude;
+  const hadResolvedEntry = options.spineResolvedPreludes?.has(node) ?? false;
+  const savedResolvedEntry = options.spineResolvedPreludes?.get(node);
   const restore = (text: string): string => {
     context.rulesContext = savedRulesContext;
     options.spineAtRuleNode = savedAtRuleNode;
     options.atRuleHeaderNode = savedHeaderNode;
     options.atRuleHeaderPrelude = savedHeaderPrelude;
+    if (options.spineResolvedPreludes) {
+      if (hadResolvedEntry) {
+        options.spineResolvedPreludes.set(node, savedResolvedEntry!);
+      } else {
+        options.spineResolvedPreludes.delete(node);
+      }
+    }
     return text;
   };
   // Descend with the marker + prelude override set. The marker (`spineAtRuleNode`)
@@ -2165,6 +2174,14 @@ function serializeSpineFrameAtRule(
     if (resolvedPrelude !== undefined) {
       options.atRuleHeaderNode = node;
       options.atRuleHeaderPrelude = resolvedPrelude;
+      // Register on the render-local stack too: when a nested at-rule HOISTS to root,
+      // the frame-diff loop re-emits THIS ancestor's header via `writeHeader`/
+      // `getHeaderString`/`getComparableHeaderString` at a point where the single
+      // `atRuleHeaderNode` override no longer targets this node. The registry lets
+      // those raw-prelude header paths substitute the resolved prelude (matching
+      // eval) instead of emitting `$[bpMedium]`. Keyed by node + save/restore, so a
+      // body shared across mixin call sites resolves each call's arg independently.
+      (options.spineResolvedPreludes ??= new Map()).set(node, resolvedPrelude);
     }
     assignSpineChildIndices(node);
     // Link this at-rule's scope frame to the ENCLOSING live frame explicitly

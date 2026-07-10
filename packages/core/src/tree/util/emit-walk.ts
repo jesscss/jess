@@ -909,6 +909,39 @@ const SPINE_ELIGIBLE_ROOT_ONLY_AT_RULES = new Set([
   '@property'
 ]);
 
+/**
+ * The 16 PAGE MARGIN-BOX at-rules (CSS Paged Media Module Level 3, §5 —
+ * https://www.w3.org/TR/css-page-3/#margin-boxes). Each is only grammatically
+ * valid as a direct child of `@page`; its body is `:`-declarations (`content`,
+ * `margin`, …). They are NOT in `NESTABLE_AT_RULES` nor `ROOT_ONLY_AT_RULES`
+ * (`at-rule.ts`), so `isNestable()`/`isRootOnly()` are both false and they emit
+ * IN PLACE within the enclosing `@page` block with no hoist and no selector
+ * composition — structurally the declaration-bodied wrap+emit shape, one level
+ * down. The spine emit dispatch (`serializeSpineFrameAtRule`) already renders any
+ * `AtRule`-with-`Rules` child this way; the ONLY gap was this eligibility gate,
+ * which rejected the unknown name. Admitted here as a `@page`-body-only child (the
+ * body gate below descends into `@page` and reaches these via
+ * `isSpineEligibleAtRule`); their own body reuses the declaration-body check.
+ */
+const SPINE_PAGE_MARGIN_BOX_AT_RULES = new Set([
+  '@top-left-corner',
+  '@top-left',
+  '@top-center',
+  '@top-right',
+  '@top-right-corner',
+  '@bottom-left-corner',
+  '@bottom-left',
+  '@bottom-center',
+  '@bottom-right',
+  '@bottom-right-corner',
+  '@left-top',
+  '@left-middle',
+  '@left-bottom',
+  '@right-top',
+  '@right-middle',
+  '@right-bottom'
+]);
+
 /** True for the keyframes family, whose children are keyframe-selector rulesets. */
 const SPINE_KEYFRAMES_AT_RULES = new Set(['@keyframes', '@-webkit-keyframes']);
 
@@ -965,6 +998,15 @@ function isSpineEligibleAtRule(node: Node, allowImport = false, allowExtend = fa
   // hoist, no selector composition. Body is declarations/comments, or (keyframes)
   // keyframe-selector rulesets, or (`@document`/`@host`) plain-selector rulesets.
   if (SPINE_ELIGIBLE_ROOT_ONLY_AT_RULES.has(atRule.name)) {
+    return isSpineEligibleRootOnlyAtRuleBody(atRule);
+  }
+  // PAGE MARGIN-BOX (`@top-left`/`@top-center`/…): a declaration-bodied, in-place
+  // (non-hoisting) at-rule child of `@page`. Body gate is identical to the
+  // declaration-bodied root-only family — no `&`-bearing child, normal leaf body.
+  // The enclosing `@page` is what admits it as a body child; a stray margin-box
+  // outside `@page` is a CSS grammar error that the spine simply emits verbatim
+  // (byte-identical to eval, which also emits it as an unknown block at-rule).
+  if (SPINE_PAGE_MARGIN_BOX_AT_RULES.has(atRule.name)) {
     return isSpineEligibleRootOnlyAtRuleBody(atRule);
   }
   if (!SPINE_ELIGIBLE_AT_RULES.has(atRule.name)) {
