@@ -1020,7 +1020,6 @@ export function isSpineExtendTopology(
   })();
   const targets = new Set<string>();
   const rootLevelSelectors = new Set<string>();
-  const extenderSelectors = new Set<string>();
   // Composed-path strings of EVERY subject (root: local; nested: `.header .header-nav`). A crossing
   // target (`.header .header-nav`) resolves to a NESTED subject's composed path — admitted so the
   // hoist path (`collapseNesting:true`, verbatim override) can rewrite it (increment 3).
@@ -1162,9 +1161,6 @@ export function isSpineExtendTopology(
           ok = false; // extender on an `&`-APPEND path — the append suffix can't be composed here
           return;
         }
-        if (local !== undefined) {
-          extenderSelectors.add(String(local.valueOf()));
-        }
         for (const ext of extendNodes) {
           if (!extendTargetIsSimple(ext)) {
             ok = false;
@@ -1261,18 +1257,11 @@ export function isSpineExtendTopology(
     // render correctly on eval and the override cannot build them. Subsumes the single-token slice of
     // SHAPE 4. Excludes an import tree (an imported subject the static gather never sees).
     // A target that sub-compound-matches an EXTENDER's own selector (`.i` ⊆ the extender `.i.j`) is a
-    // TRANSITIVE CHAIN (`.g.h` ← `.i.j` ← `.k`) — the header override does not build the transitive
-    // closure, so keep the whole root on eval. The exact-equality chaining guard below (`.i.j`) misses
-    // a SUB-COMPOUND chain target (`.i`), so exclude it from this admission explicitly.
-    const chainsIntoExtender = [...extenderSelectors].some((extSel) => {
-      const et = descendantCompoundTokens(extSel);
-      const tt = descendantCompoundTokens(target);
-      return et !== undefined && et.length === 1 && tt !== undefined && tt.length === 1
-        && compoundMultisetSubset(tt[0]!, et[0]!);
-    });
+    // TRANSITIVE CHAIN (`.g.h` ← `.i.j` ← `.k`), drained by SOLVE's document-level fixpoint through the
+    // SHARED target index (a branch one subject produces routes through the same index a later subject
+    // queries — `solve.ts`), so a sub-compound chain target is addressable here (no eval deferral).
     const isMatchableCompoundTarget = !treeHasImport
       && !target.includes(' ')
-      && !chainsIntoExtender
       && descendantCompoundTokens(target) !== undefined
       && [...cleanSubjectPaths].some(p => compoundMatchesRootSubjectStrict(target, p, !collapseNesting));
     // COMBINATOR SUBJECT (`.ext6 > .ext5`, `.ext8 + .ext9`). A single plain compound target that
@@ -1302,7 +1291,6 @@ export function isSpineExtendTopology(
     const isPartialWrapOfDescendantLevel = !treeHasImport
       && !/[>+~ ,]/.test(target)
       && descendantCompoundTokens(target)?.length === 1
-      && !chainsIntoExtender
       && rootDescendantSelectors.some(subjSel =>
         !anyNestedRulesetMatchesSelector(root, subjSel) && targetCouldMatchPath(target, subjSel));
     const isCombinatorSubjectTarget = !treeHasImport
@@ -1341,7 +1329,6 @@ export function isSpineExtendTopology(
       && !treeHasImport
       && !/[>+~ ,]/.test(target)
       && descendantCompoundTokens(target)?.length === 1
-      && !chainsIntoExtender
       && [...cleanSubjectPaths].some(p =>
         p.includes(' ') && !/[>+~,()&]/.test(p) && targetCouldMatchPath(target, p));
     // PSEUDO-COMPOUND TARGET (`.button:hover`, `.button2:hover`): its compound base (`.button`) is a
@@ -1392,9 +1379,11 @@ export function isSpineExtendTopology(
       }
       return false; // target maps to no addressable subject (root selector or crossing nested path)
     }
-    if (extenderSelectors.has(target)) {
-      return false; // chaining — deferred to a later increment
-    }
+    // A target that is itself an EXTENDER's subject (`.b:extend(.a)` where `.b` is `.c`'s target) is a
+    // TRANSITIVE CHAIN. SOLVE's document-level fixpoint (`solveSubject`) re-enqueues each produced branch
+    // value and re-queries the SHARED target index, so a chained/circular/`all`-partial chain drains to
+    // its fixed point on the spine byte-identically (verified: whole `extend-chaining.less` folds). No
+    // eval deferral needed.
   }
   return true;
 }

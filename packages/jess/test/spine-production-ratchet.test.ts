@@ -2484,4 +2484,36 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('CHAIN-1 (transitive extend): the FULL `extend-chaining` corpus fixture FOLDS byte-identically (derive=0)', async () => {
+    // Single-file TRANSITIVE extend: `.a{…} .b:extend(.a){} .c:extend(.b){}` — `.c` picks up `.a`
+    // through the chain. Also exercises reverse-order chains, `all`-partial chains
+    // (`.g.h ← .i.j:extend(.g all) ← .k:extend(.i all)` → nested `:is(.g, :is(.i, .k).j).h`),
+    // 8-link multi-chains, self-reference (`.w:extend(.w)`), classic circular refs
+    // (`.x ← .y ← .z ← .x`), `&:extend` inside a ruleset, and the `@media (tv)`/`(plasma)`
+    // scoped block. SOLVE's document-level fixpoint drains every closure through the SHARED
+    // target index (`solve.ts`), so the whole file folds on the spine with NO eval two-walk.
+    // Was the `container:notRuleset [Extend]` first-reject → the chaining gate clauses in
+    // `isSpineExtendTopology` (`chainsIntoExtender` + the trailing `extenderSelectors.has(target)`
+    // reject) were removed; both were conservative once SOLVE handled the transitive closure.
+    const lessPath = path.join(testDataRoot, 'tests-unit/extend-chaining/extend-chaining.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (transitive-extend fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → the fixpoint drained on the spine
+      expect(result.css).toBe(expected); // byte-identical to the owner-maintained expectation
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });

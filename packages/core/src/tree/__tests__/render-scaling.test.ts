@@ -201,7 +201,12 @@ describe('render scaling guardrail', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       tree as unknown as RenderBufferNode,
       new Context(),
-      { context: new Context() }
+      // A `preSerializeRoot` hook forces the EVAL render path (the spine gate is
+      // skipped when one is present — `Rules#render`). This guardrail measures the
+      // EVAL extend matcher's anti-quadratic scaling; the flat chain now folds on
+      // the spine (extend-chaining fold), so without forcing eval the matcher never
+      // runs and `getExtendMatchWork()` reads 0. The hook is a no-op passthrough.
+      { context: new Context(), preSerializeRoot: out => out }
     );
     return { css, work: getExtendMatchWork() };
   }
