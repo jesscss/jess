@@ -29,7 +29,10 @@ function hasTopLevelComma(str: string): boolean {
   for (let i = 0; i < str.length; i++) {
     const ch = str[i]!;
     if (inQuote) {
-      if (ch === inQuote && str[i - 1] !== '\\') {
+      // Skip the escaped character wholesale so `\"` / `\\` can't desync quote tracking.
+      if (ch === '\\') {
+        i++;
+      } else if (ch === inQuote) {
         inQuote = null;
       }
     // eslint-disable-next-line @stylistic/quotes
@@ -37,7 +40,9 @@ function hasTopLevelComma(str: string): boolean {
       inQuote = ch;
     } else if (ch === '(' || ch === '[') {
       depth++;
-    } else if (ch === ')' || ch === ']') {
+    } else if ((ch === ')' || ch === ']') && depth > 0) {
+      // Clamp at 0 — an unbalanced closer must not drive depth negative and mask a
+      // later top-level comma (that's the exact dangling-selector case this guards).
       depth--;
     } else if (ch === ',' && depth === 0) {
       return true;
@@ -339,7 +344,7 @@ export class Interpolated<
       }
       const wholeText = stringifyReplacement(replacement, {}, this.options.preserveQuotedSyntax).trim();
       if (hasTopLevelComma(wholeText)) {
-        throw ERR.commaListInterpolation({ meta: { selector: this.valueOf() } });
+        throw ERR.commaListInterpolation({ meta: { selector: wholeText } });
       }
       return new BasicSelector(wholeText).inherit(this);
     }
@@ -367,7 +372,7 @@ export class Interpolated<
     // (distribute with each() instead). Commas inside a generated `:is(…)` are nested,
     // not top-level, so a genuine selector-list interpolation is unaffected.
     if (hasTopLevelComma(output)) {
-      throw ERR.commaListInterpolation({ meta: { selector: this.valueOf() } });
+      throw ERR.commaListInterpolation({ meta: { selector: output } });
     }
     // Interpolated selector output can produce compound selectors (e.g. ".a#b").
     // Preserve token boundaries so direct callable lookup can match correctly.

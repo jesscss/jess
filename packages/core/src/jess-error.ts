@@ -36,7 +36,6 @@ export type JessErrorCode =
   | 'resolve/unused-variable'
   | 'selector/duplicate'
   | 'selector/parentless-ampersand'
-  | 'selector/invalid-ampersand-merge'
   | 'selector/comma-list-interpolation'
   | 'function/unresolved';
 
@@ -279,11 +278,6 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Parentless ampersand ignored',
     reason: 'Selector "${selector}" uses "&" without an available parent selector in this context.',
     fix: 'Move the selector under a real parent selector, or remove the stray "&".'
-  }],
-  ['selector/invalid-ampersand-merge', {
-    summary: 'Invalid ampersand merge template',
-    reason: 'Cannot glue merge template "${template}" onto the comma-separated parent selector "${parent}".',
-    fix: 'A comma list from an interpolated value can\'t be an "&"-merge parent; split the rule or drop the interpolation.'
   }],
   ['selector/comma-list-interpolation', {
     summary: 'Comma-list value in a selector',
@@ -731,10 +725,6 @@ export const ERR = {
 
   extendNotAccessible(args: Common & { meta: { target: string } }) {
     return makeJessError({ code: 'extend/not-accessible', phase: 'extend', ...args });
-  },
-
-  invalidAmpersandMerge(args: Common & { meta: { template: string; parent: string } }) {
-    return makeJessError({ code: 'selector/invalid-ampersand-merge', phase: 'eval', ...args });
   },
 
   commaListInterpolation(args: Common & { meta: { selector: string } }) {
