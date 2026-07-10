@@ -8,7 +8,7 @@
  */
 import {
   rules, compose,
-  node, regex, literal, sequence, choice, optional, parser, noTrivia, trivia,
+  node, regex, literal, sequence, choice, optional, trivia,
   many, expect, sepBy, oneOrMore, scanTo, balanced, label
 } from 'parseman' with { type: 'macro' };
 import { lessGrammar } from '@jesscss/less-parser/grammar';
@@ -21,30 +21,33 @@ import { lessGrammar } from '@jesscss/less-parser/grammar';
 // one `rules()`; no fragment spreads.
 // ---------------------------------------------------------------------------
 
-export const scssGrammar = compose([lessGrammar, rules((g: any) => {
+// Trivia (`rw`) is declared ONCE on the grammar via `rules({ trivia: rw }, …)`,
+// honored through `compose()`, making it ambient in every rule — no per-rule
+// trivia-establisher wrappers are needed. Hoisted to module scope (mirroring
+// css-parser) so the options-first `rules({ trivia: rw }, …)` call below can
+// reference it. Same shape as Less/CSS (whitespace + block + `//` line comments).
+const ws = regex(/[ \t\n\r\f]+/);
+const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const lineComment = regex(/\/\/[^\n\r]*/);
+const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
+
+export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) => {
   // SCSS `$variable` token — first char may be a letter or `-` after `$`.
   const scssVar = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const plainIdent = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  // Trivia defined LOCALLY (not `g.rw`): a rule's trivia parser is baked inline at
-  // compile time, so it can't be an external by-name ref. Same shape as Less/CSS
-  // (whitespace + block + `//` line comments).
-  const ws = regex(/[ \t\n\r\f]+/);
-  const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-  const lineComment = regex(/\/\/[^\n\r]*/);
-  const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
 
   const VarDeclaration = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       scssVar,
       literal(':'),
       g.valueList,
       optional(choice(literal('!default'), literal('!global'))),
       optional(literal(';'))
-    )));
+    ));
 
-  // SCSS references are bare `$var` (no Less accessor-chain syntax).
-  const Reference = node(
-    noTrivia(scssVar));
+  // SCSS references are bare `$var` (no Less accessor-chain syntax) — a single
+  // token, so no trivia handling is needed.
+  const Reference = node(scssVar);
 
   // ── Interpolation (#{…}) ───────────────────────────────────────────────────
   // SCSS uses `#{expr}` (not Less `@{var}`). Override the Less interpolation
@@ -71,13 +74,13 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   // paren rule is tried. Requiring a real pair (the `:` is a soft `literal`) lets a
   // non-map paren like `(15px/30px)` or `(1 + 2)` fail here and fall through.
   const ScssMapLiteral = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       literal('('),
       ScssMapPair,
       many(sequence(literal(','), ScssMapPair)),
       optional(literal(',')),
       expect(literal(')'))
-    )));
+    ));
   const scssHashName = regex(/#-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const ScssIdentValue = node(
     sequence(
@@ -165,7 +168,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     ));
 
   const Declaration = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       scssDeclPropName,
       optional(choice(literal('+_'), literal('+'))),
       literal(':'),
@@ -178,7 +181,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       ),
       optional(important),
       optional(literal(';'))
-    )));
+    ));
 
   // ── Control flow: @if / @else if / @else ───────────────────────────────────
   // Faithful port of the Chevrotain scssCondition* / scssIfAtRule productions
@@ -194,7 +197,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   // it stops at whitespace so it cannot swallow a spaced ` == ` / `and` / `{`.
   const condOperand = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.Call, g.Paren, g.anyValue);
   const ScssComparison = node(
-    parser({ trivia: rw }, sequence(condOperand, optional(sequence(scssCompareOp, condOperand)))));
+    sequence(condOperand, optional(sequence(scssCompareOp, condOperand))));
   // `(` condOr `)` (Paren-wrapped) OR a bare comparison.
   const ScssCondInParens = node(
     choice(
@@ -213,7 +216,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
 
   // A `{ … }` block body → Rules (statements come from atRuleBody).
   const ScssRules = node(
-    parser({ trivia: rw }, sequence(literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+    sequence(literal('{'), g.atRuleBody, expect(literal('}'), '}')));
 
   const ifKw = regex(/@if(?![-\w])/i);
   const elseKw = regex(/@else(?![-\w])/i);
@@ -277,10 +280,10 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       g.valueSequence
     ));
   const ScssCallArgsInner = node(
-    parser({ trivia: rw }, optional(sequence(
+    optional(sequence(
       g.ScssCallArg,
       many(sequence(literal(','), optional(g.ScssCallArg)))
-    ))));
+    )));
   const optionalCallParens = optional(sequence(
     literal('('), g.ScssCallArgsInner, expect(literal(')'))
   ));
@@ -427,12 +430,12 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       optional(importPostlude)
     ));
   const ImportAtRuleStatement = node('ScssImportAtRule',
-    parser({ trivia: rw }, sequence(
+    sequence(
       importKw,
       optional(importOptionsParen),
       sepBy(ScssImportItem, literal(',')),
       expect(literal(';'))
-    )));
+    ));
 
   const atRootKw = regex(/@at-root(?![-\w])/i);
   const debugKw = regex(/@debug(?![-\w])/i);
@@ -440,11 +443,11 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const errorKw = regex(/@error(?![-\w])/i);
 
   const ScssDiagnostic = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       choice(debugKw, warnKw, errorKw),
       g.valueSequence,
       expect(literal(';'))
-    )));
+    ));
 
   const ScssAtRootFilter = node(
     sequence(
@@ -487,44 +490,44 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const atRuleBody = many(choice(scssStatement, g.blockItem));
 
   const ScssPlaceholderRuleset = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       ScssPlaceholderSelector,
       optional(g.Guard),
       literal('{'),
       declarationList,
       expect(literal('}'))
-    )));
+    ));
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
   const QueryAtRuleBlock = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       queryAtKeyword,
       scssPermissivePrelude,
       expect(literal('{')),
       atRuleBody,
       expect(literal('}'))
-    )));
+    ));
   const scopeKw = regex(/@scope(?![-\w])/i);
   const ScssScopeBlock = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       scopeKw,
       scssPermissivePrelude,
       literal('{'),
       atRuleBody,
       expect(literal('}'))
-    )));
+    ));
   const layerKw = regex(/@layer(?![-\w])/i);
   const ScssLayerBlock = node(
-    parser({ trivia: rw }, sequence(
+    sequence(
       layerKw,
       optional(ScssInterpolatedName),
       literal('{'),
       atRuleBody,
       expect(literal('}'))
-    )));
+    ));
   const Stylesheet = node(
-    parser({ trivia: rw }, many(choice(
+    many(choice(
       scssStatement, ScssPlaceholderRuleset, ScssScopeBlock, ScssLayerBlock, g.stylesheetItem
-    ))));
+    )));
 
   return {
     VarDeclaration, Reference,
