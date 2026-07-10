@@ -260,13 +260,14 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     sequence(regex(/when(?![-\w])/), g.GuardOr));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
-  // `&` glued to a suffix (`&1`, `&-bar`) OR a prefix (`.foo-&`, `#bar-&`) — Less
-  // appends/prepends it to the parent selector. Mirrors the reference Ampersand
-  // token pattern `(?:[.#]({{ident}}-)?&|&){{nmchar}}*` (lessTokens.ts), so a
-  // prefix template parses as ONE Ampersand node (image `.foo-&`), not a
-  // CompoundSelector of `['.foo-', &]`. The `&(…)` form keeps its paren scan; the
-  // paren only follows a bare `&` in practice (prefix forms have no `(`).
-  const ampToken = regex(/(?:[.#](?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*-)?&|&)[-_a-zA-Z0-9-￿]*/);
+  // `&` (the parent reference) optionally glued to a SUFFIX (`&1`, `&-bar`), which
+  // Less appends to the parent's trailing selector (`.rule` + `-bar` → `.rule-bar`).
+  // A number/`-` suffix reads as a merge (elements can't start with those). A `.`/`#`
+  // PREFIX is NOT part of the ampersand: `.foo-` is a complete, valid dash-ending class,
+  // so `.foo-&` is a COMPOUND of the BasicSelector `.foo-` and a plain `&` — it parses
+  // as `['.foo-', &]` (two independent simple selectors), never one merge node. The
+  // `&(…)` form keeps its paren scan.
+  const ampToken = regex(/&[-_a-zA-Z0-9-￿]*/);
   const LessAmpersand = node(
     sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')')))));
   // Selector interpolation: an ident/`.`/`#` run interleaved with `@{…}`, with at
