@@ -35,7 +35,7 @@ export type SpineMergePlanEntry =
 
 export type SpineMergePlan = WeakMap<Node, SpineMergePlanEntry>;
 
-const COMMA_MERGE = new Set(['+:', '&,:']);
+const COMMA_MERGE = new Set(['+:', '+,:', '&,:']);
 const SPACE_MERGE = new Set(['+_:', '&_:']);
 
 /** The merge operator a declaration was authored with, or undefined if none. */

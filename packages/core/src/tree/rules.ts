@@ -6614,17 +6614,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return matches && index === prefixItems.length;
     };
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
-      if (assign === '&_:') {
-        return spaced([copyMergedValue(priorValue), copyMergedValue(nextValue)]);
-      }
       const priorItems = collectMergedItems(priorValue, assign);
       const nextItems = collectMergedItems(nextValue, assign);
+      // Drop the leading run of `next` that already appears as the tail of `prior`:
+      // the eval-time merge Reference re-emits the immediately-prior sibling's own
+      // contribution, so a naive concat would duplicate it. Find the longest prefix
+      // of `next` that equals a suffix of `prior`. Applies to comma (`&,:`) and
+      // space (`&_:`) merges alike.
       let nextStart = 0;
-      if (priorItems.length > 0 && nextItems.length > 0) {
-        const lastPrior = priorItems[priorItems.length - 1]!;
-        const firstNext = nextItems[0]!;
-        if (sameMergedItem(lastPrior, firstNext)) {
-          nextStart = 1;
+      const maxOverlap = Math.min(priorItems.length, nextItems.length);
+      for (let overlap = maxOverlap; overlap > 0; overlap--) {
+        let matches = true;
+        for (let i = 0; i < overlap; i++) {
+          if (!sameMergedItem(priorItems[priorItems.length - overlap + i]!, nextItems[i]!)) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) {
+          nextStart = overlap;
+          break;
         }
       }
       const mergedItems = new Array<Node>(priorItems.length + nextItems.length - nextStart);
@@ -6635,7 +6644,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       for (let i = nextStart; i < nextItems.length; i++) {
         mergedItems[mergedIndex++] = copyMergedValue(nextItems[i]!);
       }
-      return new List(mergedItems);
+      return assign === '&_:' ? spaced(mergedItems) : new List(mergedItems);
     };
     const inlineCrossScopeMergedLeadingReference = (
       decl: Node,
@@ -6786,12 +6795,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const priorAccumulatedValue = accumulatedValueByName.get(name);
       const needsCrossScopeCompose = prior
         && prior.ownerRules !== ownerRules;
-      const crossesMixinOutputBoundary = Boolean(
-        prior?.ownerRules.options.mixinOutputSlot
-        || ownerRules.options.mixinOutputSlot
-      );
+      // The eval-time merge Reference reads the PRIOR sibling's own value; across
+      // a mixin-output boundary it truncates to the callee's contribution, so the
+      // current occurrence's value can drop earlier chain items (e.g. a mixin's
+      // `transform+:` contribution vanishing behind the host's own `transform+:`).
+      // The coalesce pass owns the cross-scope combine: compose whenever an earlier
+      // merged anchor accumulated a value that the current value does not already
+      // carry as a prefix — regardless of the mixin-output boundary. `composeMergedValue`
+      // is a no-op (returns the value unchanged) when the prefix already matches, so
+      // this stays byte-identical on the common in-scope path.
+      const currentValueForPrefix = getDeclValue(currentNode);
       const shouldComposeAcrossScopes = Boolean(
-        needsCrossScopeCompose && !crossesMixinOutputBoundary
+        prior
+        && priorAccumulatedValue
+        && (
+          needsCrossScopeCompose
+          || !(
+            currentValueForPrefix
+            && startsWithMergedValue(currentValueForPrefix, priorAccumulatedValue, assign)
+          )
+        )
       );
       if (priorAccumulatedValue && shouldComposeAcrossScopes) {
         currentNode = inlineCrossScopeMergedLeadingReference(currentNode, priorAccumulatedValue, assign);

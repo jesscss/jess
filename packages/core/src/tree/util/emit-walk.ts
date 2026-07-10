@@ -1147,8 +1147,14 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   return false;
 }
 
-/** Property-merge assign operators the spine coalesces (see `planBodyMerges`). */
-const MERGE_ASSIGNS = new Set(['+:', '+_:', '&,:', '&_:']);
+/**
+ * Property-merge assign operators the spine coalesces (see `planBodyMerges`).
+ * Both raw parser forms (`+,:` comma, `+_:` space) and their normalized twins
+ * (`&,:` / `&_:`); `+:` is the legacy `Add` alias. The raw COMMA form `+,:` must
+ * be present so comma merges fold on the spine like space merges — without it a
+ * comma-merge body is not spine-simple and silently routes to eval.
+ */
+const MERGE_ASSIGNS = new Set(['+:', '+,:', '+_:', '&,:', '&_:']);
 
 /** Conditional assign-if-undefined operator the spine folds (see `planBodyConditionals`). */
 const CONDITIONAL_ASSIGNS = new Set(['?:']);

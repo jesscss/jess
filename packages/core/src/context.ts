@@ -430,6 +430,20 @@ export class Context {
   spineVisitors?: SpineVisitor[];
 
   /**
+   * The active single-pass spine `+:`/`+_:` merge plan for the body currently
+   * being emitted (design §merge). Keyed by source declaration node → its
+   * coalesced-value anchor / suppress verdict. Installed by `withSpineMergePlan`
+   * for the duration of a body descent and restored on exit, so a `$prop`
+   * Reference resolved MID-emit reads the coalesced merge value (the anchor's
+   * combined value) rather than the last merge sibling's own truncated value.
+   *
+   * Undefined (the common case) on any body with no merge-flagged declaration —
+   * the reference read fast-bails on the undefined check before touching it, so
+   * the non-merge path pays nothing.
+   */
+  spineMergePlan?: import('./tree/util/spine-merge.js').SpineMergePlan;
+
+  /**
    * Append a generic EMIT visitor (design §6.5). Deterministic registration
    * order; the pass threads each node through `enter` (`shape = enter(shape) ??
    * shape`) and fires `exit` (if registered) after the node's children. No

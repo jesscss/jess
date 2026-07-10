@@ -3014,6 +3014,21 @@ function finalizeDeclarationReferenceResult(
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
+  // Spine `+:`/`+_:` merge: a `$prop` read resolving to a merge-flagged
+  // declaration on the single-pass spine must see the COALESCED value (the
+  // anchor's combined chain), not the last merge sibling's own truncated value.
+  // The active body's merge plan (installed by `withSpineMergePlan`) is keyed by
+  // source declaration node → anchor value. Fast-bail on the undefined check so a
+  // body with no merge decl (the common case) pays nothing.
+  const mergePlan = context.spineMergePlan;
+  if (mergePlan !== undefined) {
+    const source = isNode(declaration.sourceNode) ? declaration.sourceNode : declaration;
+    const entry = mergePlan.get(source) ?? mergePlan.get(declaration);
+    if (entry?.kind === 'anchor') {
+      context.popReference();
+      return entry.value;
+    }
+  }
   // A Less value can be a flat parser segment array (`ice cream` →
   // `[Keyword, Keyword]`) rather than a Node. Coalesce it to its structured
   // node (a space `Sequence`) via `valueNode()` so an accessor result renders

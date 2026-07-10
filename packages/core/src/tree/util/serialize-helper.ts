@@ -307,8 +307,13 @@ export function withSpineMergePlan(
       }
       const savedMerge = options.spineMergePlan;
       const savedCond = options.spineCondPlan;
+      // Mirror the merge plan onto the CONTEXT too: a `$prop` Reference resolved
+      // mid-emit (inside `node.eval`) reads the coalesced value via the context,
+      // not the print options. Restored in lockstep so nested bodies scope cleanly.
+      const savedContextMerge = context.spineMergePlan;
       if (mergePlan) {
         options.spineMergePlan = mergePlan;
+        context.spineMergePlan = mergePlan;
       }
       if (condPlan) {
         options.spineCondPlan = condPlan;
@@ -316,6 +321,7 @@ export function withSpineMergePlan(
       const restorePlan = (text: string): string => {
         options.spineMergePlan = savedMerge;
         options.spineCondPlan = savedCond;
+        context.spineMergePlan = savedContextMerge;
         return text;
       };
       const out = fn();

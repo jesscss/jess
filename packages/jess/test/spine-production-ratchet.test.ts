@@ -1799,4 +1799,85 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
     expect(css).toBe('.a {\n  color: red;\n}\n');
   });
+
+  // Property-MERGE fold: BOTH comma (`+:`) and space (`+_:`) same-body merge chains
+  // coalesce on the single pass (no eval two-walk), byte-identical to the eval
+  // oracle. Before this, only space folded — the raw comma assign `+,:` was missing
+  // from the spine's `MERGE_ASSIGNS` (emit-walk) and the `spine-merge` recognizer, so
+  // a comma-merge body silently routed to eval. A regression re-dropping `+,:` from
+  // either set trips this RED (derive != 0).
+  it('PROPERTY-MERGE: comma `+:` folds through the spine (Rules.derive uncalled)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(
+        `.r {\n  transform+: a;\n  transform+: b;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folded — no eval two-walk
+      expect(css).toBe('.r {\n  transform: a, b;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('PROPERTY-MERGE: space `+_:` folds through the spine (Rules.derive uncalled)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(
+        `.r {\n  transform+_: a;\n  transform+_: b;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folded — no eval two-walk
+      expect(css).toBe('.r {\n  transform: a b;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  // A `$prop` read of a merged property, resolved MID-emit on the spine, must see the
+  // coalesced value (the anchor's combined chain), not the last merge sibling's own
+  // truncated value. Folds (derive=0); a regression on the context merge-plan hookup
+  // trips this RED (`foo` reads `b` / `a` only).
+  it('PROPERTY-MERGE: a $ref reads the coalesced merged value on the spine (space + comma)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const space = await compiler.renderString(
+        `.r {\n  transform+_: a;\n  transform+_: b;\n  foo: $transform;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      const comma = await compiler.renderString(
+        `.s {\n  transform+: a;\n  transform+: b;\n  foo: $transform;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // folded — no eval two-walk
+      expect(space).toBe('.r {\n  transform: a b;\n  foo: a b;\n}\n');
+      expect(comma).toBe('.s {\n  transform: a, b;\n  foo: a, b;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });
