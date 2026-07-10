@@ -1498,4 +1498,37 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
     expect(css).toBe('.foo {\n  color: red;\n}\n');
   });
+
+  // MIXIN-AS-VALUE / detached-ruleset argument (FOLDED). A mixin call passing a
+  // detached ruleset — by REFERENCE (`.wrap(@ruleset)`) or as a NAMED block arg
+  // (`.wrap(@r: { … })`) — used to silently MIS-FOLD to EMPTY output: the outer
+  // call passed the static gate, its non-simple surface was rejected to the eval
+  // terminal, but the still-live surface sink intercepted the NESTED `@r()`
+  // detached-call resolution and dropped its output. The sink is now SUSPENDED
+  // across a rejected candidate's `rules.eval` fall-back (callable-candidate-output.ts),
+  // so the nested detached-ruleset call materializes its own output. The root folds
+  // through the spine; the detached-ruleset-arg call takes the eval-fallback rung
+  // (byte-identical to the pure-eval oracle). A regression re-corrupting the nested
+  // call (empty output) trips these RED.
+  it('MIXIN-AS-VALUE: detached-ruleset by REFERENCE folds through the spine (no empty-output mis-fold)', async () => {
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(
+      `@ruleset: {\n  color: black;\n}\n.wrap(@r) {\n  @r();\n}\n.a {\n  .wrap(@ruleset);\n}`,
+      { language: 'less' }
+    );
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.a {\n  color: black;\n}\n');
+  });
+
+  it('MIXIN-AS-VALUE: detached-ruleset as a NAMED block arg folds through the spine', async () => {
+    const compiler = makeCompiler();
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(
+      `.wrap(@r) {\n  @r();\n}\n.a {\n  .wrap(@r: {\n    color: red;\n  });\n}`,
+      { language: 'less' }
+    );
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('.a {\n  color: red;\n}\n');
+  });
 });

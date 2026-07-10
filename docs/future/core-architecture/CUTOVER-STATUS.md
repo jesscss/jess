@@ -15,6 +15,7 @@ Tip: `origin/work/cutover-p1` = `5869859ad`.
 - **Slimming:** `!important` constant → bare string (Any reduction); lean-selector string-form consumers + 16 tests; string-forms model (ComplexSelector/RelativeSelector positional).
 - **Parser (on dev+alpha):** grammar-thinning wrapper drops (css/less/scss/jess) + SelectorCapture interior-trivia fix.
 - **interpolated-name fold (M8):** interpolated-selector ruleset called as a mixin folds through the spine (mid-string `.foo-@{n}` + no-call inert registration). Ratchet +3 (61→64). V4 (interpolated var-name) and R2 (interpolated at-rule-name) verified **non-features** — no additional spine work needed; the "3-for-1" collapses to M8 alone.
+- **mixin-as-value / detached-ruleset arg (FOLDED):** a mixin call passing a detached ruleset — by REFERENCE (`.wrap(@ruleset)`) or as a NAMED block arg (`.wrap(@r: { … })`) — folds through the spine. Root was silently MIS-FOLDING to EMPTY output: the outer call's non-simple surface was rejected to the eval terminal, but the still-live surface sink intercepted the NESTED `@r()` detached-call resolution and dropped its output. FIX (`callable-candidate-output.ts`): SUSPEND the sink across a rejected candidate's `rules.eval` fall-back so the nested detached call materializes its own output; restore for sibling candidates. Byte-identical to the pure-eval oracle across ref/named/literal/@media-wrapped/default+override forms. **Perf A/B neutral** (spine ≈ eval, within noise). RESIDUAL (spec, byte-identical): the DR-arg call itself takes the eval-fallback rung (`resolveSpineMixinCall` → `kind:'eval'`) — the spine has no detached-ruleset-call (`@r()`, a `Reference`-keyed `Call optType:'variable'`) expansion yet; the ENCLOSING root still folds (same rung ruleset-as-mixin / merge-across use, NOT a whole-root punt). Ratchet: core `mixin-fold-detached-arg` +7; jess `spine-production-ratchet` +2 (72→74).
 - **Docs (unblock producer work):** STRINGS-OVER-NODES, P4-ENDGAME-PLAN, conditional-decls, extend-4a, any-name-reduction, basic-selector-boundary, parseman-trivia-audit.
 
 ## 🔵 In-flight
@@ -22,7 +23,7 @@ Tip: `origin/work/cutover-p1` = `5869859ad`.
 
 ## ⏸ Queued P4 folds → 100% spine coverage (core-lane, one at a time)
 - nested-container mixin body
-- merge-across-mixin / mixin-as-value / detached-ruleset arg
+- ~~merge-across-mixin~~ (landed) / ~~mixin-as-value / detached-ruleset arg~~ (landed — see ✅)
 - import edge-modes: interpolated-path retry, extend-through-import, compose/forward
 - reference-mode; value frontier; at-rule-`&`-through-hoist
 - **measured-last (A/B, revert-churn risk):** namespace-merge, recursive-arg mixin

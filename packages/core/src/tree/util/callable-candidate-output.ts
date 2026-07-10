@@ -86,7 +86,22 @@ export async function evaluateCallableCandidateOutput({
     if (sink && sink(rules, sourceRules, candidateIsMixin === true)) {
       return undefined;
     }
-    const newRules = await rules.eval(context);
+    // The sink REJECTED this candidate's surface (non-spine-simple) — this candidate
+    // now eval-materializes as the byte-identical fall-back. SUSPEND the sink across
+    // that `rules.eval`: a NESTED call fired while materializing this body (e.g. a
+    // detached-ruleset call `@r()` inside the surface, whose bound value resolves to
+    // another callable) must build its OWN output tree, NOT be intercepted by the
+    // top-level call's sink (which would capture the inner body and drop its output,
+    // corrupting this candidate's eval-fallback result — the mixin-as-value / detached-
+    // ruleset-arg mis-fold). Restore after so sibling candidates are still seen.
+    const suspendedSink = context.spineMixinSurfaceSink;
+    context.spineMixinSurfaceSink = undefined;
+    let newRules: Rules;
+    try {
+      newRules = await rules.eval(context);
+    } finally {
+      context.spineMixinSurfaceSink = suspendedSink;
+    }
     if (context.spineRootCallEmit) {
       assertNoRootPropertyDeclaration(newRules.rules, context);
     }
