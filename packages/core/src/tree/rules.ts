@@ -4521,7 +4521,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (cached.dedupe) {
         return undefined;
       }
-      return isSpineFoldableImportBody(cached.body) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback();
+      return isSpineFoldableImportBody(cached.body, options.spineExtendHeaders !== undefined) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback();
     }
     const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
       if (resolved.kind === 'css') {
@@ -4533,7 +4533,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
         return undefined;
       }
-      return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
+      return isSpineFoldableImportBody(resolved.body, options.spineExtendHeaders !== undefined) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
     };
     const resolution = importNode.resolveForSpine(context);
     return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);

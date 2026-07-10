@@ -1031,7 +1031,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             }
             // Fold the parsed body inline when spine-simple, else fall back to the
             // eval terminal (byte-identical) and flatten it.
-            if (isSpineFoldableImportBody(body)) {
+            if (isSpineFoldableImportBody(body, options.spineExtendHeaders !== undefined)) {
               assignSpineChildIndices(body);
               const childEntries: RenderRuleEntry[] = body.rules.map(
                 child => ({ node: child, spineFrame: body })

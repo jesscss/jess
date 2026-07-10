@@ -1247,6 +1247,41 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
+  it('IMPORT-SPEC: TRANSITIVE extend-through-import FOLDS via the spine — the imported body carries its OWN `:extend` (`.c ← .b ← .a`, no derive)', async () => {
+    // The transitive cross-import closure. `.b:extend(.c)` lives in the imported file and
+    // `.a:extend(.b)` in the main file. The SOLVE fixpoint runs over the union of local +
+    // imported instructions: `.c`→`.c,.b` then `.a` matches the now-present `.b`→`.c,.b,.a`.
+    // The key fold (extend-through-import): an imported body carrying its OWN `:extend` is now
+    // spine-foldable when the extend layer is engaged (`isSpineFoldableImportBody(body, true)`),
+    // so `wireSpineExtends` descends the SAME imported Ruleset node instances the emit fold emits
+    // — the composed header override (`.c`→`.c,.b,.a`, `.b`→`.b,.a`) lands via
+    // `effectiveHeaderSelector`. Previously the extend-bearing imported body fell to the eval
+    // terminal (fresh nodes → override missed → NO cross-import extend). Byte-identical to less@4,
+    // no eval output-tree derive.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-spec-ext-transitive-'));
+    fs.writeFileSync(path.join(dir, 'base.less'), '.c { color: red; }\n.b:extend(.c) { background: blue; }\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "base.less";\n.a:extend(.b) { font-weight: bold; }\n');
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).toBe(
+        '.c,\n.b,\n.a {\n  color: red;\n}\n.b,\n.a {\n  background: blue;\n}\n.a {\n  font-weight: bold;\n}\n'
+      );
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('IMPORT-SPEC: a NON-foldable extend target through an import ABORTS to eval (byte-identical, no double-emit)', async () => {
     // The clean-abort guardrail. `.x:extend(.nonexistent)` — the speculatively-admitted tree resolves
     // its imports, the re-gate finds NO subject (imported or local) the target maps to, and ABORTS to

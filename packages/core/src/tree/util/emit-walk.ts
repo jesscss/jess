@@ -174,8 +174,18 @@ export function isSpineFoldableImport(node: Node): boolean {
  * (`resolveSpineStyleImport` → `evalNode`) — the imported body carries a shape the
  * spine does not yet descend (e.g. a mixin call, guarded ruleset, reference-mode).
  */
-export function isSpineFoldableImportBody(body: Rules): boolean {
-  return isSpineEligibleBody(body.rules, false, true);
+export function isSpineFoldableImportBody(body: Rules, allowExtend = false): boolean {
+  // EXTEND-THROUGH-IMPORT (plain, non-`(reference)` imports). When the document-wide spine
+  // extend gather is engaged (`allowExtend`), an imported body carrying `:extend` still folds
+  // INLINE: the extends were gathered by `wireSpineExtends` (which descends the same body node
+  // instances) and their subject headers installed on `options.spineExtendHeaders`. Folding the
+  // body inline (rather than the `evalNode` fall-back, which produces FRESH nodes the override
+  // map cannot key on) is what lets the imported subject ruleset pick up its composed header via
+  // `effectiveHeaderSelector`. The whole tree is gated to eval by the extend re-gate
+  // (`isSpineExtendTopology` with `importedRootSubjects`) unless the imported extend shape folds,
+  // so reaching here with `allowExtend` means the gather already accounted for every imported
+  // extend. The imported `Extend`/`ExtendList` body children are invisible-output effect nodes.
+  return isSpineEligibleBody(body.rules, allowExtend, true);
 }
 
 /**
