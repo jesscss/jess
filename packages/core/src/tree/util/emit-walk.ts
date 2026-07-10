@@ -376,22 +376,19 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
  * body then resolves the mixin's params (`@a` at arbitrary container depth) and runs
  * its OWN `runSpineMixinExpansion`, so a mixin call INSIDE the nested container
  * (`.inner { .mi((@a*2)) }`) expands in-pass against the surface frame — no re-descent,
- * no frame loss. DEFERRED (fall back, byte-identical): a hoisting at-rule child whose
- * body needs the CALL-SITE selector re-wrapped on hoist (`bodyHasAtRuleNeedingAncestorRewrap`
- * — the mixin body plays the enclosing-scope role; the spine hoist doesn't yet
- * reproduce that rewrap), a nested container that is not spine-eligible (guarded /
- * extend-bearing / append sub-shape), parametric/guarded defs (gated earlier). A
- * nested Mixin DEFINITION and recursion stay gated at the tree level
+ * no frame loss. A hoisting at-rule child (`@media`/`@supports`/… with a direct decl
+ * or a bare-`&`/`&:hover` child) ALSO folds: it is spliced at the call site, so
+ * `getHoistedParent` recovers the CALL-SITE ruleset from `context.rulesetFrames` and
+ * re-wraps it on hoist (the mixin-surface analogue of the authored at-rule-&-through-
+ * hoist fold); `serializeSpineFrameAtRule` per-call re-points its memoized scope frame
+ * so a param-dependent at-rule body/prelude re-resolves per call (no cross-call leak).
+ * DEFERRED (fall back, byte-identical): a nested container that is not spine-eligible
+ * (guarded / extend-bearing / append sub-shape), parametric/guarded defs (gated
+ * earlier). A nested Mixin DEFINITION and recursion stay gated at the tree level
  * (`treeHasUnfoldableContainerBodyMixin` / `treeHasRecursiveMixinCall`).
  */
 function isSpineSimpleMixinSurface(surface: Rules): boolean {
   const children = surface.rules;
-  // A hoisting at-rule child needs the CALL-SITE selector re-wrapped on hoist (the
-  // mixin body plays the enclosing-scope role) — the spine hoist doesn't yet reproduce
-  // that rewrap, so defer such a surface (same guard authored containers use).
-  if (bodyHasAtRuleNeedingAncestorRewrap(children)) {
-    return false;
-  }
   for (let i = 0; i < children.length; i++) {
     const child = children[i]!;
     // A further mixin CALL inside the body IS admitted (FOLD C): the re-entrant
@@ -725,60 +722,6 @@ function isSpineEligibleContainer(node: Node, allowExtend = false, allowImport =
   // parent selector from `composedSelectorStack`, then emits it as the hoisted
   // wrapper header. So no ruleset-level exclusion is needed here.
   return isSpineEligibleBody(ruleset.rules, allowExtend, allowImport);
-}
-
-/**
- * True if any direct child of `body` is a hoisting conditional-group at-rule whose
- * own body would need the enclosing scope's selector re-wrapped around it on hoist
- * — a DIRECT declaration/comment leaf or an `&`-bearing child ruleset. An at-rule
- * whose children are ALL plain-selector rulesets composes correctly through the
- * spine hoist and does NOT force exclusion.
- *
- * SCOPE: this guard remains only on the MIXIN-SURFACE path
- * (`isSpineSimpleMixinSurface`), where the mixin body plays the enclosing-scope
- * role and the CALL-SITE selector rewrap on hoist is not yet reproduced. The
- * authored-ruleset path folds this shape (`getHoistedParent` recovers the
- * enclosing ruleset frame from `context.rulesetFrames`).
- */
-function bodyHasAtRuleNeedingAncestorRewrap(children: readonly Node[]): boolean {
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (
-      isNode(child, N.AtRule)
-      && typeof child.name === 'string'
-      && SPINE_ELIGIBLE_AT_RULES.has(child.name)
-      && isNode(child, N.Rules)
-      && atRuleBodyNeedsAncestorRewrap(child.rules)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * True if a (hoisting) at-rule body contains anything the enclosing scope's
- * selector must be re-wrapped around: a direct declaration/non-ruleset leaf, or a
- * child ruleset whose selector carries `&`. A body of only plain-selector rulesets
- * returns false (composes correctly through the hoist).
- */
-function atRuleBodyNeedsAncestorRewrap(children: readonly Node[]): boolean {
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (isNode(child, N.Ruleset)) {
-      if (selectorHasAmpersand((child as Ruleset).selector)) {
-        return true;
-      }
-      continue;
-    }
-    // A nested at-rule child is itself gated by `isSpineEligibleAtRule` on descent.
-    if (isNode(child, N.AtRule)) {
-      continue;
-    }
-    // A direct declaration/comment/other leaf needs the ancestor wrapper on hoist.
-    return true;
-  }
-  return false;
 }
 
 /**
@@ -1492,10 +1435,17 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // nested call inside the container expands in-pass against the surface frame, no
   // re-descent, no frame loss (the gap the OLD eval-fallback re-descent had).
   // `isSpineSimpleMixinSurface` admits a nested container via the same
-  // `isSpineEligibleContainer` predicate authored containers use. Only the UNFOLDABLE
-  // sub-shapes stay on eval (`treeHasUnfoldableContainerBodyMixin`, byte-identical):
-  // a hoisting at-rule child needing call-site ancestor rewrap, a nested Mixin
-  // DEFINITION, and a non-spine-eligible nested container. Recursion is gated below.
+  // `isSpineEligibleContainer` predicate authored containers use. A hoisting at-rule
+  // child (`@media`/`@supports`/… with a direct decl or a bare-`&`/`&:hover` child)
+  // ALSO folds now (the mixin-surface analogue of the authored at-rule-&-through-hoist
+  // fold): the surface's at-rule child is spliced at the call site, so
+  // `getHoistedParent` recovers the CALL-SITE ruleset from `context.rulesetFrames` and
+  // `serializeSpineFrameAtRule` per-call re-points its memoized scope frame — a
+  // param-dependent at-rule body/prelude re-resolves per call (no cross-call leak).
+  // Only the UNFOLDABLE sub-shapes stay on eval (`treeHasUnfoldableContainerBodyMixin`,
+  // byte-identical): a nested Mixin DEFINITION (a dynamically-created callable the fold
+  // doesn't register), and a non-spine-eligible nested container. Recursion is gated
+  // below.
   if (treeHasMixinCall(root) && treeHasUnfoldableContainerBodyMixin(root)) {
     return false;
   }
@@ -1777,16 +1727,17 @@ function treeHasLeakyConsumedMixinBodyVar(root: Node): boolean {
  * `serializeSpineFrameContainer` carrying the surface frame, resolving params +
  * expanding its own nested calls in-pass (see `isSpineSimpleMixinSurface`). So this
  * gate no longer flags every container-body mixin — only the UNFOLDABLE ones:
- *   - a body with a hoisting at-rule child needing CALL-SITE ancestor rewrap
- *     (`bodyHasAtRuleNeedingAncestorRewrap` — the spine hoist doesn't reproduce it yet);
  *   - a nested Mixin DEFINITION ANYWHERE inside a mixin body, at any depth (the fold's
  *     surface descent doesn't register a DYNAMICALLY-created nested callable — e.g.
  *     `.Person(@n){ .@{n}{ .sayGender(){…} } }` then `.person.sayGender()` — so a later
- *     call to it can't resolve);
- *   - a body with a hoisting at-rule child needing CALL-SITE ancestor rewrap
- *     (`bodyHasAtRuleNeedingAncestorRewrap` — the spine hoist doesn't reproduce it yet);
+ *     call to it can't resolve; a nested def called only WITHIN the same body would fold
+ *     but the whole-tree escape analysis to prove that isn't worth it — documented
+ *     residual / IOU: register a dynamically-created nested callable through the fold);
  *   - a nested Ruleset/AtRule that is not `isSpineEligibleContainer` (guarded /
  *     extend-bearing / append sub-shape — inherits those existing deferrals).
+ * A hoisting at-rule child now FOLDS (the mixin-surface analogue of the authored
+ * at-rule-&-through-hoist fold — `getHoistedParent` recovers the call-site ruleset from
+ * `context.rulesetFrames`), so it is NO LONGER flagged here.
  * A tree whose container-body mixins are ALL spine-eligible returns false → folds.
  * Recursion is gated separately (`treeHasRecursiveMixinCall`).
  */
@@ -1803,11 +1754,6 @@ function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
       if (inner !== node && isNode(inner, N.Mixin)) {
         return true;
       }
-    }
-    // A hoisting at-rule child needing ancestor rewrap can't fold (call-site rewrap
-    // gap) — the whole tree stays on eval, byte-identical.
-    if (bodyHasAtRuleNeedingAncestorRewrap(body)) {
-      return true;
     }
     for (let i = 0; i < body.length; i++) {
       const child = body[i]!;

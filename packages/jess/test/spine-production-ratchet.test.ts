@@ -745,23 +745,97 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toBe('@media screen {\n  .card {\n    color: red;\n  }\n  .card .inner {\n    color: green;\n  }\n  .card:hover {\n    color: blue;\n  }\n}\n');
   });
 
-  it('DEFERRED: a mixin body with an at-rule child needing CALL-SITE ancestor rewrap stays on eval (byte-identical)', async () => {
-    // `@media screen { color: green }` inside the mixin body — a DIRECT declaration; on
-    // hoist to root the CALL-SITE `.class` selector must re-wrap the at-rule body
-    // (`@media { .class { color: green } }`). The spine hoist doesn't reproduce that
-    // rewrap yet, so the whole tree stays on eval (byte-identical). REQUIRED P4 item.
+  it('MIXIN-SURFACE AT-RULE THROUGH HOIST: a DIRECT decl in a nested `@media` re-wraps the CALL-SITE selector on hoist (folds, byte-identical)', async () => {
+    // `.mix() { color: red; @media screen { color: green } }` called at `.class` — the
+    // `@media` hoists to root and the CALL-SITE `.class` re-wraps the direct decl
+    // (`@media { .class { color: green } }`). This is the mixin-surface analogue of the
+    // authored at-rule-&-through-hoist fold: the surface's at-rule child is spliced at
+    // the call site, so `getHoistedParent` recovers `.class` from `context.rulesetFrames`
+    // exactly as the authored path does — no call-site-specific machinery needed. Byte-
+    // identical to eval AND less@4. A re-deferral to eval trips the counter RED.
     const compiler = makeCompiler();
     const src = `.mix() { color: red; @media screen { color: green; } }\n.class { .mix(); }`;
-    const before = spineRenderCounter.rootRenders;
-    const css = await compiler.renderString(src, { language: 'less' });
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    expect(css).toBe('.class {\n  color: red;\n}\n@media screen {\n  .class {\n    color: green;\n  }\n}\n');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk
+      expect(css).toBe('.class {\n  color: red;\n}\n@media screen {\n  .class {\n    color: green;\n  }\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
   });
 
-  it('DEFERRED: a mixin body containing a nested Mixin DEFINITION stays on eval (byte-identical)', async () => {
+  it('MIXIN-SURFACE AT-RULE THROUGH HOIST: a bare-`&` / `&:hover` child in a nested `@media` re-wraps the call site (folds, byte-identical)', async () => {
+    // `.mix() { @media screen { & {…} &:hover {…} } }` at `.class` — each `&`-bearing
+    // child re-materializes the call-site `.class` around its body inside the hoisted
+    // `@media`. Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `.mix() { @media screen { & { color: red; } &:hover { color: blue; } } }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .class {\n    color: red;\n  }\n  .class:hover {\n    color: blue;\n  }\n}\n');
+  });
+
+  it('MIXIN-SURFACE AT-RULE THROUGH HOIST: a mixed body (bare-`&` + plain child + `&:hover`) composes each child on hoist (folds)', async () => {
+    // `.mix() { @media screen { & {…} .inner {…} &:hover {…} } }` at `.class`.
+    const compiler = makeCompiler();
+    const src = `.mix() { @media screen { & { color: red; } .inner { color: green; } &:hover { color: blue; } } }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .class {\n    color: red;\n  }\n  .class .inner {\n    color: green;\n  }\n  .class:hover {\n    color: blue;\n  }\n}\n');
+  });
+
+  it('MIXIN-SURFACE AT-RULE ISOLATION: a param-dependent at-rule body/prelude re-resolves per call site (folds, no cross-call leak)', async () => {
+    // `.emit(@m) { @media @m { value: @m } }` called at `.one` (screen) and `.two`
+    // (print). The at-rule NODE is SHARED across both call-site splices; its
+    // memoized `_scopeFrame` must be RE-POINTED to each call's surface frame on
+    // descent (`serializeSpineFrameAtRule` per-call re-point, mirroring the container
+    // path) so the body `@m` resolves to the CURRENT call's param, not the first
+    // call's. A leak (`value: screen` in `.two`) trips this RED. Byte-identical to
+    // eval AND less@4 (two distinct `@media` blocks, no merge).
+    const compiler = makeCompiler();
+    const src = `.emit(@m) { @media @m { value: @m; } }\n.one { .emit(screen); }\n.two { .emit(print); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@media screen {\n  .one {\n    value: screen;\n  }\n}\n@media print {\n  .two {\n    value: print;\n  }\n}\n');
+  });
+
+  it('MIXIN-SURFACE ROOT-ONLY AT-RULE BUBBLE: a `@font-face` in a mixin body bubbles to root, dropping the call-site selector (folds, byte-identical)', async () => {
+    // `.mix() { @font-face { font-family: x } }` at `.class` — a root-only "wrap+emit"
+    // at-rule (NOT a conditional group) bubbles to root and does NOT wrap the call-site
+    // selector. `AtRule.isHoisted`'s `hasRulesetAncestor` check now consults
+    // `context.rulesetFrames` (a PARSED tree has no `.parent`), so the bubble fires on
+    // the spine exactly as eval. Byte-identical to eval AND less@4.
+    const compiler = makeCompiler();
+    const src = `.mix() { @font-face { font-family: x; } }\n.class { .mix(); }`;
+    const before = spineRenderCounter.rootRenders;
+    const css = await compiler.renderString(src, { language: 'less' });
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+    expect(css).toBe('@font-face {\n  font-family: x;\n}\n');
+  });
+
+  it('DEFERRED (residual/IOU): a mixin body containing a nested Mixin DEFINITION stays on eval (byte-identical)', async () => {
     // `.mix() { … .inner() { … } .inner() }` — a nested mixin DEFINITION in a mixin
-    // body. The fold's shallow surface descent doesn't register/emit a nested def, so
-    // the whole tree stays on eval (byte-identical). REQUIRED P4 item.
+    // body. The SIMPLE shape (nested def called only WITHIN the same body) folds
+    // byte-identically, but the fold cannot be lifted wholesale: a nested def can be a
+    // DYNAMICALLY-CREATED callable resolved by a LATER path-call
+    // (`.Person(@n) { .@{n} { .sayGender() {} } }` then `.person.sayGender()` — jess-
+    // eval supports this via a `mixin-ruleset` lookup, see `mixin.test.ts` "keeps param
+    // vars preferred over outer same-name vars in lazy nested mixin lookups"). Folding
+    // the def away emits it inline instead of REGISTERING it, so the later lookup throws
+    // `No matching mixins found`. Registering a dynamically-created nested callable
+    // through the spine is a SEPARATE surface (callable registration in the fold).
+    // Kept on eval, byte-identical, until that lands. REQUIRED P4 item / IOU.
     const compiler = makeCompiler();
     const src = `.mix() { color: red; .inner() { color: blue; } .inner(); }\n.class { .mix(); }`;
     const before = spineRenderCounter.rootRenders;

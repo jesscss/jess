@@ -776,7 +776,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     return false;
   }
 
-  private hasRulesetAncestor(): boolean {
+  private hasRulesetAncestor(context?: Context): boolean {
     let ancestor = this.parent;
     while (ancestor) {
       if (isNode(ancestor, N.Ruleset)) {
@@ -784,7 +784,13 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
       ancestor = ancestor.parent;
     }
-    return false;
+    // SPINE: a PARSED source tree carries no `.parent` back-pointer (only the eval
+    // pass, which the spine replaces, set them), so the walk above finds nothing.
+    // The spine descent pushes each enclosing ruleset onto `context.rulesetFrames`
+    // before reaching this at-rule, so a non-empty stack means this root-only at-rule
+    // (`@font-face`/`@keyframes`/…) is nested under a ruleset and must BUBBLE to root
+    // — the same structural fact the `.parent` walk recovers on the eval path.
+    return Boolean(context?.rulesetFrames && context.rulesetFrames.length > 0);
   }
 
   isHoisted(opts: { collapseNesting?: boolean; context?: Context }) {
@@ -794,7 +800,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     if (
       opts.context?.options.bubbleRootAtRules
       && this.isRootOnly()
-      && this.hasRulesetAncestor()
+      && this.hasRulesetAncestor(opts.context)
     ) {
       return true;
     }

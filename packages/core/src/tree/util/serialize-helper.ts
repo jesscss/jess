@@ -1899,8 +1899,19 @@ function serializeSpineFrameAtRule(
     // fallback chain: `'c' is not defined`). Passing the live enclosing frame
     // reproduces the eval-path lexical chain (incl. its import fallbacks) without
     // `.parent`.
+    //
+    // PER-CALL RE-POINT (mirrors `serializeSpineFrameContainer`): `getScopeFrame`
+    // MEMOIZES `_scopeFrame` on the node, so an at-rule child SHARED across repeated
+    // mixin calls (`.mix(@c) { @media @m { value: @c } }` called with different args)
+    // would reuse the FIRST call's parent frame, resolving its body's free vars
+    // (`@c`/`@m`) against the first call's params. Re-point the frame's parent to the
+    // CURRENT enclosing (surface) frame each descent — a no-op for an authored at-rule
+    // (parent already matches), load-bearing for a repeated mixin-surface at-rule child.
     const enclosingFrame = savedRulesContext?.getScopeFrame();
-    node.getScopeFrame(enclosingFrame);
+    const nodeFrame = node.getScopeFrame(enclosingFrame);
+    if (enclosingFrame !== undefined && nodeFrame.parent !== enclosingFrame) {
+      nodeFrame.parent = enclosingFrame;
+    }
     context.rulesContext = node;
     const renderBody = (): MaybePromise<string> => withSpineMergePlan(node.rules, options, context, () => {
       const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
