@@ -148,6 +148,12 @@ export interface SpineSubject {
   ruleset: Ruleset;
   path: BucketPath;
   order: number;
+  /**
+   * True when this subject lives in a `@import (reference)` body: its OWN output is
+   * suppressed, so its header projection DROPS branch 0 (the own form) — only the
+   * extender contributions surface (the eval-path `F_EXTEND_TARGET` reference-filter).
+   */
+  reference?: boolean;
 }
 
 /**
@@ -314,6 +320,24 @@ export function composeSpineSubjectHeaders(
     if (!ownBuilt || !projection) {
       // A shape the own engine can't build — leave the subject on its authored header; the
       // eval-path fallback (still live in P3) covers it.
+      continue;
+    }
+    // REFERENCE-IMPORT SUBJECT (`@import (reference)`). The subject's OWN output is suppressed,
+    // so DROP branch 0 (its own form — the eval-path `F_EXTEND_TARGET` reference-filter) and
+    // install ONLY the extender branches. With no extender reaching it, `branches.length` is 1
+    // (own form only) → no override; the reference ruleset stays fully suppressed. When an extend
+    // DID reach it, `writeHeaderSelector`/the container serializer render-enable it (a spine
+    // extend header IS the reference-unlock signal — see `serialize-helper`), and it emits its
+    // declarations under the extender-only header (`.ext`), byte-identical to eval.
+    if (subject.reference === true) {
+      const extenderBranches = projection.branches.slice(1);
+      if (extenderBranches.length === 0) {
+        continue; // reference subject reached by no extend — stays suppressed
+      }
+      headers.set(subject.ruleset, new SelectorList(extenderBranches as SelectorList['value']));
+      if (projection.hoistToRoot) {
+        hoisted.add(subject.ruleset);
+      }
       continue;
     }
     // Only override when the projection CHANGES the authored header. Usually that means it gained a
@@ -1192,11 +1216,15 @@ export function wireSpineExtends(
   root: Rules,
   context: Context,
   collapseNesting: boolean,
-  importedBodies?: readonly Rules[]
+  importedBodies?: readonly Rules[],
+  referenceBodies?: ReadonlySet<Rules>
 ): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
   const subjects: SpineSubject[] = [];
   const instructions: PipelineInstruction[] = [];
   const frameBaseline = context.rulesetFrames.length;
+  // Set while descending a `@import (reference)` body so gathered subjects are tagged
+  // reference (own-form dropped from the header projection — reference output suppressed).
+  let gatheringReference = false;
 
   // Recursive document-wide gather: descend rulesets, tracking the ancestor Selector `path`
   // (the extender's full bucket path — parse-tree nodes carry no `.parent`, so the walk is the
@@ -1300,7 +1328,7 @@ export function wireSpineExtends(
     // `&`-flow. Its role as an EXTENDER (bearing `:extend`) is still captured below as an
     // instruction with its resolved path — that is the increment-7 win, independent of subjecthood.
     if (local !== undefined && resolved?.ampResolved !== true && !String(local.valueOf()).includes('&')) {
-      subjects.push({ ruleset, path, order: orderOf(ruleset) });
+      subjects.push({ ruleset, path, order: orderOf(ruleset), reference: gatheringReference });
     }
     for (const ext of rulesetExtendNodes(ruleset)) {
       const rawTarget = ext.target;
@@ -1399,8 +1427,10 @@ export function wireSpineExtends(
   // fold descends (cached in `spineImportPlacements`), so the override lands on the emitted ruleset.
   if (importedBodies) {
     for (const body of importedBodies) {
+      gatheringReference = referenceBodies?.has(body) === true;
       descendChildren(body.rules, []);
     }
+    gatheringReference = false;
   }
   context.rulesetFrames.length = frameBaseline; // restore (belt-and-suspenders)
   return composeSpineSubjectHeaders(subjects, instructions, collapseNesting);

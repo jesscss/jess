@@ -2314,15 +2314,28 @@ export function renderRootViaSpine(
   const wireExtends = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
     if (extendEngaged) {
       let importedBodies: Rules[] | undefined;
+      let referenceBodies: Set<Rules> | undefined;
       if (importLayer) {
-        const { subjects, bodies } = collectImportedRootSubjects(options);
-        if (!isSpineExtendTopology(root, options.collapseNesting === true, { importedRootSubjects: subjects })) {
+        const collected = collectImportedRootSubjects(options);
+        if (!isSpineExtendTopology(root, options.collapseNesting === true, { importedRootSubjects: collected.subjects })) {
           return abortToEval();
         }
-        importedBodies = bodies;
+        // REFERENCE-EXTEND NARROW FOLD. The reference-body subject fold (own-form dropped) is
+        // proven byte-identical only for the SIMPLE shape: a reference body of PLAIN root-level
+        // rulesets, extended by a plain root-level extender in the importing file. Richer reference
+        // shapes — a reference body carrying its OWN `:extend`/`&`-selectors, nested containers,
+        // at-rules/namespaces, or `(reference, multiple)` — compose under different rules and stay
+        // EVAL-owned (byte-identical); abort the whole tree to eval when any is present. (RESIDUAL,
+        // ratchet-locked — `import-reference-issues` corpus.)
+        if (collected.referenceBodies.size > 0
+          && ![...collected.referenceBodies].every(isSimpleReferenceFoldBody)) {
+          return abortToEval();
+        }
+        importedBodies = collected.bodies;
+        referenceBodies = collected.referenceBodies;
       }
       try {
-        const { headers, hoisted } = wireSpineExtends(root, context, options.collapseNesting === true, importedBodies);
+        const { headers, hoisted } = wireSpineExtends(root, context, options.collapseNesting === true, importedBodies, referenceBodies);
         options.spineExtendHeaders = headers;
         // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
         // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
@@ -2454,19 +2467,33 @@ function wireSpineImports(
  * The bodies are the SAME node instances the emit fold descends, so the override attaches to the emitted
  * ruleset. Only root-DIRECT-child rulesets are collected — a nested imported subject is not addressed by
  * a root-level header (the same restriction the local gather's root-subject clause uses).
+ *
+ * REFERENCE-MODE subjects are collected too (they are addressable extend targets — `@import (reference)`
+ * suppresses their OWN output but an extend still reaches into them). They are returned as a SEPARATE
+ * `referenceBodies` set so `wireSpineExtends` marks their gathered subjects `reference: true`: the header
+ * override then DROPS the subject's own branch (the reference-suppressed original), leaving only the
+ * extender branches — reproducing the eval-path `F_EXTEND_TARGET` reference-filter byte-identically.
  */
-function collectImportedRootSubjects(options: FinalPrintOptions): { subjects: Set<string>; bodies: Rules[] } {
+function collectImportedRootSubjects(options: FinalPrintOptions): {
+  subjects: Set<string>;
+  bodies: Rules[];
+  referenceBodies: Set<Rules>;
+} {
   const subjects = new Set<string>();
   const bodies: Rules[] = [];
+  const referenceBodies = new Set<Rules>();
   const cache = options.spineImportPlacements;
   if (!cache) {
-    return { subjects, bodies };
+    return { subjects, bodies, referenceBodies };
   }
   for (const entry of cache.values()) {
-    if (entry.kind !== 'fold' || entry.dedupe || entry.reference) {
+    if (entry.kind !== 'fold' || entry.dedupe) {
       continue;
     }
     bodies.push(entry.body);
+    if (entry.reference) {
+      referenceBodies.add(entry.body);
+    }
     for (const child of entry.body.rules) {
       if (isNode(child, N.Ruleset)) {
         const local = flatLocalSelector(child);
@@ -2476,7 +2503,49 @@ function collectImportedRootSubjects(options: FinalPrintOptions): { subjects: Se
       }
     }
   }
-  return { subjects, bodies };
+  return { subjects, bodies, referenceBodies };
+}
+
+/**
+ * A `@import (reference)` body whose extend-fold is the proven-simple shape: EVERY root-level
+ * child is a PLAIN `Ruleset` — a non-`&`, non-`:extend`-bearing selector with a body of value
+ * leaves only (no nested container child). Such a body's subjects fold via the header-drop
+ * (own-form suppressed, extender-only header). A body with an at-rule, a nested container, a
+ * namespace, a `&`/interpolated selector, or its OWN `:extend` composes under different rules and
+ * stays eval-owned — reported false so the caller aborts to eval.
+ */
+function isSimpleReferenceFoldBody(body: Rules): boolean {
+  for (const child of body.rules) {
+    if (isNode(child, N.Comment)) {
+      continue;
+    }
+    if (!isNode(child, N.Ruleset)) {
+      return false; // at-rule / nested-import wrapper / non-ruleset — not the simple shape
+    }
+    const local = flatLocalSelector(child);
+    if (local === undefined || String(local.valueOf()).includes('&')) {
+      return false; // `&`/interpolated/selector-list surface the header-drop does not model
+    }
+    if (Ruleset.hasExtendedTopLevelSelector(child.selector) || rulesetBodyHasExtend(child.rules)) {
+      return false; // the reference body carries its OWN extend — composes under different rules
+    }
+    for (const grandchild of child.rules) {
+      if (isNode(grandchild, N.Ruleset | N.AtRule | N.Rules)) {
+        return false; // a nested container inside the reference ruleset — not the simple shape
+      }
+    }
+  }
+  return true;
+}
+
+/** True if any DIRECT child of `children` is an `Extend`/`ExtendList` (a body-level `:extend`). */
+function rulesetBodyHasExtend(children: readonly Node[]): boolean {
+  for (const child of children) {
+    if (child.type === 'Extend' || child.type === 'ExtendList') {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

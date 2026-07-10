@@ -1158,23 +1158,65 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 5: an `:extend` reaching a `(reference)`-imported selector SPECULATIVELY enters the spine then ABORTS to eval (byte-identical)', async () => {
-    // IMPORT-SPEC ROUTING. An `:extend` whose TARGET lives inside an imported body is now
-    // SPECULATIVELY admitted to the spine (the sync gate can't see the imported subject).
-    // The post-wire re-gate resolves the placements; a `(reference)` body is NOT collected
-    // as a foldable subject (reference-mode output is suppressed under different rules), so
-    // the re-gate rejects and ABORTS to eval — byte-identical: the extender `.x` gains the
-    // reference selector's declarations while the reference `.a` itself stays suppressed.
-    // (A PLAIN, non-reference import of the same shape FOLDS through the spine — the
-    // extend-through-import fold. Reference-mode reachability stays a REQUIRED P4 item.)
+  it('IMPORTS increment 5: an `:extend` reaching a `(reference)`-imported selector FOLDS through the spine (no derive, byte-identical)', async () => {
+    // REFERENCE-EXTEND FOLD (import-spec routing). An `:extend` whose TARGET lives inside a
+    // `@import (reference)` body is SPECULATIVELY admitted (the sync gate can't see the imported
+    // subject). The post-wire re-gate now COLLECTS the reference-body subject (`.a`) and marks it
+    // `reference` in `wireSpineExtends`; its header projection DROPS the own form (branch 0 —
+    // the eval-path `F_EXTEND_TARGET` reference-filter), installing the extender-only header (`.x`).
+    // The container serializer render-enables the reference ruleset because it carries a spine
+    // extend header (the reference-unlock signal), so it emits its declarations under `.x` — the
+    // reference `.a` never surfaces on its own. Byte-identical to eval, no eval two-walk.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc5-ext-'));
     fs.writeFileSync(path.join(dir, 'lib.less'), '.a { color: red; }\n');
     fs.writeFileSync(path.join(dir, 'main.less'), '@import (reference) "lib.less";\n.x:extend(.a) {}\n');
     const compiler = makeCompiler();
-    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
-    // Speculative entry + clean abort: output equals the eval path exactly (no double-emit).
-    expect(result.css).toBe('.x {\n  color: red;\n}\n'); // extend reached the suppressed `.a`
-    fs.rmSync(dir, { recursive: true, force: true });
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).toBe('.x {\n  color: red;\n}\n'); // extend reached the suppressed `.a`
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORTS increment 5: an `:extend(.a all)` reaching a `(reference)` subject folds; the reference target stays suppressed (no derive)', async () => {
+    // The `all`-partial variant + a following own-body extender block (the `ref-main` corpus shape).
+    // `.ext:extend(.target all) { background: blue; }` against a reference `.target { color: red }`.
+    // The reference `.target` is dropped from the header (own-form suppressed); its `color: red`
+    // emits under `.ext`, then `.ext`'s own `background: blue` emits separately — byte-identical to
+    // eval, no derive.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc5-refall-'));
+    fs.writeFileSync(path.join(dir, 'ref-base.less'), '.target { color: red; }\n');
+    fs.writeFileSync(
+      path.join(dir, 'main.less'),
+      '@import (reference) "ref-base.less";\n.ext:extend(.target all) { background: blue; }\n'
+    );
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(result.css).not.toContain('.target'); // reference target never surfaces on its own
+      expect(result.css).toBe('.ext {\n  color: red;\n}\n.ext {\n  background: blue;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('IMPORT-SPEC: extend-through-import FOLDS via the spine — an `:extend` whose target is a PLAIN-imported subject (no derive)', async () => {
