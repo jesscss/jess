@@ -643,7 +643,7 @@ function bodyHasAppendChild(children: readonly Node[]): boolean {
  */
 function isSpineEligibleContainer(node: Node, allowExtend = false, allowImport = false): boolean {
   if (isNode(node, N.AtRule)) {
-    return isSpineEligibleAtRule(node, allowImport);
+    return isSpineEligibleAtRule(node, allowImport, allowExtend);
   }
   if (!isNode(node, N.Ruleset)) {
     return false;
@@ -814,7 +814,7 @@ const SPINE_KEYFRAMES_AT_RULES = new Set(['@keyframes', '@-webkit-keyframes']);
  * it; a bare var-ref NAME like `@keyframes @name` DOES fold via prelude-eval);
  * non-nestable / document-framing forms (`@charset`/`@import`/`@namespace`).
  */
-function isSpineEligibleAtRule(node: Node, allowImport = false): boolean {
+function isSpineEligibleAtRule(node: Node, allowImport = false, allowExtend = false): boolean {
   if (!isNode(node, N.AtRule) || !isNode(node, N.Rules)) {
     return false;
   }
@@ -853,7 +853,17 @@ function isSpineEligibleAtRule(node: Node, allowImport = false): boolean {
   // inner ruleset AND a direct declaration both wrap in the composed parent header.
   // Plain-selector inner rulesets (`.card { @media { .inner { … } } }` →
   // `.card .inner`) compose the same way. No `&`-body exclusion needed here.
-  return isSpineEligibleBody(atRule.rules, false, allowImport);
+  //
+  // CONDITIONAL-AT-RULE EXTEND (media-scope fold). A `@media`/`@supports`/`@container` body may
+  // itself bear `:extend` — the wire gather descends the scope chain and the pipeline's
+  // scope-reachability filter scopes the contribution to the same or a nested conditional body
+  // (eval oracle §A5/A2). So thread `allowExtend` into the body check for those at-rules only,
+  // matching `spine-extend.ts`'s `isMediaScopeAtRule`. `@scope`/`@layer` (also in this set) keep
+  // `allowExtend=false`: their extend reachability is not a plain nesting-prefix relation, so an
+  // extend under them stays on eval (`isSpineExtendTopology` rejects it).
+  const atRuleAllowsExtend = allowExtend
+    && (atRule.name === '@media' || atRule.name === '@supports' || atRule.name === '@container');
+  return isSpineEligibleBody(atRule.rules, atRuleAllowsExtend, allowImport);
 }
 
 /**

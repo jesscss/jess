@@ -111,6 +111,38 @@ function scopeKey(scope: unknown): string {
   return '#obj';
 }
 
+/**
+ * SCOPE REACHABILITY — does an instruction gathered in scope `instScope` reach a subject in scope
+ * `subjScope`? A scope is the chain of enclosing conditional at-rule bodies (`@media` blocks),
+ * outermost-first, as an ARRAY of the at-rule node identities (`readonly unknown[]`). The eval
+ * oracle's rule (extend-roots §A5 "@media body is its own root", A2 "descendant roots"):
+ * an extend declared inside `@media (tv)` reaches subjects in THAT media body and any media body
+ * NESTED within it, but NOT subjects outside it. A root-level extend (`.all`, scope `[]`) reaches
+ * everything. So `instScope` reaches `subjScope` iff `instScope` is a (possibly empty) PREFIX of
+ * `subjScope` — identity-compared per level.
+ *
+ * BACKWARD COMPAT: an `undefined`/string scope (the flat-document path, no media gather) is handled
+ * by the string-key equality below — the array path engages only when BOTH scopes are arrays.
+ */
+function scopeReaches(instScope: unknown, subjScope: unknown): boolean {
+  const instArr = Array.isArray(instScope) ? (instScope as readonly unknown[]) : undefined;
+  const subjArr = Array.isArray(subjScope) ? (subjScope as readonly unknown[]) : undefined;
+  if (instArr !== undefined || subjArr !== undefined) {
+    const inst = instArr ?? [];
+    const subj = subjArr ?? [];
+    if (inst.length > subj.length) {
+      return false;
+    }
+    for (let i = 0; i < inst.length; i++) {
+      if (inst[i] !== subj[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return scopeKey(instScope) === scopeKey(subjScope);
+}
+
 /** Compose a subject/target bucket path to its own authored selector (its full nesting composed). */
 function ownComposed(path: BucketPath): Selector {
   return composeTargetOwn(path);
@@ -134,8 +166,7 @@ function solveContributions(
   subject: PipelineSubject,
   instructions: PipelineInstruction[]
 ): { fired: PipelineInstruction[]; unsupported: PipelineInstruction[]; ownBuilt: boolean; solved: Selector } {
-  const subjectScope = scopeKey(subject.scope);
-  const reachable = instructions.filter(inst => scopeKey(inst.scope) === subjectScope);
+  const reachable = instructions.filter(inst => scopeReaches(inst.scope, subject.scope));
   const unsupported: PipelineInstruction[] = [];
   const fired: PipelineInstruction[] = [];
   let ownBuilt = true;

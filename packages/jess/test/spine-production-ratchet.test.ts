@@ -342,6 +342,72 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
+  it('EXTEND HARD-TAIL (EXPANDED MODE): `extend.less` folds byte-identically via the spine (`collapseNesting:false`, no eval two-walk)', async () => {
+    // The `5c6875538` fold landed the expanded-mode nested-target collapse-relocation
+    // (`composeSpineSubjectHeaders`'s `isNested && !collapseNesting` full-composed-path + `ampComposed`
+    // relocations) so the WHOLE `extend.less` cluster folds under `collapseNesting:false` too — NOT just
+    // the collapse-mode lock above. It landed WITHOUT a `deriveCalls===0` ratchet, so a silent
+    // regression-to-eval (all-less checks BYTES, not fold-status) would go uncaught. This locks it: the
+    // full fixture folds via the spine, byte-identical to the ratified expanded-mode `.css`, with the
+    // eval two-walk (`Rules.derive` / `processExtends`) UNCALLED.
+    const compiler = new Compiler({
+      output: { collapseNesting: false },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const src = readFileSync(path.join(testDataRoot, 'tests-unit/extend/extend.less'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the expanded-mode fold, not a silent eval fallback
+      // Expanded-mode nested-target relocation: `.ext8 { .ext9 {…} }` extended → `.ext8 .ext9, .buu` at root.
+      expect(css).toContain('.buu');
+      expect(css).toContain('.fuu');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('EXTEND @MEDIA-SCOPE: `extend-media.less` folds byte-identically via the spine (scoped gather + cross-media `all`-propagation, no eval two-walk)', async () => {
+    // @MEDIA-GATHER FOLD (this increment). An `:extend(.ext1 all)` declared inside `@media (tv)`
+    // (`.tv-lowres`) / a nested `@media (hires)` (`.tv-hires`) / at root (`.all`) is scoped by the
+    // wire gather's per-conditional-at-rule scope chain + the pipeline's `scopeReaches` prefix filter
+    // (eval oracle §A5/A2): a media-scoped extend reaches subjects in the same or a NESTED conditional
+    // body, never outside; a root extend reaches all. Byte-identical to the ratified expanded-mode
+    // `extend-media.css`, folded via the spine with the eval two-walk UNCALLED. Locks the fold so a
+    // regression-to-eval (all-less checks bytes, not routing) is caught.
+    const compiler = new Compiler({
+      output: { collapseNesting: false },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const src = readFileSync(path.join(testDataRoot, 'tests-unit/extend-media/extend-media.less'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the @media-scope fold, not a silent eval fallback
+      // Root-scope `.all` reaches every `.ext1`; media-scope `.tv-lowres`/`.tv-hires` reach only their
+      // own + nested media bodies (NOT the root `.ext2`).
+      expect(css).toContain(':is(.ext1, .all) .ext2');
+      expect(css).toContain(':is(.ext1, .tv-lowres, .all) .ext3');
+      expect(css).toContain(':is(.ext1, .tv-lowres, .tv-hires, .all) .ext4');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
   it('P4: a `Rules`-wrapped STANDALONE extend does NOT force the root to eval (folds via the spine)', async () => {
     // The empty-body selector-list-extend block (`.nope, .yes:extend(.zzz all) {}`) parses as a bare
     // `Rules` node (not a `Ruleset`), which `isSpineEligibleBody` rejected — forcing the WHOLE root

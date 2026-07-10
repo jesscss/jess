@@ -125,6 +125,22 @@ export function treeHasExtend(node: Node): boolean {
 }
 
 /**
+ * A CONDITIONAL AT-RULE whose body is its OWN extend scope AND whose reachability from an enclosing
+ * scope is a plain nesting PREFIX relation: `@media`, `@supports`, `@container`. An extend declared
+ * inside one reaches subjects in the same body + any such body NESTED within it, never outside — the
+ * eval oracle's extend-root §A5 ("@media body is its own root") + §A2 ("descendant roots"). This is
+ * exactly a scope-chain-prefix reachability, which `pipeline.ts`'s `scopeReaches` implements. NOT
+ * `@layer` (§A4 same-layer-name mutual visibility is not a prefix relation) or `@scope`.
+ */
+function isMediaScopeAtRule(node: Node): boolean {
+  if (!isNode(node, N.AtRule)) {
+    return false;
+  }
+  const name = typeof node.name === 'string' ? node.name : String((node.name as { valueOf(): unknown })?.valueOf() ?? '');
+  return name === '@media' || name === '@supports' || name === '@container';
+}
+
+/**
  * THE GATE (design §4.0). Decide, once at spine entry, whether the pass must engage the
  * extend layer. Returns false — the pure-streaming fast path — when the tree carries no
  * `:extend`; true when there is real extend work to do.
@@ -148,6 +164,14 @@ export interface SpineSubject {
   ruleset: Ruleset;
   path: BucketPath;
   order: number;
+  /**
+   * The chain of enclosing conditional at-rule bodies (`@media` blocks), outermost-first, as an
+   * array of the at-rule node identities. Used by the pipeline's scope-reachability filter: an
+   * extend instruction reaches this subject iff its own scope chain is a PREFIX of this one (a
+   * `@media`-scoped extend reaches subjects in the same or a NESTED media body, per the eval
+   * oracle's extend-root §A5/A2). Absent (undefined) for a root-level subject — equivalent to `[]`.
+   */
+  scope?: readonly Node[];
   /**
    * True when this subject lives in a `@import (reference)` body: its OWN output is
    * suppressed, so its header projection DROPS branch 0 (the own form) — only the
@@ -233,7 +257,7 @@ export function composeSpineSubjectHeaders(
       const childLocal = subject.path[subject.path.length - 1]!;
       extendLayerCounter.solveRuns++;
       const parentProjection = runSubjectProjection(
-        { id: `p${i}`, path: parentPath, order: subject.order },
+        { id: `p${i}`, path: parentPath, order: subject.order, scope: subject.scope },
         instructions
       );
       if (
@@ -255,7 +279,7 @@ export function composeSpineSubjectHeaders(
           inst.partial || String(inst.target.valueOf()) === fullChildOwn);
         extendLayerCounter.solveRuns++;
         const childSolved = solveSubjectBranches(
-          { id: `c${i}`, path: [childLocal], order: subject.order },
+          { id: `c${i}`, path: [childLocal], order: subject.order, scope: subject.scope },
           childInstructions
         );
         const childBranches: Selector[] = childSolved && childSolved.branches.length > 0
@@ -305,7 +329,7 @@ export function composeSpineSubjectHeaders(
       extendLayerCounter.solveRuns++;
       const crossing = ownIsDescendant
         ? runSubjectProjection(
-            { id: `x${i}`, path: subject.path, order: subject.order },
+            { id: `x${i}`, path: subject.path, order: subject.order, scope: subject.scope },
             instructions
           )
         : undefined;
@@ -347,7 +371,7 @@ export function composeSpineSubjectHeaders(
       if (relocInstructions.length > 0) {
         extendLayerCounter.solveRuns++;
         const reloc = runSubjectProjection(
-          { id: `r${i}`, path: subject.path, order: subject.order },
+          { id: `r${i}`, path: subject.path, order: subject.order, scope: subject.scope },
           relocInstructions
         );
         if (reloc.ownBuilt && reloc.projection && reloc.projection.branches.length > 1) {
@@ -369,7 +393,7 @@ export function composeSpineSubjectHeaders(
         inst.partial || String(inst.target.valueOf()) === fullOwn);
       extendLayerCounter.solveRuns++;
       const solvedBare = solveSubjectBranches(
-        { id: `n${i}`, path: [bareLocal], order: subject.order },
+        { id: `n${i}`, path: [bareLocal], order: subject.order, scope: subject.scope },
         bareInstructions
       );
       if (solvedBare && solvedBare.branches.length > 1) {
@@ -381,7 +405,8 @@ export function composeSpineSubjectHeaders(
     const pipelineSubject: PipelineSubject = {
       id: `s${i}`,
       path: subject.path,
-      order: subject.order
+      order: subject.order,
+      scope: subject.scope
     };
     extendLayerCounter.solveRuns++;
     const { projection, ownBuilt } = runSubjectProjection(pipelineSubject, instructions);
@@ -436,7 +461,7 @@ export function composeSpineSubjectHeaders(
         const parentOwn = String(composeTargetOwn(subject.ampParentPath).valueOf());
         extendLayerCounter.solveRuns++;
         const parentProj = runSubjectProjection(
-          { id: `ap${i}`, path: subject.ampParentPath, order: subject.order },
+          { id: `ap${i}`, path: subject.ampParentPath, order: subject.order, scope: subject.scope },
           instructions
         );
         const parentKey = parentProj.projection
@@ -1104,7 +1129,15 @@ export function isSpineExtendTopology(
     if (!ok) {
       return;
     }
-    if (isNode(node, N.AtRule) && 'rules' in node && Array.isArray(node.rules) && treeHasExtend(node)) {
+    // CONDITIONAL-AT-RULE EXTEND (clause 4, RELAXED). An extend inside a `@media`/`@supports`/
+    // `@container` body is FOLDABLE: the gather descends the scope chain and the pipeline's
+    // scope-reachability filter (`scopeReaches`) scopes it to the same or a nested conditional body
+    // (eval oracle §A5/A2). So do NOT reject those — let the walk descend and collect their targets,
+    // which the per-target correspondence loop below verifies against a scope-reachable subject. A
+    // NON-media-scope at-rule bearing an extend (`@layer`/`@scope`/`@keyframes`/…) still disqualifies:
+    // its reachability is not a plain nesting-prefix relation, so the static gather cannot reproduce it.
+    if (isNode(node, N.AtRule) && 'rules' in node && Array.isArray(node.rules) && treeHasExtend(node)
+      && !isMediaScopeAtRule(node)) {
       ok = false;
       return;
     }
@@ -1445,6 +1478,11 @@ export function wireSpineExtends(
   // Set while descending a `@import (reference)` body so gathered subjects are tagged
   // reference (own-form dropped from the header projection — reference output suppressed).
   let gatheringReference = false;
+  // The chain of enclosing conditional at-rule bodies (`@media` blocks), outermost-first, tracked
+  // as we descend. A subject/instruction gathered here is tagged with a SNAPSHOT of this chain so
+  // the pipeline's scope-reachability filter can scope a `@media`-declared extend to the same or a
+  // nested media body (eval oracle §A5/A2). Empty at root — root-level extends reach everywhere.
+  let currentScope: readonly Node[] = [];
 
   // Recursive document-wide gather: descend rulesets, tracking the ancestor Selector `path`
   // (the extender's full bucket path — parse-tree nodes carry no `.parent`, so the walk is the
@@ -1516,13 +1554,15 @@ export function wireSpineExtends(
     const targetBranches = isNode(target, N.SelectorList)
       ? target.value.map(item => (typeof item === 'string' ? asExtendSelectorNode(item) : item))
       : [target];
+    const scope = currentScope.length > 0 ? [...currentScope] : undefined;
     for (const branchTarget of targetBranches) {
       instructions.push({
         target: branchTarget,
         extendWith,
         partial,
         path: [...instPath],
-        order
+        order,
+        scope
       });
     }
   };
@@ -1547,8 +1587,9 @@ export function wireSpineExtends(
     // Making it a subject would install a header override that double-composes / drops the
     // `&`-flow. Its role as an EXTENDER (bearing `:extend`) is still captured below as an
     // instruction with its resolved path — that is the increment-7 win, independent of subjecthood.
+    const subjectScope = currentScope.length > 0 ? [...currentScope] : undefined;
     if (local !== undefined && resolved?.ampResolved !== true && !String(local.valueOf()).includes('&')) {
-      subjects.push({ ruleset, path, order: orderOf(ruleset), reference: gatheringReference });
+      subjects.push({ ruleset, path, order: orderOf(ruleset), reference: gatheringReference, scope: subjectScope });
     } else if (
       local !== undefined
       && resolved?.ampResolved === true
@@ -1560,7 +1601,7 @@ export function wireSpineExtends(
       // installs ONLY if the projection changes the composed own form (a graft fired); otherwise the
       // block keeps its normal `&`-flow output (the `extend-clearfix` `&:after` case — no target
       // `.clearfix:after` exists, so no override, `&`-flow untouched).
-      subjects.push({ ruleset, path, order: orderOf(ruleset), reference: gatheringReference, ampComposed: true, ampParentPath: [...parentPath] });
+      subjects.push({ ruleset, path, order: orderOf(ruleset), reference: gatheringReference, ampComposed: true, ampParentPath: [...parentPath], scope: subjectScope });
     }
     for (const ext of rulesetExtendNodes(ruleset)) {
       const rawTarget = ext.target;
@@ -1641,12 +1682,26 @@ export function wireSpineExtends(
         for (const ext of child.value) {
           gatherStandaloneExtend(ext, path);
         }
+      } else if (isNode(child, N.AtRule) && isMediaScopeAtRule(child) && Array.isArray((child as { rules?: Node[] }).rules)) {
+        // CONDITIONAL AT-RULE SCOPE (`@media`, `@supports`, `@container`). Descend into the body,
+        // pushing THIS at-rule node onto the scope chain. Subjects and extend instructions gathered
+        // inside are tagged with the snapshotted chain so the pipeline's scope-reachability filter
+        // scopes a media-declared extend to the same or a NESTED conditional body (eval oracle §A5/A2):
+        // `.tv-lowres:extend(.ext1 all)` inside `@media (tv)` reaches `.ext1` targets in `@media (tv)`
+        // and its nested `@media (hires)`, but NOT `.ext1` outside; a root extend (`.all`) reaches all.
+        // A `path` reset is NOT needed — the at-rule interposes no selector level (its body children
+        // compose against the SAME ancestor selector path). `@layer`/`@scope` are NOT descended (their
+        // reachability is not a plain nesting-prefix relation) — the gate keeps those on eval.
+        const saved = currentScope;
+        currentScope = [...currentScope, child];
+        descendChildren((child as { rules: Node[] }).rules, path);
+        currentScope = saved;
       } else if (isNode(child, N.Rules) && Array.isArray((child as { rules?: Node[] }).rules)) {
         // A nested `Rules` container (the empty-body selector-list-extend surface) — descend so its
         // standalone `Extend` children are gathered. Its own selector (if any) is empty (no output).
         descendChildren((child as { rules: Node[] }).rules, path);
       }
-      // At-rules bearing extends are excluded by the eligibility gate, so no descent into them.
+      // Other at-rules bearing extends are excluded by the eligibility gate, so no descent into them.
     }
   };
 
