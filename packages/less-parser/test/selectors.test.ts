@@ -267,10 +267,13 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
     });
 
-    it('should parse ampersand merge template from class suffix form', () => {
+    it('parses `.foo-&` as a compound (`.foo-` + `&`), not a merge template', () => {
       const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
       expect(errors.length).toBe(0);
-      expect(serializeTypes(tree)).toContainString('(Ampersand');
+      const s = serializeTypes(tree);
+      // Two independent simple selectors: the BasicSelector `.foo-` and a plain `&`.
+      expect(s).toContainString('.foo-');
+      expect(s).toContainString('(Ampersand');
     });
 
     it('should parse ampersand merge template with explicit insertion point', () => {
@@ -279,13 +282,10 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
     });
 
-    // SKIPPED — these two assert WRONG output. `.foo-&` is a plain-`&` compound (`.foo-`
-    // is a valid dash-ending identifier + `&` parent ref → `.foo-.parent`), NOT a merge
-    // template. So core is wrong to reject it AND the expected output here is wrong (it
-    // says `.parent`, should be `.foo-.parent`). Fixing that is a separate selector
-    // grammar + core change; these are invented characterization tests (no real .less
-    // fixture), so they're skipped until the plain-`&` parse lands with corrected output.
-    it.skip('keeps parsed ampersand prefix templates on the current parser-to-core semantics', async () => {
+    // `.foo-` is a valid dash-ending identifier, so `.foo-&` is a compound of `.foo-` and
+    // the parent reference `&` — with `&` = `.parent` it renders `.foo-.parent`. (It is
+    // NOT a merge template that should be rejected; core must not throw here.)
+    it('renders `.foo-&` as the `.foo-.parent` compound', async () => {
       const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
       const context = new Context(contextOptions({ collapseNesting: true }));
 
@@ -293,7 +293,7 @@ describe('Selector Productions', () => {
       const css = await tree.render(context, { context, collapseNesting: true });
 
       expect(css).toBeString(`
-        .parent {
+        .foo-.parent {
           color: red;
         }
       `);
