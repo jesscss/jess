@@ -1673,12 +1673,22 @@ function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
       continue;
     }
     const body = node.rules;
-    // A Mixin DEFINITION nested ANYWHERE inside this mixin body (deep) is a dynamically
-    // created callable the fold doesn't register — defer the whole tree. Checked deep
-    // because the nested def may sit inside a container (`.@{n} { .sayGender() {} }`).
+    // A Mixin DEFINITION nested ANYWHERE inside this mixin body (deep) is a callable the
+    // spine surface descent does not register — UNLESS every path that could reach it is a
+    // STATIC authored-namespace path (`#library.core.colors()`), which `findMixinPath`
+    // resolves by walking authored containers, no dynamic registration required (keystone
+    // 6b). A nested def reached by a BARE re-registered name (`.inner-locked-mixin()` after
+    // a leaky `.lock-mixin(1)`), a `default()`/pattern overload set called by bare name, or
+    // an INTERPOLATED-selector-created namespace (`.@{n}{ .sayGender(){} }` then
+    // `.person.sayGender()`) DOES need dynamic registration the fold doesn't perform —
+    // that whole tree stays on eval (byte-identical, ratchet-locked residual). Checked deep
+    // because the nested def may sit inside a container.
     for (const inner of node.walk(true)) {
       if (inner !== node && isNode(inner, N.Mixin)) {
-        return true;
+        if (nestedDefNeedsDynamicRegistration(root)) {
+          return true;
+        }
+        break;
       }
     }
     for (let i = 0; i < body.length; i++) {
@@ -1691,6 +1701,149 @@ function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
     }
   }
   return false;
+}
+
+/**
+ * True when a nested Mixin DEFINITION in the tree would need DYNAMIC per-scope
+ * registration the spine surface descent does not perform (keystone 6b boundary).
+ *
+ * The ONE nested-def shape the fold covers WITHOUT extra wiring: a def whose only
+ * reachable calls are STATIC authored-namespace paths (`#library.core.colors()` /
+ * `#ns.mixin(1)`). `Rules.findMixinPath` resolves those by walking authored container
+ * scopes (the gate-12 fallback drain), so the call resolves during the fold with no
+ * runtime registration — byte-identical to eval.
+ *
+ * Everything else needs dynamic registration and stays on eval (residual):
+ *   - a nested def wrapped in an INTERPOLATED-selector container (`.@{n}{ .sayGender(){} }`)
+ *     — the container name is only known after the outer mixin evals, so no static path
+ *     reaches it (`.person.sayGender()` misses on the spine);
+ *   - a nested def called by a BARE (single-segment) name (`.inner-locked-mixin()`,
+ *     `.m(1)`) — a leaky per-scope registration the eval pass performs when the OUTER
+ *     mixin body evals into the caller scope;
+ *   - a nested def reached by a path whose HEAD segment is NOT a statically-authored
+ *     top-level container.
+ *
+ * Conservative over-approximation: any nested-def name reached by a call that is not a
+ * clean authored-namespace path defers the WHOLE tree. Zero-cost when no nested def is
+ * present (the caller only invokes this once a nested def is found). Paid once per root.
+ */
+function nestedDefNeedsDynamicRegistration(root: Node): boolean {
+  // Names of all nested Mixin defs (last selector segment), plus whether ANY nested def
+  // is wrapped in an interpolated-selector ancestor (never statically path-reachable).
+  const nestedDefNames = new Set<string>();
+  let hasInterpolatedNestedDef = false;
+  for (const node of root.walk(true)) {
+    if (!isNode(node, N.Mixin)) {
+      continue;
+    }
+    for (const inner of node.walk(true)) {
+      if (inner === node || !isNode(inner, N.Mixin)) {
+        continue;
+      }
+      if (inner.name === undefined) {
+        // A nameless Mixin is a DETACHED RULESET (`@map: { … }`), a map-lookup value —
+        // not a callable needing registration. Ignore it.
+        continue;
+      }
+      if (typeof inner.name !== 'string') {
+        // An INTERPOLATED callable name (`.@{n}`) — dynamic, never statically reachable.
+        hasInterpolatedNestedDef = true;
+        continue;
+      }
+      nestedDefNames.add(lastPathSegment(inner.name));
+      // An interpolated-selector container BETWEEN `node` and `inner` means the def's
+      // enclosing scope name is dynamic — no static path reaches it.
+      let cur: Node | undefined = inner.parent;
+      while (cur && cur !== node) {
+        if (isNode(cur, N.Ruleset) && rulesetHasInterpolatedSelector(cur)) {
+          hasInterpolatedNestedDef = true;
+          break;
+        }
+        cur = cur.parent;
+      }
+    }
+  }
+  if (nestedDefNames.size === 0 && !hasInterpolatedNestedDef) {
+    return false;
+  }
+  if (hasInterpolatedNestedDef) {
+    return true;
+  }
+  // Authored top-level container names (root-direct `#ns` / `.foo` Ruleset or Mixin) —
+  // the valid HEAD of a static namespace path. A path whose head is one of these + whose
+  // tail names a nested def is `findMixinPath`-resolvable; anything else needs dynamic reg.
+  const authoredHeads = new Set<string>();
+  const rootRules = isNode(root, N.Rules) ? root.rules : undefined;
+  if (rootRules) {
+    for (const child of rootRules) {
+      if (isNode(child, N.Ruleset)) {
+        const local = flatLocalSelector(child);
+        if (local !== undefined) {
+          authoredHeads.add(lastPathSegment(String(local.valueOf())));
+        }
+      } else if (isNode(child, N.Mixin) && typeof child.name === 'string') {
+        authoredHeads.add(lastPathSegment(child.name));
+      }
+    }
+  }
+  // Any CALL whose tail names a nested def but is NOT a clean authored-namespace path
+  // defers the whole tree.
+  for (const n of root.walk(true)) {
+    if (!isNode(n, N.Call) || !isNode(n.name, N.Reference)) {
+      continue;
+    }
+    const key = n.name.key;
+    if (typeof key !== 'string') {
+      continue;
+    }
+    const segments = splitCallPath(key);
+    if (segments.length === 0) {
+      continue;
+    }
+    const tail = segments[segments.length - 1]!;
+    if (!nestedDefNames.has(tail)) {
+      continue;
+    }
+    // The tail names a nested def. Foldable ONLY as a multi-segment path whose head is an
+    // authored top-level container. A bare (single-segment) call, or a path with a
+    // non-authored head, needs dynamic registration.
+    if (segments.length < 2 || !authoredHeads.has(segments[0]!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Last `.`/`>`/whitespace-delimited segment of a mixin path key (`#library.core.colors` → `.colors`). */
+function lastPathSegment(name: string): string {
+  const segs = splitCallPath(name);
+  return segs.length ? segs[segs.length - 1]! : name;
+}
+
+/**
+ * Split a mixin call/selector path key into its member segments, preserving the leading
+ * `.`/`#` sigil of each (`#library.core.colors` → [`#library`, `.core`, `.colors`];
+ * `#foo-foo>.bar` → [`#foo-foo`, `.bar`]). Combinators/whitespace between segments are
+ * separators; a purely-static string is assumed (interpolated names never reach here —
+ * they are non-string and handled separately).
+ */
+function splitCallPath(key: string): string[] {
+  const segments: string[] = [];
+  const re = /[.#][^.#>\s]+/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(key)) !== null) {
+    segments.push(match[0]);
+  }
+  return segments;
+}
+
+/** True if a Ruleset's own selector carries interpolation (`.@{name}` / `@{sel}`) — a dynamic name. */
+function rulesetHasInterpolatedSelector(node: Node): boolean {
+  const local = flatLocalSelector(node);
+  if (local === undefined) {
+    return true; // no flat static selector → treat as dynamic
+  }
+  return String(local.valueOf()).includes('@{') || String(local.valueOf()).includes('${');
 }
 
 /**

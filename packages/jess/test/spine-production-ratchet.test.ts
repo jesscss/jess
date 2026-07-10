@@ -2184,4 +2184,89 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('NESTED-DEF (keystone 6b): `namespacing-4` (static namespace-path nested def `#library.core.colors`) FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-4.less`: `#library { .core() { .colors() { … } } }` — a mixin DEFINITION
+    // nested inside `.core()`, reached ONLY through the STATIC authored-namespace path
+    // `#library.core.colors()`. `findMixinPath` resolves the path by walking authored
+    // container scopes (the gate-12 fallback drain) with NO dynamic per-scope registration,
+    // so the call resolves during the fold. `treeHasUnfoldableContainerBodyMixin` no longer
+    // defers a nested def whose only reachable calls are clean authored-namespace paths.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-4.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-config/namespacing/namespacing-4.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (nested-def fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → true fold, not a silent eval fallback
+      expect(result.css).toBe(expected); // byte-identical to eval / less@4
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-DEF (keystone 6b): `namespacing-3` (namespaced nested `.mixin` + detached-ruleset maps) FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-3.less`: `#ns { .mixin() { @height: 200px } }` consumed by a map-lookup
+    // (`#ns.mixin[@height]`), plus detached-ruleset maps (`@map: { … @colors: { … } }`) — the
+    // nested `@colors` is a NAMELESS Mixin (a map-lookup value), NOT a callable needing
+    // registration, so it no longer forces eval. All nested-def reachability is via static
+    // namespace-path / map-lookup, so the tree folds on the spine.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-3.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-config/namespacing/namespacing-3.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (nested-def fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → true fold
+      expect(result.css).toBe(expected); // byte-identical to eval / less@4
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NESTED-DEF RESIDUAL (keystone 6b boundary): a LEAKY bare-name nested-def call stays on eval (byte-identical)', async () => {
+    // The residual boundary: a nested def reached by a BARE (single-segment) re-registered
+    // name (`.lock-mixin(1)` leaks `.inner-locked-mixin` into the caller scope, then a sibling
+    // `.inner-locked-mixin()` resolves it) needs DYNAMIC per-scope registration the spine
+    // surface descent does not perform. `treeHasUnfoldableContainerBodyMixin` keeps such a
+    // tree on eval — byte-identical, NOT a silent fold. `derive` fires (the eval two-walk ran).
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const src = [
+        '.lock-mixin(@a) {',
+        '  .inner-locked-mixin(@x: @a) when (@a = 1) { a: @a; x: @x; }',
+        '}',
+        '.call-lock-mixin {',
+        '  .lock-mixin(1);',
+        '  .call-inner-lock-mixin { .inner-locked-mixin(); }',
+        '}'
+      ].join('\n');
+      const css = await compiler.renderString(src, { language: 'less', suppressWarnings: true });
+      expect(deriveCalls).toBeGreaterThan(0); // eval two-walk ran — residual, not a fold
+      expect(css).toContain('a: 1');
+      expect(css).toContain('x: 1');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });
