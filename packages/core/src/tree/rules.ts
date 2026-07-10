@@ -7313,7 +7313,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._setupContextForRules(context, rules);
     // When we're the outermost Rules, use the tree we're evaling as root
     // (may differ from context.root set in getTree, or be a prepared wrapper).
-    if (context.rulesEvalStack.length === 1) {
+    // EXCEPT under the spine fold: there is no `Rules.eval` frame for the real
+    // root on `rulesEvalStack`, so a detached-ruleset/mixin body evaluated inside
+    // the fold hits `length === 1` and would reclaim outermost status — clobbering
+    // the spine-owned root and its built-in function registry (see
+    // `Context.spineOwnsRoot`). The spine already established the root, so skip.
+    if (context.rulesEvalStack.length === 1 && !context.spineOwnsRoot) {
       context.root = rules;
     }
     return this._evalAfterRegistrationPrep(rules, context, importsOnly);

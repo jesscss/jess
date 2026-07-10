@@ -1555,13 +1555,6 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
       return false;
     }
   }
-  // PRE-EXISTING GAP GUARD (ratchet-locked): a DR-call + function-valued-decl tree
-  // stays on eval — the spine DR-call fold breaks downstream function-`Call`
-  // resolution. See `treeHasDetachedCallWithFunctionValueDecl`. This is the
-  // `functions` fixture's stacked reject after the statement-call fold.
-  if (treeHasDetachedCallWithFunctionValueDecl(root)) {
-    return false;
-  }
   // M8 (FOLDED): a mixin CALL whose target is an INTERPOLATED-SELECTOR ruleset
   // (`.@{name} {}` used as `.foo()`). The interpolated name used to be registered
   // into the callable cache ONLY by the eval pass (`Ruleset.prepareRegistration` →
@@ -2272,72 +2265,6 @@ function treeHasMixinCall(root: Node): boolean {
   return false;
 }
 
-/**
- * A DETACHED-RULESET call (`@1()` / `@conditional()` — a `variable`-type Reference
- * `Call`, `unwrapDetachedRulesetCall`) — as distinct from an authored mixin dot-call.
- */
-function isDetachedRulesetCall(node: Node): boolean {
-  const unwrapped = unwrapDetachedRulesetCall(node);
-  const inner = unwrapped ?? node;
-  if (!isNode(inner, N.Call)) {
-    return false;
-  }
-  const name = inner.name;
-  return isNode(name, N.Reference) && name.options?.type === 'variable';
-}
-
-/** A built-in FUNCTION call (`if(...)`, `length(...)` — a `function`-type Reference `Call`). */
-function isFunctionCall(node: Node): boolean {
-  if (!isNode(node, N.Call)) {
-    return false;
-  }
-  const name = node.name;
-  return isNode(name, N.Reference) && name.options?.type === 'function';
-}
-
-/**
- * PRECISE PRE-EXISTING GAP GUARD (ratchet-locked residual, oracle-verified). A tree
- * that folds a DETACHED-RULESET call (`@1();`) AND also has a DECLARATION whose value
- * contains a built-in FUNCTION call (`length(@list)`, `boolean(...)`, `if(...)`) is
- * kept on the eval path: the spine's DR-call fold leaves the render context in a state
- * where a subsequent function-`Call` reference no longer resolves to its registered
- * `JsFunction` (it falls through to the raw call-syntax `Any` — verified: `#i { @r:{…};
- * @r(); } #l { length: length(a 1, b 2); }` emits `length(a 1, b 2)` raw once the whole
- * root folds, whereas each block folds correctly ALONE). This is independent of node
- * order (an earlier function block breaks the same way). Eval is byte-identical.
- *
- * This is the `functions` fixture's remaining stacked reject after the bare
- * statement-position function-call fold (`if((false), {g: 7})`): its `#if` block has a
- * `@1()` DR-call and downstream blocks (`#boolean`, `#list-details`, `html`,
- * `#quoted-functions-in-mixin`) carry function-valued declarations.
- *
- * SPEC (fold follow-up, tracked as its own hydra head): fix the DR-call fold so it
- * restores / preserves the function-registry reachability for the rest of the render
- * (the DR-call surface's scope splice must not shadow the root function scope), then
- * delete this guard and let `functions` fully fold. Zero-cost off the shape: bails on
- * the first walk hit that finds neither a DR-call nor a function-valued decl absent.
- */
-function treeHasDetachedCallWithFunctionValueDecl(root: Node): boolean {
-  let hasDetachedCall = false;
-  let hasFunctionValuedDecl = false;
-  for (const node of root.walk(true)) {
-    if (!hasDetachedCall && isDetachedRulesetCall(node)) {
-      hasDetachedCall = true;
-    } else if (!hasFunctionValuedDecl && isNode(node, N.Declaration)) {
-      for (const valueNode of node.walk(true)) {
-        if (isFunctionCall(valueNode)) {
-          hasFunctionValuedDecl = true;
-          break;
-        }
-      }
-    }
-    if (hasDetachedCall && hasFunctionValuedDecl) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Deep: any Ruleset in the tree whose selector is an InterpolatedSelector. */
 function treeHasInterpolatedSelectorRuleset(root: Node): boolean {
   for (const node of root.walk(true)) {
@@ -2488,7 +2415,12 @@ export function renderRootViaSpine(
   const savedRoot = context.root;
   const savedTreeRoot = context.treeRoot;
   const savedTreeContext = context.treeContext;
+  const savedSpineOwnsRoot = context.spineOwnsRoot;
   context.root ??= root;
+  // The spine now owns `context.root` — a detached-ruleset/mixin body evaluated
+  // inside the fold must NOT reclaim outermost-root status and clobber it (which
+  // would drop the built-in function registry). See `Context.spineOwnsRoot`.
+  context.spineOwnsRoot = true;
   // Establish the per-file TREE CONTEXT the eval path sets via
   // `_setupContextForRules`: `treeContext.file.path` is the current file, which
   // relative-asset resolution (`data-uri('image.svg')` → `readAsset` →
@@ -2520,6 +2452,7 @@ export function renderRootViaSpine(
     context.root = savedRoot;
     context.treeRoot = savedTreeRoot;
     context.treeContext = savedTreeContext;
+    context.spineOwnsRoot = savedSpineOwnsRoot;
     const trimmed = body.trimEnd();
     const bodyText = trimmed ? `${trimmed}\n` : '';
     // Top-of-doc `@import` lane (IMPORTS increment 1): CSS-passthrough imports
@@ -2536,6 +2469,7 @@ export function renderRootViaSpine(
     context.root = savedRoot;
     context.treeRoot = savedTreeRoot;
     context.treeContext = savedTreeContext;
+    context.spineOwnsRoot = savedSpineOwnsRoot;
     throw error;
   };
   // Descend the SOURCE root's body ONCE in render mode: the statement-framing

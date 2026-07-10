@@ -2661,15 +2661,17 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('STMTCALL residual: a DR-call + function-valued-decl tree STAYS on eval (byte-identical, ratchet-locked)', async () => {
-    // NEGATIVE ratchet (RESIDUAL LOCK). After the statement-call fold, the `functions` fixture's next
-    // stacked reject is a pre-existing spine gap: a tree that folds a DETACHED-RULESET call (`@r()`)
-    // AND has a DECLARATION whose value contains a built-in FUNCTION call breaks downstream
-    // function-`Call` resolution on the spine (`length(a 1, b 2)` emits RAW once the whole root folds,
-    // though each block folds correctly alone). `treeHasDetachedCallWithFunctionValueDecl` keeps such
-    // a tree on eval, byte-identical. DECIDE STALE-vs-REGRESSION before flipping: this SHOULD flip to
-    // `deriveCalls === 0` ONLY once the DR-call fold's function-registry-reachability gap is fixed
-    // (delete the guard then). Do NOT reflexively flip it green.
+  it('STMTCALL (FOLDED): a DR-call + function-valued-decl tree FOLDS byte-identically (derive=0)', async () => {
+    // Was the `functions` fixture's stacked reject (`treeHasDetachedCallWithFunctionValueDecl`,
+    // now DELETED). ROOT CAUSE: on the spine there is no `Rules.eval` frame for the real root on
+    // `rulesEvalStack`, so a detached-ruleset body (`@r()`) evaluated inside the fold reached
+    // `_evalPreparedRules` as the FIRST `Rules.evalNode` — its `rulesEvalStack.length === 1`
+    // "am I the outermost root?" heuristic fired and REASSIGNED `context.root` to that nested
+    // body, clobbering the real root's built-in function registry. `findFunction`'s dead-end
+    // fallback then missed, so a downstream `length(@list)` emitted RAW. FIX: the spine sets
+    // `context.spineOwnsRoot`, and `_evalPreparedRules` skips the outermost-root reassignment
+    // under it — the registry stays reachable and the function computes. Folds through the spine,
+    // byte-identical to eval; also covers the mixin-body function-value surface (`replace(...)`).
     const compiler = makeCompiler();
     const src = `#i { @r: { c: 3; }; @r(); }\n#l { @list: a 1, b 2; length: length(@list); }`;
     const originalDerive = Rules.prototype.derive;
@@ -2679,10 +2681,41 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       return originalDerive.apply(this, args);
     } as Rules['derive'];
     try {
+      const before = spineRenderCounter.rootRenders;
       const css = await compiler.renderString(src, { language: 'less' });
-      // Kept on eval (the residual guard) — byte-correct function resolution.
-      expect(deriveCalls).toBeGreaterThan(0); // RESIDUAL: still on eval, NOT folded
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (DR-call + function-decl fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → the registry-reachability fix, not an eval fallback
       expect(css).toBe('#i {\n  c: 3;\n}\n#l {\n  length: 2;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('WHOLE-FIXTURE lock: `functions.less` FOLDS byte-identically (derive=0)', async () => {
+    // The stacked-head endgame for the `functions` corpus fixture: after the statement-call fold
+    // and the DR-call + function-value-decl registry-reachability fix (`spineOwnsRoot`), the entire
+    // fixture renders through the single spine pass with NO eval two-walk. A regression that re-arms
+    // an eval fallback (or reintroduces the root-clobber) trips this RED. Byte-identity is also
+    // asserted by all-less; this locks the FOLD (derive=0) so a silent eval fallback can't hide.
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const lessPath = path.join(testDataRoot, 'tests-unit/functions/functions.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // whole fixture folds — no eval two-walk
+      expect(result.css).toBe(expected);
     } finally {
       Rules.prototype.derive = originalDerive;
     }

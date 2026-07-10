@@ -421,6 +421,21 @@ export class Context {
    */
   spineRootCallEmitFrame?: Rules;
 
+  /**
+   * The spine descent (`renderRootViaSpine`) has already established the document
+   * root on `context.root` — no `Rules.eval` frame for the real root sits on
+   * `rulesEvalStack`. A DETACHED-RULESET body (or mixin surface) evaluated INSIDE
+   * the fold reaches `_evalPreparedRules` as the FIRST `Rules.evalNode`, so its
+   * `rulesEvalStack.length === 1` "am I the outermost root?" heuristic fires and
+   * would REASSIGN `context.root` to that nested body — clobbering the real root's
+   * built-in function registry (`findFunction`'s dead-end fallback then misses, so
+   * `length(@list)` emits raw). The eval path never trips this: it pushes the real
+   * root first, so a nested body sees stack length ≥2. This flag lets the nested
+   * eval skip the reassignment when the spine owns the root. Undefined on the eval
+   * path (zero-cost, unchanged there). Scoped save/restore around the spine descent.
+   */
+  spineOwnsRoot?: boolean;
+
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
 
