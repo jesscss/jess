@@ -69,6 +69,44 @@ function isSpinePathResolutionError(error: unknown): boolean {
     && (error as Error & Record<'_isPathResolutionError', unknown>)._isPathResolutionError === true;
 }
 
+/**
+ * Marker property on an error the wire pass throws when a DEFERRED (forward-dependent, case-B)
+ * interpolated-path import resolves to a body it cannot fold byte-identically — specifically a body
+ * carrying an `(inline)` sub-import. Eval's deferred-import RETRY lane (`drainPendingImports`) emits an
+ * extra blank line AFTER a re-evaluated inline block; the clean spine fold does not reproduce that
+ * reorder-specific spacing artifact. Routing this shape to eval keeps it byte-identical. `onWireError`
+ * aborts to eval on this marker exactly as it does for a still-unresolvable path.
+ */
+const SPINE_DEFERRED_UNSUPPORTED = '_isSpineDeferredUnsupported';
+function markDeferredUnsupported(): Error {
+  const error = new Error('spine: deferred interpolated-path import body is not foldable byte-identically (inline sub-import)');
+  (error as Error & Record<string, unknown>)[SPINE_DEFERRED_UNSUPPORTED] = true;
+  return error;
+}
+function isSpineDeferredUnsupportedError(error: unknown): boolean {
+  return error instanceof Error
+    && SPINE_DEFERRED_UNSUPPORTED in error
+    && (error as Error & Record<string, unknown>)[SPINE_DEFERRED_UNSUPPORTED] === true;
+}
+
+/**
+ * True if `body`'s DIRECT children include an `(inline)` `@import` — the shape a deferred (case-B)
+ * interpolated-path import cannot fold byte-identically (eval's retry lane adds a post-inline blank
+ * line the spine fold does not). Direct-child scan only: a nested container's inline import is emitted
+ * under that container's own serialization (not the reorder-affected root inline path).
+ */
+function deferredBodyHasInlineImport(body: Rules): boolean {
+  for (const child of body.rules) {
+    if (isStyleImportNode(child)) {
+      const io = 'importOptions' in child.options ? child.options.importOptions : undefined;
+      if (io?.inline === true) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
   return node.type === 'AtRuleStatement';
 }
@@ -2355,15 +2393,19 @@ export function renderRootViaSpine(
   // `options.spineImportPlacements` so the emit fold descends the SAME registered body
   // (resolve + register exactly once). Async (`getTree`) — rides the isThenable bail.
   // The extend RE-GATE (`wireExtends`) chains AFTER this so it sees the resolved placements.
-  // INTERPOLATED-PATH case (B) ABORT (import-spec routing). An interpolated `@import` path
+  // INTERPOLATED-PATH resolution failure (import-spec routing). An interpolated `@import` path
   // (`@import "theme-@{t}.less"`) is admitted speculatively; the wire pass resolves it against the
-  // live frame. A FORWARD-dependent path (the var bound by a LATER import) throws
-  // `_isPathResolutionError` here — a CLEAN pre-first-byte abort point. Route such a failure to eval
-  // (which owns the `_isPathResolutionError` retry-lane reorder), byte-identical. A genuine error
-  // (missing file, parse failure) is NOT a path-resolution error and propagates via `fail`. Case (A)
-  // (downward-resolvable) resolves here and folds.
+  // live frame. Case (A) (downward-resolvable) folds; case (B) (forward-dependent — the var bound by
+  // a LATER import) is DEFERRED + retried inside `wireSpineImportsInBody` (mirroring eval's
+  // `pendingImports` reorder) and folds too. `_isPathResolutionError` surfaces HERE only when the
+  // deferred drain STILL can't resolve the path (the var never binds / a cyclic path dependency) —
+  // a CLEAN pre-first-byte abort point: route to eval (which owns the same reorder + reports the
+  // genuine error identically), byte-identical. A genuine error (missing file, parse failure) is NOT
+  // a path-resolution error and propagates via `fail`.
   const onWireError = (error: unknown): string | typeof SPINE_ABORT_TO_EVAL | never =>
-    isSpinePathResolutionError(error) ? abortToEval() : (fail(error) as never);
+    isSpinePathResolutionError(error) || isSpineDeferredUnsupportedError(error)
+      ? abortToEval()
+      : (fail(error) as never);
   const wireImports = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
     if (!importLayer) {
       return wireExtends();
@@ -2578,85 +2620,151 @@ function wireSpineImportsInBody(
   options: FinalPrintOptions
 ): MaybePromise<void> {
   const cache = (options.spineImportPlacements ??= new Map());
+  // FORWARD-DEPENDENT interpolated-path DEFER lane (case B, IMPORTS increment 6 Tier-B).
+  // An interpolated `@import` path (`@import "theme-@{t}.less"`) whose var binds in a
+  // LATER sibling import is not resolvable at its own document position — `resolveForSpine`
+  // throws `_isPathResolutionError`. Instead of aborting the whole tree to eval, mirror the
+  // eval loop's `pendingImports`/`drainPendingImports` reorder: DEFER the failing import,
+  // continue wiring the rest (which bind the var into `targetFrame` via the fallback link),
+  // then RETRY the deferred imports. A retry that still throws is a GENUINE failure (var
+  // never bound / cyclic) and propagates — the outer `onWireError` then aborts to eval,
+  // byte-identical. One retry-allowed drain + a final non-retry drain matches eval exactly
+  // (a single reorder suffices for the acyclic forward dependency; a cycle re-throws).
+  const pending: number[] = [];
+  const wireOne = (i: number, allowDefer: boolean, deferred: boolean): MaybePromise<void> => {
+    const child = children[i]!;
+    const importNode = child as StyleImport;
+    // ISOLATE per-import context (design §2 async discipline). Each import's
+    // resolve + registration transiently mutates `context.treeContext`/`depth`
+    // (relative-path resolution + registration setup). Sequentially wiring
+    // several imports must not leak one import's treeContext into the NEXT
+    // sibling's relative resolution (a deeply-nested import would otherwise
+    // resolve its sibling against the wrong directory → dropped output). Snapshot
+    // + restore around EACH import's whole wire, on every exit path.
+    const savedTreeContext = context.treeContext;
+    const savedDepth = context.depth;
+    const restoreImportContext = <T>(value: T): T => {
+      context.treeContext = savedTreeContext;
+      context.depth = savedDepth;
+      return value;
+    };
+    // A FORWARD-dependent interpolated path throws here (sync) or rejects (async). While the
+    // defer lane is open, capture it as pending and move on; otherwise it propagates.
+    const onResolveError = (error: unknown): never | undefined => {
+      if (allowDefer && isSpinePathResolutionError(error)) {
+        pending.push(i);
+        return undefined;
+      }
+      throw error;
+    };
+    const registerAndLink = (resolved: SpineImportResolution): MaybePromise<void> => {
+      if (resolved.kind === 'css') {
+        cache.set(child, { kind: 'css' });
+        return undefined;
+      }
+      const body = resolved.body;
+      // RESIDUAL (ratchet-locked, IOU): a DEFERRED (case-B) import whose body carries an `(inline)`
+      // sub-import is NOT foldable byte-identically — eval's retry lane adds a post-inline blank line
+      // the clean spine fold does not reproduce. Abort the whole tree to eval for this shape only; the
+      // pure case-B shape (plain rulesets / non-inline sub-imports) folds. `import-interpolation`
+      // corpus fixture. Case A (downward, non-deferred) is unaffected — its inline body agrees with eval.
+      if (deferred && deferredBodyHasInlineImport(body)) {
+        throw markDeferredUnsupported();
+      }
+      const dedupe = spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options);
+      const registered = body.prepareRegistration(context);
+      const finishRegister = (): MaybePromise<void> => {
+        const placementFrame = body.getScopeFrame();
+        // TRANSITIVE wiring: a Less import whose OWN body carries a top-level
+        // `@import` (an imported file that itself imports another) must link that
+        // nested import's scope into THIS placement's frame BEFORE we link the
+        // placement upward — otherwise a sibling in the intermediate file
+        // (`lib.less`'s `@pad: @z`, where `@z` lives in the transitively-imported
+        // `inner.less`) resolves against a frame with no fallback to the nested
+        // scope and throws `'z' is not defined`. The nested imports are wired into
+        // the placement's own frame (their scope is a fallback consulted after the
+        // placement's primary scope), recursively — so an N-deep import chain links
+        // each level into its importer. Registration seeds NAMES only (no output
+        // tree; `Rules.derive` stays 0). Same document-order/isolation discipline as
+        // the outer pass since it reuses `wireSpineImportsInBody`.
+        const link = (): void => {
+          linkImportFallbackFrame(targetFrame, placementFrame);
+          cache.set(child, { kind: 'fold', body, dedupe, multiple: resolved.multiple, reference: resolved.reference });
+        };
+        const wiredNested = wireSpineImportsInBody(body.rules, placementFrame, context, options);
+        return isThenable(wiredNested) ? wiredNested.then(link) : link();
+      };
+      return isThenable(registered) ? registered.then(finishRegister) : finishRegister();
+    };
+    let resolution: MaybePromise<SpineImportResolution>;
+    try {
+      resolution = importNode.resolveForSpine(context);
+    } catch (error) {
+      restoreImportContext(undefined);
+      return onResolveError(error);
+    }
+    let step: MaybePromise<void>;
+    try {
+      step = isThenable(resolution)
+        ? resolution.then(registerAndLink)
+        : registerAndLink(resolution);
+    } catch (error) {
+      restoreImportContext(undefined);
+      return onResolveError(error);
+    }
+    if (isThenable(step)) {
+      return step.then(
+        (value) => restoreImportContext(value),
+        (error: unknown) => {
+          restoreImportContext(undefined);
+          return onResolveError(error);
+        }
+      );
+    }
+    restoreImportContext(step);
+    return undefined;
+  };
   const wireFrom = (start: number): MaybePromise<void> => {
     for (let i = start; i < children.length; i++) {
       const child = children[i]!;
       if (!isStyleImportNode(child) || !isSpineFoldableImport(child) || cache.has(child)) {
         continue;
       }
-      const importNode = child;
-      // ISOLATE per-import context (design §2 async discipline). Each import's
-      // resolve + registration transiently mutates `context.treeContext`/`depth`
-      // (relative-path resolution + registration setup). Sequentially wiring
-      // several imports must not leak one import's treeContext into the NEXT
-      // sibling's relative resolution (a deeply-nested import would otherwise
-      // resolve its sibling against the wrong directory → dropped output). Snapshot
-      // + restore around EACH import's whole wire, on every exit path.
-      const savedTreeContext = context.treeContext;
-      const savedDepth = context.depth;
-      const restoreImportContext = <T>(value: T): T => {
-        context.treeContext = savedTreeContext;
-        context.depth = savedDepth;
-        return value;
-      };
-      const resolution = importNode.resolveForSpine(context);
-      const registerAndLink = (resolved: SpineImportResolution): MaybePromise<void> => {
-        if (resolved.kind === 'css') {
-          cache.set(child, { kind: 'css' });
-          return undefined;
-        }
-        const body = resolved.body;
-        const dedupe = spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options);
-        const registered = body.prepareRegistration(context);
-        const finishRegister = (): MaybePromise<void> => {
-          const placementFrame = body.getScopeFrame();
-          // TRANSITIVE wiring: a Less import whose OWN body carries a top-level
-          // `@import` (an imported file that itself imports another) must link that
-          // nested import's scope into THIS placement's frame BEFORE we link the
-          // placement upward — otherwise a sibling in the intermediate file
-          // (`lib.less`'s `@pad: @z`, where `@z` lives in the transitively-imported
-          // `inner.less`) resolves against a frame with no fallback to the nested
-          // scope and throws `'z' is not defined`. The nested imports are wired into
-          // the placement's own frame (their scope is a fallback consulted after the
-          // placement's primary scope), recursively — so an N-deep import chain links
-          // each level into its importer. Registration seeds NAMES only (no output
-          // tree; `Rules.derive` stays 0). Same document-order/isolation discipline as
-          // the outer pass since it reuses `wireSpineImportsInBody`.
-          const link = (): void => {
-            linkImportFallbackFrame(targetFrame, placementFrame);
-            cache.set(child, { kind: 'fold', body, dedupe, multiple: resolved.multiple, reference: resolved.reference });
-          };
-          const wiredNested = wireSpineImportsInBody(body.rules, placementFrame, context, options);
-          return isThenable(wiredNested) ? wiredNested.then(link) : link();
-        };
-        return isThenable(registered) ? registered.then(finishRegister) : finishRegister();
-      };
-      let step: MaybePromise<void>;
-      try {
-        step = isThenable(resolution)
-          ? resolution.then(registerAndLink)
-          : registerAndLink(resolution);
-      } catch (error) {
-        restoreImportContext(undefined);
-        throw error;
+      const wired = wireOne(i, true, false);
+      if (isThenable(wired)) {
+        return wired.then(() => wireFrom(i + 1));
       }
-      if (isThenable(step)) {
-        return step.then(
-          (value) => {
-            restoreImportContext(value);
-            return wireFrom(i + 1);
-          },
-          (error: unknown) => {
-            restoreImportContext(undefined);
-            throw error;
-          }
-        );
-      }
-      restoreImportContext(step);
     }
     return undefined;
   };
-  return wireFrom(0);
+  // Drain the deferred (forward-dependent) imports after the main document-order pass has
+  // bound their vars. `allowRetry` on the first drain (a deferred import may itself depend
+  // on another deferred one, resolved once the first drains); the final drain re-throws a
+  // still-unresolvable path so it aborts to eval. Mirrors eval's `drainPendingImports`.
+  const drainPending = (allowRetry: boolean): MaybePromise<void> => {
+    if (pending.length === 0) {
+      return undefined;
+    }
+    const batch = pending.splice(0);
+    const drainRest = (start: number): MaybePromise<void> => {
+      for (let k = start; k < batch.length; k++) {
+        const wired = wireOne(batch[k]!, allowRetry, true);
+        if (isThenable(wired)) {
+          return wired.then(() => drainRest(k + 1));
+        }
+      }
+      return undefined;
+    };
+    const drained = drainRest(0);
+    if (isThenable(drained)) {
+      return allowRetry ? drained.then(() => drainPending(false)) : drained;
+    }
+    return allowRetry ? drainPending(false) : drained;
+  };
+  const mainPass = wireFrom(0);
+  return isThenable(mainPass)
+    ? mainPass.then(() => drainPending(true))
+    : drainPending(true);
 }
 
 /**

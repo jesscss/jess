@@ -1394,21 +1394,74 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORT-SPEC: a FORWARD-dependent interpolated-path import (case B) SPECULATIVELY enters the spine then ABORTS to eval', async () => {
+  it('IMPORT-SPEC: a FORWARD-dependent interpolated-path import (case B) FOLDS via the spine (defer + retry, no derive)', async () => {
     // Interpolated-path case (B), import-spec routing. `@import "theme-@{t}.less"` where `@t` is bound
     // by a LATER import — a FORWARD dependency. The gate admits interpolated paths speculatively; the
     // wire pass attempts path eval against the live frame, `@t` is not yet bound, so `_preparePathIdentity`
-    // throws `_isPathResolutionError`. The wire pass catches it and ABORTS to eval (pre-first-byte), where
-    // the `_isPathResolutionError` RETRY lane reorders + resolves it. Byte-identical (eval owns the retry).
-    // DEFERRED (Tier-B, sequenced): a strictly-downward spine retry/defer-and-resume for case B.
+    // throws `_isPathResolutionError`. The wire pass DEFERS the failing import (mirroring the eval loop's
+    // `pendingImports` reorder), wires the rest — `vars.less` binds `@t` into the live frame — then RETRIES
+    // the deferred import, which now resolves `theme-@{t}` → `theme-a.less` and FOLDS through the spine.
+    // Byte-identical to eval, no output-tree derive. (Only a GENUINELY unresolvable path — the var never
+    // binds — still aborts to eval on the final drain.)
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-interp-'));
     fs.writeFileSync(path.join(dir, 'vars.less'), '@t: "a";\n');
     fs.writeFileSync(path.join(dir, 'theme-a.less'), '.x { color: red; }\n');
     fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{t}.less";\n@import "vars.less";\n');
     const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // routed via spine
+      expect(deriveCalls).toBe(0); // true fold — no eval two-walk
+      expect(result.css).toBe('.x {\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('IMPORT-SPEC: a case-B interpolated-path import whose body has an `(inline)` sub-import ABORTS to eval (residual)', async () => {
+    // RESIDUAL (ratchet-locked, IOU). The pure case-B shape folds (see above), but a DEFERRED
+    // (forward-dependent) interpolated-path import whose resolved body carries an `(inline)` sub-import
+    // is NOT foldable byte-identically: eval's deferred-import RETRY lane (`drainPendingImports`) emits an
+    // extra blank line AFTER a re-evaluated inline block, which the clean spine fold does not reproduce.
+    // The wire pass detects the inline sub-import in the DEFERRED body and aborts the whole tree to eval
+    // (pre-first-byte), so the output — including eval's post-inline blank line — is byte-identical. This
+    // is the `import-interpolation` corpus fixture shape. Case A (downward, non-deferred) is unaffected:
+    // its inline body agrees with eval and folds. IOU: reproduce eval's reorder spacing on the spine (or
+    // eliminate the eval-side artifact) so this abort-gate can be removed at P4.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-interp-inline-'));
+    fs.writeFileSync(path.join(dir, 'vars.less'), '@t: "x";\n');
+    fs.writeFileSync(path.join(dir, 'raw.less'), '#logo {\n  w: 1px;\n}\n');
+    fs.writeFileSync(path.join(dir, 'theme-x.less'), '@import (inline) "raw.less";\n.k {\n  c: 1;\n}\n');
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{t}.less";\n@import "vars.less";\n');
+    const compiler = makeCompiler();
     const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
-    // Clean abort → byte-identical to eval (the forward-dependent path resolved via the retry lane).
-    expect(result.css).toBe('.x {\n  color: red;\n}\n');
+    // Eval oracle: the post-inline blank line (`}\n\n.k`) from the retry-lane re-eval — matched by abort.
+    expect(result.css).toBe('#logo {\n  w: 1px;\n}\n\n.k {\n  c: 1;\n}\n');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('IMPORT-SPEC: a GENUINELY-unresolvable interpolated-path import stays byte-identical to eval (final-drain abort)', async () => {
+    // RESIDUAL of the case-B defer/retry fold. `@import "theme-@{nope}.less"` where `@nope` is NEVER
+    // bound (no later import supplies it). The wire pass defers the failing import, drains the rest
+    // (nothing binds `@nope`), then RE-THROWS `_isPathResolutionError` on the final non-retry drain —
+    // exactly as eval's `drainPendingImports(false)` does. The re-thrown error surfaces at `onWireError`
+    // and aborts to eval (pre-first-byte), so the output equals eval by construction. Locks the abort
+    // lane: a genuinely-unresolvable path is NOT silently folded to empty by the spine — eval owns it.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-inc6-unresolvable-'));
+    fs.writeFileSync(path.join(dir, 'main.less'), '@import "theme-@{nope}.less";\n.y {\n  a: 1;\n}\n');
+    const compiler = makeCompiler();
+    const result = await compiler.renderToResult(path.join(dir, 'main.less'), {});
+    // Eval oracle: an unbound interpolation var in a path drops the whole render to empty (unchanged
+    // from the base tip — established eval behavior, not a spine artifact).
+    expect(result.css).toBe('');
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
