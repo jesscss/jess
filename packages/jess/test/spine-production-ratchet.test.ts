@@ -1908,4 +1908,93 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  // LEAKY forward-propagation FOLD (gate 9 lifted). In leaky Less mode a mixin
+  // body's plain `@x: …` VarDeclaration leaks into the CALLER scope; a same-scope
+  // consumer reads it. The spine now folds this (caller-frame binding injection),
+  // byte-identical to less@4. A regression that drops the injection trips these RED.
+  it('LEAKY: a mixin-body var leaks into the caller ruleset (later consumer folds via the spine)', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `.m() {\n  @x: 10px;\n}\n.a {\n  .m();\n  width: @x;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // eval + less@4 oracle: `.a { width: 10px; }`.
+    expect(css).toBe('.a {\n  width: 10px;\n}\n');
+  });
+
+  it('LEAKY: a leaked var is visible to an EARLIER caller sibling (Less lazy scope, not source-order gated)', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `.m() {\n  @x: 10px;\n}\n.a {\n  width: @x;\n  .m();\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // less@4: the whole scope resolves `@x` last-wins → `10px`.
+    expect(css).toBe('.a {\n  width: 10px;\n}\n');
+  });
+
+  it('LEAKY: a PARAM-dependent leak (`@x: @a`) reads the bound param through the fold', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `.m(@a) {\n  @x: @a;\n}\n.a {\n  .m(20px);\n  width: @x;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // less@4: `.a { width: 20px; }`.
+    expect(css).toBe('.a {\n  width: 20px;\n}\n');
+  });
+
+  it('LEAKY: a ROOT-level mixin call leaks into a later root SIBLING ruleset', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `.setH() {\n  @height: 1024px;\n}\n.setH();\n.heightIsSet {\n  height: @height;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // less@4: `.heightIsSet { height: 1024px; }` (the mixin def + call emit nothing).
+    expect(css).toBe('.heightIsSet {\n  height: 1024px;\n}\n');
+  });
+
+  it('LEAKY: the leak is SCOPED to the calling ruleset (a later out-of-scope sibling sees the outer binding)', async () => {
+    const compiler = makeCompiler();
+    const css = await compiler.renderString(
+      `@x: 1px;\n.a {\n  width: @x;\n}\n.m() {\n  @x: 10px;\n}\n.b {\n  .m();\n  width: @x;\n}\n.c {\n  width: @x;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    // less@4: `.b` sees the leak (`10px`); `.a`/`.c` see the outer `@x` (`1px`).
+    expect(css).toBe('.a {\n  width: 1px;\n}\n.b {\n  width: 10px;\n}\n.c {\n  width: 1px;\n}\n');
+  });
+
+  it('LEAKY: a folded leak does NOT enter the eval two-walk (Rules.derive uncalled for the container-body shape)', async () => {
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(
+        `.m() {\n  @x: 10px;\n}\n.a {\n  .m();\n  width: @x;\n}`,
+        { language: 'less', suppressWarnings: true }
+      );
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(css).toBe('.a {\n  width: 10px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('NON-LEAKY (strict scope): a mixin-body var does NOT leak — the consumer is unresolved', async () => {
+    const strictCompiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin({ leakyScope: false }), lessCompatPlugin({})] }
+    });
+    await expect(
+      strictCompiler.renderString(
+        `.m() {\n  @x: 10px;\n}\n.a {\n  .m();\n  width: @x;\n}`,
+        { language: 'less', suppressWarnings: true }
+      )
+    ).rejects.toThrow(/not defined/);
+  });
 });

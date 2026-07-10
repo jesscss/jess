@@ -108,6 +108,24 @@ export async function evaluateCallableCandidateOutput({
     candidateParent.adopt(newRules);
     newRules.index = candidateIndex;
     attachMixinOutputSlot(newRules, sourceRules, restrictMixinOutputLookup);
+    // LEAKY forward-propagation at the document ROOT (spine): a root-level mixin
+    // call folds via the eval terminal here (the root emit path installs no surface
+    // sink), so the eval two-walk's `injectLeakyMixinOutputBindings` (rules.ts
+    // applyResult) never runs. Inject the evaluated output's leaked vars into the
+    // ROOT frame at the call's source index so a LATER root sibling ruleset
+    // (`.heightIsSet { height: @height }`) resolves the leak — byte-identical to
+    // less@4. Zero-cost off leaky mode; only a root-level spine call reaches here.
+    const leakTargetRoot = context.spineRootCallEmitFrame;
+    if (
+      context.spineRootCallEmit
+      && leakTargetRoot !== undefined
+      && context.options.leakyScope === true
+      && candidateIndex !== undefined
+      && newRules.options.mixinOutputSlot
+    ) {
+      leakTargetRoot.getScopeFrame();
+      leakTargetRoot.injectLeakyMixinOutputBindings(newRules, candidateIndex);
+    }
     return newRules;
   } catch (error) {
     if (error instanceof ReferenceError && error.message.includes('Recursive mixin call')) {

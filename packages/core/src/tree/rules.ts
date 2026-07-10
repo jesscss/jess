@@ -4797,13 +4797,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         && this === context.root
         && isSpineEligibleMixinCall(n);
       const savedRootCallEmit = context?.spineRootCallEmit;
+      const savedRootCallEmitFrame = context?.spineRootCallEmitFrame;
       const restoreRootCallEmit = (): void => {
         if (marksRootCallEmit) {
           context!.spineRootCallEmit = savedRootCallEmit;
+          context!.spineRootCallEmitFrame = savedRootCallEmitFrame;
         }
       };
       if (marksRootCallEmit) {
         context!.spineRootCallEmit = true;
+        // Capture the TRUE source-root caller frame for leaky injection: `this` is
+        // the root here (`this === context.root`), but the nested call eval below
+        // reassigns `context.root`, so a later injection can't recover it.
+        context!.spineRootCallEmitFrame = this;
       }
       // ROOT-BODY merge/`?:` fold (cutover root-fold, gates 3/4). A `+:`/`+_:`
       // merge or `@x ?: v` conditional-assign DIRECTLY in the root body is planned
@@ -5505,6 +5511,67 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const decl = current.sourceNode;
       decl.index = callIndex;
       injectFrameLeakBinding(frame, name, { cell: current.cell, sourceNode: decl });
+    }
+  }
+
+  /**
+   * Leaky Less mode, SPINE fold: register a FOLDED mixin surface's plain `@x: …`
+   * VarDeclarations into this caller frame at the call's source index — the spine
+   * analogue of {@link injectLeakyMixinOutputBindings}. Unlike the eval path the
+   * surface is NOT pre-evaluated, so each leaked value is bound through a cell that
+   * resolves the declaration's value against the SURFACE frame (its wired
+   * lexical/param bindings), so a param-dependent leak (`@x: @a`) reads the bound
+   * param, byte-identical to the less@4 leak (a shape jess EVAL itself throws on).
+   * A `setDefined` (`!global`) decl is skipped — it writes an outer scope by its own
+   * mechanism, not a forward leak. The binding lands on the caller frame's current
+   * bindings, so a same-scope sibling (earlier OR later — Less resolves a scope's
+   * vars lazily last-wins) resolves it; an out-of-scope sibling still sees the outer
+   * binding. Zero surface vars ⇒ nothing injected.
+   */
+  injectSpineLeakyMixinSurfaceBindings(surface: Rules, callIndex: number, context: Context): void {
+    const frame = this._scopeFrame;
+    const rules = surface.rules;
+    if (!frame || !isArray(rules)) {
+      return;
+    }
+    for (let i = 0; i < rules.length; i++) {
+      const decl = rules[i]!;
+      if (
+        !isNode(decl, N.VarDeclaration)
+        || typeof decl.name !== 'string'
+        || decl.options?.setDefined
+      ) {
+        continue;
+      }
+      const name = decl.name;
+      // The leak's source-order gate keys on `sourceNode.index` = the CALL's index
+      // in the caller. The surface `decl` is SHARED across calls (the fold copies
+      // no nodes), and its OWN `index` is load-bearing for the body's intra-scope
+      // reads (a `snapshot` ref compares against it) — so DO NOT mutate `decl.index`.
+      // Use a prototype-delegating marker that overrides only `index`; identity /
+      // filter / recursion checks still see the real decl through the chain.
+      const gateNode: Node = Object.create(decl);
+      gateNode.index = callIndex;
+      const cell: BindingCell = {
+        prepareValue: () => {
+          const savedRulesContext = context.rulesContext;
+          context.rulesContext = surface;
+          try {
+            const evaluated = decl.valueNode().eval(context);
+            if (isThenable(evaluated)) {
+              // A leaked value that resolves ASYNC (a thenable) is not supported by
+              // the sync binding-cell read path. Fall back to the raw value node so
+              // the caller resolves it against the surface frame at read time.
+              return decl.valueNode();
+            }
+            return evaluated;
+          } finally {
+            context.rulesContext = savedRulesContext;
+          }
+        },
+        sourceNode: gateNode
+      };
+      injectFrameLeakBinding(frame, name, { cell, sourceNode: gateNode });
     }
   }
 

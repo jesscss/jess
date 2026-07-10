@@ -1482,17 +1482,19 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   //    (`.r { .a(); transform+: s; }`) — caught by `bodyHasMixinCall &&
   //    bodyHasDirectMergeDecl`: eval composes the direct decl's `+:` via a positional
   //    prior-value Reference read the static plan does not model.
-  // LEAKY-MODE MIXIN-BODY VAR LEAK (a pre-existing spine gap, gated byte-identical).
-  // In leaky Less mode a mixin body's plain `@x: …` VarDeclaration LEAKS into the
-  // CALLER scope, so a later consumer (`.a { width: @x }`, or a call arg `@x`) reads
-  // it. The spine fold descends the surface under its OWN frame and does NOT propagate
-  // that write outward, so the consumer throws `'x' is not defined`. Keep such a tree
-  // on the eval path (which reproduces the leak) until the fold models leaky
-  // cross-scope propagation. Cheap: only scanned in leaky mode when the tree has a
-  // mixin call; a non-leaky render (and the common non-leak shape) pays nothing.
-  if (context.options.leakyScope && treeHasMixinCall(root) && treeHasLeakyConsumedMixinBodyVar(root)) {
-    return false;
-  }
+  // LEAKY-MODE MIXIN-BODY VAR LEAK (FOLDED). In leaky Less mode a mixin body's plain
+  // `@x: …` VarDeclaration LEAKS into the CALLER scope, so a consumer in the same
+  // scope (`.a { .m(); width: @x }`, an EARLIER `width: @x` sibling — Less resolves a
+  // scope's vars lazily last-wins, not source-order gated — a call arg `@x`, or a
+  // nested-container child) reads it. The spine fold now propagates this: at the
+  // splice, `injectSpineLeakyMixinSurfaceBindings` registers each folded surface's
+  // plain leaked var into the CALLER frame's current bindings (the enclosing
+  // container, or the surface for a nested call), resolving each value against the
+  // surface frame so a param-dependent leak (`@x: @a`) reads the bound param. The
+  // injection is scoped to the caller frame (a later out-of-scope sibling sees the
+  // outer binding, byte-identical to less@4). Zero-cost off leaky mode or when a
+  // folded surface has no plain var. The former eval-routing gate (and its
+  // `treeHasLeakyConsumedMixinBodyVar` detector) is DELETED.
   // FLAT extend topology (P3 increment 1): a root whose ONLY extends are root-direct-child
   // subjects/extenders (no nested extend) is spine-eligible — the pre-scan gathers and the
   // subject header is composed as an override. `allowExtend` admits the extend-bearing root
@@ -1651,61 +1653,6 @@ function treeHasNamespacePathCall(root: Node): boolean {
     }
   }
   return false;
-}
-
-/**
- * True (LEAKY MODE ONLY) if a Mixin body declares a plain `@x: …` var whose NAME is
- * also referenced somewhere OUTSIDE that mixin — the leaky cross-scope leak the spine
- * fold does not propagate (see `isSpineEligibleRoot`). Conservative static
- * over-approximation: gather every non-param VarDeclaration name declared inside ANY
- * mixin body, then report true if any of those names is referenced by a Reference
- * anywhere in the tree that is NOT inside the SAME mixin body. `setDefined` decls are
- * already excluded at the surface gate; a var used only internally to its mixin (no
- * outside reference) is NOT flagged, so an internal-only var body still folds.
- */
-function treeHasLeakyConsumedMixinBodyVar(root: Node): boolean {
-  const leakedNames = new Set<string>();
-  const declaringMixinOf = new Map<string, Node>();
-  for (const node of root.walk(true)) {
-    if (!isNode(node, N.Mixin)) {
-      continue;
-    }
-    for (let i = 0; i < node.rules.length; i++) {
-      const child = node.rules[i]!;
-      if (
-        isNode(child, N.VarDeclaration)
-        && typeof child.name === 'string'
-        && !child.options?.setDefined
-      ) {
-        leakedNames.add(child.name);
-        declaringMixinOf.set(child.name, node);
-      }
-    }
-  }
-  if (leakedNames.size === 0) {
-    return false;
-  }
-  // A reference to a leaked name that is NOT lexically inside its declaring mixin is a
-  // cross-scope consumer. Track the enclosing mixin on the way DOWN (raw parse tree has
-  // no `.parent`), so a body-internal read is excluded.
-  const scan = (node: Node, enclosingMixin: Node | undefined): boolean => {
-    const nextMixin = isNode(node, N.Mixin) ? node : enclosingMixin;
-    if (
-      isNode(node, N.Reference)
-      && typeof node.key === 'string'
-      && leakedNames.has(node.key)
-      && declaringMixinOf.get(node.key) !== nextMixin
-    ) {
-      return true;
-    }
-    for (const child of node.walk()) {
-      if (scan(child, nextMixin)) {
-        return true;
-      }
-    }
-    return false;
-  };
-  return scan(root, undefined);
 }
 
 /**

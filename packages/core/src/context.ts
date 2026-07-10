@@ -411,6 +411,16 @@ export class Context {
    */
   spineRootCallEmit?: boolean;
 
+  /**
+   * LEAKY forward-propagation (spine): the SOURCE root Rules whose body is
+   * currently emitting a root-level mixin call. Its scope frame is the caller
+   * frame a leaked `@x: …` mixin-body var must inject into so a later root sibling
+   * ruleset resolves it. Captured at the root emit site (where `this === root`)
+   * because `context.root` is reassigned during the call's nested eval. Set only
+   * alongside {@link spineRootCallEmit}; undefined for a nested call.
+   */
+  spineRootCallEmitFrame?: Rules;
+
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
 

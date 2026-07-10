@@ -1049,6 +1049,28 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             // surface's wired frame), not the enclosing caller frame (increment 2).
             // EVAL fallback: flatten the terminal's output `Rules` (no frame tag —
             // the eval path already resolved it).
+            // LEAKY forward-propagation (spine fold): in leaky Less mode a mixin
+            // body's plain `@x: …` VarDeclaration LEAKS into the caller scope, so a
+            // caller sibling (`width: @x`) reads it — Less resolves a scope's vars
+            // lazily last-wins, so BOTH earlier and later siblings see the leak (the
+            // less@4 oracle). Inject each folded surface's leaked bindings into the
+            // caller frame at the call's source index. The caller frame is the
+            // surface for a nested call (`entry.spineFrame`), else the enclosing
+            // container being serialized. Scoped to the caller frame (an out-of-scope
+            // sibling still sees the outer binding). Zero-cost off leaky mode; the
+            // injector no-ops when the surface has no plain var.
+            if (
+              resolved.kind === 'fold'
+              && spineContext.options.leakyScope === true
+            ) {
+              const callIndex = entryNode.index;
+              const leakTarget = entryFrame ?? getContainerRules(node, options);
+              if (leakTarget !== undefined && callIndex !== undefined) {
+                for (const surface of resolved.surfaces) {
+                  leakTarget.injectSpineLeakyMixinSurfaceBindings(surface, callIndex, spineContext);
+                }
+              }
+            }
             const childEntries: RenderRuleEntry[] = resolved.kind === 'fold'
               ? resolved.surfaces.flatMap(surface =>
                   surface.rules.map(child => ({ node: child, spineFrame: surface, mergeOwner: surface })))
