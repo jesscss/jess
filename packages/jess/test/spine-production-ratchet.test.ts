@@ -1008,21 +1008,27 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     }
   });
 
-  it('IMPORTS increment 2: a NAMESPACE-PATH call over an imported namespace STAYS on eval (namespace-merge wall)', async () => {
-    // `namespacing-2.less`: a LOCAL `#library` (overriding `.sizes`) plus the imported
-    // `#library` (defining `.add-one`), consumed by `#library.add-one()`. Fallback-frame
-    // linking makes the imported namespace resolvable but does NOT MERGE it with the
-    // same-named local definition — the lookup finds the local `#library` first and never
-    // falls through for a member only the imported one defines. So a tree with a
-    // namespace-path call + an import stays on the eval path (byte-identical). A regression
-    // that folds it throws "No matching mixins for '#library.add-one'". DEFERRED (P4):
-    // cross-definition namespace merge in the fold.
+  it('IMPORTS increment 2: a NAMESPACE-PATH call over an imported namespace FOLDS via the spine (gate 12)', async () => {
+    // `namespacing-2.less`: a LOCAL `#library` (overriding `.sizes`, → 800px) plus the
+    // imported `#library` (defining `.add-one`), consumed by both `#library.sizes[@width]`
+    // (resolves locally) and `#library.add-one(1px)[@return]` (a member ONLY the imported
+    // `#library` defines). This is NOT a same-named-merge case: the local head HITS first,
+    // its remainder MISSES `.add-one`, and the shared namespace-path lookup
+    // (`Rules.findMixinPath`) formerly never re-tried the import `fallbackFrame` — so it
+    // threw "No matching mixins for '#library.add-one'". The fix drains the fallback-frame
+    // chain AFTER the primary walk misses (mirrors the plain-var `findMixin` drain), so an
+    // imported namespace member resolves while a local hit still wins. The tree now FOLDS
+    // through the spine, byte-identical to eval (and to less@4's `namespacing-2.css`).
     const compiler = makeCompiler();
     const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-2.less');
     const before = spineRenderCounter.rootRenders;
     const result = await compiler.renderToResult(lessPath, {});
-    expect(spineRenderCounter.rootRenders).toBe(before); // eval path (namespace-merge wall)
-    expect(result.css).toContain('width: 800px'); // namespace lookup resolved (eval path)
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (gate 12 folds)
+    // Byte-identical to less@4 `namespacing-2.css`: local `.sizes` override (800px) + the
+    // imported `.add-one` member (2px, resolved through the fallback-frame drain).
+    expect(result.css).toBe(
+      '.bar {\n  width: 800px;\n  height: 2px;\n}\n.foo {\n  width: 800px;\n}\n.lunch {\n  treat: ice cream;\n}\n'
+    );
   });
 
   it('IMPORTS increment 3: a TRANSITIVE import var chain (main->lib->inner) folds via the spine (no derive)', async () => {

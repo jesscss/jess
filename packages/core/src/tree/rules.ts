@@ -4081,7 +4081,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         despiteMixinNamespaceOut
       );
       if (rulesetNamespaceFast !== undefined) {
-        return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
+        if (rulesetNamespaceFast.length > 0) {
+          return rulesetNamespaceFast;
+        }
+        // The ruleset-form walk hit a DEFINITE MISS at this scope (a same-named
+        // local namespace exists but does not define the member). Drain the import
+        // fallback before conceding: an imported same-named namespace may define
+        // the member (`#library.add-one`, defined only in the import). A local hit
+        // never reaches here, so this only ADDS resolution the primary walk missed.
+        return this.drainNamespacePathFallback(keys, filterType, options);
       }
       if (despiteMixinNamespaceOut?.entries !== undefined && despiteMixinNamespaceOut.entries.length > 0) {
         rulesetNamespaceUnion = despiteMixinNamespaceOut.entries;
@@ -4148,7 +4156,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             local: options.local
           });
           if (namespaceRulesets.length !== 0) {
-            return undefined;
+            // A LOCAL ruleset-form namespace owns the head (`#library { .sizes() }`)
+            // so this mixin walk defers to the ruleset path (which already ran and
+            // missed the member locally). Before conceding, drain the import
+            // fallback: an imported same-named namespace may define the member the
+            // local one does not (`#library.add-one`, defined only in the import).
+            return this.drainNamespacePathFallback(keys, filterType, options);
           }
           const exactRulesetPath = this.findCallableRulesetPath(keys, {
             hasTarget: options.hasTarget,
@@ -4158,7 +4171,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             return exactRulesetPath;
           }
         }
-        return undefined;
+        return this.drainNamespacePathFallback(keys, filterType, options);
       }
       compoundPrefixFast = this.findCompoundPrefixPath(keys, options);
       mixinNamespaceFast = this.findCallableDescendants(
@@ -4196,7 +4209,90 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       return merged;
     }
+    // FALLBACK-FRAME DRAIN (namespace path). The head-namespace resolvers above
+    // consult only `this`'s primary scope chain, so a namespace whose head is
+    // defined ONLY on an imported fallback frame (`linkImportFallbackFrame`) — or
+    // a member (`#library.add-one`) that a same-named LOCAL namespace does not
+    // define — is invisible once the primary walk exhausts. Mirror the string-key
+    // `findMixin` drain: AFTER the primary walk misses, re-run the SAME path
+    // against each fallback frame's rulesNode so an imported namespace resolves
+    // (byte-identical to the eval path, whose `findMixin` already drains fallback).
+    // Fallbacks are consulted only when the primary walk found nothing, so a local
+    // hit always wins. Zero-cost when no fallback frame is linked (the common
+    // case — the guard bails before touching the chain).
+    if (combined === undefined || combined.length === 0) {
+      const drained = this.drainNamespacePathFallback(keys, filterType, options);
+      if (drained !== undefined) {
+        return drained;
+      }
+    }
     return combined;
+  }
+
+  /**
+   * FALLBACK-FRAME DRAIN for a namespace path (`#library.add-one`). The
+   * head-namespace resolvers in `findMixinPath` consult only `this`'s primary
+   * scope chain, so a namespace member defined ONLY on an imported fallback frame
+   * (`linkImportFallbackFrame` / `wireSpineImports`) — including a member a
+   * same-named LOCAL namespace does not define — is invisible once the primary
+   * walk exhausts. Mirrors the string-key `findMixin` fallback drain: re-run the
+   * SAME path against each fallback frame's rulesNode AFTER the primary walk
+   * misses, so a local hit always wins and an imported namespace still resolves
+   * (byte-identical to the eval path, whose `findMixin` already drains fallback).
+   *
+   * Zero-cost when no fallback frame is linked (the common case): the guard bails
+   * before allocating anything or touching the chain. Returns `undefined` when no
+   * fallback frame produced a match (the caller keeps its own miss verdict).
+   */
+  private drainNamespacePathFallback(
+    keys: string[],
+    filterType: string | undefined,
+    options: CallableFindOptions
+  ): MixinEntry[] | undefined {
+    const primaryFrame = this._scopeFrame;
+    if (!primaryFrame) {
+      return undefined;
+    }
+    // Gather the fallback heads reachable from the primary scope chain, in
+    // encounter order (parent-chain first) — mirrors the string-key `findMixin`
+    // drain. The fallback link installed by `linkImportFallbackFrame` hangs off
+    // the frame that OWNED the import (often an ENCLOSING frame, not the leaf
+    // lookup scope), so the leaf's own `.fallbackFrame` may be undefined while an
+    // ancestor carries the imported surface. Walking parents only when
+    // `searchParents` is on keeps a `local`/no-parent lookup zero-extra-cost.
+    const fallbackHeads: ScopeFrame[] = [];
+    let cursor: ScopeFrame | undefined = primaryFrame;
+    const searchParents = options.searchParents !== false;
+    while (cursor) {
+      let head: ScopeFrame | undefined = cursor.fallbackFrame;
+      while (head) {
+        fallbackHeads.push(head);
+        head = head.fallbackFrame;
+      }
+      if (!searchParents) {
+        break;
+      }
+      cursor = cursor.parent;
+    }
+    if (fallbackHeads.length === 0) {
+      return undefined;
+    }
+    const noParentOptions: CallableFindOptions =
+      options.searchParents === false ? options : { ...options, searchParents: false };
+    for (let i = 0; i < fallbackHeads.length; i++) {
+      const fallbackFrame = fallbackHeads[i]!;
+      if (isNode(fallbackFrame.rulesNode, N.Rules)) {
+        const fallbackMatches = fallbackFrame.rulesNode.findMixinPath(
+          keys,
+          filterType,
+          noParentOptions
+        );
+        if (fallbackMatches !== undefined && fallbackMatches.length > 0) {
+          return fallbackMatches;
+        }
+      }
+    }
+    return undefined;
   }
 
   findFunction(

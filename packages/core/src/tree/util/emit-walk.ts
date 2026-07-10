@@ -1505,20 +1505,19 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // resolves the imported symbol. Root imports are wired by `wireSpineImports`. So a
   // nested StyleImport no longer forces the eval path — the container's own
   // eligibility (`isSpineEligibleContainer` with `allowImport`) admits it.
-  // NAMESPACE-MERGE wall (surfaced IMPORTS increment 2). A NAMESPACE-PATH call
-  // (`#library.add-one()`, `name.target` set) can MERGE a same-named namespace
-  // across the local scope AND an imported file (`namespacing-2`: a local
-  // `#library { .sizes() }` overriding + the imported `#library { .add-one() }`).
-  // Fallback-frame linking (`wireSpineImports`) makes the imported namespace
-  // resolvable but does NOT merge it with a same-named LOCAL definition — the
-  // lookup finds the local `#library` first and never falls through for a member
-  // only the imported one defines. So a tree with BOTH a StyleImport and a
-  // namespace-path call stays on the eval path (byte-identical). Plain mixin calls
-  // + var reads against an imported library (the common shape) still fold.
-  // DEFERRED (a REQUIRED P4 item): cross-definition namespace merge in the fold.
-  if (allowImport && treeHasStyleImport(root) && treeHasNamespacePathCall(root)) {
-    return false;
-  }
+  // NAMESPACE-PATH over an imported namespace: FOLDS (gate 12, LANDED). A
+  // namespace-path lookup (`#library.add-one()` / `#library.sizes[@width]`) resolves
+  // via the shared `Rules.findMixinPath` / `findRulesetNamespacePathFast` seam, which
+  // walked ONLY the primary parent chain — so a member defined only on an imported
+  // `fallbackFrame` (installed by `wireSpineImports` → `linkImportFallbackFrame`) was
+  // invisible once the primary walk exhausted. This is NOT a same-named-merge problem:
+  // `namespacing-2` has a LOCAL `#library { .sizes() }` (overriding, → 800px, resolves
+  // locally) and consumes `#library.add-one` — a member ONLY the imported `#library`
+  // defines. The local head HITS first, its remainder MISSES `.add-one`, and the walk
+  // never re-tried the fallback frame. FIX: `findMixinPath` now drains the fallback-
+  // frame chain AFTER the primary walk misses (mirrors the plain-var / string-key
+  // `findMixin` fallback drain) — a local hit always wins, so the fold stays byte-
+  // identical to eval. So this tree now folds; the former eval-routing gate is DELETED.
   // DEDUP / `once` is now MODELED by the fold (IMPORTS increment 4): the wire pass
   // records each resolved import path in document order (`spineEmittedImportPaths`),
   // the FIRST occurrence emits + owns the output, and a later import of the SAME path
@@ -1622,37 +1621,6 @@ export function withSpineMultipleScope<T>(
     restore(undefined);
     throw error;
   }
-}
-
-/** True if the tree carries a `StyleImport` (a Less import that registers scope). */
-function treeHasStyleImport(root: Node): boolean {
-  for (const node of root.walk(true)) {
-    if (node.type === 'StyleImport') {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * True if the tree has a NAMESPACE-PATH call — a `Call` whose name `Reference`
- * carries a `.target` (`#ns.member()`, `.scope > .m()`). Such a call may need
- * cross-definition NAMESPACE MERGE (local + imported same-named namespace), which
- * the import fold's fallback linking does not model (see the namespace-merge wall).
- */
-function treeHasNamespacePathCall(root: Node): boolean {
-  for (const node of root.walk(true)) {
-    if (!isNode(node, N.Call) || !isNode(node.name, N.Reference)) {
-      continue;
-    }
-    // A namespace path is encoded either as a `.target` (an enclosing namespace) or
-    // as a multi-segment ARRAY key (`['#library', '.add-one']`). Either is a
-    // cross-scope member lookup the fold's fallback linking does not merge.
-    if (node.name.target !== undefined || Array.isArray(node.name.key)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**
