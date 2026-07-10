@@ -21,15 +21,21 @@ import { cssGrammar } from '@jesscss/css-parser/grammar';
 // one `rules()`; no fragment spreads.
 // ---------------------------------------------------------------------------
 
-export const lessGrammar = compose([cssGrammar, rules((g: any) => {
+// Trivia (`rw`) is declared ONCE on the grammar via `rules({ trivia: rw }, …)`,
+// honored through `compose()`, making it ambient in every rule — no per-rule
+// trivia-establisher wrappers are needed. Hoisted to module scope (mirroring
+// css-parser) so the options-first `rules({ trivia: rw }, …)` call below can
+// reference it. Same shape as CSS (whitespace + block + `//` line comments).
+const ws = regex(/[ \t\n\r\f]+/);
+const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const lineComment = regex(/\/\/[^\n\r]*/);
+const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
+
+export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) => {
   // ---------------------------------------------------------------------------
-  // Trivia + terminals (CSS base + Less @var / @{interp}).
+  // Terminals (CSS base + Less @var / @{interp}).
   // ---------------------------------------------------------------------------
 
-  const ws = regex(/[ \t\n\r\f]+/);
-  const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-  const lineComment = regex(/\/\/[^\n\r]*/);
-  const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
   // Whitespace-only trivia for url() bodies: inside `url(…)`, `//` and `/*` are URL
   // characters, not comments (`url(//host/x)` is protocol-relative), so the normal
   // `rw` (which skips line/block comments) must not apply there.
@@ -92,7 +98,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     sequence(g.Call, optional(literal(';'))), literal(';')
   );
   const Stylesheet = node(
-    parser({ trivia: rw }, many(g.stylesheetItem)));
+    many(g.stylesheetItem));
 
   // Plain helper consts referenced before their section must be defined up-front
   // (Phase-1 evaluation is sequential; only g.* refs resolve lazily).
@@ -122,7 +128,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     sequence(lessVar, regex(/:(?![-_a-zA-Z-￿])/))
   );
   const VarDeclaration = node(
-    parser({ trivia: rw }, sequence(varColon, choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';')))))));
+    sequence(varColon, choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';'))))));
   const mixinArgsContent = scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] });
   // Accessor key tokens, in lookupOrCall's OR2 order: NestedReference ($@x / @@x),
   // AtKeyword (@x), PropertyReference ($x), InterpolatedIdent (…@{x}…), Ident.
@@ -160,14 +166,14 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   const nonKnownAtVar = regex(/@-?(?!(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9]))[_a-zA-Z0-9-￿][-_a-zA-Z0-9-￿]*/);
   const knownAtVar = regex(/@(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9])/);
   const VarCall = node(
-    parser({ trivia: rw }, choice(
+    choice(
       // A var call is `@name(...)` with the `(` ADJACENT to the name (no space).
       // `@foo (bar)` — space before `(` — is never a var call; it's an unknown
       // at-rule prelude, so noTrivia makes this branch defer to AtRuleBlock.
       sequence(noTrivia(sequence(nonKnownAtVar, regex(/(?=\()/))), g.MixinArgs, optional(important), optional(literal(';'))),
       // Known at-rule name with EMPTY parens only.
       sequence(knownAtVar, literal('('), literal(')'), optional(important), optional(literal(';')))
-    )));
+    ));
 
   // ── Mixins ───────────────────────────────────────────────────────────────
   // Mixin arguments are composed from the SAME value combinators as function-call
@@ -197,10 +203,10 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   //               not a `.`/`#` path and has no block, so it matches NEITHER and is
   //               reported as unconsumed input.
   const MixinOrQualifiedRule = node(
-    parser({ trivia: rw }, choice(
+    choice(
       sequence(g.mixinNamePath, optional(g.MixinArgs), optional(g.Guard), literal('{'), g.declarationList, literal('}')),
       sequence(g.mixinCallPath, optional(g.MixinArgs), optional(g.Guard), optional(important), optional(literal(';')))
-    )));
+    ));
 
   // ── Guards / comparisons ───────────────────────────────────────────────────
   // Faithful port of the Chevrotain guard productions (src/productions/guards.ts):
@@ -225,7 +231,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // Sequence, dropping the comparison.
   const guardOperand = choice(g.NsAccessor, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.Call, g.Paren, g.anyValue);
   const Comparison = node(
-    parser({ trivia: rw }, sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.anyValue))));
+    sequence(g.Reference, compareOp, choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.anyValue)));
   const GuardDefault = node(
     regex(/default(?:[ \t\n\r\f]*\([ \t\n\r\f]*\))?(?![-\w])/));
   // '(' guardOr ')' → Paren; or a bare default(). Wrapped in a Paren node.
@@ -395,7 +401,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     // `ident(` so it never shadows a Declaration (which needs `:`).
     sequence(g.Call, optional(literal(';'))), literal(';')
   );
-  const declarationList = parser({ trivia: rw }, many(g.blockItem));
+  const declarationList = many(g.blockItem);
   // Property name may itself be interpolated (`@{prop}: …`, `pre-@{x}-post: …`).
   // Chevrotain lexes the name as a single Ident/InterpolatedIdent token whose image
   // carries the `@{…}` runs; `declaration` then routes an image containing `@`/`$`
@@ -631,7 +637,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
     sequence(calcProduct, many(sequence(sumOp, calcProduct))), undefined, { collapse: true });
   const calcSequence = oneOrMore(calcSum);
   const calcList = sequence(calcSequence, many(sequence(literal(','), calcSequence)));
-  const calcBody = parser({ trivia: rw }, sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')'))));
+  const calcBody = sequence(optional(sequence(calcList, many(sequence(literal(';'), optional(calcList))))), expect(literal(')')));
   // `CalcCall` (calc(…)) and the plain value-position `Paren` come from the shared
   // `parenRules` fragment (spread below); they defer to g.calcBody / g.parenBody here.
   const Call = node(sequence(ident, literal('('), functionCallArgs));

@@ -13,21 +13,17 @@
  */
 import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, parser, trivia, rules, expect, field, label
+  not, scanTo, balanced, trivia, rules, expect, field, label
 } from 'parseman' with { type: 'macro' };
 
 // ---------------------------------------------------------------------------
 // Trivia + terminals — bare combinators; node() captures them automatically.
 //
-// Trivia (`rw`) is INHERITED through the parse ctx: `Stylesheet` installs it once
-// via `parser({ trivia: rw }, …)`, and every rule reached from there sees the same
-// ambient trivia (sequence/repeat read `ctx.trivia` dynamically; a rule ref passes
-// ctx straight through). So a per-rule `parser({ trivia: rw }, …)` re-establishing
-// the SAME `rw` is a no-op and was dropped from most rules. A handful are kept
-// because parseman's deferred-trivia-commit boundaries interact across nested
-// grammar scopes: dropping them there changed what parsed (measured, not reasoned).
-// The kept establishers are `Stylesheet`, `atRuleBody`, `Paren`, `CalcCall`,
-// `QueryFeature`, `QueryCondition`, and `queryPrelude`.
+// Trivia (`rw`) is declared ONCE on the grammar via `rules({ trivia: rw }, …)`,
+// making it ambient in every rule: sequence/repeat read `ctx.trivia` dynamically
+// and a rule ref passes ctx straight through, so filler is skipped between terms
+// everywhere — including when a single rule is parsed on its own (incremental
+// parsing). No per-rule `parser({ trivia: rw }, …)` establishers are needed.
 // ---------------------------------------------------------------------------
 
 const ws = regex(/[ \t\n\r\f]+/);
@@ -64,14 +60,14 @@ const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 // combinator → its terminals bubble into the nearest enclosing node()).
 // ---------------------------------------------------------------------------
 
-export const cssGrammar = rules((g: any) => {
+export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // ── Root ──────────────────────────────────────────────────────────────────
   // No catch-all arm: a run of input that matches no rule simply stops `many`,
   // leaving unconsumed input the driver reports as one syntax error. Required
   // closers below are wrapped in expect() so a missing one is reported (and
   // recovered) by parseman rather than aborting the whole parse.
   const Stylesheet = node(
-    parser({ trivia: rw }, many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset))));
+    many(choice(g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset)));
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
   const Ruleset = node(
@@ -122,7 +118,7 @@ export const cssGrammar = rules((g: any) => {
 
   /**
    * `!important`. Keyword is ASCII case-insensitive; trivia between `!` and the
-   * keyword is allowed (enclosing parser({ trivia }) skips it).
+   * keyword is allowed (the grammar's ambient trivia skips it).
    * @see https://www.w3.org/TR/css-cascade-4/#importance
    */
   const important = sequence(literal('!'), regex(/important/i));
@@ -225,7 +221,7 @@ export const cssGrammar = rules((g: any) => {
   // Stop the scan at the START of any trailing trivia run before the `{`/`;`,
   // not at the delimiter itself — otherwise a trailing comment (`… hover /* x */
   // {`) is swallowed into the prelude leaf instead of staying trivia. The
-  // enclosing parser({ trivia: rw }) then consumes that run for real and logs
+  // grammar's ambient trivia then consumes that run for real and logs
   // it, so `prelude.valueOf()` is the bare prelude and the comment is recoverable
   // via the trivia map (matches the reference's token-based prelude).
   const atTailTrivia = many(choice(ws, comment));
@@ -249,9 +245,9 @@ export const cssGrammar = rules((g: any) => {
     sequence(atKeyword, atPrelude, literal(';')));
   // Body of a known at-rule block. No catch-all: unparseable content stops `many`,
   // and the block's expect('}') reports a syntax error at that point.
-  const atRuleBody = parser({ trivia: rw }, many(choice(
+  const atRuleBody = many(choice(
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
-  )));
+  ));
 
   // ── Value leaves & sub-grammars ────────────────────────────────────────────
   // `Quoted`, `Num`/`Color`, value-position `Paren`/`calc()`, and the
@@ -266,25 +262,24 @@ export const cssGrammar = rules((g: any) => {
   const colorHex = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
   const Num = node(numTok);
   const Color = node(colorHex);
-  const Paren = node(parser({ trivia: rw }, sequence(literal('('), g.parenBody)));
-  const CalcCall = node('Call', parser({ trivia: rw }, sequence(regex(/calc(?=\()/i), literal('('), g.calcBody)));
+  const Paren = node(sequence(literal('('), g.parenBody));
+  const CalcCall = node('Call', sequence(regex(/calc(?=\()/i), literal('('), g.calcBody));
   const mfComparison = regex(/<=|>=|[<>=]/);
   // Optional leading container name — an ident that is NOT a query keyword.
   const containerName = regex(/(?!(?:not|and|or|only)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
   const QueryFeature = node(
-    parser({ trivia: rw }, sequence(ident, optional(choice(
+    sequence(ident, optional(choice(
       sequence(literal(':'), g.valueList),
       sequence(mfComparison, g.value, optional(sequence(mfComparison, g.value)))
-    )))));
+    ))));
   const QueryInParens = node(
     sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')')));
   const QueryCondition = node(
-    parser({ trivia: rw }, choice(
+    choice(
       sequence(regex(/not(?![-\w])/i), g.QueryInParens),
       sequence(g.QueryInParens, many(sequence(regex(/(?:and|or)(?![-\w])/i), g.QueryInParens)))
-    )));
-  const queryPrelude = parser({ trivia: rw },
-    sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition))));
+    ));
+  const queryPrelude = sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition)));
 
   return {
     rw,
