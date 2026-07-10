@@ -1098,6 +1098,15 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false, all
       }
       return false;
     }
+    // LOOP FOLD (cutover LOOP increment 1): a `$for` / `each(...)` loop (both parse
+    // to a `For` node) folds when its body is spine-coverable. The runtime expansion
+    // (`serialize-helper` `runSpineForExpansion`) produces one bound-body surface per
+    // iteration (`For.spineIterationSurfaces`) and splices their children in order —
+    // the loop-variable-bound analogue of a mixin-surface splice. A body shape the
+    // spine cannot cover keeps the loop (and its enclosing body) on eval.
+    if (isSpineEligibleFor(child)) {
+      continue;
+    }
     if (!isSpineEligibleContainer(child, allowExtend, allowImport)) {
       return false;
     }
@@ -1145,6 +1154,25 @@ function isSpineEligibleMixinDefinition(node: Node): boolean {
   // (named, default, rest, pattern-match literal) is admitted here; the runtime
   // surface gate + guard eval still decide fold-vs-fallback per candidate.
   return true;
+}
+
+/**
+ * A `$for` / `each(...)` LOOP whose iterations the spine may fold (cutover LOOP
+ * increment 1). Both syntaxes parse to a `For` node (the less-parser rewrites
+ * `each(list, {…})` into a `For`). Admitted when the loop body is itself
+ * spine-coverable (`isSpineEligibleBody`) — the iteration surfaces share these body
+ * children, so a shape the descent cannot cover in one iteration cannot cover any.
+ * The iterable is a VALUE (eval'd per-render by `spineIterationSurfaces`), so it is
+ * not gated here. A non-eligible body keeps the loop (and its enclosing body) on the
+ * eval path, byte-identical. Zero-cost when no loop: the cheap `type` check bails.
+ */
+function isSpineEligibleFor(node: Node): boolean {
+  if (node.type !== 'For') {
+    return false;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to the For subtype; its body is the shared `rules` Node[].
+  const forNode = node as unknown as { rules: readonly Node[] };
+  return isSpineEligibleBody(forNode.rules);
 }
 
 /**
@@ -1463,6 +1491,20 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // `planBodyMerges` models the Add-pull-prior + decl-ref-to-merged shapes.
   if (bodyHasDirectMergeDecl(root.rules)) {
     return false;
+  }
+  // LOOP fold (cutover LOOP increment 1) — CONTAINER-nested only. A `$for`/`each`
+  // loop folds when nested inside a ruleset/at-rule (its body flows through
+  // `serializeRulesContainerInternal` → `runSpineForExpansion`). A ROOT-DIRECT loop
+  // renders through `Rules._emitRulesBody`, a distinct root emitter that treats a
+  // `For` (a `Rules`-masked node) as a transparent child-Rules and emits its
+  // unexpanded body — so a root-direct loop stays on eval (byte-identical) until the
+  // root emitter grows the same expansion. Rare in practice (a bare loop at document
+  // root); the measured target fixtures nest their loops in containers. SPEC: lift
+  // once `_emitRulesBody` routes a `For` child through the loop-fold expansion.
+  for (let i = 0; i < root.rules.length; i++) {
+    if (root.rules[i]!.type === 'For') {
+      return false;
+    }
   }
   // M8 (FOLDED): a mixin CALL whose target is an INTERPOLATED-SELECTOR ruleset
   // (`.@{name} {}` used as `.foo()`). The interpolated name used to be registered

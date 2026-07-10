@@ -1,6 +1,7 @@
 import { spanStartOf, spanEndOf } from './provenance.js';
 import type { AtRule, AtRulePrelude } from '../at-rule.js';
 import type { Rules } from '../rules.js';
+import type { Context } from '../../context.js';
 import { Ruleset } from '../ruleset.js';
 import { F_EXTENDED, Node } from '../node.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -559,6 +560,16 @@ export function flattenVisibleRulesForRender(
           continue;
         }
         if (isNode(child, N.Rules)) {
+          // A `For` (`$for`/`each`) is a `Rules`-masked node but is NOT a transparent
+          // group to flatten — its body children are per-ITERATION templates that must
+          // stay unexpanded until `runSpineForExpansion` produces the bound surfaces.
+          // Flattening them here would splice the raw loop-body decls (with an unbound
+          // `@value`) directly into the render sequence. Keep the loop as a container
+          // entry so the loop-fold pass owns it.
+          if (child.type === 'For') {
+            pushContainer(child);
+            continue;
+          }
           if (hasLeadingBlockComment(child, options)) {
             pushContainer(child);
             continue;
@@ -1200,6 +1211,70 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return expandFrom(0);
     };
 
+    // Spine LOOP-fold (cutover LOOP increment 1): expand each `$for`/`each(...)`
+    // (`For`) entry into its per-iteration bound-body surfaces and splice their
+    // children in place — the loop-variable-bound analogue of the mixin-call fold.
+    // Each iteration surface (`For.spineIterationSurfaces`) shares the loop body under
+    // a fresh frame holding the iteration's `@value`/`@key`/counter bindings; a spliced
+    // child is TAGGED with its surface as `spineFrame` so a body reference resolves the
+    // loop variable. All iterations share ONE `mergeOwner` (the `For` node) so a `+_:`
+    // merge across iterations coalesces into a single property (eval flattens all
+    // iteration outputs into one body — `each(1 2 3 4, {padding+_: …})` →
+    // `padding: 10px 20px 30px 40px`). Re-scan from `i` so a loop body's own mixin call
+    // / nested loop expands in turn. Off the spine this is a no-op.
+    const runSpineForExpansion = (): MaybePromise<void> => {
+      const spineContext = options.spineMode ? options.context : undefined;
+      if (!spineContext) {
+        return undefined;
+      }
+      const expandFrom = (start: number): MaybePromise<void> => {
+        for (let i = start; i < rulesToRender.length; i++) {
+          const entry = rulesToRender[i]!;
+          const entryNode = entry.node;
+          if (entryNode.type !== 'For') {
+            continue;
+          }
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to For; only For exposes spineIterationSurfaces.
+          const forNode = entryNode as unknown as { spineIterationSurfaces(context: Context): Promise<Rules[]> };
+          // A nested loop/call among a folded surface's children resolves its iterable
+          // against that surface's frame (mirrors the mixin fold's `entry.spineFrame`
+          // push): an inner `each(@list, …)` reads `@list` from the outer binding.
+          const entryFrame = entry.spineFrame;
+          const savedRulesContext = entryFrame ? spineContext.rulesContext : undefined;
+          if (entryFrame) {
+            spineContext.rulesContext = entryFrame;
+          }
+          const restoreFrame = <T>(value: T): T => {
+            if (entryFrame) {
+              spineContext.rulesContext = savedRulesContext;
+            }
+            return value;
+          };
+          const resolution = evalIsolatingSpinePrintState(
+            spineContext,
+            () => forNode.spineIterationSurfaces(spineContext)
+          );
+          const apply = (surfaces: Rules[]): MaybePromise<void> => {
+            restoreFrame(undefined);
+            const childEntries: RenderRuleEntry[] = surfaces.flatMap(surface =>
+              surface.rules.map(child => ({ node: child, spineFrame: surface, mergeOwner: entryNode })));
+            rulesToRender.splice(i, 1, ...childEntries);
+            mixinExpansionOccurred = true;
+            recomputeDeclCounts();
+            return expandFrom(i);
+          };
+          return isThenable(resolution)
+            ? resolution.then(apply, (error: unknown) => {
+                restoreFrame(undefined);
+                throw error;
+              })
+            : apply(resolution);
+        }
+        return undefined;
+      };
+      return expandFrom(0);
+    };
+
     const runDedupPass = (): MaybePromise<void> => {
       const stepFrom = (i: number): MaybePromise<void> => {
         for (let idx = i; idx >= 0; idx--) {
@@ -1707,7 +1782,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     // dedup + statement framing.
     const runExpansions = (): MaybePromise<void> => {
       const imports = runSpineImportExpansion();
-      return isThenable(imports) ? imports.then(runSpineMixinExpansion) : runSpineMixinExpansion();
+      // LOOP fold runs BEFORE the mixin pass so a loop body's mixin call is expanded
+      // by the mixin pass over the post-splice sequence (the mixin pass scans the whole
+      // `rulesToRender`, including For-spliced children).
+      const afterImports = (): MaybePromise<void> => {
+        const loops = runSpineForExpansion();
+        return isThenable(loops) ? loops.then(runSpineMixinExpansion) : runSpineMixinExpansion();
+      };
+      return isThenable(imports) ? imports.then(afterImports) : afterImports();
     };
     const expand = runExpansions();
     // MERGE-ACROSS-MIXIN fold: after mixin-call expansion has spliced surface

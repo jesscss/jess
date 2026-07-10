@@ -813,6 +813,81 @@ export class For extends Rules<StructuredLoopValue> {
     }
     return renderControlToString(buffer => this.renderIterations(context, buffer, bufferOrOptions));
   }
+
+  /**
+   * SPINE FOLD (cutover LOOP increment 1): produce one bound-body surface per loop
+   * iteration WITHOUT eval-materializing the body — the single-pass analogue of
+   * `evalNode`'s per-iteration `createForIterationSurface` + `iterationRules.eval`.
+   * Each surface holds per-iteration COPIES of the loop body children (reusing scalar
+   * leaves) under a fresh scope frame whose live slots carry the iteration's
+   * `@value`/`@key`/counter bindings; the spine descends those children against that
+   * frame, so distinct nodes emit per-iteration bytes exactly as the eval path
+   * resolves them (distinct nodes are required for the node-keyed merge re-plan / dedup
+   * — see the copy comment below). The iterable + each entry's value/key are STILL eval'd
+   * (they are values, not the loop body), matching `createForIterationSurface`.
+   * Returns the ordered surfaces; the caller (`serialize-helper` loop expansion)
+   * splices their children in order, so a `+_:` merge across iterations coalesces via
+   * the post-expansion merge re-plan exactly like a merge across mixin outputs.
+   */
+  async spineIterationSurfaces(context: Context): Promise<Rules[]> {
+    const { pattern, iterable } = this;
+    const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
+    const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
+      ? context.rulesContext.getScopeFrame()
+      : undefined;
+    const surfaces: Rules[] = [];
+    let counter = 1;
+    const evaluatedIterable = await iterableToNode(iterable).eval(context);
+    for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
+      const resolvedValue = await value.eval(context);
+      let resolvedKey: Node;
+      if (typeof key === 'number') {
+        resolvedKey = new Num(key + 1);
+      } else if (typeof key === 'string' && key === 'value') {
+        resolvedKey = new Num(counter);
+      } else if (isNode(key)) {
+        resolvedKey = await key.eval(context);
+      } else {
+        resolvedKey = new Any(String(key), { role: 'property' });
+      }
+      const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
+      const liveSlots = new Map<string, BindingCell>();
+      for (let i = Math.min(bindingDecls.length, bindings.length) - 1; i >= 0; i--) {
+        const bindingDecl = bindingDecls[i]!;
+        liveSlots.set(bindingNames[i]!, {
+          value: bindings[i]!,
+          sourceNode: bindingDecl,
+          readonly: bindingDecl.options?.readonly
+        });
+      }
+      // COPY the body children per iteration (reusing scalar leaves —
+      // `copyWithReusableLeaves` only deep-copies containers). Distinct nodes per
+      // iteration are required so the spine's node-keyed resolution (the merge
+      // re-plan's `frameByDecl` WeakMap, the dedup `computeDeclKey`) binds each
+      // iteration's decl to ITS OWN frame — a SHARED node would collapse to one
+      // (last-wins) frame and every iteration would resolve the last binding
+      // (`each(1 2 3, {p+_: @value})` → `1 2 3`, not `3 3 3`). Same discipline as the
+      // eval path's `$while` copy; the reused-leaf copy keeps the cost bounded.
+      const surface = new Rules(
+        this.rules.map(child => copyWithReusableLeaves(child)),
+        { ...this.options },
+        undefined,
+        this.sourceRoot?._treeContext
+      );
+      surface.sourceNode = this.sourceNode ?? this;
+      makeDirectiveRulesPublic(surface);
+      surface.scopeFrame = buildScopeFrame(undefined, surface, parentFrame, liveSlots, undefined, true);
+      // Prepare registration so an INTERPOLATED declaration NAME (`item-@{value}:`)
+      // resolves against this iteration's frame — the name identity is resolved in
+      // `prepareRegistration` (`_prepareDeclarationNameIdentity`), NOT in `Declaration.
+      // evalNode` (value-only), so the spine leaf emit alone leaves it a placeholder.
+      // Mirrors the eval path's `createForIterationSurface` (which also prepares).
+      const prepared = await surface.prepareRegistration(context);
+      surfaces.push(prepared);
+      counter++;
+    }
+    return surfaces;
+  }
 }
 
 export type WhileValue = {

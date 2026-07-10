@@ -2360,4 +2360,79 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('LOOP-1 (each/$for): a container-nested `each(list, {…})` loop FOLDS byte-identically (derive=0)', async () => {
+    // `each(list, {…})` and `$for` both parse to a `For` node. A loop nested in a
+    // ruleset/at-rule now folds on the spine: `runSpineForExpansion` produces one
+    // bound-body surface per iteration (`For.spineIterationSurfaces`) and splices its
+    // children with the `@value`/`@key`/counter frame, so the loop-variable-bound
+    // decls resolve in-pass — no eval two-walk (`Rules.derive` = 0). An INTERPOLATED
+    // decl name (`item-@{value}`) resolves via the surface's registration prep.
+    const compiler = makeCompiler();
+    const src = '.paren-escapes {\n  each(~(1 2 3); {\n    item-@{value}: @value + 3;\n  })\n}';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (loop fold)
+      expect(deriveCalls).toBe(0); // loop iterations spliced on the spine, no output tree
+      expect(css).toBe('.paren-escapes {\n  item-1: 4;\n  item-2: 5;\n  item-3: 6;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('LOOP-1 (merge across iterations): an `each(list, {p+_: …})` loop coalesces to ONE property, folded (derive=0)', async () => {
+    // The `starting-style` shape: each iteration emits a space-merge decl (`padding+_:`)
+    // and all iterations coalesce into a single property (eval flattens all iteration
+    // outputs into one body). The loop fold gives every iteration surface the SAME
+    // `mergeOwner` (the `For` node), so the post-expansion merge re-plan
+    // (`replanMergesIfExpanded`) coalesces the spliced merge decls exactly like a merge
+    // across the eval-flattened outputs.
+    const compiler = makeCompiler();
+    const src = '@supports (display: grid) {\n  each(1 2 3 4, {\n    padding+_: (@value * 10px);\n  });\n}';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (loop + merge fold)
+      expect(deriveCalls).toBe(0); // merge-across-iterations coalesced in-pass
+      expect(css).toBe('@supports (display: grid) {\n  padding: 10px 20px 30px 40px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('LOOP-1 RESIDUAL (root-direct loop): a ROOT-DIRECT `each(…)` stays on eval (byte-identical, distinct increment)', async () => {
+    // A loop DIRECTLY at document root renders through `Rules._emitRulesBody` (a distinct
+    // root emitter from the container serializer that owns `runSpineForExpansion`), which
+    // treats a `For` as a transparent child-Rules and emits its unexpanded body. So a
+    // root-direct loop stays on eval — byte-identical, a sequenced increment (the container-
+    // nested loop above folds). NOT a silent fold: `derive` fires.
+    const compiler = makeCompiler();
+    const src = 'each(1 2 3, {\n  .item-@{value} { width: (@value * 1px); }\n})';
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(deriveCalls).toBeGreaterThan(0); // root-direct loop → eval, residual not a fold
+      expect(css).toBe('.item-1 {\n  width: 1px;\n}\n.item-2 {\n  width: 2px;\n}\n.item-3 {\n  width: 3px;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });
