@@ -27,6 +27,7 @@ import { planBodyMerges, planEntrySequenceMerges, type SpineMergeEntry, type Spi
 import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
 import { applyBodySetDefined, type SetDefinedApplyResult } from './spine-setdefined.js';
 import { Reference } from '../reference.js';
+import { Condition } from '../condition.js';
 
 type TriviaSide = 'before' | 'after';
 type SerializeProfileCounter =
@@ -1860,6 +1861,40 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
  * selector, not the raw `@{…}` template.
  */
 function serializeSpineFrameContainer(
+  node: Ruleset,
+  options: FinalPrintOptions,
+  closeFramesOnExit: boolean,
+  context: NonNullable<FinalPrintOptions['context']>
+): MaybePromise<string> {
+  // GUARD-FOLD: a `when`-guarded ruleset evaluates its guard at DESCENT against the
+  // ENCLOSING live frame (definition-time, NOT caller scope) — exactly as the eval
+  // path's `Ruleset.evalNode` (`guard.evaluateBoolean` / `Condition.resultPasses`).
+  // A failing guard emits NOTHING (eval returns Nil); a passing guard descends the
+  // body. Evaluated HERE, before the node's own scope frame / `rulesContext` swap, so
+  // its free vars resolve against the enclosing scope (`context.frames` top is still
+  // the enclosing ruleset). The source `node.guard` is NOT mutated (unlike eval, which
+  // COW-derives a fresh node) — the spine renders the source directly and may re-render
+  // it. Zero-cost when `node.guard` is unset (the common case). `isSpineEligibleContainer`
+  // has already excluded a not-yet-materialized STRING guard.
+  const guard = node.guard;
+  if (guard instanceof Node && !(guard instanceof Nil)) {
+    const guardResult = guard instanceof Condition
+      ? guard.evaluateBoolean(context)
+      : guard.eval(context);
+    const decideGuard = (result: boolean | Node): MaybePromise<string> => {
+      if (!Condition.resultPasses(result)) {
+        return '';
+      }
+      return serializeSpineFrameContainerUnguarded(node, options, closeFramesOnExit, context);
+    };
+    return isThenable(guardResult)
+      ? guardResult.then(decideGuard)
+      : decideGuard(guardResult);
+  }
+  return serializeSpineFrameContainerUnguarded(node, options, closeFramesOnExit, context);
+}
+
+function serializeSpineFrameContainerUnguarded(
   node: Ruleset,
   options: FinalPrintOptions,
   closeFramesOnExit: boolean,

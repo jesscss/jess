@@ -633,13 +633,17 @@ function bodyHasAppendChild(children: readonly Node[]): boolean {
 
 /**
  * A nested CONTAINER child THIS phase can descend through the spine: a plain
- * `Ruleset` with a non-Nil selector, no guard, a spine-eligible body, and a
- * selector whose composition the spine folds. Admitted: plain `&` composition
- * (`&.foo`, `& + &`, `&:hover`, bare `&`) + interpolation. Excluded (still eval
- * path, precise reasons): AMPERSAND-APPEND (`&-modifier` — the anonymous-append
+ * `Ruleset` with a non-Nil selector, a spine-eligible body, and a selector whose
+ * composition the spine folds. Admitted: plain `&` composition (`&.foo`, `& + &`,
+ * `&:hover`, bare `&`) + interpolation, and (guard-fold) a `when`-GUARDED ruleset
+ * whose guard is a `Condition`/Node — its guard is evaluated at descent
+ * (`serializeSpineFrameContainer`) against the live enclosing frame exactly as the
+ * eval path's `Ruleset.evalNode` does (`evaluateBoolean` / `resultPasses`); a
+ * failing guard emits nothing, a passing one descends the body. Excluded (still
+ * eval path, precise reasons): AMPERSAND-APPEND (`&-modifier` — the anonymous-append
  * materialize+hoist is eval-pass machinery, `selectorHasAmpersandAppend`),
- * extend-bearing/reference/guarded rulesets, at-rules routed to
- * `isSpineEligibleAtRule`, mixins.
+ * extend-bearing/reference rulesets, a not-yet-materialized STRING guard, at-rules
+ * routed to `isSpineEligibleAtRule`, mixins.
  */
 function isSpineEligibleContainer(node: Node, allowExtend = false, allowImport = false): boolean {
   if (isNode(node, N.AtRule)) {
@@ -652,7 +656,13 @@ function isSpineEligibleContainer(node: Node, allowExtend = false, allowImport =
   if (ruleset.selector instanceof Nil || ruleset.selector == null) {
     return false;
   }
-  if (ruleset.guard) {
+  // GUARD-FOLD: a `when`-guarded ruleset is admitted when its guard is a `Condition`
+  // (or another evaluatable Node) — `serializeSpineFrameContainer` evaluates it at
+  // descent, byte-identical to `Ruleset.evalNode`'s definition-time guard eval. A
+  // STRING guard (pre-materialization form) is not statically evaluatable here, so it
+  // stays on the eval path (that path materializes it first). Zero-cost when
+  // `ruleset.guard` is unset (the common case bails on the first `&&`).
+  if (ruleset.guard && typeof ruleset.guard === 'string') {
     return false;
   }
   const options = ruleset.options as { referenceMode?: boolean; ownSelector?: unknown } | undefined;

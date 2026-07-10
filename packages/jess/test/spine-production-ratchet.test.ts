@@ -2121,4 +2121,67 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       )
     ).rejects.toThrow(/not defined/);
   });
+
+  it('GUARD-FOLD: the FULL `namespacing-7` fixture (bare-`&` `when` ruleset guards) FOLDS byte-identically (derive=0)', async () => {
+    // `namespacing-7.less`: root-level `& when (#ns.options[option])` / `& when (@ns[@options][option])`
+    // guarded rulesets (both static-namespace `#ns` and detached-ruleset `@ns` lookups), including
+    // `= true` (pass) and `= false` (fail → NO output) branches. The guard is evaluated at DESCENT
+    // against the enclosing frame — exactly as `Ruleset.evalNode`'s definition-time guard eval
+    // (`Condition.evaluateBoolean` / `resultPasses`) — so a failing branch (`.no-reach`/`.dr-no-reach`)
+    // emits nothing and a passing one descends its body, byte-identical to eval / less@4's
+    // `namespacing-7.css`, with NO eval two-walk.
+    const compiler = makeCompiler();
+    const lessPath = path.join(testDataRoot, 'tests-config/namespacing/namespacing-7.less');
+    const expected = readFileSync(path.join(testDataRoot, 'tests-config/namespacing/namespacing-7.css'), 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, {});
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path (guard fold)
+      expect(deriveCalls).toBe(0); // no eval two-walk → the guard-fold, not a silent eval fallback
+      expect(result.css).toBe(expected); // byte-identical: `= false` branches suppressed
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('GUARD-FOLD: ruleset-level `when` PASS/FAIL + NESTED guarded rulesets FOLD byte-identically (derive=0)', async () => {
+    // A `when`-guarded ruleset folds on the spine: PASS descends the body, FAIL emits nothing —
+    // at root AND nested, byte-identical to the eval path. The guard eval mirrors
+    // `Ruleset.evalNode` exactly (`Condition.evaluateBoolean`), so no eval output-tree is
+    // materialized (`derive` uncalled). A NAMED guarded ruleset (`.wrap when`) and a bare-`&`
+    // guarded ruleset both fold.
+    const compiler = makeCompiler();
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const src = [
+        '@opt: true;',
+        '@off: false;',
+        '.pass when (@opt) { color: red; }',        // PASS at root
+        '.fail when (@off) { color: blue; }',        // FAIL at root → no output
+        '.a {',
+        '  .nested-pass when (@opt) { c: d; }',      // PASS nested
+        '  .nested-fail when (@off) { c: e; }',      // FAIL nested → no output
+        '  e: f;',
+        '}'
+      ].join('\n');
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less', suppressWarnings: true });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // true fold — no eval output tree
+      expect(css).toBe('.pass {\n  color: red;\n}\n.a .nested-pass {\n  c: d;\n}\n.a {\n  e: f;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });
