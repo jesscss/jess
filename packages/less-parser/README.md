@@ -89,6 +89,12 @@ Note the Less-specific nodes: a top-level `@c: …` becomes a `VarDeclaration`, 
 
 Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `NamedColor`, `InterpolatedSelector`) into their child.
 
+### Name-independent condition arguments
+
+A top-level condition operator (`> < >= <= = and or not`) inside **any** call's argument parses as a `Condition` node — there is **no** parse-time name-dispatch on `if`/`boolean`. `if(@a > 5, 1, 2)`, `boolean(not(2 < 1))`, `#ns.if(@a > 5)`, and `foo(@a > 5 and @b < 2)` all route through the ordinary function/mixin `Call` production; the shared call-arg rule (`ArgCondition` → `CondArgOr`/`CondArgAnd`/`CondArgTerm`) layers the condition-operator precedence chain on top of the normal value production. The layer is structurally gated: it only matches when a real operator is present, so a plain value / space-list argument (and mixin-definition params) fall through to the unchanged `valueSequence` byte-identically. Eval treats `if`/`boolean` as ordinary registered functions that consume the parsed `Condition`, so this is a parse-only unification (a deliberate v5 loosening vs Less 4.x, which name-dispatched and errored on the namespaced/generic forms).
+
+One known gap: a namespace/accessor call in **value** position (`b: #ns.if(@a > 5)`, `b: .if(@a > 5)`) is reassembled from a raw permissive-paren capture (`_buildRefCallArgs`), a separate shallow path that does not run the condition layer — its args stay a value list. Statement-position (`#ns.if(@a > 5) { }` / bare `#ns.if(@a > 5)`) and all function-call forms are covered.
+
 ## Extending with your own builders
 
 The grammar is decoupled from the tree it builds. Every capitalized rule is a parseman `node()`; when you drive a grammar with a `build` host, each `node()` calls your host instead of constructing the default CST. Use parseman's `run` with your own host and the grammar's trivia rule:
