@@ -8,6 +8,7 @@ import type { Selector } from './selector.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { ERR } from '../jess-error.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
@@ -21,6 +22,33 @@ import {
 // but is also easily typeable for tests
 export const INTERPOLATION_PLACEHOLDER = '%%';
 
+/** True if `str` contains a comma at the top level (outside quotes and ()/[] groups). */
+function hasTopLevelComma(str: string): boolean {
+  let depth = 0;
+  let inQuote: string | null = null;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]!;
+    if (inQuote) {
+      if (ch === inQuote && str[i - 1] !== '\\') {
+        inQuote = null;
+      }
+    // eslint-disable-next-line @stylistic/quotes
+    } else if (ch === '"' || ch === "'") {
+      inQuote = ch;
+    } else if (ch === '(' || ch === '[') {
+      depth++;
+    } else if (ch === ')' || ch === ']') {
+      depth--;
+    } else if (ch === ',' && depth === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// A genuine selector-list / complex replacement is wrapped in a generated `:is(…)` when
+// embedded in a larger selector. (A comma-list *value* is NOT — that's an error; see
+// createSelector.)
 function shouldWrapSelectorInIs(replacement: Node): boolean {
   if (isNode(replacement, N.SelectorList)) {
     return true;
@@ -33,8 +61,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     const arg = (replacement as unknown as { value: unknown }).value;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
-  const str = String(replacement.valueOf?.() ?? replacement);
-  return str.includes(',');
+  return false;
 }
 
 function getIsWrapperArg(replacement: Node): Node {
@@ -310,7 +337,11 @@ export class Interpolated<
         }
         return copied.inherit(this);
       }
-      return new BasicSelector(stringifyReplacement(replacement, {}, this.options.preserveQuotedSyntax).trim()).inherit(this);
+      const wholeText = stringifyReplacement(replacement, {}, this.options.preserveQuotedSyntax).trim();
+      if (hasTopLevelComma(wholeText)) {
+        throw ERR.commaListInterpolation({ meta: { selector: this.valueOf() } });
+      }
+      return new BasicSelector(wholeText).inherit(this);
     }
     let output = '';
     let sourceOffset = 0;
@@ -331,6 +362,12 @@ export class Interpolated<
     // Preserve any trailing literal segment after the last interpolation placeholder.
     if (sourceOffset < source.length) {
       output += source.slice(sourceOffset);
+    }
+    // A comma-list VALUE spliced into a selector can't be a selector position — error
+    // (distribute with each() instead). Commas inside a generated `:is(…)` are nested,
+    // not top-level, so a genuine selector-list interpolation is unaffected.
+    if (hasTopLevelComma(output)) {
+      throw ERR.commaListInterpolation({ meta: { selector: this.valueOf() } });
     }
     // Interpolated selector output can produce compound selectors (e.g. ".a#b").
     // Preserve token boundaries so direct callable lookup can match correctly.
