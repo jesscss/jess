@@ -258,12 +258,6 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     sequence(g.GuardAnd, many(sequence(choice(regex(/or(?![-\w])/), literal(',')), g.GuardAnd))));
   const Guard = node(
     sequence(regex(/when(?![-\w])/), g.GuardOr));
-  // `if(cond, then, else)` / `boolean(cond)` reuse the guard sub-grammar, but the
-  // top-level `,` is the ARGUMENT separator, not a guard `or`. `CondOr` is `GuardOr`
-  // without the comma alt (a comma inside `(...)` is still an `or`, handled by the
-  // nested GuardInParens → GuardOr). Builds via the shared 'GuardOr' fold.
-  const CondOr = node('GuardOr',
-    sequence(g.GuardAnd, many(sequence(regex(/or(?![-\w])/), g.GuardAnd))));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
   // `&` glued to a suffix (`&1`, `&-bar`) OR a prefix (`.foo-&`, `#bar-&`) — Less
@@ -492,7 +486,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // arithmetic. @see https://drafts.csswg.org/css-syntax/#urange-syntax
   const UnicodeRange = node(
     regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/));
-  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.Dimension, g.Num, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.Dimension, g.Num, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.CalcCall, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
@@ -631,12 +625,23 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // A bounded value/space-list operand: a `valueSequence` that stops at a top-level
   // condition operator (so `@a > 5 and @b` splits into operands, not one space-list).
   const condOperand = oneOrMore(sequence(not(condStopAhead), g.topSum));
-  // A single condition term: optional leading `not`, then either a comparison
-  // (`left <op> right`) or a bare bounded value. `not (…)` / `not(…)` negates the
-  // term; the paren-group case is just the value-Paren operand (which parses its own
-  // inner comparison), so no separate paren-condition rule is needed.
+  // A PARENTHESIZED sub-condition operand: `( CondArgOr )`. Necessary because a `(`
+  // glued to a preceding word (`not(…)`) takes the permissive mixin-arg Paren, whose
+  // body is a raw value list — it would NOT parse the inner `2 > 1` as a comparison.
+  // Parsing the paren body as a full `CondArgOr` restores the guard-grammar behaviour
+  // (`not(2 > 1)`, `(@a > 0)`, `(true)`), built into a `Paren` wrapping the condition.
+  const CondArgParen = node('GuardInParens',
+    sequence(literal('('), g.CondArgOr, expect(literal(')'))));
+  // A single-operand core: a parenthesized sub-condition OR a bounded value, with an
+  // optional trailing `<op> right` comparison.
+  const condCore = sequence(
+    choice(g.CondArgParen, condOperand),
+    optional(sequence(compareOp, choice(g.CondArgParen, condOperand))));
+  // A single condition term: optional leading `not`, then the operand core. `not`
+  // negates the term into a `Condition{negate}`; a bare comparison folds into
+  // `Condition[left, op, right]`; a plain operand passes through.
   const CondArgTerm = node(
-    sequence(optional(notKw), condOperand, optional(sequence(compareOp, condOperand))));
+    sequence(optional(notKw), condCore));
   const CondArgAnd = node('CondArgAnd',
     sequence(g.CondArgTerm, many(sequence(andKw, g.CondArgTerm))));
   const CondArgOr = node('CondArgOr',
@@ -647,8 +652,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // builder — the tag is shared, so `not`/comparison fold into a `Condition`.
   const CondArgTermOp = node('CondArgTerm',
     choice(
-      sequence(notKw, condOperand, optional(sequence(compareOp, condOperand))),
-      sequence(condOperand, compareOp, condOperand)
+      sequence(notKw, condCore),
+      sequence(choice(g.CondArgParen, condOperand), compareOp, choice(g.CondArgParen, condOperand))
     ));
   // An `and`-group that carries ≥1 operator: either its FIRST term is operator-bearing,
   // or it has an explicit `and`. Built via the shared `CondArgAnd` fold.
@@ -739,23 +744,14 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     ));
 
   // ── Logical / conditional functions (Less) ──────────────────────────────────
-  // `boolean(cond)` and `if(cond, then[, else])` take a GUARD expression as their
-  // condition — the same `and`/`or`/`not`/comparison sub-grammar used by `when`
-  // guards (GuardOr) — so an infix `true and isnumber(6)`, a `not(2 > 1)`, or a
-  // `2 < 1` comparison parses into a Condition, not a bare value list. The
-  // then/else branches of `if` are ordinary call arguments (values OR detached
-  // rulesets: `if(cond, {c: 3}, {d: 4})`). Ordered before the generic `Call` in
-  // `value` so the keyword routes here; every other name falls to `Call`.
-  const BooleanCall = node(
-    sequence(
-      regex(/boolean(?![-\w])/i), literal('('), g.CondOr, expect(literal(')'))
-    ));
-  const IfCall = node(
-    sequence(
-      regex(/if(?![-\w])/i), literal('('), g.CondOr,
-      optional(sequence(regex(/[,;]/), callArgSeq, optional(sequence(regex(/[,;]/), callArgSeq)))),
-      expect(literal(')'), ')')
-    ));
+  // `if(cond, then[, else])` and `boolean(cond)` are NOT name-dispatched in the
+  // grammar: they are ordinary function `Call`s whose condition argument parses
+  // through the name-independent `ArgCondition` layer (a top-level `> < >= <= = and
+  // or not` in ANY call's argument becomes a `Condition`). Eval already registers
+  // `if`/`boolean` as ordinary functions that consume the parsed condition — so this
+  // is a parse-only unification: `if`/`boolean`/`#ns.if`/`.if`/`foo` all route through
+  // one `Call` production. The `and`/`or`/`not`/comparison sub-grammar the `when`
+  // guard uses (GuardOr) is unchanged; only the value-position call dispatch merged.
 
   // ── Deprecated Less `%()` string-format function ─────────────────────────────
   // `%(format, args…)` is printf-style formatting. We LOWER it at build time into a
@@ -824,13 +820,13 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     rw,
     stylesheetItem, blockItem,
     Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
-    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, CondOr, Guard,
-    CondArgTerm, CondArgAnd, CondArgOr, CondArgTermOp, CondArgAndOp, ArgCondition,
+    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
+    CondArgParen, CondArgTerm, CondArgAnd, CondArgOr, CondArgTermOp, CondArgAndOp, ArgCondition,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Dimension, Url,
-    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, IfCall, BooleanCall, FormatCall, SquareParen, anyValue, EachFor,
+    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, anyValue, EachFor,
     QueryAtRuleBlock, ImportAtRuleStatement,
     AtRuleBlock, AtRuleStatement, atRuleBody
   };

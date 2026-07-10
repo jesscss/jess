@@ -188,6 +188,70 @@ describe('booleanFunction', () => {
   });
 });
 
+describe('nameIndependentConditionArgs', () => {
+  // A top-level condition operator (`> < >= <= = and or not`) inside ANY call's
+  // argument parses as a `Condition` — no name dispatch on `if`/`boolean`. Eval
+  // already treats `if`/`boolean` as ordinary functions consuming the condition.
+  const condOut = (src: string) => {
+    const { errors, tree } = parser.parse(src);
+    expect(errors.length).toBe(0);
+    return serializeTypes(tree, { showOptions: false });
+  };
+
+  it('generic call: `foo(@a > 5, 1, 2)` first arg is a Condition', () => {
+    const out = condOut('a { b: foo(@a > 5, 1, 2) }');
+    expect(out).toContainString('(Condition');
+    expect(out).toContainString('key: \'foo\'');
+  });
+
+  it('generic call: `foo(@a > 5 and @b < 2)` folds an `and` chain of Conditions', () => {
+    const out = condOut('a { b: foo(@a > 5 and @b < 2) }');
+    // left comparison, right comparison, and the `and` join = 3 Conditions.
+    expect((out.match(/\(Condition/g) || []).length).toBe(3);
+  });
+
+  it('statement namespace call: `#ns.if(@a > 5)` arg is a Condition', () => {
+    const out = condOut('a { #ns.if(@a > 5) }');
+    expect(out).toContainString('(Condition');
+  });
+
+  it('generic call: `foo(not(2 < 1))` is a negated Condition', () => {
+    const out = condOut('a { b: foo(not(2 < 1)) }');
+    expect(out).toContainString('(Condition');
+  });
+
+  it('generic call: `foo(true or false)` folds an `or` Condition', () => {
+    const out = condOut('a { b: foo(true or false) }');
+    expect(out).toContainString('(Condition');
+  });
+
+  it('plain value / space-list args do NOT become Conditions', () => {
+    for (const src of [
+      'a { b: foo(1px solid red) }',
+      'a { b: foo(x, y, z) }',
+      'a { b: calc(1 + 2) }',
+      'a { b: translate(1px, 2px) }'
+    ]) {
+      const out = condOut(src);
+      expect(out).not.toContainString('(Condition');
+    }
+  });
+
+  it('lock: `boolean(not(2 < 1))` still parses to a negated Condition (audited form)', () => {
+    const out = condOut('a { b: boolean(not(2 < 1)) }');
+    expect(out).toContainString('(Condition');
+    // `boolean`/`if` are ordinary Calls now — the name routes through the generic
+    // Call, not a name-dispatched IfCall/BooleanCall.
+    expect(out).toContainString('key: \'boolean\'');
+  });
+
+  it('lock: `if(@a > 5, 1, 2)` is a generic Call with a Condition first arg', () => {
+    const out = condOut('a { b: if(@a > 5, 1, 2) }');
+    expect(out).toContainString('key: \'if\'');
+    expect(out).toContainString('(Condition');
+  });
+});
+
 describe('callArgument', () => {
   it('should parse anonymous mixin as argument', () => {
     const { errors } = parse('.mixin({ color: red; })', 'MixinOrQualifiedRule');
