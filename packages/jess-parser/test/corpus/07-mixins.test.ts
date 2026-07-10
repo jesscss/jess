@@ -17,7 +17,7 @@
  * params `...$x`, and `$content()` callbacks are DEFERRED (see NOTES.md).
  */
 import { describe, it } from 'vitest';
-import { expectAstContains, expectRoundTrip } from './_util.js';
+import { expectAstContains, expectRoundTrip, expectParseRejected } from './_util.js';
 
 describe('corpus/mixins', () => {
   it('mixin definition (no params) → Mixin', () => {
@@ -116,6 +116,21 @@ describe('corpus/mixins', () => {
               (Num 0)
           )
       )`);
+  });
+
+  // A mixin `when` guard is STRICT on `and`/`or` joins (same rule as `$if`): a
+  // COMPARISON operand in a join must be parenthesised, and `and`/`or` can't be mixed
+  // at one level. A single bare comparison guard is fine.
+  it('mixin guard REJECTS a bare `and`-joined comparison', () => {
+    expectParseRejected('mixin($a, $b) when $a > 0 and $b > 0 { color: red; }');
+  });
+
+  it('mixin guard REJECTS mixing `and` and `or` at one level', () => {
+    expectParseRejected('mixin($a, $b, $c) when ($a > 0) and ($b > 0) or ($c > 0) { color: red; }');
+  });
+
+  it('mixin guard ACCEPTS the parenthesised join `($a > 0) and ($b > 0)`', () => {
+    expectAstContains('mixin($a, $b) when ($a > 0) and ($b > 0) { color: red; }', '(Condition');
   });
 
   it('Less-style names (`.m` / `#m`) build a Mixin, not a Ruleset', () => {

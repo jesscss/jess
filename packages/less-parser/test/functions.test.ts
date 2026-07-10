@@ -250,6 +250,48 @@ describe('nameIndependentConditionArgs', () => {
     expect(out).toContainString('key: \'if\'');
     expect(out).toContainString('(Condition');
   });
+
+  // Less accepts a bare `and`/`or` join in value-position condition args (verified
+  // against less@4.6.7 — `if`/`boolean` route their arg through `condition()` with no
+  // `needsParens`). We KEEP accepting it for Less parity, but NORMALISE the AST so
+  // each join operand is `Paren`-wrapped: the bare form builds the SAME tree as the
+  // explicitly-parenthesised form. Purely structural — the rendered CSS is unchanged
+  // (`Paren(Condition)` evaluates to the same boolean).
+  const normPair = (bare: string, paren: string) =>
+    expect(condOut(bare)).toBe(condOut(paren));
+
+  it('normalises `foo(@a > 5 and @b < 2)` to the parenthesised-operand tree', () => {
+    normPair('a { b: foo(@a > 5 and @b < 2) }', 'a { b: foo((@a > 5) and (@b < 2)) }');
+  });
+
+  it('normalises `foo(true or false)` to `foo((true) or (false))`', () => {
+    normPair('a { b: foo(true or false) }', 'a { b: foo((true) or (false)) }');
+  });
+
+  it('normalises the mixed `and`/`or` join `if(...)` to all-parenthesised operands', () => {
+    normPair(
+      'a { b: if(@a > 5 and @b < 2 or @c = 1, 1, 2) }',
+      'a { b: if((@a > 5) and (@b < 2) or (@c = 1), 1, 2) }'
+    );
+  });
+
+  // Less has implicit precedence — `and` binds tighter than `or` (verified against
+  // less@4.6.7: `if(@a>5 or @b>5 and @c<5, …)` evaluates as `@a>5 or (@b>5 and @c<5)`).
+  // The parser inserts implicit `Paren` nodes so the flat mixed form builds the SAME
+  // grouped AST as the explicitly-grouped precedence form. (Jess, by contrast, rejects
+  // flat mixing outright — no implicit precedence.)
+  it('normalises flat mixed `and`/`or` per Less precedence (`and` tighter than `or`)', () => {
+    normPair(
+      'a { b: if(@a > 5 or @b > 5 and @c < 5, 1, 2) }',
+      'a { b: if((@a > 5) or ((@b > 5) and (@c < 5)), 1, 2) }'
+    );
+  });
+
+  it('a single unjoined comparison arg is NOT wrapped in a synthetic Paren', () => {
+    const out = condOut('a { b: foo(@a > 5) }');
+    expect(out).toContainString('(Condition');
+    expect(out).not.toContainString('(Paren');
+  });
 });
 
 describe('callArgument', () => {

@@ -585,15 +585,34 @@ export class LessGrammar extends CssParser {
     return term as unknown as JessNode;
   }
 
-  /** Fold a left-associative `and`/`or` chain of condition-arg terms into Conditions. */
+  /**
+   * Fold a left-associative `and`/`or` chain of condition-arg terms into Conditions.
+   *
+   * Less accepts a bare `and`/`or` join in value-position condition args (`if(@a > 5
+   * and @b < 2, …)`) — verified against less@4.6.7 (`if`/`boolean` route their arg
+   * through `condition()` with no `needsParens`, so bare comparisons split on `and`/
+   * `or`). We keep accepting the bare form for Less parity, but NORMALIZE the AST so
+   * each join operand is `Paren`-wrapped: `@a > 5 and @b < 2` builds the SAME tree as
+   * the explicitly-parenthesised `(@a > 5) and (@b < 2)`. This is a structural
+   * normalisation only — `Paren(Condition)` evaluates to the same boolean as the bare
+   * `Condition`, so rendered CSS is byte-identical. A single unjoined operand (one
+   * node) is untouched (no synthetic Paren).
+   */
   private _buildCondArgJoin(children: ReadonlyArray<Child>, loc: LocationInfo, op: ConditionOperator): JessNode {
     const nodes = nodeChildren(children);
     if (nodes.length === 0) {
       return this._lessKeyword('', loc) as unknown as JessNode;
     }
-    let left = nodes[0]!;
+    if (nodes.length === 1) {
+      return nodes[0]! as unknown as JessNode;
+    }
+    const wrap = (n: Node): Node =>
+      (n as { type?: string }).type === 'Paren'
+        ? n
+        : (new Paren(n as any, {}, loc) as unknown as Node);
+    let left = wrap(nodes[0]!);
     for (let i = 1; i < nodes.length; i++) {
-      left = new Condition([left, op, nodes[i]!], {}, loc) as unknown as Node;
+      left = new Condition([left, op, wrap(nodes[i]!)], {}, loc) as unknown as Node;
     }
     return left as unknown as JessNode;
   }

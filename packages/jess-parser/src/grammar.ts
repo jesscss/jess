@@ -21,7 +21,7 @@
 import {
   rules, compose,
   node, regex, literal, sequence, choice, optional, noTrivia, trivia,
-  many, oneOrMore, expect, label
+  many, oneOrMore, expect, label, not
 } from 'parseman' with { type: 'macro' };
 import { cssGrammar } from '@jesscss/css-parser/grammar';
 
@@ -209,19 +209,62 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const condAtom = choice(g.Reference, g.Dimension, g.Num, g.Color, g.Quoted, condKeyword);
   const condNot = node('Condition',
     sequence(regex(/not(?![-\w])/), literal('('), g.condOr, expect(literal(')'))));
+  // A join OPERAND: a `not(…)`, a parenthesised sub-condition, or a bare atom — but
+  // NOT a bare comparison. `condPrimary`'s comparison route is the `( condOr )` alt.
   const condPrimary = choice(
     g.condNot,
     sequence(literal('('), g.condOr, literal(')')),
     condAtom
   );
+  // ── Jess condition grammar (LOCKED — owner-final spec) ───────────────────────
+  // Jess conditions are STRICT (media-query MQ4 style), NOT Less-permissive:
+  //
+  //   ATOM (no wrapping needed):
+  //     • a single comparison            `$a > 5`
+  //     • a bare value/keyword/variable  `true`, `$c`
+  //     • `not(<condition>)`             `not($a)`
+  //     • a parenthesised `(<condition>)`
+  //
+  //   JOIN (operands combined by `and` OR by `or` — one operator kind per level):
+  //     • a COMPARISON operand MUST be parenthesised — `($a>5) and ($b>2)`. A bare
+  //       comparison join `$a>5 and $b>2` is a PARSE ERROR (operator-boundary
+  //       ambiguity; only comparisons carry it).
+  //     • a bare NON-comparison atom operand is allowed — `($a>5) and true`,
+  //       `($a>5) and $c` (no ambiguity).
+  //     • same-operator chains are fine — `(A) and (B) and (C)`, `(A) or (B) or (C)`.
+  //     • MIXING `and` and `or` at one level is a PARSE ERROR — must group:
+  //       `((A) and (B)) or (C)` or `(A) and ((B) or (C))`. No implicit precedence
+  //       in Jess (unlike Less, where `and` binds tighter and the parser normalises).
+  //
+  // Mechanism: a pure `and`-chain / pure `or`-chain each consume ONLY their own
+  // operator via `many`. A mixed `(A) and (B) or (C)` parses `(A) and (B)` then
+  // leaves ` or (C)` unconsumed — the enclosing header's `)`/body never matches, so
+  // the whole construct fails to parse (a rejection). The `.less` side deliberately
+  // DIVERGES: it accepts these permissive forms and inserts implicit `Paren` nodes to
+  // reach this same grouped AST shape (see less-parser `_buildCondArgJoin`).
   const condCompare = node('Condition',
     sequence(g.condPrimary, optional(sequence(condCmpOp, g.condPrimary))),
     undefined, { collapse: true });
-  const condAnd = node('Condition',
-    sequence(g.condCompare, many(sequence(regex(/and(?![-\w])/), g.condCompare))),
+  // Pure `and`-chain: ≥2 operands joined ONLY by `and`. A trailing `or` is NOT
+  // consumed here, so a mixed chain surfaces as unconsumed input (a parse error).
+  const condPureAnd = node('Condition',
+    sequence(g.condPrimary, oneOrMore(sequence(regex(/and(?![-\w])/), g.condPrimary))),
     undefined, { collapse: true });
+  // Pure `or`-chain: ≥2 operands joined ONLY by `or`. A trailing `and` is likewise
+  // left unconsumed (a parse error), enforcing the no-mixing rule.
+  const condPureOr = node('Condition',
+    sequence(g.condPrimary, oneOrMore(sequence(regex(/or(?![-\w])/), g.condPrimary))),
+    undefined, { collapse: true });
+  // A whole condition: a pure `and`-chain, a pure `or`-chain, or a lone `condCompare`
+  // (single comparison or bare atom). The bare-`condCompare` alternative is guarded by
+  // a negative lookahead so it can't win when an `and`/`or` follows — forcing the
+  // strict chain alternatives (which reject bare-comparison operands and mixing).
   const condOr = node('Condition',
-    sequence(g.condAnd, many(sequence(regex(/or(?![-\w])/), g.condAnd))),
+    choice(
+      g.condPureAnd,
+      g.condPureOr,
+      sequence(g.condCompare, not(regex(/\s*(?:and|or)(?![-\w])/)))
+    ),
     undefined, { collapse: true });
   const controlBody = sequence(literal('{'), g.declarationList, expect(literal('}')));
 
@@ -453,7 +496,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     Expression, exprProduct, exprSum, exprCompare, JessKeyword,
     unwrapProductLead, unwrapProductRest, UnwrapArith,
     CollectionEntry, JessCollection,
-    condNot, condPrimary, condCompare, condAnd, condOr,
+    condNot, condPrimary, condCompare, condPureAnd, condPureOr, condOr,
     elseClause, forRange,
     If, For, While,
     MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall,
