@@ -1458,21 +1458,21 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // mixin body coalesces; distinct mixin bodies are last-wins). Byte-identical to eval
   // by construction (values resolved via the same `decl.eval`).
   //
-  // RESIDUALS (kept on eval, byte-identical):
-  //  1. A merge decl authored DIRECTLY in the caller body ALONGSIDE a mixin call
-  //     (`.r { .a(); transform+: s; }`) — caught by `bodyHasMixinCall &&
-  //     bodyHasDirectMergeDecl`: eval composes the direct decl's `+:` via a positional
-  //     prior-value Reference read the static plan does not model.
-  //  2. A mixin-contributed merge whose VALUE resolves ASYNC (contains a `Call` /
-  //     `Operation` / `Reference` — e.g. `transform+: rotate(90deg)`). Such a mixin
-  //     call resolves via the EVAL-FALLBACK expansion, whose async re-resolution +
-  //     duplicate-dedup path has a PRE-EXISTING header-drop bug (reproduces WITHOUT
-  //     any merge, e.g. two `color: rgb(…)` decls from two mixins). Gating it keeps the
-  //     fold byte-identical; SPEC: lift once the eval-fallback async-dedup frame bug is
-  //     fixed (tracked separately). `treeHasAsyncMergeContributingMixinCall` below.
-  if (treeHasMixinCall(root) && treeHasAsyncMergeContributingMixinCall(root)) {
-    return false;
-  }
+  // ASYNC-valued merge-across-mixin now FOLDS too (`transform+: rotate(90deg)` —
+  // a merge value containing a `Call`/`Operation`/`Reference`). It resolves via the
+  // EVAL-FALLBACK expansion, whose async value re-resolution used to clobber the live
+  // spine writer/frames: an unknown-`Call` eval renders its call syntax through
+  // `prepareRenderPrintState`, which RESETS the shared `context.printState` in place,
+  // swapping the writer mid-render and dropping the enclosing block header. That is
+  // now contained — every spine VALUE eval is wrapped in `evalIsolatingSpinePrintState`
+  // (`serialize-helper.ts`), so the scratch serialization leaves the live print state
+  // byte-identical. The former gate (`treeHasAsyncMergeContributingMixinCall`) is gone.
+  //
+  // RESIDUAL (still kept on eval, byte-identical):
+  //  - A merge decl authored DIRECTLY in the caller body ALONGSIDE a mixin call
+  //    (`.r { .a(); transform+: s; }`) — caught by `bodyHasMixinCall &&
+  //    bodyHasDirectMergeDecl`: eval composes the direct decl's `+:` via a positional
+  //    prior-value Reference read the static plan does not model.
   // LEAKY-MODE MIXIN-BODY VAR LEAK (a pre-existing spine gap, gated byte-identical).
   // In leaky Less mode a mixin body's plain `@x: …` VarDeclaration LEAKS into the
   // CALLER scope, so a later consumer (`.a { width: @x }`, or a call arg `@x`) reads
@@ -1825,70 +1825,11 @@ function treeHasRecursiveMixinCall(root: Node): boolean {
 }
 
 /**
- * MERGE-ACROSS-MIXIN residual gate (byte-identity guard). True if any spine-eligible
- * mixin CALL targets a mixin whose body contributes a property-MERGE decl whose VALUE
- * is non-static (contains a `Call` / `Operation` / `Reference` — resolves ASYNC). Such
- * a call resolves via the EVAL-FALLBACK expansion, whose async re-resolution + the
- * duplicate-declaration dedup pass has a PRE-EXISTING header-drop bug (it drops the
- * enclosing block header; reproduces WITHOUT any merge — two `color: rgb(…)` decls from
- * two mixins mis-render the same way). Keep such a tree on eval (byte-identical) until
- * that eval-fallback async-dedup frame bug is fixed. A STATIC-valued mixin merge (the
- * `merge.less` corpus shape, `transform+: a`) folds on the spine and is NOT gated here.
- *
- * Static name-graph over-approximation (mirrors `treeHasRecursiveMixinCall`): collect
- * the string-keyed mixin-definition names whose body (DEEP) carries an async-valued
- * merge decl, then report true iff any spine-eligible `Call` targets such a name.
- */
-function treeHasAsyncMergeContributingMixinCall(root: Node): boolean {
-  const asyncMergeMixinNames = new Set<string>();
-  for (const node of root.walk(true)) {
-    if (!isNode(node, N.Mixin) || typeof node.name !== 'string') {
-      continue;
-    }
-    for (const inner of node.walk(true)) {
-      if (isMergeDecl(inner) && mergeValueResolvesAsync(inner)) {
-        asyncMergeMixinNames.add(node.name);
-        break;
-      }
-    }
-  }
-  if (asyncMergeMixinNames.size === 0) {
-    return false;
-  }
-  for (const node of root.walk(true)) {
-    if (
-      isSpineEligibleMixinCall(node)
-      && isNode(node.name, N.Reference)
-      && typeof node.name.key === 'string'
-      && asyncMergeMixinNames.has(node.name.key)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * True if a merge declaration's VALUE contains a node that resolves ASYNC on the
- * value path — a `Call` (function), `Operation`, or `Reference` (variable). A merge
- * whose value is only static tokens (`Any` / literals) resolves sync and folds.
- */
-function mergeValueResolvesAsync(decl: Node): boolean {
-  for (const n of decl.walk(true)) {
-    if (isNode(n, N.Call | N.Operation | N.Reference)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
  * True for a property-MERGE declaration (`prop+:` / `prop+_:` / `&,:` / `&_:`),
  * not a var decl. Matches the RAW parser assign vocabulary (`+,:` is the parser's
  * form of a comma `+:` merge — normalized to `+:` only at eval time in
  * `declaration.ts`), so a static pre-eval scan sees it. Consulted by the
- * direct-body merge gate (`bodyHasDirectMergeDecl`) and the async residual gate
- * (`treeHasAsyncMergeContributingMixinCall`).
+ * direct-body merge gate (`bodyHasDirectMergeDecl`).
  */
 function isMergeDecl(node: Node): boolean {
   if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {

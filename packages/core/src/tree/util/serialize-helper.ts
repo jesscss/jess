@@ -131,6 +131,57 @@ function applySpineVisitorsEnter(
   return shape;
 }
 
+/**
+ * Run a spine-mode VALUE eval (`node.eval(context)`) that may internally serialize
+ * an unknown/passthrough `Call` — e.g. `rgb(1, 2, 3)`, `rotate(90deg)` — whose
+ * `Call.evalNode` renders its call syntax through `prepareRenderPrintState(context)`.
+ * That helper RESETS `context.printState` IN PLACE (fresh writer + fresh frame
+ * arrays). In the classic eval-then-emit flow that reset is harmless (no emit is in
+ * progress); in the SINGLE-PASS spine render `context.printState` IS the live emit
+ * state (`serializeRulesContainerInternal`'s `options` aliases it), so the reset
+ * swaps the writer/frames MID-RENDER. The body then writes leaf text via a writer
+ * captured at container-enter (`const w = options.writer`) but the block header via
+ * `frame.writeHeader(options)` → the now-swapped `options.writer`: the two diverge
+ * and the enclosing `.r { … }` header is dropped (it lands in a discarded writer).
+ *
+ * The value eval is a pure value→node resolution; it must leave the shared print
+ * state byte-identical. `prepareContextPrintState` only REASSIGNS a fixed set of
+ * existing fields (never adds new keys), so a shallow snapshot before the eval and
+ * an `Object.assign` restore after (sync AND async) puts the original writer + frame
+ * refs back — containing any nested scratch serialization.
+ */
+function evalIsolatingSpinePrintState<T>(
+  context: NonNullable<FinalPrintOptions['context']>,
+  run: () => MaybePromise<T>
+): MaybePromise<T> {
+  const ps = context.printState;
+  const snapshot = { ...ps };
+  const restore = (): void => {
+    Object.assign(ps, snapshot);
+  };
+  let result: MaybePromise<T>;
+  try {
+    result = run();
+  } catch (error) {
+    restore();
+    throw error;
+  }
+  if (isThenable(result)) {
+    return result.then(
+      (value: T): T => {
+        restore();
+        return value;
+      },
+      (error: unknown): never => {
+        restore();
+        throw error;
+      }
+    );
+  }
+  restore();
+  return result;
+}
+
 export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
   const serialize = (resolved: Node | Nil | undefined): string => {
     if (!resolved || resolved instanceof Nil) {
@@ -175,7 +226,7 @@ export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): Ma
       }
       return serialize(resolved);
     };
-    const evaluatedAnchor = node.eval(options.context!);
+    const evaluatedAnchor = evalIsolatingSpinePrintState(options.context!, () => node.eval(options.context!));
     return isThenable(evaluatedAnchor) ? evaluatedAnchor.then(withMergedValue) : withMergedValue(evaluatedAnchor);
   }
   // `?:` conditional-assign: the plan resolved the eval-path self-reference (prior
@@ -196,10 +247,10 @@ export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): Ma
       }
       return serialize(resolved);
     };
-    const evaluatedAnchor = node.eval(options.context!);
+    const evaluatedAnchor = evalIsolatingSpinePrintState(options.context!, () => node.eval(options.context!));
     return isThenable(evaluatedAnchor) ? evaluatedAnchor.then(withCondValue) : withCondValue(evaluatedAnchor);
   }
-  const resolved = node.eval(options.context!);
+  const resolved = evalIsolatingSpinePrintState(options.context!, () => node.eval(options.context!));
   return isThenable(resolved) ? resolved.then(serialize) : serialize(resolved);
 }
 
@@ -218,7 +269,7 @@ export function withSpineMergePlan(
   fn: () => MaybePromise<string>
 ): MaybePromise<string> {
   const resolveValue = (decl: Node): MaybePromise<Node | undefined> => {
-    const resolved = decl.eval(context);
+    const resolved = evalIsolatingSpinePrintState(context, () => decl.eval(context));
     const toValue = (node: Node | undefined): Node | undefined =>
       isNode(node, N.Declaration) ? node.valueNode() : undefined;
     return isThenable(resolved) ? resolved.then(toValue) : toValue(resolved);
@@ -227,7 +278,7 @@ export function withSpineMergePlan(
   // reference against the live frame (prior binding wins; else fallback). Undefined
   // when the body has no `?:` decl (the common case allocates + touches nothing).
   const resolveReference = (ref: Reference): MaybePromise<Node | undefined> => {
-    const resolved = ref.eval(context);
+    const resolved = evalIsolatingSpinePrintState(context, () => ref.eval(context));
     return isThenable(resolved)
       ? resolved.then((node: Node | undefined) => node ?? undefined)
       : resolved ?? undefined;
@@ -957,7 +1008,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             }
             return value;
           };
-          const resolution = resolveSpineMixinCall(entryNode, spineContext);
+          // Isolate the shared print state across the call resolution: the EVAL-
+          // FALLBACK expansion evaluates the mixin body (which may contain an unknown
+          // `Call` — `rotate(90deg)` — whose call-syntax render RESETS `context.print
+          // State` in place). Left unguarded that swaps the live spine writer/frames
+          // mid-render and drops the enclosing block header (see
+          // `evalIsolatingSpinePrintState`).
+          const resolution = evalIsolatingSpinePrintState(
+            spineContext,
+            () => resolveSpineMixinCall(entryNode, spineContext)
+          );
           const apply = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
             restoreFrame(undefined);
             // FOLD: splice each bound surface's children, TAGGED with the surface
@@ -1636,7 +1696,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       const resolveValueForReplan = (decl: Node): MaybePromise<Node | undefined> => {
         const frame = frameByDecl.get(decl);
         if (!frame) {
-          const resolved = decl.eval(replanContext);
+          const resolved = evalIsolatingSpinePrintState(replanContext, () => decl.eval(replanContext));
           return isThenable(resolved) ? resolved.then(toValue) : toValue(resolved);
         }
         const savedRulesContext = replanContext.rulesContext;
@@ -1646,7 +1706,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           return v;
         };
         try {
-          const resolved = decl.eval(replanContext);
+          const resolved = evalIsolatingSpinePrintState(replanContext, () => decl.eval(replanContext));
           return isThenable(resolved)
             ? resolved.then(
                 (n: Node | undefined) => restore(toValue(n)),

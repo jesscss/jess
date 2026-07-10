@@ -1265,15 +1265,27 @@ describe('emit-walk MIXIN-FOLD ratchet (cutover increment 1)', () => {
     expect(css2).toBe('.r {\n  transform: r, s;\n}'); // same-body coalesce
   });
 
-  it('RESIDUAL merge-across-mixin: an ASYNC-valued mixin merge stays on eval (eval-fallback async-dedup header-drop guard)', () => {
+  it('FOLDS merge-across-mixin: an ASYNC-valued mixin merge folds through the spine, byte-identical to eval', async () => {
     // `transform+: rotate(90deg)` — a merge value containing a `Call` resolves async,
-    // so the call takes the EVAL-FALLBACK expansion whose async re-resolution + dedup
-    // has a pre-existing header-drop bug. Gated to eval (byte-identical) until fixed.
+    // so the call takes the EVAL-FALLBACK expansion. That expansion (and the dedup
+    // key resolution) evaluates the unknown `Call`, whose call-syntax render used to
+    // RESET the shared `context.printState` in place — swapping the live spine writer
+    // mid-render and dropping the enclosing `.r { … }` header. Now every spine value
+    // eval is wrapped in `evalIsolatingSpinePrintState`, so the scratch serialization
+    // leaves the print state byte-identical and the merge folds (last-wins across the
+    // two distinct mixin bodies, matching eval).
     const source = '.a(){transform+: rotate(90deg);}\n.b(){transform+: scale(2);}\n.r{ .a(); .b(); }';
     const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const root = new Parser().parse(source).tree as unknown as Rules;
-    expect(isSpineEligibleRoot(root, context)).toBe(false);
+    expect(isSpineEligibleRoot(root, context)).toBe(true);
+    const before = spineRenderCounter.rootRenders;
+    const css = (await renderNodeToString(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      root as unknown as RenderBufferNode, context, { context, collapseNesting: false }
+    )).trim();
+    expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // ran the spine
+    expect(css).toBe('.r {\n  transform: scale(2);\n}'); // last-wins across distinct mixins
   });
 
   it('RESIDUAL merge-across-mixin: a DIRECT caller-body merge decl alongside a mixin call stays on eval', () => {
