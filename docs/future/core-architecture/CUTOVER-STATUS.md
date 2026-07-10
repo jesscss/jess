@@ -61,6 +61,12 @@ Tip: `origin/work/cutover-p1` = `5869859ad`.
 - **parseman trivia compiler change** (Option A fuse-time default vs B caller-context) — **owner's other agent**.
 - `:=` spine fold (mechanism-B); cross-scope `setDefined`; node-field slimming.
 
+## 🧩 Feature track (parallel to the cutover): Assignable control nodes
+See `ASSIGNABLE-CONTROL-NODES-PLAN.md` — make mixins/`each`/`$for`/`$if` value-returning (arrow-function shape).
+Sequencing (rationale: control nodes have TWO evaluators — eval + spine — until the D-EVAL flip; the plan's #1 risk is that divergence):
+- ⏸ **Phase 0** (`each(list, @($item) > *[…])` → SelectorList; jess PR #88): NEAR-TERM. Value-position → routed OFF the spine by construction, so it dodges the divergence risk pre-flip. Touches hot `control.ts`/`interpolated.ts` — land in a quiet window; bump ahead only if PR #88 is blocking. Effort medium / risk medium.
+- 🔒 **Phases 1–3** (general `result:` function-return primitive → generalize value-mode `each`/`$for`/`while` + `$if`-value → Less back-port `#(params) > <expr>`): AFTER the D-EVAL flip — single path post-flip means value-mode is implemented ONCE with no eval/spine sync. Do NOT build these pre-flip.
+
 ## 🎯 The deletions — D-EVAL flip (ALL-OR-NOTHING, gated on 100% coverage; one coordinated flip)
 Deletes together: eval two-walk (`evalForRender`/`Rules.derive`/`_deriveShell`) + output-tree staging + clone families (D1) + `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`/`F_CHILD_DERIVED` + `propagateFlagsFrom` (D2) + TreeVisitor/preSerializeRoot (D3) + **old extend apply** `extend-roots`/`processExtends`/legacy-`extend.ts` (D4) + `inherit` span (D5). `treeContext` (D6) is NOT independently deletable (it's the per-node provenance carrier — verified) → also rides the flip.
 
