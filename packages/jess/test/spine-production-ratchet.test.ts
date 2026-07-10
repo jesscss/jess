@@ -844,18 +844,46 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
     expect(css).toBe('.class {\n  color: red;\n  color: blue;\n}\n');
   });
 
-  it('DEFERRED: a self-recursive mixin (recursion + nested container) stays on eval (byte-identical)', async () => {
+  it('FOLD (§7 frame-threaded arg rung): a FLAT self-recursive mixin folds through the spine (no derive)', async () => {
+    // `.mixin-recursive(@n) when (@n>0) { level: @n; .mixin-recursive(@n-1) }` — a
+    // name-cycle whose body is declarations + the recursive call with a frame-dependent
+    // arg. Each level's freshly-bound param frame is threaded through the recursive
+    // call's arg-binding eval AND the spliced body decls' dedup-key + emit resolution
+    // (`computeDeclKey` / `processNode` push the entry's `spineFrame`), so `@n - 1`
+    // resolves against level N's `@n`. Byte-identical to eval / less@4, no output tree.
+    const compiler = makeCompiler();
+    const src = `.mixin-recursive(@n) when (@n > 0) {\n  level: @n;\n  .mixin-recursive(@n - 1);\n}\n.mixin-recursive(@n) when (@n <= 0) {\n  done: true;\n}\n.test-recursive {\n  .mixin-recursive(3);\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no output tree materialized
+      expect(css).toBe('.test-recursive {\n  level: 3;\n  level: 2;\n  level: 1;\n  done: true;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('DEFERRED (residual/IOU): a recursive mixin with a NESTED CONTAINER (STRIPE) stays on eval (byte-identical)', async () => {
     // `.stripe(@n) when (@n>0) { a { … } .stripe(@n-1) }` — recursion via a name-cycle
-    // AND a nested container. `treeHasRecursiveMixinCall` gates it to eval: a recursive
-    // call's frame-dependent arg (`@n - 1`) loses the per-level param frame on the
-    // recursive re-drive (`P4-TERMINAL-SINK-DESIGN.md` §7). REQUIRED P4 item.
+    // AND a nested container SHARED across levels. The re-entrant splice re-uses the
+    // same canonical `a { … }` child per level, collapsing two levels' blocks into one
+    // instead of eval's two distinct `.wrap a { … }` blocks. `treeHasRecursiveMixinCall`
+    // narrowly defers ONLY this container-in-cycle shape; FLAT recursion folds (above).
+    // Distinct-per-level container surfaces are a separate P4 item.
     const compiler = makeCompiler();
     const src = `.stripe(@n) when (@n > 0) {\n  a { border-width: @n; }\n  .stripe(@n - 1);\n}\n.wrap { .stripe(2); }`;
     const before = spineRenderCounter.rootRenders;
     const css = await compiler.renderString(src, { language: 'less' });
     expect(spineRenderCounter.rootRenders).toBe(before); // eval path
-    expect(css).toContain('border-width: 2');
-    expect(css).toContain('border-width: 1');
+    // eval renders both levels as DISTINCT blocks (byte-identical to less@4)
+    expect(css).toBe('.wrap a {\n  border-width: 2;\n}\n.wrap a {\n  border-width: 1;\n}\n');
   });
 
   it('INCREMENT 7: folds GUARDED (`when`) mixin calls through the spine on the COMPILER path (no derive)', async () => {

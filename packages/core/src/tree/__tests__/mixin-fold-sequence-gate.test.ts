@@ -13,15 +13,18 @@ import type { Rules } from '../rules.js';
  * `.wrapper(@c){ .base(@c) }`, a chain `.a(){ .b() }`, incl. frame-dependent args —
  * FOLDS through the spine byte-identical. `callMap` terminates genuine recursion.
  *
- * RECURSIVE calls STAY on eval (byte-identical, REQUIRED P4 item, gate-locked here):
- * a name-cycle among mixin defs (`treeHasRecursiveMixinCall`) — a recursive call's
- * frame-dependent ARG (`.loop((@n - 1))`) loses the per-level param frame on the
- * recursive re-drive (spec in `P4-TERMINAL-SINK-DESIGN.md` §7).
- * (NESTED-CONTAINER mixin bodies now FOLD — see `spine-production-ratchet.test.ts`;
- * the recursive `.stripe` below is BOTH recursion + nested container and stays on
- * eval via the recursion gate alone.) A change that folds a recursive loop (before
- * the frame-threaded recursive re-drive exists) trips RED; a change that RE-DEFERS
- * the wrapper to eval also trips RED.
+ * FLAT RECURSION now FOLDS (the frame-threaded arg-binding rung, §7): a self / mutual
+ * name-cycle whose body is declarations + the recursive call with a frame-dependent
+ * ARG (`.loop((@n - 1))`) folds byte-identical — each level's freshly-bound param frame
+ * is threaded through the recursive call's arg-binding eval AND the spliced body decls'
+ * dedup-key + emit resolution. `callMap` bounds the recursion.
+ *
+ * The ONE residual STAYS on eval (byte-identical, gate-locked here): a recursive cycle
+ * whose body has a NESTED CONTAINER shared across levels (STRIPE) — the re-entrant
+ * splice re-uses the same canonical container child per level, collapsing two levels'
+ * blocks. `treeHasRecursiveMixinCall` narrowly detects only that shape. A change that
+ * folds STRIPE (before distinct-per-level container surfaces exist) trips RED; a change
+ * that RE-DEFERS FLAT recursion or the wrapper to eval also trips RED.
  */
 async function render(source: string): Promise<{ css: string; eligible: boolean; spineRan: boolean }> {
   const context = new Context({ output: { collapseNesting: false }, leakyScope: true });
@@ -59,10 +62,17 @@ describe('mixin SEQUENCE gate — nested-call-in-body FOLDS (FOLD C); recursion 
     expect(r.css).toContain('border-width: 1');
   });
 
-  it('DEFERRED: a FLAT self-recursive loop (frame-dependent arg) stays on eval, byte-identical', async () => {
+  it('FOLD (§7 frame-threaded arg rung): a FLAT self-recursive loop (frame-dependent arg) FOLDS through the spine, byte-identical', async () => {
     const r = await render(`.loop(@n) when (@n > 0) { m: @n; .loop((@n - 1)); }\n.x { .loop(3); }`);
-    expect(r.eligible).toBe(false);
-    expect(r.spineRan).toBe(false);
+    expect(r.eligible).toBe(true);
+    expect(r.spineRan).toBe(true);
     expect(r.css).toBe(`.x {\n  m: 3;\n  m: 2;\n  m: 1;\n}`);
+  });
+
+  it('FOLD (§7): FLAT MUTUAL recursion (ping↔pong, frame-dependent arg) FOLDS byte-identical', async () => {
+    const r = await render(`.ping(@n) when (@n > 0) { p: @n; .pong((@n - 1)); }\n.pong(@n) when (@n > 0) { q: @n; .ping((@n - 1)); }\n.x { .ping(2); }`);
+    expect(r.eligible).toBe(true);
+    expect(r.spineRan).toBe(true);
+    expect(r.css).toBe(`.x {\n  p: 2;\n  q: 1;\n}`);
   });
 });

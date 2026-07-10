@@ -1439,18 +1439,21 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   }
   // FOLD C (P4 terminal/sink): recursion / nested-call-in-body. A mixin DEFINITION
   // whose body itself contains a DIRECT-child mixin CALL (`.wrapper() { .base(@c); }`,
-  // a nested chain `.a(){ .b() }`, incl. frame-dependent args `.b((@x - 1))`) now folds
-  // — the fold splice is made RE-ENTRANT (`runSpineMixinExpansion` re-scans a folded
-  // surface's spliced children from `i`, pushing each entry's `spineFrame` around the
-  // resolve so a nested call's args resolve against the OUTER surface frame). Two
-  // sub-shapes STAY on eval (byte-identical, ratchet-locked, REQUIRED P4 items):
-  //   - RECURSIVE calls (`treeHasRecursiveMixinCall`) — a name-cycle among mixin defs.
-  //     `callMap` terminates the recursion, but a recursive call's frame-dependent ARG
-  //     (`.loop((@n - 1))`) loses the per-level param frame on the recursive re-drive
-  //     (a genuine gap — spec in `P4-TERMINAL-SINK-DESIGN.md` §7).
-  // A call inside a nested CONTAINER now folds (see the nested-container gate above):
-  // the container descends in-pass carrying the surface frame, so the call resolves
-  // there — it no longer needs to be a direct top-level feed entry.
+  // a nested chain `.a(){ .b() }`, incl. frame-dependent args `.b((@x - 1))`) folds
+  // via the RE-ENTRANT splice (`runSpineMixinExpansion` re-scans a folded surface's
+  // spliced children from `i`, pushing each entry's `spineFrame` around the resolve).
+  // RECURSION (a self / mutual name-cycle) with a FRAME-DEPENDENT arg (`.loop((@n-1))`)
+  // now folds too (the frame-threaded arg-binding rung, §7): each level's freshly-bound
+  // param frame is threaded through the recursive call's arg-binding eval AND the
+  // spliced body decls' dedup-key + emit resolution (`computeDeclKey` / `processNode`
+  // push the entry's `spineFrame`), so `@n - 1` resolves against level N's `@n`
+  // producing level N-1's surface, byte-identical to eval / less@4. `callMap` bounds it.
+  // RESIDUAL (kept on eval, byte-identical, ratchet-locked — a separate P4 item): a
+  // recursive cycle whose body has a NESTED CONTAINER shared across levels (STRIPE:
+  // `.stripe(@n){ a{…} .stripe(@n-1) }`). The re-entrant splice re-uses the SAME
+  // canonical container child per level, collapsing two levels' blocks into one instead
+  // of eval's two distinct blocks. `treeHasRecursiveMixinCall` now NARROWLY detects only
+  // that container-in-cycle shape; FLAT recursion (the common loop idiom) folds.
   if (treeHasMixinCall(root) && treeHasRecursiveMixinCall(root)) {
     return false;
   }
@@ -1756,25 +1759,38 @@ function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
 }
 
 /**
- * True if the tree has a RECURSIVE mixin call — a mixin definition whose body calls a
- * mixin whose name-call graph forms a CYCLE (direct self-recursion `.loop(){ .loop() }`
- * OR mutual `.ping↔.pong`). FOLD C folds NON-recursive nested calls (chains
- * `.a→.b→.c`, incl. frame-dependent args) through the re-entrant splice, but a
- * recursive call whose ARG is frame-dependent (`.loop((@n - 1))`) does NOT fold: the
- * recursive re-drive loses the per-level param frame for arg binding (a genuine gap —
- * see the FOLD C gate + `P4-TERMINAL-SINK-DESIGN.md` §7). `callMap` still terminates
- * the recursion, so this is a byte-identical DEFERRAL to eval, not a hang.
+ * True if the tree has a RECURSIVE mixin call whose recursion-cycle body contains a
+ * NESTED CONTAINER (the STRIPE shape: `.stripe(@n) when (@n>0) { a { … } .stripe(@n-1) }`).
+ *
+ * FOLD C (`P4-TERMINAL-SINK-DESIGN.md` §7) now folds recursion whose body is FLAT
+ * (only declarations + the recursive self/mutual call, e.g. `.mixin-recursive(@n) {
+ * level: @n; .mixin-recursive(@n - 1) }`): the re-entrant splice threads each level's
+ * freshly-bound param frame through BOTH the nested call's arg-binding eval AND the
+ * spliced body decls' dedup-key + emit resolution (`computeDeclKey`/`processNode` push
+ * the entry's `spineFrame`), so `@n - 1` resolves against level N's `@n` producing
+ * level N-1's surface, byte-identical to eval / less@4.
+ *
+ * The ONE residual that stays on eval (byte-identical, ratchet-locked): a recursive
+ * cycle whose body contains a nested CONTAINER shared across levels. The re-entrant
+ * splice re-uses the SAME canonical container child per level, so two levels' blocks
+ * COLLAPSE into one (`.wrap a { border-width: 2; border-width: 1 }`) instead of the
+ * eval path's two distinct `.wrap a { … }` blocks — the shared-child identity is
+ * merged/deduped. A distinct-per-level container surface is a separate P4 item; until
+ * then the STRIPE shape defers to eval. FLAT recursion (the common Less loop idiom)
+ * folds.
  *
  * Conservative static over-approximation: build the mixin-name → called-mixin-names
- * graph over string-keyed defs/calls and report any cycle. A recursive mixin with only
- * LITERAL args would in principle fold, but the cheap gate defers the whole recursive
- * shape (rare; the frame-dependent-arg case is the common recursive form). Document-
- * level pre-scan, paid once (like the other `treeHas*` gates); a non-recursive tree
- * returns immediately after the walk with no cycle.
+ * graph AND note which mixin names have a body-nested container, then report a cycle
+ * ONLY when a cycle-participating mixin has a container. Document-level pre-scan, paid
+ * once (like the other `treeHas*` gates); a non-recursive tree returns immediately.
  */
 function treeHasRecursiveMixinCall(root: Node): boolean {
   // name → set of mixin names its bodies call (string keys only)
   const callGraph = new Map<string, Set<string>>();
+  // Mixin names whose body contains a nested CONTAINER (Ruleset / non-leaf AtRule).
+  // Only such a cycle collapses on the re-entrant splice (STRIPE); a FLAT recursive
+  // body (declarations only) folds byte-identical.
+  const namesWithNestedContainer = new Set<string>();
   for (const node of root.walk(true)) {
     if (!isNode(node, N.Mixin) || typeof node.name !== 'string') {
       continue;
@@ -1784,6 +1800,13 @@ function treeHasRecursiveMixinCall(root: Node): boolean {
     if (!calls) {
       calls = new Set<string>();
       callGraph.set(from, calls);
+    }
+    for (let i = 0; i < node.rules.length; i++) {
+      const child = node.rules[i]!;
+      if (isNode(child, N.Ruleset) || (isNode(child, N.AtRule) && child.rules.length > 0)) {
+        namesWithNestedContainer.add(from);
+        break;
+      }
     }
     for (const inner of node.walk(true)) {
       if (
@@ -1799,11 +1822,30 @@ function treeHasRecursiveMixinCall(root: Node): boolean {
     return false;
   }
   // Cycle detection (DFS with a recursion stack) over the mixin-name call graph.
+  // Only a cycle in which SOME participating mixin has a nested container defers.
   const VISITING = 1;
   const DONE = 2;
   const state = new Map<string, number>();
-  const hasCycleFrom = (name: string): boolean => {
+  const stack: string[] = [];
+  const cycleHasContainer = (from: string, to: string): boolean => {
+    // The cycle is the current recursion stack from `to` .. top, plus `from`.
+    if (namesWithNestedContainer.has(from) || namesWithNestedContainer.has(to)) {
+      return true;
+    }
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const name = stack[i]!;
+      if (namesWithNestedContainer.has(name)) {
+        return true;
+      }
+      if (name === to) {
+        break;
+      }
+    }
+    return false;
+  };
+  const hasStripeCycleFrom = (name: string): boolean => {
     state.set(name, VISITING);
+    stack.push(name);
     const calls = callGraph.get(name);
     if (calls) {
       for (const next of calls) {
@@ -1812,18 +1854,24 @@ function treeHasRecursiveMixinCall(root: Node): boolean {
         }
         const s = state.get(next);
         if (s === VISITING) {
-          return true;
+          if (cycleHasContainer(name, next)) {
+            stack.pop();
+            return true;
+          }
+          continue;
         }
-        if (s === undefined && hasCycleFrom(next)) {
+        if (s === undefined && hasStripeCycleFrom(next)) {
+          stack.pop();
           return true;
         }
       }
     }
+    stack.pop();
     state.set(name, DONE);
     return false;
   };
   for (const name of callGraph.keys()) {
-    if (state.get(name) === undefined && hasCycleFrom(name)) {
+    if (state.get(name) === undefined && hasStripeCycleFrom(name)) {
       return true;
     }
   }

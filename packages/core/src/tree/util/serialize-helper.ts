@@ -909,7 +909,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     // one key and would wrongly dedupe them. In spine mode the key must be the
     // LIVE-resolved bytes (`resolveSpineLeafText`, MaybePromise), computed against
     // the frame the container descent pushed — the same resolution the emit uses.
-    const computeDeclKey = (node: Node): MaybePromise<string> => {
+    const computeDeclKey = (node: Node, spineFrame?: Rules): MaybePromise<string> => {
       if (options.spineMode && options.context) {
         // Isolate trivia CONSUMPTION for the throwaway key resolution: `resolve`
         // → `.toString` calls `consumeTrivia`, which marks runs in
@@ -922,7 +922,24 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         // would restore before the awaited serialize runs).
         const savedEmitted = options.emittedTrivia;
         options.emittedTrivia = new Set();
-        const restore = (): void => { options.emittedTrivia = savedEmitted; };
+        // FOLD C: a spliced mixin-surface decl (`spineFrame` set) resolves its key
+        // against the surface's DEFINITION frame — identical to the real emit's
+        // `processNode` push. A recursive `.loop(@n)` splices multiple `level: @n`
+        // decls whose repeated property triggers this dedup pass; each `@n` must
+        // read its own level's param frame, not the ambient caller context (else
+        // `'n' is not defined`). An authored decl (no `spineFrame`) resolves
+        // unwrapped — the common path touches nothing.
+        const ctx = spineFrame ? options.context : undefined;
+        const savedRulesContext = ctx ? ctx.rulesContext : undefined;
+        if (ctx) {
+          ctx.rulesContext = spineFrame;
+        }
+        const restore = (): void => {
+          options.emittedTrivia = savedEmitted;
+          if (ctx) {
+            ctx.rulesContext = savedRulesContext;
+          }
+        };
         const withSemi = (text: string): string => `${text}${node.requiredSemi ? ';' : ''}`;
         let resolved: MaybePromise<string>;
         try {
@@ -1171,7 +1188,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           if ((declarationCountsByProp.get(declProp) ?? 0) < 2) {
             continue;
           }
-          const key = computeDeclKey(node);
+          const key = computeDeclKey(node, rulesToRender[idx]!.spineFrame);
           if (isThenable(key)) {
             return key.then((resolvedKey: string) => {
               recordDeclKey(idx, declProp, resolvedKey);
