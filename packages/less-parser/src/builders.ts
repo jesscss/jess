@@ -137,6 +137,9 @@ export class LessGrammar extends CssParser {
       case 'GuardAnd':            return this._buildGuardJoin(children, loc, 'and');
       case 'GuardOr':             return this._buildGuardJoin(children, loc, 'or');
       case 'Guard':               return this._buildGuard(children, loc);
+      case 'CondArgTerm':         return this._buildCondArgTerm(raw, loc);
+      case 'CondArgAnd':          return this._buildCondArgJoin(children, loc, 'and');
+      case 'CondArgOr':           return this._buildCondArgJoin(children, loc, 'or');
       case 'UnicodeRange':        return this._lessKeyword(this._source.slice(span.start, span.end), loc) as unknown as JessNode;
       case 'PseudoSelector':      return this._buildLessPseudo(type, span, children, _state, raw, fields, triviaLog, loc);
       case 'InterpolatedSelector': return this._buildInterpolatedSelector(children, loc);
@@ -535,6 +538,66 @@ export class LessGrammar extends CssParser {
       return new Condition([left, op, right], {}, loc) as unknown as JessNode;
     }
     return new Condition([left], {}, loc) as unknown as JessNode;
+  }
+
+  /**
+   * Coerce a `_assembleValue` result — a single Component or a raw space-group
+   * array — into ONE Node, so it can be a Condition operand. A single string
+   * becomes a keyword; a space-group array becomes a `Sequence` (the same coercion
+   * the List serializer applies to a raw group).
+   */
+  private _condOperandNode(comps: Spanned[], loc: LocationInfo): Node {
+    const { value } = this._assembleValue(comps, loc);
+    if (Array.isArray(value)) {
+      const nodes = (value as Component[]).map(c =>
+        typeof c === 'string' ? this._lessKeyword(c, loc) as unknown as Node : c as unknown as Node);
+      return new Sequence(nodes as any, undefined, loc) as unknown as Node;
+    }
+    if (typeof value === 'string') {
+      return this._lessKeyword(value, loc) as unknown as Node;
+    }
+    return value as unknown as Node;
+  }
+
+  /**
+   * `CondArgTerm` — a name-independent condition-argument term: optional leading
+   * `not`, a bounded value operand, and an optional `<op> right` comparison. Builds
+   * a `Condition` (comparison → `[left, op, right]`; bare `not` → `{negate:true}`)
+   * or, when neither a `not` nor a `compareOp` is present, the plain operand value
+   * (byte-identical to an ordinary value arg). Multi-token operands (`1px solid`)
+   * survive as a `Sequence`, unlike the single-operand guard path.
+   */
+  private _buildCondArgTerm(raw: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
+    const items = spannedComponents(raw);
+    const hasNot = items.length > 0 && items[0]!.comp === 'not';
+    const rest = hasNot ? items.slice(1) : items;
+    const opIdx = rest.findIndex(it => typeof it.comp === 'string' && this._isCompareOpLeaf(it.comp));
+    let term: Node;
+    if (opIdx >= 0) {
+      const left = this._condOperandNode(rest.slice(0, opIdx), loc);
+      const op = this._normalizeCompareOp(rest[opIdx]!.comp as string);
+      const right = this._condOperandNode(rest.slice(opIdx + 1), loc);
+      term = new Condition([left, op, right], {}, loc) as unknown as Node;
+    } else {
+      term = this._condOperandNode(rest, loc);
+    }
+    if (hasNot) {
+      return new Condition([term as any], { negate: true }, loc) as unknown as JessNode;
+    }
+    return term as unknown as JessNode;
+  }
+
+  /** Fold a left-associative `and`/`or` chain of condition-arg terms into Conditions. */
+  private _buildCondArgJoin(children: ReadonlyArray<Child>, loc: LocationInfo, op: ConditionOperator): JessNode {
+    const nodes = nodeChildren(children);
+    if (nodes.length === 0) {
+      return this._lessKeyword('', loc) as unknown as JessNode;
+    }
+    let left = nodes[0]!;
+    for (let i = 1; i < nodes.length; i++) {
+      left = new Condition([left, op, nodes[i]!], {}, loc) as unknown as Node;
+    }
+    return left as unknown as JessNode;
   }
 
   /** Coerce a default() call/reference into a DefaultGuard, mirroring isDefaultGuardCall. */

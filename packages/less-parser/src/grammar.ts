@@ -608,7 +608,70 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // reinterprets a lone `@name` as a param.
   const argRest = node('Rest', choice(sequence(lessVar, literal('...')), literal('...')));
   const argNamedSeq = node('NamedArg', sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueSequence)));
-  const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, g.valueSequence);
+  // ── Name-independent condition arguments ─────────────────────────────────────
+  // A top-level condition operator (`> < >= <= = and or not`) inside ANY call's
+  // argument makes that argument a `Condition` — no name dispatch on `if`/`boolean`.
+  // The condition operators layer ON TOP of the ordinary value production, so nesting
+  // (`not(2 < 1)`, `true and isnumber(6)`) falls out of the grammar's own recursion:
+  // the `(…)` value-Paren already parses an inner comparison (parenSep = compareOp),
+  // and `and`/`or` split terms so a bare keyword never swallows the operator.
+  //
+  // The whole layer is GATED to only match when a real operator is present: each
+  // `ArgCondition` alternative's distinguishing token past the operand is an operator
+  // (leading `not`, a `compareOp`, or `and`/`or`), so a plain value / space-list arg
+  // matches NONE and falls through to the unchanged `valueSequence` below — the
+  // pre-existing arg is byte-identical, and mixin-DEFINITION params (never a top-level
+  // condition) are unaffected.
+  const notKw = regex(/not(?![-\w])/i);
+  const andKw = regex(/and(?![-\w])/i);
+  const orKw = regex(/or(?![-\w])/i);
+  // A standalone top-level condition operator — used as a negative lookahead so the
+  // bounded value operand stops before it instead of eating it as a keyword/anyValue.
+  const condStopAhead = regex(/(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-\w]))/i);
+  // A bounded value/space-list operand: a `valueSequence` that stops at a top-level
+  // condition operator (so `@a > 5 and @b` splits into operands, not one space-list).
+  const condOperand = oneOrMore(sequence(not(condStopAhead), g.topSum));
+  // A single condition term: optional leading `not`, then either a comparison
+  // (`left <op> right`) or a bare bounded value. `not (…)` / `not(…)` negates the
+  // term; the paren-group case is just the value-Paren operand (which parses its own
+  // inner comparison), so no separate paren-condition rule is needed.
+  const CondArgTerm = node(
+    sequence(optional(notKw), condOperand, optional(sequence(compareOp, condOperand))));
+  const CondArgAnd = node('CondArgAnd',
+    sequence(g.CondArgTerm, many(sequence(andKw, g.CondArgTerm))));
+  const CondArgOr = node('CondArgOr',
+    sequence(g.CondArgAnd, many(sequence(orKw, g.CondArgAnd))));
+  // An OPERATOR-BEARING term: a leading `not`, OR a comparison (`left <op> right`).
+  // (A bare operand with no `not`/`compareOp` is NOT operator-bearing — that path is
+  // reserved for the plain `valueSequence` arg.) Built via the same `CondArgTerm`
+  // builder — the tag is shared, so `not`/comparison fold into a `Condition`.
+  const CondArgTermOp = node('CondArgTerm',
+    choice(
+      sequence(notKw, condOperand, optional(sequence(compareOp, condOperand))),
+      sequence(condOperand, compareOp, condOperand)
+    ));
+  // An `and`-group that carries ≥1 operator: either its FIRST term is operator-bearing,
+  // or it has an explicit `and`. Built via the shared `CondArgAnd` fold.
+  const CondArgAndOp = node('CondArgAnd',
+    choice(
+      sequence(g.CondArgTermOp, many(sequence(andKw, g.CondArgTerm))),
+      sequence(g.CondArgTerm, oneOrMore(sequence(andKw, g.CondArgTerm)))
+    ));
+  // GATE — `ArgCondition` matches ONLY an arg that carries a REAL top-level condition
+  // operator (a `not`, a comparison, or an `and`/`or`); a plain value / space-list
+  // matches NEITHER alternative and falls through to the unchanged `valueSequence`,
+  // so ordinary args (and mixin-def params, never a top-level condition) build
+  // byte-identically. No paren-aware lookahead scan: the operator requirement is
+  // structural (`CondArgAndOp` / a mandatory `oneOrMore` `or`), and nesting
+  // (`not(2 < 1)`, `true and isnumber(6)`) falls out of the grammar's own recursion —
+  // the value-Paren parses its inner comparison; `and`/`or` split terms. Built as a
+  // `CondArgOr` (shared fold): a leading op-bearing and-group, or a bare-headed `or`.
+  const ArgCondition = node('CondArgOr',
+    choice(
+      sequence(g.CondArgAndOp, many(sequence(orKw, g.CondArgAnd))),
+      sequence(g.CondArgAnd, oneOrMore(sequence(orKw, g.CondArgAnd)))
+    ));
+  const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, ArgCondition, g.valueSequence);
   // Function-call args and mixin-call args are now IDENTICAL — one `argsInner`. After
   // a semicolon, commas keep splitting args (`sepBy(callArgSeq, ',')`), so both `.m(…)`
   // and `foo(…)` catch the one illegal case: mixing the comma and semicolon ARG
@@ -762,6 +825,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     stylesheetItem, blockItem,
     Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
     AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, CondOr, Guard,
+    CondArgTerm, CondArgAnd, CondArgOr, CondArgTermOp, CondArgAndOp, ArgCondition,
     LessAmpersand, InterpolatedSelector, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
