@@ -466,7 +466,12 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // operand BEFORE arithmetic folding — otherwise `#ns.options[val1] + 5px` splits
   // into the bare string `#ns.options` plus an Operation whose left operand is the
   // lone `[val1]` SquareParen, so the accessor never binds to the namespace path.
-  // Ordered before SquareParen/anyValue in `value`. Requiring the FIRST segment be
+  // Ordered before Color/SquareParen/anyValue in `value`: a hex-color-shaped head
+  // (`#DEF.colors[primary]`) would otherwise be eaten by Color as a bare `#DEF`,
+  // stranding `.colors[primary]` as a separate single-segment accessor that loses
+  // the `#DEF` namespace hop. NsAccessor requires a glued `[` (refIndex first), so a
+  // plain color `#DEF` — no bracket — still falls through to Color unchanged.
+  // Requiring the FIRST segment be
   // a `[` (not a `(`) keeps every call-headed form — `.mixin()`, `.mixin()[k]`,
   // `#ns.x(.a[])[k]`, chained `.a() > .b()` — on the existing GluedParen /
   // _tryParseNamespaceRef reassembly paths, which structure call args richly.
@@ -481,7 +486,7 @@ export const lessGrammar = compose([cssGrammar, rules((g: any) => {
   // arithmetic. @see https://drafts.csswg.org/css-syntax/#urange-syntax
   const UnicodeRange = node(
     regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/));
-  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.Dimension, g.Num, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.FormatCall, g.Call, g.EscapedValue, g.NsAccessor, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
+  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.Dimension, g.Num, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.CalcCall, g.IfCall, g.BooleanCall, g.FormatCall, g.Call, g.EscapedValue, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
   // ── Math expressions — precedence in the grammar (port of expressionSum /
   // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
   // `collapse` option makes a single-operand level pass its operand straight
