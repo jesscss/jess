@@ -2606,4 +2606,85 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('STMTCALL void: a nested bare statement-position VOID function call folds (derive=0, emits nothing)', async () => {
+    // The `functions` fixture's `if((false), {g: 7});` shape — a `Call` whose name is a
+    // `function`-type Reference (NOT a mixin / DR call), condition false + no else branch → the
+    // eval call-lane resolves it to a VOID `Anonymous` that serializes empty, emitting nothing. It
+    // was the first-reject that forced its `#if` block off the spine (`isSimpleSpineLeaf` rejected
+    // any non-declaration/comment leaf). Now it folds inline (`resolveSpineStatementCallText`), the
+    // surrounding `/* void */` trivia preserved, byte-identical to eval + less@4 (which likewise
+    // emits nothing for the false-no-else `if` statement). A regression re-arming the leaf reject
+    // trips this RED.
+    const compiler = makeCompiler();
+    const src = `#if {\n  a: 1;\n  if((false), {g: 7}); /* void */\n  b: 2;\n}`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the statement-call fold
+      // The void call emits NO statement line (and no stray `;`); the comment survives.
+      expect(css).toBe('#if {\n  a: 1;\n  /* void */\n  b: 2;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('STMTCALL value: a nested bare statement-position VALUE function call folds (derive=0, emits its value, no `;`)', async () => {
+    // The `css-escapes` fixture's `e('…')` shape nested in a ruleset — a value-returning statement
+    // call (`e()` unquotes to raw text). The eval call-lane emits the resolved value as its own line
+    // with the source `;` DROPPED; the spine fold reproduces that exactly. A ROOT-DIRECT statement
+    // call stays on eval (the root emitter `_emitRulesBody` would append the `;`) — see
+    // `isSpineEligibleRoot`'s root-direct statement-call exclusion; this test covers the NESTED fold.
+    const compiler = makeCompiler();
+    const src = `.a { e('/* raw */'); color: red; }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const css = await compiler.renderString(src, { language: 'less' });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // no eval two-walk → the statement-call fold
+      expect(css).toBe('.a {\n  /* raw */\n  color: red;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
+
+  it('STMTCALL residual: a DR-call + function-valued-decl tree STAYS on eval (byte-identical, ratchet-locked)', async () => {
+    // NEGATIVE ratchet (RESIDUAL LOCK). After the statement-call fold, the `functions` fixture's next
+    // stacked reject is a pre-existing spine gap: a tree that folds a DETACHED-RULESET call (`@r()`)
+    // AND has a DECLARATION whose value contains a built-in FUNCTION call breaks downstream
+    // function-`Call` resolution on the spine (`length(a 1, b 2)` emits RAW once the whole root folds,
+    // though each block folds correctly alone). `treeHasDetachedCallWithFunctionValueDecl` keeps such
+    // a tree on eval, byte-identical. DECIDE STALE-vs-REGRESSION before flipping: this SHOULD flip to
+    // `deriveCalls === 0` ONLY once the DR-call fold's function-registry-reachability gap is fixed
+    // (delete the guard then). Do NOT reflexively flip it green.
+    const compiler = makeCompiler();
+    const src = `#i { @r: { c: 3; }; @r(); }\n#l { @list: a 1, b 2; length: length(@list); }`;
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const css = await compiler.renderString(src, { language: 'less' });
+      // Kept on eval (the residual guard) — byte-correct function resolution.
+      expect(deriveCalls).toBeGreaterThan(0); // RESIDUAL: still on eval, NOT folded
+      expect(css).toBe('#i {\n  c: 3;\n}\n#l {\n  length: 2;\n}\n');
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });

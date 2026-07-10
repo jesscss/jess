@@ -22,7 +22,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
-import { assignSpineChildIndices, isSpineEligibleMixinCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict } from './emit-walk.js';
+import { assignSpineChildIndices, isSpineEligibleMixinCall, isSpineFoldableStatementCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict } from './emit-walk.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, planEntrySequenceMerges, type SpineMergeEntry, type SpineMergePlan } from './spine-merge.js';
 import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
@@ -182,6 +182,33 @@ function evalIsolatingSpinePrintState<T>(
   }
   restore();
   return result;
+}
+
+/**
+ * Resolve a BARE STATEMENT-POSITION built-in FUNCTION call (`if((false), {g: 7});`)
+ * to its emitted bytes on the spine (see `isSpineFoldableStatementCall`). Mirrors the
+ * eval call-lane: evaluate the `Call` against the live frame, then serialize the
+ * result. A VOID result (`Nil` / `undefined` / an empty `Anonymous` — the false-no-else
+ * `if` shape) serializes to `''`, which the leaf tail suppresses (no blank line); a
+ * value-returning call emits its value text as its own line — byte-identical to eval.
+ * The eval is wrapped in `evalIsolatingSpinePrintState` so an unknown-call value render
+ * (which resets `context.printState` in place) cannot swap the live spine writer.
+ */
+export function resolveSpineStatementCallText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
+  const context = options.context;
+  if (!context) {
+    return '';
+  }
+  const serialize = (resolved: Node | Nil | undefined): string => {
+    if (!resolved || resolved instanceof Nil) {
+      return '';
+    }
+    const writer = new OutputWriter();
+    resolved.toString(getPrintOptions({ ...options, writer }));
+    return writer.toString();
+  };
+  const evaluated = evalIsolatingSpinePrintState(context, () => node.eval(context));
+  return isThenable(evaluated) ? evaluated.then(serialize) : serialize(evaluated);
 }
 
 export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
@@ -1564,7 +1591,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             ? resolveSpineLeafText(nn, options)
             : isNode(nn, N.Declaration)
               ? renderNodeText(nn, options, 'declaration-fallback')
-              : renderNodeText(nn, options);
+              // Bare statement-position built-in FUNCTION call (`if((false), {g: 7});`):
+              // evaluate + serialize inline (void → ''), byte-identical to the eval
+              // call-lane. See `isSpineFoldableStatementCall`.
+              : options.spineMode && options.context && isSpineFoldableStatementCall(nn)
+                ? resolveSpineStatementCallText(nn, options)
+                : renderNodeText(nn, options);
         const finishLeaf = (out: string): void => {
           restorePrintState(options, leafSaved);
           // Suppress pure-void Any nodes from generating blank output lines.
@@ -1574,6 +1606,28 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             && !out.trim()
             && !leading.trim()
           ) {
+            return;
+          }
+          // A bare statement-position function call (`if((false), {g: 7});`,
+          // `e('…')`) resolved inline. Reproduce the eval call-lane exactly: a VOID
+          // result (empty) emits NO statement line (the `if`-false-no-else shape); a
+          // value result emits its serialized value as its own line. In BOTH cases
+          // the source `requiredSemi` `;` is dropped (eval emits the value/void with
+          // no trailing `;`), and the surrounding trivia (the `/* results in void */`
+          // comment) is preserved. Byte-identical to eval.
+          if (isSpineFoldableStatementCall(nn)) {
+            if (!/^\s*$/.test(leading)) {
+              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+            }
+            if (out.trim()) {
+              w.add(idt);
+              w.add(out, nn);
+              w.add('\n');
+            }
+            const trailing = captureNodeTrivia(nn, 'after', options);
+            if (!/^\s*$/.test(trailing)) {
+              w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
+            }
             return;
           }
           if (

@@ -439,6 +439,37 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
 }
 
 /**
+ * A BARE STATEMENT-POSITION built-in FUNCTION call (`if((false), {g: 7});`) — a
+ * `Call` whose name is a `function`-type `Reference` (NOT a mixin / mixin-ruleset /
+ * `variable` DR-call, which `isSpineEligibleMixinCall` already folds), with no
+ * content block. Such a call is EVALUATED at its statement position and its result
+ * serialized inline (the `functions` fixture's `if((false), {g: 7})` — condition
+ * false with no else branch — resolves to a VOID `Anonymous` that serializes to the
+ * empty string, emitting nothing, exactly as the eval path's call-lane +
+ * `applyResult(undefined)` does). A value-returning statement call (`lighten(...)`)
+ * likewise reproduces the eval path (its value text is emitted as its own line) —
+ * both are driven by the same `node.eval` + serialize at emit (`resolveSpineStatement
+ * CallText`), so the fold is byte-identical to eval by construction.
+ *
+ * Zero-cost off the shape: the `Call` type check bails immediately for a declaration
+ * / comment / container leaf (the common case), and the reference-type check bails
+ * for the far more common mixin / DR call (handled by `isSpineEligibleMixinCall`).
+ */
+export function isSpineFoldableStatementCall(node: Node): boolean {
+  if (!isNode(node, N.Call)) {
+    return false;
+  }
+  if (node.contentNode) {
+    return false;
+  }
+  const name = node.name;
+  if (!isNode(name, N.Reference)) {
+    return false;
+  }
+  return name.options?.type === 'function';
+}
+
+/**
  * RUNTIME simplicity gate: a resolved bound surface the spine can descend inline.
  * A `false` makes the callable terminal fall back to the eval path for that
  * candidate (byte-identical). A `false` from ANY candidate routes the whole call
@@ -1243,6 +1274,13 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   if (isSpineEligibleMixinCall(node)) {
     return true;
   }
+  // Bare statement-position built-in FUNCTION call (`if((false), {g: 7});`):
+  // evaluated + serialized inline at emit (`resolveSpineStatementCallText`), void
+  // (Nil/empty `Anonymous`) result emits nothing — byte-identical to eval's
+  // call-lane. See `isSpineFoldableStatementCall`.
+  if (isSpineFoldableStatementCall(node)) {
+    return true;
+  }
   if (isNode(node, N.Declaration)) {
     const options = node.options as { assign?: string; setDefined?: boolean; nearestOuter?: boolean } | undefined;
     const assign = options?.assign ?? ':';
@@ -1501,6 +1539,28 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
     if (root.rules[i]!.type === 'For') {
       return false;
     }
+  }
+  // BARE STATEMENT-POSITION FUNCTION CALL — CONTAINER-nested only. A statement call
+  // (`if((false), {g: 7});`, `e('…');`) folds when nested inside a ruleset/at-rule
+  // (its body flows through `serializeRulesContainerInternal`, where the leaf tail
+  // emits its resolved value / void with the source `;` dropped — byte-identical to
+  // eval). A ROOT-DIRECT statement call renders through `Rules._emitRulesBody`, a
+  // distinct root emitter that emits the call's resolved text followed by the source
+  // `requiredSemi` `;` — so `e('/* c */');` at document root would gain a stray `;`.
+  // Keep a root-direct statement call on eval (byte-identical) until the root emitter
+  // drops the `;` for a resolved statement call. Rare (a bare function call at document
+  // root); the target `functions` fixture nests its `if(...)` void call in `#if`.
+  for (let i = 0; i < root.rules.length; i++) {
+    if (isSpineFoldableStatementCall(root.rules[i]!)) {
+      return false;
+    }
+  }
+  // PRE-EXISTING GAP GUARD (ratchet-locked): a DR-call + function-valued-decl tree
+  // stays on eval — the spine DR-call fold breaks downstream function-`Call`
+  // resolution. See `treeHasDetachedCallWithFunctionValueDecl`. This is the
+  // `functions` fixture's stacked reject after the statement-call fold.
+  if (treeHasDetachedCallWithFunctionValueDecl(root)) {
+    return false;
   }
   // M8 (FOLDED): a mixin CALL whose target is an INTERPOLATED-SELECTOR ruleset
   // (`.@{name} {}` used as `.foo()`). The interpolated name used to be registered
@@ -2206,6 +2266,72 @@ function wireSpineDefinitionScopeParents(scope: Rules): void {
 function treeHasMixinCall(root: Node): boolean {
   for (const node of root.walk(true)) {
     if (isSpineEligibleMixinCall(node)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A DETACHED-RULESET call (`@1()` / `@conditional()` — a `variable`-type Reference
+ * `Call`, `unwrapDetachedRulesetCall`) — as distinct from an authored mixin dot-call.
+ */
+function isDetachedRulesetCall(node: Node): boolean {
+  const unwrapped = unwrapDetachedRulesetCall(node);
+  const inner = unwrapped ?? node;
+  if (!isNode(inner, N.Call)) {
+    return false;
+  }
+  const name = inner.name;
+  return isNode(name, N.Reference) && name.options?.type === 'variable';
+}
+
+/** A built-in FUNCTION call (`if(...)`, `length(...)` — a `function`-type Reference `Call`). */
+function isFunctionCall(node: Node): boolean {
+  if (!isNode(node, N.Call)) {
+    return false;
+  }
+  const name = node.name;
+  return isNode(name, N.Reference) && name.options?.type === 'function';
+}
+
+/**
+ * PRECISE PRE-EXISTING GAP GUARD (ratchet-locked residual, oracle-verified). A tree
+ * that folds a DETACHED-RULESET call (`@1();`) AND also has a DECLARATION whose value
+ * contains a built-in FUNCTION call (`length(@list)`, `boolean(...)`, `if(...)`) is
+ * kept on the eval path: the spine's DR-call fold leaves the render context in a state
+ * where a subsequent function-`Call` reference no longer resolves to its registered
+ * `JsFunction` (it falls through to the raw call-syntax `Any` — verified: `#i { @r:{…};
+ * @r(); } #l { length: length(a 1, b 2); }` emits `length(a 1, b 2)` raw once the whole
+ * root folds, whereas each block folds correctly ALONE). This is independent of node
+ * order (an earlier function block breaks the same way). Eval is byte-identical.
+ *
+ * This is the `functions` fixture's remaining stacked reject after the bare
+ * statement-position function-call fold (`if((false), {g: 7})`): its `#if` block has a
+ * `@1()` DR-call and downstream blocks (`#boolean`, `#list-details`, `html`,
+ * `#quoted-functions-in-mixin`) carry function-valued declarations.
+ *
+ * SPEC (fold follow-up, tracked as its own hydra head): fix the DR-call fold so it
+ * restores / preserves the function-registry reachability for the rest of the render
+ * (the DR-call surface's scope splice must not shadow the root function scope), then
+ * delete this guard and let `functions` fully fold. Zero-cost off the shape: bails on
+ * the first walk hit that finds neither a DR-call nor a function-valued decl absent.
+ */
+function treeHasDetachedCallWithFunctionValueDecl(root: Node): boolean {
+  let hasDetachedCall = false;
+  let hasFunctionValuedDecl = false;
+  for (const node of root.walk(true)) {
+    if (!hasDetachedCall && isDetachedRulesetCall(node)) {
+      hasDetachedCall = true;
+    } else if (!hasFunctionValuedDecl && isNode(node, N.Declaration)) {
+      for (const valueNode of node.walk(true)) {
+        if (isFunctionCall(valueNode)) {
+          hasFunctionValuedDecl = true;
+          break;
+        }
+      }
+    }
+    if (hasDetachedCall && hasFunctionValuedDecl) {
       return true;
     }
   }
