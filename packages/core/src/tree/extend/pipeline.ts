@@ -65,6 +65,16 @@ export interface PipelineInstruction {
   path: BucketPath;
   order: number;
   scope?: unknown;
+  /**
+   * True when this instruction's EXTENDER lives in a `@import (reference)` body. A reference-body
+   * extender is INERT for output projection: reference visibility in Less is granted by a
+   * NON-reference (real-output) extend directly targeting a reference subject, and it does NOT
+   * re-flow through a reference selector's own extend edges (transitive-extend-through-reference,
+   * `import-reference-issues`). So a reference-extender contribution must neither add a visible
+   * branch to a non-reference subject nor unlock a reference subject — the composer drops these
+   * instructions before projecting either subject arm. Absent (undefined) = a real extender.
+   */
+  referenceExtender?: boolean;
 }
 
 /**

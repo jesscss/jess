@@ -234,10 +234,25 @@ export interface SpineExtendImportOptions {
  */
 export function composeSpineSubjectHeaders(
   subjects: SpineSubject[],
-  instructions: PipelineInstruction[],
+  allInstructions: PipelineInstruction[],
   collapseNesting: boolean
 ): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
   extendLayerCounter.planRuns++;
+  // REFERENCE-EXTENDER FILTER (transitive-extend-through-reference, `import-reference-issues`). An
+  // extender that lives in a `@import (reference)` body is INERT for output projection: reference
+  // visibility in Less is granted only by a NON-reference (real-output) extend directly targeting a
+  // reference subject, and it does NOT re-flow through a reference selector's OWN extend edges. So a
+  // reference-extender contribution must neither add a visible branch to a non-reference subject
+  // (the `.theOnlySelector, .unusedAndReference` glue leak) nor unlock a reference subject (the
+  // `.unusedAndReference { avoid: warning }` and transitive `.test-rule-a { color: red }` leaks).
+  // Dropping these instructions before ANY subject projects is the whole mechanism: a reference
+  // subject then emits iff a REAL extender directly targets it (own form dropped, § the reference
+  // arm below), and the transitive chain through a reference extender contributes nothing visible.
+  // A no-op when no instruction is reference-borne (the common, non-reference render) — the filtered
+  // array is identity-equal in effect, so nothing off the reference path changes.
+  const instructions = allInstructions.some(inst => inst.referenceExtender === true)
+    ? allInstructions.filter(inst => inst.referenceExtender !== true)
+    : allInstructions;
   const headers = new Map<Ruleset, Selector>();
   const hoisted = new Set<Ruleset>();
   for (let i = 0; i < subjects.length; i++) {
@@ -1589,6 +1604,7 @@ export function wireSpineExtends(
       ? target.value.map(item => (typeof item === 'string' ? asExtendSelectorNode(item) : item))
       : [target];
     const scope = currentScope.length > 0 ? [...currentScope] : undefined;
+    const referenceExtender = gatheringReference ? true : undefined;
     for (const branchTarget of targetBranches) {
       instructions.push({
         target: branchTarget,
@@ -1596,7 +1612,8 @@ export function wireSpineExtends(
         partial,
         path: [...instPath],
         order,
-        scope
+        scope,
+        referenceExtender
       });
     }
   };
