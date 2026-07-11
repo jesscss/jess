@@ -995,6 +995,7 @@ class RulesLookupState {
   varsByName: Map<string, BindingEntry[]> | undefined = undefined;
   functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
   callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
+  spineExtraCallableSurfaces: Rules[] | undefined = undefined;
   directChildRuleEntries: Array<RulesEntryLike> | null | undefined = undefined;
   directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined = undefined;
   directDeclarationsByName: Map<string, Declaration[] | null> | undefined = undefined;
@@ -1061,6 +1062,44 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   set callableLookupCache(value: Map<string, CallableLookupEntry[] | null> | undefined) {
     this.ensureLookup().callableLookupCache = value;
+  }
+
+  /**
+   * Extra callable SOURCE surfaces contributed by a spine mixin-call fold whose
+   * surface created a DYNAMIC callable — an interpolated-selector-created namespace
+   * (`.Person(@n){ .@{n}{ .sayGender(){} } }` then `.person.sayGender()`). The
+   * bound surface's interpolated selector is resolved (`registerSpineFoldedSurfaceCallables`)
+   * and the surface unioned here so a later same-body path-call finds the resolved
+   * member. A pure callable-index contribution (NOT a scope-frame fallback link —
+   * that forms a cycle in `findMixin`'s fallbackQueue). Unioned in
+   * `getCallableEntriesForKey` + the direct-child prefix scan.
+   */
+  private get spineExtraCallableSurfaces(): Rules[] | undefined {
+    return this._lookup?.spineExtraCallableSurfaces;
+  }
+
+  registerSpineFoldedSurfaceCallables(surface: Rules, context: Context): MaybePromise<void> {
+    const done = (): void => {
+      const lookup = this.ensureLookup();
+      (lookup.spineExtraCallableSurfaces ??= []).push(surface);
+      // A new callable source invalidates the cached buckets so a later lookup
+      // re-collects, now unioning the surface.
+      lookup.callableLookupCache = undefined;
+    };
+    const saved = context.rulesContext;
+    context.rulesContext = surface;
+    let prepared: MaybePromise<Rules>;
+    try {
+      prepared = surface.prepareRegistration(context);
+    } finally {
+      context.rulesContext = saved;
+    }
+    if (isThenable(prepared)) {
+      return prepared.then(() => {
+        done();
+      });
+    }
+    done();
   }
 
   get directChildRuleEntries(): Array<RulesEntryLike> | null | undefined {
@@ -2157,6 +2196,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const sourceRules = sourceRulesOf(this);
     if (bucket.length === 0 && sourceRules !== this) {
       this.collectCallablesFor(sourceRules, lookupKey, bucket);
+    }
+    // Spine fold contribution: a mixin-call fold whose bound surface created a
+    // dynamic (interpolated-selector) callable adds the resolved surface here, so a
+    // later same-body path-call (`.person.sayGender()`) resolves the member. Pure
+    // index union — never mutates the tree. Zero-cost when absent.
+    const extraSurfaces = this.spineExtraCallableSurfaces;
+    if (extraSurfaces) {
+      for (let i = 0; i < extraSurfaces.length; i++) {
+        this.collectCallablesFor(extraSurfaces[i]!, lookupKey, bucket);
+      }
     }
     (this.callableLookupCache ??= new Map()).set(
       lookupKey,

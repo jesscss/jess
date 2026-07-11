@@ -37,6 +37,7 @@ import { comparePosition } from './compare.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
+import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { AtRule } from '../at-rule.js';
 import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
@@ -1937,42 +1938,59 @@ function nestedDefNeedsDynamicRegistration(root: Node): boolean {
   // Names of all nested Mixin defs (last selector segment), plus whether ANY nested def
   // is wrapped in an interpolated-selector ancestor (never statically path-reachable).
   const nestedDefNames = new Set<string>();
-  let hasInterpolatedNestedDef = false;
+  // Nested-def names that sit UNDER an interpolated-selector container
+  // (`.@{n}{ .sayGender(){} }`). A path call whose tail names one of these is
+  // covered by the spine dynamic-callable registration seam
+  // (`registerSpineFoldedSurfaceCallables`): the outer mixin's fold resolves the
+  // `.@{n}` namespace and unions it into the caller's callable index, so the
+  // later `.person.sayGender()` path-call resolves during the fold.
+  const interpolatedNamespacedDefNames = new Set<string>();
+  // A BARE interpolated-name def (`.@{n}(){}`) or an unnamed shape the seam does not
+  // model — always dynamic, never path-reachable, force eval.
+  let hasBareInterpolatedNestedDef = false;
+  // Descend a Mixin body top-down, carrying whether we are UNDER an
+  // interpolated-selector ruleset. A parsed tree has no reliable `.parent` back-
+  // pointer, so the ancestor relationship is tracked on the way down rather than
+  // walked up.
+  const scanMixinBody = (children: readonly Node[], underInterp: boolean): void => {
+    for (const inner of children) {
+      if (isNode(inner, N.Mixin)) {
+        if (inner.name === undefined) {
+          // A nameless Mixin is a DETACHED RULESET (`@map: { … }`) — not a callable.
+          continue;
+        }
+        if (typeof inner.name !== 'string') {
+          // An INTERPOLATED callable NAME (`.@{n}()`) — dynamic, not modeled.
+          hasBareInterpolatedNestedDef = true;
+          continue;
+        }
+        const defTail = lastPathSegment(inner.name);
+        nestedDefNames.add(defTail);
+        if (underInterp) {
+          interpolatedNamespacedDefNames.add(defTail);
+        }
+        // A mixin body may itself nest containers holding further defs.
+        scanMixinBody(inner.rules, underInterp);
+        continue;
+      }
+      if (isNode(inner, N.Ruleset)) {
+        const childUnderInterp = underInterp || rulesetSelectorIsInterpolated(inner);
+        scanMixinBody(inner.rules, childUnderInterp);
+      } else if (isNode(inner, N.AtRule)) {
+        scanMixinBody(inner.rules, underInterp);
+      }
+    }
+  };
   for (const node of root.walk(true)) {
     if (!isNode(node, N.Mixin)) {
       continue;
     }
-    for (const inner of node.walk(true)) {
-      if (inner === node || !isNode(inner, N.Mixin)) {
-        continue;
-      }
-      if (inner.name === undefined) {
-        // A nameless Mixin is a DETACHED RULESET (`@map: { … }`), a map-lookup value —
-        // not a callable needing registration. Ignore it.
-        continue;
-      }
-      if (typeof inner.name !== 'string') {
-        // An INTERPOLATED callable name (`.@{n}`) — dynamic, never statically reachable.
-        hasInterpolatedNestedDef = true;
-        continue;
-      }
-      nestedDefNames.add(lastPathSegment(inner.name));
-      // An interpolated-selector container BETWEEN `node` and `inner` means the def's
-      // enclosing scope name is dynamic — no static path reaches it.
-      let cur: Node | undefined = inner.parent;
-      while (cur && cur !== node) {
-        if (isNode(cur, N.Ruleset) && rulesetHasInterpolatedSelector(cur)) {
-          hasInterpolatedNestedDef = true;
-          break;
-        }
-        cur = cur.parent;
-      }
-    }
+    scanMixinBody(node.rules, false);
   }
-  if (nestedDefNames.size === 0 && !hasInterpolatedNestedDef) {
+  if (nestedDefNames.size === 0 && !hasBareInterpolatedNestedDef) {
     return false;
   }
-  if (hasInterpolatedNestedDef) {
+  if (hasBareInterpolatedNestedDef) {
     return true;
   }
   // Authored top-level container names (root-direct `#ns` / `.foo` Ruleset or Mixin) —
@@ -2010,9 +2028,16 @@ function nestedDefNeedsDynamicRegistration(root: Node): boolean {
     if (!nestedDefNames.has(tail)) {
       continue;
     }
-    // The tail names a nested def. Foldable ONLY as a multi-segment path whose head is an
-    // authored top-level container. A bare (single-segment) call, or a path with a
-    // non-authored head, needs dynamic registration.
+    // The tail names a nested def. Foldable as a multi-segment path whose head is
+    // EITHER an authored top-level container (`findMixinPath` resolves it statically)
+    // OR a def sitting under an interpolated-selector namespace that the spine
+    // dynamic-callable seam registers once the enclosing mixin folds
+    // (`.Person(person)` → `.@{name}`=`.person` → `.person.sayGender()`). A bare
+    // (single-segment) call, or a path whose head is neither, needs dynamic
+    // registration the fold does not perform.
+    if (segments.length >= 2 && interpolatedNamespacedDefNames.has(tail)) {
+      continue;
+    }
     if (segments.length < 2 || !authoredHeads.has(segments[0]!)) {
       return true;
     }
@@ -2043,13 +2068,53 @@ function splitCallPath(key: string): string[] {
   return segments;
 }
 
-/** True if a Ruleset's own selector carries interpolation (`.@{name}` / `@{sel}`) — a dynamic name. */
-function rulesetHasInterpolatedSelector(node: Node): boolean {
-  const local = flatLocalSelector(node);
-  if (local === undefined) {
-    return true; // no flat static selector → treat as dynamic
+/**
+ * True when a ruleset's selector carries an interpolation in ANY of its
+ * representations: the authored `@{…}` / `${…}` form, the parser-materialized
+ * `$[name]` form, or the bound-surface `%%` placeholder. Used by
+ * `nestedDefNeedsDynamicRegistration` to recognize a nested def sitting under an
+ * interpolated-selector namespace regardless of how far the selector has been
+ * lowered.
+ */
+function rulesetSelectorIsInterpolated(node: Node): boolean {
+  const sel = String((node as Ruleset).selector ?? '');
+  return sel.includes('@{')
+    || sel.includes('${')
+    || sel.includes('$[')
+    || sel.includes(INTERPOLATION_PLACEHOLDER);
+}
+
+/**
+ * True when a spine-folded mixin surface carries a DYNAMIC callable — a nested
+ * ruleset whose selector is an UNRESOLVED interpolation (`.@{name} {}` bound but
+ * not yet name-resolved) that itself holds a nested Mixin DEFINITION. This is the
+ * `.Person(@n){ .@{n}{ .sayGender(){} } }` shape: the `.@{n}` namespace name is only
+ * known once the surface is bound, so a later `.person.sayGender()` path-call cannot
+ * find the member until the surface's interpolated selector is resolved and the
+ * surface unioned into the caller's callable index
+ * (`Rules.registerSpineFoldedSurfaceCallables`).
+ *
+ * On the BOUND surface the unresolved interpolated selector materializes as the
+ * `%%` `INTERPOLATION_PLACEHOLDER` (NOT the authored `@{…}` — that form is gone once
+ * the surface is bound), so the check keys on `%%`. Zero-cost when absent (a surface
+ * with no `%%`-bearing ruleset bails on the cheap string scan).
+ */
+export function spineSurfaceHasDynamicCallable(surface: Rules): boolean {
+  for (const node of surface.walk(true)) {
+    if (!isNode(node, N.Ruleset)) {
+      continue;
+    }
+    const local = flatLocalSelector(node);
+    if (local === undefined || !String(local.valueOf()).includes(INTERPOLATION_PLACEHOLDER)) {
+      continue;
+    }
+    for (const inner of node.walk(true)) {
+      if (inner !== node && isNode(inner, N.Mixin) && inner.name !== undefined) {
+        return true;
+      }
+    }
   }
-  return String(local.valueOf()).includes('@{') || String(local.valueOf()).includes('${');
+  return false;
 }
 
 /**

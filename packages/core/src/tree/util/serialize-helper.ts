@@ -22,7 +22,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
-import { assignSpineChildIndices, isSpineEligibleMixinCall, isSpineFoldableStatementCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict } from './emit-walk.js';
+import { assignSpineChildIndices, isSpineEligibleMixinCall, isSpineFoldableStatementCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict, spineSurfaceHasDynamicCallable } from './emit-walk.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, planEntrySequenceMerges, type SpineMergeEntry, type SpineMergePlan } from './spine-merge.js';
 import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
@@ -1145,6 +1145,31 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             // in turn (re-entrant fold). `callMap` terminates genuine recursion. A
             // fold-fallback (`kind: 'eval'`) child that is itself a call re-resolves
             // harmlessly (already-resolved output is not `isSpineEligibleMixinCall`).
+            //
+            // DYNAMIC-CALLABLE registration seam (interpolated-selector-created
+            // namespace): a folded surface may hold `.@{name}{ .sayGender(){} }` — its
+            // namespace name is only known once bound, so a later same-body path-call
+            // (`.person.sayGender()`) can't find the member. Resolve each such
+            // surface's interpolated selector and union it into the CALLER's callable
+            // index BEFORE the re-scan so the path-call resolves. Gated on the `%%`
+            // placeholder shape (`spineSurfaceHasDynamicCallable`) — zero-cost absent.
+            if (resolved.kind === 'fold') {
+              const callableTarget = entryFrame ?? getContainerRules(node, options);
+              if (callableTarget !== undefined) {
+                const registrations: Array<MaybePromise<void>> = [];
+                for (const surface of resolved.surfaces) {
+                  if (spineSurfaceHasDynamicCallable(surface)) {
+                    registrations.push(
+                      callableTarget.registerSpineFoldedSurfaceCallables(surface, spineContext)
+                    );
+                  }
+                }
+                const pending = registrations.find(r => isThenable(r));
+                if (pending !== undefined) {
+                  return Promise.all(registrations).then(() => expandFrom(i));
+                }
+              }
+            }
             return expandFrom(i);
           };
           return isThenable(resolution)
