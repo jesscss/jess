@@ -1,5 +1,11 @@
 # Cutover Status — compact board
 
+**Committed direction.** Object-reduction (reuse the stable parsed nodes + live-binding
+at emit time — "the spine") is the render architecture. Not an experiment, no pivot back
+to clone-everything. The model is sound and its performance floor is below clone's (clone
+can never shed output-tree allocation; reduction's is zero). Performance model + roadmap:
+`PERFORMANCE.md`.
+
 At-a-glance status of the single-eval-emit cutover + core slimming. **Kept current by the orchestrator** (update on every land/dispatch; if stale, distrust it and reconcile against `git log origin/work/cutover-p1` + the ratchets). Canonical detail lives in `CUTOVER-CHECKLIST.md` (governance) + `P4-ENDGAME-PLAN.md` (sequence) + per-workstream design docs.
 
 Legend: ✅ landed on `work/cutover-p1` · 🔵 in-flight · ⏸ queued (core-lane serializes) · 🔒 gated/deferred

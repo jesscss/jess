@@ -1,7 +1,11 @@
 # Unified Eval-and-Emit — the settled single-pass architecture
 
-**Status:** DESIGN / pure reasoning. NO wire-in, NO benchmark, NO production `.ts`. This document
-SUPERSEDES and MERGES two priors into one coherent system:
+**Status:** COMMITTED and SHIPPED. This is the render architecture, not a proposal — the
+single-pass spine is the sole top-level render path (see `CUTOVER-STATUS.md` → D-EVAL FLIP),
+and the performance model + roadmap are in `PERFORMANCE.md`. This document is the canonical
+DESIGN RECORD for that architecture (the reasoning it was built from); where a passage below
+is written in the future tense of the original design, read it as the committed spec that has
+since been implemented. It SUPERSEDES and MERGES two priors into one coherent system:
 
 - `EXTEND-GLOBAL-FLOW-DESIGN.md` — the extend global flow (PLAN / SOLVE / EMIT; scope = (A)
   reachability + (B) placement/visibility; OQ-5 folds into (B)).

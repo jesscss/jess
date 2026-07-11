@@ -26,7 +26,8 @@ and required docs.
   active node-family queue, historical row status, serialization contracts, and
   completion gates. This stream owns direct syntax/render emission, cold public
   string wrappers, render readback removal, and node-family row closure.
-- **Performance evidence:** use `CORE-CLEANUP.md` for benchmark
+- **Performance evidence:** use `PERFORMANCE.md` for the committed model, the
+  A/B/C cost decomposition, and the roadmap; use `CORE-CLEANUP.md` for benchmark
   protocol, profile history, rejected experiments, and speed claims.
 - **Patch-shape review:** use `AGGRESSIVE-CUTTING-REVIEW.md` before changing
   AST, eval/render, lookup, traversal, copying, inheritance, output writer,
@@ -34,7 +35,15 @@ and required docs.
 
 ## Shared Direction
 
-The fastest credible runtime path remains:
+**The render architecture is committed: object-reduction — reuse the stable parsed
+nodes and resolve live bindings at emit time ("the spine").** This is not an
+experiment and the project is not pivoting back to clone-everything. The goal is a
+model that is both high-performance and accurate; the model is sound and the path to
+the performance floor is known and measured. See `PERFORMANCE.md` for the A/B/C cost
+decomposition, the measured state (structure-heavy already wins; the value-heavy hot
+spot is identified and the fix is measured to flip it), and the roadmap.
+
+The committed runtime path:
 
 - one canonical source tree;
 - direct eval/render-to-string for normal output;
