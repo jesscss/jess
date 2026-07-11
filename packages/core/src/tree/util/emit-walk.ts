@@ -77,19 +77,177 @@ function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
 }
 
 /**
- * IMPORT-WORK GATE (design §4.0, IMPORTS increment 1). True iff the tree carries
- * ANY `StyleImport` — the eval-free signal that the pass must engage import
- * machinery. When false the spine never touches `queueTopImport`, `getTree`, or
- * placement wiring: a no-import render pays ZERO import cost (the ratchet floor).
- * Mirrors `engageExtendLayer`: a single static tree scan, no side effects.
+ * STRUCTURAL statement-spine walk (PERF PASS 1). Yields every statement-level node
+ * reachable through container bodies — each `.rules` child of `node` and of every
+ * nested container (Rules / Ruleset / AtRule / Mixin / `$for`/`if`/`while`, all of
+ * which extend `Rules` and carry their statements in `.rules`), plus an `If`'s `else`
+ * branch — recursively, WITHOUT descending into declaration VALUE subtrees (the
+ * color/math/arithmetic mass that makes value-heavy files heavy).
+ *
+ * Every node the spine root-eligibility gates inspect lives in STATEMENT position:
+ * `StyleImport` and a foldable CSS `@import` (`AtRuleStatement`) are `.rules` children;
+ * a spine-eligible mixin `Call` (or `Expression`-wrapped detached-ruleset call) is a
+ * `.rules` child; an interpolated-selector `Ruleset` is a `.rules` child; a `Mixin`
+ * DEFINITION is a `.rules` child. A value-position `Call` is always a `function`-type
+ * reference (never an eligible mixin call), and none of these targets can appear inside
+ * a value expression — so this visits the SAME candidate set as a deep `walk(true)` for
+ * gate purposes while skipping the value bulk. Verdicts are byte-identical (cross-checked
+ * across the corpus + core suite).
+ *
+ * Duck-typed on `.rules` being an array so a bodyless `AtRuleStatement` (which shares
+ * the `AtRule` type bit but carries no body) is a leaf, not a container.
  */
-export function engageImportLayer(root: Node): boolean {
-  for (const node of root.walk(true)) {
-    if (node.type === 'StyleImport' || isSpineFoldableCssImportStatement(node)) {
-      return true;
+function* walkSpineStatements(node: Node): Generator<Node, void, unknown> {
+  // Container = a `Rules`-derived scope (Ruleset / AtRule / Mixin / `$for`/`if`/`while`
+  // all extend `Rules` → carry the `N.Rules` bit + a `.rules` body). A bodyless
+  // `AtRuleStatement` shares only the `AtRule` bit, so it does NOT match `N.Rules` — a leaf.
+  if (isNode(node, N.Rules)) {
+    const rules = node.rules;
+    for (let i = 0; i < rules.length; i++) {
+      const child = rules[i]!;
+      yield child;
+      yield* walkSpineStatements(child);
+    }
+    // An `If`'s `else` branch (a `Rules`, or a chained `If`) carries statements too.
+    // Duck-typed to avoid a `control.js` import cycle (control extends this module's Rules).
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const elseBranch = (node as { else?: unknown }).else;
+    if (elseBranch instanceof Node) {
+      yield elseBranch;
+      yield* walkSpineStatements(elseBranch);
     }
   }
-  return false;
+}
+
+/**
+ * Value subtrees the mixin-concern scan need not descend: the arithmetic/color SCALAR
+ * leaf types (`Operation` operands, `Color` components, `Dimension`/`Quoted`/`Range`
+ * scalars, `Nil`). A `Mixin` definition (detached ruleset) or a spine-eligible mixin
+ * `Call` is never a descendant of one of these, so a subtree rooted at one holds no
+ * mixin-gate target — pruning it skips the value bulk without changing any verdict.
+ * (`Call` is NOT pruned: a value-position mixin call is a `Call`, and an `each()` block
+ * arg nests a detached ruleset under a `Call`.)
+ */
+const MIXIN_SCAN_PRUNE = N.Operation | N.Color | N.Dimension | N.Quoted | N.Range | N.Nil
+  | N.Comment | N.Selector;
+
+/**
+ * Value-aware scan for the mixin gates (PERF PASS 1): finds every `Mixin` definition and
+ * records whether any spine-eligible mixin `Call` exists, visiting descendants of `root`
+ * EXCEPT those inside a pruned arithmetic/color scalar subtree ({@link MIXIN_SCAN_PRUNE}).
+ * Targets sit in statement OR value position (detached rulesets, namespace lookups,
+ * `each()` block args), so this must see value subtrees — but skips the color/math mass.
+ * Verdicts are byte-identical to a full `walk(true)` (cross-checked across the corpus +
+ * core suite).
+ *
+ * An EXPLICIT STACK (not a recursive generator): the eligibility gate runs on every render
+ * and a deep `yield*` generator chain re-yields each node through every ancestor generator
+ * (O(depth) per node) — the stack visits each node once with no per-node generator
+ * allocation, the bulk of this scan's cost on value-heavy trees.
+ */
+function collectMixinConcern(root: Node, flags: { hasMixinCall: boolean; mixins: Mixin[] }): void {
+  const stack: Node[] = [root];
+  const visit = (child: Node): void => {
+    if (!flags.hasMixinCall && isSpineEligibleMixinCall(child)) {
+      flags.hasMixinCall = true;
+    }
+    if (isNode(child, N.Mixin)) {
+      flags.mixins.push(child);
+    }
+    if (!isNode(child, MIXIN_SCAN_PRUNE)) {
+      stack.push(child);
+    }
+  };
+  while (stack.length > 0) {
+    stack.pop()!.eachChildNode(visit);
+  }
+}
+
+/**
+ * The consolidated tree verdicts the root-eligibility gate needs — collected in TWO
+ * passes (PERF PASS 1, coalescing the former ~5 independent full-tree `walk(true)` scans):
+ * a cheap STATEMENT-ONLY walk for the import + interpolated-selector-ruleset flags, and a
+ * value-aware (but scalar-pruned) walk for the mixin-call flag + Mixin-definition set. The
+ * whole result is MEMOIZED on the (stable, projection-immutable) root node so the several
+ * gate calls per render share it and repeat renders (language-service / watch) never
+ * recompute.
+ */
+interface SpineRootGateFlags {
+  hasImport: boolean;
+  hasMixinCall: boolean;
+  hasInterpolatedSelectorRuleset: boolean;
+  /** Every `Mixin` DEFINITION in the tree (statement OR detached-ruleset value) — the input to the two mixin gates. */
+  mixins: Mixin[];
+}
+
+const spineRootGateFlagsCache = new WeakMap<Node, SpineRootGateFlags>();
+
+/**
+ * Compute (memoized) the coalesced statement-structure gate verdicts for a root. One
+ * structural pass over the statement spine (`walkSpineStatements`) collects the import,
+ * mixin-call and interpolated-selector-ruleset flags plus the Mixin-definition set, so
+ * the ~5 predicates that used to each deep-walk the whole tree (including value subtrees)
+ * now share a single value-skipping traversal. The tree is immutable on the spine
+ * (projection architecture — the descent only assigns output-invisible indices/parents,
+ * never changes `.rules` membership or node types), so the WeakMap cache stays valid for
+ * the life of the root object.
+ */
+function collectSpineRootGateFlags(root: Node): SpineRootGateFlags {
+  const cached = spineRootGateFlagsCache.get(root);
+  if (cached) {
+    return cached;
+  }
+  // STRUCTURAL pass — imports and interpolated-selector rulesets are STATEMENT-only
+  // (a `StyleImport` / foldable CSS `@import` / interpolated-selector `Ruleset` never
+  // appears inside a declaration value), so this skips the color/math value bulk.
+  let hasImport = false;
+  let hasInterpolatedSelectorRuleset = false;
+  for (const node of walkSpineStatements(root)) {
+    if (!hasImport && (node.type === 'StyleImport' || isSpineFoldableCssImportStatement(node))) {
+      hasImport = true;
+    }
+    if (
+      !hasInterpolatedSelectorRuleset
+      && isNode(node, N.Ruleset)
+      && selectorHasInterpolatedSelector((node as Ruleset).selector)
+    ) {
+      hasInterpolatedSelectorRuleset = true;
+    }
+    if (hasImport && hasInterpolatedSelectorRuleset) {
+      break;
+    }
+  }
+  // VALUE-AWARE pass — a spine-eligible mixin CALL (`@alias()`, `#ns.m()`, a namespace
+  // lookup) and a `Mixin` DEFINITION (a detached ruleset `@dr: { .m() {} }`, an `each()`
+  // block arg) CAN sit in value position, so this must see value subtrees. Coalesced into
+  // ONE traversal (was up to four separate `walk(true)` scans) and memoized, so the
+  // duplicate gate calls per render are free. It PRUNES descent into the arithmetic/color
+  // SCALAR leaf types (`Operation`/`Color`/`Dimension`/`Quoted`/`Range`/`Nil` — the mass
+  // that makes value-heavy files heavy): a mixin call / detached ruleset is never a
+  // descendant of one of those, so pruning them cannot change either verdict (cross-checked
+  // byte-identical against the full deep walk across the corpus + core suite).
+  const mixinFlags = { hasMixinCall: false, mixins: [] as Mixin[] };
+  collectMixinConcern(root, mixinFlags);
+  const flags: SpineRootGateFlags = {
+    hasImport,
+    hasMixinCall: mixinFlags.hasMixinCall,
+    hasInterpolatedSelectorRuleset,
+    mixins: mixinFlags.mixins
+  };
+  spineRootGateFlagsCache.set(root, flags);
+  return flags;
+}
+
+/**
+ * IMPORT-WORK GATE (design §4.0, IMPORTS increment 1). True iff the tree carries
+ * ANY `StyleImport` (or a foldable CSS `@import`) — the eval-free signal that the pass
+ * must engage import machinery. When false the spine never touches `queueTopImport`,
+ * `getTree`, or placement wiring: a no-import render pays ZERO import cost (the ratchet
+ * floor). PERF PASS 1: reads the memoized structural verdict (no value-subtree descent),
+ * so a zero-import value-heavy file no longer deep-walks its color/math mass to answer.
+ */
+export function engageImportLayer(root: Node): boolean {
+  return collectSpineRootGateFlags(root).hasImport;
 }
 
 /**
@@ -1952,10 +2110,9 @@ export function withSpineMultipleScope<T>(
  * Recursion is gated separately (`treeHasRecursiveMixinCall`).
  */
 function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
-  for (const node of root.walk(true)) {
-    if (!isNode(node, N.Mixin)) {
-      continue;
-    }
+  const { mixins } = collectSpineRootGateFlags(root);
+  for (let m = 0; m < mixins.length; m++) {
+    const node = mixins[m]!;
     const body = node.rules;
     // A Mixin DEFINITION nested ANYWHERE inside this mixin body (deep) is a callable the
     // spine surface descent does not register — UNLESS every path that could reach it is a
@@ -1966,7 +2123,7 @@ function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
     // an INTERPOLATED-selector-created namespace (`.@{n}{ .sayGender(){} }` then
     // `.person.sayGender()`) DOES need dynamic registration the fold doesn't perform —
     // that whole tree stays on eval (byte-identical, ratchet-locked residual). Checked deep
-    // because the nested def may sit inside a container.
+    // because the nested def may sit inside a container OR a detached-ruleset value.
     for (const inner of node.walk(true)) {
       if (inner !== node && isNode(inner, N.Mixin)) {
         if (nestedDefNeedsDynamicRegistration(root)) {
@@ -2295,8 +2452,10 @@ function treeHasRecursiveMixinCall(root: Node): boolean {
   // Only such a cycle collapses on the re-entrant splice (STRIPE); a FLAT recursive
   // body (declarations only) folds byte-identical.
   const namesWithNestedContainer = new Set<string>();
-  for (const node of root.walk(true)) {
-    if (!isNode(node, N.Mixin) || typeof node.name !== 'string') {
+  const { mixins } = collectSpineRootGateFlags(root);
+  for (let m = 0; m < mixins.length; m++) {
+    const node = mixins[m]!;
+    if (typeof node.name !== 'string') {
       continue;
     }
     const from = node.name;
@@ -2426,7 +2585,21 @@ const RAW_MERGE_ASSIGNS = new Set(['+:', '+,:', '+_:', '&,:', '&_:']);
  * A ROOT-direct-child Mixin has an empty strictly-intermediate chain, so it never
  * triggers the wiring (the common corpus shape).
  */
+const nestedMixinClosureCache = new WeakMap<Rules, boolean>();
+
 function treeHasNestedMixinClosingOverVarScope(root: Rules): boolean {
+  // MEMOIZED (PERF PASS 1): a full top-down scope-body descent run once per render at
+  // `renderRootViaSpine` entry; cache on the projection-immutable root.
+  const cached = nestedMixinClosureCache.get(root);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const result = computeNestedMixinClosingOverVarScope(root);
+  nestedMixinClosureCache.set(root, result);
+  return result;
+}
+
+function computeNestedMixinClosingOverVarScope(root: Rules): boolean {
   // TOP-DOWN descent over scope bodies, carrying whether any STRICTLY-intermediate
   // enclosing scope (below root, above the mixin) declares a variable. A raw parse
   // tree does NOT wire `.parent` on nested nodes, so ancestry must be tracked on the
@@ -2522,28 +2695,14 @@ function wireSpineDefinitionScopeParents(scope: Rules): void {
   }
 }
 
-/** Deep: any Call in the tree that is a spine-eligible mixin call. */
+/** Any spine-eligible mixin call on the statement spine (memoized, value-skipping — PERF PASS 1). */
 function treeHasMixinCall(root: Node): boolean {
-  for (const node of root.walk(true)) {
-    if (isSpineEligibleMixinCall(node)) {
-      return true;
-    }
-  }
-  return false;
+  return collectSpineRootGateFlags(root).hasMixinCall;
 }
 
-/** Deep: any Ruleset in the tree whose selector is an InterpolatedSelector. */
+/** Any statement-spine Ruleset whose selector is an InterpolatedSelector (memoized — PERF PASS 1). */
 function treeHasInterpolatedSelectorRuleset(root: Node): boolean {
-  for (const node of root.walk(true)) {
-    if (!isNode(node, N.Ruleset)) {
-      continue;
-    }
-    const selector = (node as Ruleset).selector;
-    if (selectorHasInterpolatedSelector(selector)) {
-      return true;
-    }
-  }
-  return false;
+  return collectSpineRootGateFlags(root).hasInterpolatedSelectorRuleset;
 }
 
 /** True if `selector` is (or contains) an `InterpolatedSelector` node. */

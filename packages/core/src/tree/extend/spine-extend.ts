@@ -151,8 +151,19 @@ function isMediaScopeAtRule(node: Node): boolean {
  * for the render. This is what the zero-extend ratchet locks. Callers on the false branch
  * simply stream (today's behavior, byte-identical).
  */
+const engageExtendLayerCache = new WeakMap<Rules, boolean>();
+
 export function engageExtendLayer(root: Rules): boolean {
-  return treeHasExtend(root);
+  // MEMOIZED (PERF PASS 1): this root-enter gate is consulted several times per render
+  // (`isSpineEligibleRoot` twice + `renderRootViaSpine`); `treeHasExtend` is a full
+  // structural tree scan, so cache its verdict on the (projection-immutable) root.
+  const cached = engageExtendLayerCache.get(root);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const result = treeHasExtend(root);
+  engageExtendLayerCache.set(root, result);
+  return result;
 }
 
 /**

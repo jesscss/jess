@@ -1104,6 +1104,46 @@ export abstract class Node<
   }
 
   /**
+   * Non-generator shallow child visit: call `cb` for each DIRECT semantic child Node
+   * (via childKeys), one level deep. Equivalent to iterating `walk(false)` but with no
+   * generator allocation — for hot traversals (e.g. the spine eligibility gate's
+   * value-heavy scan) where per-node generator overhead dominates.
+   */
+  eachChildNode(cb: (child: Node) => void): void {
+    const childKeys = childKeysOf(this);
+    if (!childKeys) {
+      return;
+    }
+    for (let i = 0; i < childKeys.length; i++) {
+      const value = readNodeField(this, childKeys[i]!);
+      if (value instanceof Node) {
+        cb(value);
+      } else if (isArray(value)) {
+        for (let j = 0; j < value.length; j++) {
+          const item = value[j];
+          if (item instanceof Node) {
+            cb(item);
+          }
+        }
+      } else if (isPlainObject(value)) {
+        for (const k in value) {
+          const childValue = (value as Record<string, unknown>)[k];
+          if (childValue instanceof Node) {
+            cb(childValue);
+          } else if (isArray(childValue)) {
+            for (let j = 0; j < childValue.length; j++) {
+              const item = childValue[j];
+              if (item instanceof Node) {
+                cb(item);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * An iterator over semantic child nodes (via childKeys), optionally deep.
    * Renamed from `children()` — use `.children` (property) for the Parséman structural child array.
    */
