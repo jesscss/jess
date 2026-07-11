@@ -1177,8 +1177,8 @@ export abstract class Node<
     }
 
     // Visit children recursively (Less.js pattern)
-    // Note: If TreeVisitor is using accept(), it will skip auto-visiting children
-    // to avoid double-visiting. See TreeVisitor._visit() implementation.
+    // Note: a visitor that drives traversal via accept() skips auto-visiting
+    // children here to avoid double-visiting.
     for (const child of this.walk()) {
       if (child.accept) {
         child.accept(visitor);

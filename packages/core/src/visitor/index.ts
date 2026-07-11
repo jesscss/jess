@@ -165,7 +165,10 @@ export abstract class Visitor {
     /**
      * Bind to inner _visit, so that all inner calls will not call this current method again
      */
-    this.visit = this._visit.bind(this) as typeof this.visit;
+    this.visit = (node: Node): Node => {
+      const result = this._visit(node);
+      return result instanceof Node ? result : node;
+    };
     let possibleAbort = this.enter?.(n);
     if (possibleAbort === ABORT) {
       return n;
@@ -179,85 +182,5 @@ export abstract class Visitor {
       return returnVal;
     }
     return n;
-  }
-}
-
-/**
- * This is a specific visitor type that auto-walks the tree,
- * and optionally mutates children nodes.
- *
- * @note If you are extending this class, you DO NOT HAVE TO
- * manually visit children nodes. This class will do it for you.
- */
-export abstract class TreeVisitor extends Visitor {
-  /** Visit children nodes before or after visiting the parent node */
-  visitChildren: 'before' | 'after' = 'after';
-  visitedNodes = new Set<Node>();
-
-  constructor(
-    public reverse?: boolean
-  ) {
-    super();
-  }
-
-  override enter(n: tree.Node) {
-    this.visitedNodes.clear();
-  }
-
-  override _visit(n: Node, ctx: VisitorContext) {
-    if (this.visitedNodes.has(n)) {
-      return n;
-    }
-    this.visitedNodes.add(n);
-    const { reverse } = this;
-
-    // If node has accept() method, let it control traversal
-    // This allows nodes to customize traversal (e.g., Less.js compatibility)
-    // accept() will visit self and children, so we don't auto-visit here
-    const hasAccept = n.accept && typeof n.accept === 'function';
-    const hasCustomAccept = hasAccept && n.accept !== Node.prototype.accept;
-    if (hasCustomAccept) {
-      const returnVal = n.accept(this);
-      if (!returnVal || typeof returnVal === 'symbol') {
-        return returnVal;
-      }
-      // accept() already visited self and children, so we just handle exit
-      this.visitExit(n, ctx);
-      if (returnVal instanceof Node) {
-        this.visitedNodes.add(returnVal);
-      }
-      return returnVal;
-    }
-
-    // Default: auto-visit children (node doesn't have accept() or doesn't override it)
-    if (this.visitChildren === 'before') {
-      for (const node of n.walk(true, reverse)) {
-        this._visit(node, ctx);
-      }
-      const returnVal = super._visit(n, ctx);
-      /** @node The exit function passes in the original node */
-      this.visitExit(n, ctx);
-      /** Don't visit new created nodes */
-      if (returnVal instanceof Node) {
-        this.visitedNodes.add(returnVal);
-      }
-      return returnVal;
-    }
-    let returnVal = super._visit(n, ctx);
-    if (!returnVal || typeof returnVal === 'symbol') {
-      return returnVal;
-    }
-
-    if (returnVal !== n) {
-      /** Don't visit new created nodes */
-      this.visitedNodes.add(returnVal);
-    } else {
-      for (const node of n.walk(true, reverse)) {
-        this._visit(node, ctx);
-      }
-    }
-
-    this.visitExit(n, ctx);
-    return returnVal;
   }
 }
