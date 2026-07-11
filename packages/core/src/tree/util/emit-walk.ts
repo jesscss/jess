@@ -1394,6 +1394,17 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   if (isNode(node, N.Any) && node.role === 'charset') {
     return true;
   }
+  // P4 IMPORT-BODY FOLD — invisible `Nil` leaf: a leading `Nil` left in a folded import body by
+  // WIRE-TIME registration prep (`wireSpineImportsInBody` → `body.prepareRegistration`
+  // → `_scanRegistrationNodes`): an imported `@charset` is recorded FIRST-wins into
+  // `context.currentCharset` and an already-queued CSS `@import` is hoisted to
+  // `context.topImports`, each REPLACED in place by a `Nil` placeholder. The registration
+  // (charset + top-import) has ALREADY happened at wire time — the `Nil` is its aftermath,
+  // NOT a signal to eval — so admitting it here does not drop any effect. A `Nil` emits
+  // NOTHING at its source position.
+  if (isNode(node, N.Nil)) {
+    return true;
+  }
   // Extend / ExtendList are invisible effect nodes (they emit nothing; their gather
   // runs in the pre-scan). Admitted only under the FLAT extend topology (P3 increment 1),
   // where the root-level pre-scan gathers them ahead of emit.
