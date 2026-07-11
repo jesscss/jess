@@ -5241,16 +5241,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const value = this.evalForRender(context, sourceWasRoot);
       return isThenable(value) ? value.then(afterEval) : afterEval(value);
     };
-    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
+    // D-EVAL FLIP (work/deval-flip, STEP 1): the spine is the SOLE top-level render
+    // path. The eval fall-back (ineligible root, and SPINE_ABORT_TO_EVAL mid-descent
+    // abort) is DISABLED here so any fixture that relied on eval surfaces LOUDLY as a
+    // SPINE_ONLY_UNSUPPORTED throw rather than silently mis-rendering. The eval
+    // machinery (`evalForRender`, `Rules.derive`/`_deriveShell`, clone families,
+    // `F_STATIC`, old extend apply, TreeVisitor) is left in-tree but UNREACHABLE from a
+    // top-level root render — this is the reversible flip; deletion is a later step.
+    // Non-root nested `.render()` calls and the `preSerializeRoot` visitor-hook path
+    // still use eval (out of scope for this flip).
+    if (sourceWasRoot && !preSerializeRoot) {
+      if (!isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
+        throw new Error('SPINE_ONLY_UNSUPPORTED: root not spine-eligible (eval fall-back disabled by D-EVAL FLIP)');
+      }
       const prepared = prepareRenderPrintState(context, printOptions);
       const rendered = renderRootViaSpine(this, context, prepared);
-      // A spine render may ABORT to eval (a resolved sentinel, sync or via the async import chain). On
-      // abort, `evalPath()` owns the WHOLE render including the buffer write (its `serialize` branches
-      // on `isRenderBuffer`), so it must NOT be re-wrapped in `writeRenderTextResult` — that would write
-      // the eval output into the buffer a SECOND time (double-emit). Only genuine spine TEXT is wrapped.
+      // A spine render may signal ABORT-TO-EVAL (a resolved sentinel, sync or via the
+      // async import chain). Under the flip this is a HARD FAILURE, not a fall-back.
       const finishSpine = (result: string | typeof SPINE_ABORT_TO_EVAL): MaybePromise<string> => {
         if (result === SPINE_ABORT_TO_EVAL) {
-          return evalPath();
+          throw new Error('SPINE_ONLY_UNSUPPORTED: spine aborted mid-descent (eval fall-back disabled by D-EVAL FLIP)');
         }
         return isRenderBuffer(bufferOrOptions) ? writeRenderTextResult(bufferOrOptions, result) : result;
       };
