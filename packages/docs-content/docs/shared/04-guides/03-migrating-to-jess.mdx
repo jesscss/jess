@@ -1,12 +1,32 @@
 ---
-id: migrating
 title: Migrating to Jess
+sidebar_label: Migrating to Jess
+description: Move a Less or Sass codebase onto Jess with jess convert and side-by-side syntax mapping tables.
 audiences:
   - jess
+  - sass
 origin: jess
+slug: /guides/migrating-to-jess
 ---
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
+import AudienceGate from '@theme/AudienceGate';
+
+<AudienceGate include={['jess']}>
+
+Moving an existing **Less** or **Sass** codebase onto **Jess**? This guide pairs
+the `jess convert` first pass with a side-by-side mapping so you can see exactly
+what each construct becomes in Jess syntax.
+
+</AudienceGate>
+
+<AudienceGate include={['sass']}>
+
+Coming from **Sass/SCSS**? Jess parses your SCSS today (it calls the supported
+subset **Sass+**), and `jess convert` rewrites it to native `.jess`. The tables
+below read left-to-right: **your Sass** on the left, **Jess** on the right.
+
+</AudienceGate>
 
 :::note
 `jess convert` is available today and is best used as a first-pass migration assistant. Plan on reviewing converted output and iterating on edge cases (especially complex mixin/namespace patterns) as Jess syntax continues to evolve in alpha.
@@ -45,6 +65,16 @@ E.g. `@import` will become `@-import`
   ```
   </TabItem>
 </Tabs>
+
+:::tip Prefer `@-compose` once converted
+`@-import` is a **legacy bridge** — it works and eases a mechanical port, but it
+emits a deprecation warning because it re-exports everything and changes the
+evaluation context per call. The Jess module system is
+[`@-compose`](/docs/Language/atrules) (namespaced, isolated scope, `with { }`
+configuration). A Sass `@use "./theme";` maps most cleanly to
+`@-compose "./theme";`, not `@-import`. Convert with `@-import` for the first
+pass, then promote real modules to `@-compose`.
+:::
 
 ### Variable declarations
 

@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
+    "build:facings": "pnpm --filter @jesscss/docs-content build:facings",
+    "predev": "pnpm run build:facings",
     "dev": "docusaurus start",
+    "prebuild": "pnpm run build:facings",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",

@@ -1,0 +1,224 @@
+---
+title: Migrating Less 4.x → 5.x
+sidebar_label: Migrating Less 4.x → 5.x
+description: The breaking changes that most often affect a Less 4.x to 5.x upgrade, and how they map when moving onto the Jess engine.
+audiences:
+  - jess
+  - less
+origin: shared
+slug: /guides/migrating-less-4-to-5
+facing_paths:
+  less: usage/less-v5-breaking-changes
+---
+import AudienceGate from '@theme/AudienceGate';
+
+<AudienceGate include={['less']}>
+
+Migrating a **Less 4.x** project to **Less 5.x**. Less 5.x runs on the Jess
+engine, so behavior tracks CSS more closely while keeping Less semantics where
+you expect them. This page lists the changes that most often affect an upgrade;
+for the full walkthrough (math modes, CLI options, sourcemaps, and the
+checklist) see <a href="/docs/next/usage/migrating-to-v5">Migrating to v5</a>.
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+Coming to **Jess** from **Less 4.x**? Jess *is* the engine behind Less 5.x, so
+the same breaking changes apply when you move existing Less sources onto Jess.
+This page lists the ones that most often need attention.
+
+</AudienceGate>
+
+## Removed: inline backtick JavaScript
+
+Inline backtick JavaScript is **removed entirely**. It is now a parse error — not
+a flag you can opt back into.
+
+```less
+// No longer valid — this is a parse error:
+@columns: `Math.max(12, 8)`;
+```
+
+<AudienceGate include={['less']}>
+
+Where you relied on backtick JS, migrate to a plain expression or to a plugin:
+
+- Prefer a plain Less expression or function when one exists
+  (`@columns: max(12, 8);`).
+- For genuine scripting, move the logic behind `@plugin` / `@-use`.
+
+`javascriptEnabled` no longer re-enables inline backticks; at most it gates
+`@plugin` loading. To turn executable scripts off entirely use
+`disableScriptModules` (the old `disablePluginRule` still maps to it for
+compatibility).
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+In Jess there is no inline-JavaScript syntax at all. Move any scripted values to
+a module you pull in with `@-use`, or express them with built-in functions
+(`@columns: max(12, 8);`).
+
+</AudienceGate>
+
+## Imports
+
+<AudienceGate include={['less']}>
+
+Bare `@import "foo";` is **deprecated** in Less 5.x and emits a deprecation
+warning. The path forward is the module system, `@-compose` — a namespaced
+import with isolated scope. `@-import` is the 1:1 legacy bridge for `@import`
+(itself discouraged); reach for it only for a mechanical port, then promote real
+modules to `@-compose`.
+
+```less
+// Deprecated (warns):
+@import "variables";
+
+// Mechanical bridge (still discouraged):
+@-import "./variables.less";
+
+// The module system — prefer this:
+@-compose "./variables.less" as variables;
+```
+
+Keep import paths **explicit and file-relative** (prefer a leading `./`). See
+[Modules & imports](/docs/next/language/modules-and-imports) for the full model.
+
+:::note
+The exact verbosity of the `@import` deprecation warning is still being
+finalized; the direction above is settled.
+:::
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+Jess's module system is `@-compose` (namespaced import, isolated scope,
+`with { }` configuration). For a mechanical port, `@-import` mirrors Less/Sass
+`@import` but emits a deprecation warning, so treat it as a bridge and promote
+real modules to `@-compose`. A bare `@import "foo";` is a plain CSS `@import`
+(passed through), not a source include.
+
+```less
+// CSS @import (passed through), NOT a source include:
+@import "foo";
+
+// Legacy source include (warns) — prefer @-compose:
+@-import "./foo.less";
+
+// The module system:
+@-compose "./foo.less" as foo;
+```
+
+See [Modules & imports](/docs/language/modules-and-imports).
+
+</AudienceGate>
+
+## CSS nesting is preserved by default (`collapseNesting: false`)
+
+Less 5.x has first-class CSS nesting, and it **keeps nested structure by default**
+(`collapseNesting: false`). Output stays in the familiar nested shape unless you
+explicitly opt into collapsing.
+
+```less
+.card {
+  padding: 1rem;
+  .title { font-weight: 600; }
+}
+```
+
+By default this compiles to nested CSS (`.title` stays nested under `.card`).
+Enable `collapseNesting: true` for the older flattened (`.card .title { … }`)
+output when you need deduplication or wider tooling support.
+
+<AudienceGate include={['jess']}>
+
+If you are porting a 4.x project that assumed flattened output, set
+`collapseNesting: true` while you migrate, then move to native nesting once your
+toolchain supports it.
+
+</AudienceGate>
+
+Less-style parent-suffix composition still works, and the parent-template model
+is now explicit:
+
+- `&-1` composes a suffix onto the parent (`.col { &-1 {…} }` → `.col-1`).
+- `&()` keeps the parent selector but hoists the nested selector to root.
+- `&('')` drops the parent selector entirely.
+- `&(-1)` is equivalent to `&-1`.
+
+## `extend` and the `!all` flag
+
+`extend` behavior is validated against fixture parity, including nested and
+media-scoped selectors. Per-selector `all` in multi-target extends is deprecated
+in favor of a single `!all` flag:
+
+```less
+// Deprecated:
+&:extend(.a all, .b all);
+
+// Preferred:
+&:extend(.a, .b !all);
+```
+
+With `collapseNesting: true`, `extend … !all` in nested selector-list cases may
+emit `:is(…)` selectors to reduce duplication.
+
+## Variable resolution follows source order
+
+Less 4.x had eager-resolution edge cases where a later mixin call could appear to
+retroactively change an earlier declaration. Less 5.x resolves declarations in
+**source order** against the scope that exists when they are evaluated — a later
+side effect does not rewrite an already-evaluated sibling declaration.
+
+```less
+@mix: blue;
+.mixin() { @mix: #989; }
+.tiny-scope {
+  color: @mix;   // blue — resolved before .mixin() runs
+  .mixin();
+}
+```
+
+## Math modes
+
+- Move `strictMath` workflows to the `math` option.
+- `strict-legacy` math mode is removed.
+- `math=always` is deprecated; treat it as legacy behavior.
+
+```bash
+# old
+lessc --math=always styles.less styles.css
+# preferred
+lessc --math=parens-division styles.less styles.css
+```
+
+## Deprecated CLI / option paths
+
+- `--relative-urls` → `--rewrite-urls=all` (or `rewriteUrls`).
+- `--ie-compat` is a no-op in modern pipelines.
+- built-in `compress` → use a dedicated CSS minifier.
+- `dumpLineNumbers` / `--line-numbers` → use sourcemaps.
+- `strictImports` is deprecated; avoid it in new configs.
+
+## Runs on the Jess engine
+
+<AudienceGate include={['less']}>
+
+Less 5.x is evaluated by the Jess engine rather than the legacy Less 4.x
+evaluator. It aims to match CSS behavior more accurately while preserving Less
+semantics. Diff your compiled CSS on a branch before rolling out — most projects
+are unaffected, but selector-heavy and `extend`-heavy code is worth a close look.
+
+</AudienceGate>
+
+<AudienceGate include={['jess']}>
+
+Jess is the engine. Less 5.x is Jess with the Less-compatibility surface turned
+on, so the evaluation model described throughout these docs is exactly what your
+migrated Less sources run against.
+
+</AudienceGate>
