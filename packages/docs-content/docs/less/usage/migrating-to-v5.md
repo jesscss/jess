@@ -194,7 +194,7 @@ runtime switch.
 Example migration path:
 
 ```less
-// 4.x-era pattern (legacy):
+// 4.x pattern — now a parse error in 5.x:
 @columns: `Math.max(12, 8)`;
 ```
 
@@ -204,7 +204,7 @@ Prefer explicit Less expressions/functions where possible:
 @columns: max(12, 8);
 ```
 
-If your project still requires JS evaluation, move that usage behind the optional plugin/runtime policy path and validate behavior in CI before enabling broadly.
+Inline backtick JavaScript cannot be re-enabled in 5.x (see [Inline JavaScript (backticks) removed](#inline-javascript-backticks-removed)). If your project still requires JS evaluation, move it into a script module imported with `@use` / `@-use`, or a file-based `@plugin`, and validate behavior in CI before enabling broadly.
 
 ### Plugin visitors
 
@@ -235,20 +235,30 @@ for the full model and examples.
 
 These are the migration-impact items that frequently break older workflows:
 
-### Inline JavaScript defaults
+### Inline JavaScript (backticks) removed
 
-- Inline JavaScript is disabled by default.
-- Existing code that relies on backtick JS must explicitly opt in where supported.
-
-Example:
+Inline backtick JavaScript is **removed entirely in 5.x**. A backtick expression is now a parse error, not an opt-in — there is no option that re-enables it.
 
 ```less
-// legacy
+// 4.x: evaluated as JavaScript
 @assetVersion: `"2026-03"`;
+```
 
-// preferred
+```
+// 5.x: parse error
+Inline JavaScript using backticks is not supported.
+Use @use / @-use to import a script module instead.
+```
+
+For a plain literal or expression, write it directly in Less:
+
+```less
 @assetVersion: "2026-03";
 ```
+
+For logic that genuinely needs JavaScript, move it into a script module and import it with `@use` / `@-use`. Script execution runs through `@jesscss/plugin-js` on Deno; see the [JavaScript execution model](#safer-javascript-execution-model) above and [Plugins](./plugins). Dedicated script-module documentation is coming soon.
+
+The `javascriptEnabled` (`lessc --js`) and `inlineJavaScript` options are still recognized for 4.x configuration compatibility, but they no longer re-enable inline backticks: setting them has no effect on the parse error. Executable scripts are now controlled by `@plugin` / `@use` together with `disableScriptModules`.
 
 ### Math mode changes
 

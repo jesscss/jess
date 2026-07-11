@@ -222,15 +222,15 @@ With strict units on, we assume this is a bug in the calculation and throw an er
 
 False by default starting in v3.0.0. Currently only used for the data-uri function to ensure that images aren't created that are too large for the browser to handle.
 
-#### Enable Inline JavaScript (Deprecated)
+#### Enable Inline JavaScript (Removed)
 
 | | |
 |---|---|
 | `lessc --js` | `{ javascriptEnabled: true }` |
 
-False by default starting in v3.0.0. Enables evaluation of JavaScript inline in `.less` files. This created a security problem for some developers who didn't expect user input for style sheets to have executable code.
+Inline backtick JavaScript is **removed in 5.x**. Executing JavaScript inline in `.less` files was a security problem for developers who didn't expect style sheet input to carry executable code, so a backtick expression is now a parse error.
 
-Replaced with the `@plugin` option.
+This option (and the equivalent `inlineJavaScript`) is still accepted for 4.x configuration compatibility, but it no longer does anything: setting it `true` does not re-enable inline backticks. To run JavaScript, import a script module with `@use` / `@-use`, or use a file-based `@plugin`; that execution path is controlled by `disableScriptModules`. See [Plugins](./plugins).
 
 #### Global Variables
 
