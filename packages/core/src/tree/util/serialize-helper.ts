@@ -1788,8 +1788,24 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const ctx = options.context;
         const savedRulesContext = ctx.rulesContext;
         ctx.rulesContext = spineFrame;
+        // Thread the ORIGIN FILE's treeContext for a spliced import-body child. A
+        // child spliced from an imported file's body carries that file's placement
+        // surface as `spineFrame`, whose `_treeContext` is the imported file's own
+        // directory. If this child is a RULESET containing a nested `@import`, the
+        // nested path resolves relative to the ruleset's `sourceRoot`, whose
+        // `_treeContext` is undefined (only the file root Rules carries one) — so
+        // resolution would otherwise fall back to the OUTER document's directory and
+        // fail (File not found). Point treeContext at the origin file's context for
+        // this child's descent so the nested import resolves against the right dir.
+        // Pure read-and-restore projection — no tree mutation. A no-op for a mixin/
+        // loop surface (`_treeContext` undefined) — treeContext is unchanged there.
+        const savedTreeContext = ctx.treeContext;
+        if (spineFrame._treeContext) {
+          ctx.treeContext = spineFrame._treeContext;
+        }
         const restore = <T>(value: T): T => {
           ctx.rulesContext = savedRulesContext;
+          ctx.treeContext = savedTreeContext;
           return value;
         };
         try {

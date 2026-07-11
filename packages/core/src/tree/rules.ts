@@ -4608,8 +4608,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       assignSpineChildIndices(body);
       const savedRulesContext = context.rulesContext;
       context.rulesContext = body;
+      // Thread the IMPORTED FILE's treeContext across its whole body descent. The
+      // placement body root carries the imported file's `_treeContext` (its own
+      // directory). A nested `@import` inside one of this file's RULESETS resolves
+      // relative to the RULESET's `sourceRoot`, whose `_treeContext` is undefined
+      // (only the file-level root Rules carries one) — so `_foldLessImportForSpine`
+      // would fall back to whatever treeContext is live, i.e. the TOP document dir,
+      // and resolve the nested path against the wrong directory (File not found).
+      // Setting treeContext to the body's own file context for the duration of this
+      // descent makes that fallback resolve against the importing file's directory.
+      // Pure emit-time projection (read the body's TC, restore on exit) — no tree
+      // mutation. A no-op when the body has no `_treeContext` (an inline/empty fold).
+      const savedTreeContext = context.treeContext;
+      if (body._treeContext) {
+        context.treeContext = body._treeContext;
+      }
       const restore = <T>(value: T): T => {
         context.rulesContext = savedRulesContext;
+        context.treeContext = savedTreeContext;
         return value;
       };
       // A `(reference)` import descends the placement AS A CHILD `Rules` (increment 5),
