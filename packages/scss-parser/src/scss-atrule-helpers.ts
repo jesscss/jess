@@ -38,6 +38,41 @@ export function quotedLike(original: Quoted, nextValue: string, loc?: LocationIn
   return new Quoted(new Any(nextValue, { role: 'any' }), { quote, escaped }, nodeLoc);
 }
 
+/**
+ * Detect the CSS `@import` ordering violations Sass parse-rejects (`error/wrong_order/*`).
+ * The full media-query-list / `supports()` grammar is out of scope for the
+ * scanned prelude, so this catches the clearly-invalid, low-false-positive
+ * shapes on the raw prelude text (everything after `@import`, minus the path):
+ *
+ *   1. A bare media feature `(x: y)` (NOT a `fn(...)` call — hence the
+ *      no-ident-before-`(` guard) followed by anything other than `and` / `or` /
+ *      `,` / `;` / end. Catches `"a" (b: c) supports(d: e)`, `"a" (b: c) d`,
+ *      `"a" (b: c) d(e)`.
+ *   2. A comma directly followed by a function call `ident(` — a new import item
+ *      can never be `supports(...)` or an unknown function. Catches
+ *      `"a" b, supports(c: d)`, `"a" b, c(d)`, and `"a", url(b)`.
+ *
+ * Not caught (documented as remaining): a string after a comma in media context
+ * (`"a" b, "c"` — indistinguishable from a valid plain-import continuation without
+ * modelling media-vs-plain state) and `supports()` value-syntax errors
+ * (`supports(--a:)`).
+ */
+export function checkImportPreludeOrder(
+  preludeText: string,
+  recordError: (message: string) => void
+): void {
+  const text = preludeText;
+  // A bare media feature may be followed by `and`/`or` (query chain), `,`/`;`
+  // (list / end), `{`/`}` (block bounds), or `)` (closes an enclosing
+  // `supports(...)` / group). Anything else — `supports(`, an ident, a function —
+  // is the wrong-order violation.
+  const badFeatureOrder = /(?<![-\w])\([^()]*:[^()]*\)\s*(?!and(?![-\w])|or(?![-\w])|[,;{})])\S/i;
+  const badCommaFunction = /,\s*[a-zA-Z][-\w]*\s*\(/;
+  if (badFeatureOrder.test(text) || badCommaFunction.test(text)) {
+    recordError('Invalid @import: a media-query list must not follow a media feature without `and`/`or`, and a comma-separated @import item must be a URL or string (not `supports(…)` or another function).');
+  }
+}
+
 export function isPlainCssImportPath(rawPath: string): boolean {
   return /\.css(?:$|[?#])/i.test(rawPath)
     || /^[a-z]+:\/\//i.test(rawPath)
@@ -116,8 +151,15 @@ export function checkForwardPreludeErrors(
   if (!preludeExtra?.trim()) {
     return;
   }
-  const text = preludeExtra.trim();
-  if (/\bas\s+[^\s;]+-\*/.test(text)) {
+  // Normalize away loud/silent comments and collapse whitespace so a prefix form
+  // interrupted by a comment or newline (`as /**/ a-*`, `as //\n a-*`) still
+  // matches the rejection patterns below.
+  const text = preludeExtra
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n\r]*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/\bas\s+\S+-\*/.test(text)) {
     recordError(
       '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead.'
     );

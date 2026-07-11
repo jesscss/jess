@@ -9,7 +9,7 @@
 import {
   rules, compose,
   node, regex, literal, sequence, choice, optional, trivia,
-  many, expect, sepBy, oneOrMore, scanTo, balanced, label
+  many, expect, sepBy, oneOrMore, scanTo, balanced, label, not
 } from 'parseman' with { type: 'macro' };
 import { lessGrammar } from '@jesscss/less-parser/grammar';
 
@@ -48,6 +48,22 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // SCSS references are bare `$var` (no Less accessor-chain syntax) — a single
   // token, so no trivia handling is needed.
   const Reference = node(scssVar);
+
+  // Namespaced variable ASSIGNMENT — `ns.$var: value [!default|!global];`. Writes
+  // into another module's variable (distinct from the member READ `ns.get-x()`).
+  // The `plainIdent '.' scssVar` head can't be confused with a Declaration
+  // (`scssDeclPropName` stops before `.`) or a class-selector ruleset (`.` there
+  // is followed by an ident, not `$`), so this is safe at statement head.
+  const NsVarDeclaration = node(
+    sequence(
+      plainIdent,
+      literal('.'),
+      scssVar,
+      literal(':'),
+      g.valueList,
+      optional(choice(literal('!default'), literal('!global'))),
+      optional(literal(';'))
+    ));
 
   // ── Interpolation (#{…}) ───────────────────────────────────────────────────
   // SCSS uses `#{expr}` (not Less `@{var}`). Override the Less interpolation
@@ -160,10 +176,18 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
       optional(literal(';'))
     ));
 
+  // A nested-properties block (`font: { … }`) normally holds inner
+  // sub-declarations, but Sass also allows control flow (`@for`, `@if`, …) and
+  // namespaced variable ASSIGNMENTS inside it. Try those before the plain
+  // sub-declaration.
   const ScssNestedProps = node(
     sequence(
       literal('{'),
-      many(ScssNestedDecl),
+      many(choice(
+        g.ScssIf, g.ScssEach, g.ScssFor, g.ScssWhile,
+        g.NsVarDeclaration, g.VarDeclaration,
+        ScssNestedDecl
+      )),
       expect(literal('}'))
     ));
 
@@ -346,7 +370,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ));
 
   const ScssReturn = node(
-    sequence(returnKw, g.valueList, expect(literal(';'), ';')));
+    sequence(returnKw, g.valueList, optional(literal(';'))));
 
   // ── @use / @forward / @import / @extend ───────────────────────────────────
   // Faithful ports of scssUseAtRule / scssForwardAtRule / importAtRule /
@@ -375,7 +399,10 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   const ScssWithConfig = node(
     sequence(
       literal('('),
-      optional(sepBy(ScssWithConfigEntry, literal(','))),
+      optional(sequence(
+        sepBy(ScssWithConfigEntry, literal(',')),
+        optional(literal(','))
+      )),
       expect(literal(')'))
     ));
 
@@ -387,19 +414,25 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
       useKw, g.Quoted,
       optional(ScssUseAs),
       optional(sequence(kwWith, ScssWithConfig)),
-      expect(literal(';'))
+      optional(literal(';'))
     ));
 
+  // Capture the post-path prelude (`as *`, `show …`, `hide …`, `as prefix-*`) up
+  // to `with (`, `;`, `}`, or EOF — so an unterminated `@forward "x" as a-*` (the
+  // owner-rejected prefix form, which the sass-spec corpus writes without a `;`,
+  // sometimes with comments/newlines around `as`) still reaches the builder's
+  // "will never be" check rather than dangling as unparsed input. `{` bounds the
+  // scan so a following ruleset is never swallowed.
   const forwardExtra = optional(scanTo(
-    choice(sequence(kwWith, literal('(')), literal(';')),
-    { skip: scanSkip }
+    choice(sequence(kwWith, literal('(')), literal(';'), literal('{'), literal('}')),
+    { skip: scanSkip, orEOF: true }
   ));
   const ScssForward = node(
     sequence(
       forwardKw, g.Quoted,
       forwardExtra,
       optional(sequence(kwWith, ScssWithConfig)),
-      expect(literal(';'))
+      optional(literal(';'))
     ));
 
   const scssPlaceholder = regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -415,7 +448,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     sequence(
       extendKw, ScssExtendTarget,
       optional(extendOptional),
-      expect(literal(';'))
+      optional(literal(';'))
     ));
 
   const importOptionsParen = sequence(
@@ -423,18 +456,36 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     scanTo(literal(')'), { skip: scanSkip }),
     literal(')')
   );
-  const importPostlude = scanTo(choice(literal(','), literal(';')), { skip: scanSkip });
+  // An `@import` prelude is a comma-separated list of items, each `<path>
+  // <modifiers>?`. The modifiers are a CSS media-query list / `supports(...)`
+  // that MAY itself contain commas (`@import "a" b, (c: d), e;` is ONE import
+  // with a three-part media list). So a comma only begins a NEW import when the
+  // token after it is another path (a string / url) — `not(not(...))` is the
+  // positive lookahead. The modifier scan skips balanced groups, strings, and
+  // comments, and terminates at `;`, `}`, EOF, or such a new-import comma.
+  const importPathStart = choice(g.Url, g.Quoted);
+  // `#{ … }` interpolation hole (handles `#{$a}` and `#{"(a: b)"}` with a string
+  // that may itself carry braces). Kept ahead of the generic brace skip so the
+  // leading `#` is consumed together with the group.
+  const scssInterpHole = regex(/#\{(?:[^{}'"]|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")*\}/);
+  const importSkip = [scssInterpHole, bParen, bSquare, bCurly, singleStr, doubleStr, comment, lineComment];
+  const newImportComma = sequence(literal(','), not(not(importPathStart)));
+  const importModifier = scanTo(
+    choice(literal(';'), literal('}'), newImportComma),
+    { skip: importSkip, orEOF: true }
+  );
   const ScssImportItem = node(
     sequence(
-      expect(choice(g.Url, g.Quoted), 'import path'),
-      optional(importPostlude)
+      expect(importPathStart, 'import path'),
+      optional(importModifier)
     ));
   const ImportAtRuleStatement = node('ScssImportAtRule',
     sequence(
       importKw,
       optional(importOptionsParen),
-      sepBy(ScssImportItem, literal(',')),
-      expect(literal(';'))
+      ScssImportItem,
+      many(sequence(literal(','), ScssImportItem)),
+      optional(literal(';'))
     ));
 
   const atRootKw = regex(/@at-root(?![-\w])/i);
@@ -446,7 +497,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     sequence(
       choice(debugKw, warnKw, errorKw),
       g.valueSequence,
-      expect(literal(';'))
+      optional(literal(';'))
     ));
 
   const ScssAtRootFilter = node(
@@ -473,6 +524,19 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   const scssPreludeSegment = choice(ScssInterpBare, scssPreludeText);
   const scssPermissivePrelude = oneOrMore(scssPreludeSegment);
 
+  // Generic unknown at-rule statement (`@charset "x";`, or a bare `@c` used as a
+  // content placeholder in the sass-spec corpus). Overrides Less's
+  // `AtRuleStatement`, whose `;` is mandatory and whose prelude scan stops only
+  // at `{`/`;`: Sass allows omitting the terminator before `}`/EOF, so the
+  // prelude also stops at `}`/EOF and the trailing `;` is optional.
+  const scssAtKeyword = regex(/@-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
+  const scssAtPrelude = optional(scanTo(
+    choice(literal('{'), literal(';'), literal('}')),
+    { skip: scanSkip, orEOF: true }
+  ));
+  const AtRuleStatement = node('AtRuleStatement',
+    sequence(scssAtKeyword, scssAtPrelude, optional(literal(';'))));
+
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
   // fall back to Less's full statement set (`g.stylesheetItem` / `g.blockItem`).
@@ -481,13 +545,19 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     g.ScssMixin, g.ScssInclude, g.ScssContent,
     g.ScssFunction, g.ScssReturn,
     g.ScssUse, g.ScssForward,
+    // Tried ahead of Less's `blockItem`, so an `@import` whose modifier carries
+    // `#{ … }` interpolation is handled by the SCSS import rule rather than being
+    // misread by Less's generic `AtRuleBlock` (which would treat the `{` in `#{`
+    // as a block opener).
+    g.ImportAtRuleStatement,
+    g.NsVarDeclaration,
     ScssDiagnostic,
     ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain
   );
   const declarationList = many(choice(
-    scssStatement, g.ScssExtend, Declaration, CustomDeclaration, g.blockItem
+    scssStatement, g.ScssExtend, g.ScssPlaceholderRuleset, Declaration, CustomDeclaration, g.blockItem
   ));
-  const atRuleBody = many(choice(scssStatement, g.blockItem));
+  const atRuleBody = many(choice(scssStatement, g.ScssPlaceholderRuleset, g.blockItem));
 
   const ScssPlaceholderRuleset = node(
     sequence(
@@ -530,7 +600,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     )));
 
   return {
-    VarDeclaration, Reference,
+    VarDeclaration, Reference, NsVarDeclaration, AtRuleStatement,
     ScssInterpBare, InterpValue, value, valueList, functionCallArgs, Call,
     ScssMapLiteral, ScssIdentValue,
     ScssInterpolatedName, InterpolatedSelector,

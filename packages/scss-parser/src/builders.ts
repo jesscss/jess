@@ -81,6 +81,7 @@ import {
 import {
   quotedLike,
   isPlainCssImportPrelude,
+  checkImportPreludeOrder,
   validateExtendTarget,
   checkForwardPreludeErrors,
   isPlaceholderExtendTarget,
@@ -165,6 +166,7 @@ export class ScssGrammar extends LessGrammar {
     const loc = spanToLocation(span);
     switch (type) {
       case 'VarDeclaration':    return this._buildScssVarDeclaration(_rawChildren, loc);
+      case 'NsVarDeclaration':  return this._buildScssNsVarDeclaration(_rawChildren, loc);
       case 'Reference':         return this._buildScssReference(children, loc);
       case 'ScssComparison':    return this._buildScssComparison(children, loc);
       case 'ScssCondInParens':  return this._buildScssCondInParens(children, loc);
@@ -252,6 +254,41 @@ export class ScssGrammar extends LessGrammar {
       {} as VarDeclarationOptions,
       loc
     );
+  }
+
+  /**
+   * `ns.$member: value [!default|!global];` — a namespaced variable ASSIGNMENT.
+   * Built as a `VarDeclaration` whose name carries the namespace (`ns.member`);
+   * `!default` → conditional-assign, `!global` → `setDefined`. Mirrors the
+   * member-read shape (`Reference{ target, key }`) on the write side while
+   * staying within the `string | Interpolated` declaration-name contract.
+   */
+  private _buildScssNsVarDeclaration(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
+    const items = spannedComponents(rawChildren);
+    const ns = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
+    const memberItem = items.find(i => typeof i.comp === 'string' && i.comp.startsWith('$'));
+    const memberRaw = typeof memberItem?.comp === 'string' ? memberItem.comp : '';
+    const member = memberRaw.startsWith('$') ? memberRaw.slice(1) : memberRaw;
+    const colonIdx = items.findIndex(i => i.comp === ':');
+    let end = items.length;
+    for (let i = colonIdx + 1; i < items.length; i++) {
+      const c = items[i]!.comp;
+      if (c === '!' || c === '!default' || c === '!global' || c === ';') {
+        end = i;
+        break;
+      }
+    }
+    const { value } = this._assembleValue(items.slice(colonIdx + 1, end), loc);
+    const sawDefault = items.slice(end).some(i => i.comp === '!default');
+    const sawGlobal = items.slice(end).some(i => i.comp === '!global');
+    return new VarDeclaration(
+      { name: `${ns}.${member}`, value: value as Node },
+      {
+        assign: (sawDefault ? '?:' : ':') as AssignmentType,
+        setDefined: sawGlobal
+      },
+      loc
+    ) as unknown as JessNode;
   }
 
   private _buildScssReference(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -900,8 +937,14 @@ export class ScssGrammar extends LessGrammar {
   }
 
   private _buildScssNestedProps(children: ReadonlyArray<Child>, loc: LocationInfo) {
-    const decls = nodeChildren(children).filter(n => isNode(n, N.Declaration)) as Declaration[];
-    return new Collection(decls as any, undefined, loc) as unknown as JessNode;
+    // Keep sub-declarations plus any control flow / namespaced-assignment nodes
+    // Sass permits inside a nested-properties block (dropping them would silently
+    // lose statements).
+    const kept: Node[] = nodeChildren(children).filter(n =>
+      isNode(n, N.Declaration) || isNode(n, N.VarDeclaration)
+      || n instanceof If || n instanceof For || n instanceof While
+    );
+    return new Collection(kept, undefined, loc) as unknown as JessNode;
   }
 
   private _buildScssDiagnostic(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -1245,6 +1288,12 @@ export class ScssGrammar extends LessGrammar {
   }
 
   private _buildScssImportAtRule(children: ReadonlyArray<Child>, loc: LocationInfo) {
+    // Reject the CSS `@import` ordering violations Sass parse-rejects. Run on the
+    // raw prelude (everything after `@import`, without the trailing `;`).
+    const preludeText = this._source.slice(loc.start, loc.end)
+      .replace(/^@import\b/i, '')
+      .replace(/;\s*$/, '');
+    checkImportPreludeOrder(preludeText, msg => this._error(msg, loc.start, loc.end));
     const items = nodeChildren(children).filter(n => isNode(n, N.Sequence));
     const importName = new Any('@import', { role: 'atkeyword' }, loc) as unknown as Node;
     const built: JessNode[] = [];

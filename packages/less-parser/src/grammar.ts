@@ -48,7 +48,10 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
   const pseudoColon = regex(/::?/);
   const attrOp = regex(/[*~|^$]?=/);
-  const attrMod = regex(/[is]/i);
+  // Only `i` / `s` are defined today; for forwards-compatibility any single ASCII
+  // letter is accepted (`[a=b c]`). A digit / underscore / other non-letter is
+  // still rejected.
+  const attrMod = regex(/[a-zA-Z]/);
   const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\d+/i);
   // Same pattern as shared-value-rules.ts `singleStr`/`doubleStr` — local so the macro
   // can statically evaluate regex(); `\\` + newline is valid CSS line continuation.

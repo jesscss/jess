@@ -602,3 +602,72 @@ describe('serializeTypes coverage', () => {
     `);
   });
 });
+
+// A combinator is only valid BETWEEN two compound selectors. Leading, trailing,
+// and adjacent-multiple combinators are "bogus" — Sass emits empty CSS + a
+// [bogus-combinators] deprecation and Dart Sass 2.0 makes them an error — so the
+// grammar rejects them, along with a combinator-only run and an empty selector.
+describe('combinators are valid only between compound selectors', () => {
+  test.each([
+    ['single child', 'a > b { c: d }'],
+    ['single sibling', 'a ~ b { c: d }'],
+    ['descendant', 'a b { c: d }'],
+    ['chained', 'a > b + c { d: e }']
+  ])('accepts %s: %s', (_name, src) => {
+    const { errors } = cssParser.parse(src);
+    expect(errors.map(e => e.message)).toEqual([]);
+  });
+
+  test.each([
+    ['leading', '> > a { b: c }'],
+    ['leading (single)', '> a { b: c }'],
+    ['trailing (child)', 'a > { b: c }'],
+    ['trailing multiple', 'a > > { b: c }'],
+    ['adjacent-multiple', 'a > + b { c: d }'],
+    ['adjacent-multiple (no whitespace)', 'a~>b { c: d }'],
+    ['combinator-only (single)', '+ { b: c }'],
+    ['combinator-only (multiple)', '> > > { b: c }'],
+    ['empty selector', '{ b: c }']
+  ])('rejects %s: %s', (_name, src) => {
+    const { errors } = cssParser.parse(src);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('a valid complex selector yields the joined component sequence', () => {
+    const { tree } = cssParser.parse('a > b { c: d; }');
+    const out = serializeTypes(tree);
+    expect(out).toContainString(`
+      (ComplexSelector
+        value:
+          [
+            'a'
+            '>'
+            'b'
+          ]
+      )
+    `);
+  });
+});
+
+// Attribute-selector modifier: only `i`/`s` are defined, but any single ASCII
+// LETTER is accepted for forwards-compatibility (`[a=b c]`). A digit, underscore,
+// or multi-character modifier is rejected.
+describe('attribute selector modifier accepts a single ASCII letter', () => {
+  test.each([
+    '[a=b i] { d: e }',
+    '[a=b s] { d: e }',
+    '[a=b c] { d: e }'
+  ])('accepts %s', (src) => {
+    const { errors } = cssParser.parse(src);
+    expect(errors.map(e => e.message)).toEqual([]);
+  });
+
+  test.each([
+    ['digit', '[a=b 2] { d: e }'],
+    ['underscore', '[a=b _] { d: e }'],
+    ['two characters', '[a=b cd] { d: e }']
+  ])('rejects %s: %s', (_name, src) => {
+    const { errors } = cssParser.parse(src);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+  });
+});
