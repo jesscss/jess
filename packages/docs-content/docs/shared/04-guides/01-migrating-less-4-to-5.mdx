@@ -67,27 +67,29 @@ a module you pull in with `@-use`, or express them with built-in functions
 
 <AudienceGate include={['less']}>
 
-Bare `@import "foo";` is **deprecated** in Less 5.x and emits a deprecation
-warning — it's *heuristic* (extension and options decide passthrough-vs-fold).
-The path forward is the module system, `@-compose` — a namespaced import with
-isolated scope. Your existing `@import` keeps working (with a warning), so migrate
-at your own pace; there's no dashed-`@import` halfway house in Less — a
-dash-prefixed source import *is* `@-compose`.
+`@import` (and its explicit source-fold form `@-import`) are **discouraged** in
+Less 5.x and warn — they use the old leaky scope, and bare `@import` is *heuristic*
+(extension and options decide passthrough-vs-fold). The fix for either is the
+module system, **`@compose`** — a namespaced import with isolated scope. Write it
+bare or dashed (`@compose` / `@-compose` are the same rule; the dash is the
+collision-safe canonical). Your existing `@import` keeps working (with a warning),
+so migrate at your own pace.
 
 ```less
-// Deprecated (still works, warns):
+// Discouraged (both warn) — the leaky source-fold:
 @import "variables";
+@-import "./variables.less";
 
 // The module system — migrate to this:
-@-compose "./variables.less" as variables;
+@compose "./variables.less" as variables;
 ```
 
 Keep import paths **explicit and file-relative** (prefer a leading `./`). See
 [Modules & imports](/docs/next/language/modules-and-imports) for the full model.
 
 :::note
-The exact verbosity of the `@import` deprecation warning is still being
-finalized; the direction above is settled.
+The exact verbosity of the `@import` / `@-import` "use `@compose`" warning is still
+being finalized; the direction above is settled.
 :::
 
 </AudienceGate>

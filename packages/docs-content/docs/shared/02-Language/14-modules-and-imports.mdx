@@ -61,32 +61,34 @@ Less extends CSS `@import` with options: `@import (keyword) "file";`
 
 You can combine keywords: `@import (optional, reference) "foo.less";`
 
-## Moving to modules (`@-compose`)
+## Moving to modules (`@compose`)
 
-In Less 5.x, bare `@import "foo";` is **deprecated** and emits a deprecation
-warning — partly because it's *heuristic* (the extension and options decide
-whether it passes through as CSS or folds in as source). The path forward is the
-module system, `@-compose` — a namespaced import with isolated scope and
+`@import` folds another stylesheet in with the old **leaky scope**, and it's
+*heuristic* — the extension and options decide whether it passes through as CSS or
+inlines as source. Its explicit form, `@-import`, always folds as source (no
+guessing). Both are **discouraged in Less 5.x** and warn: the fix for either is
+the module system, **`@compose`** — a namespaced import with isolated scope and
 per-import configuration.
 
-Your existing `@import` keeps working (with a warning) through the transition, so
-there's no rush — but when you migrate, go straight to `@-compose`. There's no
-"dashed `@import`" halfway house in Less: a dash-prefixed source import *is* the
-module system.
+You can write the module rule bare or dashed — `@compose` and `@-compose` are the
+same rule; the dash is the collision-safe canonical, but the bare form is a fully
+supported convenience. Your existing `@import` keeps working (with a warning), so
+migrate at your own pace.
 
 ```less
-// Deprecated (still works, warns):
-@import "theme";
+// Discouraged — the leaky source-fold (both warn):
+@import "theme";         // heuristic (CSS-or-source)
+@-import "./theme.less"; // explicit source-fold
 
-// The module system — migrate to this:
-@-compose "./theme.less" as theme;
+// The module system — use this:
+@compose "./theme.less" as theme;
 
 .box { color: @theme[primary-color]; }
 ```
 
 :::note
-The exact verbosity of the `@import` deprecation warning is still being
-finalized; the direction — `@-compose` as the module system — is settled.
+The exact verbosity of the `@import` / `@-import` "use `@compose`" warning is still
+being finalized; the direction — `@compose` as the module system — is settled.
 :::
 
 </AudienceGate>
