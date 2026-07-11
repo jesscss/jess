@@ -373,25 +373,36 @@ right fix depends on **how granular span tracking needs to be**, and the consume
   mode exists. YET the parsers set them **unconditionally on every parse** (css-parser `setValueSpans`).
   - **NOT "selector-only" by design** — List / any array-valued node would need them too *if* we want sub-node
     round-trip fidelity for those. The current selector-only readership is incomplete usage, not intent.
-  - ⚠️ **SUPERSEDED — this DROP plan was tried (`468747cc7`) and REVERTED (`311cf9232`): a node-level comment
-    check can't place comments in inter-member gaps → broke `comments`/`comments2`. See the LANDED LOG
-    "span-array drop" entry. Do NOT re-attempt the drop. Original plan kept below for the forensic record.**
-  - **DECIDED (owner): DROP `fieldSpans`/`valueSpans` (per-sub-component arrays), REPLACE readers with a
-    node-level COMMENT check.** Edit/round-trip works on the CST/reparse, so eval nodes need only node-level
-    `spanStart`/`spanEnd`. **Owner refinement:** normalized selectors don't need per-component whitespace — the
-    only authored fidelity that matters is COMMENTS. The `TriviaMap` already tracks `hasComment` per run by
-    offset (`types/index.ts:22`), so the `valueSpansOf`/`fieldSpansOf` readers collapse to one **"is there a
-    comment in this node's `[spanStart,spanEnd]`?"** range check against the TriviaMap — PRESERVES comment
-    fidelity while dropping the arrays (strictly better than losing fidelity). **The trivia source is PARSÉMAN's**
-    — the grammar's `trivia()` combinator (`css-parser/grammar.ts:25` `rw = trivia(ws|comment)`) logs offsets →
-    `buildLazyTriviaMap(triviaLog, src)` (`builders.ts:253`) → `opts.trivia` (lazy whole-doc `TriviaMap`).
-    `valueSpans`/`fieldSpans` were DUPLICATING position data the parser already holds; the comment-range check
-    queries `opts.trivia` (via `sourceRoot._treeContext.opts.trivia`), not per-node arrays. **Plan:** delete the 2 fields +
-    accessors; replace core readers (selector-complex/compound/pseudo, declaration, at-rule) with the node-range
-    comment check; make parser WRITERS (`css-parser` set*) no-op stubs FIRST (cross-package — parser owners
-    remove the calls later; don't reach into the parser). Gate: normal render byte-identical; round-trip keeps
-    COMMENTS, drops sub-node whitespace (accepted). Sourcemaps: node-level only (CSS maps at rule/decl level).
-    SEQUENCE after dead-CST (DONE, cc9888e2) — same worktree/agent.
+  - ⚠️ **RE-DECIDED 2026-07-11 (owner): this is a THREE-WAY *MEASURED* fork — PERF is the oracle, NOT the
+    "never a side-table" rule.** The flat "DROP + node-level comment check" plan below is SUPERSEDED and is a
+    known revert-trap; keep it only as a candidate to beat on the bench.
+  - **Why the earlier flat drop broke (mechanism, so no one re-walks it):** the DROP (`468747cc7`, REVERTED
+    `311cf9232` = "re-enable per-slot value/field spans via WeakMap side tables") replaced the per-slot boundary
+    offsets with a whole-node scan + a **source-order cursor** (`commentRunsWithinSpan` over `[spanStart,spanEnd]`,
+    then `emitNextSpanComment(cursor++)` at each inter-member gap). Members are BARE STRINGS (no own span), so once
+    `valueSpans[i].end`/`[i+1].start` are gone you know each comment's ABSOLUTE offset but not WHICH gap it belongs
+    to. The cursor assigns comments to gaps by source order — correct only when comments/gaps line up 1:1.
+    `.a .b /*x*/ .c` and `.a /*x*/ .b .c` produce the SAME scan list → comment mis-placed → broke
+    `comments`/`comments2`. **This is a lost-gap-attribution bug, NOT an impossibility. Do NOT re-attempt the flat
+    cursor drop.**
+  - **The three candidates — decide by controlled A/B** (same worktree, toggle each, warmup + N-median of
+    parse + total, byte-identical normal render, `comments`/`comments2` green):
+    1. **Keep WeakMap side-tables** (current, `311cf9232`). Correct today. Cost: parser populates per-node
+       UNCONDITIONALLY at parse + a serialize lookup.
+    2. **Unified WeakMap** — fuse per-slot spans + trivia into one node-keyed structure. Restores the per-gap
+       boundaries → correct; still a side-table (a tidier *exception*, not elimination).
+    3. **Serialize-time boundary recovery, gated on the cheap node-level "any comment in my span?" check.** Store
+       NOTHING per node; only for the sparse comment-bearing nodes, recover member boundaries from the source slice
+       / Parséman CST and map comment-offset → gap. The only option that kills the side-table WITHOUT reintroducing
+       per-member node weight; affordable *because* comment-bearing nodes are sparse.
+  - **Perf hypothesis (MEASURE, don't assert):** options 1 & 2 both pay unconditional per-node work at PARSE (our
+    measured bottleneck); option 3 pays ~0 at parse, deferring to sparse serialize-time work → perf-plausible
+    winner. Fold this A/B into the parse-side measurement pass. **Whatever measures best wins — including "keep the
+    WeakMap" if recovery's re-scan costs more than the map it removes.** The "never a WeakMap" standing rule does
+    NOT override this measurement: it was validated on HOT/UNIVERSAL provenance fields; this field is sparse/cold,
+    so the head-to-head must actually be run. Trivia source is the parser's `opts.trivia` (lazy whole-doc
+    `TriviaMap` from `buildLazyTriviaMap`, `builders.ts:253`), reached via `sourceRoot._treeContext.opts.trivia` —
+    no per-node arrays needed by options 2/3. Prior flat-DROP plan text is in git history for the forensic record.
   - **`hasComment` API note (owner-flagged; for the parser/`Trivia` owners):** `makeTrivia` (trivia.ts:52)
     computes `hasComment` as *any non-whitespace char in the run* — it's really `hasNonWhitespace`, equal to
     "comment" only via the grammar invariant `trivia = ws|comment`. It's a lossy single bit: can't distinguish

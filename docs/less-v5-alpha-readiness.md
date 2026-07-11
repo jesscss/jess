@@ -5,10 +5,24 @@ v5 compatibility. The publish mechanics live in
 [`releasing-alpha.md`](./releasing-alpha.md); this file tracks what must be true
 before that runbook should be used.
 
-Owner-reported baseline on 2026-06-19: `benchmark.less` renders at about
-133 ms, which is good enough for the first Less alpha. Release readiness is now
-about API stability, Less API coverage, and CI guards rather than another
-performance cutting pass.
+Performance baseline (measured 2026-07-11 under the controlled protocol — same
+worktree, rebuild-per-commit, warmup + N-median, correctness-verified output): on
+`origin/dev`, `benchmark.less` renders in **~213 ms** producing the full
+130,940-byte stylesheet — about **5.4× Less 4.5.1** (~39.85 ms, same machine).
+That is a ~39× improvement over the June 2026 full render (~8.3 s), landed by the
+single-eval-emit cutover. Performance is therefore **not** settled: the standing
+goal is Less-4.x parity, and closing the ~5.4× flat gap (parser + allocation +
+node weight) is open work — see the core-architecture perf handoff.
+
+> ⚠️ **Corrected 2026-07-11.** A prior version of this line claimed an
+> "owner-reported ~133 ms June baseline, good enough for alpha." That figure was
+> **never owner-reported and never a real full render** — the June full render was
+> ~8.3 s. The 133 ms almost certainly came from a run where parsing/eval never
+> fully completed (a partial/errored render — the same "fast fake" seen throughout
+> the June commits), which was then written up as a settled baseline with the
+> "nothing actually finished rendering" caveat lost, and mis-attributed as
+> owner-reported. It had wrongly closed the performance question and redirected
+> readiness away from perf. Do not resurrect it.
 
 ## Status Key
 
@@ -19,6 +33,23 @@ performance cutting pass.
 
 ## Release Gates
 
+- `[~]` **Performance — HARD gate for GA, explicitly NOT a blocker for the alpha**
+  (owner decision 2026-07-11). The alpha ships on the functional gates (tests +
+  `lessc` parity, below) at its current speed; ~5.4× Less 4.x is accepted for an
+  alpha. Perf-parity with Less 4.x remains a **hard gate for the stable/GA
+  release** — the numeric GA bar (strict parity or a bounded multiple) is an open
+  owner decision. A prior LLM edit had wrongly erased perf as a gate ENTIRELY (tied
+  to a fabricated "133 ms good enough" baseline) — never authorized; restored here
+  as the GA gate.
+  - Current measured state, `origin/dev` (working, eval-backstopped head): ~213 ms
+    vs Less 4.5.1 ~39.85 ms — **~5.4×** on `benchmark.less`.
+  - The D-EVAL-flip branch (PR #24) **cannot render `benchmark.less`**
+    (`SPINE_ONLY_UNSUPPORTED`) — UNMEASURED. Never quote a bare "jess" perf number
+    without naming the head.
+- `[~]` **`lessc` CLI parity with Less 4.x** (alpha gate). The `lessc` binary and
+  its flags must behave as a drop-in for Less 4.x (functional/behavioral parity,
+  not speed). Command-by-command parity is being assessed; divergences from 4.x
+  block the alpha.
 - `[~]` Stabilize the public `jess` package API before the first Less alpha.
 - `[~]` Expand package-level Less tests to cover all non-browser Less API
   fixtures and the `find`/path-resolution surface.
