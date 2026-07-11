@@ -121,7 +121,7 @@ describe('Less.js Visitor Integration', () => {
       }
 
       // Visit the tree - need to traverse it
-      // The visitor's enter method will be called for each node by TreeVisitor
+      // The visitor's enter method will be called for each node via accept()
       if (tree.accept) {
         tree.accept(visitor);
       } else if (visitor.enter) {

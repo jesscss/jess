@@ -5434,7 +5434,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // abort) is DISABLED here so any fixture that relied on eval surfaces LOUDLY as a
     // SPINE_ONLY_UNSUPPORTED throw rather than silently mis-rendering. The eval
     // machinery (`evalForRender`, `Rules.derive`/`_deriveShell`, clone families,
-    // `F_STATIC`, old extend apply, TreeVisitor) is left in-tree but UNREACHABLE from a
+    // `F_STATIC`, old extend apply) is left in-tree but UNREACHABLE from a
     // top-level root render — this is the reversible flip; deletion is a later step.
     // Non-root nested `.render()` calls and the `preSerializeRoot` visitor-hook path
     // still use eval (out of scope for this flip).

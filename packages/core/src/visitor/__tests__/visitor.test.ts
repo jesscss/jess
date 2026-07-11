@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { Visitor, TreeVisitor, ABORT } from '../index.js';
-import { ruleset, rules, decl, any, type Declaration, type Ruleset, nil } from '../../tree/index.js';
+import { Visitor, ABORT } from '../index.js';
+import { ruleset, decl, any, type Declaration, nil } from '../../tree/index.js';
 
 describe('Visitor Pattern', () => {
   describe('accept() method', () => {
@@ -81,35 +81,6 @@ describe('Visitor Pattern', () => {
 
       expect(visited.filter(v => v === 'ruleset')).toHaveLength(1);
       expect(visited.filter(v => v === 'declaration')).toHaveLength(2);
-    });
-  });
-
-  describe('TreeVisitor with accept()', () => {
-    it('should use accept() if node has it, avoiding double-visiting', () => {
-      const visited: string[] = [];
-
-      class TestVisitor extends TreeVisitor {
-        override ruleset(node: Ruleset) {
-          visited.push('ruleset');
-          return node;
-        }
-
-        override declaration(node: Declaration) {
-          visited.push('declaration');
-          return node;
-        }
-      }
-
-      const visitor = new TestVisitor();
-      const declaration = decl({ name: 'color', value: any('red') });
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      const rs = ruleset({ selector: null as unknown as ReturnType<typeof nil>, rules: [declaration] });
-
-      visitor.visit(rs);
-
-      // Should visit each node exactly once (no double-visiting)
-      expect(visited.filter(v => v === 'ruleset')).toHaveLength(1);
-      expect(visited.filter(v => v === 'declaration')).toHaveLength(1);
     });
   });
 
