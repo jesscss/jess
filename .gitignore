@@ -105,3 +105,7 @@ state/task-runtime/
 .guildhall/dev-tools/
 .guildhall/.session-epoch
 # END Guildhall managed
+
+# VS Code extension E2E harness (downloaded VS Code build + compiled tests)
+.vscode-test/
+packages/vscode/out/

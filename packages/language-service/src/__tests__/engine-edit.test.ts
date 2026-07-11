@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { Range } from 'vscode-languageserver-types';
+import { Position, Range } from 'vscode-languageserver-types';
 import type { CssCstChild } from '@jesscss/css-parser';
 import { createEngine } from '../engine.js';
 
@@ -143,6 +143,55 @@ describe('Parseman .edit() incremental sync — equivalence oracle', () => {
     expect(cstKey(engine._debugState(uri).cstTree)).toEqual(cstKey(fresh._debugState(uri).cstTree));
     expect(engine.getDiagnostics(uri)).toEqual(fresh.getDiagnostics(uri));
     expect(engine._debugState(uri).fullRebuild).toBeGreaterThan(0);
+  });
+
+  it('rename multi-site edits re-sync incrementally via .edit() and match a full reparse', () => {
+    // Dogfood: a rename touches N sites; feeding each site back through the LSP
+    // incremental `edit()` entry drives ParseDoc.edit() once per site. The oracle
+    // is that the incrementally-synced CST (and observable analysis) after the
+    // whole multi-site rename equals a from-scratch parse of the renamed text.
+    const engine = createEngine();
+    const uri = uriFor('less');
+    const initial = '@primary: red;\n.a { color: @primary; }\n.b { border-color: @primary; }\n';
+    engine.open(uri, 'less', 1, initial);
+
+    const editApplied0 = engine._debugState(uri).editApplied;
+
+    // Rename `@primary` -> `@brand` from a reference site.
+    const workspaceEdit = engine.rename(uri, Position.create(1, 14), 'brand');
+    expect(workspaceEdit).not.toBeNull();
+    const changes = workspaceEdit?.changes?.[uri] ?? [];
+    expect(changes.length).toBe(3);
+
+    // Offsets in `changes` are against `initial`. Apply right-to-left so each
+    // higher-offset edit does not invalidate the lower-offset ranges still pending.
+    const refDoc = TextDocument.create(uri, 'less', 1, initial);
+    const ordered = [...changes].sort((a, b) => refDoc.offsetAt(b.range.start) - refDoc.offsetAt(a.range.start));
+
+    let expected = initial;
+    let version = 1;
+    for (const e of ordered) {
+      const from = refDoc.offsetAt(e.range.start);
+      const to = refDoc.offsetAt(e.range.end);
+      expected = expected.slice(0, from) + e.newText + expected.slice(to);
+      version++;
+      engine.edit(uri, version, [{ range: e.range, text: e.newText }]);
+    }
+
+    expect(expected).toBe('@brand: red;\n.a { color: @brand; }\n.b { border-color: @brand; }\n');
+
+    // Each of the 3 sites took the incremental `.edit()` path (no full rebuild).
+    expect(engine._debugState(uri).editApplied - editApplied0).toBe(3);
+
+    // Oracle: incremental CST + observable analysis equal a fresh parse.
+    const fresh = createEngine();
+    fresh.open(uri, 'less', 1, expected);
+    expect(cstKey(engine._debugState(uri).cstTree)).toEqual(cstKey(fresh._debugState(uri).cstTree));
+    expect(engine.getDiagnostics(uri)).toEqual(fresh.getDiagnostics(uri));
+    expect(engine.getDocumentSymbols(uri)).toEqual(fresh.getDocumentSymbols(uri));
+
+    // The renamed symbol is fully re-resolved: no undefined-variable diagnostics.
+    expect(engine.getDiagnostics(uri).filter(d => d.code === 'var/undefined')).toHaveLength(0);
   });
 
   it('does not crash on malformed incremental input (css/less/scss)', () => {

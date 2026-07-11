@@ -695,6 +695,177 @@ describe('JessLanguageServiceEngine', () => {
       expect(actions.some(a => a.kind === CodeActionKind.QuickFix)).toBe(true);
       expect(actions.some(a => a.title.includes('Create mixin'))).toBe(true);
     });
+
+    it('offers a "did you mean" fix for a mistyped Less variable', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@primary: red;\na { color: @primay; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diags = engine.getDiagnostics(doc.uri);
+      const target = diags.find(d => d.code === 'var/undefined');
+      expect(target).toBeDefined();
+
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
+      const didYouMean = actions.find(a => a.title === 'Change to @primary');
+      expect(didYouMean).toBeDefined();
+      // The fix rewrites only the identifier, keeping the `@` sigil.
+      const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
+      expect(textEdits.length).toBe(1);
+      expect(textEdits[0]!.newText).toBe('@primary');
+    });
+
+    it('offers a "did you mean" fix for a mistyped Less mixin', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '.button() { color: red; }\n.a { .buton(); }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diags = engine.getDiagnostics(doc.uri);
+      const target = diags.find(d => d.code === 'mixin/undefined');
+      expect(target).toBeDefined();
+
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
+      const didYouMean = actions.find(a => a.title.startsWith('Change to .button'));
+      expect(didYouMean).toBeDefined();
+      // The fix keeps the `.` combinator and only swaps the identifier.
+      const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
+      expect(textEdits.length).toBe(1);
+      expect(textEdits[0]!.newText.startsWith('.button')).toBe(true);
+    });
+
+    it('does not offer a "did you mean" fix when nothing is close', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@primary: red;\na { color: @zzzzzz; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const diags = engine.getDiagnostics(doc.uri);
+      const target = diags.find(d => d.code === 'var/undefined');
+      const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
+      expect(actions.some(a => a.title.startsWith('Change to'))).toBe(false);
+      // The create-variable fix is still offered.
+      expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
+    });
+  });
+
+  describe('rename', () => {
+    let tempDir = '';
+    afterEach(() => {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+      tempDir = '';
+    });
+
+    // Apply a WorkspaceEdit's edits for one uri to `text` (offsets computed
+    // against `text`; edits are applied right-to-left so earlier ones stay valid).
+    function applyEdits(text: string, uri: string, edit: { changes?: Record<string, Array<{ range: { start: Position; end: Position }; newText: string }>> } | null): string {
+      const doc = TextDocument.create(uri, 'less', 1, text);
+      const edits = edit?.changes?.[uri] ?? [];
+      const sorted = [...edits].sort((a, b) => doc.offsetAt(b.range.start) - doc.offsetAt(a.range.start));
+      let out = text;
+      for (const e of sorted) {
+        const from = doc.offsetAt(e.range.start);
+        const to = doc.offsetAt(e.range.end);
+        out = out.slice(0, from) + e.newText + out.slice(to);
+      }
+      return out;
+    }
+
+    it('prepareRename yields the bare identifier of a Less variable', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@primary: red;\na { color: @primary; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const prep = engine.prepareRename(doc.uri, Position.create(1, 14));
+      expect(prep).not.toBeNull();
+      expect(prep?.placeholder).toBe('primary');
+    });
+
+    it('prepareRename returns null when the cursor is not on a symbol', () => {
+      const engine = createEngine();
+      const doc = createDocument('less', '@primary: red;\na { color: @primary; }');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      // Cursor on the `red` value of the declaration — not a renameable symbol.
+      const prep = engine.prepareRename(doc.uri, Position.create(0, 11));
+      expect(prep).toBeNull();
+    });
+
+    it('renames every occurrence of a Less variable (declaration + references)', () => {
+      const engine = createEngine();
+      const src = '@primary: red;\na { color: @primary; }\nb { background: @primary; }';
+      const doc = createDocument('less', src);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edit = engine.rename(doc.uri, Position.create(1, 14), 'secondary');
+      expect(edit).not.toBeNull();
+      const edits = edit?.changes?.[doc.uri] ?? [];
+      expect(edits.length).toBe(3);
+      // Every edit rewrites only the bare identifier.
+      expect(edits.every(e => e.newText === 'secondary')).toBe(true);
+
+      const result = applyEdits(src, doc.uri, edit);
+      expect(result).toBe('@secondary: red;\na { color: @secondary; }\nb { background: @secondary; }');
+      expect(result).not.toContain('@primary');
+    });
+
+    it('tolerates a sigil in the requested new name', () => {
+      const engine = createEngine();
+      const src = '@primary: red;\na { color: @primary; }';
+      const doc = createDocument('less', src);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edit = engine.rename(doc.uri, Position.create(1, 14), '@brand');
+      const result = applyEdits(src, doc.uri, edit);
+      expect(result).toBe('@brand: red;\na { color: @brand; }');
+    });
+
+    it('renames an SCSS variable', () => {
+      const engine = createEngine();
+      const src = '$primary: red;\na { color: $primary; }';
+      const doc = createDocument('scss', src);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edit = engine.rename(doc.uri, Position.create(1, 14), 'accent');
+      const edits = edit?.changes?.[doc.uri] ?? [];
+      expect(edits.length).toBe(2);
+      const doc2 = TextDocument.create(doc.uri, 'scss', 1, src);
+      const sorted = [...edits].sort((a, b) => doc2.offsetAt(b.range.start) - doc2.offsetAt(a.range.start));
+      let result = src;
+      for (const e of sorted) {
+        result = result.slice(0, doc2.offsetAt(e.range.start)) + e.newText + result.slice(doc2.offsetAt(e.range.end));
+      }
+      expect(result).toBe('$accent: red;\na { color: $accent; }');
+    });
+
+    it('renames a Less mixin, preserving the leading combinator', () => {
+      const engine = createEngine();
+      const src = '.button() { color: red; }\n.a { .button(); }';
+      const doc = createDocument('less', src);
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
+      const edit = engine.rename(doc.uri, Position.create(1, 7), 'btn');
+      expect(edit).not.toBeNull();
+      const result = applyEdits(src, doc.uri, edit);
+      expect(result).toContain('.btn()');
+      expect(result).not.toContain('.button');
+    });
+
+    it('renames a Less variable across files', () => {
+      tempDir = fs.mkdtempSync(path.join(process.cwd(), 'rename-'));
+      const varsFile = path.join(tempDir, 'vars.less');
+      const mainFile = path.join(tempDir, 'main.less');
+      fs.writeFileSync(varsFile, '@primary: red;');
+      fs.writeFileSync(mainFile, '@import "vars";\n.a { color: @primary; }\n.b { background: @primary; }');
+
+      const engine = createEngine();
+      const varsUri = String(pathToFileURL(varsFile));
+      const mainUri = String(pathToFileURL(mainFile));
+      engine.open(varsUri, 'less', 1, fs.readFileSync(varsFile, 'utf-8'));
+      engine.open(mainUri, 'less', 1, fs.readFileSync(mainFile, 'utf-8'));
+
+      // Rename from the declaration in vars.less.
+      const edit = engine.rename(varsUri, Position.create(0, 2), 'brand');
+      expect(edit).not.toBeNull();
+      expect((edit?.changes?.[varsUri] ?? []).length).toBe(1);
+      expect((edit?.changes?.[mainUri] ?? []).length).toBe(2);
+    });
   });
 
   describe('formatting', () => {
