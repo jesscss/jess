@@ -692,16 +692,38 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
 }
 
 /**
- * True if ANY ruleset ANYWHERE in `root` carries an ampersand-APPEND selector
- * (`&-modifier`). Used to defer the append × extend interaction (see
- * `isSpineEligibleRoot`): an append-generated selector may be an extend target the
- * static gather cannot see. A single recursive scan over ruleset/at-rule bodies.
+ * True when a ruleset's local selector is the PURE leading-append form `&-suffix`: a
+ * `ComplexSelector` of exactly ONE `Ampersand` component carrying an `appendValue`
+ * (`&-primary`). This is the ONLY append shape the spine extend gather folds — its resolved
+ * form is a plain concatenation onto the parent's trailing simple selector, reproducible
+ * eval-free (`composeAppendSelector` / `wireSpineExtends`'s `pureAppendSuffix`). Any richer
+ * append (a compound `&-a.foo`, combinator chains, an append nested inside a compound) is NOT
+ * foldable and must keep the append × extend tree on eval.
  */
-function treeHasAmpersandAppend(root: Rules): boolean {
+function selectorIsPureAmpersandAppend(selector: unknown): boolean {
+  if (!(selector instanceof Node) || !isNode(selector, N.ComplexSelector) || selector.value.length !== 1) {
+    return false;
+  }
+  const only = selector.value[0];
+  return only instanceof Node && isNode(only, N.Ampersand) && typeof only.appendValue === 'string' && only.appendValue.length > 0;
+}
+
+/**
+ * True if ANY ruleset ANYWHERE in `root` carries an ampersand-APPEND selector that the spine
+ * extend gather CANNOT fold (see {@link selectorIsPureAmpersandAppend}). A tree whose every
+ * append is the pure `&-suffix` form is spine-foldable (the gather composes the generated
+ * selector via `composeAppendSelector` and registers it as an addressable extend subject), so
+ * only an UNFOLDABLE append forces the append × extend deferral. A single recursive scan.
+ */
+function treeHasUnfoldableAmpersandAppend(root: Rules): boolean {
   const scan = (children: readonly Node[]): boolean => {
     for (let i = 0; i < children.length; i++) {
       const child = children[i]!;
-      if (isNode(child, N.Ruleset) && selectorHasAmpersandAppend(child.selector)) {
+      if (
+        isNode(child, N.Ruleset)
+        && selectorHasAmpersandAppend(child.selector)
+        && !selectorIsPureAmpersandAppend(child.selector)
+      ) {
         return true;
       }
       if ((isNode(child, N.Ruleset) || isNode(child, N.AtRule)) && isNode(child, N.Rules)) {
@@ -1739,16 +1761,16 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // rejects), so a divergent collapse value here would admit-then-fail-loud in `renderRootViaSpine`.
   const collapse = collapseNesting
     ?? (context.opts?.output?.collapseNesting ?? context.output?.collapseNesting) === true;
-  // APPEND × EXTEND (a precise deferral, REQUIRED P4 item). An `:extend` TARGET may be
-  // an append-GENERATED selector (`.button { &-primary {…} }` extended by
-  // `:extend(.button-primary)`). The spine's extend layer gathers subjects/targets from
-  // the STATIC source tree, where the append target (`.button-primary`) exists only
-  // after resolution — so the static gather misses it and the extend contribution is
-  // dropped. Keep an extend-bearing tree that also carries an append selector on the
-  // eval path (byte-identical), where the append materializes before extend runs.
-  // SPEC (fold plan follow-up): resolve append selectors into the extend target index
-  // before SOLVE (mirrors OQ-A interpolated-target resolution at capture).
-  if (engageExtendLayer(root) && treeHasAmpersandAppend(root)) {
+  // APPEND × EXTEND. An `:extend` TARGET may be an append-GENERATED selector
+  // (`.button { &-primary {…} }` extended by `:extend(.button-primary)`). The append
+  // target (`.button-primary`) exists only after `&`-append resolution, so the static
+  // gather must reproduce that concatenation to see it. The spine folds this for the PURE
+  // `&-suffix` form (`wireSpineExtends`'s `resolveLocal` composes the generated selector
+  // via `composeAppendSelector` and registers it as an addressable `ampComposed` subject/
+  // target before SOLVE). A richer, UNFOLDABLE append (compound `&-a.foo`, combinator
+  // chains) still defers to eval — byte-identical, where the append materializes before
+  // extend runs — rather than emit a wrong form.
+  if (engageExtendLayer(root) && treeHasUnfoldableAmpersandAppend(root)) {
     return false;
   }
   // SPECULATIVE-ADMIT (import-spec routing). When imports are present, run the extend-topology check in

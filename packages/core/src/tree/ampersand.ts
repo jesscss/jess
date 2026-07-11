@@ -275,6 +275,20 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   return { selector, appended: false };
 }
 
+/**
+ * PURE append composition — the eval-free analogue of the `appendValue` branch in
+ * `Ampersand.evalNode`. Appends the plain suffix (`-primary` for `&-primary`) to the
+ * trailing simple selector of the already-resolved `parent` (`.button` → `.button-primary`),
+ * returning a FRESH selector node (never mutates `parent`). Returns `undefined` when the
+ * suffix cannot be appended (e.g. a pseudo/combinator trailing element) so the caller can
+ * defer to eval rather than emit a wrong form. Used by the spine extend gather to register
+ * an append-GENERATED selector as an addressable extend target/subject WITHOUT eval/frames.
+ */
+export function composeAppendSelector(parent: Selector, appendValue: string): Selector | undefined {
+  const result = appendSelector(parent, appendValue);
+  return result.appended ? result.selector : undefined;
+}
+
 function finishAmpersandAppendPlacement(
   placement: AmpersandAppendPlacementState,
   selector: Selector | Nil

@@ -40,6 +40,7 @@
  * @see CUTOVER-CHECKLIST.md P3 — "Extend-work gate (§4.0) — the fast path"
  */
 import { Ruleset } from '../ruleset.js';
+import { composeAppendSelector } from '../ampersand.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import type { Rules } from '../rules.js';
@@ -570,6 +571,29 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
     }
   }
   return false;
+}
+
+/**
+ * When `local` is the PURE leading-append form `&-suffix` (a `ComplexSelector` of exactly one
+ * `Ampersand` component carrying an `appendValue`, e.g. `&-primary`), return that suffix string.
+ * This is the ONLY append shape the eval-free gather folds: its resolved form is a plain
+ * concatenation onto the parent's trailing simple selector (`composeAppendSelector`), reproducible
+ * without `Ampersand.evalNode`'s frame-driven placement. Any richer append (a compound like
+ * `&-a.foo`, a combinator chain, multiple appends) returns undefined and stays on eval — the
+ * emit-walk gate keeps such a tree bailing loud rather than emit a wrong form.
+ */
+function pureAppendSuffix(local: Selector): string | undefined {
+  if (!isNode(local, N.ComplexSelector) || local.value.length !== 1) {
+    return undefined;
+  }
+  const only = local.value[0];
+  if (only instanceof Node && isNode(only, N.Ampersand)) {
+    const { appendValue } = only;
+    if (typeof appendValue === 'string' && appendValue.length > 0) {
+      return appendValue;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -1504,6 +1528,27 @@ export function wireSpineExtends(
     }
     if (!String(local.valueOf()).includes('&')) {
       return { selector: local, ampResolved: false };
+    }
+    // EAGER STATIC `&`-APPEND COMPOSITION (`.button { &-primary {…} }` → `.button-primary`). An
+    // append `&-suffix` selector materializes only via `Ampersand.evalNode`'s `appendValue` path
+    // (`composeSelector` drops the suffix, leaving bare `.button`), so the ancestor-composed
+    // append-generated selector is invisible to the ordinary `&`-reduce below — and an `:extend`
+    // targeting it (`.theme:extend(.button-primary)`) misses. Reproduce the concatenation PURELY
+    // (`composeAppendSelector`, the eval-free analogue) so the generated selector is registered as
+    // an addressable `ampComposed` subject/target WITHOUT eval/frames/tree mutation. Only the pure
+    // single-component `&-suffix` form folds; richer append shapes return undefined and defer to
+    // eval (the emit-walk gate keeps them bailing).
+    const appendSuffix = pureAppendSuffix(local);
+    if (appendSuffix !== undefined) {
+      if (parentPath.length === 0) {
+        return undefined; // a root-level append `&` has no parent to compose against — defer to eval
+      }
+      const parentOwn = composeTargetOwn(parentPath);
+      const composedAppend = composeAppendSelector(parentOwn, appendSuffix);
+      if (composedAppend === undefined || String(composedAppend.valueOf()).includes('&')) {
+        return undefined; // could not append cleanly — defer to eval
+      }
+      return { selector: composedAppend, ampResolved: true };
     }
     // EAGER STATIC `&`-COMPOSITION (Case 3). Resolve the `&`-bearing local by composing it against
     // the already-resolved ancestor chain via the PURE `Ruleset.composeSelector` — the SAME graft
