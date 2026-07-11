@@ -24,7 +24,7 @@ import {
 } from './util/render-buffer.js';
 import {
   setSourceSpan,
-  sourceSpanOf,
+  copySpanFields,
   spanStartOf,
   isSourceFree,
   valueSpansOf,
@@ -1539,13 +1539,15 @@ export abstract class Node<
     } else {
       setParent(this, this.parent ?? node.parent);
     }
-    // Span carry: only a source-bearing `node` has a span to copy (and copying
-    // it allocates a transient `{start,end}` via `sourceSpanOf`). The dominant
-    // value-eval case is two source-free nodes — skip the whole round-trip. We
+    // Span carry: only a source-bearing `node` has a span to copy. The dominant
+    // value-eval case is two source-free nodes — skip the whole round-trip. When
+    // the source IS source-bearing, `copySpanFields` copies its span straight
+    // into our inline fields (identical field state to `setSourceSpan(this,
+    // sourceSpanOf(node))` but WITHOUT the transient `{start,end}` object). We
     // still clear our OWN stale span when the source has none (the replace
     // semantic: `this` takes `node`'s provenance, including its absence).
     if (!isSourceFree(node)) {
-      setSourceSpan(this, sourceSpanOf(node));
+      copySpanFields(this, node);
     } else if (!isSourceFree(this)) {
       setSourceSpan(this, undefined);
     }

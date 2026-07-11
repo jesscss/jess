@@ -103,6 +103,34 @@ export function copySourceSpan(dst: object & Flagged, src: object): void {
   setSourceSpan(dst, sourceSpanOf(src));
 }
 
+/**
+ * Non-allocating equivalent of `setSourceSpan(dst, sourceSpanOf(src))`: copy
+ * `src`'s node-level span (`_spanStart`/`_spanEnd` + `F_HAS_SPAN`) straight into
+ * `dst`'s inline fields, WITHOUT materializing the transient `{start,end}`
+ * object the round-trip allocates. Field state is identical to that round-trip
+ * for every field it touches — including `sourceSpanOf`'s `_spanEnd ?? start`
+ * normalization and its keying of source-freeness off `_spanStart` (not the
+ * flag). Legitimate here because this module owns the inline span fields.
+ *
+ * Only touches the node-level span; per-slot value/field spans are a separate,
+ * sparse carry (see the WeakMaps below) and are NOT part of this copy — exactly
+ * as `setSourceSpan`+`sourceSpanOf` leave them untouched.
+ */
+export function copySpanFields(dst: object & Flagged, src: object): void {
+  const s = fieldsOf(src);
+  const start = s._spanStart;
+  const d = fieldsOf(dst);
+  if (start === undefined) {
+    dst.flags &= ~F_HAS_SPAN;
+    d._spanStart = undefined;
+    d._spanEnd = undefined;
+    return;
+  }
+  d._spanStart = start;
+  d._spanEnd = s._spanEnd ?? start;
+  dst.flags |= F_HAS_SPAN;
+}
+
 // Per-slot span arrays (`_valueSpans`/`_fieldSpans`) are SPARSE — they exist
 // only on source-parsed multi-member selector lists / value arrays and on the
 // declaration `value` field. Storing them as Node fields would deoptimize the
