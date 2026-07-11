@@ -918,50 +918,135 @@ function selectorHasAmpersandAppend(selector: unknown): boolean {
   return false;
 }
 
-/**
- * True when a ruleset's local selector is the PURE leading-append form `&-suffix`: a
- * `ComplexSelector` of exactly ONE `Ampersand` component carrying an `appendValue`
- * (`&-primary`). This is the ONLY append shape the spine extend gather folds — its resolved
- * form is a plain concatenation onto the parent's trailing simple selector, reproducible
- * eval-free (`composeAppendSelector` / `wireSpineExtends`'s `pureAppendSuffix`). Any richer
- * append (a compound `&-a.foo`, combinator chains, an append nested inside a compound) is NOT
- * foldable and must keep the append × extend tree on eval.
- */
-function selectorIsPureAmpersandAppend(selector: unknown): boolean {
-  if (!(selector instanceof Node) || !isNode(selector, N.ComplexSelector) || selector.value.length !== 1) {
-    return false;
+/** Count of direct-or-nested `Ampersand` nodes carrying a non-empty `appendValue`. */
+function appendAmpersandCount(selector: Node): number {
+  let count = 0;
+  const isAppendAmp = (n: Node): boolean =>
+    isNode(n, N.Ampersand) && typeof n.appendValue === 'string' && n.appendValue.length > 0;
+  if (isAppendAmp(selector)) {
+    count++;
   }
-  const only = selector.value[0];
-  return only instanceof Node && isNode(only, N.Ampersand) && typeof only.appendValue === 'string' && only.appendValue.length > 0;
+  for (const descendant of selector.walk(true)) {
+    if (isAppendAmp(descendant)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/** Count of every `Ampersand` node (append OR bare/combinator) in the selector. */
+function ampersandNodeCount(selector: Node): number {
+  let count = 0;
+  if (isNode(selector, N.Ampersand)) {
+    count++;
+  }
+  for (const descendant of selector.walk(true)) {
+    if (isNode(descendant, N.Ampersand)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * True when a ruleset's local selector is a spine-FOLDABLE ampersand-append: a SINGLE-branch
+ * selector (not a multi-branch `SelectorList`/array) whose ONLY `Ampersand` is a leading append
+ * carrying an `appendValue` (`&-primary`, `&-a.foo`, `&-a .foo`, a nested `&-b` under a `&-a`). Its
+ * resolved form is a plain concatenation of that suffix onto the parent's trailing simple selector
+ * followed by the rest of the compound/complex (reproducible eval-free — `composeAppendSelector` /
+ * the gather's authored-append emit), PROVIDED the parent own resolves to a simple string-appendable
+ * tail (checked by the caller's ancestor tracking). Shapes with MORE than one `&` (`&&-active` →
+ * doubled, `& + &-active` → combinator-with-two-`&`) or a MULTI-branch list (`&-h, &-f`) are NOT
+ * foldable: the spine's authored-append emit mis-composes them (suffix doubled / dropped), so they
+ * must keep the append × extend tree bailing loud rather than emit a wrong form. Operates on the RAW
+ * `Ruleset.selector` surface (string | array | node) — a list ARRAY is multi-branch (unfoldable).
+ */
+function selectorIsFoldableAmpersandAppend(selector: unknown): boolean {
+  if (!(selector instanceof Node) || isNode(selector, N.SelectorList)) {
+    return false; // string/array/list surface — not a single-branch node append
+  }
+  // Exactly one `&` total, and it is an append (`appendValue`). A second `&` (doubled/combinator)
+  // is not composable by the plain-concatenation path.
+  return ampersandNodeCount(selector) === 1 && appendAmpersandCount(selector) === 1;
+}
+
+/**
+ * True when a ruleset's raw local selector is a single simple string-APPENDABLE tail — reducing to
+ * exactly ONE `SimpleSelector` (a `.class`/`#id`/element), the only parent shape
+ * `composeAppendSelector` can append a suffix onto without throwing. A COMPOUND (`.x.y`), COMBINATOR
+ * (`.a > .b`), LIST, pseudo, or attribute tail is NOT string-appendable on the spine (the
+ * authored-append emit throws / mis-composes), so an append under such a parent is unfoldable.
+ * Accepts the RAW surface: a plain STRING selector qualifies only when it is a single token with no
+ * compound/combinator/list punctuation (`.button`, `#id`, `a`) — the conservative appendable shape.
+ */
+function selectorIsSimpleAppendableTail(selector: unknown): boolean {
+  if (typeof selector === 'string') {
+    const s = selector.trim();
+    return s.length > 0 && !/[.#\s>+~,()&]/.test(s.replace(/^[.#]/, ''));
+  }
+  if (!(selector instanceof Node)) {
+    return false; // array (list) surface is never a single simple tail
+  }
+  let node: Node = selector;
+  if (isNode(node, N.ComplexSelector)) {
+    if (node.value.length !== 1 || !(node.value[0] instanceof Node)) {
+      return false;
+    }
+    node = node.value[0];
+  }
+  if (isNode(node, N.CompoundSelector)) {
+    if (node.value.length !== 1 || !(node.value[0] instanceof Node)) {
+      return false;
+    }
+    node = node.value[0];
+  }
+  // A BasicSelector (class/id/element) with a plain string value is the only appendable tail.
+  return isNode(node, N.BasicSelector) && typeof node.value === 'string';
 }
 
 /**
  * True if ANY ruleset ANYWHERE in `root` carries an ampersand-APPEND selector that the spine
- * extend gather CANNOT fold (see {@link selectorIsPureAmpersandAppend}). A tree whose every
- * append is the pure `&-suffix` form is spine-foldable (the gather composes the generated
- * selector via `composeAppendSelector` and registers it as an addressable extend subject), so
- * only an UNFOLDABLE append forces the append × extend deferral. A single recursive scan.
+ * extend gather CANNOT fold (see {@link selectorIsFoldableAmpersandAppend}). A tree whose every
+ * append is a single-`&` append under a simple string-appendable parent chain is spine-foldable
+ * (the gather composes the generated selector and the authored-append emit renders it byte-
+ * correctly), so only an UNFOLDABLE append (a doubled/combinator `&`, a multi-branch list, or an
+ * append under a COMPOUND/COMBINATOR parent whose tail is not string-appendable) forces the
+ * append × extend deferral. A single recursive scan tracking whether the parent own resolves to a
+ * simple appendable tail. Reads the RAW `Ruleset.selector` (the parser-delivered surface that
+ * carries `Ampersand.appendValue`) — NOT `flatLocalSelector`, which re-materializes a string/array
+ * surface into nodes that drop the append suffix.
  */
 function treeHasUnfoldableAmpersandAppend(root: Rules): boolean {
-  const scan = (children: readonly Node[]): boolean => {
+  // `parentSimpleTail` = the resolved parent own is a single string-appendable simple selector, so
+  // an append child concatenates onto it cleanly. Root children have no parent (root-level appends
+  // defer independently in the gather), so their append-bearing children start from the root
+  // child's own tail shape.
+  const scan = (children: readonly Node[], parentSimpleTail: boolean): boolean => {
     for (let i = 0; i < children.length; i++) {
       const child = children[i]!;
-      if (
-        isNode(child, N.Ruleset)
-        && selectorHasAmpersandAppend(child.selector)
-        && !selectorIsPureAmpersandAppend(child.selector)
-      ) {
-        return true;
+      let childSimpleTail = parentSimpleTail;
+      if (isNode(child, N.Ruleset)) {
+        const sel = child.selector;
+        if (selectorHasAmpersandAppend(sel)) {
+          if (!selectorIsFoldableAmpersandAppend(sel) || !parentSimpleTail) {
+            return true; // an unfoldable append (rich `&`, list) or a non-simple parent tail
+          }
+        }
+        // The tail this ruleset presents to ITS children: a foldable single-`&` append onto a
+        // simple tail stays simple (`.x` → `.x-a`); a plain single simple selector is simple; any
+        // other shape (compound, combinator, list, pseudo) is not an appendable tail.
+        childSimpleTail = (selectorIsFoldableAmpersandAppend(sel) && parentSimpleTail)
+          || (!selectorHasAmpersandAppend(sel) && selectorIsSimpleAppendableTail(sel));
       }
       if ((isNode(child, N.Ruleset) || isNode(child, N.AtRule)) && isNode(child, N.Rules)) {
-        if (scan(child.rules)) {
+        if (scan(child.rules, childSimpleTail)) {
           return true;
         }
       }
     }
     return false;
   };
-  return scan(root.rules);
+  return scan(root.rules, false);
 }
 
 /**
