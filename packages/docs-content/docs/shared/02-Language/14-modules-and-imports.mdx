@@ -67,19 +67,18 @@ In Less 5.x, bare `@import "foo";` is **deprecated** and emits a deprecation
 warning — partly because it's *heuristic* (the extension and options decide
 whether it passes through as CSS or folds in as source). The path forward is the
 module system, `@-compose` — a namespaced import with isolated scope and
-per-import configuration. `@-import` is the **explicit** "fold this file in and
-evaluate it" form: no extension guessing, it always inlines source. It's honest
-about intent, but keeps the old leaky scope, so prefer `@-compose`; use `@-import`
-only for a mechanical port.
+per-import configuration.
+
+Your existing `@import` keeps working (with a warning) through the transition, so
+there's no rush — but when you migrate, go straight to `@-compose`. There's no
+"dashed `@import`" halfway house in Less: a dash-prefixed source import *is* the
+module system.
 
 ```less
-// Deprecated (warns):
+// Deprecated (still works, warns):
 @import "theme";
 
-// Legacy bridge (discouraged):
-@-import "./theme.less";
-
-// The module system — prefer this:
+// The module system — migrate to this:
 @-compose "./theme.less" as theme;
 
 .box { color: @theme[primary-color]; }
