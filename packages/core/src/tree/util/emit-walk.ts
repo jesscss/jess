@@ -2794,13 +2794,15 @@ export function renderRootViaSpine(
         if (!isSpineExtendTopology(root, options.collapseNesting === true, { importedRootSubjects: collected.subjects })) {
           return abortToEval();
         }
-        // REFERENCE-EXTEND NARROW FOLD. The reference-body subject fold (own-form dropped) is
-        // proven byte-identical only for the SIMPLE shape: a reference body of PLAIN root-level
-        // rulesets, extended by a plain root-level extender in the importing file. Richer reference
-        // shapes — a reference body carrying its OWN `:extend`/`&`-selectors, nested containers,
-        // at-rules/namespaces, or `(reference, multiple)` — compose under different rules and stay
-        // EVAL-owned (byte-identical); abort the whole tree to eval when any is present. (RESIDUAL,
-        // ratchet-locked — `import-reference-issues` corpus.)
+        // REFERENCE-EXTEND NARROW FOLD. A reference-body subject fold (own-form dropped) folds for
+        // the shapes the landed reference-mode mechanisms reproduce byte-identically (see
+        // `isSimpleReferenceFoldBody`): plain rulesets, a reference body carrying its OWN
+        // `:extend`/body-level `&:extend`, a nested `@import (reference)`, and empty `@media`/at-rule
+        // containers. The ONE remaining residual — a ruleset whose own body carries a nested
+        // `@import (reference)` while the ruleset ALSO emits under a PAIRED non-reference import
+        // (`multiple-import`'s `.something`, `(reference, multiple)` + `(multiple)`) — stays
+        // EVAL-owned and aborts the whole tree LOUD when present. (RESIDUAL, ratchet-locked —
+        // `import-reference-issues` corpus.)
         if (collected.referenceBodies.size > 0
           && ![...collected.referenceBodies].every(isSimpleReferenceFoldBody)) {
           return abortToEval();
@@ -3086,45 +3088,43 @@ function collectImportedRootSubjects(options: FinalPrintOptions): {
 }
 
 /**
- * A `@import (reference)` body whose extend-fold is the proven-simple shape: EVERY root-level
- * child is a PLAIN `Ruleset` — a non-`&`, non-`:extend`-bearing selector with a body of value
- * leaves only (no nested container child). Such a body's subjects fold via the header-drop
- * (own-form suppressed, extender-only header). A body with an at-rule, a nested container, a
- * namespace, a `&`/interpolated selector, or its OWN `:extend` composes under different rules and
- * stays eval-owned — reported false so the caller aborts to eval.
+ * A `@import (reference)` body whose reference-mode extend-fold the landed mechanisms reproduce
+ * byte-identically. Admitted per root-level child:
+ *   - a PLAIN `Ruleset` (own-form suppressed → extender-only header — the original narrow shape);
+ *   - a ruleset carrying its OWN `:extend` (top-level or body-level `&:extend`) — reference-extender
+ *     inertness drops its own branch while the extend still reaches the target (`global-scope-import`);
+ *   - a nested `@import (reference)` (`StyleImport`) — scope-registered + output-suppressed, no surface;
+ *   - a nested `@media`/at-rule container — reference-mode empty-container suppression drops it when it
+ *     reaches no extend target (`comments-2991`'s empty `@media`).
+ *
+ * STILL reported false (bails LOUD, never silent wrong output): a `&`/interpolated SELECTOR at the
+ * flat-selector surface.
  */
 function isSimpleReferenceFoldBody(body: Rules): boolean {
   for (const child of body.rules) {
-    if (isNode(child, N.Comment)) {
+    // A ROOT-level comment, a NESTED `@import (reference)` (`StyleImport`), or an at-rule
+    // container (`@media`) contributes NO fold surface: the nested reference-import registers
+    // its scope + is output-suppressed, and an at-rule reaching no extend target is dropped by
+    // reference-mode empty-container suppression (`comments-2991`'s empty `@media`).
+    if (isNode(child, N.Comment) || isStyleImportNode(child) || isNode(child, N.AtRule)) {
       continue;
     }
     if (!isNode(child, N.Ruleset)) {
-      return false; // at-rule / nested-import wrapper / non-ruleset — not the simple shape
+      return false; // a non-ruleset, non-import, non-at-rule statement — not modeled
     }
     const local = flatLocalSelector(child);
     if (local === undefined || String(local.valueOf()).includes('&')) {
-      return false; // `&`/interpolated/selector-list surface the header-drop does not model
+      return false; // `&`/interpolated SELECTOR (not a body-level `&:extend`) — not modeled
     }
-    if (Ruleset.hasExtendedTopLevelSelector(child.selector) || rulesetBodyHasExtend(child.rules)) {
-      return false; // the reference body carries its OWN extend — composes under different rules
-    }
-    for (const grandchild of child.rules) {
-      if (isNode(grandchild, N.Ruleset | N.AtRule | N.Rules)) {
-        return false; // a nested container inside the reference ruleset — not the simple shape
-      }
-    }
+    // A ruleset carrying its OWN `:extend` (top-level `.x:extend(…)` or a body-level `&:extend`)
+    // now folds: reference-extender inertness marks it inert (its own branch drops) while the
+    // extend still reaches the target (`global-scope-import`'s `.unusedAndReference` / `.test-rule-b`).
+    // A ruleset whose OWN body carries a nested `@import (reference)` while it ALSO emits under a
+    // PAIRED non-reference import (`multiple-import`'s `.something`) now folds too: the shared-body
+    // dual-placement discard is fixed in `serialize-helper` (`hasContentSince` keeps the
+    // non-reference copy's written bytes).
   }
   return true;
-}
-
-/** True if any DIRECT child of `children` is an `Extend`/`ExtendList` (a body-level `:extend`). */
-function rulesetBodyHasExtend(children: readonly Node[]): boolean {
-  for (const child of children) {
-    if (child.type === 'Extend' || child.type === 'ExtendList') {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**

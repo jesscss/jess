@@ -1601,7 +1601,21 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const childOutResult = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
           const finishChild = (childOut: string): void => {
-            if (!childOut && !hasPrintableTrivia(n, options)) {
+            // EMIT-TIME PROJECTION (shared-body dual placement). `childOut` is
+            // `getSince(mark)` of the child's OWN descent. When the child container node
+            // is SHARED across a `(reference)` and a `(multiple)` placement (the
+            // `multiple-import` `.something` shape — a ruleset whose body carries a nested
+            // `@import (reference)`, placed both `(reference, multiple)` and `(multiple)`),
+            // the two placements descend the SAME node and the reference descent's empty
+            // return can be the value threaded here even though the NON-reference descent
+            // already wrote real bytes into `w` past `childPositionBaseline`. Decide the
+            // discard on whether bytes were ACTUALLY written since the baseline
+            // (`w.hasContentSince`), not on the returned string — restoring past written
+            // non-reference output would drop it. Reads writer state only; no tree
+            // mutation. For a genuinely-empty container nothing was written, so the two
+            // agree and the empty child is still restored (empty-block suppression intact).
+            const wroteBytes = w.hasContentSince(childPositionBaseline);
+            if (!childOut && !wroteBytes && !hasPrintableTrivia(n, options)) {
               w.restore(childPositionBaseline);
               restoreArrayState(lastRenderedFrames, childFrameSnapshot);
               restoreArrayState(frameHeaders, childHeaderSnapshot);
