@@ -22,7 +22,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
-import { assignSpineChildIndices, isSpineEligibleMixinCall, isSpineFoldableStatementCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict, spineSurfaceHasDynamicCallable } from './emit-walk.js';
+import { assignSpineChildIndices, isSpineEligibleMixinCall, isSpineFoldableStatementCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict, spineSurfaceHasDynamicCallable, spineSurfaceHasLeakableCallable } from './emit-walk.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, planEntrySequenceMerges, type SpineMergeEntry, type SpineMergePlan } from './spine-merge.js';
 import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
@@ -1146,19 +1146,30 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             // fold-fallback (`kind: 'eval'`) child that is itself a call re-resolves
             // harmlessly (already-resolved output is not `isSpineEligibleMixinCall`).
             //
-            // DYNAMIC-CALLABLE registration seam (interpolated-selector-created
-            // namespace): a folded surface may hold `.@{name}{ .sayGender(){} }` — its
-            // namespace name is only known once bound, so a later same-body path-call
-            // (`.person.sayGender()`) can't find the member. Resolve each such
-            // surface's interpolated selector and union it into the CALLER's callable
-            // index BEFORE the re-scan so the path-call resolves. Gated on the `%%`
-            // placeholder shape (`spineSurfaceHasDynamicCallable`) — zero-cost absent.
+            // CALLABLE registration seam. A folded surface may carry a nested-def
+            // CALLABLE the caller must see for a later BARE / same-body path-call to
+            // resolve. Two shapes:
+            //  - DYNAMIC (interpolated-selector-created namespace): `.@{name}{ .sayGender(){} }`
+            //    — the namespace name is only known once bound, so `.person.sayGender()`
+            //    can't find the member until the surface's interpolated selector is
+            //    resolved and unioned in (`spineSurfaceHasDynamicCallable`).
+            //  - LEAKY nested-def (Less mixin-leak semantics): `.lock-mixin(@a){ .inner(){…} }`
+            //    / `.s2(){ .m(@v) when (@v){…} }` — calling the mixin leaks its TOP-LEVEL
+            //    nested defs into the caller scope, so a later bare `.inner()` / `.m(false)`
+            //    resolves against ONLY the defs leaked by mixins ACTUALLY called here
+            //    (`spineSurfaceHasLeakableCallable`). The union is scoped to THIS caller
+            //    frame, so an uncalled sibling's defs are never candidates.
+            // BOTH resolve to unioning the bound surface into the CALLER's callable index
+            // (`registerSpineFoldedSurfaceCallables` → `spineExtraCallableSurfaces`, a pure
+            // lookup projection — NO tree mutation). The surface carries the call's bound
+            // param frame, so a leaked def reading an outer param resolves correctly.
+            // Registered BEFORE the re-scan so a following same-scope call resolves.
             if (resolved.kind === 'fold') {
               const callableTarget = entryFrame ?? getContainerRules(node, options);
               if (callableTarget !== undefined) {
                 const registrations: Array<MaybePromise<void>> = [];
                 for (const surface of resolved.surfaces) {
-                  if (spineSurfaceHasDynamicCallable(surface)) {
+                  if (spineSurfaceHasDynamicCallable(surface) || spineSurfaceHasLeakableCallable(surface)) {
                     registrations.push(
                       callableTarget.registerSpineFoldedSurfaceCallables(surface, spineContext)
                     );

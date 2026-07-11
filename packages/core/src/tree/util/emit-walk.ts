@@ -38,6 +38,7 @@ import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+import type { Mixin } from '../mixin.js';
 import type { AtRule } from '../at-rule.js';
 import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
@@ -478,6 +479,18 @@ function isSpineSimpleMixinSurface(surface: Rules): boolean {
     // and `callMap` terminates genuine recursion. A call is not an `isSimpleSpineLeaf`,
     // so admit it explicitly before the leaf check rejects it.
     if (isSpineEligibleMixinCall(child)) {
+      continue;
+    }
+    // A nested Mixin DEFINITION emits NOTHING itself — its only effect is Less
+    // mixin-leak semantics: the defining mixin's call leaks this top-level def into
+    // the caller scope so a later bare call resolves it. The spine reproduces that as
+    // an emit-time lookup projection (`spineSurfaceHasLeakableCallable` →
+    // `registerSpineFoldedSurfaceCallables` unions this surface into the caller's
+    // callable index). So a leakable nested def does NOT make the surface non-simple;
+    // admit it (it contributes no bytes; the projection carries the callable). A
+    // definition that is NOT statically leakable is gated at the tree level
+    // (`nestedDefNeedsDynamicRegistration`), so reaching here it is projection-covered.
+    if (isNode(child, N.Mixin) && child.name !== undefined) {
       continue;
     }
     // A nested CONTAINER the spine can descend (same predicate authored containers
@@ -1896,6 +1909,81 @@ function treeHasUnfoldableContainerBodyMixin(root: Node): boolean {
  * clean authored-namespace path defers the WHOLE tree. Zero-cost when no nested def is
  * present (the caller only invokes this once a nested def is found). Paid once per root.
  */
+/**
+ * The set of param NAMES a Mixin definition binds (`@a`, `@x`) — the plain-string names
+ * of its `VarDeclaration` params. Interpolated/rest/pattern params contribute no plain
+ * name. Used to reason about whether a nested def closes over an enclosing mixin's params.
+ */
+function mixinParamNameSet(mixin: Mixin): Set<string> {
+  const names = new Set<string>();
+  const params = mixin.params;
+  if (params === undefined) {
+    return names;
+  }
+  const list = params.value;
+  for (let i = 0; i < list.length; i++) {
+    const param = list[i]!;
+    if (isNode(param, N.VarDeclaration) && typeof param.name === 'string') {
+      names.add(param.name);
+    }
+  }
+  return names;
+}
+
+/**
+ * True when a leakable nested Mixin definition CLOSES OVER one of its enclosing mixin's
+ * params — i.e. its guard, a param default value, or its body reads a `@var` bound by the
+ * DEFINING mixin (and NOT re-bound as one of the nested def's OWN params). Such a def is
+ * NOT projection-safe for the leaky-callable fold: the projection unions the bound surface
+ * into the caller's callable index, but the leaked candidate resolves its guard/body
+ * against its own DEFINITION frame (the static def parent), not the per-call bound surface
+ * frame — so the outer-param read would miss (`.inner(@x: @a) when (@a=1)` reading
+ * `.lock-mixin`'s bound `@a`). Deferred (sequenced) until the surface frame is threaded
+ * through the callable-lookup entry. A def that reads only its OWN params / globals /
+ * `default()` is safe. Conservative: any Reference to an enclosing-param name (outside the
+ * def's own param names) defers.
+ */
+function nestedDefClosesOverEnclosingParams(def: Mixin, enclosingParamNames: ReadonlySet<string>): boolean {
+  if (enclosingParamNames.size === 0) {
+    return false;
+  }
+  const ownParams = mixinParamNameSet(def);
+  const refsClosingOver = (node: Node | undefined): boolean => {
+    if (node === undefined) {
+      return false;
+    }
+    for (const inner of node.walk(true)) {
+      if (isNode(inner, N.Reference) && typeof inner.key === 'string'
+        && enclosingParamNames.has(inner.key) && !ownParams.has(inner.key)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  // Guard (`when (@a = 1)`).
+  if (def.guard !== undefined && typeof def.guard !== 'string' && refsClosingOver(def.guard)) {
+    return true;
+  }
+  // Param default values (`@x: @a`).
+  const params = def.params;
+  if (params !== undefined) {
+    const list = params.value;
+    for (let i = 0; i < list.length; i++) {
+      const param = list[i]!;
+      if (isNode(param, N.VarDeclaration) && !(param.value instanceof Nil) && refsClosingOver(param.valueNode?.() ?? param)) {
+        return true;
+      }
+    }
+  }
+  // Body declarations (`a: @a`).
+  for (let i = 0; i < def.rules.length; i++) {
+    if (refsClosingOver(def.rules[i]!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function nestedDefNeedsDynamicRegistration(root: Node): boolean {
   // Names of all nested Mixin defs (last selector segment), plus whether ANY nested def
   // is wrapped in an interpolated-selector ancestor (never statically path-reachable).
@@ -1907,14 +1995,30 @@ function nestedDefNeedsDynamicRegistration(root: Node): boolean {
   // `.@{n}` namespace and unions it into the caller's callable index, so the
   // later `.person.sayGender()` path-call resolves during the fold.
   const interpolatedNamespacedDefNames = new Set<string>();
+  // Nested-def names that are DIRECT children of a mixin body (the LEAK surface) and
+  // carry a plain static name — the shape Less mixin-leak semantics propagate into the
+  // caller scope, now covered by the spine leaky-callable projection
+  // (`spineSurfaceHasLeakableCallable` → `registerSpineFoldedSurfaceCallables`). A later
+  // BARE call to one of these resolves against the surface(s) leaked by the mixins
+  // ACTUALLY called in the scope (not every sibling def), so it no longer needs the
+  // dynamic per-scope registration the eval pass performed. Only DIRECT children qualify
+  // (Less leaks a mixin's OWN top-level defs, not defs buried deeper in its containers).
+  const leakableNestedDefNames = new Set<string>();
   // A BARE interpolated-name def (`.@{n}(){}`) or an unnamed shape the seam does not
   // model — always dynamic, never path-reachable, force eval.
   let hasBareInterpolatedNestedDef = false;
   // Descend a Mixin body top-down, carrying whether we are UNDER an
   // interpolated-selector ruleset. A parsed tree has no reliable `.parent` back-
   // pointer, so the ancestor relationship is tracked on the way down rather than
-  // walked up.
-  const scanMixinBody = (children: readonly Node[], underInterp: boolean): void => {
+  // walked up. `topLevel` = the current children are the DIRECT body of a mixin
+  // definition (the leak surface); it drops to false once we descend into any nested
+  // container or nested mixin body.
+  const scanMixinBody = (
+    children: readonly Node[],
+    underInterp: boolean,
+    topLevel: boolean,
+    enclosingParamNames: ReadonlySet<string>
+  ): void => {
     for (const inner of children) {
       if (isNode(inner, N.Mixin)) {
         if (inner.name === undefined) {
@@ -1930,16 +2034,28 @@ function nestedDefNeedsDynamicRegistration(root: Node): boolean {
         nestedDefNames.add(defTail);
         if (underInterp) {
           interpolatedNamespacedDefNames.add(defTail);
+        } else if (topLevel && !nestedDefClosesOverEnclosingParams(inner, enclosingParamNames)) {
+          // A leakable direct-child def is projection-safe ONLY when it does NOT close
+          // over its DEFINING mixin's params. The leaky-callable projection unions the
+          // bound surface into the caller's callable index, but a leaked candidate
+          // resolves its guard/body against its own DEFINITION frame (the static def
+          // parent), NOT the per-call bound surface frame — so an outer-param read
+          // (`.inner(@x: @a) when (@a=1)` reading `.lock-mixin`'s `@a`) would miss.
+          // Such a closure shape stays deferred (sequenced follow-up: thread the surface
+          // frame through the callable-lookup entry). The common leak (`.s2(){ .m(@v)
+          // when (@v) }` — reads only its OWN param) is admitted.
+          leakableNestedDefNames.add(defTail);
         }
-        // A mixin body may itself nest containers holding further defs.
-        scanMixinBody(inner.rules, underInterp);
+        // A mixin body may itself nest containers holding further defs. Its OWN params
+        // now bound the closure check for anything nested inside it.
+        scanMixinBody(inner.rules, underInterp, false, mixinParamNameSet(inner));
         continue;
       }
       if (isNode(inner, N.Ruleset)) {
         const childUnderInterp = underInterp || rulesetSelectorIsInterpolated(inner);
-        scanMixinBody(inner.rules, childUnderInterp);
+        scanMixinBody(inner.rules, childUnderInterp, false, enclosingParamNames);
       } else if (isNode(inner, N.AtRule)) {
-        scanMixinBody(inner.rules, underInterp);
+        scanMixinBody(inner.rules, underInterp, false, enclosingParamNames);
       }
     }
   };
@@ -1947,7 +2063,7 @@ function nestedDefNeedsDynamicRegistration(root: Node): boolean {
     if (!isNode(node, N.Mixin)) {
       continue;
     }
-    scanMixinBody(node.rules, false);
+    scanMixinBody(node.rules, false, true, mixinParamNameSet(node));
   }
   if (nestedDefNames.size === 0 && !hasBareInterpolatedNestedDef) {
     return false;
@@ -1990,17 +2106,28 @@ function nestedDefNeedsDynamicRegistration(root: Node): boolean {
     if (!nestedDefNames.has(tail)) {
       continue;
     }
-    // The tail names a nested def. Foldable as a multi-segment path whose head is
-    // EITHER an authored top-level container (`findMixinPath` resolves it statically)
-    // OR a def sitting under an interpolated-selector namespace that the spine
-    // dynamic-callable seam registers once the enclosing mixin folds
-    // (`.Person(person)` → `.@{name}`=`.person` → `.person.sayGender()`). A bare
-    // (single-segment) call, or a path whose head is neither, needs dynamic
-    // registration the fold does not perform.
-    if (segments.length >= 2 && interpolatedNamespacedDefNames.has(tail)) {
+    // The tail names a nested def. Foldable when:
+    //  - a BARE (single-segment) call names a LEAKABLE nested def (a direct-child def of
+    //    some mixin body): the spine leaky-callable projection unions each called
+    //    mixin's leaked surface into the caller's callable index, so the bare call
+    //    resolves against exactly the defs leaked by mixins ACTUALLY called here — the
+    //    Less mixin-leak semantics, reproduced as an emit-time lookup projection;
+    //  - a multi-segment path whose head is an authored top-level container
+    //    (`findMixinPath` resolves it statically);
+    //  - a multi-segment path whose tail sits under an interpolated-selector namespace
+    //    the spine dynamic-callable seam registers once the enclosing mixin folds
+    //    (`.Person(person)` → `.@{name}`=`.person` → `.person.sayGender()`).
+    // Anything else needs dynamic registration the fold does not perform.
+    if (segments.length < 2) {
+      if (leakableNestedDefNames.has(tail)) {
+        continue;
+      }
+      return true;
+    }
+    if (interpolatedNamespacedDefNames.has(tail)) {
       continue;
     }
-    if (segments.length < 2 || !authoredHeads.has(segments[0]!)) {
+    if (!authoredHeads.has(segments[0]!)) {
       return true;
     }
   }
@@ -2074,6 +2201,35 @@ export function spineSurfaceHasDynamicCallable(surface: Rules): boolean {
       if (inner !== node && isNode(inner, N.Mixin) && inner.name !== undefined) {
         return true;
       }
+    }
+  }
+  return false;
+}
+
+/**
+ * True when a spine-folded mixin surface carries a LEAKABLE nested-def CALLABLE — a
+ * TOP-LEVEL Mixin DEFINITION in the bound body (`.lock-mixin(@a){ .inner-locked-mixin(){…} }`
+ * folds a surface whose direct child is `.inner-locked-mixin`; `guard-default-scopes`'
+ * `.s2(){ .m(@v) when (@v){…} }` folds a surface whose direct child is `.m`). Less
+ * semantics leak a called mixin's top-level nested DEFINITIONS into the caller scope so
+ * a later BARE call (`.inner-locked-mixin()`, `.m(false)`) resolves against ONLY the
+ * defs leaked by mixins ACTUALLY called here — not every sibling-scope def. The spine
+ * reproduces that OUTPUT (not eval's per-scope re-registration side effect) by unioning
+ * the folded surface into the caller's callable index
+ * (`Rules.registerSpineFoldedSurfaceCallables` → `spineExtraCallableSurfaces`): a
+ * projection, no tree mutation. The surface carries the call's bound param frame, so a
+ * leaked def reading an outer param (`.inner-locked-mixin(@x: @a)` with `@a` from
+ * `.lock-mixin(1)`) resolves correctly. Only a DIRECT-child def leaks (Less leaks a
+ * mixin's OWN top-level defs, not defs nested deeper inside its own containers). A
+ * nameless Mixin is a detached ruleset, not a callable — skipped. Cheap: scans only the
+ * surface's direct children.
+ */
+export function spineSurfaceHasLeakableCallable(surface: Rules): boolean {
+  const children = surface.rules;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    if (isNode(child, N.Mixin) && child.name !== undefined) {
+      return true;
     }
   }
   return false;
