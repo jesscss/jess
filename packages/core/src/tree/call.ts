@@ -856,7 +856,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return this.runAsCaller(context, async () => {
           try {
             const result = state.args
-              ? await callWithContext(context, fn, ...state.args.value)
+              ? await callWithContext(context, fn, state.args)
               : await callWithContext(context, fn);
             return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
@@ -930,7 +930,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
     return this.runInCallFrame(context, { caller: true }, async () => {
       const result = state.args
-        ? await callWithContext(context, fn, ...state.args.value)
+        ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
       return this.finalizeCallResult(context, result, { ownOutput });
     });
@@ -1420,11 +1420,7 @@ export class Call extends Node<CallValue, CallOptions> {
               let result: unknown;
               try {
                 result = state.args
-                  ? (
-                      isMetadataFunction
-                        ? await callWithContext(context, fn, state.args)
-                        : await callWithContext(context, fn, ...state.args.value)
-                    )
+                  ? await callWithContext(context, fn, state.args)
                   : await callWithContext(context, fn);
               } catch (error) {
                 if (
@@ -1910,15 +1906,10 @@ export class Call extends Node<CallValue, CallOptions> {
       const callable = fn;
       return this.runAsCaller(context, async () => {
         try {
-          const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
-          let callArgs = args;
+          const callArgs = args;
           const result = await (
             callArgs
-              ? (
-                  shouldPassListArgs
-                    ? callWithContext(context, callable, callArgs)
-                    : callWithContext(context, callable, ...callArgs.value)
-                )
+              ? callWithContext(context, callable, callArgs)
               : callWithContext(context, callable)
           );
           return this.finalizeCallResult(context, result, {

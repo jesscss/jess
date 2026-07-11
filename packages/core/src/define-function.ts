@@ -354,33 +354,33 @@ export function defineFunction<
 /** This will be called internally by Jess to functions created with defineFunction */
 export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): Promise<any> {
   const runtimeFn: RuntimeFunction = fn;
+  // Callers pass the arguments as a single List node (the args container) so no
+  // varargs array has to be spread at the call site. Detect that lone List and
+  // read its values directly rather than rebuilding an intermediate array.
   const listArg = args.length === 1 && isNode(args[0], N.List)
     ? args[0] as List
     : undefined;
-  if (listArg) {
-    const listValues = listArg.value;
-    args = new Array(listValues.length);
-    for (let i = 0; i < listValues.length; i++) {
-      args[i] = listValues[i];
+  const hasParams = !!runtimeFn.options?.params;
+
+  if (!hasParams) {
+    // No params metadata; treat as a normal positional call (sync or async).
+    // Use the List's values directly. `_internal` callables receive the List's
+    // values as-is; plain positional callables historically spread `.value`, so
+    // a lone wrapping List is unwrapped a second time here to stay byte-identical.
+    let positional = listArg ? listArg.value : args;
+    if (!runtimeFn._internal && positional.length === 1 && isNode(positional[0], N.List)) {
+      positional = (positional[0] as List).value;
     }
-  }
-  // Only reject record-based calls (plain objects) when there's no params metadata
-  // Collections are allowed as positional arguments even without params metadata
-  // (e.g., detached rulesets passed to mixins)
-  if (!runtimeFn.options?.params) {
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
+    // Only reject record-based calls (plain objects) when there's no params
+    // metadata. Collections are allowed as positional arguments even without
+    // params metadata (e.g. detached rulesets passed to mixins).
+    for (let i = 0; i < positional.length; i++) {
+      const arg = positional[i];
       if (isPlainObject(arg) && !isNode(arg)) {
         throw new Error('Record-based call without params is not supported');
       }
     }
-  }
-
-  const hasParams = !!runtimeFn.options?.params;
-
-  if (!hasParams) {
-    // No metadata; treat as normal positional function call (sync or async)
-    return runtimeFn.call(context, ...args);
+    return runtimeFn.call(context, ...positional);
   }
 
   /** Normalize positional args into a List node for tracking original arguments */
@@ -399,11 +399,10 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     }
     originalArgsList = new List(copiedArgs);
   }
-  const originalValues = originalArgsList.value;
-  args = new Array(originalValues.length);
-  for (let i = 0; i < originalValues.length; i++) {
-    args[i] = originalValues[i];
-  }
+  // The cloned list owns its values array; the positional pipeline below only
+  // reads it (or reassigns `args` wholesale via preprocessParams), so alias it
+  // directly instead of copying into a fresh array on every call.
+  args = originalArgsList.value;
 
   const params = runtimeFn.options?.params;
   const options = runtimeFn.options;
