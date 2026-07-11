@@ -40,6 +40,7 @@ import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { AtRule } from '../at-rule.js';
+import type { Mixin } from '../mixin.js';
 import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
@@ -492,6 +493,20 @@ function isSpineSimpleMixinSurface(surface: Rules): boolean {
     // and `callMap` terminates genuine recursion. A call is not an `isSimpleSpineLeaf`,
     // so admit it explicitly before the leaf check rejects it.
     if (isSpineEligibleMixinCall(child)) {
+      continue;
+    }
+    // A foldable `@import` in the mixin body (canonically `@import (reference) "x"`,
+    // #2162) folds on the spine: when the call folds, the surface children are spliced
+    // into the caller's `rulesToRender` and RE-SCANNED by `runSpineImportExpansion`,
+    // which resolves the import against its PRE-WIRED placement (wired once, before
+    // descent, by `wireSpineNamespaceImports` over the mixin-definition body) and either
+    // suppresses it (reference) or splices its body. Admitting it here keeps the whole
+    // mixin call ON THE SPINE — the eval fall-back would instead evaluate the body via
+    // the eval path, whose shared-slot (`context.rulesContext`) import anchoring, driven
+    // during an `await`, is the `import-reference-issues` reference-body nondeterminism.
+    // A non-foldable import still fails the leaf check below and routes to the
+    // byte-identical eval fall-back.
+    if (isSpineFoldableImport(child)) {
       continue;
     }
     // A nested Mixin DEFINITION emits NOTHING itself — its only effect is Less
@@ -3005,14 +3020,20 @@ function wireSpineNamespaceImports(
   context: Context,
   options: FinalPrintOptions
 ): MaybePromise<void> {
-  const containers: Array<Ruleset | AtRule> = [];
+  const containers: Array<Ruleset | AtRule | Mixin> = [];
   const collect = (children: readonly Node[]): void => {
     for (let i = 0; i < children.length; i++) {
       const child = children[i]!;
-      if (!isNode(child, N.Ruleset | N.AtRule)) {
+      // A MIXIN DEFINITION body (`.m() { @import (reference) "x" }`, #2162) carries a
+      // foldable import too: pre-wire it into the mixin's own frame HERE (once, before
+      // descent) so a later mixin-CALL fold reuses the DETERMINISTIC cached placement +
+      // reference verdict — instead of a fresh resolve at the call site whose shared-slot
+      // anchoring / import-scope state races (the `import-reference-issues` flake). A
+      // Mixin extends Rules and exposes the same `rules`/`getScopeFrame` surface.
+      if (!isNode(child, N.Ruleset | N.AtRule | N.Mixin)) {
         continue;
       }
-      const container = child as Ruleset | AtRule;
+      const container = child as Ruleset | AtRule | Mixin;
       // A bodyless STATEMENT at-rule (`@charset`, `@namespace`, a CSS-passthrough
       // `@import`) matches `N.AtRule` but carries no body array — skip it (nothing to
       // wire, and reading `.rules.length` would throw).

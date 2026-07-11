@@ -2058,9 +2058,23 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // LOOP fold runs BEFORE the mixin pass so a loop body's mixin call is expanded
       // by the mixin pass over the post-splice sequence (the mixin pass scans the whole
       // `rulesToRender`, including For-spliced children).
+      // After the mixin pass, RE-RUN the import expansion: a folded mixin surface may
+      // splice a foldable `@import` (canonically `@import (reference) "x"` in the mixin
+      // body) into `rulesToRender` that the FIRST import pass — which ran before the
+      // mixin splice — never saw. The re-scan folds/suppresses it against its
+      // pre-wired placement (keeping the whole call on the spine rather than the racy
+      // eval fall-back). Already-folded imports are no longer `StyleImport` entries, so
+      // the re-scan only picks up the newly spliced ones (idempotent, zero-cost when the
+      // mixin pass spliced no import).
+      const afterMixins = (): MaybePromise<void> =>
+        mixinExpansionOccurred ? runSpineImportExpansion() : undefined;
+      const runMixins = (): MaybePromise<void> => {
+        const mixins = runSpineMixinExpansion();
+        return isThenable(mixins) ? mixins.then(afterMixins) : afterMixins();
+      };
       const afterImports = (): MaybePromise<void> => {
         const loops = runSpineForExpansion();
-        return isThenable(loops) ? loops.then(runSpineMixinExpansion) : runSpineMixinExpansion();
+        return isThenable(loops) ? loops.then(runMixins) : runMixins();
       };
       return isThenable(imports) ? imports.then(afterImports) : afterImports();
     };
