@@ -38,7 +38,17 @@ import {
 } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
-import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
+
+// D-EVAL FLIP: the spine is the sole TOP-LEVEL render path, and it does NOT fold a
+// root-direct control node (`$if`/`$while` never fold; a root-direct `$for` is gated
+// off — `isSpineEligibleRoot`). These tests drive control-flow *composition* at the
+// document root and assert eval-internal mechanics (prepareRegistration/clone counts,
+// parent pointers, live-slot lookups) — exactly the retained eval machinery. So they
+// are driven through the retained `Rules.eval` entry (byte-identical to the pre-flip
+// top-level render, which itself went through eval) instead of a spine root render.
+const renderRoot = async (root: Rules, context: Context): Promise<string> =>
+  (await root.eval(context)).toTrimmedString();
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -293,7 +303,7 @@ describe('Control Nodes', () => {
       })
     ]);
 
-    await expect(renderNodeToString(root, context)).resolves.toBe('color: green;\n');
+    await expect(renderRoot(root, context)).resolves.toBe('color: green;');
   });
 
   it('resolves unmatched $if output as a generated empty rules surface', async () => {
@@ -348,7 +358,7 @@ describe('Control Nodes', () => {
       })
     ]);
 
-    await expect(renderNodeToString(root, context)).resolves.toBeString(`
+    await expect(renderRoot(root, context)).resolves.toBeString(`
       .a {
         color: red;
         width: 10px;
@@ -613,7 +623,7 @@ describe('Control Nodes', () => {
       })
     ]);
 
-    await expect(Promise.resolve(renderNodeToString(root, context))).resolves.toBeString(`
+    await expect(Promise.resolve(renderRoot(root, context))).resolves.toBeString(`
       color: red;
       color: red;
     `);
@@ -644,7 +654,7 @@ describe('Control Nodes', () => {
       })
     ]);
 
-    await expect(Promise.resolve(renderNodeToString(root, context))).resolves.toBeString(`
+    await expect(Promise.resolve(renderRoot(root, context))).resolves.toBeString(`
       tick: yes;
       tick: yes;
       tick: yes;
@@ -684,7 +694,7 @@ describe('Control Nodes', () => {
       )
     ]);
 
-    const renderCss = await renderNodeToString(makeRoot(), new Context());
+    const renderCss = await renderRoot(makeRoot(), new Context());
     const evald = await makeRoot().eval(new Context());
 
     expect(renderCss.trim()).toBe(evald.toTrimmedString().trim());
@@ -1052,7 +1062,7 @@ describe('Control Nodes', () => {
       })
     ]);
 
-    await expect(Promise.resolve().then(() => renderNodeToString(root, context))).rejects.toThrow('$while exceeded 10000 iterations');
+    await expect(Promise.resolve().then(() => renderRoot(root, context))).rejects.toThrow('$while exceeded 10000 iterations');
   });
 
   it('adopts $while condition and rules as children', () => {
@@ -1074,7 +1084,7 @@ describe('Control Nodes', () => {
     const pattern = makePattern(['value', 'key', 'index'], 'block');
     const iterable = expr(list([new Any('a'), new Any('b')]));
     const root = rules([makeLoop(pattern, iterable)]);
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
     expect(css).toContain('key: 1');
@@ -1095,7 +1105,7 @@ describe('Control Nodes', () => {
       args: list([])
     });
     root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall));
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
     expect(css).toContain('item: x');
     expect(css).toContain('item: y');
     expect(css).toContain('key: 1');
@@ -1123,7 +1133,7 @@ describe('Control Nodes', () => {
     ]);
     root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall, loopRules));
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toContain('width: x');
     expect(css).toContain('width: y');
@@ -1144,7 +1154,7 @@ describe('Control Nodes', () => {
       decl({ name: 'value', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
     const root = rules([makeLoop(makePattern(['value', 'key'], 'block'), iterableRules, loopRules)]);
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
     expect(css).toContain('name: one');
     expect(css).toContain('name: two');
     expect(css).toContain('value: red');
@@ -1155,7 +1165,7 @@ describe('Control Nodes', () => {
   it('evaluates $for with scalar fallback iterable', async () => {
     const context = new Context();
     const root = rules([makeLoop(makePattern(['value', 'key', 'index']), new Any('solo'))]);
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
     expect(css).toContain('item: solo');
     expect(css).toContain('key: 1');
     expect(css).toContain('index: 1');
@@ -1168,7 +1178,7 @@ describe('Control Nodes', () => {
       decl({ name: 'key', value: ref({ key: 'key' }, { type: 'variable' }) })
     ]);
     const root = rules([makeLoop(makePattern(['value', 'key'], 'list'), list([new Any('a')]), loopRules)]);
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
     expect(css).toContain('item: a');
     expect(css).toContain('key: 1');
   });
@@ -1180,7 +1190,7 @@ describe('Control Nodes', () => {
       decl({ name: 'key', value: ref({ key: 'key' }, { type: 'variable' }) })
     ]);
     const root = rules([makeLoop(makePattern(['value', 'key'], 'sequence'), list([new Any('a')]), loopRules)]);
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
     expect(css).toContain('item: a');
     expect(css).toContain('key: 1');
   });
@@ -1191,7 +1201,7 @@ describe('Control Nodes', () => {
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
     expect(css).toContain('item: a');
   });
 
@@ -1214,7 +1224,7 @@ describe('Control Nodes', () => {
     expect(sourceSpanOf(loopOutput)).toBeUndefined();
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
-    expect(await renderNodeToString(root, new Context())).toBe('');
+    expect(await renderRoot(root, new Context())).toBe('');
   });
 
   it('does not carry function bindings on zero-iteration $for output wrappers', async () => {
@@ -1252,7 +1262,7 @@ describe('Control Nodes', () => {
     const loop = makeLoop(makePattern(['value'], 'single'), list([]), loopRules);
     const root = rules([loop]);
 
-    await expect(renderNodeToString(root, context)).resolves.toBe('');
+    await expect(renderRoot(root, context)).resolves.toBe('');
 
     // Empty iterable → zero iterations → the shared body is never evaluated.
     expect(sourcePrepCalls).toBe(0);
@@ -1287,7 +1297,7 @@ describe('Control Nodes', () => {
       ]);
       const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
 
-      const css = await renderNodeToString(root, context);
+      const css = await renderRoot(root, context);
 
       expect(css).toBe('');
       expect(shallowMarkerBodyClones).toBe(0);
@@ -1313,7 +1323,7 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput._scopeFrame).toBeUndefined();
     expect(firstChild).not.toBeInstanceOf(Rules);
-    expect(await renderNodeToString(root, new Context())).toContain('item: a');
+    expect(await renderRoot(root, new Context())).toContain('item: a');
   });
 
   it('builds $for iteration eval surfaces without calling Rules.clone()', async () => {
@@ -1342,7 +1352,7 @@ describe('Control Nodes', () => {
       const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules);
       const root = rules([loop]);
 
-      const css = await renderNodeToString(root, context);
+      const css = await renderRoot(root, context);
 
       expect(css).toContain('item: a');
       expect(clonedLoopRules).toBe(0);
@@ -1374,7 +1384,7 @@ describe('Control Nodes', () => {
     expect(sourceSpanOf(loopOutput)).toBeUndefined();
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
-    const css = await renderNodeToString(root, new Context());
+    const css = await renderRoot(root, new Context());
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
   });
@@ -1421,7 +1431,7 @@ describe('Control Nodes', () => {
     }));
     const root = rules([loop]);
 
-    await expect(renderNodeToString(root, context)).resolves.toContain('color: blue');
+    await expect(renderRoot(root, context)).resolves.toContain('color: blue');
   });
 
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
@@ -1444,7 +1454,7 @@ describe('Control Nodes', () => {
 
     try {
       const root = rules([makeLoop(makePattern(['value', 'key', 'index']), list([new Any('a'), new Any('b')]))]);
-      const css = await renderNodeToString(root, context);
+      const css = await renderRoot(root, context);
       expect(css).toContain('item: a');
       expect(css).toContain('item: b');
       expect(declarationLookupHits).toEqual([]);
@@ -1468,7 +1478,7 @@ describe('Control Nodes', () => {
       makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)
     ]);
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toBeString(`
       current: a;
@@ -1490,7 +1500,7 @@ describe('Control Nodes', () => {
       decl({ name: 'after', value: ref({ key: 'color' }, { type: 'variable' }) })
     ]);
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toBeString(`
       inner: blue;
@@ -1514,7 +1524,7 @@ describe('Control Nodes', () => {
       decl({ name: 'after', value: ref({ key: 'color' }, { type: 'variable' }) })
     ]);
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toBeString(`
       inner: a;
@@ -1530,7 +1540,7 @@ describe('Control Nodes', () => {
     const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
     const root = rules([loop]);
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
@@ -1559,7 +1569,7 @@ describe('Control Nodes', () => {
         decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
       ]);
       const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
-      const css = await renderNodeToString(root, context);
+      const css = await renderRoot(root, context);
 
       expect(css).toContain('color: red');
       expect(css).toContain('item: a');
@@ -1586,7 +1596,7 @@ describe('Control Nodes', () => {
     const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
     const root = rules([loop]);
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toContain('color: red');
     expect(css).toContain('item: a');
@@ -1612,7 +1622,7 @@ describe('Control Nodes', () => {
     const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
     const root = rules([loop]);
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
@@ -1652,7 +1662,7 @@ describe('Control Nodes', () => {
     ]);
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toContain('.col-a');
     expect(css).toContain('.col-b');
@@ -1694,7 +1704,7 @@ describe('Control Nodes', () => {
         decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
       ]);
       const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
-      const css = await renderNodeToString(root, context);
+      const css = await renderRoot(root, context);
 
       expect(css).toContain('item: a');
       expect(css).toContain('item: b');
@@ -1821,7 +1831,7 @@ describe('Control Nodes', () => {
     ]);
     context.root = root;
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     expect(css).toBeString(`
       .a {
@@ -1861,7 +1871,7 @@ describe('Control Nodes', () => {
     ]);
     context.root = root;
 
-    const css = await renderNodeToString(root, context);
+    const css = await renderRoot(root, context);
 
     // Two comma-separated iterations, each a space-list value.
     expect(css).toContain('item: small 1');

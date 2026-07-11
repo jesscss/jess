@@ -3422,7 +3422,7 @@ describe('reference', () => {
           value: any('foo')
         }, { assign: AssignmentType.Add })
       ]);
-      const css = await renderNodeToString(renderNode, context);
+      const css = (await renderNode.eval(context)).toTrimmedString();
 
       expect(directFound?.value.valueOf()).toBe('foo');
       expect(cachedSlot).toBe(1);
@@ -4223,7 +4223,7 @@ describe('reference', () => {
           })
         ]);
         const evald = await node.eval(context);
-        expect(await renderNodeToString(evald, context)).toBeString(`
+        expect(evald.toTrimmedString()).toBeString(`
           bar: blue;
         `);
         expect(declarationHits).toHaveLength(0);
@@ -4265,7 +4265,7 @@ describe('reference', () => {
           })
         ]);
         const evald = await node.eval(context);
-        expect(await renderNodeToString(evald, context)).toBeString(`
+        expect(evald.toTrimmedString()).toBeString(`
           bar: blue;
         `);
         expect(declarationHits).toHaveLength(0);
@@ -4675,7 +4675,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(await renderNodeToString(evald, context)).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         .\\123 {
           a: ok;
         }
@@ -4703,7 +4703,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(await renderNodeToString(evald, context)).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         #\\31a {
           a: ok;
         }
@@ -4733,7 +4733,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(await renderNodeToString(evald, context)).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         .a.\\32b {
           a: ok;
         }
@@ -5072,7 +5072,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(await renderNodeToString(evald, context)).toContain('@keyframes some-name');
+      expect(evald.toTrimmedString()).toContain('@keyframes some-name');
     });
 
     it('should resolve a mixin-ruleset call keyed by a compound selector path array', async () => {
@@ -5104,7 +5104,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(await renderNodeToString(evald, context)).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
           b: 1;
         }
@@ -5143,7 +5143,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(await renderNodeToString(evald, context)).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
           b: 1;
         }
@@ -5191,7 +5191,7 @@ describe('reference', () => {
 
         const evald = await node.eval(context);
 
-        expect(await renderNodeToString(evald, context)).toBeString(`
+        expect(evald.toTrimmedString()).toBeString(`
           .a.b.c {
             color: blue;
           }
@@ -6536,7 +6536,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(await renderNodeToString(evald, context)).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         #foo-foo {
           > .bar.baz {
             c: c;
@@ -6600,7 +6600,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(await renderNodeToString(evald, context)).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         #foo-foo {
           > .bar.baz {
             c: c;

@@ -1,5 +1,5 @@
 import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
-import { decl, spaced, coll, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
+import { decl, spaced, coll, color, rules, Rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER, Interpolated } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
@@ -34,6 +34,15 @@ let context: Context;
 
 // A trivia run is now a source range; build one whose text is exactly `text`.
 const run = (text: string) => makeTrivia(text, 0, text.length);
+
+// D-EVAL FLIP: the spine owns TOP-LEVEL render but keeps root-direct property-MERGE
+// chains (`+:` / MergeList / MergeSequence) and merge-across-mixin-output on the
+// retained eval path by design (`isSpineEligibleRoot` / `isSpineEligibleBody` gates).
+// These tests drive such merge composition at the document root and assert eval
+// mechanics (cloneForPlacement counts, source-parent identity), so they render through
+// the retained `Rules.eval` entry — byte-identical to the pre-flip top-level render.
+const renderRoot = async (root: Rules, ctx: Context): Promise<string> =>
+  (await root.eval(ctx)).toTrimmedString();
 
 describe('Declaration', () => {
   beforeEach(() => {
@@ -978,7 +987,7 @@ describe('Declaration', () => {
       }, { assign: '+:' })
     ]);
 
-    expect(await renderNodeToString(node, context)).toBeString(`
+    expect(await renderRoot(node, context)).toBeString(`
       background-color: red, foo;
     `);
   });
@@ -1004,7 +1013,7 @@ describe('Declaration', () => {
     };
 
     try {
-      const css = await renderNodeToString(node, context);
+      const css = await renderRoot(node, context);
 
       expect(css).toBeString(`
         background-color: red, foo;
@@ -1315,7 +1324,7 @@ describe('Declaration', () => {
       }, { assign: '+:' })
     ]);
 
-    const css = await renderNodeToString(node, context);
+    const css = await renderRoot(node, context);
 
     expect(css).toBeString(`
       background-color: red, foo;
@@ -1338,7 +1347,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    expect(await renderNodeToString(node, context)).toBeString(`
+    expect(await renderRoot(node, context)).toBeString(`
       background-color: red, foo;
       background: red, foo;
     `);
@@ -1368,7 +1377,7 @@ describe('Declaration', () => {
     const child = parent.rules[2]!;
     child.parent = parent;
 
-    expect(await renderNodeToString(node, context)).toBeString(`
+    expect(await renderRoot(node, context)).toBeString(`
       background-color: red, foo;
       background: red, foo;
     `);
@@ -1394,7 +1403,7 @@ describe('Declaration', () => {
       }, { assign: AssignmentType.MergeList })
     ]);
 
-    expect(await renderNodeToString(node, context)).toBeString(`
+    expect(await renderRoot(node, context)).toBeString(`
       src: base;
       src: one two, three;
     `);
@@ -1431,7 +1440,7 @@ describe('Declaration', () => {
     };
 
     try {
-      const css = await renderNodeToString(node, context);
+      const css = await renderRoot(node, context);
 
       expect(css).toBeString(`
         src: one, two, three;
@@ -1467,7 +1476,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    expect(await renderNodeToString(node, context)).toBeString(`
+    expect(await renderRoot(node, context)).toBeString(`
       .shadow-elevated {
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1);
       }
@@ -1501,7 +1510,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    expect(await renderNodeToString(node, context)).toBeString(`
+    expect(await renderRoot(node, context)).toBeString(`
       .shadow-elevated {
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1) !important;
       }
@@ -1556,7 +1565,7 @@ describe('Declaration', () => {
       })
     ]);
 
-    expect(await renderNodeToString(node, context)).toBeString(`
+    expect(await renderRoot(node, context)).toBeString(`
       .shadow-base {
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
       }
@@ -1595,7 +1604,7 @@ describe('Declaration', () => {
     };
 
     try {
-      expect(await renderNodeToString(node, context)).toBeString(`
+      expect(await renderRoot(node, context)).toBeString(`
         src: red;
         src: red, blue, green;
       `);
@@ -1632,7 +1641,7 @@ describe('Declaration', () => {
     };
 
     try {
-      expect(await renderNodeToString(node, context)).toBeString(`
+      expect(await renderRoot(node, context)).toBeString(`
         src: red blue green;
       `);
       expect(sourceSequenceCopies).toBe(0);
