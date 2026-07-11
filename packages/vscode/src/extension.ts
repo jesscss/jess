@@ -5,18 +5,23 @@ import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } f
 let client: LanguageClient | undefined;
 
 function isDisposable(value: unknown): value is vscode.Disposable {
-  return Boolean(value) && typeof (value as any).dispose === 'function';
+  return typeof value === 'object' && value !== null && 'dispose' in value && typeof value.dispose === 'function';
 }
 
 export async function activate(context: vscode.ExtensionContext) {
   const enabled = vscode.workspace.getConfiguration('jess').get<boolean>('languageService.enable', true);
-  if (!enabled) return;
+  if (!enabled) {
+    return;
+  }
 
   const outputChannel = vscode.window.createOutputChannel('Jess Language Service');
   context.subscriptions.push(outputChannel);
 
+  // Use the CJS build of the server so the language client can fork it as an
+  // unambiguous CommonJS module (the language-service package is `type: module`,
+  // so the `.js` output is ESM).
   const serverModule = context.asAbsolutePath(
-    path.join('..', 'language-service', 'lib', 'server.js')
+    path.join('..', 'language-service', 'lib', 'server.cjs')
   );
 
   const serverOptions: ServerOptions = {
@@ -24,6 +29,12 @@ export async function activate(context: vscode.ExtensionContext) {
     debug: { module: serverModule, transport: TransportKind.stdio }
   };
 
+  // The client is intentionally thin: `vscode-languageclient` advertises the full
+  // set of standard client capabilities (including `textDocument/rename`,
+  // `prepareSupport`, and `textDocument/codeAction`) by default, so the rename and
+  // quick-fix providers only need to be advertised server-side (see server.ts
+  // `renameProvider`/`codeActionProvider`). No per-feature registration is required
+  // here — the capabilities are negotiated automatically on initialize.
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: 'file', language: 'css' },
@@ -42,9 +53,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const started = client.start();
   if (isDisposable(started)) {
     context.subscriptions.push(started);
-  } else if (started && typeof (started as any).then === 'function') {
-    // Some versions return a thenable disposable.
-    void (started as Promise<unknown>).then((d) => {
+  } else if (typeof started.then === 'function') {
+    // Some versions return a thenable (v9 returns a Promise<void>).
+    void started.then((d: unknown) => {
       if (isDisposable(d)) {
         context.subscriptions.push(d);
       }
@@ -53,8 +64,9 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
-  if (!client) return;
+  if (!client) {
+    return;
+  }
   await client.stop();
   client = undefined;
 }
-

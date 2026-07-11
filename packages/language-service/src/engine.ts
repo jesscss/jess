@@ -299,6 +299,58 @@ function pos(line1: number | undefined, col1: number | undefined): Position {
   return Position.create(Math.max(0, (line1 ?? 1) - 1), Math.max(0, (col1 ?? 1) - 1));
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Within `[start, end)` of `text`, find the first whole-identifier occurrence of
+// `ident` and return its absolute offsets. "Whole identifier" = not flanked by a
+// CSS identifier character (letter/digit/hyphen/underscore), so inside `@primary`
+// the `primary` matches but inside `@primary-alt` / `@primaryX` it does not. This
+// is how a node-level span (a reference `@primary`, or a whole declaration
+// `@primary: red;`, or a mixin block `.button() { … }`) is narrowed to just the
+// name token — rename edits and did-you-mean fixes only touch the identifier and
+// leave the sigil / combinator / punctuation in place.
+function findIdentInSpan(text: string, start: number, end: number, ident: string): { start: number; end: number } | null {
+  if (!ident) {
+    return null;
+  }
+  const slice = text.slice(start, Math.max(start, end));
+  const re = new RegExp(`(?<![A-Za-z0-9_-])${escapeRegExp(ident)}(?![A-Za-z0-9_-])`);
+  const m = re.exec(slice);
+  if (!m) {
+    return null;
+  }
+  return { start: start + m.index, end: start + m.index + ident.length };
+}
+
+// Small Levenshtein edit distance, capped: powers the "did you mean" quick fix
+// (suggest a declared symbol close to an undefined reference).
+function editDistance(a: string, b: string): number {
+  const al = a.length;
+  const bl = b.length;
+  if (al === 0) {
+    return bl;
+  }
+  if (bl === 0) {
+    return al;
+  }
+  let prev = new Array<number>(bl + 1);
+  let curr = new Array<number>(bl + 1);
+  for (let j = 0; j <= bl; j++) {
+    prev[j] = j;
+  }
+  for (let i = 1; i <= al; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= bl; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[bl]!;
+}
+
 // Data sources:
 // - At-rules: from VS Code's published web custom data (npm package).
 // - Properties: use the same package Less parser uses (`known-css-properties`).
@@ -350,6 +402,8 @@ export type JessLanguageServiceEngine = {
   getHover(uri: string, position: Position): Hover | null;
   findDefinition(uri: string, position: Position): Location | null;
   findReferences(uri: string, position: Position): Location[];
+  prepareRename(uri: string, position: Position): { range: Range; placeholder: string } | null;
+  rename(uri: string, position: Position, newName: string): WorkspaceEdit | null;
   getDocumentSymbols(uri: string): DocumentSymbol[];
   getDiagnostics(uri: string): Diagnostic[];
   getFoldingRanges(uri: string): FoldingRange[];
@@ -827,6 +881,93 @@ export function createEngine(): JessLanguageServiceEngine {
     }
   }
 
+  // Shared resolver behind find-references AND rename: from a cursor position,
+  // walk up to the nearest variable/mixin declaration or reference, then collect
+  // every reference to that symbol across the current + imported + open docs.
+  // Returns the symbol kind, the bare identifier to target inside each span, and
+  // the node-level locations. `findReferences` returns `.locations` verbatim;
+  // rename narrows each location to its identifier token via `findIdentInSpan`.
+  function collectReferenceSet(uri: string, position: Position):
+    { kind: 'variable' | 'mixin'; refineIdent: string; locations: Location[] } | null {
+    const tracked = ensure(uri);
+    const document = tracked.document;
+    const index = tracked.index;
+    if (!index) {
+      return null;
+    }
+
+    const offset = document.offsetAt(position);
+    let node = index.findNodeAtOffset(offset);
+    if (!node) {
+      return null;
+    }
+
+    let targetNode: Node | undefined = node;
+    const maxDepth = 10;
+    let depth = 0;
+    while (depth < maxDepth && targetNode) {
+      if (targetNode.type === 'VarDeclaration' || targetNode.type === 'Mixin'
+        || (targetNode.type === 'Reference' && (targetNode.options?.type === 'variable' || targetNode.options?.type === 'mixin' || targetNode.options?.type === 'mixin-ruleset'))) {
+        break;
+      }
+      targetNode = targetNode.parent;
+      depth++;
+    }
+    if (!targetNode) {
+      return null;
+    }
+    node = targetNode;
+
+    let targetName: string | null = null;
+    let isVariable = false;
+    let isMixin = false;
+
+    if (node.type === 'Reference' && node.options?.type === 'variable') {
+      const key = nodeField(node, 'key');
+      targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
+      isVariable = true;
+    } else if (node.type === 'VarDeclaration') {
+      const nameNode = nodeField(node, 'name');
+      targetName = asStringName(nameNode);
+      isVariable = true;
+    } else if (node.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
+      const key = nodeField(node, 'key');
+      targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
+      isMixin = true;
+    } else if (node.type === 'Mixin') {
+      const nameNode = nodeField(node, 'name');
+      targetName = asStringName(nameNode);
+      isMixin = true;
+    }
+
+    if (!targetName) {
+      return null;
+    }
+
+    const out: Location[] = [];
+    const visited = new Set<string>();
+    const allDocs = new Set([...docs.keys(), ...importedDocs.keys()]);
+
+    if (isVariable) {
+      const normalizedTarget = targetName.replace(/^[$@]/, '');
+      for (const docUri of allDocs) {
+        findVarReferencesAcrossDocs(docUri, normalizedTarget, visited, out);
+      }
+      return { kind: 'variable', refineIdent: normalizedTarget, locations: out };
+    }
+
+    if (isMixin) {
+      const mixinName = targetName.trim();
+      for (const docUri of allDocs) {
+        findMixinReferencesAcrossDocs(docUri, mixinName, visited, out);
+      }
+      const refineIdent = mixinName.replace(/^[.#]/, '').replace(/\(\s*\)\s*$/, '');
+      return { kind: 'mixin', refineIdent, locations: out };
+    }
+
+    return null;
+  }
+
   return {
     configure(config) {
       // Expected shape (from client settings): { diagnostics?: { severity?: Record<string, string> } }
@@ -1208,84 +1349,82 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     findReferences(uri, position) {
+      return collectReferenceSet(uri, position)?.locations ?? [];
+    },
+
+    prepareRename(uri, position) {
+      const set = collectReferenceSet(uri, position);
+      if (!set) {
+        return null;
+      }
       const tracked = ensure(uri);
-      const document = tracked.document;
-      const index = tracked.index;
-      if (!index) {
-        return [];
+      const doc = tracked.document;
+      const offset = doc.offsetAt(position);
+      const text = doc.getText();
+
+      // The reference/declaration under the cursor (in the current file).
+      const local = set.locations.find(l =>
+        l.uri === uri
+        && doc.offsetAt(l.range.start) <= offset
+        && offset <= doc.offsetAt(l.range.end));
+      if (!local) {
+        return null;
+      }
+      const from = doc.offsetAt(local.range.start);
+      const to = doc.offsetAt(local.range.end);
+      const r = findIdentInSpan(text, from, to, set.refineIdent);
+      if (!r) {
+        return null;
+      }
+      // Only offer rename when the cursor is on the symbol itself (its sigil or
+      // name), not elsewhere in a wider declaration span (e.g. on the value).
+      if (offset < from || offset > r.end) {
+        return null;
+      }
+      return { range: toRange(doc, r.start, r.end), placeholder: set.refineIdent };
+    },
+
+    rename(uri, position, newName) {
+      const set = collectReferenceSet(uri, position);
+      if (!set || set.locations.length === 0) {
+        return null;
+      }
+      // Normalize the requested name to a bare identifier: only the name token is
+      // rewritten at each site, so the sigil (`@`/`$`) or mixin combinator (`.`/`#`)
+      // already present in the source is preserved. A user who types a sigil is
+      // tolerated (it is stripped).
+      const clean = newName.trim().replace(/^[@$.#]+/, '').replace(/\(\s*\)\s*$/, '').trim();
+      if (!clean) {
+        return null;
       }
 
-      const offset = document.offsetAt(position);
-      let node = index.findNodeAtOffset(offset);
-      if (!node) {
-        return [];
-      }
-
-      // Walk up the tree to find VarDeclaration, Reference, or Mixin if the node at position isn't one
-      let targetNode: Node | undefined = node;
-      const maxDepth = 10;
-      let depth = 0;
-      while (depth < maxDepth && targetNode) {
-        if (targetNode.type === 'VarDeclaration' || targetNode.type === 'Mixin'
-          || (targetNode.type === 'Reference' && (targetNode.options?.type === 'variable' || targetNode.options?.type === 'mixin' || targetNode.options?.type === 'mixin-ruleset'))) {
-          break;
+      const changes: Record<string, TextEdit[]> = {};
+      const seen = new Set<string>();
+      for (const loc of set.locations) {
+        const d = docs.get(loc.uri) ?? importedDocs.get(loc.uri);
+        if (!d) {
+          continue;
         }
-        targetNode = targetNode.parent;
-        depth++;
-      }
-      if (!targetNode) {
-        return [];
-      }
-      node = targetNode;
-
-      // Find variable name from either a Reference or VarDeclaration.
-      let targetName: string | null = null;
-      let isVariable = false;
-      let isMixin = false;
-
-      if (node.type === 'Reference' && node.options?.type === 'variable') {
-        const key = nodeField(node, 'key');
-        targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
-        isVariable = true;
-      } else if (node.type === 'VarDeclaration') {
-        const nameNode = nodeField(node, 'name');
-        targetName = asStringName(nameNode);
-        isVariable = true;
-      } else if (node.type === 'Reference' && (node.options?.type === 'mixin' || node.options?.type === 'mixin-ruleset')) {
-        const key = nodeField(node, 'key');
-        targetName = typeof key === 'string' ? key : Array.isArray(key) ? key.join('') : null;
-        isMixin = true;
-      } else if (node.type === 'Mixin') {
-        const nameNode = nodeField(node, 'name');
-        targetName = asStringName(nameNode);
-        isMixin = true;
-      }
-
-      if (!targetName) {
-        return [];
-      }
-
-      const out: Location[] = [];
-
-      if (isVariable) {
-        const normalizedTarget = targetName.replace(/^[$@]/, '');
-        // Search all documents (current + imported + all open docs) with a shared visited set
-        const visited = new Set<string>();
-        const allDocs = new Set([...docs.keys(), ...importedDocs.keys()]);
-        for (const docUri of allDocs) {
-          findVarReferencesAcrossDocs(docUri, normalizedTarget, visited, out);
+        ensureAnalysis(d);
+        const text = d.document.getText();
+        const from = d.document.offsetAt(loc.range.start);
+        const to = d.document.offsetAt(loc.range.end);
+        const r = findIdentInSpan(text, from, to, set.refineIdent);
+        if (!r) {
+          continue;
         }
-      } else if (isMixin) {
-        const mixinName = targetName.trim();
-        // Search all documents (current + imported + all open docs) with a shared visited set
-        const visited = new Set<string>();
-        const allDocs = new Set([...docs.keys(), ...importedDocs.keys()]);
-        for (const docUri of allDocs) {
-          findMixinReferencesAcrossDocs(docUri, mixinName, visited, out);
+        const key = `${loc.uri}:${r.start}:${r.end}`;
+        if (seen.has(key)) {
+          continue;
         }
+        seen.add(key);
+        (changes[loc.uri] ??= []).push(TextEdit.replace(toRange(d.document, r.start, r.end), clean));
       }
 
-      return out;
+      if (Object.keys(changes).length === 0) {
+        return null;
+      }
+      return { changes };
     },
 
     getDocumentSymbols(uri) {
@@ -1971,6 +2110,76 @@ export function createEngine(): JessLanguageServiceEngine {
 
       const diagnostics = Array.isArray(context?.diagnostics) ? context.diagnostics : [];
       const findNodeAt = (pos: Position) => tracked.index?.findNodeAtOffset(doc.offsetAt(pos)) ?? null;
+      const text = doc.getText();
+
+      // Declared-symbol inventories (bare identifiers) for "did you mean" fixes.
+      const declaredVars = new Set<string>();
+      const declaredMixins = new Set<string>();
+      if (tracked.index) {
+        for (const { node } of tracked.index.nodes) {
+          if (node.type === 'VarDeclaration') {
+            const bare = asStringName(nodeField(node, 'name')).trim().replace(/^[$@]/, '');
+            if (bare) {
+              declaredVars.add(bare);
+            }
+          } else if (node.type === 'Mixin') {
+            let bare = asStringName(nodeField(node, 'name')).trim();
+            const parenIdx = bare.indexOf('(');
+            if (parenIdx >= 0) {
+              bare = bare.slice(0, parenIdx);
+            }
+            bare = bare.replace(/^[.#]/, '');
+            if (bare) {
+              declaredMixins.add(bare);
+            }
+          }
+        }
+      }
+
+      // Closest declared identifiers to `name` (edit distance <= 2), nearest first.
+      const suggestClosest = (name: string, pool: Set<string>): string[] => {
+        const scored: Array<{ n: string; d: number }> = [];
+        for (const candidate of pool) {
+          if (candidate === name) {
+            continue;
+          }
+          const d = editDistance(name.toLowerCase(), candidate.toLowerCase());
+          if (d <= 2) {
+            scored.push({ n: candidate, d });
+          }
+        }
+        scored.sort((a, b) => (a.d - b.d) || a.n.localeCompare(b.n));
+        return scored.slice(0, 3).map(s => s.n);
+      };
+
+      // Rewrite just the identifier inside a diagnostic range, keeping the sigil /
+      // combinator, and yield a "Change to X" quick fix per close-by candidate.
+      const pushDidYouMean = (diag: Diagnostic, undefinedIdent: string, pool: Set<string>) => {
+        if (!diag.range) {
+          return;
+        }
+        const from = doc.offsetAt(diag.range.start);
+        const to = doc.offsetAt(diag.range.end);
+        const identRange = findIdentInSpan(text, from, to, undefinedIdent);
+        if (!identRange) {
+          return;
+        }
+        const prefix = text.slice(from, identRange.start);
+        const suffix = text.slice(identRange.end, to);
+        for (const candidate of suggestClosest(undefinedIdent, pool)) {
+          const edit: WorkspaceEdit = {
+            changes: {
+              [uri]: [TextEdit.replace(diag.range, `${prefix}${candidate}${suffix}`)]
+            }
+          };
+          actions.push({
+            title: `Change to ${prefix}${candidate}${suffix}`,
+            kind: CodeActionKind.QuickFix,
+            diagnostics: [diag],
+            edit
+          });
+        }
+      };
 
       for (const diag of diagnostics) {
         const code = String(diag?.code ?? '');
@@ -2005,6 +2214,8 @@ export function createEngine(): JessLanguageServiceEngine {
             diagnostics: [diag],
             edit
           });
+
+          pushDidYouMean(diag, name.replace(/^[$@]/, ''), declaredVars);
         }
 
         if (code === 'mixin/undefined') {
@@ -2034,6 +2245,8 @@ export function createEngine(): JessLanguageServiceEngine {
             diagnostics: [diag],
             edit
           });
+
+          pushDidYouMean(diag, name.trim().replace(/^[.#]/, '').replace(/\(\s*\)\s*$/, ''), declaredMixins);
         }
       }
 

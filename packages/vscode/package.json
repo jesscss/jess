@@ -210,14 +210,21 @@
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.7",
     "@types/node": "^18.15.13",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
     "esbuild": "^0.25.0",
+    "mocha": "^10.7.3",
     "typescript": "~5.8.2"
   },
   "scripts": {
     "build": "node ./scripts/build.mjs",
-    "watch": "node ./scripts/build.mjs --watch"
+    "watch": "node ./scripts/build.mjs --watch",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "pretest:e2e": "pnpm run build && pnpm run compile-tests",
+    "test:e2e": "vscode-test"
   }
 }
 

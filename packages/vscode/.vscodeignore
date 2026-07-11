@@ -4,4 +4,8 @@ node_modules/**
 src/**
 scripts/**
 tsconfig*.json
+out/**
+test-fixtures/**
+.vscode-test.mjs
+.vscode-test/**
 
