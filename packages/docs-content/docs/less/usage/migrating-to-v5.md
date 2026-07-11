@@ -206,6 +206,31 @@ Prefer explicit Less expressions/functions where possible:
 
 If your project still requires JS evaluation, move that usage behind the optional plugin/runtime policy path and validate behavior in CI before enabling broadly.
 
+### Plugin visitors
+
+Less 5.x streams output instead of building a materialized output tree, so plugin
+visitors are now **per-node transforms** rather than whole-tree walkers.
+
+- `beforeEvalVisitor` (pre-evaluation, over the parsed input tree) is unchanged
+  in spirit and fully supported.
+- `preRenderVisitor` / `postEvalVisitor` fire at render time on the resolved
+  nodes, inline as output is serialized, in **enter → children → exit** order.
+
+The breaking part: a visitor is handed **one node at a time** and **cannot** rely
+on whole-tree traversal, ancestry, arbitrary siblings, or accumulated
+cross-subtree state. The supported cross-node pattern is a **depth-1 scope flag**
+(set on entering a node, read by its direct children, cleared on exit).
+
+An audit of published Less plugins found none that depended on whole-tree or
+ancestry state — the only traversing visitors (inline-urls, rtl) are per-node
+transforms, and bundler integrations register no visitors at all. So this affects
+only a tiny, identifiable set of exotic visitors.
+
+Migration path: rework a whole-tree visitor into a per-node form. If that is
+infeasible, Less v4 remains available as a fallback, and additional compatibility
+can be considered on request. See [Plugins → Visitors](../features/plugins#visitors)
+for the full model and examples.
+
 ## Deprecations and removals to plan for
 
 These are the migration-impact items that frequently break older workflows:
@@ -256,6 +281,20 @@ Example:
 // preferred
 .rounded();
 ```
+
+### Parentless ampersand
+
+Using `&` where there is no parent selector in scope now emits a deprecation
+warning (`selector/parentless-ampersand`). The stray `&` is ignored in output.
+
+```less
+// warns: "&" has no available parent selector in this context
+& {
+  color: red;
+}
+```
+
+Fix: move the rule under a real parent selector, or remove the stray `&`.
 
 ### Deprecated CLI/option paths
 

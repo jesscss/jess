@@ -47,6 +47,14 @@ if(2 > 1, blue, green);   // Causes an error in 3.0-3.5.3
 if((2 > 1), blue, green); // Ok 3.6+
 ```
 
+:::note 5.x conditions
+In the 5.x track, `if` and `boolean` are ordinary functions — there is no longer
+a special parse-time case for their names. Guard-like conditions are now
+first-class wherever a value or call argument is expected. For `.less` sources
+the practical behavior matches Less 4.x: permissive/flat and fully parenthesized
+condition forms are both accepted, and the parser normalizes operator precedence.
+:::
+
 ### boolean
 
 > Evaluates to true or false

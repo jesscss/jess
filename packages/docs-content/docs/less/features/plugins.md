@@ -220,6 +220,124 @@ Here are some example repos showing the different plugin types. <!-- TODO: updat
  - visitor: https://github.com/less/less-plugin-inline-urls
  - file-manager: https://github.com/less/less-plugin-npm-import
 
+## Visitors
+
+A **visitor** is a plugin hook that lets you inspect and transform nodes as Less
+processes a stylesheet — for example rewriting a `url()`, replacing a dimension,
+or capturing values for later use. The classic examples are
+[`less-plugin-inline-urls`](https://github.com/less/less-plugin-inline-urls) and
+right-to-left transforms.
+
+:::warning 5.x+ breaking change: visitors are per-node
+Less 4.x handed a visitor the **entire materialized tree** to walk, so a visitor
+could look at arbitrary ancestors, siblings, or cross-subtree state.
+
+In the 5.x track, output is **streamed** — there is no materialized output tree.
+Visitors are now **per-node transforms**: the engine fires your callbacks as it
+serializes, in **enter → children → exit** order, and hands you **one node at a
+time**. A visitor **cannot** rely on whole-tree traversal, ancestry, arbitrary
+siblings, or accumulated cross-subtree state.
+
+See [Migrating to v5](../usage/migrating-to-v5#plugin-visitors) for the migration
+path.
+:::
+
+### The visitor object
+
+A visitor is a plain object. It may define:
+
+- **`enter(node)`** — called when the engine reaches a node, before its children.
+  Return a replacement node to swap it out, return nothing to leave it unchanged,
+  or return `ABORT` to skip transforming this node.
+- **`exit(node)`** — called on the way back out, after the node's children have
+  been emitted.
+- **type-named methods** — a method named after the node type (lower-cased first
+  letter), e.g. `declaration(node)`, `atRule(node)`, `dimension(node)`,
+  `color(node)`. Each is called for nodes of that type and may return a
+  replacement node (or nothing to leave it as-is).
+- **`visit(node)`** — a generic catch-all called for every node when no
+  type-named method matches.
+
+Leaf / value-node replacement (returning a new node from a type-named method or
+`enter`) is the fully supported, exercised case.
+
+### Registering a visitor
+
+A plugin exposes visitors through one of two hooks, depending on **when** the
+visitor should run:
+
+```js
+export default {
+  name: 'my-plugin',
+
+  // Runs BEFORE evaluation, over the parsed input tree.
+  // Use for pre-eval transforms: rewriting url(), appending to the
+  // root, capturing the root's variables, etc. Unchanged in spirit
+  // from Less 4.x and fully supported.
+  beforeEvalVisitor: {
+    declaration(node) { /* inspect / replace */ }
+  },
+
+  // Runs at RENDER time on the RESOLVED nodes, fired inline as output
+  // is serialized (not by walking a separate output tree).
+  // `postEvalVisitor` is an accepted alias for the same hook.
+  preRenderVisitor: {
+    enter(node) { /* set a depth-scope flag */ },
+    dimension(node) { /* replace a resolved value node */ },
+    exit(node) { /* clear the depth-scope flag */ }
+  }
+};
+```
+
+Legacy Less 4.x plugins that register visitors via `pluginManager.addVisitor()`
+inside `install()` continue to work through the Less compatibility layer, which
+routes them onto the pre-evaluation (`beforeEvalVisitor`) hook.
+
+### Carrying state across nodes: the depth-1 scope flag
+
+Because there is no whole tree to walk, the supported "cross-node" pattern is a
+**depth-1 scope flag**: set a flag when you *enter* a container node, read it
+from that node's **direct children**, and clear it on the node's **exit** edge.
+This is exactly what real traversing visitors (inline-urls, rtl) used.
+
+```js
+// A visitor that only rewrites url()s inside a specific at-rule.
+preRenderVisitor: {
+  _inScope: false,
+  enter(node) {
+    if (node.type === 'AtRule' && node.name === '@font-face') {
+      this._inScope = true;
+    }
+  },
+  call(node) {
+    if (this._inScope && node.name === 'url') {
+      // ...return a replacement Call node
+    }
+  },
+  exit(node) {
+    if (node.type === 'AtRule' && node.name === '@font-face') {
+      this._inScope = false;
+    }
+  }
+}
+```
+
+`visitDeeper`-style pruning of the traversal is **not** part of the 5.x contract.
+
+### Why the contract narrowed
+
+An audit of the published Less plugin ecosystem found **no** real plugin that
+relied on whole-tree or ancestry state. The only genuinely-traversing visitors
+(such as inline-urls and rtl) are per-node transforms whose only state is that
+depth-1 scope flag, and bundler integrations (webpack `less-loader`, Vite,
+Rollup) register no visitors at all. The narrowed per-node contract therefore
+covers 100% of real-world usage while enabling the faster streaming
+architecture.
+
+If you have a visitor that walked the whole tree or used ancestry, it needs
+rework into a per-node form. If that is infeasible, Less v4 remains available as
+a fallback, and additional compatibility can be considered on request.
+
 ## Pre-Loaded Plugins
 
 While a `@plugin` call works well for most scenarios, there are times when you might want to load a plugin before parsing starts.
