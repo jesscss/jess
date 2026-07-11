@@ -134,6 +134,45 @@ function applySpineVisitorsEnter(
 }
 
 /**
+ * Fire the registered EMIT-visitor `enter` hooks on a CONTAINER node the spine is
+ * about to descend (a nested Ruleset / AtRule), then — after the body is emitted
+ * — fire `applySpineVisitorsExit`, giving a visitor the `enter → children → exit`
+ * ordering that carries a depth-scoped flag (the inline-urls / rtl model: set on
+ * enter, read by the direct-child leaf `enter`s, cleared on exit). ZERO-cost when
+ * nothing is registered (`spineVisitors` undefined/empty → no iteration). Unlike
+ * the leaf hook, a container `enter` return value is NOT reseated for emission
+ * (the container node is threaded through the descent's frame/selector setup) —
+ * container hooks are used for their scope side effect / inspection / in-place
+ * annotation; node REPLACEMENT is a leaf-level projection (`resolveSpineLeafText`).
+ */
+function applySpineVisitorsContainerEnter(
+  node: Node,
+  context: FinalPrintOptions['context']
+): void {
+  const visitors = context?.spineVisitors;
+  if (!visitors || visitors.length === 0) {
+    return;
+  }
+  for (let i = 0; i < visitors.length; i++) {
+    visitors[i]!.enter(node);
+  }
+}
+
+/** Fire the registered EMIT-visitor `exit` hooks (reverse registration order) on the outbound edge of a container descent. Zero-cost when unregistered. */
+function applySpineVisitorsExit(
+  node: Node,
+  context: FinalPrintOptions['context']
+): void {
+  const visitors = context?.spineVisitors;
+  if (!visitors || visitors.length === 0) {
+    return;
+  }
+  for (let i = visitors.length - 1; i >= 0; i--) {
+    visitors[i]!.exit?.(node);
+  }
+}
+
+/**
  * Run a spine-mode VALUE eval (`node.eval(context)`) that may internally serialize
  * an unknown/passthrough `Call` — e.g. `rgb(1, 2, 3)`, `rotate(90deg)` — whose
  * `Call.evalNode` renders its call syntax through `prepareRenderPrintState(context)`.
@@ -2157,8 +2196,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   // `serializeSpineFrameContainer`, which wraps this call.
   const finishRun = (text: string): string => {
     restorePrintState(options, saved);
+    applySpineVisitorsExit(node, options.context);
     return text;
   };
+  // CONTAINER enter/exit EMIT hook (design §6). Fire `enter` before the body
+  // descends and `exit` after its bytes are in the buffer, so a registered
+  // visitor observes `enter → children → exit`. Zero-cost + allocation-free when
+  // no visitor is registered (the common hot path bails inside the helper on the
+  // `spineVisitors === undefined` check — no closure, no iteration).
+  applySpineVisitorsContainerEnter(node, options.context);
   const runResult = runContainer();
   return isThenable(runResult) ? runResult.then(finishRun) : finishRun(runResult);
 }

@@ -74,7 +74,38 @@ describe('spine generic EMIT visitor hook (P2, core surface)', () => {
       ruleset({ selector: sel([el('.a')]), rules: [decl({ name: 'color', value: spaced([el('red')]) })] })
     ]);
     root.render(context);
-    expect(order).toEqual(['first', 'second']);
+    // `enter` fires in registration order at BOTH the container (`.a`) emit moment
+    // and its child leaf (`color`) emit moment — the container enter/exit hook now
+    // fires alongside the value-leaf hook (design §6, enter→children→exit).
+    expect(order).toEqual(['first', 'second', 'first', 'second']);
+  });
+
+  it('fires container enter -> child leaf enter -> container exit (depth-scope ordering)', () => {
+    const trace: string[] = [];
+    context.registerSpineVisitor(
+      node => {
+        if (isNode(node, N.Ruleset)) {
+          trace.push('enter:ruleset');
+        } else if (isNode(node, N.Declaration)) {
+          trace.push('enter:decl');
+        }
+      },
+      {
+        exit: node => {
+          if (isNode(node, N.Ruleset)) {
+            trace.push('exit:ruleset');
+          }
+        }
+      }
+    );
+    const root = rules([
+      ruleset({ selector: sel([el('.a')]), rules: [
+        decl({ name: 'color', value: spaced([el('red')]) }),
+        decl({ name: 'margin', value: spaced([el('0')]) })
+      ] })
+    ]);
+    root.render(context);
+    expect(trace).toEqual(['enter:ruleset', 'enter:decl', 'enter:decl', 'exit:ruleset']);
   });
 
   it('the hook does not re-introduce the eval two-walk (Rules.derive uncalled)', () => {

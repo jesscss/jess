@@ -19,6 +19,8 @@ import {
   logger,
   Deprecation,
   type Visitor,
+  Node,
+  ABORT,
   createRenderBuffer,
   finalizeFlatRenderBuffer
 } from '@jesscss/core';
@@ -52,6 +54,45 @@ const { isArray } = Array;
 
 function isVisitor(value: unknown): value is Visitor {
   return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Single-node dispatch of a pre-render / post-eval plugin visitor, mirroring
+ * `Node.accept`'s per-node contract WITHOUT the recursive child descent (the
+ * spine drives traversal). Used to re-home `preRenderVisitor`/`postEvalVisitor`
+ * onto the spine EMIT hook (`registerSpineVisitor`) so a plugin-visitor render
+ * routes through the single-pass spine instead of forcing the eval two-walk.
+ *
+ * Fires the visitor's `enter` (an `ABORT` skips this node's own transform), then
+ * the type-named method (`declaration`, `atRule`, …) or a generic `visit`. A
+ * returned Node REPLACES the emitted node (a fresh transient serialized in
+ * place); a `void`/same-node return leaves it unchanged (a typed method that
+ * mutates the RESOLVED node in place is emitted as-mutated). The visitor's own
+ * `exit` is fired separately by the spine on the outbound edge (after children).
+ */
+function applyPreRenderVisitorEnter(node: Node, visitor: Visitor): Node | void {
+  const maybeAbort = visitor.enter?.(node);
+  if (maybeAbort === ABORT) {
+    return;
+  }
+  let result: Node = node;
+  const visit = (visitor as { visit?: (n: Node) => unknown }).visit;
+  if (typeof visit === 'function') {
+    const visited = visit.call(visitor, node);
+    if (visited instanceof Node) {
+      result = visited;
+    }
+  } else {
+    const methodName = node.type.charAt(0).toLowerCase() + node.type.slice(1);
+    const typed = (visitor as unknown as Record<string, unknown>)[methodName];
+    if (typeof typed === 'function') {
+      const visited = (typed as (n: Node) => unknown).call(visitor, node);
+      if (visited instanceof Node) {
+        result = visited;
+      }
+    }
+  }
+  return result === node ? undefined : result;
 }
 
 type LessOptions = ReturnType<typeof getOptions>;
@@ -1059,32 +1100,6 @@ export class Compiler {
     return current;
   }
 
-  /**
-   * True iff some registered plugin exposes a real pre-render visitor
-   * (`preRenderVisitor`/`postEvalVisitor` that passes `isVisitor`). Mirrors the
-   * per-plugin hook selection in `applyPreRenderVisitors` EXACTLY, so the
-   * `preSerializeRoot` hook is set precisely when that method would do work and
-   * left unset (freeing a spine-eligible root to the single pass, §4.0/§6.9)
-   * when it would be a no-op. Contract: pure predicate over `context.plugins`;
-   * no eval, no tree mutation.
-   */
-  private hasPreRenderVisitor(context: Context): boolean {
-    if (!context.plugins?.length) {
-      return false;
-    }
-    for (const plugin of context.plugins) {
-      const hooks = [
-        plugin.preRenderVisitor,
-        plugin.postEvalVisitor
-      ].filter((hook): hook is NonNullable<typeof hook> => Boolean(hook));
-      const visitors = hooks.flatMap(hook => Array.isArray(hook) ? hook : [hook]);
-      if (visitors.some(visitor => isVisitor(visitor))) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private applyPreRenderVisitors(context: Context, tree: Rules): Rules {
     if (!tree || !context.plugins?.length) {
       return tree;
@@ -1110,6 +1125,46 @@ export class Compiler {
       }
     }
     return current;
+  }
+
+  /**
+   * Re-home each registered `preRenderVisitor`/`postEvalVisitor` onto the spine
+   * EMIT hook (`Context.registerSpineVisitor`). This REPLACES the old
+   * `preSerializeRoot → applyPreRenderVisitors → node.accept` detour (which
+   * forced the eval two-walk): the visitor now fires at each resolved output
+   * node's emit moment during the single-pass spine descent. Deterministic
+   * registration order (plugin order, `preRenderVisitor` before
+   * `postEvalVisitor`) mirrors `applyPreRenderVisitors` exactly. Zero-cost when
+   * no such visitor exists — the spine list stays undefined and the root routes
+   * through the live single pass untouched.
+   */
+  private registerPreRenderVisitorsOnSpine(context: Context): void {
+    if (!context.plugins?.length) {
+      return;
+    }
+    for (const plugin of context.plugins) {
+      const hooks = [
+        plugin.preRenderVisitor,
+        plugin.postEvalVisitor
+      ].filter((hook): hook is NonNullable<typeof hook> => Boolean(hook));
+      if (hooks.length === 0) {
+        continue;
+      }
+      const visitors = hooks.flatMap(hook => Array.isArray(hook) ? hook : [hook]);
+      for (const visitor of visitors) {
+        if (!isVisitor(visitor)) {
+          continue;
+        }
+        context.registerSpineVisitor(
+          (node: Node) => applyPreRenderVisitorEnter(node, visitor),
+          {
+            exit: visitor.exit
+              ? (node: Node) => { visitor.exit!(node); }
+              : undefined
+          }
+        );
+      }
+    }
   }
 
   private attachImportVisitorHook(context: Context, filePath: string) {
@@ -1248,37 +1303,20 @@ export class Compiler {
   }
 
   private async renderTree(tree: Rules, context: Context, profile?: RenderProfile): Promise<string> {
-    // P2 gate refinement (§4.0 extend-work gate / §6.9 gated pre-eval): the
-    // single-pass spine (`renderRootViaSpine`) engages only when
-    // `preSerializeRoot` is UNSET (`rules.ts` spine gate). `preSerializeRoot`'s
-    // sole job is to run `applyPreRenderVisitors` — a NO-OP unless some plugin
-    // registers a `preRenderVisitor`/`postEvalVisitor`. Setting it
-    // unconditionally kept every spine-eligible root pinned to the eval path
-    // (the P1 finding: 0% of real renders routed through the live spine).
-    //
-    // We now set the hook ONLY when a real pre-render visitor exists. When none
-    // does, the hook is genuinely absent, so a spine-eligible extend-free
-    // root routes through the live single pass in production. Roots that need
-    // extend or visitor work are still fully covered: extend-bearing / import-
-    // bearing roots are not spine-eligible (`isSpineEligibleRoot` rejects
-    // `:extend` selectors and top-level `@import` at-rules), and a registered
-    // visitor re-arms `preSerializeRoot`, forcing the eval path. No dual dormant
-    // path — this is the wire-in, not a parallel spine.
-    const hasPreRenderVisitor = this.hasPreRenderVisitor(context);
+    // Sub-project B (D-EVAL flip): re-home the plugin visitor hook onto the
+    // spine. Previously a registered `preRenderVisitor`/`postEvalVisitor` set
+    // `printOptions.preSerializeRoot`, which forced the eval two-walk (the sole
+    // remaining VISITOR reason to enter the eval render path). It is now instead
+    // registered on the spine EMIT hook and fires at each resolved output node's
+    // emit moment during the single-pass descent, so a plugin-visitor render
+    // routes through the spine (the `rules.ts` render gate takes the spine branch
+    // whenever `preSerializeRoot` is unset — which is now always, for render).
+    // Zero-cost when no such visitor exists (the spine list stays undefined and
+    // the no-plugin hot path is untouched).
+    this.registerPreRenderVisitorsOnSpine(context);
     const printOptions: PrintOptions = {
       collapseNesting: context.opts.output?.collapseNesting,
-      context,
-      // D3: `render()` is the sole eval driver. `tree` enters unevaluated; render
-      // evaluates it, then fires this hook on the evaluated root so post-eval /
-      // pre-render plugin visitors transform it before serialization — the role
-      // the removed separate `tree.eval()` pre-pass used to serve. Set only when
-      // a real visitor is registered (see gate note above).
-      preSerializeRoot: hasPreRenderVisitor
-        ? evaluatedRoot =>
-            measureProfileSync(profile, 'applyPreRenderVisitors', () =>
-              this.applyPreRenderVisitors(context, evaluatedRoot)
-            )
-        : undefined
+      context
     };
 
     let css = await measureProfileAsync(profile, 'render', async () => {
