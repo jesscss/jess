@@ -76,6 +76,7 @@ import {
 } from '@jesscss/core';
 import {
   buildScssInterpolatedFromString,
+  isValidScssSelectorList,
   toInterpReplacement
 } from './interp.js';
 import {
@@ -92,7 +93,6 @@ import {
   lowerPlainAtRootRules,
   prefixAtRootSelector
 } from './scss-atroot-helpers.js';
-import { parseSelectorListExpression } from './productions/helpers.js';
 import {
   desugarMapLookup,
   desugarNamespacedCall,
@@ -528,7 +528,7 @@ export class ScssGrammar extends LessGrammar {
     const hasColon = ls.some(l => l.value === ':');
     const hasSpread = ls.some(l => l.value === '...');
     if (varLeaf && hasColon) {
-      const name = varLeaf.value.slice(1);
+      const name = new Any(varLeaf.value.slice(1), { role: 'property' }, loc);
       const value = nodes.find(n => n !== undefined && !ls.includes(n as any)) ?? nodes[0] ?? new Nil();
       return new VarDeclaration(
         { name, value: value as Node },
@@ -873,13 +873,10 @@ export class ScssGrammar extends LessGrammar {
               ? String((firstArg as Quoted).value.valueOf())
               : undefined
           : undefined;
-        if (selectorText !== undefined) {
-          try {
-            const selector = parseSelectorListExpression(selectorText);
-            return new SelectorCapture(selector, undefined, loc) as unknown as JessNode;
-          } catch {
-            // fall through to default call desugaring
-          }
+        if (selectorText !== undefined && isValidScssSelectorList(selectorText)) {
+          // SelectorCapture keeps the lean bare-string payload; validation above
+          // rejects malformed input and falls through to default call desugaring.
+          return new SelectorCapture(selectorText, undefined, loc) as unknown as JessNode;
         }
       }
       const items = spannedComponents(raw);
@@ -1366,13 +1363,10 @@ export class ScssGrammar extends LessGrammar {
             ? String(firstArg.value.valueOf())
             : undefined
         : undefined;
-      if (selectorText !== undefined) {
-        try {
-          const selector = parseSelectorListExpression(selectorText);
-          return new SelectorCapture(selector, undefined, loc) as unknown as JessNode;
-        } catch {
-          return desugared as unknown as JessNode;
-        }
+      if (selectorText !== undefined && isValidScssSelectorList(selectorText)) {
+        // SelectorCapture keeps the lean bare-string payload; malformed input
+        // falls through to the desugared namespaced call below.
+        return new SelectorCapture(selectorText, undefined, loc) as unknown as JessNode;
       }
       return desugared as unknown as JessNode;
     }
