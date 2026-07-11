@@ -72,3 +72,199 @@ describe('Diagnostic Output', () => {
     stdoutSpy.mockRestore();
   });
 });
+
+/** Captures everything written to stdout + stderr while `fn` runs. */
+function capture(fn: () => void): { out: string; err: string } {
+  const out: string[] = [];
+  const err: string[] = [];
+  const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+    out.push(String(chunk));
+    return true;
+  });
+  const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+    err.push(String(chunk));
+    return true;
+  });
+  try {
+    fn();
+  } finally {
+    outSpy.mockRestore();
+    errSpy.mockRestore();
+  }
+  return { out: out.join(''), err: err.join('') };
+}
+
+const OSC8 = '\x1b]8;;';
+
+function warn(
+  code: string,
+  message: string,
+  opts: { filePath?: string; line?: number; column?: number; sourceLine?: string } = {}
+): WarningDiagnostic {
+  const line = opts.line ?? 3;
+  const filePath = 'filePath' in opts ? opts.filePath : '/proj/src/styles.less';
+  const lines = opts.sourceLine !== undefined && filePath
+    ? { [line - 1]: 'before', [line]: opts.sourceLine, [line + 1]: 'after' }
+    : undefined;
+  return {
+    code,
+    phase: 'eval',
+    message,
+    reason: 'r',
+    fix: 'f',
+    filePath,
+    line: filePath ? line : 0,
+    column: opts.column ?? 2,
+    lines
+  };
+}
+
+function err(
+  code: string,
+  message: string,
+  opts: { filePath?: string; line?: number; sourceLine?: string } = {}
+): ErrorDiagnostic {
+  const line = opts.line ?? 4;
+  const filePath = opts.filePath ?? '/proj/src/styles.less';
+  return {
+    code,
+    phase: 'parse',
+    message,
+    reason: 'r',
+    fix: 'f',
+    filePath,
+    line,
+    column: 3,
+    lines: {
+      [line - 1]: 'above',
+      [line]: opts.sourceLine ?? 'ERR_SOURCE_LINE',
+      [line + 1]: 'below'
+    }
+  };
+}
+
+describe('Diagnostic display tiers', () => {
+  it('defaults: a warning renders as a single line with an OSC-8 link, no frame', () => {
+    const { out } = capture(() =>
+      outputDiagnostics([], [warn('eval/deprecated', 'used foo', { sourceLine: 'WARN_SRC' })], {
+        breakOnError: false
+      })
+    );
+    expect(out).toContain(OSC8);
+    expect(out).toContain('eval/deprecated');
+    expect(out).toContain('used foo');
+    expect(out).not.toContain('WARN_SRC'); // no code frame
+    expect(out.trimEnd().split('\n')).toHaveLength(1);
+  });
+
+  it('defaults: an error renders as a code frame', () => {
+    const { err: stderr } = capture(() =>
+      outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'ERR_SRC' })], [], {
+        breakOnError: false
+      })
+    );
+    expect(stderr).toContain('ERR_SRC'); // code frame includes the source line
+  });
+
+  it('warnings: \'summary\' collapses to one line per code with count + files', () => {
+    const warnings = [
+      warn('extend/not-found', 'a missing', { filePath: '/proj/a.less' }),
+      warn('extend/not-found', 'b missing', { filePath: '/proj/b.less' })
+    ];
+    const { out } = capture(() =>
+      outputDiagnostics([], warnings, { breakOnError: false, warnings: 'summary' })
+    );
+    expect(out.trimEnd().split('\n')).toHaveLength(1);
+    expect(out).toContain('extend/not-found');
+    expect(out).toContain('2×');
+    expect(out).toContain('a.less');
+    expect(out).toContain('b.less');
+    expect(out).not.toContain(OSC8);
+  });
+
+  it('warnings: { display: \'frame\' } frames warnings', () => {
+    const { out } = capture(() =>
+      outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'W_FRAME_SRC' })], {
+        breakOnError: false,
+        warnings: { display: 'frame' }
+      })
+    );
+    expect(out).toContain('W_FRAME_SRC');
+  });
+
+  it('errors: \'line\' compacts errors to one line with a link', () => {
+    const { err: stderr } = capture(() =>
+      outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'ERR_SRC' })], [], {
+        breakOnError: false,
+        errors: 'line'
+      })
+    );
+    expect(stderr).toContain(OSC8);
+    expect(stderr).not.toContain('ERR_SRC');
+    expect(stderr.trimEnd().split('\n')).toHaveLength(1);
+  });
+
+  it('category override promotes a chosen code to frame even as a warning', () => {
+    const { out } = capture(() =>
+      outputDiagnostics(
+        [],
+        [warn('selector/comma-list-interpolation', 'list in selector', { sourceLine: 'OVERRIDE_SRC' })],
+        { breakOnError: false }
+      )
+    );
+    // Default warning tier is line, but this code is pinned to frame.
+    expect(out).toContain('OVERRIDE_SRC');
+  });
+
+  it('first-vs-repeat: first frame-tier site frames, later sites drop to line', () => {
+    const warnings = [
+      warn('eval/deprecated', 'first', { line: 3, sourceLine: 'FIRST_SRC' }),
+      warn('eval/deprecated', 'second', { line: 9, sourceLine: 'SECOND_SRC' })
+    ];
+    const { out } = capture(() =>
+      outputDiagnostics([], warnings, { breakOnError: false, warnings: { display: 'frame' } })
+    );
+    expect(out).toContain('FIRST_SRC'); // first site framed
+    expect(out).not.toContain('SECOND_SRC'); // second site demoted to line
+    expect(out).toContain(OSC8); // ...which carries a link
+  });
+
+  it('no-location diagnostic renders a one-liner with no link and no frame', () => {
+    const noLoc: WarningDiagnostic = {
+      code: 'extend/not-found',
+      phase: 'extend',
+      message: '199 warnings suppressed',
+      reason: '',
+      fix: '',
+      line: 0,
+      column: 0
+    };
+    const { out } = capture(() =>
+      outputDiagnostics([], [noLoc], { breakOnError: false })
+    );
+    expect(out).toContain('extend/not-found');
+    expect(out).toContain('199 warnings suppressed');
+    expect(out).not.toContain(OSC8);
+    expect(out.trimEnd().split('\n')).toHaveLength(1);
+  });
+
+  it('verbose promotes: a default-line warning becomes a frame', () => {
+    const { out } = capture(() =>
+      outputDiagnostics([], [warn('eval/deprecated', 'x', { sourceLine: 'VERBOSE_SRC' })], {
+        breakOnError: false,
+        verbose: true
+      })
+    );
+    expect(out).toContain('VERBOSE_SRC');
+  });
+
+  it('back-compat: suppressWarnings silences warning output', () => {
+    const { out } = capture(() =>
+      outputDiagnostics([], [warn('eval/deprecated', 'x')], {
+        breakOnError: false,
+        suppressWarnings: true
+      })
+    );
+    expect(out).toBe('');
+  });
+});

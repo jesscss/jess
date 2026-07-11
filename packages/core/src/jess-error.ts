@@ -5,6 +5,7 @@ import { type IRecognitionException, type ILexingError, type ILexingResult } fro
 import type { TreeContext } from './context.js';
 import type { LocationInfo } from './tree/node.js';
 import type { Deprecation } from './deprecation.js';
+import type { DiagnosticDisplay } from './warnings.js';
 
 type JessFile = TreeContext['file'];
 
@@ -28,6 +29,7 @@ export type JessErrorCode =
   | 'eval/invalid-statement'
   | 'eval/property-in-root'
   | 'eval/ruleset-on-property'
+  | 'eval/unit-conversion'
   | 'extend/protected-boundary'
   | 'extend/not-found'
   | 'extend/not-accessible'
@@ -258,6 +260,12 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     fix: 'Use a supported alternative or enable a fallback.'
   }],
 
+  ['eval/unit-conversion', {
+    summary: 'Cannot convert "${value}" to a color',
+    reason: 'A dimension with a unit cannot be compared against a color.',
+    fix: 'Drop the unit, or compare compatible types.'
+  }],
+
   // ---------- Warnings (examples you can expand) ----------
   ['eval/deprecated', {
     summary: 'Deprecated feature',
@@ -295,6 +303,22 @@ const JESS_ERROR_CODE_SET: ReadonlySet<string> = new Set(TEMPLATES.keys());
 
 export function isJessErrorCode(code: string): code is JessErrorCode {
   return JESS_ERROR_CODE_SET.has(code);
+}
+
+/**
+ * Per-category presentation overrides. A code listed here pins its display tier
+ * regardless of the severity default (e.g. promote an easy-to-miss warning to a
+ * full code frame). Codes with no entry fall back to the severity default.
+ */
+const DISPLAY_OVERRIDES = new Map<string, DiagnosticDisplay>([
+  // A comma-list spliced into a selector is subtle enough to always warrant the
+  // full frame, even though it is only a warning.
+  ['selector/comma-list-interpolation', 'frame']
+]);
+
+/** The pinned display tier for a diagnostic `code`, if any. */
+export function displayOverrideFor(code: string): DiagnosticDisplay | undefined {
+  return DISPLAY_OVERRIDES.get(code);
 }
 
 /**
@@ -345,6 +369,15 @@ function lexerTokenText(error: ILexingError): string {
 
 function osc8(uri: string, label: string): string {
   return `\x1b]8;;${uri}\x1b\\${label}\x1b]8;;\x1b\\`;
+}
+
+/**
+ * OSC-8 terminal hyperlink: wraps `label` so supporting terminals make it a
+ * clickable link to `uri`. Emits the escape sequence unconditionally — callers
+ * that want a TTY gate should check that themselves.
+ */
+export function oscLink(uri: string, label: string): string {
+  return osc8(uri, label);
 }
 
 function supportsLinks(): boolean {
@@ -761,6 +794,10 @@ export const WARN = {
 
   unresolvedFunction(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({ severity: 'warn', code: 'function/unresolved', phase: 'eval', ...args });
+  },
+
+  unitConversion(args: Common & { meta: { value: string } }) {
+    return makeJessError({ severity: 'warn', code: 'eval/unit-conversion', phase: 'eval', ...args });
   },
 
   extendNotFound(args: Common & { meta: { target: string } }) {

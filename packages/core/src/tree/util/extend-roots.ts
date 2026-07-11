@@ -1,5 +1,5 @@
 import type { Context } from '../../context.js';
-import { WARN, toDiagnostic } from '../../jess-error.js';
+import { WARN } from '../../jess-error.js';
 import { ComplexSelector } from '../selector-complex.js';
 import { BasicSelector } from '../selector-basic.js';
 import type { Rules } from '../rules.js';
@@ -1167,7 +1167,7 @@ export function processExtends(context: Context): void {
               meta: { target }
             })
       );
-      context.warnings.push(toDiagnostic(diagnostic));
+      context.warn(diagnostic);
     }
   } finally {
     endExtendMatchPass();

@@ -19,7 +19,19 @@ import { readFile } from 'node:fs/promises';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError, toDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
+import type { Deprecation } from './deprecation.js';
+import {
+  type WarningsConfigInput,
+  type ErrorsConfigInput,
+  type ResolvedWarningsConfig,
+  type ResolvedErrorsConfig,
+  type CodeWarnStats,
+  resolveWarningsConfig,
+  resolveErrorsConfig,
+  warnCodeMatchesAny,
+  makeSuppressionSummary
+} from './warnings.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
@@ -106,9 +118,38 @@ export interface ContextOptions {
 
   /**
    * Suppress warnings (similar to Less's suppressWarnings option).
-   * When true, warnings are collected but not emitted.
+   * When true, warnings are collected but not emitted. Back-compat: this maps
+   * to `warnings.silence: ['*']` in the unified processor.
    */
   suppressWarnings?: boolean;
+
+  /**
+   * Unified warnings processor config. Controls silencing, fatal promotion,
+   * de-duplication, the per-code site cap and the display tier. Accepts either a
+   * bare display tier (`'summary' | 'line' | 'frame'`) or the full config object.
+   */
+  warnings?: WarningsConfigInput;
+
+  /**
+   * Error-display config. Accepts either a bare display tier
+   * (`'summary' | 'line' | 'frame'`) or `{ display }`. Default tier: `frame`.
+   */
+  errors?: ErrorsConfigInput;
+
+  /**
+   * Verbose output. Disables warning de-duplication/capping and skips the tail
+   * summary — every warning surfaces.
+   */
+  verbose?: boolean;
+
+  /** Quiet mode (suppress warning terminal output; collection is unaffected). */
+  quiet?: boolean;
+
+  /** Legacy deprecation ids to make fatal (mapped onto `deprecation/<id>` codes). */
+  fatalDeprecations?: string[];
+
+  /** Legacy deprecation ids to opt into early (mapped onto `deprecation/<id>` codes). */
+  futureDeprecations?: string[];
 
   /**
    * Break on first error (stop processing after first error).
@@ -353,9 +394,137 @@ export class Context {
 
   /**
    * Collected warnings during safeParse/safeRender.
-   * Only populated when using safe methods.
+   * Only populated when using safe methods. Prefer routing warnings through
+   * {@link warn} rather than pushing here directly, so silencing / fatal
+   * promotion / de-duplication / the tail summary all apply uniformly.
    */
   warnings: WarningDiagnostic[] = [];
+
+  /** Lazily-resolved warnings config (folded from compile options). */
+  private _warnConfig?: ResolvedWarningsConfig;
+
+  /** Lazily-resolved error-display config (folded from compile options). */
+  private _errorsConfig?: ResolvedErrorsConfig;
+
+  /** Per-code de-dup / cap / summary bookkeeping. */
+  private readonly _warnStats = new Map<string, CodeWarnStats>();
+
+  /** Guards {@link finalizeWarnings} idempotency. */
+  private _warningsFinalized = false;
+
+  /** The resolved warnings config, computed once from the compile options. */
+  private get warnConfig(): ResolvedWarningsConfig {
+    if (!this._warnConfig) {
+      this._warnConfig = resolveWarningsConfig({
+        warnings: this.opts.warnings,
+        suppressWarnings: this.opts.suppressWarnings,
+        verbose: this.opts.verbose,
+        fatalDeprecations: this.opts.fatalDeprecations,
+        futureDeprecations: this.opts.futureDeprecations
+      });
+    }
+    return this._warnConfig;
+  }
+
+  /** The resolved error-display config, computed once from the compile options. */
+  get errorsConfig(): ResolvedErrorsConfig {
+    if (!this._errorsConfig) {
+      this._errorsConfig = resolveErrorsConfig(this.opts.errors);
+    }
+    return this._errorsConfig;
+  }
+
+  /**
+   * The unified warnings entry point. Accepts a {@link JessError} (from
+   * `WARN.x(...)`) or an already-normalized {@link WarningDiagnostic} and
+   * applies, in order: silencing, fatal promotion, then de-duplication +
+   * per-code site capping before pushing onto {@link warnings}.
+   *
+   * Pass `options.code` to override the diagnostic code used for matching /
+   * dedup / summary (e.g. deprecations routed as `deprecation/<id>`).
+   */
+  warn(warning: JessError | WarningDiagnostic, options?: { code?: string }): void {
+    const diag: WarningDiagnostic = warning instanceof JessError
+      ? toDiagnostic(warning) as WarningDiagnostic
+      : warning;
+    if (options?.code) {
+      diag.code = options.code;
+    }
+    const code = diag.code;
+    const cfg = this.warnConfig;
+
+    if (warnCodeMatchesAny(code, cfg.silence)) {
+      return;
+    }
+
+    if (warnCodeMatchesAny(code, cfg.fatal)) {
+      const base = warning instanceof JessError ? warning.message : diag.message;
+      const error = new Error(
+        `${base}\n\nThis is only an error because you've set ${code} to be fatal.\n`
+        + 'Remove this setting if you need to keep using this feature.'
+      );
+      error.name = 'FatalWarningError';
+      throw error;
+    }
+
+    const capping = cfg.limitRepetition && !cfg.verbose;
+    if (!capping) {
+      this.warnings.push(diag);
+      return;
+    }
+
+    const key = `${code}@${diag.filePath ?? ''}:${diag.line}:${diag.column}`;
+    let stats = this._warnStats.get(code);
+    if (!stats) {
+      stats = {
+        phase: diag.phase,
+        emittedSites: new Set<string>(),
+        suppressedSites: new Set<string>(),
+        suppressedCount: 0
+      };
+      this._warnStats.set(code, stats);
+    }
+
+    // A previously-emitted site repeating, or a new site over the per-code cap:
+    // count it for the summary and drop it.
+    if (stats.emittedSites.has(key) || stats.emittedSites.size >= cfg.maxSitesPerCode) {
+      stats.suppressedCount++;
+      stats.suppressedSites.add(key);
+      return;
+    }
+
+    stats.emittedSites.add(key);
+    this.warnings.push(diag);
+  }
+
+  /**
+   * Route a deprecation warning through {@link warn} with the canonical
+   * `deprecation/<id>` code, so `warnings.silence`/`fatal` `deprecation/*`
+   * wildcards (and legacy `fatalDeprecations`) apply uniformly.
+   */
+  warnDeprecation(deprecation: Deprecation, warning: JessError | WarningDiagnostic): void {
+    this.warn(warning, { code: `deprecation/${deprecation.id}` });
+  }
+
+  /**
+   * Append one tail-summary {@link WarningDiagnostic} per code that had
+   * suppressed repeats/over-cap sites. Skipped entirely under `verbose`.
+   * Idempotent — safe to call from every result-assembly path.
+   */
+  finalizeWarnings(): void {
+    if (this._warningsFinalized) {
+      return;
+    }
+    this._warningsFinalized = true;
+    if (this.warnConfig.verbose) {
+      return;
+    }
+    for (const [code, stats] of this._warnStats) {
+      if (stats.suppressedCount > 0) {
+        this.warnings.push(makeSuppressionSummary(code, stats));
+      }
+    }
+  }
 
   /**
    * A feature ported from Less - we suppress any `@charset`

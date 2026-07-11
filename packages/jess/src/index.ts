@@ -19,6 +19,8 @@ import {
   logger,
   Deprecation,
   type Visitor,
+  type WarningsConfigInput,
+  type ErrorsConfigInput,
   createRenderBuffer,
   finalizeFlatRenderBuffer
 } from '@jesscss/core';
@@ -46,6 +48,10 @@ export type ConfigOptions = StylesConfig & {
   fatalDeprecations?: Iterable<Deprecation>;
   /** Whether to limit repetition of deprecation warnings (max 5). Default: true */
   limitDeprecationRepetition?: boolean;
+  /** Warning-display config (scalar tier or object). Default tier: `line`. */
+  warnings?: WarningsConfigInput;
+  /** Error-display config (scalar tier or object). Default tier: `frame`. */
+  errors?: ErrorsConfigInput;
 };
 
 const { isArray } = Array;
@@ -234,7 +240,7 @@ function commentAwareTrivia(trivia: TriviaMap, liftedRanges: readonly CommentRan
       const run = trivia.lookup(offset, direction);
       return run && !isHidden(run) ? run : undefined;
     },
-    *entries(direction) {
+    * entries(direction) {
       for (const entry of trivia.entries(direction)) {
         if (!isHidden(entry[1])) {
           yield entry;
@@ -1275,9 +1281,9 @@ export class Compiler {
       // a real visitor is registered (see gate note above).
       preSerializeRoot: hasPreRenderVisitor
         ? evaluatedRoot =>
-            measureProfileSync(profile, 'applyPreRenderVisitors', () =>
-              this.applyPreRenderVisitors(context, evaluatedRoot)
-            )
+          measureProfileSync(profile, 'applyPreRenderVisitors', () =>
+            this.applyPreRenderVisitors(context, evaluatedRoot)
+          )
         : undefined
     };
 
@@ -1311,7 +1317,9 @@ export class Compiler {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
           breakOnError: options?.breakOnError ?? true,
-          verbose: options?.verbose ?? false
+          verbose: options?.verbose ?? false,
+          warnings: options?.warnings,
+          errors: options?.errors
         });
       }
 
@@ -1327,7 +1335,9 @@ export class Compiler {
         outputDiagnostics(context.errors, context.warnings, {
           suppressWarnings: options?.suppressWarnings ?? false,
           breakOnError: options?.breakOnError ?? true,
-          verbose: options?.verbose ?? false
+          verbose: options?.verbose ?? false,
+          warnings: options?.warnings,
+          errors: options?.errors
         });
       } else {
         logger.error(String(err));
@@ -1435,6 +1445,8 @@ export class Compiler {
       }, profile);
       const css = await this.renderTree(tree, context, profile);
 
+      context.finalizeWarnings();
+
       const loadedUrls: string[] = [];
 
       finalizeRenderProfile(profile, {
@@ -1478,7 +1490,9 @@ export class Compiler {
         outputDiagnostics(errors, warnings, {
           suppressWarnings: renderOptions?.suppressWarnings ?? false,
           breakOnError: renderOptions?.breakOnError ?? true,
-          verbose: renderOptions?.verbose ?? false
+          verbose: renderOptions?.verbose ?? false,
+          warnings: renderOptions?.warnings,
+          errors: renderOptions?.errors
         });
       }
 
@@ -1515,6 +1529,8 @@ export class Compiler {
 
     try {
       const evald = await this.evaluateInput(context, resolved, { filePath }, profile);
+
+      context.finalizeWarnings();
 
       finalizeRenderProfile(profile, {
         method: 'safeCompile',
