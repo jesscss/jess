@@ -1457,13 +1457,36 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               ? renderHoistedParentComparableHeader(hoistedParent, options)
               : priorFrame.getComparableHeaderString(options)
           ]);
+          // A RESOLVED append-`&` block (`&-2`) is hoisted to root as its own
+          // container whose `frame.selector` is an Ampersand carrying an
+          // `appendValue`. Two adjacent append-`&` siblings are DISTINCT frame
+          // objects, so `currentFrame === priorFrame` is false and the recompute
+          // (which reflects the CURRENT site) cannot tell "identical adjacent
+          // `&-2`/`&-2`" (MERGE) from "distinct adjacent `&-1`/`&-2`" (SPLIT) —
+          // both recompute to the current header. The only reliable discriminator
+          // is the header the PRIOR frame ACTUALLY emitted last
+          // (`lastEmittedComparableHeader`): identical → same block; different →
+          // close + reprint.
+          const currentSelIsAppendAmp = isNode(currentFrame, N.Ruleset) && isNode(currentFrame.selector, N.Ampersand);
+          const priorSelIsAppendAmp = isNode(priorFrame, N.Ruleset) && isNode(priorFrame.selector, N.Ampersand);
+          const priorEmittedHeaderForShare = lastEmittedComparableHeader.get(priorFrame);
+          const sharedHoistedAmpersand = currentFrame !== priorFrame
+            && currentSelIsAppendAmp
+            && priorSelIsAppendAmp
+            // Only trust the ACTUAL prior emission; never let the current-site
+            // recompute fallback drive a merge (it always equals `currentHeader`).
+            && priorEmittedHeaderForShare !== undefined;
           // For a frame shared across call sites (same object, different emission),
           // the recompute reflects the CURRENT site. Prefer the header the prior
           // frame actually emitted last so distinct call-site blocks stay closed.
+          // Same for distinct-object hoisted append-`&` frames: compare against the
+          // prior emission's ACTUAL header, never the current-site recompute.
           const priorComparableHeader = (
             currentFrame === priorFrame
-              ? lastEmittedComparableHeader.get(priorFrame) ?? recomputedPriorHeader
-              : recomputedPriorHeader
+              ? priorEmittedHeaderForShare ?? recomputedPriorHeader
+              : sharedHoistedAmpersand
+                ? priorEmittedHeaderForShare!
+                : recomputedPriorHeader
           );
           const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
             && isNode(priorFrame, N.Ruleset)
@@ -1472,6 +1495,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               || isAncestorFrame(priorFrame, currentFrame)
               || isAncestorFrame(currentFrame, priorFrame)
               || canMergeSameHeaderRuleset(currentFrame, priorFrame)
+              // Two distinct hoisted append-`&` rulesets merge ONLY when the prior
+              // one actually emitted a byte-identical comparable header (the equality
+              // check below is against `priorEmittedHeader`). Distinct-adjacent
+              // (`&-1`/`&-2`) fail the header equality and stay split.
+              || sharedHoistedAmpersand
             );
           const sameHeader = (
             currentHeader === priorComparableHeader
