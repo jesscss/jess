@@ -507,13 +507,22 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // leaves the `.` unconsumed and surfaces as a parse error (wrap division in
   // parens instead).
   const prodOp = regex(/[*\/%]/);
-  // A `+`/`-` operator fires when it is NOT a signed operand glued after a space:
-  //   • `[-+](?![0-9.])` — standalone (space / non-number after): `8 + 4`, `8 - (…)`.
-  //   • `(?<=\S)[-+](?=[0-9.])` — glued with NO space before (port of the Signed
-  //     branch's noSep gate): `8+4`, `8-4` are arithmetic. `8 +4` (space before,
-  //     glued) matches NEITHER — the `+4` is a separate signed operand (a list at
-  //     top level, a paren error inside `( … )`).
-  const sumOp = regex(/[-+](?![0-9.])|(?<=\S)[-+](?=[0-9.])/);
+  // A `+`/`-` is a BINARY operator iff (whitespace immediately FOLLOWS it) OR (no
+  // whitespace immediately PRECEDES it) — the exact port of Less 4.x `addition`:
+  //   op = $re(/^[-+]\s+/) || (!isSpaced && $char('+'|'-'))
+  // where `isSpaced` = the left operand was followed by whitespace before the sign.
+  //   • `[-+](?=\s)` — whitespace after: `8 + 4`, `8 - (…)`, `@a - @b` (subtract).
+  //   • `(?<=\S)[-+]` — glued with NO space before: `8+4`, `8-4`, `(a)-b` (subtract).
+  // The one combination EXCLUDED is space-before + no-space-after: the sign then
+  // belongs to the NEXT operand, matching Less 4.x —
+  //   `8 -4`/`8 -4px` → signed number operand (a space-list, not subtraction);
+  //   `@a -@b`        → `@a` then Negative(@b)   (list `10px -2px`, NOT `8px`);
+  //   `8 -(2)`        → `8` then Negative((2))   (list `8 -2`, NOT `6`);
+  //   `auto -webkit-…`→ `auto` then the leading-hyphen ident (vendor prefix).
+  // (Before this rule, a `-`/`+` glued to a following NON-number was ALWAYS taken as
+  // an operator regardless of the space before it, so `auto -webkit-focus-ring-color`
+  // wrongly folded into a subtraction — "Cannot operate on Keyword".)
+  const sumOp = regex(/[-+](?=\s)|(?<=\S)[-+]/);
   // Leading unary minus → Negative (port of expressionValue's OPTION(Minus)). Only
   // a STANDALONE `-` (not glued to a number — that's a signed operand) at an operand
   // position: `-(@a * 2)`, `-@var`. The sum level consumes a binary `-` first, so
