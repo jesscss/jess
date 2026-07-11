@@ -808,6 +808,42 @@ function renderHoistedParentComparableHeader(
   return frag;
 }
 
+/**
+ * REFERENCE-MODE CONTAINER REACH. A `@import (reference)` body suppresses its own output; a node
+ * emits ONLY when an `:extend` reaches it (`renderEnabled`). For a LEAF this is a per-node read; for
+ * a CONTAINER (a nested ruleset / `@media` inside a reference body) the container emits when IT or any
+ * transitive descendant is an extend target. A container reaching NOTHING must emit no bytes at all —
+ * not its header, not framing, not reference-import trivia (the empty-`@media` reference-suppression
+ * shape, `comments-2991`). This is a pure emit-time reachability read over the stable tree: any
+ * descendant ruleset that is itself an extend target (`F_EXTENDED` / extended top-level selector /
+ * a `spineExtendHeaders` override) turns the whole path render-enabled.
+ */
+function referenceContainerReachesRenderEnabled(node: Node, options: FinalPrintOptions): boolean {
+  if (isNode(node, N.Ruleset)) {
+    if (node.hasFlag(F_EXTENDED)
+      || (node.selector != null && Ruleset.hasExtendedTopLevelSelector(node.selector))
+      || options.spineExtendHeaders?.has(node) === true) {
+      return true;
+    }
+  }
+  let childRules: Rules | undefined;
+  if (isNode(node, N.Ruleset) || isNode(node, N.AtRule)) {
+    childRules = getContainerRules(node, options);
+  } else if (isNode(node, N.Rules)) {
+    childRules = node;
+  }
+  if (!childRules) {
+    return false;
+  }
+  for (const child of childRules.rules) {
+    if (isNode(child, N.Ruleset | N.AtRule | N.Rules)
+      && referenceContainerReachesRenderEnabled(child, options)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalPrintOptions, closeFramesOnExit: boolean): MaybePromise<string> {
   const w = options.writer;
   let inFrames = options.inFrames;
@@ -1508,7 +1544,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const entry = rulesToRender[idx]!;
         let n = entry.node;
         const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
-
         if (!n.visible && !hasPrintableTrivia(n, options)) {
           return;
         }
@@ -1522,6 +1557,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           return;
         }
         if (inReferenceMode && !renderEnabled && !isContainer) {
+          return;
+        }
+        // A reference-mode container (nested ruleset / `@media`) that reaches NO extend target emits
+        // nothing at all — skip it whole so no header, framing, or reference-import trivia leaks
+        // (empty-`@media` reference suppression). Reads reachability off the stable tree; the descent
+        // is skipped so the deferred-header machinery never leaves a spurious open/close.
+        const referenceContainerSuppressed = inReferenceMode && !renderEnabled
+          && isNode(n, N.Ruleset | N.AtRule)
+          && !referenceContainerReachesRenderEnabled(n, options);
+        if (referenceContainerSuppressed) {
           return;
         }
         if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {

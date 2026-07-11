@@ -3715,6 +3715,34 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
               }, remainderStart);
               resolved = simpleCallableRulesets.length > 0 ? simpleCallableRulesets : undefined;
             }
+            // IMPORTED-MEMBER DRAIN (namespace with a nested `@import`). When the head
+            // namespace (`#Namespace`) resolves locally but the terminal member
+            // (`.nsmixin`/`.mixin`) is not in its OWN scope — it was brought in by an
+            // `@import` INSIDE the namespace and linked as a FALLBACK of the namespace's
+            // frame (`linkImportFallbackFrame`) — the primary frame lookup reports a
+            // clean miss and never drains that fallback. Drain the namespace ruleset's
+            // fallback-frame chain for the member here (searchParents off — the import
+            // link hangs directly off the namespace frame). A local hit already returned
+            // above, so this only ADDS resolution the primary walk missed.
+            if (resolved === undefined && simpleFrame) {
+              let fallbackFrame = simpleFrame.fallbackFrame;
+              while (fallbackFrame && resolved === undefined) {
+                if (isNode(fallbackFrame.rulesNode, N.Rules)) {
+                  const fallbackMember = fallbackFrame.rulesNode.findMixin(segment, undefined, {
+                    hasTarget: options.hasTarget,
+                    local: options.local,
+                    searchParents: false,
+                    context: options.context,
+                    mixinCall: options.mixinCall,
+                    terminalMixinOnly: options.terminalMixinOnly
+                  });
+                  if (fallbackMember && fallbackMember.length > 0) {
+                    resolved = fallbackMember;
+                  }
+                }
+                fallbackFrame = fallbackFrame.fallbackFrame;
+              }
+            }
           }
         } else {
           nestedOptions ??= {
