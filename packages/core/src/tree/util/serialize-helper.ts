@@ -1818,15 +1818,40 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           frameHeaders.pop();
           lastRenderedFrames.pop();
         }
+        // CROSS-SIBLING DEFERRED CLOSE. When this container closes its own frame stack
+        // on exit, its OUTERMOST rendered frame is left OPEN — not closed here — when it
+        // is a merge-eligible Ruleset: `canMergeSameHeaderRuleset(frame, frame)` gates
+        // the same resolvable-header discriminator (interpolated / extend-form /
+        // append-`&` header) that decides a cross-frame merge. An adjacent sibling
+        // container whose resolved header equals it AND that `canMergeSameHeaderRuleset`
+        // permits then keeps emitting into the still-open block via `ensureRenderedFrames`
+        // (no close+reopen); a non-matching / non-mergeable next sibling (or a plain
+        // literal header, for which the predicate is false) closes it first via
+        // `ensureRenderedFrames`'s mismatch branch, and a body with no following mergeable
+        // sibling closes it via the enclosing body's close-to-baseline
+        // (`_emitRulesBody.finish` / an outer container's `finishBody`). Only the
+        // container's OWN outermost Ruleset frame is eligible; inner frames and AtRules
+        // close normally, preserving empty-block suppression and at-rule framing.
+        const deferOutermostRulesetFrame = closeFramesOnExit
+          && !isTransparentWrapper
+          && lastRenderedFrames.length === treeFrames.length
+          && (() => {
+            const frame = lastRenderedFrames[lastRenderedFrames.length - 1];
+            return Boolean(frame && isNode(frame, N.Ruleset) && canMergeSameHeaderRuleset(frame, frame));
+          })();
         if (!isTransparentWrapper) {
           inFrames.pop();
-          if (closeFramesOnExit) {
+          // Keep the header in lockstep with `lastRenderedFrames`: pop it only when the
+          // frame itself is closed below. A DEFERRED frame keeps its header so the next
+          // sibling's `ensureRenderedFrames` can compare against the emitted header.
+          if (closeFramesOnExit && !deferOutermostRulesetFrame) {
             frameHeaders.pop();
           }
         }
         if (closeFramesOnExit) {
+          const deferStop = deferOutermostRulesetFrame ? treeFrames.length + 1 : treeFrames.length;
           let renderedLength = lastRenderedFrames.length;
-          while (treeFrames.length < renderedLength) {
+          while (deferStop < renderedLength) {
             w.add(indent(renderedLength - 1) + '}\n');
             options.depth--;
             lastRenderedFrames.pop();
