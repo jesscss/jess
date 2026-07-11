@@ -68,10 +68,12 @@ a module you pull in with `@-use`, or express them with built-in functions
 <AudienceGate include={['less']}>
 
 Bare `@import "foo";` is **deprecated** in Less 5.x and emits a deprecation
-warning. The path forward is the module system, `@-compose` — a namespaced
-import with isolated scope. `@-import` is the 1:1 legacy bridge for `@import`
-(itself discouraged); reach for it only for a mechanical port, then promote real
-modules to `@-compose`.
+warning — it's *heuristic* (extension and options decide passthrough-vs-fold).
+The path forward is the module system, `@-compose` — a namespaced import with
+isolated scope. `@-import` is the **explicit** "fold this file in and evaluate it"
+form (no extension guessing), but it keeps the old leaky scope, so it's still
+discouraged; reach for it only for a mechanical port, then promote real modules to
+`@-compose`.
 
 ```less
 // Deprecated (warns):
@@ -97,10 +99,11 @@ finalized; the direction above is settled.
 <AudienceGate include={['jess']}>
 
 Jess's module system is `@-compose` (namespaced import, isolated scope,
-`with { }` configuration). For a mechanical port, `@-import` mirrors Less/Sass
-`@import` but emits a deprecation warning, so treat it as a bridge and promote
-real modules to `@-compose`. A bare `@import "foo";` is a plain CSS `@import`
-(passed through), not a source include.
+`with { }` configuration). In `.jess` a bare `@import` is **always** a plain CSS
+at-rule (passed through — no extension heuristic); it is *never* a source include.
+To fold a stylesheet in and evaluate it, use an explicit dash-prefixed rule:
+`@-compose` (preferred) or `@-import` (mechanical port; warns). The compiler
+at-rules require the dash — bare `@use`/`@compose` are not valid Jess.
 
 ```less
 // CSS @import (passed through), NOT a source include:

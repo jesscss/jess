@@ -64,10 +64,13 @@ You can combine keywords: `@import (optional, reference) "foo.less";`
 ## Moving to modules (`@-compose`)
 
 In Less 5.x, bare `@import "foo";` is **deprecated** and emits a deprecation
-warning. The path forward is the module system, `@-compose` — a namespaced
-import with isolated scope and per-import configuration. `@-import` is the 1:1
-legacy bridge for `@import` (itself discouraged), useful only for a mechanical
-port.
+warning — partly because it's *heuristic* (the extension and options decide
+whether it passes through as CSS or folds in as source). The path forward is the
+module system, `@-compose` — a namespaced import with isolated scope and
+per-import configuration. `@-import` is the **explicit** "fold this file in and
+evaluate it" form: no extension guessing, it always inlines source. It's honest
+about intent, but keeps the old leaky scope, so prefer `@-compose`; use `@-import`
+only for a mechanical port.
 
 ```less
 // Deprecated (warns):
@@ -197,8 +200,18 @@ source include. It is emitted verbatim so the browser fetches it at runtime.
 
 <AudienceGate include={['jess']}>
 
-In Jess a bare `@import "foo";` is treated as this pass-through CSS form. To pull
-in another stylesheet as source, use `@-compose` (or `@-import` for a legacy
-port).
+`.jess` has **no import heuristic**. A bare `@import` is *always* a plain CSS
+at-rule — `@import "foo"`, `@import "foo.less"`, and `@import "foo.css"` all pass
+straight through to the output. Folding a stylesheet in and evaluating it at
+compile time is done **only** by an explicit, dash-prefixed compiler at-rule:
+
+- **`@-compose`** — the module system (isolated scope, namespaced). Prefer this.
+- **`@-import`** — always folds and evaluates the file in place (the leaky legacy
+  shape; warns — reach for `@-compose`).
+
+The dash is required. Bare `@use`, `@compose`, `@forward` are **not** valid Jess
+at-rules — only `@-use`, `@-compose`, `@-export` are. That's the whole point of
+the dash: `@import` stays pure CSS, and anything that touches the compiler is
+unambiguously marked.
 
 </AudienceGate>
