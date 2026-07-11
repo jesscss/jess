@@ -4783,6 +4783,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         queueTopImport(context, n as unknown as AtRuleStatement);
         return;
       }
+      // Document-framing `@charset` (parsed as an `Any` with role `charset`). Eval
+      // records it into `context.currentCharset` during registration prep (FIRST-wins)
+      // and emits it as the top-of-doc prelude at depth 0; the source-position node is
+      // replaced by an invisible `Nil`. The spine skips that prep, so record it HERE
+      // (first-wins) and emit NOTHING inline — `renderRootViaSpine` flushes the recorded
+      // charset ahead of the body (mirroring the top-of-doc `@import` flush).
+      if (mode === 'render' && context && options.spineMode
+        && isNode(n, N.Any) && n.role === 'charset') {
+        if (!context.currentCharset) {
+          context.currentCharset = n;
+        }
+        return;
+      }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {
         emitLeadingBlockCommentForNode(n);

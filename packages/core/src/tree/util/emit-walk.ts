@@ -146,12 +146,18 @@ export function isSpineFoldableCssImportStatement(node: Node): boolean {
     return false;
   }
   // The prelude must be static (a plain quoted/url specifier, maybe with a static
-  // media/supports postlude) — no interpolation to resolve against a frame.
+  // media/supports postlude) — no interpolation to resolve against a frame. A `Url`
+  // prelude (`@import url("x.css")`) deliberately carries NO sticky `F_STATIC` flag
+  // (its ctor defers registration — see `Node.ownStaticFlag` doc), so consult the
+  // STRUCTURAL static state (`structuralStaticFlag` folds the child Quoted's static
+  // bit) — a plain `url("x.css")` folds static, while an interpolated `url("@{x}")`
+  // folds non-static (deferred to the interpolated-import lane, byte-identical).
   const prelude = node.prelude;
   if (prelude === undefined) {
     return true;
   }
-  return prelude instanceof Node && prelude.hasFlag(F_STATIC);
+  return prelude instanceof Node
+    && (prelude.hasFlag(F_STATIC) || prelude.structuralStaticFlag());
 }
 
 /**
@@ -1010,7 +1016,17 @@ function isSpineEligibleAtRule(node: Node, allowImport = false, allowExtend = fa
     return isSpineEligibleRootOnlyAtRuleBody(atRule);
   }
   if (!SPINE_ELIGIBLE_AT_RULES.has(atRule.name)) {
-    return false;
+    // UNKNOWN / VENDOR at-rule NAME with a body (`@-ms-viewport { … }`,
+    // `@unknown foo 42 (bar) { x { y: z } }`). Less does not recognize the keyword,
+    // so it is NEITHER nestable NOR root-only (`isNestable()`/`isRootOnly()` both
+    // false): it emits IN PLACE with its prelude + a self-contained body (no hoist,
+    // no `&`-composition — an inner ruleset emits standalone inside the block), and
+    // an EMPTY body renders to nothing (`serializeRulesContainerInternal`'s
+    // zero-visible-rules → `''`, matching less@4 dropping `@-ms-viewport{}`). This is
+    // the declaration/ruleset wrap+emit shape the root-only family already folds, so
+    // reuse its body gate (`&`-bearing child still deferred, as there). A KNOWN family
+    // that is intentionally NOT spine-eligible never reaches here (handled above).
+    return isSpineEligibleRootOnlyAtRuleBody(atRule);
   }
   // Nested conditional-group at-rules HOIST to root (under collapse); when their
   // body contains a ruleset whose selector carries an `&`, the hoist RE-
@@ -1301,6 +1317,14 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   // inline at its source position — no scope, no eval, no import machinery, so it
   // is admitted independent of `allowImport`.
   if (isSpineFoldableStatementAtRule(node)) {
+    return true;
+  }
+  // Document-framing `@charset` (parsed as an `Any` with role `charset`, value = the
+  // full `@charset "…";` statement). It emits NOTHING at its source position — the
+  // root body leaf records it FIRST-wins into `context.currentCharset` and
+  // `renderRootViaSpine` flushes it as the top-of-doc prelude (mirroring the eval
+  // path's registration-prep hoist). A pure token statement, no scope/eval effect.
+  if (isNode(node, N.Any) && node.role === 'charset') {
     return true;
   }
   // Extend / ExtendList are invisible effect nodes (they emit nothing; their gather
@@ -2375,6 +2399,24 @@ function renderQueuedTopImports(context: Context, options: FinalPrintOptions): s
 }
 
 /**
+ * Render the recorded document `@charset` prelude to a string (D-EVAL FLIP framing
+ * fold). The charset `Any` leaf in `Rules._emitRulesBody` records the FIRST charset
+ * into `context.currentCharset` (a later charset — e.g. one in an imported file — is
+ * ignored, first-wins) and emits nothing at its source position; this flushes it as
+ * the top-of-doc prelude, matching the depth-0 `@charset` emit in `_toDocumentString`
+ * (`charset.writeSyntax` then a newline). Returns '' when no charset was recorded.
+ */
+function renderSpineCharsetPrelude(context: Context, options: FinalPrintOptions): string {
+  const charset = context.currentCharset;
+  if (!charset) {
+    return '';
+  }
+  const writer = new OutputWriter();
+  charset.writeSyntax(getPrintOptions({ ...options, writer, depth: 0 }));
+  return `${writer.toString()}\n`;
+}
+
+/**
  * Sentinel returned by `renderRootViaSpine` when the post-wire RE-GATE (import-spec routing) determines
  * the speculatively-admitted tree is not foldable — the caller (`Rules.render`) re-renders via the eval
  * path. Distinct object identity so it is never confused with rendered text.
@@ -2425,6 +2467,22 @@ export function renderRootViaSpine(
   // frame, so the frame's declaration buckets carry source indices and a
   // re-declared / `snapshot` read resolves against the binding at its position.
   assignSpineChildIndices(root);
+  // CHARSET FIRST-WINS (D-EVAL FLIP framing fold). Record the root's OWN direct
+  // `@charset` (parsed as an `Any` role `charset`) BEFORE wiring imports, mirroring
+  // eval's registration order: the root document is scanned first, so a root charset
+  // always wins over one in an imported file (`charsets.less`: root `@charset "UTF-8"`
+  // beats the imported `@charset "ISO-8859-1"`). Without this, `wireSpineImports`
+  // resolves the imported file's registration prep first and its charset would win.
+  // Idempotent with the body-leaf record (guarded by `!context.currentCharset`).
+  if (context.currentCharset === undefined) {
+    for (let i = 0; i < root.rules.length; i++) {
+      const child = root.rules[i]!;
+      if (isNode(child, N.Any) && child.role === 'charset') {
+        context.currentCharset = child;
+        break;
+      }
+    }
+  }
   // NESTED-MIXIN DEFINITION-SCOPE WIRING (cutover MIXIN fold #6). A folded call to a
   // NESTED mixin resolves the mixin's definition-scope frame from the candidate
   // node's `.parent` chain (`prepareCallableCandidateState` →
@@ -2492,10 +2550,16 @@ export function renderRootViaSpine(
     // folded during the descent were queued to `context.topImports` (the KEPT
     // emitter). The spine's body carries none of them inline, so PREPEND them here
     // — the same document framing `_toDocumentString` applies at depth 0 (`@import`
-    // after `@charset`, before other rules). Charset is already gated OUT of the
-    // spine (`isSpineEligibleRoot`), so only imports need prepending.
+    // after `@charset`, before other rules). The charset prelude is flushed just
+    // below (`renderSpineCharsetPrelude`), so charset then imports then body.
     const importPrelude = renderQueuedTopImports(context, options);
-    return importPrelude ? `${importPrelude}${bodyText}` : bodyText;
+    // `@charset` document prelude (first-wins). Recorded during the descent (the
+    // charset `Any` leaf in `Rules._emitRulesBody` sets `context.currentCharset`
+    // and emits nothing inline); flush it ahead of everything else, mirroring the
+    // depth-0 `@charset`-then-`@import` framing the eval path applies in
+    // `_toDocumentString`.
+    const charsetPrelude = renderSpineCharsetPrelude(context, options);
+    return `${charsetPrelude}${importPrelude}${bodyText}`;
   };
   const fail = (error: unknown): never => {
     context.rulesContext = savedRulesContext;
