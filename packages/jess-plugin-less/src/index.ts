@@ -7,7 +7,8 @@ import {
   Rules,
   getErrorFromParser,
   toDiagnostic,
-  extractRelevantLines,
+  extractRelevantLinesFromSplit,
+  splitSourceLines,
   type ISafeParseResult,
   type SafeParseOptions,
   type ErrorDiagnostic,
@@ -177,12 +178,23 @@ export class LessPlugin extends AbstractPlugin {
     return out;
   }
 
-  safeParse(filePath: string, source: string, _parseOptions?: SafeParseOptions): ISafeParseResult {
+  safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     const context = this.createTreeContext(filePath, source);
 
     const errors: ErrorDiagnostic[] = [];
     const warnings: WarningDiagnostic[] = [];
     let tree: Rules | undefined;
+
+    // When warnings are suppressed their code frames are never rendered, so the
+    // emit-only `lines` field is pure waste. Build the shared line array lazily
+    // and only once per source: reused across every warning/error frame so N
+    // diagnostics cost O(sourceLength + N·frame), not O(N·sourceLength).
+    const suppressWarnings = parseOptions?.suppressWarnings === true;
+    let sourceLines: string[] | undefined;
+    const codeFrame = (line: number): Record<number, string> | undefined => {
+      sourceLines ??= splitSourceLines(source);
+      return extractRelevantLinesFromSplit(sourceLines, line);
+    };
 
     try {
       // Thread the file-bearing TreeContext through the parse and read it back
@@ -225,7 +237,7 @@ export class LessPlugin extends AbstractPlugin {
             filePath: filePath,
             line,
             column,
-            lines: extractRelevantLines(source, line)
+            lines: suppressWarnings ? undefined : codeFrame(line)
           });
         }
       }
@@ -239,7 +251,7 @@ export class LessPlugin extends AbstractPlugin {
           const diagnostic = toDiagnostic(jessError);
           // Ensure lines are extracted
           if (!diagnostic.lines) {
-            diagnostic.lines = extractRelevantLines(source, line);
+            diagnostic.lines = codeFrame(line);
           }
           if ('errors' in diagnostic) {
             errors.push(diagnostic);
@@ -269,7 +281,7 @@ export class LessPlugin extends AbstractPlugin {
           filePath: filePath,
           line: 1,
           column: 1,
-          lines: extractRelevantLines(source, 1)
+          lines: codeFrame(1)
         });
       }
       // Return with errors/warnings only (no tree)

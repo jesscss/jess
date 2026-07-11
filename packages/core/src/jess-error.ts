@@ -417,8 +417,21 @@ export function extractRelevantLines(
     return undefined;
   }
 
-  // Split source into lines once
-  const lines = source.split(/\r?\n/);
+  // Split source into lines once, then slice the context window.
+  return sliceLineWindow(source.split(/\r?\n/), line, contextLines);
+}
+
+/**
+ * Slices the code-frame context window out of an already-split line array.
+ * Callers that emit many code frames over the SAME source should split once
+ * (via `splitSourceLines`) and reuse the array here, turning what was an
+ * O(warnings × sourceLength) re-split into O(sourceLength + warnings·frame).
+ */
+function sliceLineWindow(
+  lines: string[],
+  line: number,
+  contextLines: number
+): Record<number, string> {
   const totalLines = lines.length;
   const targetLine = Math.max(1, Math.min(line, totalLines));
 
@@ -433,6 +446,27 @@ export function extractRelevantLines(
   }
 
   return result;
+}
+
+/**
+ * Splits a source string into lines a single time so many code frames can be
+ * built from the shared array. Identical semantics to the `source.split(/\r?\n/)`
+ * that `extractRelevantLines` performs internally.
+ */
+export function splitSourceLines(source: string): string[] {
+  return source.split(/\r?\n/);
+}
+
+/**
+ * Builds a code-frame line window from an already-split line array (see
+ * `splitSourceLines`). Byte-identical to `extractRelevantLines(source, ...)`.
+ */
+export function extractRelevantLinesFromSplit(
+  lines: string[],
+  line: number,
+  contextLines: number = 1
+): Record<number, string> {
+  return sliceLineWindow(lines, line, contextLines);
 }
 
 function ensureLineStarts(file: JessFile): Uint32Array | undefined {

@@ -36,6 +36,11 @@ export type ISafeParseResult = {
 export type SafeParseOptions = {
   compilerOptions?: Record<string, unknown>;
   importOptions?: ImportOptions;
+  /**
+   * When true, warnings are collected but not emitted downstream, so plugins
+   * may skip building their emit-only code frames (the `lines` field).
+   */
+  suppressWarnings?: boolean;
 };
 
 export interface PluginInterface {
