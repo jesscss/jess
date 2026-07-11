@@ -3719,14 +3719,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             // namespace (`#Namespace`) resolves locally but the terminal member
             // (`.nsmixin`/`.mixin`) is not in its OWN scope — it was brought in by an
             // `@import` INSIDE the namespace and linked as a FALLBACK of the namespace's
-            // frame (`linkImportFallbackFrame`) — the primary frame lookup reports a
-            // clean miss and never drains that fallback. Drain the namespace ruleset's
-            // fallback-frame chain for the member here (searchParents off — the import
-            // link hangs directly off the namespace frame). A local hit already returned
-            // above, so this only ADDS resolution the primary walk missed.
-            if (resolved === undefined && simpleFrame) {
+            // frame (`linkImportFallbackFrame`) — the primary frame lookup misses (a clean
+            // `miss`, OR an `uncovered`/`reference-import` verdict whose own-surface probe
+            // resolves EMPTY: the namespace advertises reference imports but the member is
+            // on the LINKED fallback frame, not its own child surface — the NOT-EMITTED
+            // namespace case, where the import was registered eagerly in the wire pass) and
+            // never drains that fallback. Drain the namespace ruleset's fallback-frame chain
+            // for the member here (searchParents off — the import link hangs directly off
+            // the namespace frame). A local hit already returned above, so this only ADDS
+            // resolution the primary walk missed.
+            if ((resolved === undefined || resolved.length === 0) && simpleFrame) {
               let fallbackFrame = simpleFrame.fallbackFrame;
-              while (fallbackFrame && resolved === undefined) {
+              while (fallbackFrame && (resolved === undefined || resolved.length === 0)) {
                 if (isNode(fallbackFrame.rulesNode, N.Rules)) {
                   const fallbackMember = fallbackFrame.rulesNode.findMixin(segment, undefined, {
                     hasTarget: options.hasTarget,

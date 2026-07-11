@@ -2232,9 +2232,48 @@ function serializeSpineFrameContainerUnguarded(
       (context.spineResolvedFrameSelector ??= new WeakMap()).set(node, resolvedSelector);
     }
     context.rulesetFrames.push(node);
+    // Thread this CONTAINER's ORIGIN-FILE treeContext across its body descent
+    // (including the `wireSpineContainerImports` resolve below). When `node` is a
+    // container FROM AN IMPORTED FILE — e.g. a `(reference)`-import body's ruleset
+    // (`.something` in `sub/multiple-import.less`) descended as a child `Rules`, which
+    // is NOT the spliced-child path `processNode` threads — its `sourceRoot` is that
+    // file's root Rules, carrying the file's own `_treeContext` (its directory). A
+    // nested `@import` in this container (`.something { @import (reference)
+    // "multiple-import-nested.less" }`) resolves relative to the container's
+    // `sourceRoot` (whose `_treeContext` is undefined for a nested ruleset), so without
+    // this it would fall back to the LIVE (top-document) treeContext and resolve the
+    // path against the wrong directory (File not found). Point treeContext at the
+    // origin file's context for this descent so the nested import resolves against the
+    // importing file's own dir. Pure read-and-restore projection — no tree mutation. A
+    // no-op for an authored top-document container (its `sourceRoot._treeContext` is
+    // the live one already) and for a mixin/loop surface (no `sourceRoot._treeContext`).
+    const savedTreeContext = context.treeContext;
+    // A nested ruleset (`.something`) IS itself a Rules, so `node.sourceRoot` returns
+    // the node, whose `_treeContext` is undefined — only the FILE-ROOT Rules carries a
+    // `_treeContext`. Walk the ancestor chain for the nearest Rules that carries one
+    // (the container's own imported-file root). A no-op for a top-document container
+    // (finds the top root's TC, which equals the live one) and for a mixin/loop surface
+    // whose lexical chain never reaches a file-root TC (leaves treeContext unchanged).
+    let originTreeContext = node._treeContext;
+    if (!originTreeContext) {
+      let cursor: Node | undefined = node.parent;
+      while (cursor && !originTreeContext) {
+        if (isNode(cursor, N.Rules)) {
+          originTreeContext = (cursor as Rules)._treeContext;
+        }
+        cursor = cursor.parent;
+      }
+    }
+    if (originTreeContext) {
+      context.treeContext = originTreeContext;
+    }
+    const restoreTC = <T>(value: T): T => {
+      context.treeContext = savedTreeContext;
+      return value;
+    };
     const renderBody = (): MaybePromise<string> => withSpineMergePlan(node.rules, options, context, () => {
       const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
-      return isThenable(out) ? out.then(restore) : restore(out);
+      return isThenable(out) ? out.then(v => restore(restoreTC(v))) : restore(restoreTC(out));
     });
     // Nested-scope import registration (IMPORTS increment 3): if this container's
     // body has a foldable `@import`, REGISTER + LINK its imported scope into THIS
@@ -2242,9 +2281,16 @@ function serializeSpineFrameContainerUnguarded(
     // resolves the imported symbol on the container's fallback chain. `rulesContext`
     // is `node` here, so a nested import's placement parents to this container. A
     // no-op (sync undefined) when the body has no import (the common case).
-    const wired = wireSpineContainerImports(node.rules, node.getScopeFrame(), context, options);
+    let wired: MaybePromise<void>;
+    try {
+      wired = wireSpineContainerImports(node.rules, node.getScopeFrame(), context, options);
+    } catch (error) {
+      restoreTC(undefined);
+      restore('');
+      throw error;
+    }
     return isThenable(wired)
-      ? wired.then(renderBody, (error: unknown) => { restore(''); throw error; })
+      ? wired.then(renderBody, (error: unknown) => { restoreTC(undefined); restore(''); throw error; })
       : renderBody();
   };
   // Resolve the selector against the live frame. A Selector node carries either

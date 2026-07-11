@@ -2846,13 +2846,27 @@ export function renderRootViaSpine(
     if (!importLayer) {
       return wireExtends();
     }
+    // EAGER NAMESPACE-IMPORT REGISTRATION (Mechanism 3 remainder). After the root +
+    // transitive imports are wired (document-order dedup ownership settled), register
+    // any foldable import nested inside a container definition into that container's
+    // own frame — so a `#Namespace { @import (reference) … }`'s members resolve even
+    // though the never-emitted namespace never triggers serialize-time wiring.
+    const afterRootImports = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
+      let nested: MaybePromise<void>;
+      try {
+        nested = wireSpineNamespaceImports(root, context, options);
+      } catch (error) {
+        return onWireError(error);
+      }
+      return isThenable(nested) ? nested.then(wireExtends, onWireError) : wireExtends();
+    };
     let wired: MaybePromise<void>;
     try {
       wired = wireSpineImports(root, context, options);
     } catch (error) {
       return onWireError(error);
     }
-    return isThenable(wired) ? wired.then(wireExtends, onWireError) : wireExtends();
+    return isThenable(wired) ? wired.then(afterRootImports, onWireError) : afterRootImports();
   };
   // M8 (interpolated-selector callable). When an interpolated-selector ruleset
   // (`.@{name} {}`) is present it may be a mixin CALL target — its callable identity
@@ -2930,6 +2944,93 @@ function wireSpineImports(
   options: FinalPrintOptions
 ): MaybePromise<void> {
   return wireSpineImportsInBody(root.rules, root.getScopeFrame(), context, options);
+}
+
+/**
+ * EAGER NAMESPACE-IMPORT REGISTRATION (Mechanism 3 remainder). A foldable `@import`
+ * inside a non-emitted container definition — the canonical case is a `(reference)`
+ * import inside a namespace ruleset (`#Namespace { @import (less, reference) "x.css" }`)
+ * consumed via `#Namespace > .mixin()` / `#Namespace.nsmixin()` — is otherwise never
+ * wired: `wireSpineContainerImports` links a container's body imports into the
+ * container's own frame at container SERIALIZE time, but a pure namespace definition
+ * never serializes (it emits no output), so its imported members are never registered
+ * and the `#Namespace.member()` call resolves to nothing.
+ *
+ * This pass runs AFTER `wireSpineImports` has resolved every ROOT-level + transitive
+ * import in document order (so a document-earlier import keeps `once`-dedup ownership —
+ * this eager pass never steals it: a container-nested import already cached by the main
+ * pass is skipped). It descends the tree, and for each Ruleset/AtRule container that
+ * carries a DIRECT foldable body `@import`, wires that import into the container's OWN
+ * scope frame (`wireSpineImportsInBody(container.rules, container.getScopeFrame(), …)`).
+ * The namespace-path resolver's imported-member fallback drain
+ * (`findMixinNamespacePathFast` — the namespace ruleset's `getScopeFrame()` fallback
+ * chain) then finds the member.
+ *
+ * PROJECTION, NOT MUTATION: this only populates a lookup projection (a scope frame's
+ * fallback link + the shared import placement cache) — no tree edit, no eval side
+ * effect. Idempotent with the later serialize-time `wireSpineContainerImports`: the
+ * placement cache is keyed on the import node (a wired import is skipped) and
+ * `linkImportFallbackFrame` no-ops a re-link. The container's frame here is the SAME
+ * instance `container.getScopeFrame()` returns at resolve time, so the link lands.
+ * Zero-cost when no container carries a body import (the common case pays one shallow
+ * walk that finds nothing).
+ */
+function wireSpineNamespaceImports(
+  root: Rules,
+  context: Context,
+  options: FinalPrintOptions
+): MaybePromise<void> {
+  const containers: Array<Ruleset | AtRule> = [];
+  const collect = (children: readonly Node[]): void => {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]!;
+      if (!isNode(child, N.Ruleset | N.AtRule)) {
+        continue;
+      }
+      const container = child as Ruleset | AtRule;
+      // A bodyless STATEMENT at-rule (`@charset`, `@namespace`, a CSS-passthrough
+      // `@import`) matches `N.AtRule` but carries no body array — skip it (nothing to
+      // wire, and reading `.rules.length` would throw).
+      const body = container.rules;
+      if (!Array.isArray(body)) {
+        continue;
+      }
+      let hasBodyImport = false;
+      for (let j = 0; j < body.length; j++) {
+        const grand = body[j]!;
+        if (grand.type === 'StyleImport' && isSpineFoldableImport(grand)) {
+          hasBodyImport = true;
+          break;
+        }
+      }
+      if (hasBodyImport) {
+        containers.push(container);
+      }
+      // Recurse — a namespace body import may sit under a nested namespace container
+      // (`#Outer { #Inner { @import … } }`); wire it into the innermost container.
+      collect(body);
+    }
+  };
+  collect(root.rules);
+  if (containers.length === 0) {
+    return undefined;
+  }
+  const wireFrom = (start: number): MaybePromise<void> => {
+    for (let k = start; k < containers.length; k++) {
+      const container = containers[k]!;
+      const wired = wireSpineImportsInBody(
+        container.rules,
+        container.getScopeFrame(),
+        context,
+        options
+      );
+      if (isThenable(wired)) {
+        return wired.then(() => wireFrom(k + 1));
+      }
+    }
+    return undefined;
+  };
+  return wireFrom(0);
 }
 
 /**
