@@ -676,7 +676,7 @@ describe('Rules', () => {
       childRules
     ]);
 
-    await expect(Promise.resolve(node.render(context, { writer }))).resolves.toBe('color: red;\n');
+    await expect(Promise.resolve(node.render(context, { writer, context, preSerializeRoot: r => r }))).resolves.toBe('color: red;\n');
     expect(writer.toString()).toBe('color: red;');
   });
 
@@ -1605,7 +1605,7 @@ describe('Rules', () => {
 
         const evald = await node.eval(context);
 
-        expect(await renderNodeToString(evald, context)).toBeString(`
+        expect(evald.toTrimmedString()).toBeString(`
           seen: three;
         `);
         expect(deriveCalls).toBe(0);
@@ -2530,6 +2530,6 @@ describe('Rules', () => {
       })
     ]);
     let evald = await node.eval(context);
-    expect(await renderNodeToString(evald, context)).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
+    expect(evald.toTrimmedString()).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
   });
 });

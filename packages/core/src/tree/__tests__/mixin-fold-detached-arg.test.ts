@@ -44,8 +44,17 @@ async function render(source: string): Promise<{ css: string; eligible: boolean;
   const root = tree as unknown as Rules;
   const eligible = isSpineEligibleRoot(root, context, false);
   const before = spineRenderCounter.rootRenders;
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const css = (await renderNodeToString(root as unknown as RenderBufferNode, context, { context })).trim();
+
+  // D-EVAL FLIP: the spine owns the TOP-LEVEL render for a spine-eligible root; a
+  // non-eligible root (literal-block arg off the static gate) renders through the
+  // RETAINED eval + serialize path via a no-op `preSerializeRoot` visitor — the
+  // byte-identical eval-fallback these cases documented before the flip.
+  const css = (await renderNodeToString(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    root as unknown as RenderBufferNode,
+    context,
+    eligible ? { context } : { context, preSerializeRoot: r => r }
+  )).trim();
   return { css, eligible, spineRan: spineRenderCounter.rootRenders > before };
 }
 

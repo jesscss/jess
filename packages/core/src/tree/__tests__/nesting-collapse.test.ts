@@ -403,7 +403,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const css = await renderNodeToString(node, context, { collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true, preSerializeRoot: r => r });
 
     expect(css).toBeString(`
       mi-test-c-1 > .bar .baz {
@@ -530,7 +530,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true, preSerializeRoot: r => r });
 
     expect(css).toBe('');
     expect(writer.captures).toBe(0);
@@ -552,7 +552,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const css = await renderNodeToString(node, context, { context, collapseNesting: true, trivia });
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true, trivia, preSerializeRoot: r => r });
 
     expect(css).toBeString(`
       .parent {
@@ -586,7 +586,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const css = await renderNodeToString(node, context, { collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true, preSerializeRoot: r => r });
 
     expect(css).toBeString(`
       show-all-content .fix {
@@ -631,7 +631,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const css = await renderNodeToString(node, context, { collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true, preSerializeRoot: r => r });
 
     expect(css).toBeString(`
       show-all-content .fix {

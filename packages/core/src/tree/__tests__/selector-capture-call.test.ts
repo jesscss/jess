@@ -53,7 +53,7 @@ describe('SelectorCapture call `*[.foo]()` — ruleset-only', () => {
   });
 
   it('`*[.foo]()` matches ONLY the ruleset, excluding the same-named mixin', async () => {
-    const css = await renderNodeToString(boxWith(makeCall(bracketCaptureCallName('mixin'))), context);
+    const css = await renderNodeToString(boxWith(makeCall(bracketCaptureCallName('mixin'))), context, { context: context, preSerializeRoot: r => r });
     const box = css.slice(css.indexOf('.box {'));
 
     expect(box).toContain('a: rulesetval');
@@ -61,7 +61,7 @@ describe('SelectorCapture call `*[.foo]()` — ruleset-only', () => {
   });
 
   it('`*[.foo]()` is ruleset-only regardless of the reference `type` option', async () => {
-    const css = await renderNodeToString(boxWith(makeCall(bracketCaptureCallName('mixin-ruleset'))), context);
+    const css = await renderNodeToString(boxWith(makeCall(bracketCaptureCallName('mixin-ruleset'))), context, { context: context, preSerializeRoot: r => r });
     const box = css.slice(css.indexOf('.box {'));
 
     expect(box).toContain('a: rulesetval');
@@ -77,8 +77,8 @@ describe('SelectorCapture call `*[.foo]()` — ruleset-only', () => {
   });
 
   it('bracket and dot forms DIVERGE on the same scope (ruleset-only vs both)', async () => {
-    const bracketCss = await renderNodeToString(boxWith(makeCall(bracketCaptureCallName('mixin-ruleset'))), new Context());
-    const dotCss = await renderNodeToString(boxWith(makeCall(dotMixinRulesetCallName())), context);
+    const bracketCss = await renderNodeToString(boxWith(makeCall(bracketCaptureCallName('mixin-ruleset'))), new Context(), { context: new Context(), preSerializeRoot: r => r });
+    const dotCss = await renderNodeToString(boxWith(makeCall(dotMixinRulesetCallName())), context, { context: context, preSerializeRoot: r => r });
 
     expect(bracketCss).not.toContain('mixinval');
     expect(dotCss).toContain('mixinval');

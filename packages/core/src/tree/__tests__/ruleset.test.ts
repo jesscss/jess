@@ -757,12 +757,12 @@ describe('Rule', () => {
     };
 
     try {
-      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      await expect(Promise.resolve(node.render(context, { context, preSerializeRoot: r => r }))).resolves.toBeString(`
         /* keep */
         color: red;
       `);
       const buffer = createRenderBuffer('flat');
-      await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+      await expect(Promise.resolve(node.render(context, buffer, { context, preSerializeRoot: r => r }))).resolves.toBeString(`
         /* keep */
         color: red;
       `);

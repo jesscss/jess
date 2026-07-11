@@ -480,7 +480,7 @@ describe('Ampersand', () => {
   it('should collapse value when ampersand is set to hoist #2', async () => {
     let node = wrapAmpList([sel([amp('')])]);
     context = new Context({ output: { collapseNesting: true } });
-    const css = await renderNodeToString(node, context, { collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true, preSerializeRoot: r => r });
     // Generated :is(.one,.two) unwraps to .one,.two; same selector so one block
     expect(css).toBeString(`
       .one,
@@ -508,7 +508,7 @@ describe('Ampersand', () => {
   it('should collapse value when ampersand has an appended value #2', async () => {
     let node = wrapAmpList([sel([amp('-1')])]);
     context = new Context({ output: { collapseNesting: true } });
-    const css = await renderNodeToString(node, context, { collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true, preSerializeRoot: r => r });
     expect(css).toBeString(`
       .one,
       .two {

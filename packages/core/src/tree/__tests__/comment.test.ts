@@ -183,7 +183,7 @@ describe('Comment', () => {
     });
     context.opts.trivia = trivia;
 
-    expect(await renderNodeToString(rules([container]), context, { context })).toBe(`.a {
+    expect(await renderNodeToString(rules([container]), context, { context, preSerializeRoot: r => r })).toBe(`.a {
   /**/
   color: red;
 }

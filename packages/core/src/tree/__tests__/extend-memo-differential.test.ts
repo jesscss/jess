@@ -27,13 +27,21 @@ import { Parser } from '../../../../less-parser/src/index.js';
 import { Context } from '../../context.js';
 import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer.js';
 import { setExtendMatchMemoEnabled } from '../util/extend-walk.js';
+import { isSpineEligibleRoot } from '../util/emit-walk.js';
+import type { Rules } from '../rules.js';
 
 async function renderLess(source: string, collapseNesting: boolean): Promise<string> {
   const context = new Context({ output: { collapseNesting }, leakyScope: true });
   const parser = new Parser();
   const { tree } = parser.parse(source);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return (await renderNodeToString(tree as unknown as RenderBufferNode, context, { context })).trim();
+  const root = tree as unknown as Rules;
+  // D-EVAL FLIP: the spine owns the TOP-LEVEL render for a spine-eligible root; a
+  // non-eligible extend root renders through the RETAINED eval + serialize path via a
+  // no-op `preSerializeRoot` visitor — byte-identical to the pre-flip top-level render.
+  const eligible = isSpineEligibleRoot(root, context, collapseNesting);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  return (await renderNodeToString(root as unknown as RenderBufferNode, context, eligible ? { context } : { context, preSerializeRoot: r => r })).trim();
 }
 
 /** Render the same source with the memo ON and OFF; return both outputs. */

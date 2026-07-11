@@ -33,8 +33,12 @@ async function render(source: string): Promise<{ css: string; eligible: boolean;
   const root = tree as unknown as Rules;
   const eligible = isSpineEligibleRoot(root, context, false);
   const before = spineRenderCounter.rootRenders;
+  // D-EVAL FLIP: a spine-eligible root renders on the spine; a non-eligible root
+  // (this DEFERRED recursion+nested-container shape stays on eval) renders through
+  // the RETAINED eval + serialize path via a no-op `preSerializeRoot` visitor —
+  // byte-identical to the pre-flip eval-fallback.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const css = (await renderNodeToString(root as unknown as RenderBufferNode, context, { context })).trim();
+  const css = (await renderNodeToString(root as unknown as RenderBufferNode, context, eligible ? { context } : { context, preSerializeRoot: r => r })).trim();
   return { css, eligible, spineRan: spineRenderCounter.rootRenders > before };
 }
 
