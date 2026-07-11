@@ -1288,10 +1288,13 @@ export abstract class Node<
       options?: O,
       location?: NodeLocation
     ) => this;
+    // No source span passed to the ctor: `inherit(this)` below unconditionally
+    // re-establishes it from `this`, so building one here (a transient
+    // `{start,end}` via `sourceSpanOf`) is pure duplicate allocation.
     const newNode = new Ctor(
       cloned,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this)
+      undefined
     );
     newNode.inherit(this);
     // Faithful copy: a clone shares/maps the SAME children as its source, so it
@@ -1536,7 +1539,16 @@ export abstract class Node<
     } else {
       setParent(this, this.parent ?? node.parent);
     }
-    setSourceSpan(this, sourceSpanOf(node));
+    // Span carry: only a source-bearing `node` has a span to copy (and copying
+    // it allocates a transient `{start,end}` via `sourceSpanOf`). The dominant
+    // value-eval case is two source-free nodes — skip the whole round-trip. We
+    // still clear our OWN stale span when the source has none (the replace
+    // semantic: `this` takes `node`'s provenance, including its absence).
+    if (!isSourceFree(node)) {
+      setSourceSpan(this, sourceSpanOf(node));
+    } else if (!isSourceFree(this)) {
+      setSourceSpan(this, undefined);
+    }
     // Per-slot spans are sparse (only source multi-member nodes carry them); the
     // flag check keeps eval nodes free. Carry them across derivation so a derived
     // selector-list / value surface can still place inter-member comment trivia.
