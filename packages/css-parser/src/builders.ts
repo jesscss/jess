@@ -405,7 +405,7 @@ export class CssParser {
    */
   commentOnlyTriviaForNode?(type: string): boolean;
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
-  protected _errors: Array<{ message: string; offset?: number }> = [];
+  protected _errors: Array<{ message: string; offset?: number; endOffset?: number }> = [];
   /**
    * Source ranges of comments lifted to standalone `Comment` nodes (see
    * `_maybeEmitComment`). These comments round-trip through the tree, so the
@@ -423,8 +423,14 @@ export class CssParser {
     this._warnings.push(deprecation ? { message, deprecation } : { message });
   }
 
-  protected _error(message: string, offset?: number) {
-    this._errors.push(offset !== undefined ? { message, offset } : { message });
+  protected _error(message: string, offset?: number, endOffset?: number) {
+    if (offset === undefined) {
+      this._errors.push({ message });
+    } else if (endOffset === undefined) {
+      this._errors.push({ message, offset });
+    } else {
+      this._errors.push({ message, offset, endOffset });
+    }
   }
 
   // ── buildNode ─────────────────────────────────────────────────────────────

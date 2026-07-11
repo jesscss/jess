@@ -921,7 +921,8 @@ export class ScssGrammar extends LessGrammar {
     const name = new Any('@at-root', { role: 'atkeyword' }, loc);
     this._error(
       '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.',
-      loc.start
+      loc.start,
+      loc.end
     );
     return new AtRule(
       { name, prelude: prelude as Node, rules: body.rules },
@@ -1049,7 +1050,7 @@ export class ScssGrammar extends LessGrammar {
       ? preludeText.slice(preludeText.indexOf(pathMatch[0]) + pathMatch[0].length)
       : '';
     const preludeExtra = afterPath.replace(/\bwith\s*\([^)]*\)\s*;?\s*$/, '').replace(/;\s*$/, '').trim();
-    checkForwardPreludeErrors(preludeExtra, msg => this._error(msg, loc.start));
+    checkForwardPreludeErrors(preludeExtra, msg => this._error(msg, loc.start, loc.end));
 
     return new StyleImport(
       {
@@ -1200,7 +1201,7 @@ export class ScssGrammar extends LessGrammar {
     validateExtendTarget(
       target as Node,
       this._parseContext?.opts?.allowExtendSelectors,
-      msg => this._error(msg, loc.start)
+      msg => this._error(msg, loc.start, loc.end)
     );
     const prelude = this._source.slice(loc.start, loc.end);
     const namespace = /@extend\s+%/.test(prelude) || isPlaceholderExtendTarget(target)

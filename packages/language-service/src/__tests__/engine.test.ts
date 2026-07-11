@@ -302,37 +302,56 @@ describe('JessLanguageServiceEngine', () => {
       expect((diag?.range.end.character ?? -1)).toBeGreaterThanOrEqual(lastChar.character);
     });
 
-    it('reports multiple parser errors (css/less/scss)', () => {
-      // Force multiple *parser* errors by inserting tokens that are structurally invalid as values.
-      const inputByLang: Record<'css' | 'less' | 'scss', string> = {
-        // CSS: this parser reports multiple errors for an unterminated comment.
-        css: 'a { /*',
-        // Less/SCSS: this reliably produces multiple recovery errors.
-        less: 'a { color: ) ; background: ) ; }',
-        scss: 'a { color: ) ; background: ) ; }'
-      };
-      for (const languageId of ['css', 'less', 'scss'] as const) {
+    it('reports the single earliest parser error (1-error-stop contract)', () => {
+      // The functional parsers implement a deliberate "one error and stop" contract:
+      // every diagnostic source is collected, then collapsed to the EARLIEST by
+      // position. So even input with several structurally-invalid spots yields
+      // exactly one parser diagnostic, anchored at the first failure — not a
+      // recovery cascade. These inputs each have two bad `)` value tokens; only the
+      // first failure is reported (the CSS grammar rejects the whole declaration a
+      // little earlier than the Less/SCSS value grammars, hence a distinct anchor).
+      const cases: Array<{ languageId: 'css' | 'less' | 'scss'; input: string; start: { line: number; character: number } }> = [
+        { languageId: 'css', input: 'a { color: ) ; background: ) ; }', start: { line: 0, character: 4 } },
+        { languageId: 'less', input: 'a { color: ) ; background: ) ; }', start: { line: 0, character: 11 } },
+        { languageId: 'scss', input: 'a { color: ) ; background: ) ; }', start: { line: 0, character: 11 } }
+      ];
+      for (const { languageId, input, start } of cases) {
         const engine = createEngine();
-        const doc = createDocument(languageId, inputByLang[languageId]);
+        const doc = createDocument(languageId, input);
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         const diagnostics = engine.getDiagnostics(doc.uri);
-        const parserCount = diagnostics.filter(d => d.code === 'parse/parser').length;
-        expect(parserCount).toBeGreaterThan(1);
+        const parserDiags = diagnostics.filter(d => d.code === 'parse/parser');
+        // Exactly one parser error (1-error-stop), no recovery cascade.
+        expect(parserDiags).toHaveLength(1);
+        expect(diagnostics).toHaveLength(1);
+        const diag = parserDiags[0]!;
+        expect(diag.source).toBe('jess');
+        // Anchored at the earliest failure position (the first bad `)`).
+        expect(diag.range.start).toEqual(start);
+        // Well-formed, non-degenerate range.
+        expect(diag.range.end.line).toBeGreaterThanOrEqual(diag.range.start.line);
+        const doc2 = createDocument(languageId, input);
+        expect(doc2.offsetAt(diag.range.end)).toBeGreaterThanOrEqual(doc2.offsetAt(diag.range.start));
       }
     });
 
-    it('reports multiple diagnostics (recovery-friendly) on very broken input (css/less/scss)', () => {
-      // Some grammars may surface these as parser errors rather than lexer errors.
+    it('reports one earliest diagnostic on very broken input (1-error-stop, css/less/scss)', () => {
+      // An unterminated block/comment: the parser stops at the first failure
+      // (the point it needed a closing `}`) rather than emitting a cascade. This
+      // asserts the single-error contract precisely, including the anchor position.
       const input = 'a { /*';
       for (const languageId of ['css', 'less', 'scss'] as const) {
         const engine = createEngine();
         const doc = createDocument(languageId, input);
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         const diagnostics = engine.getDiagnostics(doc.uri);
-        expect(diagnostics.length).toBeGreaterThan(1);
-        // Ensure ranges are not all identical (basic sanity).
-        const keys = new Set(diagnostics.map(d => `${d.range.start.line}:${d.range.start.character}:${d.range.end.line}:${d.range.end.character}`));
-        expect(keys.size).toBeGreaterThan(1);
+        // Exactly one diagnostic — the earliest error, not a recovery cascade.
+        expect(diagnostics).toHaveLength(1);
+        const diag = diagnostics[0]!;
+        expect(diag.code).toBe('parse/parser');
+        expect(diag.source).toBe('jess');
+        // Anchored just after the opening `a { ` where the closer was expected.
+        expect(diag.range.start).toEqual({ line: 0, character: 4 });
       }
     });
 

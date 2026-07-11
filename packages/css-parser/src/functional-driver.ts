@@ -31,7 +31,7 @@ export interface FunctionalParseHost {
   setSource(src: string): void;
   resetWarnings(): void;
   getWarnings(): Array<{ message: string; deprecation?: string }>;
-  getErrors(): Array<{ message: string; offset?: number }>;
+  getErrors(): Array<{ message: string; offset?: number; endOffset?: number }>;
   getLiftedCommentRanges(): ReadonlyArray<readonly [number, number]>;
   captureTriviaForNode?(type: string): boolean;
   /**
@@ -75,22 +75,41 @@ type Entry = (i: string, p: number, c: any) => any;
  * `offset`), the source, and a `parse/syntax-error` code. `offset` is preserved
  * on the instance for callers that still want it.
  */
-export function toParseError(message: string, offset: number | undefined, source: string, filePath?: string): JessError {
+function offsetToLineCol(source: string, offset: number): { line: number; column: number } {
   let line = 1;
-  let column = 1;
-  if (typeof offset === 'number') {
-    const clamped = offset < 0 ? 0 : (offset > source.length ? source.length : offset);
-    // Offset → line/column in a single forward pass over `String.indexOf('\n')`
-    // (V8 vectorizes it). Runs at most ONCE per parse (only on error).
-    let lastNl = -1;
-    for (let i = source.indexOf('\n'); i !== -1 && i < clamped; i = source.indexOf('\n', i + 1)) {
-      line++;
-      lastNl = i;
-    }
-    column = clamped - lastNl; // lastNl === -1 (line 1) → column = clamped + 1
+  const clamped = offset < 0 ? 0 : (offset > source.length ? source.length : offset);
+  // Offset → line/column in a single forward pass over `String.indexOf('\n')`
+  // (V8 vectorizes it). Runs at most ONCE per parse (only on error).
+  let lastNl = -1;
+  for (let i = source.indexOf('\n'); i !== -1 && i < clamped; i = source.indexOf('\n', i + 1)) {
+    line++;
+    lastNl = i;
   }
+  return { line, column: clamped - lastNl }; // lastNl === -1 (line 1) → column = clamped + 1
+}
+
+export function toParseError(
+  message: string,
+  offset: number | undefined,
+  source: string,
+  filePath?: string,
+  endOffset?: number
+): JessError {
+  const { line, column } = typeof offset === 'number'
+    ? offsetToLineCol(source, offset)
+    : { line: 1, column: 1 };
   const err = makeJessError({ code: 'parse/syntax-error', phase: 'parse', source, filePath, line, column, summary: message });
-  (err as JessError & { offset?: number }).offset = offset;
+  const withPos = err as JessError & { offset?: number; endOffset?: number; endLine?: number; endColumn?: number };
+  withPos.offset = offset;
+  // When the diagnostic carries the offending construct's full span (not just a
+  // point), surface an end line/column too so range-building consumers (e.g. the
+  // language service) can highlight the whole statement rather than one char.
+  if (typeof endOffset === 'number' && endOffset > (offset ?? 0)) {
+    const end = offsetToLineCol(source, endOffset);
+    withPos.endOffset = endOffset;
+    withPos.endLine = end.line;
+    withPos.endColumn = end.column;
+  }
   return err;
 }
 
@@ -146,7 +165,7 @@ export function runFunctionalParse(
 
   // Diagnostic sources, all position-tagged: recover()/expect() misses, a hard
   // top-level failure, leftover input, and any error the host builders recorded.
-  const collected: Array<{ message: string; offset?: number }> = [];
+  const collected: Array<{ message: string; offset?: number; endOffset?: number }> = [];
   for (const e of res.errors) {
     const exp = e.expected.filter(x => x !== 'sentinel');
     collected.push({ message: exp.length ? `expected ${exp.join(', ')}` : 'Unexpected input', offset: e.span.start });
@@ -161,7 +180,7 @@ export function runFunctionalParse(
   // Default: report ONE error and stop — the earliest by position.
   collected.sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0));
   const errors: JessError[] = collected.length > 0
-    ? [toParseError(collected[0]!.message, collected[0]!.offset, input)]
+    ? [toParseError(collected[0]!.message, collected[0]!.offset, input, undefined, collected[0]!.endOffset)]
     : [];
 
   return {
