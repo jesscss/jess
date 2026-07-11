@@ -2869,6 +2869,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           if (!includeRulesets) {
             return undefined;
           }
+          // Mechanism B (spine guarded-namespace-segment visibility): a `when`-guarded
+          // ruleset-namespace segment traversed for a spine mixin-path call contributes
+          // its members ONLY if its guard passes (the eval path never registers a
+          // guard-failing namespace's members). Sink-gated so the eval path is
+          // untouched; suppress a failing segment before descending into its body.
+          if (options.context?.spineMixinSurfaceSink !== undefined
+            && match.guard !== undefined
+            && !match.spineNamespaceGuardPasses(options.context)) {
+            sawDefiniteMiss = true;
+            continue;
+          }
           nestedScope = match;
         } else if (isNode(match, N.Mixin)) {
           if (!mixinHasNoRequiredParams(match)) {
@@ -3609,6 +3620,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           sawLegacyOnlyPrefix = true;
           continue;
         }
+        // Mechanism B (spine guarded-namespace-segment visibility): when the spine is
+        // driving this resolution (`spineMixinSurfaceSink` installed), a `when`-guarded
+        // namespace segment (`#guarded when (@namespaceGuard<0)`, `#top { #deeper when
+        // (…) }`) contributes its members ONLY if its guard passes. The eval path never
+        // registers a guard-failing namespace's members (registration-time guard eval),
+        // so on eval this loop never sees them; the spine reads the static tree (every
+        // member present regardless of guard), so it must evaluate the segment guard and
+        // SUPPRESS a failing segment here — otherwise a guard-failing overload leaks
+        // spurious output. Sink-gated so the eval path is untouched; zero-cost when the
+        // segment carries no guard (the common case, `ruleset.guard` unset).
+        if (options.context?.spineMixinSurfaceSink !== undefined
+          && ruleset.guard !== undefined
+          && !ruleset.spineNamespaceGuardPasses(options.context)) {
+          continue;
+        }
         const remainderStart = offset + consumed.length;
         const remainderLength = path.length - remainderStart;
         if (remainderLength === 0) {
@@ -3760,6 +3786,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const terminalFilterType = options.terminalMixinOnly === true ? 'Mixin' : undefined;
 
     for (const { ruleset, consumed } of prefixMatches) {
+      // Mechanism B (spine guarded-namespace-segment visibility): suppress a guard-
+      // FAILING namespace segment when the spine drives this compound-prefix walk
+      // (the eval path never registers a guard-failing namespace's members). Sink-
+      // gated so eval is untouched; zero-cost when the segment is unguarded.
+      if (options.context?.spineMixinSurfaceSink !== undefined
+        && ruleset.guard !== undefined
+        && !ruleset.spineNamespaceGuardPasses(options.context)) {
+        continue;
+      }
       const remainderLength = keys.length - consumed.length;
       if (remainderLength === 0) {
         return {
@@ -4271,8 +4306,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         return rulesetNamespaceUnion;
       }
       const merged = [...rulesetNamespaceUnion];
+      // A namespace-path terminal reachable through BOTH the ruleset-namespace union
+      // (`rulesetNamespaceUnion`) AND the compound-prefix / mixin-descendant walk
+      // (`combined`) is the SAME canonical callable node resolved via two internal
+      // paths — one candidate, not two. Skip a `combined` entry already present in the
+      // union (identity) so it is not emitted twice. Distinct overloads keep distinct
+      // identities and all remain. (Surfaces only overlap when a single ruleset-form
+      // namespace also appears as a compound/mixin-path prefix — e.g. a guarded
+      // namespace segment resolved on the spine.)
       for (let i = 0; i < combined.length; i++) {
-        merged.push(combined[i]!);
+        const entry = combined[i]!;
+        if (rulesetNamespaceUnion.indexOf(entry) === -1) {
+          merged.push(entry);
+        }
       }
       return merged;
     }

@@ -34,6 +34,7 @@ import { Node, F_STATIC } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { comparePosition } from './compare.js';
+import { spanStartOf } from './provenance.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
@@ -389,8 +390,21 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
   // name). Both static forms are fine — resolution is by `call.eval`, not the key
   // text — but a NON-string, non-Keyword key (a SelectorCapture `*[.foo]()`) stays
   // deferred.
+  //
+  // A CHILD-COMBINATOR namespace path (`#ns > .mixin()`, `#a > #b > .m()`) parses
+  // with an ARRAY key — each segment a STATIC string name (`['#ns', '.mixin-for-
+  // root-usage']`). The `.`/dot path (`#ns.m()`) collapses to a single STRING key
+  // and is already admitted above; the `>` form is the same static-authored path,
+  // resolved by the SAME `call.eval` → `findMixinPath` walk (drives the sink), so it
+  // is admitted here when every segment is a plain string (a static path). An array
+  // holding a non-string segment (a captured/interpolated element) stays deferred.
+  const keyIsStaticPathArray = Array.isArray(name.key)
+    && name.key.length > 0
+    && name.key.every((segment: unknown) => typeof segment === 'string');
   const keyIsKeyword = name.key instanceof Node && name.key.type === 'Keyword';
-  if (typeof name.key !== 'string' && !(type === 'variable' && keyIsKeyword)) {
+  if (typeof name.key !== 'string'
+    && !keyIsStaticPathArray
+    && !(type === 'variable' && keyIsKeyword)) {
     return false;
   }
   // NAMESPACE-PATH / cross-scope call (`.scope > .mixin()`, `#ns.m()`, `#a > #b >
@@ -622,6 +636,24 @@ export function resolveSpineMixinCall(
         && a.source.index !== undefined
         && b.source.index !== undefined) {
         return a.source.index - b.source.index;
+      }
+      // NAMESPACE-PATH overloads resolve to definition bodies in DISJOINT subtrees
+      // (`#guarded` / `#guarded()` / `#guarded(@variable: default)` — separate root
+      // siblings). Their `.parent` chains are wired for closure resolution but are not
+      // guaranteed to reach a shared ancestor `comparePosition` can walk to (it reads
+      // `.parent` up to a common ancestor and would deref `undefined` off the top).
+      // The STATIC authored `source` always carries a source-byte span, and document
+      // order IS span order — so order by span start when both are present (a total
+      // order that reproduces eval's source-order emit). `comparePosition` stays the
+      // fallback for the in-tree same-subtree case (spans equal / absent).
+      const aStart = spanStartOf(a.source);
+      const bStart = spanStartOf(b.source);
+      if (aStart !== undefined && bStart !== undefined) {
+        // Equal spans → same source position: order is immaterial, keep stable.
+        // `comparePosition` is only safe for same-subtree nodes (it walks `.parent`
+        // to a shared ancestor); a disjoint-subtree namespace candidate would deref
+        // off the top.
+        return aStart - bStart;
       }
       return comparePosition(a.source, b.source);
     });

@@ -844,6 +844,65 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       : finishGuard(guardResult);
   }
 
+  /**
+   * SPINE namespace-segment guard eval (Mechanism B — guarded-namespace-segment
+   * member visibility). When the spine's static namespace-path resolution
+   * (`findRulesetNamespacePathFast`) TRAVERSES a `when`-guarded namespace segment
+   * (`#guarded when (@namespaceGuard<0)`, `#top { #deeper when (…) }`), this decides
+   * whether the segment's members are VISIBLE candidates — i.e. whether the guard
+   * passes. The eval path registers a guarded namespace's members only AFTER the
+   * guard passes at registration time, so a guard-FAILING namespace never contributes
+   * a candidate; the spine reads the static tree (which holds every member regardless
+   * of guard), so it must evaluate the segment guard HERE and suppress guard-failing
+   * members — otherwise a failing overload leaks spurious output (the `should: not
+   * match because namespace guard;` lines).
+   *
+   * The guard is evaluated against this segment's OWN scope frame (its free vars
+   * resolve against its definition scope — a root global like `@namespaceGuard`, or an
+   * enclosing namespace's local), exactly as `Ruleset.evalNode` evaluates a guard at
+   * definition time. The source `this.guard` is NOT mutated (unlike eval's COW derive)
+   * — the spine reads the stable tree and may re-resolve it. Returns `true` for an
+   * unguarded / Nil-passed segment (no suppression). SYNCHRONOUS: a namespace-segment
+   * guard is a constant/reference comparison; if a guard evaluates async here the
+   * resolution cannot decide synchronously, so it throws LOUD rather than emit silent
+   * wrong output (never reached by the constant/global namespace-guard shape).
+   */
+  spineNamespaceGuardPasses(context: Context): boolean {
+    const { guard } = this;
+    if (!guard || guard instanceof Nil) {
+      return true;
+    }
+    if (typeof guard === 'string') {
+      // A not-yet-materialized string guard is not statically evaluatable — treat the
+      // segment as visible (the shape is gated to the eval path elsewhere).
+      return true;
+    }
+    const savedRulesContext = context.rulesContext;
+    // Evaluate against this segment's OWN scope frame, chained to the currently-live
+    // enclosing frame (the scope the resolution walk is traversing from) so a guard
+    // reading an ENCLOSING namespace's local resolves — mirrors the eval-path lexical
+    // chain and `serializeSpineFrameContainer`'s enclosing-frame link. A root-global
+    // guard (`@namespaceGuard`) resolves either way; the re-point is load-bearing only
+    // for an intermediate-scope-reading segment guard.
+    const enclosingFrame = savedRulesContext?.getScopeFrame();
+    const nodeFrame = this.getScopeFrame(enclosingFrame);
+    if (enclosingFrame !== undefined && nodeFrame.parent !== enclosingFrame) {
+      nodeFrame.parent = enclosingFrame;
+    }
+    context.rulesContext = this;
+    try {
+      const guardResult = guard instanceof Condition
+        ? guard.evaluateBoolean(context)
+        : guard.eval(context);
+      if (isThenable(guardResult)) {
+        throw new Error('SPINE_ONLY_UNSUPPORTED: async namespace-segment guard');
+      }
+      return Condition.resultPasses(guardResult);
+    } finally {
+      context.rulesContext = savedRulesContext;
+    }
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
