@@ -4737,7 +4737,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const needsInlineBoundarySpacing = (
         (lastEmittedType === 'Any' && n.type !== 'Any')
         || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
+        // The inline-source predecessor may have been emitted by a DEEPER closure
+        // (an `(inline)` `@import` spliced through a nested import-fold): its
+        // per-closure inline-source state never reaches THIS body's `emitNode`, so
+        // the writer carries a document-global flag set whenever inline-source text
+        // was the last thing emitted. A following non-inline block gets the same
+        // post-inline blank-line separator eval emits. Cleared once consumed below.
+        || (w.lastEmitWasInlineSource && n.type !== 'Any')
       );
+      // Consume the document-global inline-source flag: the boundary decision for
+      // THIS node is the only place it matters; leaving it set would inject a
+      // spurious blank before the node AFTER this one.
+      w.lastEmitWasInlineSource = false;
       if (!w.endsWith('\n') || needsInlineBoundarySpacing) {
         w.addSpacer('\n');
       }
@@ -4754,6 +4765,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       emittedCount++;
       lastEmittedType = n.type;
       lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
+      // Document-global inline-source flag (survives import-fold closure nesting):
+      // set true when the just-emitted node is inline-import RAW source (an `Any`
+      // role-`any` leaf or its single-child wrapper Rules), false otherwise. A
+      // following top-level block reads it in `emitBoundaryIfNeeded` and inserts the
+      // post-inline blank line even when the inline text came from a deeper closure.
+      w.lastEmitWasInlineSource = (isNode(n, N.Any) && n.role === 'any') || lastEmittedWasInlineSourceRules;
     };
     const emitCaptured = (text: string, n: Node, prefix?: string) => {
       emitBoundaryIfNeeded(n);
