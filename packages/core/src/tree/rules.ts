@@ -1085,6 +1085,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // A new callable source invalidates the cached buckets so a later lookup
       // re-collects, now unioning the surface.
       lookup.callableLookupCache = undefined;
+      // Definition-frame projection for a LEAKY nested def that CLOSES OVER an
+      // enclosing param (`.inner-locked-mixin(@x: @a) when (@a=1)`): record the def
+      // node → this BOUND surface, so `prepareCallableCandidateState` resolves the
+      // def's guard/default/body against the surface frame (holding `@a=1`) instead
+      // of the static def parent (where `@a` is an unbound param). Only the surface's
+      // DIRECT-child defs leak (Less mixin-leak semantics); a pure side-table keyed on
+      // the shared def node — no `.parent` mutation, so a different call's surface
+      // never leaks into the same def.
+      const children = surface.rules;
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i]!;
+        if (isNode(child, N.Mixin) && child.name !== undefined) {
+          (context.spineLeakyCallableSurface ??= new WeakMap()).set(child, surface);
+        }
+      }
     };
     const saved = context.rulesContext;
     context.rulesContext = surface;

@@ -549,6 +549,20 @@ export class Context {
    * cleared per frame push/pop by `serializeSpineFrameContainer`.
    */
   spineResolvedFrameSelector: WeakMap<Ruleset, Selector | Nil> | undefined;
+  /**
+   * Spine leaky-callable DEFINITION-FRAME side-channel. Maps a nested Mixin DEFINITION
+   * node that LEAKED into a caller scope (`registerSpineFoldedSurfaceCallables`) to the
+   * BOUND surface it leaked from — the surface that carries the enclosing mixin's
+   * per-call param slots (`.lock-mixin(1)` → surface holding `@a=1`). A leaked def that
+   * CLOSES OVER an enclosing param (`.inner(@x: @a) when (@a=1)`) resolves its
+   * guard/param-default/body against its DEFINITION frame; on the spine that frame must
+   * be this bound surface, NOT the static def parent (where `@a` is an unbound param).
+   * `prepareCallableCandidateState` reads this to substitute the leaky surface's frame
+   * as the candidate's definition frame. A pure projection side-table — the shared def
+   * node's `.parent` is never mutated (so a different call's surface never leaks in).
+   * WeakMap keyed on the def node; set per-registration, GC'd with the node.
+   */
+  spineLeakyCallableSurface: WeakMap<Node, Rules> | undefined;
   /** Unified frames array for flat rendering when collapseNesting is true */
   frames: (Ruleset | AtRule)[] = [];
 

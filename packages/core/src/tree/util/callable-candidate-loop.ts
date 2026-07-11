@@ -40,6 +40,32 @@ type ExecuteCallableCandidateLoopOptions = {
   createOuterRules: (rules: Rules, options?: Rules['options']) => Rules;
 };
 
+/**
+ * Resolve the BOUND leaky surface a candidate def leaked from, if any. The candidate
+ * reaching the loop is a per-call CLONE (`createCallableRules`) whose `sourceNode`
+ * chain points back at the canonical def node registered in the spine leaky-callable
+ * side-table (`registerSpineFoldedSurfaceCallables`). Walk the sourceNode chain (short
+ * — a couple of hops) so a clone still finds its leak surface. Returns undefined for
+ * every non-leaked candidate (cheap WeakMap misses).
+ */
+function resolveLeakyCallableSurface(context: Context, rules: Rules): Rules | undefined {
+  const map = context.spineLeakyCallableSurface;
+  if (map === undefined) {
+    return undefined;
+  }
+  let node: Node | undefined = rules;
+  const seen = new Set<Node>();
+  while (node && !seen.has(node)) {
+    seen.add(node);
+    const hit = map.get(node);
+    if (hit !== undefined) {
+      return hit;
+    }
+    node = (node as { sourceNode?: Node }).sourceNode;
+  }
+  return undefined;
+}
+
 export async function executeCallableCandidateLoop({
   context,
   caller,
@@ -100,11 +126,18 @@ export async function executeCallableCandidateLoop({
       throw new TypeError('Callable candidate setup expects a callable entry');
     }
 
+    // Spine leaky-callable definition-frame projection: a nested def that leaked into
+    // this scope AND closes over an enclosing param resolves its definition frame
+    // against the BOUND surface it leaked from (holding the enclosing param slots),
+    // not its static def parent. Looked up per-candidate; undefined for every other
+    // candidate (the common case pays a WeakMap miss).
+    const leakySurface = resolveLeakyCallableSurface(context, getMixinEntryRules(candidate));
     const candidateState = prepareCallableCandidateState({
       candidate,
       callSiteRules: ordinaryCallSiteRules,
       leakyScope: context.options.leakyScope === true,
       resolvedBindingInfo: resolvedParamBindings.get(candidate),
+      leakySurface,
       createCallableRules,
       getRootSourceRules
     });

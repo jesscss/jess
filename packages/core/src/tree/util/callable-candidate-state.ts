@@ -24,6 +24,13 @@ type PrepareCallableCandidateStateOptions = {
   callSiteRules?: Node;
   leakyScope: boolean;
   resolvedBindingInfo?: CallableParamMatch;
+  /**
+   * The BOUND surface a LEAKY nested def leaked from (spine leaky-callable fold). When
+   * present, the candidate's definition frame is this surface's frame — it carries the
+   * enclosing mixin's per-call param slots the def closes over (`@a=1`), which the
+   * static def parent's frame does not. Undefined for every non-leaked candidate.
+   */
+  leakySurface?: Rules;
   createCallableRules: (sourceRules: Rules) => Rules;
   getRootSourceRules: (rules: Rules) => Rules;
 };
@@ -53,6 +60,7 @@ export function prepareCallableCandidateState({
   callSiteRules,
   leakyScope,
   resolvedBindingInfo,
+  leakySurface,
   createCallableRules,
   getRootSourceRules
 }: PrepareCallableCandidateStateOptions): PreparedCallableCandidateState {
@@ -60,7 +68,11 @@ export function prepareCallableCandidateState({
   const sourceRules = getRootSourceRules(candidateRules);
   const rules = createCallableRules(candidateRules);
   const candidateParent = candidate.parent ?? callSiteRules;
-  const definitionParent = candidate.parent ?? candidateRules.parent;
+  // A leaky nested def resolves its definition frame against the BOUND surface it
+  // leaked from (holding the enclosing mixin's per-call params), NOT its static def
+  // parent. The surface IS a Rules, so its `getScopeFrame()` supplies the live param
+  // slots the closure reads (`@a`). Falls back to the static parent otherwise.
+  const definitionParent = leakySurface ?? candidate.parent ?? candidateRules.parent;
   if (!candidateParent) {
     throw new TypeError('Callable candidate setup requires a parent or call-site rules');
   }
