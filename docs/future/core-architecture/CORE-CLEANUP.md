@@ -1180,7 +1180,7 @@ F-consolidate is therefore rename + genuine-refactor only, no free deletions.
 ## Standing guides (NOT trackers — keep, don't fold in)
 
 - `HANDOFF.md` — focus router + prosecution history (points here for the queue).
-- `FOCII.md` — focus/goal menu.
+- `archive/FOCII.md` — focus/goal menu.
 - `AGGRESSIVE-CUTTING-REVIEW.md` — the architecture-review guardrail checklist.
 - `packages/core/src/tree/LIVE_BINDING_ARCHITECTURE.md` — single-frame target invariants.
 

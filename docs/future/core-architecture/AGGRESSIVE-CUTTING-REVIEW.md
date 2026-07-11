@@ -12,7 +12,7 @@ core architecture router, or the focus document.
 This is one of the core-architecture coordination docs:
 
 - `HANDOFF.md` is the short router.
-- `FOCII.md` owns goal-settable focus prompts, boundaries, and stop rules.
+- `archive/FOCII.md` owns goal-settable focus prompts, boundaries, and stop rules.
 - `CORE-CLEANUP.md` owns active queues, completion gates, benchmark/profile
   protocol, and performance evidence.
 - This file owns architecture and patch-shape review: whether a proposed edit
