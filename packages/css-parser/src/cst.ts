@@ -1,4 +1,4 @@
-import { run, type BuildHost, type FieldMap, type ParseError, type Runnable, type Span } from 'parseman';
+import { run, parseDoc, type BuildHost, type FieldMap, type ParseDoc, type ParseError, type Registry, type Runnable, type Span } from 'parseman';
 
 export type CssCstType = string;
 
@@ -178,3 +178,32 @@ export function parseCst(
     unconsumedFrom: result.unconsumedFrom
   };
 }
+
+/**
+ * Incremental-document counterpart of {@link parseCst}: parse `input` from
+ * `startRule` into a parseman `ParseDoc` that can be re-parsed in place with
+ * `.edit(from, to, replacement)`. The tree is built with the same
+ * {@link cssCstBuildHost} the one-shot `parseCst` uses, so `absolutizeCST(doc.tree)`
+ * is structurally identical to `parseCst(...).tree` for the same input (the doc's
+ * own spans are PARENT-RELATIVE — absolutize before comparing).
+ *
+ * `structuralReuse` is enabled: the CST list rules are genuine repetitions
+ * (`many`/`sepBy`), so a whole-element insert/delete near the top of a large
+ * stylesheet reparses only the disturbed span and shares the untouched tail by
+ * identity. Every splice is still grammar-verified and falls back to a full,
+ * correct reparse when reuse can't be proven — so the result always matches a
+ * from-scratch parse.
+ */
+export function parseDocCst(
+  grammar: Record<string, unknown>,
+  input: string,
+  startRule = 'Stylesheet'
+): ParseDoc<CssCstNode> {
+  /* eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion */
+  return parseDoc<CssCstNode>(grammar as unknown as Registry<CssCstNode>, startRule, input, {
+    build: cssCstBuildHost,
+    structuralReuse: true
+  });
+}
+
+export type { ParseDoc } from 'parseman';

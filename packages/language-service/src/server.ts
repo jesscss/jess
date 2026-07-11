@@ -94,6 +94,10 @@ documents.onDidOpen((e: TextDocumentChangeEvent<TextDocument>) => {
 });
 
 documents.onDidChangeContent((e: TextDocumentChangeEvent<TextDocument>) => {
+  // The `TextDocuments` manager delivers already-merged full text (not the raw
+  // LSP change ranges), so `engine.change` recovers the minimal contiguous edit
+  // and drives Parseman `ParseDoc.edit()` under the hood — incremental sync of
+  // the CST, with the Jess analysis re-derived lazily on the next query.
   engine.change(e.document.uri, e.document.version, e.document.getText());
   connection.sendDiagnostics({ uri: e.document.uri, diagnostics: engine.getDiagnostics(e.document.uri) });
 });
@@ -157,4 +161,3 @@ connection.onColorPresentation((params: ColorPresentationParams) => {
 
 documents.listen(connection);
 connection.listen();
-

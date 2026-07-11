@@ -1,4 +1,4 @@
-import { parseCst, type CssCstParseOptions, type CssCstParseResult } from '@jesscss/css-parser/cst';
+import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
 import { lessGrammar } from './grammar.js';
 
 export function parseLessCst(
@@ -7,6 +7,11 @@ export function parseLessCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(lessGrammar as Record<string, unknown>, input, startRule, options);
+}
+
+/** Incremental (`.edit()`-able) Less document — see `parseDocCst`. */
+export function parseLessDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
+  return parseDocCst(lessGrammar as Record<string, unknown>, input, startRule);
 }
 
 export type {

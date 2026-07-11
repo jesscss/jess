@@ -1,6 +1,9 @@
 import { parseCssFn } from '@jesscss/css-parser/jess';
 import { Parser as LessParser } from '@jesscss/less-parser/jess';
 import { Parser as ScssParser } from '@jesscss/scss-parser/jess';
+import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
+import { parseLessDoc } from '@jesscss/less-parser';
+import { parseScssDoc } from '@jesscss/scss-parser';
 import type { IParseResult, Rules, Node } from '@jesscss/core';
 import { isNode, sourceSpanOf } from '@jesscss/core';
 import { createRequire } from 'node:module';
@@ -44,6 +47,19 @@ type TrackedDoc = {
   lang: JessLang;
   parse: IParseResult<Rules> | null;
   index: JessIndex | null;
+  // Incremental CST sync layer (Parseman `.edit()`-able document). The analysis
+  // tree (`parse`/`index`) is the Jess AST — dual-tree: the AST powers every
+  // feature; this CST doc only tracks the text incrementally so a keystroke edits
+  // one subtree instead of re-lexing the whole file.
+  cstDoc: ParseDoc<CssCstNode> | null;
+  // Deferred re-derivation: an incremental edit marks the AST/index stale and
+  // rebuilds them lazily on the next feature query, so a burst of edits with no
+  // query in between costs ONE analysis pass, not one per keystroke.
+  analysisDirty: boolean;
+  // Diagnostic counters (test-visible via `_debugState`): how many content
+  // changes took the incremental `.edit()` path vs a full CST rebuild.
+  editApplied: number;
+  fullRebuild: number;
 };
 
 type JessIndexNode = {
@@ -152,6 +168,42 @@ function parseWithJess(text: string, lang: JessLang): IParseResult<Rules> {
   // TODO: add dedicated .jess parser; for now treat as css-ish.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return parseCssFn(text) as unknown as IParseResult<Rules>;
+}
+
+// Build the incremental CST document for a dialect. `.jess` has no dedicated
+// parser yet, so it (like `css`) uses the CSS doc parser — matching the AST-side
+// `parseWithJess` fallback.
+function parseDocFor(text: string, lang: JessLang): ParseDoc<CssCstNode> {
+  if (lang === 'less') {
+    return parseLessDoc(text);
+  }
+  if (lang === 'scss') {
+    return parseScssDoc(text);
+  }
+  return parseCssDoc(text);
+}
+
+// Minimal single-range diff between old and new text: the shared prefix and
+// (non-overlapping) shared suffix pin down one contiguous replaced span, which
+// is exactly the `(from, to, replacement)` shape `ParseDoc.edit` wants. An LSP
+// incremental change is already this shape; when the client hands us only merged
+// full text (the `TextDocuments` manager does), this recovers the same edit so a
+// one-character keystroke stays a one-character `.edit()`.
+function diffRange(oldText: string, newText: string): { from: number; to: number; replacement: string } {
+  const oldLen = oldText.length;
+  const newLen = newText.length;
+  let start = 0;
+  const maxStart = Math.min(oldLen, newLen);
+  while (start < maxStart && oldText.charCodeAt(start) === newText.charCodeAt(start)) {
+    start++;
+  }
+  let oldEnd = oldLen;
+  let newEnd = newLen;
+  while (oldEnd > start && newEnd > start && oldText.charCodeAt(oldEnd - 1) === newText.charCodeAt(newEnd - 1)) {
+    oldEnd--;
+    newEnd--;
+  }
+  return { from: start, to: oldEnd, replacement: newText.slice(start, newEnd) };
 }
 
 // The functional parsers do not expose the legacy Chevrotain `.suggest()`
@@ -289,7 +341,10 @@ export type JessLanguageServiceEngine = {
   configure(config: unknown): void;
   open(uri: string, languageId: string, version: number, text: string): void;
   change(uri: string, version: number, text: string): void;
+  edit(uri: string, version: number, changes: ReadonlyArray<{ range?: Range; text: string }>): void;
   close(uri: string): void;
+  /** Test/diagnostic hook (not LSP): incremental CST tree + edit-path counters. */
+  _debugState(uri: string): { cstTree: CssCstNode | null; editApplied: number; fullRebuild: number };
 
   getCompletions(uri: string, position: Position): CompletionList;
   getHover(uri: string, position: Position): Hover | null;
@@ -392,12 +447,31 @@ export function createEngine(): JessLanguageServiceEngine {
     }
   }
 
-  function ensure(uri: string): TrackedDoc {
+  // Raw fetch (no analysis) — for the sync path (`change`/`edit`) that only needs
+  // to update text + the CST doc, deferring the Jess-AST re-derivation.
+  function get(uri: string): TrackedDoc {
     const doc = docs.get(uri);
     if (!doc) {
       throw new Error(`Unknown document: ${uri}`);
     }
     return doc;
+  }
+
+  // Feature entry point: fetch AND lazily bring the analysis tree up to date.
+  function ensure(uri: string): TrackedDoc {
+    const doc = get(uri);
+    ensureAnalysis(doc);
+    return doc;
+  }
+
+  // Re-derive the Jess AST + index only if a content change invalidated them.
+  // Coalesces a burst of edits into a single analysis pass at the first query.
+  function ensureAnalysis(t: TrackedDoc) {
+    if (!t.analysisDirty) {
+      return;
+    }
+    t.analysisDirty = false;
+    reparse(t);
   }
 
   function reparse(t: TrackedDoc) {
@@ -415,6 +489,36 @@ export function createEngine(): JessLanguageServiceEngine {
       t.parse = null;
       t.index = null;
     }
+  }
+
+  // Rebuild the incremental CST document from scratch (used on open and as the
+  // fallback when an edit can't be expressed as one contiguous range).
+  function rebuildCstDoc(t: TrackedDoc) {
+    try {
+      t.cstDoc = parseDocFor(t.document.getText(), t.lang);
+    } catch {
+      t.cstDoc = null;
+    }
+  }
+
+  // Apply a single contiguous text edit to a tracked doc: advance the text
+  // mirror, sync the CST doc incrementally via `.edit()` (falling back to a full
+  // CST rebuild when no prior doc exists), and mark the analysis stale (lazy).
+  function applyContiguousEdit(t: TrackedDoc, from: number, to: number, replacement: string, newText: string, version: number) {
+    t.document = TextDocument.update(t.document, [{ text: newText }], version);
+    if (t.cstDoc) {
+      try {
+        t.cstDoc = t.cstDoc.edit(from, to, replacement);
+        t.editApplied++;
+      } catch {
+        rebuildCstDoc(t);
+        t.fullRebuild++;
+      }
+    } else {
+      rebuildCstDoc(t);
+      t.fullRebuild++;
+    }
+    t.analysisDirty = true;
   }
 
   // Load and parse an imported file from disk
@@ -459,7 +563,9 @@ export function createEngine(): JessLanguageServiceEngine {
     }
 
     const document = TextDocument.create(importedUri, inferredLang, 0, text);
-    const tracked: TrackedDoc = { document, lang: inferredLang, parse: null, index: null };
+    // Imported files are loaded from disk and never edited in place, so they need
+    // no incremental CST doc; analyze them eagerly.
+    const tracked: TrackedDoc = { document, lang: inferredLang, parse: null, index: null, cstDoc: null, analysisDirty: false, editApplied: 0, fullRebuild: 0 };
     reparse(tracked);
     importedDocs.set(importedUri, tracked);
     return tracked;
@@ -525,6 +631,9 @@ export function createEngine(): JessLanguageServiceEngine {
 
     // Check current document
     const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    if (tracked) {
+      ensureAnalysis(tracked);
+    }
     if (!tracked?.index) {
       return null;
     }
@@ -570,6 +679,9 @@ export function createEngine(): JessLanguageServiceEngine {
 
     // Check current document
     const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    if (tracked) {
+      ensureAnalysis(tracked);
+    }
     if (!tracked?.index) {
       return null;
     }
@@ -619,6 +731,9 @@ export function createEngine(): JessLanguageServiceEngine {
 
     // Check current document
     const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    if (tracked) {
+      ensureAnalysis(tracked);
+    }
     if (!tracked?.index) {
       return;
     }
@@ -666,6 +781,9 @@ export function createEngine(): JessLanguageServiceEngine {
 
     // Check current document
     const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
+    if (tracked) {
+      ensureAnalysis(tracked);
+    }
     if (!tracked?.index) {
       return;
     }
@@ -740,21 +858,59 @@ export function createEngine(): JessLanguageServiceEngine {
     open(uri, languageId, version, text) {
       const lang = getJessLangFromLanguageId(languageId);
       const document = TextDocument.create(uri, languageId, version, text);
-      const tracked: TrackedDoc = { document, lang, parse: null, index: null };
+      const tracked: TrackedDoc = { document, lang, parse: null, index: null, cstDoc: null, analysisDirty: false, editApplied: 0, fullRebuild: 0 };
       docs.set(uri, tracked);
+      rebuildCstDoc(tracked);
       reparse(tracked);
       updateImportGraph(uri, tracked);
     },
     change(uri, version, text) {
-      const tracked = ensure(uri);
-      tracked.document = TextDocument.update(tracked.document, [{ text }], version);
-      reparse(tracked);
+      // Full-text change notification (what the `TextDocuments` manager delivers):
+      // recover the minimal contiguous edit vs the previous text and drive the CST
+      // doc through `.edit()`, so a keystroke reparses one subtree, not the file.
+      const tracked = get(uri);
+      const oldText = tracked.document.getText();
+      const { from, to, replacement } = diffRange(oldText, text);
+      applyContiguousEdit(tracked, from, to, replacement, text, version);
+      updateImportGraph(uri, tracked);
+    },
+    edit(uri, version, changes) {
+      // LSP incremental-change form: each change is `{ range?, text }`. A single
+      // ranged change maps directly to one `(from, to, replacement)` `.edit()`.
+      // Anything else (a rangeless full replace, or a multi-range batch that a
+      // single `.edit()` can't express) falls back to a full CST rebuild — still
+      // correct, just not incremental.
+      const tracked = get(uri);
+      const single = changes.length === 1 ? changes[0] : undefined;
+      if (single && single.range) {
+        const from = tracked.document.offsetAt(single.range.start);
+        const to = tracked.document.offsetAt(single.range.end);
+        const oldText = tracked.document.getText();
+        const newText = oldText.slice(0, from) + single.text + oldText.slice(to);
+        applyContiguousEdit(tracked, from, to, single.text, newText, version);
+      } else {
+        tracked.document = TextDocument.update(tracked.document, [...changes], version);
+        rebuildCstDoc(tracked);
+        tracked.fullRebuild++;
+        tracked.analysisDirty = true;
+      }
       updateImportGraph(uri, tracked);
     },
     close(uri) {
       docs.delete(uri);
       importGraph.delete(uri);
       // Note: We keep importedDocs in cache even after close, as they may be referenced by other files
+    },
+
+    // Test/diagnostic hook: the incremental CST tree (Parseman relative spans) and
+    // the edit-path counters. Not part of the LSP surface.
+    _debugState(uri) {
+      const tracked = get(uri);
+      return {
+        cstTree: tracked.cstDoc?.tree ?? null,
+        editApplied: tracked.editApplied,
+        fullRebuild: tracked.fullRebuild
+      };
     },
 
     getCompletions(uri, position) {
