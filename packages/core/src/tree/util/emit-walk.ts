@@ -624,7 +624,30 @@ export function resolveSpineMixinCall(
   // a GUARDED ruleset-as-mixin still handled by the special-case eval arm) — use the
   // eval output; `anyRejected` (a non-simple body) likewise routes to eval.
   const finish = (output: Node): SpineMixinCallResolution => {
-    if (anyRejected || captured.length === 0) {
+    if (anyRejected) {
+      return { kind: 'eval', output };
+    }
+    if (captured.length === 0) {
+      // The sink saw NO candidate. Distinguish the two "no output" shapes with the
+      // SAME parity the eval terminal has — the distinction is made UPSTREAM, before
+      // this point: `resolveCallableCandidateMatches` throws "No matching mixins
+      // found" when ZERO candidates match the call by name+arity (a truly-undefined /
+      // unresolvable mixin), and that throw propagates out of `call.eval` (below) and
+      // straight out of `resolveSpineMixinCall` — it NEVER reaches `finish`. So a call
+      // that got here matched at least one candidate by arity; guards are evaluated
+      // AFTER matching, in the candidate loop. Two ways `captured` is empty without a
+      // throw: (a) LEGITIMATE EMPTY — every arity-matched candidate's guard failed (or
+      // a matched candidate had an empty body), so `call.eval` returned an output with
+      // no emittable children; (b) the call resolved via a path the sink never saw
+      // that produced REAL content (a GUARDED ruleset-as-mixin whose guard PASSED,
+      // handled by the special-case eval arm). Fold to ZERO surfaces (emit nothing —
+      // byte-identical to rendering an empty output, but WITHOUT driving the eval
+      // terminal) ONLY for (a): an empty output `Rules`. A non-empty output is (b) and
+      // keeps the byte-identical eval terminal. This never swallows a real
+      // "No matching mixin" error — that throws before reaching here.
+      if (isNode(output, N.Rules) && output.rules.length === 0) {
+        return { kind: 'fold', surfaces: [] };
+      }
       return { kind: 'eval', output };
     }
     // Sort captured surfaces by their source DOCUMENT ORDER (mirrors the eval
