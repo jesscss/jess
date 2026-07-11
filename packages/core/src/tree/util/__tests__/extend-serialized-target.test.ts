@@ -14,6 +14,13 @@ import {
 } from '../../index.js';
 import { renderNodeToString } from '../render-buffer.js';
 
+// D-EVAL FLIP: the spine is the sole TOP-LEVEL render path but does not fold these
+// non-eligible root shapes. They render through the RETAINED eval + serialize path —
+// reached by supplying a no-op `preSerializeRoot` visitor (the retained post-eval
+// render entry) — byte-identical to the pre-flip top-level render (via eval).
+const renderRoot = (root: ReturnType<typeof rules>, ctx: Context): Promise<string> =>
+  Promise.resolve(renderNodeToString(root, ctx, { context: ctx, preSerializeRoot: r => r }));
+
 describe('extend serialized target repro', () => {
   it('applies exact extend to the selector that gets serialized', async () => {
     const root = rules([
@@ -50,7 +57,7 @@ describe('extend serialized target repro', () => {
     ]);
 
     const context = new Context({ output: { collapseNesting: false } });
-    const css = await renderNodeToString(root, context, { context });
+    const css = await renderRoot(root, context);
 
     const firstHeader = css.split('{')[0]?.trim() ?? '';
     expect(firstHeader).toContain('.rep_ace');

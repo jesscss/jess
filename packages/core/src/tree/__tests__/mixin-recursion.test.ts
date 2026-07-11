@@ -3,6 +3,14 @@ import { Context } from '../../context.js';
 import { JessError } from '../../jess-error.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 
+// D-EVAL FLIP: the spine is the sole TOP-LEVEL render path but does not fold these
+// non-eligible root shapes (nested mixin-ruleset calls, recursion). They render
+// through the RETAINED eval + serialize path — reached by supplying a no-op
+// `preSerializeRoot` visitor, the retained post-eval render entry — byte-identical
+// to the pre-flip top-level render (which itself went through eval).
+const renderRoot = (root: ReturnType<typeof rules>, ctx: Context): Promise<string> =>
+  Promise.resolve(renderNodeToString(root, ctx, { context: ctx, preSerializeRoot: r => r }));
+
 let context: Context;
 
 // Helper to check for errors without serializing the resolved value
@@ -124,7 +132,7 @@ describe('Mixin Recursion Detection', () => {
         ]);
         context.root = root;
 
-        const css = await renderNodeToString(root, context, { context });
+        const css = await renderRoot(root, context);
 
         expect(css.match(/\.item/g)).toHaveLength(8);
         expect(css).toContain('width: 8');
@@ -165,7 +173,7 @@ describe('Mixin Recursion Detection', () => {
       });
       const root = rules([fooRuleset, outputRuleset]);
       context.root = root;
-      const css = await renderNodeToString(root, context, { context });
+      const css = await renderRoot(root, context);
       expect(css).toBeString(`
         .foo .bar {
           color: red;
@@ -199,7 +207,7 @@ describe('Mixin Recursion Detection', () => {
       });
       const root = rules([fooRuleset, outputRuleset]);
       context.root = root;
-      const css = await renderNodeToString(root, context, { context });
+      const css = await renderRoot(root, context);
       expect(css).toBeString(`
         .foo.bar {
           color: red;
@@ -240,7 +248,7 @@ describe('Mixin Recursion Detection', () => {
       });
       const root = rules([containerRuleset]);
       context.root = root;
-      const css = await renderNodeToString(root, context, { context });
+      const css = await renderRoot(root, context);
       expect(css).toBeString(`
         .container .foo .bar {
           color: blue;
@@ -281,7 +289,7 @@ describe('Mixin Recursion Detection', () => {
       });
       const root = rules([containerRuleset]);
       context.root = root;
-      const css = await renderNodeToString(root, context, { context });
+      const css = await renderRoot(root, context);
       expect(css).toBeString(`
         .container .foo .bar {
           color: blue;
@@ -322,7 +330,7 @@ describe('Mixin Recursion Detection', () => {
       });
       const root = rules([containerRuleset, outputRuleset]);
       context.root = root;
-      const css = await renderNodeToString(root, context, { context });
+      const css = await renderRoot(root, context);
       expect(css).toBeString(`
         .container .foo .bar {
           color: blue;

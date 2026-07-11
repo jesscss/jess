@@ -8,6 +8,14 @@ import { OutputWriter } from '../util/print.js';
 import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
 import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
+
+// D-EVAL FLIP: the spine is the sole TOP-LEVEL render path but does not fold these
+// non-eligible root shapes. They render through the RETAINED eval + serialize path —
+// reached by supplying a no-op `preSerializeRoot` visitor (the retained post-eval
+// render entry) — byte-identical to the pre-flip top-level render (via eval).
+const renderRoot = (root: ReturnType<typeof rules>, ctx: Context): Promise<string> =>
+  Promise.resolve(renderNodeToString(root, ctx, { context: ctx, preSerializeRoot: r => r }));
+
 import {
   attachMixinOutputSlot,
   canEnterMixinOutputForLookup,
@@ -879,7 +887,7 @@ describe('Mixin', () => {
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
       context.root = root;
 
-      const css = await renderNodeToString(root, context);
+      const css = await renderRoot(root, context);
 
       expect(css).toContain('.table-hover');
       expect(css).toContain('&:hover');
@@ -1140,7 +1148,7 @@ describe('Mixin', () => {
       const mainRoot = rules([importedRoot, component]);
       context.root = mainRoot;
 
-      const css = await renderNodeToString(mainRoot, context);
+      const css = await renderRoot(mainRoot, context);
 
       expect(css).toBeString(`
         .component {
@@ -1854,8 +1862,7 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        const css = await evald.render(context);
+        const css = await renderRoot(root, context);
 
         expect(css).toContain('margin: red 10px;');
         expect(scalarCopies).toBe(0);
@@ -2153,8 +2160,7 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        const css = await evald.render(context);
+        const css = await renderRoot(root, context);
 
         expect(css).toContain('margin: red 10px;');
         expect(scalarClones).toBe(0);
@@ -2212,8 +2218,7 @@ describe('Mixin', () => {
         const root = rules([mixinDef, testRuleset]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        const css = await evald.render(context);
+        const css = await renderRoot(root, context);
 
         expect(css).toBeString(`
           .test {
@@ -5168,7 +5173,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const css = await renderNodeToString(root, context);
+      const css = await renderRoot(root, context);
       expect(css).toBeString(`
         .a {
           color: orange;
@@ -5911,8 +5916,7 @@ describe('Mixin', () => {
         })
       ]);
       context.root = root;
-      const evald = await root.eval(context);
-      const css = await evald.render(context);
+      const css = await renderRoot(root, context);
 
       expect(css).toBeString(`
         .a {
@@ -7092,7 +7096,7 @@ describe('Mixin', () => {
         })
       ]);
       context.opts.output = { ...context.opts.output, collapseNesting: true };
-      const css = await renderNodeToString(node, context, { context });
+      const css = await renderRoot(node, context);
       expect(css).toBeString(`
         .do .re .mi .fa .sol .la .si {
           color: cyan;
@@ -7840,7 +7844,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const css = await renderNodeToString(node, context, { collapseNesting: true });
+      const css = await renderNodeToString(node, context, { context, collapseNesting: true, preSerializeRoot: r => r });
       expect(css).toContain('.one {\n  value: foo;\n}');
       expect(css).toContain('.two {\n  value: bar;\n}');
       expect(css).not.toContain('.inner-foo()');

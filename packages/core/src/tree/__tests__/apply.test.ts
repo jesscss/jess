@@ -2,6 +2,14 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { rules, ruleset, decl, mixin, apply, sel, el, spaced, resolveRulesetBySelector } from '../index.js';
 import { Context } from '../../context.js';
 import { renderNodeToString } from '../util/render-buffer.js';
+
+// D-EVAL FLIP: the spine is the sole TOP-LEVEL render path but does not fold these
+// non-eligible root shapes. They render through the RETAINED eval + serialize path —
+// reached by supplying a no-op `preSerializeRoot` visitor (the retained post-eval
+// render entry) — byte-identical to the pre-flip top-level render (via eval).
+const renderRoot = (root: ReturnType<typeof rules>, ctx: Context): Promise<string> =>
+  Promise.resolve(renderNodeToString(root, ctx, { context: ctx, preSerializeRoot: r => r }));
+
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 
@@ -24,7 +32,7 @@ describe('Apply ($apply)', () => {
       ruleset({ selector: sel([el('.card')]), rules: [apply([el('.foo')])] })
     ]);
 
-    const css = await renderNodeToString(node, context);
+    const css = await renderRoot(node, context);
 
     expect(css).toContain('.card {');
     expect(css).toContain('color: red');
@@ -37,7 +45,7 @@ describe('Apply ($apply)', () => {
       ruleset({ selector: sel([el('.card')]), rules: [apply([el('.foo')])] })
     ]);
 
-    const css = await renderNodeToString(node, context);
+    const css = await renderRoot(node, context);
 
     // The .card block carries both applied declarations.
     const cardBlock = css.slice(css.indexOf('.card {'));
@@ -51,7 +59,7 @@ describe('Apply ($apply)', () => {
       ruleset({ selector: sel([el('.card')]), rules: [apply([el('.foo')])] })
     ]);
 
-    const css = await renderNodeToString(node, context);
+    const css = await renderRoot(node, context);
 
     // The mixin body must not leak into .card.
     expect(css).not.toContain('green');
@@ -64,7 +72,7 @@ describe('Apply ($apply)', () => {
       ruleset({ selector: sel([el('.card')]), rules: [apply([el('.foo')])] })
     ]);
 
-    const css = await renderNodeToString(node, context);
+    const css = await renderRoot(node, context);
 
     const cardBlock = css.slice(css.indexOf('.card {'));
     expect(cardBlock).toContain('red');
@@ -78,7 +86,7 @@ describe('Apply ($apply)', () => {
       ruleset({ selector: sel([el('.card')]), rules: [apply([el('.a'), el('.b')])] })
     ]);
 
-    const css = await renderNodeToString(node, context);
+    const css = await renderRoot(node, context);
 
     const cardBlock = css.slice(css.indexOf('.card {'));
     expect(cardBlock).toContain('color: red');

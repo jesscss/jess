@@ -41,6 +41,13 @@ import {
 } from '../index.js';
 import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer.js';
 
+// D-EVAL FLIP: the spine is the sole TOP-LEVEL render path but does not fold these
+// non-eligible root shapes. They render through the RETAINED eval + serialize path —
+// reached by supplying a no-op `preSerializeRoot` visitor (the retained post-eval
+// render entry) — byte-identical to the pre-flip top-level render (via eval).
+const renderRoot = (root: ReturnType<typeof rules>, ctx: Context): Promise<string> =>
+  Promise.resolve(renderNodeToString(root, ctx, { context: ctx, preSerializeRoot: r => r }));
+
 // false so we expect nested output where source .less is nested (Less test-data style)
 const collapseNesting = false;
 const require = createRequire(import.meta.url);
@@ -173,7 +180,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
       })
     ]);
     const context = new Context({ output: { collapseNesting } });
-    const css = await renderNodeToString(root, context, { context });
+    const css = await renderRoot(root, context);
     const expected = `:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
 .rep_ace {
   prop: copy-paste-replace;
@@ -275,7 +282,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
       })
     ]);
     const context = new Context({ output: { collapseNesting } });
-    const css = await renderNodeToString(root, context, { context });
+    const css = await renderRoot(root, context);
     expect(css.trim()).toBeString(`
 :is(.replace, .rep_ace):is(.replace, .rep_ace),
 .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
@@ -949,7 +956,7 @@ div:is(.ext5, .ext7),
     const parser = new Parser();
     const { tree } = parser.parse(source);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
+    const css = await renderNodeToString(tree as unknown as RenderBufferNode, context, { context, preSerializeRoot: r => r });
     expect(css.trim()).toBeString(`
 .e.e,
 .dbl {
