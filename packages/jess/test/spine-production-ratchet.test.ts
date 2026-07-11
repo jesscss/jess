@@ -2823,4 +2823,39 @@ describe('spine PRODUCTION-path ratchet (P2 wire-in)', () => {
       Rules.prototype.derive = originalDerive;
     }
   });
+
+  it('WHOLE-FIXTURE lock: `css-escapes.less` FOLDS byte-identically (derive=0)', async () => {
+    // The `css-escapes` corpus fixture's last residual was a document-ROOT-direct bare
+    // statement-position function call (`e('/* anything to unquote */');`). It folded
+    // nested in a container but a root-direct statement call renders through the root
+    // emitter (`_emitRulesBody`), which used to emit the call's resolved text PLUS the
+    // source `requiredSemi` `;` — so the whole tree was routed to eval. The root emitter
+    // grew the same resolve-inline-and-drop-`;` branch (`resolveSpineStatementCallText`,
+    // void → suppressed) the container leaf tail uses, so the fixture — including the
+    // escaped-selector nested mixin call `.mixin\\!tUp()` inside `.\\34 04 strong` — now
+    // renders through the single spine pass. A regression re-arming an eval fallback for a
+    // root-direct statement call trips this RED; byte-identity is also asserted by all-less.
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin({})] }
+    });
+    const lessPath = path.join(testDataRoot, 'tests-unit/css-escapes/css-escapes.less');
+    const cssPath = lessPath.replace(/\.less$/, '.css');
+    const expected = readFileSync(cssPath, 'utf8');
+    const originalDerive = Rules.prototype.derive;
+    let deriveCalls = 0;
+    Rules.prototype.derive = function patched(this: Rules, ...args: Parameters<Rules['derive']>) {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    } as Rules['derive'];
+    try {
+      const before = spineRenderCounter.rootRenders;
+      const result = await compiler.renderToResult(lessPath, { outputFile: cssPath });
+      expect(spineRenderCounter.rootRenders).toBeGreaterThan(before); // spine path
+      expect(deriveCalls).toBe(0); // whole fixture folds — no eval two-walk
+      expect(result.css).toBe(expected);
+    } finally {
+      Rules.prototype.derive = originalDerive;
+    }
+  });
 });

@@ -34,7 +34,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, isSpineFoldableCssImportStatement, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall, resolveSpineMixinCall } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, isSpineFoldableCssImportStatement, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall, resolveSpineMixinCall, isSpineFoldableStatementCall } from './util/emit-walk.js';
 import type { SpineMixinCallResolution } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
@@ -48,7 +48,9 @@ import {
   serializeRulesContainerInline,
   hasPrintableTriviaAt,
   withSpineMergePlan,
-  resolveSpineLeafText
+  resolveSpineLeafText,
+  resolveSpineStatementCallNode,
+  serializeSpineStatementCallNode
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
@@ -4893,6 +4895,35 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         markEmitted(n);
         return;
+      }
+      // ROOT-DIRECT statement-position FUNCTION call (`e('…');`) fold. Mirrors the
+      // CONTAINER path's `finishLeaf` (serialize-helper): evaluate + serialize the
+      // resolved value inline, DROP the source `requiredSemi` `;` (eval emits the
+      // value/void with no trailing `;`), suppress a void result. The resolved node is
+      // first run through `checkValidNodes` at ROOT (`F_ALLOW_ROOT`) so a value-returning
+      // call that resolves to a non-statement node (`rgba(0,0,0,0);` → a `Color`) throws
+      // `eval/invalid-statement` exactly as the eval terminal did — a legal statement
+      // node (`e('…')` → an `Anonymous`) passes. Byte-identical to the eval terminal that
+      // previously handled this at root, so the root gate no longer forces it to eval.
+      if (mode === 'render' && context && options.spineMode && isSpineFoldableStatementCall(n)) {
+        const resolvedNode = resolveSpineStatementCallNode(n, options);
+        const finishStatementCall = (resolved: Node | Nil | undefined): void => {
+          restorePrintState(options, leafSaved);
+          if (this === context.root && resolved && !(resolved instanceof Nil)) {
+            checkValidNodes([resolved], context, true, false);
+          }
+          const trimmed = serializeSpineStatementCallNode(resolved, options).trim();
+          if (!trimmed) {
+            w.restore(leafMark);
+            return;
+          }
+          w.add(trimmed, n);
+          w.add('\n');
+          markEmitted(n);
+        };
+        return isThenable(resolvedNode)
+          ? resolvedNode.then(finishStatementCall)
+          : finishStatementCall(resolvedNode);
       }
       // A document-ROOT-level mixin CALL: mark the drive so the callable terminal
       // rejects a body that drops a bare property at the root (eval-path parity with

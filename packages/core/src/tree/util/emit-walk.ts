@@ -1582,21 +1582,12 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
       return false;
     }
   }
-  // BARE STATEMENT-POSITION FUNCTION CALL — CONTAINER-nested only. A statement call
-  // (`if((false), {g: 7});`, `e('…');`) folds when nested inside a ruleset/at-rule
-  // (its body flows through `serializeRulesContainerInternal`, where the leaf tail
-  // emits its resolved value / void with the source `;` dropped — byte-identical to
-  // eval). A ROOT-DIRECT statement call renders through `Rules._emitRulesBody`, a
-  // distinct root emitter that emits the call's resolved text followed by the source
-  // `requiredSemi` `;` — so `e('/* c */');` at document root would gain a stray `;`.
-  // Keep a root-direct statement call on eval (byte-identical) until the root emitter
-  // drops the `;` for a resolved statement call. Rare (a bare function call at document
-  // root); the target `functions` fixture nests its `if(...)` void call in `#if`.
-  for (let i = 0; i < root.rules.length; i++) {
-    if (isSpineFoldableStatementCall(root.rules[i]!)) {
-      return false;
-    }
-  }
+  // BARE STATEMENT-POSITION FUNCTION call (`e('…');`, `if((false), {g: 7});`) now FOLDS
+  // at document root too (cutover — css-escapes trailing `e('…')`). It folds nested in a
+  // container via `serializeRulesContainerInternal`'s leaf tail; the ROOT emitter
+  // (`Rules._emitRulesBody`) grew the SAME resolve-and-drop-`;` branch
+  // (`resolveSpineStatementCallNode` + `checkValidNodes` `F_ALLOW_ROOT`, void →
+  // suppressed), so a root-direct statement call no longer forces the eval path.
   // M8 (FOLDED): a mixin CALL whose target is an INTERPOLATED-SELECTOR ruleset
   // (`.@{name} {}` used as `.foo()`). The interpolated name used to be registered
   // into the callable cache ONLY by the eval pass (`Ruleset.prepareRegistration` →

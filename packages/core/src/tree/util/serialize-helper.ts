@@ -195,20 +195,36 @@ function evalIsolatingSpinePrintState<T>(
  * (which resets `context.printState` in place) cannot swap the live spine writer.
  */
 export function resolveSpineStatementCallText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
+  const resolved = resolveSpineStatementCallNode(node, options);
+  return isThenable(resolved)
+    ? resolved.then(r => serializeSpineStatementCallNode(r, options))
+    : serializeSpineStatementCallNode(resolved, options);
+}
+
+/**
+ * The resolved NODE for a bare statement-position built-in FUNCTION call (before
+ * serialization) — used by the ROOT emitter, which must run the eval-path
+ * `checkValidNodes` `F_ALLOW_ROOT` validation on the resolved node (`rgba(0,0,0,0);`
+ * resolves to a `Color`, an invalid root statement Less rejects — `eval/invalid-
+ * statement`) BEFORE emitting. A nested (container) statement call needs no such
+ * check (it is not at root), so it serializes directly via `resolveSpineStatementCallText`.
+ */
+export function resolveSpineStatementCallNode(node: Node, options: FinalPrintOptions): MaybePromise<Node | Nil | undefined> {
   const context = options.context;
   if (!context) {
+    return undefined;
+  }
+  return evalIsolatingSpinePrintState(context, () => node.eval(context));
+}
+
+/** Serialize a resolved statement-call node (void → ''). */
+export function serializeSpineStatementCallNode(resolved: Node | Nil | undefined, options: FinalPrintOptions): string {
+  if (!resolved || resolved instanceof Nil) {
     return '';
   }
-  const serialize = (resolved: Node | Nil | undefined): string => {
-    if (!resolved || resolved instanceof Nil) {
-      return '';
-    }
-    const writer = new OutputWriter();
-    resolved.toString(getPrintOptions({ ...options, writer }));
-    return writer.toString();
-  };
-  const evaluated = evalIsolatingSpinePrintState(context, () => node.eval(context));
-  return isThenable(evaluated) ? evaluated.then(serialize) : serialize(evaluated);
+  const writer = new OutputWriter();
+  resolved.toString(getPrintOptions({ ...options, writer }));
+  return writer.toString();
 }
 
 export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): MaybePromise<string> {
