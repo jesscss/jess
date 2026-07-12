@@ -21,7 +21,7 @@
 import {
   rules, compose,
   node, regex, literal, sequence, choice, optional, noTrivia, trivia,
-  many, oneOrMore, expect, label, not
+  many, oneOrMore, expect, label, not, withCtx
 } from 'parseman' with { type: 'macro' };
 import { cssGrammar } from '@jesscss/css-parser/grammar';
 
@@ -79,7 +79,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const selTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
   const InterpolatedSelector = node(
     noTrivia(sequence(optional(regex(/[.#]/)), many(selTextRun), dollarInterpTok, many(choice(dollarInterpTok, selTextRun)))));
-  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
+  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, { gate: (s: any) => !!(s && s.inner), combinator: literal('&') }, g.InterpolatedSelector, basicSel);
 
   // ── Variable declarations ───────────────────────────────────────────────────
   // `$name: value;` — the variable's name is `name` (no `$`). Assignment ops:
@@ -482,12 +482,12 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const Ruleset = node(
     sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}')));
 
-  const declarationList = many(choice(
+  const declarationList = withCtx({ inner: true }, many(choice(
     g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
     g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.MixinCall, g.Mixin,
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
     g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
-  ));
+  )));
 
   return {
     rw,
