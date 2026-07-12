@@ -167,7 +167,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/selectors/selectors.less', 'renders but throws mid-eval (currentArg.eval is not a function)'],
   ['tests-unit/detached-rulesets/detached-rulesets.less', 'renders but a detached-ruleset mixin call is not found (.wrap-mixin)'],
   ['tests-unit/functions-each/functions-each.less', 'renders but each() output differs from Less'],
-  ['tests-unit/mixins/mixins.less', 'renders but a mixin call is not found (.bar) — resolution gap'],
+  ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
   ['tests-unit/extend-exact/extend-exact.less', 'renders but exact-match :extend output differs from Less'],
   ['tests-unit/mixins-important/mixins-important.less', 'renders but mixin !important propagation differs from Less'],
   ['tests-unit/property-name-interp/property-name-interp.less', 'renders but interpolated property-name output differs from Less'],

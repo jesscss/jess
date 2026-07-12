@@ -2111,6 +2111,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const sourceSelector = isSelectorLikeNode(selector.sourceNode)
         ? selector.sourceNode
         : undefined;
+      // A bare array selector IS a comma-separated selector list (the lean
+      // strings-not-nodes surface for `.bo, .bar { ... }`). Each member is an
+      // independent selector, so register every member as its own callable —
+      // otherwise a flat `getOrderedSelectorKeys` would fold the whole group
+      // into one ordered namespace path (`.bo` → `.bar`), leaving later members
+      // (`.bar()`) unresolvable while the first (`.bo()`) still matched.
+      if (Array.isArray(selector)) {
+        for (const item of selector) {
+          this.addCallableSelectors(node, getOrderedSelectorKeys(item), index);
+        }
+        continue;
+      }
       let keys = getOrderedSelectorKeys(selector);
       if (keys.length === 0 && sourceSelector) {
         const sourceKeys = getOrderedSelectorKeys(sourceSelector);
