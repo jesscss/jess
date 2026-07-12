@@ -55,6 +55,10 @@ const testData = resolveLessTestDataRoot();
 const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
   compile: {
+    // Upstream Less @plugin fixtures reference shared scripts under
+    // test-data/plugin/*.js from fixtures in sibling directories; widen the
+    // (trusted) harness jsReadRoot to the test-data root so plugin-js can read them.
+    jsReadRoot: testData,
     plugins: [
       lessPlugin(),
       lessCompatPlugin({
@@ -135,7 +139,7 @@ const expectedFailureFixtures = new Map<string, string>([
   // (import-reference-issues threw "File not found" on the 2nd pass). Both now
   // match the Less golden .css under the harness config.
   ['tests-unit/import/import-reference.less', 'reference import filtering leaves extra at-rules'],
-  ['tests-unit/import/import.less', 'Less @plugin script execution is not available in this harness'],
+  ['tests-unit/import/import.less', '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; renders but still diverges from Less on @import media-query handling and @media query merging (non-plugin render gaps)'],
   ['tests-unit/operations/operations-advanced.less', 'advanced math/color operation behavior differs from Less'],
   ['tests-unit/property-accessors/property-accessors.less', 'property accessor precedence differs from Less'],
   ['tests-unit/scope/scope.less', 'parent selector scope output differs from Less'],
@@ -170,7 +174,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/strings/strings.less', 'renders but string/escaping output differs from Less'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
   ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'renders but variables-in-at-rules output differs from Less'],
-  ['tests-unit/plugin/plugin.less', 'renders but Jess nests @media (no query merging); expected CSS merges queries'],
+  ['tests-unit/plugin/plugin.less', '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; renders but Jess nests @media (no query merging) where the expected CSS merges queries (non-plugin render gap)'],
   ['tests-unit/parse-interpolation/parse-interpolation.less', 'renders but interpolation formatting differs from Less'],
   ['tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', 'slashed combinator not yet supported'],
   ['tests-unit/permissive-parse/permissive-parse.less', 'renders but permissive-parse output differs (Unexpected token)'],

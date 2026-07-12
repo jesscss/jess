@@ -173,18 +173,21 @@ describe('Config Merging', () => {
     expect(context.plugins.some(plugin => plugin.name === 'js')).toBe(true);
   });
 
-  it('does not enable script imports without configured plugin-js', async () => {
+  it('auto-wires the optional plugin-js for script imports without listing it in plugins', async () => {
+    // @jesscss/plugin-js is an OPTIONAL dependency: when it is resolvable, script
+    // (JS/TS) imports auto-wire without configuring it in `plugins`. The auto-wire
+    // hook resolves the plugin proxy for JS extensions; when plugin-js is absent
+    // the hook returns undefined and core emits the "Install @jesscss/plugin-js" gate.
     const testFile = path.join(tempDir, 'test.less');
     fs.writeFileSync(testFile, '.a { color: red; }');
-    const scriptFile = path.join(tempDir, 'tokens.js');
-    fs.writeFileSync(scriptFile, 'export const color = "red";');
 
     const compiler = new Compiler();
     const context = compiler.createContext(testFile);
 
-    await expect(context.getModule(scriptFile)).rejects.toThrow(
-      'Feature not supported. Install @jesscss/plugin-js to enable script execution features.'
-    );
+    const jsPlugin = await context.opts.loadPluginForExtension?.('.js');
+    expect(jsPlugin).toBeDefined();
+    expect(jsPlugin?.supportedExtensions).toContain('.js');
+    expect(typeof jsPlugin?.import).toBe('function');
   });
 
   it('normalizes deprecated disablePluginRule to disableScriptModules', () => {
