@@ -12,7 +12,9 @@ while replacing the aging internals with a cleaner architecture built for speed,
 correctness, and extensibility. This monorepo is the home of both the engine and
 the `jess` / `lessc` command-line tools.
 
-## What Jess is becoming
+## What Jess unifies
+
+The vision — and where it stands.
 
 For a decade, styling a serious app meant stitching together a handful of tools:
 a preprocessor (Less or Sass), something for scoping (CSS Modules), something for
