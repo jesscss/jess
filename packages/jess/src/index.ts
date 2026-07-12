@@ -915,6 +915,14 @@ export class Compiler {
       ...resolved.activeOptions,
       ...(searchPaths ? { searchPaths } : {})
     };
+    // `breakOnError` is a top-level render option (consumed by outputDiagnostics for
+    // display), but eval-time collection-vs-throw also reads it off `context.opts`
+    // (Context.getTree / the spine import fold). Thread it through so a render called
+    // with `breakOnError: false` actually COLLECTS parse/resolution failures instead
+    // of hard-throwing out of the whole render.
+    if (resolved.effectiveConfig.breakOnError !== undefined) {
+      contextOptions.breakOnError = resolved.effectiveConfig.breakOnError;
+    }
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
     contextOptions.disableScriptModules = Boolean(
       contextOptions.disableScriptModules

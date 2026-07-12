@@ -4555,6 +4555,30 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     emitNode: (n: Node) => MaybePromise<void>
   ): MaybePromise<void> {
     const w = options.writer!;
+    // ISOLATE per-import context, mirroring `wireSpineImportsInBody`'s discipline:
+    // emitting an import (fold descent OR the `evalFallback` → `evalNode`/`finalize`
+    // path) transiently switches `context.treeContext`/`depth` while descending a
+    // nested imported file (e.g. `_mixins` importing `vendor/_rfs`). Without a
+    // snapshot+restore around EACH import emit, a deeply-nested import leaves its
+    // file's `treeContext` in place, so the NEXT sibling import at this level
+    // resolves its RELATIVE path against the wrong directory (bootstrap's
+    // `@import "_reboot"` after `_mixins` pulled in `vendor/_rfs` → resolved from
+    // `less/vendor` → File not found). Restore on every exit path (sync + async).
+    const savedTreeContext = context.treeContext;
+    const savedDepth = context.depth;
+    const restoreImportContext = <T>(value: T): T => {
+      context.treeContext = savedTreeContext;
+      context.depth = savedDepth;
+      return value;
+    };
+    const restoreThenRethrow = (error: unknown): never => {
+      restoreImportContext(undefined);
+      throw error;
+    };
+    const withRestore = (step: MaybePromise<void>): MaybePromise<void> =>
+      isThenable(step)
+        ? step.then(restoreImportContext, restoreThenRethrow)
+        : restoreImportContext(step);
     const foldBody = (body: Rules, multiple: boolean, reference: boolean): MaybePromise<void> => {
       assignSpineChildIndices(body);
       const savedRulesContext = context.rulesContext;
@@ -4622,7 +4646,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (cached.dedupe) {
         return undefined;
       }
-      return isSpineFoldableImportBody(cached.body, options.spineExtendHeaders !== undefined) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback();
+      return withRestore(isSpineFoldableImportBody(cached.body, options.spineExtendHeaders !== undefined) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback());
     }
     const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
       if (resolved.kind === 'css') {
@@ -4637,7 +4661,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return isSpineFoldableImportBody(resolved.body, options.spineExtendHeaders !== undefined) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
     };
     const resolution = importNode.resolveForSpine(context);
-    return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);
+    return withRestore(isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution));
   }
 
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
