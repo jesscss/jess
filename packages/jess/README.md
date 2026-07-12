@@ -7,12 +7,13 @@
 **Less.js v5 — the Less CSS preprocessor, rebuilt from the ground up.**
 
 The `jess` package is the main entry point: the `jess` and `lessc` command-line
-tools plus a `Compiler` API that renders Less to CSS. Jess is the next major
-version of Less, re-implemented on a new, modern compiler engine.
+tools that render Less to CSS. Jess is the next major version of Less,
+re-implemented on a new, modern compiler engine.
 
 > **Alpha software.** `2.0.0-alpha.7` is published and renders real Less, but it
 > is early and has known rendering gaps and expected failures. Don't ship it to
 > production yet, and please [report bugs](https://github.com/jesscss/jess/issues).
+> Docs: [jesscss.github.io](https://jesscss.github.io/) (currently pre-alpha content).
 
 ## Install
 
@@ -43,28 +44,11 @@ flattening it as Less 4.x did. Opt into 4.x-style flattening with
 `--collapse-nesting`. The `lessc` binary is a drop-in for the Less 4.x command
 surface (flags, stdin/stdout, exit codes) with v5 output semantics.
 
-## API
+## Programmatic API
 
-```js
-import { Compiler } from 'jess'
-
-const compiler = new Compiler()
-
-// Render a file to a CSS string
-const css = await compiler.render('./styles/input.less')
-
-// Render a source string directly
-const out = await compiler.renderString('.a { .b { color: red } }', {
-  language: 'less'
-})
-
-// Render with structured diagnostics
-const { css: result, errors, warnings, loadedUrls } =
-  await compiler.renderToResult('./styles/input.less')
-```
-
-`render` and `renderString` return the compiled CSS; `renderToResult` returns the
-CSS alongside the collected `errors`, `warnings`, and `loadedUrls`.
+The CLI is the stable public surface for the alpha. The JavaScript/TypeScript API
+is **not yet stabilized** and is intentionally undocumented for now — use the CLI,
+and watch the [docs site](https://jesscss.github.io/) for the API once it settles.
 
 ## What works today
 

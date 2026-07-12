@@ -48,7 +48,8 @@ before Jess exits alpha.
 > real, it renders real Less, and it is being dogfooded against the Less test
 > suite and Bootstrap — but it is early software with known rendering gaps and
 > expected failures. Don't ship it to production yet, and please
-> [report bugs](https://github.com/jesscss/jess/issues).
+> [report bugs](https://github.com/jesscss/jess/issues). Docs live at
+> [jesscss.github.io](https://jesscss.github.io/) (currently pre-alpha content).
 
 ## Status
 
@@ -191,28 +192,12 @@ lessc input.less output.css
 lessc --collapse-nesting input.less   # 4.x-style flattened output
 ```
 
-### API
+### Programmatic API
 
-```js
-import { Compiler } from 'jess'
-
-const compiler = new Compiler()
-
-// Render a file to a CSS string
-const css = await compiler.render('./styles/input.less')
-
-// Render a source string directly
-const out = await compiler.renderString('.a { .b { color: red } }', {
-  language: 'less'
-})
-
-// Render with structured diagnostics
-const { css: result, errors, warnings, loadedUrls } =
-  await compiler.renderToResult('./styles/input.less')
-```
-
-`render` and `renderString` return the compiled CSS; `renderToResult` returns the
-CSS alongside the collected `errors`, `warnings`, and `loadedUrls`.
+The CLI is the stable public surface for the alpha. The JavaScript/TypeScript
+API is **not yet stabilized** and is intentionally undocumented for now — use the
+CLI, and watch the [docs site](https://jesscss.github.io/) for the API once it
+settles.
 
 ## Contributing
 
@@ -233,6 +218,8 @@ pnpm test
 
 ## Docs & license
 
-- Documentation lives in [`packages/docs`](./packages/docs) (and per-package
+- Documentation site: <https://jesscss.github.io/> (content is currently
+  pre-alpha and being updated).
+- Docs also live in [`packages/docs`](./packages/docs) (and per-package
   `README.md` files).
 - Licensed under [MIT](./LICENSE).
