@@ -29,11 +29,14 @@ That convergence is the vision. Here is where it honestly stands.
 - **Less.js.** Jess literally *is* Less v5. `.less` renders now. This is the
   first milestone, and it's being locked in first.
 
-**The language roadmap — an ordered progression:**
+**The roadmap — an ordered progression:**
 
-- **Now:** Less.js — the current alpha, stabilizing first.
-- **Next:** the **"Sass+"** dialect — the Sass successor.
-- **Final:** the native **`.jess`** syntax.
+1. **Now:** Less.js — the current alpha, stabilizing first.
+2. **Next:** the **"Sass+"** dialect — the Sass successor.
+3. **Final language milestone:** the native **`.jess`** syntax.
+4. **Then — a minimal browser build:** statically trace which variables a
+   stylesheet actually references and exports, and emit only the minimum set of
+   CSS custom properties (inlining the rest).
 
 **The convergence — capabilities being proven along the way (not yet shipped):**
 
@@ -41,12 +44,14 @@ Beyond preprocessing, the same engine is where scoping, programmability, and
 extensibility come together — the reason Jess aims to be *one* tool instead of
 four:
 
-- **CSS Modules** ← a real **module system** (`@use` / `@compose` / exports, the
-  `style-resolver`) for scoped, composable styles.
+- **CSS Modules** ← where CSS Modules scopes *class names*, Jess scopes **and
+  tree-shakes variables** — minimum variable exposure via the minimal browser
+  build (the post-`.jess` milestone above).
 - **CSS-in-JS** ← **JavaScript execution** in stylesheets (`@use` / `@plugin`,
   `plugin-node-modules`) — the dynamism, without leaving your CSS files.
-- **PostCSS** ← an open **plugin architecture** over a real AST (the parseman
-  parser toolkit) for transforms and tooling.
+- **PostCSS** ← a PostCSS-*like* extensibility layer: open, AST-level transforms
+  over a real parser (parseman). It plays that role rather than replacing PostCSS
+  or claiming compatibility.
 
 Everything past Less.js is being **proven through the alpha, not claimed as
 done**. The capabilities that seed it exist; the full story is what we intend to
@@ -164,10 +169,15 @@ The language ships as an ordered progression — these are intended directions,
 2. **Next — the "Sass+" dialect.** The Sass successor: a dialect that fixes and
    extends Sass-style ergonomics. An SCSS parser and plugin exist as the
    experimental base, but Sass+ is not shipped.
-3. **Final — native `.jess` syntax.** A first-class Jess language (JS/TS interop,
-   advanced mixins, module-style imports). The `.jess` parser is deliberately
-   unfinished while Less (and then Sass+) stabilize, so `.jess` is not ready for
-   use.
+3. **Final language milestone — native `.jess` syntax.** A first-class Jess
+   language (JS/TS interop, advanced mixins, module-style imports). The `.jess`
+   parser is deliberately unfinished while Less (and then Sass+) stabilize, so
+   `.jess` is not ready for use.
+4. **After the language — a minimal browser build.** The scoping story, proven
+   post-syntax: statically trace which variables are referenced in values and
+   which are exported, and emit only the minimum set of CSS custom properties
+   needed (inlining the rest). Where CSS Modules scopes class names, this scopes
+   and tree-shakes *variables*.
 
 Anything you see elsewhere describing `$`-prefixed Jess syntax, JS/TS `import`
 into stylesheets, or Sass migration is roadmap material — treat it as a preview,
