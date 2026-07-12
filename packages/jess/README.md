@@ -1,92 +1,115 @@
 <div align="center">
-  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/master/packages/docs/static/img/android-chrome-192x192.png">
+  <img width="144" height="144" src="https://raw.githubusercontent.com/jesscss/jess/dev/packages/docs/static/img/android-chrome-192x192.png" alt="Jess logo">
 </div>
 
-_Note: This project is in alpha. Expect (and report) bugs!_
-# Jess
-JavaScript Evaluated Style Sheets, from the people who brought you Less.
+# jess
 
-## Why Jess?
+**Less.js v5 — the Less CSS preprocessor, rebuilt from the ground up.**
 
-* Jess does what Sass and Less do, only faster (and does some things they can't).
-* Jess does what CSS-in-JS does, only it keeps your CSS in stylesheets.
-* Jess does what CSS Modules does, but more dynamically.
-* Jess does whatever JavaScript can do, because it transpiles to JavaScript under-the-hood.
+The `jess` package is the main entry point: the `jess` and `lessc` command-line
+tools plus a `Compiler` API that renders Less to CSS. Jess is the next major
+version of Less, re-implemented on a new, modern compiler engine.
 
-You can think of Jess as a middle-ground between Less/Sass and CSS-in-JS. It keeps your styles in stylesheets, but it's equally dynamic. Jess is CSS-in-JS for people who don't like CSS in their JS.
+> **Alpha software.** `2.0.0-alpha.7` is published and renders real Less, but it
+> is early and has known rendering gaps and expected failures. Don't ship it to
+> production yet, and please [report bugs](https://github.com/jesscss/jess/issues).
 
-For more information, see [the docs](https://jesscss.github.io/docs/).
+## Install
 
-### P.S. Why is the logo inspired by a hawk?
-
-_A "jess" is defined as "a short leather strap that is fastened around each leg of a hawk..."_.
-
-## Usage
-```
-yarn install jess
+```sh
 npm install jess
 ```
-To compile a `.jess` file into CSS:
-```
-jess file.jess
+
+The `latest` and `alpha` dist-tags both point at the current alpha. Requires
+Node 16+.
+
+## CLI
+
+```sh
+# Compile a Less file to CSS (writes input.css next to it)
+jess input.less
+
+# Choose the output file, or an output directory
+jess input.less output.css
+jess input.less -o dist
+
+# lessc drop-in (Less 4.x command surface, Less v5 output semantics)
+lessc input.less output.css
+lessc --collapse-nesting input.less   # 4.x-style flattened output
 ```
 
-## Features
+Jess targets Less **v5**, whose default output **preserves nesting** rather than
+flattening it as Less 4.x did. Opt into 4.x-style flattening with
+`--collapse-nesting`. The `lessc` binary is a drop-in for the Less 4.x command
+surface (flags, stdin/stdout, exit codes) with v5 output semantics.
 
-### Variables
+## API
+
+```js
+import { Compiler } from 'jess'
+
+const compiler = new Compiler()
+
+// Render a file to a CSS string
+const css = await compiler.render('./styles/input.less')
+
+// Render a source string directly
+const out = await compiler.renderString('.a { .b { color: red } }', {
+  language: 'less'
+})
+
+// Render with structured diagnostics
+const { css: result, errors, warnings, loadedUrls } =
+  await compiler.renderToResult('./styles/input.less')
+```
+
+`render` and `renderString` return the compiled CSS; `renderToResult` returns the
+CSS alongside the collected `errors`, `warnings`, and `loadedUrls`.
+
+## What works today
+
+The working language surface is **Less (v5)** — if you write Less, you write Jess:
+
 ```less
-@let myWidth: 3px;
+@width: 10px;
+@height: @width + 10px;
 
-.box {
-  width: $myWidth;
+.card {
+  width: @width;
+  height: @height;
+  color: cornflowerblue;
 }
-```
-### Import from JS
-```less
-@-use './constants.js' as constants;
 
-.box {
-  width: $(constants.WIDTH + 10)px;
+.rounded(@radius: 4px) {
+  border-radius: @radius;
 }
-```
 
-### Import from Jess
-```less
-@-from './stylesheet.jess' import (myWidth);
-
-.box {
-  width: $myWidth;
+.panel {
+  .rounded(8px);
+  & > .title { font-weight: bold; }
 }
 ```
 
-### Include other stylesheets
-```less
-@import styles from './stylesheet.jess';
-@include styles();
-```
+Variables, mixins (parameters and guards), nesting, `extend`, maps, operations,
+and the Less built-in functions are all part of the alpha surface.
 
-### Mixins
-```less
-@mixin square(size) {
-  width: $size;
-  height: $size;
-}
+## Roadmap (not yet)
 
-.box {
-  @include square(50px);
-}
-```
-
-### Exporting from Jess
-_In progress, requires the (unfinished) Rollup or Webpack plugin._
-```jsx
-import styles, { square } from './component.m.jess'
-
-export const myComponent = props => {
-  return <div className={styles.box} style={square(props.size)}>Component</div>
-}
-```
-
+- **Native `.jess` syntax** and a **"Sass+" dialect** are planned but not shipped;
+  the `.jess` parser is deliberately unfinished while Less stabilizes.
+- **SCSS/Sass** support is experimental and not a goal of this Less-focused alpha.
+- JS/TS interop, stylesheet exports, and bundler plugins are future work.
 
 ## Contributing
-As this is a WIP, file issues with your ideas/concerns/wants!
+
+Issues and ideas welcome: <https://github.com/jesscss/jess/issues>. See the
+[repo README](https://github.com/jesscss/jess#readme) and
+[contributing guide](https://github.com/jesscss/jess/blob/dev/CONTRIBUTING.md).
+
+## License
+
+[MIT](https://github.com/jesscss/jess/blob/dev/LICENSE)
+
+### P.S. Why the hawk?
+
+_A "jess" is a short leather strap fastened around the leg of a hawk._
