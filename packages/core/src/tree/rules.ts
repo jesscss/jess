@@ -50,7 +50,8 @@ import {
   withSpineMergePlan,
   resolveSpineLeafText,
   resolveSpineStatementCallNode,
-  serializeSpineStatementCallNode
+  serializeSpineStatementCallNode,
+  evalIsolatingSpinePrintState
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
@@ -4664,6 +4665,77 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return withRestore(isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution));
   }
 
+  /**
+   * Fold a `$for`/`each` (`For`) loop reached by the ROOT / import-splice emitter
+   * (`emitNode`) into per-iteration bound-body surfaces — the emitter-side analogue
+   * of the CONTAINER descent's `runSpineForExpansion` (`serialize-helper`). Drive
+   * `For.spineIterationSurfaces` (one surface per iteration, each holding COPIES of
+   * the loop body under a fresh scope frame carrying the iteration's
+   * `@value`/`@key`/counter bindings), then re-`emitNode` each surface's children
+   * with `context.rulesContext` PINNED to that surface's frame so a body reference
+   * OR a nested ruleset's interpolated selector (`.alert-@{color}`) resolves the loop
+   * variable against the live iteration frame — across the async settle of the
+   * surface build (`spineIterationSurfaces` evals the iterable). Pin is re-asserted
+   * synchronously immediately before each child's `emitNode` (which enters the child
+   * container serializer and captures `context.rulesContext` before any await), and
+   * restored on every exit edge (sync + async). The surface build is wrapped in
+   * `evalIsolatingSpinePrintState` so its value evals leave the live emit print-state
+   * byte-identical (mirrors the container fold).
+   */
+  private _emitSpineForFold(
+    forNode: Node,
+    context: Context,
+    emitNode: (n: Node) => MaybePromise<void>
+  ): MaybePromise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to For; only For exposes spineIterationSurfaces.
+    const iterable = forNode as unknown as { spineIterationSurfaces(ctx: Context): Promise<Rules[]> };
+    const surfacesResult = evalIsolatingSpinePrintState(context, () => iterable.spineIterationSurfaces(context));
+    const applySurfaces = (surfaces: Rules[]): MaybePromise<void> => {
+      const emitSurface = (s: number): MaybePromise<void> => {
+        for (let si = s; si < surfaces.length; si++) {
+          const surface = surfaces[si]!;
+          const children = surface.rules;
+          const emitChild = (c: number): MaybePromise<void> => {
+            for (let ci = c; ci < children.length; ci++) {
+              const savedRulesContext = context.rulesContext;
+              context.rulesContext = surface;
+              let step: MaybePromise<void>;
+              try {
+                step = emitNode(children[ci]!);
+              } catch (error) {
+                context.rulesContext = savedRulesContext;
+                throw error;
+              }
+              if (isThenable(step)) {
+                const nextIndex = ci + 1;
+                return step.then(
+                  () => {
+                    context.rulesContext = savedRulesContext;
+                    return emitChild(nextIndex);
+                  },
+                  (error: unknown) => {
+                    context.rulesContext = savedRulesContext;
+                    throw error;
+                  }
+                );
+              }
+              context.rulesContext = savedRulesContext;
+            }
+            return undefined;
+          };
+          const surfaceStep = emitChild(0);
+          if (isThenable(surfaceStep)) {
+            const nextSurface = si + 1;
+            return surfaceStep.then(() => emitSurface(nextSurface));
+          }
+        }
+        return undefined;
+      };
+      return emitSurface(0);
+    };
+    return isThenable(surfacesResult) ? surfacesResult.then(applySurfaces) : applySurfaces(surfacesResult);
+  }
+
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
   private _emitRulesBody(options: FinalPrintOptions, mode: 'render', exclude?: Set<Node>): MaybePromise<void>;
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source' | 'render', exclude?: Set<Node>): MaybePromise<void> {
@@ -4806,6 +4878,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (mode === 'render' && context && options.spineMode && isSpineFoldableCssImportStatement(n)) {
         queueTopImport(context, n as unknown as AtRuleStatement);
         return;
+      }
+      // LOOP fold at the ROOT / IMPORT-SPLICE emitter (cutover LOOP increment 1,
+      // ROOT parity). A `$for`/`each` (`For`) node reaching THIS emitter — a root-
+      // direct loop, or a loop inside an imported body spliced here via
+      // `_emitSpineImportFold` — must expand into its per-iteration bound surfaces
+      // exactly as the CONTAINER descent does (`serializeRulesContainerInternal` →
+      // `runSpineForExpansion`). Without this it falls to the `isChildRules` branch
+      // below, which emits the loop body ONCE, UNBOUND — a nested ruleset's
+      // interpolated selector (`.alert-@{color}`) then resolves the loop variable
+      // against a frame that never bound it (`'color' is not defined`). Route it
+      // through the shared iteration-surface fold: each surface's children re-enter
+      // `emitNode` with `context.rulesContext` pinned to that surface's live frame,
+      // so a body reference / interpolated selector resolves the iteration binding.
+      if (mode === 'render' && context && options.spineMode && n.type === 'For') {
+        return this._emitSpineForFold(n, context, emitNode);
       }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {
