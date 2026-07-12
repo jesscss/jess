@@ -11,17 +11,39 @@
 
 ## 1. The pitch
 
-**Tagline:** _Less.js v5 — the Less CSS preprocessor, rebuilt from the ground up._
+**Tagline:** _Jess is the spiritual successor to Less.js, Sass, CSS Modules,
+CSS-in-JS, and PostCSS — one engine for what used to take four._
 
-**Value proposition (2–3 sentences):**
-Jess is the next major version of Less: the same variables-mixins-nesting
-language millions of stylesheets already use, re-implemented on a brand-new
-compiler engine designed for speed, correctness, and extensibility. Unlike a
-patch on the 15-year-old Less.js codebase, Jess evaluates and emits a stylesheet
-in a single pass over one canonical tree, ships a modular parser/plugin
-architecture, and comes with a `lessc` drop-in CLI. It is in early alpha today,
-focused squarely on Less v5 compatibility — a native `.jess` language and a
-"Sass+" dialect are on the roadmap, not yet in the box.
+**Value proposition (the convergence story — this is the headline):**
+For a decade, styling a serious app meant juggling separate tools:
+preprocessing (Less/Sass), scoping (CSS Modules), programmability (CSS-in-JS),
+and extensibility (PostCSS). Jess converges all of it into a single modern
+engine, built on native CSS (nesting, `@layer`, `@scope`, container queries)
+instead of working around it. That five-way convergence is the vision and the
+ambition — and it is deliberately **tiered so we stay bold without overclaiming.**
+
+**The honest tiering (mandatory — never blur these two tiers):**
+
+- **Tier 1 — Earned NOW (alpha-credible, lead with these):**
+  - **Less.js** — Jess *is* Less v5, literally. `.less` renders today.
+  - **Sass** — carried forward via the Jess **"Sass+"** dialect (the committed
+    successor to SCSS; in active development, not yet shipped — say so).
+- **Tier 2 — The vision / path to 1.0 (roadmap; "being proven through the alpha,"
+  NOT claimed as done):**
+  - **CSS Modules** ← the **module system** (`@use` / `@compose` / exports,
+    `@jesscss/style-resolver`) — scoped, composable styles.
+  - **CSS-in-JS** ← **JS execution** in stylesheets (`@use` / `@plugin`,
+    `@jesscss/plugin-node-modules`) — dynamism without leaving CSS files.
+  - **PostCSS** ← the **plugin architecture** over a real AST (the parseman
+    parser toolkit) — transforms and tooling.
+  - Owner's words: _"we need stronger evidence/story of the latter three before we
+    exit alpha."_ Present them as where Jess is *headed*, each seeded by a real
+    capability, always framed as being proven — never as finished.
+
+Every place the convergence appears (root README, package READMEs, site copy)
+must show both tiers, or show Tier 1 alone. Do **not** list CSS Modules /
+CSS-in-JS / PostCSS as things Jess "does" without the "path to 1.0 / being
+proven" frame. Do **not** include **Stylus**.
 
 **Honest differentiators.** Only claim these — they're real:
 
@@ -91,17 +113,17 @@ these as the opening line of each package README so the fan-out stays consistent
 | --- | --- |
 | `jess` | The Less.js v5 command line and API — the `jess` and `lessc` CLIs plus a `Compiler` that renders `.less` to CSS. |
 | `@jesscss/core` | The Jess compiler engine: the AST, evaluator, and single-pass serializer that turn a parsed stylesheet into CSS. |
-| `@jesscss/css-parser` | A spec-aligned CSS parser — the shared base grammar the Less and SCSS parsers are built on. |
+| `@jesscss/css-parser` | A spec-aligned CSS parser (parseman-based) — the shared base grammar the Less and SCSS parsers extend, and the real-AST foundation behind the **PostCSS-style plugin/tooling** vision. |
 | `@jesscss/less-parser` | The Less grammar, layered on the CSS base parser, producing the Jess AST. |
 | `@jesscss/scss-parser` | An SCSS grammar for Jess (experimental — SCSS is not the focus of the Less alpha). |
 | `@jesscss/fns` | The built-in Less/Sass style-function library — color, math, string, and list helpers, split per-file for tree-shaking. |
-| `@jesscss/style-resolver` | Stylesheet import resolution across css/less/scss/jess: Less include paths, SCSS load paths, and extension/index lookup. |
+| `@jesscss/style-resolver` | Stylesheet import resolution across css/less/scss/jess (include paths, load paths, extension/index) — a seed of the **module system** behind the CSS-Modules-style vision. |
 | `styles-config` | A shared configuration schema and loader for styling tools (Jess, Less, Sass, Tailwind, …). |
 | `@jesscss/awaitable-pipe` | A tiny, strongly-typed pipe that stays synchronous until a step returns a Promise — with one optional error handler. |
-| `@jesscss/plugin-less` | The Less language engine for Jess: the Less parser wired in with Less v5 rendering defaults. |
-| `@jesscss/plugin-scss` | The SCSS language engine for Jess (experimental/roadmap). |
-| `@jesscss/plugin-node-modules` | Import resolver that loads npm packages from `node_modules`. |
-| `@jesscss/plugin-js` | Import bridge for JavaScript/TypeScript modules (with Deno runtime checks). |
+| `@jesscss/plugin-less` | The Less language engine for Jess: the Less parser wired in with Less v5 rendering defaults (**Tier 1** — the shipping preprocessor). |
+| `@jesscss/plugin-scss` | The SCSS language engine for Jess — the base the **Sass+** dialect builds on (experimental/roadmap). |
+| `@jesscss/plugin-node-modules` | Import resolver that loads npm packages from `node_modules` — a seed of the **JS-execution / CSS-in-JS** vision. |
+| `@jesscss/plugin-js` | Import bridge for JavaScript/TypeScript modules (with Deno runtime checks) — a seed of the **JS-execution / CSS-in-JS** vision. |
 | `@jesscss/plugin-less-compat` | A Less.js 4.x compatibility layer that lets existing Less plugins and visitors run against the Jess AST. |
 | `@jesscss/patch-css` | A tiny runtime helper that attaches cached stylesheets from `localStorage` in the document head. |
 

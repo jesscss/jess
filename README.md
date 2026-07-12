@@ -12,6 +12,38 @@ while replacing the aging internals with a cleaner architecture built for speed,
 correctness, and extensibility. This monorepo is the home of both the engine and
 the `jess` / `lessc` command-line tools.
 
+## What Jess is becoming
+
+For a decade, styling a serious app meant stitching together a handful of tools:
+a preprocessor (Less or Sass), something for scoping (CSS Modules), something for
+programmability (CSS-in-JS), and a plugin ecosystem for everything else
+(PostCSS). Jess is the **spiritual successor to all four** — one engine that
+converges **preprocessing + scoping + programmability + extensibility**, built on
+modern native CSS (nesting, `@layer`, `@scope`, container queries) instead of
+fighting it.
+
+That convergence is the vision. Here is where each part honestly stands today:
+
+**Today — earned, alpha-credible:**
+
+- **Less.js.** Jess literally *is* Less v5. `.less` renders now.
+- **Sass.** Carried forward through the Jess **"Sass+"** dialect — the committed
+  successor to SCSS (in active development; see [Roadmap](#roadmap)).
+
+**The vision — path to 1.0 (being proven through the alpha, not yet shipped):**
+
+- **CSS Modules** ← a real **module system** (`@use` / `@compose` / exports, the
+  `style-resolver`) for scoped, composable styles.
+- **CSS-in-JS** ← **JavaScript execution** in stylesheets (`@use` / `@plugin`,
+  `plugin-node-modules`) — the dynamism, without leaving your CSS files.
+- **PostCSS** ← an open **plugin architecture** over a real AST (the parseman
+  parser toolkit) for transforms and tooling.
+
+These last three are the reason Jess aims to be *one* engine instead of four —
+but they are being **proven through the alpha, not claimed as done**. The
+capabilities that seed them exist; the full story is what we intend to earn
+before Jess exits alpha.
+
 > **Status: alpha.** The first alpha (`2.0.0-alpha.7`) is published to npm. It is
 > real, it renders real Less, and it is being dogfooded against the Less test
 > suite and Bootstrap — but it is early software with known rendering gaps and
