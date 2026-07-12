@@ -119,6 +119,39 @@ describe('spine import eval-fallback print-state isolation', () => {
   });
 });
 
+describe('spine loop-generated extend through import', () => {
+  it('merges a loop-generated :extend from an imported body into a static target group', async () => {
+    // `engageExtendLayer` scans only the parsed entry root; an import-only document has no direct
+    // `:extend`, so imported extends were dropped. AND a loop body carrying an `:extend` was rejected
+    // for folding, forcing the imported body onto the eval fallback (which ignores spine extend
+    // headers). The extend layer now engages when an imported body has an extend, and the gather
+    // expands `$for`/`each` loops to materialize per-iteration interpolated extenders — so a loop-
+    // generated `:extend` merges into its (static) target group (bootstrap grid `.container-lg`).
+    fs.writeFileSync(
+      path.join(tmpDir, 'ext-lib.less'),
+      [
+        '@sizes: { sm: 540px; lg: 960px; };',
+        '.container, .container-fluid { width: 100%; }',
+        'each(@sizes, #(@v, @k) {',
+        '  .container-@{k} { &:extend(.container-fluid all); }',
+        '});'
+      ].join('\n')
+    );
+    const entry = path.join(tmpDir, 'ext-entry.less');
+    fs.writeFileSync(entry, '@import "ext-lib";');
+
+    const css = await makeCompiler(tmpDir).render(entry, {
+      suppressWarnings: true,
+      breakOnError: false
+    });
+    // The loop-generated extenders merge into the `.container, .container-fluid` group.
+    expect(css).toContain('.container-sm');
+    expect(css).toContain('.container-lg');
+    // A single merged rule, not standalone empty extender blocks.
+    expect(css).toMatch(/\.container,\s*\.container-fluid,\s*\.container-sm,\s*\.container-lg/);
+  });
+});
+
 describe('spine guarded-mixin print-state isolation', () => {
   it('emits a passing compound-guard block from a nested folded mixin body', async () => {
     fs.writeFileSync(

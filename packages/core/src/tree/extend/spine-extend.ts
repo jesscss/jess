@@ -1628,7 +1628,7 @@ export function wireSpineExtends(
   collapseNesting: boolean,
   importedBodies?: readonly Rules[],
   referenceBodies?: ReadonlySet<Rules>
-): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } {
+): MaybePromise<{ headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }> {
   const subjects: SpineSubject[] = [];
   const instructions: PipelineInstruction[] = [];
   const frameBaseline = context.rulesetFrames.length;
@@ -1724,7 +1724,7 @@ export function wireSpineExtends(
     }
   };
 
-  const gatherRuleset = (ruleset: Ruleset, parentPath: readonly Selector[]): void => {
+  const gatherRuleset = (ruleset: Ruleset, parentPath: readonly Selector[]): MaybePromise<void> => {
     // Resolve THIS ruleset's local against the ALREADY-pushed ancestors. An `&`-resolved local is
     // the FULL composed form (ancestor INCLUDED), so it REPLACES the ancestor chain — its path is
     // `[resolvedLocal]`, NOT `parentPath + resolvedLocal` (that would double `.type2`). A structural
@@ -1798,8 +1798,15 @@ export function wireSpineExtends(
     }
     // Push this ruleset's frame for its subtree's `&`-resolution, descend, then pop (save/restore).
     context.rulesetFrames.push(ruleset);
-    descendChildren(ruleset.rules, path);
-    context.rulesetFrames.length = Math.max(frameBaseline, context.rulesetFrames.length - 1);
+    const popFrame = (): void => {
+      context.rulesetFrames.length = Math.max(frameBaseline, context.rulesetFrames.length - 1);
+    };
+    const descended = descendChildren(ruleset.rules, path);
+    if (isThenable(descended)) {
+      return descended.then(popFrame);
+    }
+    popFrame();
+    return undefined;
   };
 
   // A STANDALONE `Extend` (`.a, .b:extend(.x) {}`) — an empty-body selector-list block whose only
@@ -1827,57 +1834,168 @@ export function wireSpineExtends(
     pushExtendInstructions(target, extenderLocal, ext.flag === ExtendFlag.All, path, orderOf(ext));
   };
 
-  const descendChildren = (children: readonly Node[], path: readonly Selector[]): void => {
-    for (const child of children) {
-      if (isNode(child, N.Ruleset)) {
-        gatherRuleset(child, path);
-      } else if (child instanceof Extend) {
-        // A standalone `Extend` directly under a `Rules` container (`.a, .b:extend(.x) {}` → the
-        // empty-body block parses as `Rules`, not `Ruleset`). Its extender own is its branch selector.
-        gatherStandaloneExtend(child, path);
-      } else if (child instanceof ExtendList) {
-        for (const ext of child.value) {
-          gatherStandaloneExtend(ext, path);
+  const descendChildren = (children: readonly Node[], path: readonly Selector[]): MaybePromise<void> => {
+    const step = (start: number): MaybePromise<void> => {
+      for (let idx = start; idx < children.length; idx++) {
+        const child = children[idx]!;
+        let result: MaybePromise<void>;
+        if (isNode(child, N.Ruleset)) {
+          result = gatherRuleset(child, path);
+        } else if (child instanceof Extend) {
+          // A standalone `Extend` directly under a `Rules` container (`.a, .b:extend(.x) {}` → the
+          // empty-body block parses as `Rules`, not `Ruleset`). Its extender own is its branch selector.
+          gatherStandaloneExtend(child, path);
+          result = undefined;
+        } else if (child instanceof ExtendList) {
+          for (const ext of child.value) {
+            gatherStandaloneExtend(ext, path);
+          }
+          result = undefined;
+        } else if (isNode(child, N.AtRule) && isMediaScopeAtRule(child) && Array.isArray((child as { rules?: Node[] }).rules)) {
+          // CONDITIONAL AT-RULE SCOPE (`@media`, `@supports`, `@container`). Descend into the body,
+          // pushing THIS at-rule node onto the scope chain. Subjects and extend instructions gathered
+          // inside are tagged with the snapshotted chain so the pipeline's scope-reachability filter
+          // scopes a media-declared extend to the same or a NESTED conditional body (eval oracle §A5/A2):
+          // `.tv-lowres:extend(.ext1 all)` inside `@media (tv)` reaches `.ext1` targets in `@media (tv)`
+          // and its nested `@media (hires)`, but NOT `.ext1` outside; a root extend (`.all`) reaches all.
+          // A `path` reset is NOT needed — the at-rule interposes no selector level (its body children
+          // compose against the SAME ancestor selector path). `@layer`/`@scope` are NOT descended (their
+          // reachability is not a plain nesting-prefix relation) — the gate keeps those on eval.
+          const saved = currentScope;
+          currentScope = [...currentScope, child];
+          const descended = descendChildren((child as { rules: Node[] }).rules, path);
+          if (isThenable(descended)) {
+            result = descended.then(() => { currentScope = saved; });
+          } else {
+            currentScope = saved;
+            result = undefined;
+          }
+        } else if (child.type === 'For') {
+          // LOOP-GENERATED EXTENDS (`each(@map, #(@v,@k) { .x-@{k} { &:extend(.target all) } })`). A
+          // `$for`/`each` body's extenders are DYNAMIC — the interpolated extender selector
+          // (`.container-@{breakpoint}`) is concrete only once the loop binds `@breakpoint` per
+          // iteration. Materialize the per-iteration bound surfaces (the SAME `spineIterationSurfaces`
+          // the render fold uses) and gather each surface's children with its frame live, so the
+          // interpolated extender resolves to `.container-sm`/`.container-lg`/… and its `:extend`
+          // instruction lands a concrete branch on the (STATIC, shared) target ruleset's header
+          // (bootstrap grid `.container-@{bp} { &:extend(.container-fluid all) }` → the
+          // `.container, .container-fluid` group gains `.container-sm`…`.container-xl`). The extender
+          // surfaces are throwaway (they carry only `:extend`, emit nothing); only the target's header
+          // override — keyed on the shared static node — surfaces at emit. Async (the surface build
+          // evals the iterable); the gather threads the promise. Off the loop path this branch is never
+          // reached (zero cost).
+          result = gatherForExtends(child, path);
+        } else if (isNode(child, N.Rules) && Array.isArray((child as { rules?: Node[] }).rules)) {
+          // A nested `Rules` container (the empty-body selector-list-extend surface) — descend so its
+          // standalone `Extend` children are gathered. Its own selector (if any) is empty (no output).
+          result = descendChildren((child as { rules: Node[] }).rules, path);
+        } else {
+          result = undefined;
         }
-      } else if (isNode(child, N.AtRule) && isMediaScopeAtRule(child) && Array.isArray((child as { rules?: Node[] }).rules)) {
-        // CONDITIONAL AT-RULE SCOPE (`@media`, `@supports`, `@container`). Descend into the body,
-        // pushing THIS at-rule node onto the scope chain. Subjects and extend instructions gathered
-        // inside are tagged with the snapshotted chain so the pipeline's scope-reachability filter
-        // scopes a media-declared extend to the same or a NESTED conditional body (eval oracle §A5/A2):
-        // `.tv-lowres:extend(.ext1 all)` inside `@media (tv)` reaches `.ext1` targets in `@media (tv)`
-        // and its nested `@media (hires)`, but NOT `.ext1` outside; a root extend (`.all`) reaches all.
-        // A `path` reset is NOT needed — the at-rule interposes no selector level (its body children
-        // compose against the SAME ancestor selector path). `@layer`/`@scope` are NOT descended (their
-        // reachability is not a plain nesting-prefix relation) — the gate keeps those on eval.
-        const saved = currentScope;
-        currentScope = [...currentScope, child];
-        descendChildren((child as { rules: Node[] }).rules, path);
-        currentScope = saved;
-      } else if (isNode(child, N.Rules) && Array.isArray((child as { rules?: Node[] }).rules)) {
-        // A nested `Rules` container (the empty-body selector-list-extend surface) — descend so its
-        // standalone `Extend` children are gathered. Its own selector (if any) is empty (no output).
-        descendChildren((child as { rules: Node[] }).rules, path);
+        // Other at-rules bearing extends are excluded by the eligibility gate, so no descent into them.
+        if (isThenable(result)) {
+          return result.then(() => step(idx + 1));
+        }
       }
-      // Other at-rules bearing extends are excluded by the eligibility gate, so no descent into them.
-    }
+      return undefined;
+    };
+    return step(0);
   };
 
-  descendChildren(root.rules, []);
+  // Materialize a `For`'s per-iteration bound surfaces and gather each surface's children against its
+  // live frame (so an interpolated extender resolves per iteration). See the `For` branch above.
+  const gatherForExtends = (forNode: Node, path: readonly Selector[]): MaybePromise<void> => {
+    // BEST-EFFORT. A `For` reached HERE may be un-expandable at gather time — its iterable or a
+    // body value may read a binding not resolvable in the static gather context (a mixin-scoped
+    // `@shadows` an outer call would bind, an interpolated name pending eval). `spineIterationSurfaces`
+    // THROWS in that case. Such a loop's extends were NEVER gathered before this pass (imported loop
+    // extends were dropped wholesale), so ROLL BACK any partial subjects/instructions and SKIP it —
+    // byte-identical to the pre-fold behavior for that loop, while a cleanly-expandable loop (bootstrap
+    // grid's `each(@container-max-widths, …)`) still contributes its `.container-@{bp}` extenders. The
+    // enclosing gather never rejects on an un-expandable loop.
+    const subjectsMark = subjects.length;
+    const instructionsMark = instructions.length;
+    const savedRulesContext = context.rulesContext;
+    const rollback = (): void => {
+      subjects.length = subjectsMark;
+      instructions.length = instructionsMark;
+      context.rulesContext = savedRulesContext;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to For; only For exposes spineIterationSurfaces.
+    const iterable = forNode as unknown as { spineIterationSurfaces(ctx: Context): Promise<Rules[]> };
+    let built: Promise<Rules[]>;
+    try {
+      built = iterable.spineIterationSurfaces(context);
+    } catch {
+      rollback();
+      return undefined;
+    }
+    return built.then(
+      (surfaces: Rules[]): MaybePromise<void> => {
+        const stepSurface = (start: number): MaybePromise<void> => {
+          for (let idx = start; idx < surfaces.length; idx++) {
+            const surface = surfaces[idx]!;
+            context.rulesContext = surface;
+            let gathered: MaybePromise<void>;
+            try {
+              gathered = descendChildren(surface.rules, path);
+            } catch {
+              rollback();
+              return undefined;
+            }
+            if (isThenable(gathered)) {
+              const next = idx + 1;
+              return gathered.then(
+                () => stepSurface(next),
+                () => { rollback(); return undefined; }
+              );
+            }
+          }
+          context.rulesContext = savedRulesContext;
+          return undefined;
+        };
+        return stepSurface(0);
+      },
+      () => { rollback(); return undefined; }
+    );
+  };
+
   // EXTEND-THROUGH-IMPORT (import-spec routing). Gather subjects from RESOLVED imported bodies too, so an
   // imported ROOT-LEVEL subject (`.a` in `lib.less`) becomes an addressable subject: its Ruleset node
   // gets a header override, applied when `_emitSpineImportFold` descends the placement body through
   // `effectiveHeaderSelector`. Extenders in the imported body are gathered the same way (an imported
   // `:extend` contributes its instruction). The resolved bodies are the SAME node instances the emit
   // fold descends (cached in `spineImportPlacements`), so the override lands on the emitted ruleset.
-  if (importedBodies) {
-    for (const body of importedBodies) {
-      gatheringReference = referenceBodies?.has(body) === true;
-      descendChildren(body.rules, []);
+  const gatherImportedBodies = (): MaybePromise<void> => {
+    if (!importedBodies) {
+      return undefined;
     }
+    const stepBody = (start: number): MaybePromise<void> => {
+      for (let i = start; i < importedBodies.length; i++) {
+        const body = importedBodies[i]!;
+        gatheringReference = referenceBodies?.has(body) === true;
+        const gathered = descendChildren(body.rules, []);
+        if (isThenable(gathered)) {
+          const next = i + 1;
+          return gathered.then(() => stepBody(next));
+        }
+      }
+      gatheringReference = false;
+      return undefined;
+    };
+    return stepBody(0);
+  };
+  const compose = (): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } => {
     gatheringReference = false;
-  }
-  context.rulesetFrames.length = frameBaseline; // restore (belt-and-suspenders)
-  return composeSpineSubjectHeaders(subjects, instructions, collapseNesting);
+    context.rulesetFrames.length = frameBaseline; // restore (belt-and-suspenders)
+    return composeSpineSubjectHeaders(subjects, instructions, collapseNesting);
+  };
+  const afterRoot = (): MaybePromise<{ headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }> => {
+    const imported = gatherImportedBodies();
+    return isThenable(imported) ? imported.then(compose) : compose();
+  };
+  const rootGather = descendChildren(root.rules, []);
+  return isThenable(rootGather) ? rootGather.then(afterRoot) : afterRoot();
 }
 
 /** Document order of a node = its source span start offset (matches the extend tuple's docOrder). */

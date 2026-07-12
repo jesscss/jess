@@ -42,7 +42,7 @@ import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
 import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
-import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector, treeHasExtendTargetableAppend } from '../extend/spine-extend.js';
+import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector, treeHasExtendTargetableAppend, treeHasExtend } from '../extend/spine-extend.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
 
 /**
@@ -1174,7 +1174,7 @@ function isSpineEligibleBody(children: readonly Node[], allowExtend = false, all
     // iteration (`For.spineIterationSurfaces`) and splices their children in order —
     // the loop-variable-bound analogue of a mixin-surface splice. A body shape the
     // spine cannot cover keeps the loop (and its enclosing body) on eval.
-    if (isSpineEligibleFor(child)) {
+    if (isSpineEligibleFor(child, allowExtend, allowImport)) {
       continue;
     }
     if (!isSpineEligibleContainer(child, allowExtend, allowImport)) {
@@ -1236,13 +1236,20 @@ function isSpineEligibleMixinDefinition(node: Node): boolean {
  * not gated here. A non-eligible body keeps the loop (and its enclosing body) on the
  * eval path, byte-identical. Zero-cost when no loop: the cheap `type` check bails.
  */
-function isSpineEligibleFor(node: Node): boolean {
+function isSpineEligibleFor(node: Node, allowExtend = false, allowImport = false): boolean {
   if (node.type !== 'For') {
     return false;
   }
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to the For subtype; its body is the shared `rules` Node[].
   const forNode = node as unknown as { rules: readonly Node[] };
-  return isSpineEligibleBody(forNode.rules);
+  // Thread `allowExtend`/`allowImport`: when the extend layer is engaged, a loop body
+  // that generates extenders (`.x-@{k} { &:extend(.target all) }`) is admissible — its
+  // per-iteration interpolated extenders are gathered by `wireSpineExtends`
+  // (`gatherForExtends`) and the target's header override surfaces at emit. Without
+  // threading, a loop body carrying an `:extend` was rejected, forcing the enclosing
+  // (imported) body onto the eval fallback — which ignores `spineExtendHeaders`, so a
+  // loop-generated extend (bootstrap grid `.container-@{bp}`) silently dropped.
+  return isSpineEligibleBody(forNode.rules, allowExtend, allowImport);
 }
 
 /**
@@ -2424,11 +2431,29 @@ export function renderRootViaSpine(
   // topology over the union of local + imported subjects; a failure aborts to eval. Then gather over
   // BOTH the root body and the resolved imported bodies so an imported subject receives its header.
   const wireExtends = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
-    if (extendEngaged) {
-      let importedBodies: Rules[] | undefined;
-      let referenceBodies: Set<Rules> | undefined;
-      if (importLayer) {
-        const collected = collectImportedRootSubjects(options);
+    let importedBodies: Rules[] | undefined;
+    let referenceBodies: Set<Rules> | undefined;
+    let engaged = extendEngaged;
+    // IMPORTED-ONLY EXTENDS. `engageExtendLayer(root)` scans only the PARSED entry root,
+    // which for an import-only document (`bootstrap.less` = a list of `@import`s, no
+    // direct `:extend`) has NONE — so `extendEngaged` is false and the whole extend
+    // gather was skipped, silently DROPPING every `:extend` that lives inside an imported
+    // body (bootstrap's grid `.container-@{bp} { &:extend(.container-fluid all) }` →
+    // `.container-lg`/`.container-sm`/… never merged into the `.container, .container-fluid`
+    // group). Imports are resolved by `wireSpineImports` BEFORE this runs, so the resolved
+    // imported bodies are now inspectable: engage the layer when ANY imported body carries
+    // an extend. Zero-cost when the tree has no import (the common case skips this entirely)
+    // and byte-identical when no imported body extends (the collected bodies scan is the
+    // same one `collectImportedRootSubjects` already walks).
+    let collected: ReturnType<typeof collectImportedRootSubjects> | undefined;
+    if (importLayer) {
+      collected = collectImportedRootSubjects(options);
+      if (!engaged) {
+        engaged = collected.bodies.some(body => treeHasExtend(body));
+      }
+    }
+    if (engaged) {
+      if (importLayer && collected) {
         if (!isSpineExtendTopology(root, options.collapseNesting === true, { importedRootSubjects: collected.subjects })) {
           return abortToEval();
         }
@@ -2446,15 +2471,22 @@ export function renderRootViaSpine(
         importedBodies = collected.bodies;
         referenceBodies = collected.referenceBodies;
       }
+      let wired: MaybePromise<{ headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }>;
       try {
-        const { headers, hoisted } = wireSpineExtends(root, context, options.collapseNesting === true, importedBodies, referenceBodies);
-        options.spineExtendHeaders = headers;
-        // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
-        // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
-        options.spineExtendHoisted = hoisted;
+        wired = wireSpineExtends(root, context, options.collapseNesting === true, importedBodies, referenceBodies);
       } catch (error) {
         return fail(error);
       }
+      const applyWired = (result: { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
+        options.spineExtendHeaders = result.headers;
+        // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
+        // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
+        options.spineExtendHoisted = result.hoisted;
+        return descend();
+      };
+      // The gather is async only when it expands a `$for`/`each` loop's extenders (loop-generated
+      // interpolated extends); the common case resolves synchronously with zero promise overhead.
+      return isThenable(wired) ? wired.then(applyWired, error => fail(error)) : applyWired(wired);
     }
     return descend();
   };
