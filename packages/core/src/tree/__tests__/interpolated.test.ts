@@ -95,7 +95,7 @@ describe('Interpolated', () => {
   it('renders resolved interpolated values through render(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -114,7 +114,7 @@ describe('Interpolated', () => {
   it('writes resolved interpolated output into flat buffers', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -144,7 +144,7 @@ describe('Interpolated', () => {
   it('renders resolved interpolated output directly without public resolve', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -165,7 +165,7 @@ describe('Interpolated', () => {
   it('renders scalar replacement text without materializing a generic public result', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -197,7 +197,7 @@ describe('Interpolated', () => {
   it('resolves interpolated values without touching render state', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -217,7 +217,7 @@ describe('Interpolated', () => {
   it('materializes generic resolved text without public interpolated string transport', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -250,7 +250,7 @@ describe('Interpolated', () => {
   it('keeps source interpolated child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);
@@ -273,7 +273,7 @@ describe('Interpolated', () => {
   it('does not clone unchanged source replacement containers before resolving interpolated values', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('world')
       })
     ]);

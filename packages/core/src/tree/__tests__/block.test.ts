@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, block, Block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
@@ -31,6 +32,12 @@ class CountingWriter extends OutputWriter {
 }
 
 class WriteOnlyNode extends Node<string> {
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
   override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
     options.writer.add(this.value);
   }
@@ -76,10 +83,10 @@ describe('Block', () => {
   });
 
   it('emits source trivia before the closing delimiter', () => {
-    const value = any('foo', undefined, [1, 1, 2, 3, 1, 4]);
-    const node = block(value, undefined, [0, 1, 1, 7, 2, 3]);
+    const value = any('foo', undefined, { start: 1, end: 3 });
+    const node = block(value, undefined, { start: 0, end: 7 });
     const trivia = createTriviaMap({
-      before: new Map([[node.location[3], run('\n  ')]]),
+      before: new Map([[sourceSpanOf(node)?.end, run('\n  ')]]),
       after: new Map()
     }) satisfies TriviaMap;
 
@@ -89,7 +96,7 @@ describe('Block', () => {
   it('renders resolved block values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -115,7 +122,7 @@ describe('Block', () => {
   it('writes resolved block render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -142,7 +149,7 @@ describe('Block', () => {
   it('renders resolved block values without materializing a replacement block', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -170,7 +177,7 @@ describe('Block', () => {
   it('resolves block values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -200,7 +207,7 @@ describe('Block', () => {
   it('keeps source block values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);

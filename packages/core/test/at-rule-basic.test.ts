@@ -52,7 +52,7 @@ describe('Basic At-Rule Serialization', () => {
         rules: [
           decl({ name: 'color', value: any('red') }),
           atrule({
-            name: any('@supports'),
+            name: '@supports',
             prelude: any('(display: grid)'),
             rules: [
               ruleset({
@@ -84,7 +84,7 @@ describe('Basic At-Rule Serialization', () => {
   it('should serialize standalone @media rule correctly', async () => {
     // Test just the AtRule node directly
     const atRule = atrule({
-      name: any('@media'),
+      name: '@media',
       prelude: any('(max-width: 768px)'),
       rules: [
         ruleset({

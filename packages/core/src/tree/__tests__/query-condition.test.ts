@@ -7,7 +7,6 @@ import {
   condition,
   Condition,
   dimension,
-  F_MAY_ASYNC,
   F_NON_STATIC,
   F_STATIC,
   Node,
@@ -56,9 +55,10 @@ class CountingWriter extends OutputWriter {
 }
 
 class ReturnOnlyNode extends Node<string> {
-  declare value: string;
+  readonly value: string;
   constructor(value: string) {
     super(value);
+    this.value = value;
     this.addFlag(F_NON_STATIC);
   }
 
@@ -94,10 +94,10 @@ class WritingNode extends ReturnOnlyNode {
 }
 
 class AsyncWritingStaticNode extends Node<string> {
-  declare value: string;
+  readonly value: string;
   constructor(value: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
+    this.value = value;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -293,7 +293,7 @@ describe('QueryCondition', () => {
   it('renders resolved query-condition values through render(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('print')
       })
     ]);
@@ -309,7 +309,7 @@ describe('QueryCondition', () => {
   it('writes resolved query-condition output into flat buffers', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('print')
       })
     ]);
@@ -355,7 +355,7 @@ describe('QueryCondition', () => {
   it('renders query conditions through their own resolved syntax instead of Sequence.render()', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('print')
       })
     ]);
@@ -386,7 +386,6 @@ describe('QueryCondition', () => {
       any('and'),
       any('(color)')
     ]);
-    queryNode.addFlag(F_MAY_ASYNC);
     queryNode.removeFlag(F_STATIC);
     const originalMap = queryNode.value.map;
     Object.defineProperty(queryNode.value, 'map', {
@@ -416,7 +415,6 @@ describe('QueryCondition', () => {
       any('and'),
       any('(color)')
     ]);
-    queryNode.addFlag(F_MAY_ASYNC);
     queryNode.removeFlag(F_STATIC);
 
     await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
@@ -434,7 +432,6 @@ describe('QueryCondition', () => {
       any('and'),
       any('(color)')
     ]);
-    queryNode.addFlag(F_MAY_ASYNC);
     queryNode.removeFlag(F_STATIC);
 
     await expect(Promise.resolve(queryNode.render(context, { writer }))).resolves.toBe('print and (color)');
@@ -446,7 +443,7 @@ describe('QueryCondition', () => {
   it('resolves query-condition values without touching render state', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('print')
       })
     ]);
@@ -728,7 +725,6 @@ describe('QueryCondition', () => {
       any('and'),
       new AsyncWritingStaticNode('written')
     ]);
-    node.addFlag(F_MAY_ASYNC);
     node.removeFlag(F_STATIC);
 
     const rendered = await Promise.resolve(node.render(context, { writer }));
@@ -749,7 +745,6 @@ describe('QueryCondition', () => {
       any('and'),
       new AsyncWritingStaticNode('written')
     ]);
-    node.addFlag(F_MAY_ASYNC);
     node.removeFlag(F_STATIC);
 
     const rendered = await Promise.resolve(node.render(context, { writer }));

@@ -20,8 +20,16 @@ describe('iif', () => {
   it('rejects a missing thenValue', () => {
     expect(() => iif(true)).toThrow('Required argument \'thenValue\' is missing');
   });
-  it('rejects an invalid condition', () => {
-    expect(() => iif(new Dimension({ number: 1, unit: 'px' }))).toThrow('Argument \'condition\' must be one of:');
+  it('treats a non-true Node condition as falsy', async () => {
+    // `if` accepts any value as a condition (matching Less); only a `Bool(true)`
+    // or a keyword `true` is truthy, so a Dimension picks the else branch.
+    const result = await iif(
+      new Dimension({ number: 1, unit: 'px' }),
+      () => new Dimension({ number: 2, unit: 'px' }),
+      () => new Dimension({ number: 3, unit: 'px' })
+    );
+    expect(result).toBeInstanceOf(Dimension);
+    expect((result as Dimension).compare(new Dimension({ number: 3, unit: 'px' }))).toBe(0);
   });
 
   test('iif (true)', async () => {

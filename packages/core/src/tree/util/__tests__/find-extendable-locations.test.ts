@@ -228,5 +228,13 @@ describe('ExtendLocation API Tests', () => {
       expect(extended.valueOf()).not.toContain(':is(');
       expect(extended.valueOf()).toBe(':where(.original,.extended)');
     });
+
+    it('tolerates a string-normalized leaf target (no WeakMap key crash)', () => {
+      // The identity caches (WeakMap/Map) key on node identity; a string leaf is
+      // not an object and crashed `WeakMap.set`. String leaves bypass the cache.
+      const selector = el('.a');
+      const result = findExtendableLocations(selector, '.a' as never);
+      expect(result.hasMatches).toBe(true);
+    });
   });
 });

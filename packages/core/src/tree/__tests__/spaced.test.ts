@@ -22,7 +22,7 @@ describe('Spaced', () => {
 
   it('renders dynamic spaced expressions without materializing a replacement sequence', async () => {
     const root = await rules([
-      vardecl({ name: any('size'), value: any('20px') })
+      vardecl({ name: 'size', value: any('20px') })
     ]).eval(context);
     context.root = root;
     context.rulesContext = root;

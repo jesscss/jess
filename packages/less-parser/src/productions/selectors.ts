@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar-rules.ts + builders.ts) is the maintained parser.
+// Not type-checked.
 // Selector-related production rules for LessRecursiveParser
 // Converted from Chevrotain-based productions.ts lines 1145-2060
 
@@ -1053,7 +1058,7 @@ export function importAtRule(this: P, T: TokenMap) {
       if (isAtRule) {
         const prelude = new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context);
         const atRule = new AtRuleStatement({
-          name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+          name: name.image,
           prelude: prelude
         }, undefined, location, $.context);
         return atRule;
@@ -1189,7 +1194,7 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
     }
 
     return new VarDeclaration({
-      name: nameNode,
+      name: nameNode instanceof Any ? String(nameNode.valueOf()) : nameNode,
       value: value,
       important: important ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context) : undefined
     }, undefined, location, $.context);

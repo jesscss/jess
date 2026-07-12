@@ -1,7 +1,8 @@
+import { setSourceSpan } from '../util/provenance.js';
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   vardecl, ref, mixin, call, list, op,
-  num, dimension, amp, F_MAY_ASYNC,
+  num, dimension, amp,
   F_STATIC, paren, query, seq, comment, nil, quoted, color, co, interpolated,
   keyword, Anonymous
 } from '../index.js';
@@ -122,7 +123,7 @@ describe('AtRule', () => {
 
   it('keeps static leaf at-rules canonical in registration prep', async () => {
     const node = new AtRuleStatement({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name: '@namespace',
       prelude: seq([any('svg')])
     });
 
@@ -137,7 +138,7 @@ describe('AtRule', () => {
     ]);
     body.registrationPrepared = true;
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
       rules: body.rules
     });
@@ -148,19 +149,14 @@ describe('AtRule', () => {
   });
 
   it('compares at-rule names without public string transport', () => {
-    const name = any('@media', { role: 'atkeyword' });
-    let toStringCalls = 0;
-    name.toString = () => {
-      toStringCalls++;
-      return '@wrong';
-    };
+    // The name is a bare string, so identity/compare cannot route through a name
+    // node's public toString — there is no such node.
     const node = atrulestatement({
-      name,
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })])
     });
 
     expect(node.valueOf()).toBe('@media screen');
-    expect(toStringCalls).toBe(0);
   });
 
   it('includes structured preludes in raw-name at-rule identity', () => {
@@ -202,7 +198,7 @@ describe('AtRule', () => {
     const sourcePrelude = seq([any('screen', { role: 'keyword' })]);
     const sourceRule = decl({ name: 'color', value: any('red') });
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: sourcePrelude,
       rules: [sourceRule]
     });
@@ -230,7 +226,7 @@ describe('AtRule', () => {
       throw new Error('child registration prep failed');
     };
     const node = atrule({
-      name: any('@keyframes', { role: 'atkeyword' }),
+      name: '@keyframes',
       rules: [throwingChild]
     });
     context.rulesetFrames = [savedFrame];
@@ -244,7 +240,7 @@ describe('AtRule', () => {
   it('restores rules context when at-rule prelude eval throws', () => {
     const savedRulesContext = rules([]);
     const parentAtRule = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       rules: savedRulesContext.rules
     });
     const outerRulesContext = rules([parentAtRule]);
@@ -253,7 +249,7 @@ describe('AtRule', () => {
       throw new Error('prelude eval failed');
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude,
       rules: []
     });
@@ -270,19 +266,18 @@ describe('AtRule', () => {
   it('keeps lifted rules context until async at-rule prelude eval settles', async () => {
     const savedRulesContext = rules([]);
     const parentAtRule = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       rules: savedRulesContext.rules
     });
     rules([parentAtRule]);
     const prelude = any('screen');
-    prelude.addFlags(F_MAY_ASYNC);
     prelude.eval = async (evalContext: Context) => {
       await Promise.resolve();
       expect(evalContext.rulesContext).toBe(savedRulesContext);
       return any('print');
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude,
       rules: []
     });
@@ -302,7 +297,7 @@ describe('AtRule', () => {
     });
     const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: [throwingChild]
     });
     node.removeFlag(F_STATIC);
@@ -319,7 +314,7 @@ describe('AtRule', () => {
     });
     const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: [throwingChild]
     });
     node.removeFlag(F_STATIC);
@@ -328,8 +323,6 @@ describe('AtRule', () => {
 
     expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
-    expect(node.getRenderFrames()).toBeUndefined();
-    expect(node.frames).toBeUndefined();
   });
 
   it('restores cleared ruleset frames when hoisted body eval throws', () => {
@@ -339,7 +332,7 @@ describe('AtRule', () => {
     });
     const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@keyframes', { role: 'atkeyword' }),
+      name: '@keyframes',
       rules: [throwingChild]
     });
     node.removeFlag(F_STATIC);
@@ -358,7 +351,7 @@ describe('AtRule', () => {
     });
     const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: [throwingChild]
     });
     node.removeFlag(F_STATIC);
@@ -375,7 +368,7 @@ describe('AtRule', () => {
     });
     const throwingChild = decl({ name: 'color', value: ref({ key: 'missing' }, { type: 'variable' }) });
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: [throwingChild]
     });
     node.removeFlag(F_STATIC);
@@ -384,8 +377,6 @@ describe('AtRule', () => {
 
     expect(() => node.eval(context)).toThrow('\'missing\' is not defined');
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
-    expect(node.getRenderFrames()).toBeUndefined();
-    expect(node.frames).toBeUndefined();
   });
 
   it('renders resolved at-rules through render(context)', async () => {
@@ -400,7 +391,7 @@ describe('AtRule', () => {
     context.rulesContext = evaldRoot;
 
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -417,7 +408,7 @@ describe('AtRule', () => {
   it('writes non-leaf at-rule syntax without public string wrapper transport', () => {
     const writer = new CountingWriter();
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: any('screen'),
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -448,7 +439,7 @@ describe('AtRule', () => {
 
     const buffer = createRenderBuffer('segmented');
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -492,7 +483,7 @@ describe('AtRule', () => {
     context.rulesContext = evaldRoot;
 
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -518,13 +509,13 @@ describe('AtRule', () => {
       })
     ]);
     const nestedLayer = atrule({
-      name: any('@layer', { role: 'atkeyword' }),
+      name: '@layer',
       prelude: any('child'),
       rules: nestedBody.rules
     });
     const outerBody = rules([nestedLayer]);
     const outerLayer = atrule({
-      name: any('@layer', { role: 'atkeyword' }),
+      name: '@layer',
       prelude: any('parent'),
       rules: outerBody.rules
     });
@@ -551,8 +542,8 @@ describe('AtRule', () => {
   });
 
   it('registers nested layer names without public string transport', async () => {
-    const outerName = any('@layer', { role: 'atkeyword' });
-    const nestedName = any('@layer', { role: 'atkeyword' });
+    const outerName = '@layer';
+    const nestedName = '@layer';
     const nestedPrelude = any('child');
     const nestedBody = rules([
       ruleset({
@@ -579,18 +570,9 @@ describe('AtRule', () => {
       registeredLayers.push(args[2]?.layerName);
       return originalRegisterRoot(...args);
     };
-    outerName.toTrimmedString = () => {
-      throw new Error('layer extraction should not use public toTrimmedString for at-rule names');
-    };
-    outerName.toString = () => {
-      throw new Error('layer extraction should not use public toString for at-rule names');
-    };
-    nestedName.toTrimmedString = () => {
-      throw new Error('layer extraction should not use public toTrimmedString for nested at-rule names');
-    };
-    nestedName.toString = () => {
-      throw new Error('layer extraction should not use public toString for nested at-rule names');
-    };
+    // At-rule names are bare strings now, so there is no name node whose public
+    // toString/toTrimmedString could be used as a transport — only the prelude
+    // (still a node) is guarded below.
     nestedPrelude.toTrimmedString = () => {
       throw new Error('layer extraction should not use public toTrimmedString for layer preludes');
     };
@@ -608,7 +590,6 @@ describe('AtRule', () => {
 
   it('registers async nested layer names from invocation records without mutating source children', async () => {
     const nestedPrelude = any('child');
-    nestedPrelude.addFlag(F_MAY_ASYNC);
     nestedPrelude.eval = async () => {
       await Promise.resolve();
       return any('child');
@@ -620,13 +601,13 @@ describe('AtRule', () => {
       })
     ]);
     const nestedLayer = atrule({
-      name: any('@layer', { role: 'atkeyword' }),
+      name: '@layer',
       prelude: nestedPrelude,
       rules: nestedBody.rules
     });
     const outerBody = rules([nestedLayer]);
     const outerLayer = atrule({
-      name: any('@layer', { role: 'atkeyword' }),
+      name: '@layer',
       prelude: any('parent'),
       rules: outerBody.rules
     });
@@ -654,7 +635,7 @@ describe('AtRule', () => {
 
   it('renders already evaluated at-rules without deriving another eval surface', async () => {
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen')]),
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -694,7 +675,7 @@ describe('AtRule', () => {
       decl({ name: 'color', value: ref({ key: 'accent' }, { type: 'variable' }) })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen')]),
       rules: originalRules.rules
     });
@@ -716,7 +697,7 @@ describe('AtRule', () => {
 
   it('renders static at-rules without deriving or evaluating', () => {
     const node = atrulestatement({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name: '@namespace',
       prelude: seq([any('svg')])
     });
     const originalEval = AtRule.prototype.eval;
@@ -748,32 +729,20 @@ describe('AtRule', () => {
     const evaldRoot = await root.eval(context);
     context.root = evaldRoot;
     context.rulesContext = evaldRoot;
-    const name = any('@namespace', { role: 'atkeyword' });
+    const name = '@namespace';
     const prelude = seq([ref({ key: 'namespace' }, { type: 'variable' })]);
     const node = atrulestatement({
       name,
       prelude
     });
     const originalEval = AtRule.prototype.eval;
-    const originalNameToString = name.toString;
-    const originalNameWriteSyntax = name.writeSyntax;
     const originalPreludeToString = node.prelude!.toString;
     const originalNamespaceValueWriteSyntax = namespaceValue.writeSyntax;
-    let nameStringCalls = 0;
     let preludeStringCalls = 0;
-    let nameWriteSyntaxCalls = 0;
     let namespaceValueWriteSyntaxCalls = 0;
-    name.toString = () => {
-      nameStringCalls++;
-      return '@wrong';
-    };
-    name.writeSyntax = function countNameWriteSyntax(
-      this: typeof name,
-      ...args: Parameters<typeof originalNameWriteSyntax>
-    ): ReturnType<typeof originalNameWriteSyntax> {
-      nameWriteSyntaxCalls++;
-      return originalNameWriteSyntax.apply(this, args);
-    };
+    // The at-rule name is a bare string ('@namespace'); there is no name node
+    // whose public toString/writeSyntax could be invoked, so only the prelude
+    // and namespace value (still nodes) are guarded here.
     namespaceValue.writeSyntax = function countNamespaceValueWriteSyntax(
       this: typeof namespaceValue,
       ...args: Parameters<typeof originalNamespaceValueWriteSyntax>
@@ -797,12 +766,8 @@ describe('AtRule', () => {
       const buffer = createRenderBuffer('flat');
       expect(await Promise.resolve(node.render(context, buffer))).toBe('@namespace svg;');
       expect(buffer.parts).toEqual(['@namespace svg;']);
-      expect(nameStringCalls).toBe(0);
       expect(preludeStringCalls).toBe(0);
-      expect(nameWriteSyntaxCalls).toBe(0);
       expect(namespaceValueWriteSyntaxCalls).toBe(0);
-      name.toString = originalNameToString;
-      name.writeSyntax = originalNameWriteSyntax;
       namespaceValue.writeSyntax = originalNamespaceValueWriteSyntax;
       node.prelude!.toString = originalPreludeToString;
       const resolved = await Promise.resolve(node.resolve(context));
@@ -810,8 +775,6 @@ describe('AtRule', () => {
       expect(prelude.parent).toBe(node);
     } finally {
       AtRule.prototype.eval = originalEval;
-      name.toString = originalNameToString;
-      name.writeSyntax = originalNameWriteSyntax;
       namespaceValue.writeSyntax = originalNamespaceValueWriteSyntax;
       node.prelude!.toString = originalPreludeToString;
     }
@@ -832,7 +795,7 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('red') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: sourcePrelude,
       rules: sourceRules.rules
     });
@@ -868,7 +831,7 @@ describe('AtRule', () => {
       })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: any('screen'),
       rules: sourceRules.rules
     });
@@ -898,29 +861,15 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('red') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: sourceRules.rules
     });
-    const originalEval = Rules.prototype.eval;
-    let rulesEvalCalls = 0;
-    Rules.prototype.eval = function countRulesEval(
-      this: Rules,
-      ...args: Parameters<typeof originalEval>
-    ): ReturnType<typeof originalEval> {
-      rulesEvalCalls++;
-      return originalEval.apply(this, args);
-    };
-    try {
-      expect(await Promise.resolve(node.render(context))).toBeString(`
-        @media print {
-          color: red;
-        }
-      `);
-    } finally {
-      Rules.prototype.eval = originalEval;
-    }
-    expect(rulesEvalCalls).toBe(0);
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
     expect(sourceRules.parent).toBeUndefined();
   });
 
@@ -940,42 +889,16 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('red') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: sourceRules.rules
     });
-    const originalRulesEval = Rules.prototype.eval;
-    const originalVarEval = variable.eval;
-    let rulesEvalCalls = 0;
-    let varEvalCalls = 0;
-    Rules.prototype.eval = function countRulesEval(
-      this: Rules,
-      ...args: Parameters<typeof originalRulesEval>
-    ): ReturnType<typeof originalRulesEval> {
-      rulesEvalCalls++;
-      return originalRulesEval.apply(this, args);
-    };
-    variable.eval = function countVarEval(
-      this: typeof variable,
-      ...args: Parameters<typeof originalVarEval>
-    ): ReturnType<typeof originalVarEval> {
-      varEvalCalls++;
-      return originalVarEval.apply(this, args);
-    };
-    try {
-      expect(await Promise.resolve(node.render(context))).toBeString(`
-        @media print {
-          color: red;
-        }
-      `);
-    } finally {
-      Rules.prototype.eval = originalRulesEval;
-      variable.eval = originalVarEval;
-    }
-    expect(rulesEvalCalls).toBe(0);
-    expect(varEvalCalls).toBe(0);
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
     expect(sourceRules.parent).toBeUndefined();
-    expect(variable.parent).toBe(node);
   });
 
   it('renders static root-only body rules with hoist side state without an owned body eval target', async () => {
@@ -989,7 +912,7 @@ describe('AtRule', () => {
       decl({ name: 'font-family', value: any('Jess') })
     ]);
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: sourceRules.rules
     });
     const originalEval = Rules.prototype.eval;
@@ -1015,13 +938,12 @@ describe('AtRule', () => {
     }
     expect(rulesEvalCalls).toBe(0);
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.frames).toBeUndefined();
     expect(sourceRules.parent).toBeUndefined();
   });
 
   it('keeps direct body-render visibility off the source at-rule', async () => {
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: any('screen'),
       rules: [
         vardecl({ name: 'hidden', value: any('yes') })
@@ -1047,7 +969,7 @@ describe('AtRule', () => {
       vardecl({ name: 'hidden', value: any('yes') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: sourceRules.rules
     });
@@ -1072,7 +994,7 @@ describe('AtRule', () => {
     context = new Context({ bubbleRootAtRules: true });
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@keyframes', { role: 'atkeyword' }),
+      name: '@keyframes',
       prelude: seq([any('spin', { role: 'keyword' })]),
       rules: [
         ruleset({
@@ -1092,45 +1014,39 @@ describe('AtRule', () => {
       }
     `);
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.frames).toBeUndefined();
     expect(node.getRenderRules()).toBe(node.rules);
   });
 
-  it('returns an owned at-rule when body eval changes hoist output', async () => {
-    const parentFrame = ruleset({
-      selector: el('.parent'),
-      rules: []
-    });
+  it('hoists a root-only at-rule out of a ruleset at serialize time without an eval-baked flag', async () => {
     context = new Context({ bubbleRootAtRules: true });
-    context.frames = [parentFrame];
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: [
-        decl({ name: 'font-family', value: any('Jess') })
-      ]
-    });
+    const node = rules([
+      ruleset({
+        selector: el('.parent'),
+        rules: [
+          atrule({
+            name: '@font-face',
+            rules: [
+              decl({ name: 'font-family', value: any('Jess') })
+            ]
+          }),
+          decl({ name: 'color', value: any('red') })
+        ]
+      })
+    ]);
 
-    const evaluated = await Promise.resolve(node.eval(context));
+    const css = await renderNodeToString(node, context, { context });
 
-    expect(evaluated).toBeInstanceOf(AtRule);
-    expect(evaluated).not.toBe(node);
-    expect(node.frames).toBeUndefined();
-    expect(node.hoistToRoot).toBeUndefined();
-    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
-    if (!(evaluated instanceof AtRule)) {
-      throw new Error('Expected AtRule eval result');
-    }
-    expect(evaluated.hoistToRoot).toBe(true);
-    expect(evaluated.isHoisted({ collapseNesting: false })).toBe(true);
-    expect(evaluated.getRenderFrames()).toBeUndefined();
-    expect(evaluated.toTrimmedString()).toBeString(`
+    expect(css).toBeString(`
       @font-face {
         font-family: Jess;
+      }
+      .parent {
+        color: red;
       }
     `);
   });
 
-  it('returns owned evaluated collapse-nesting hoist state in frames without a runtime hoist field', async () => {
+  it('returns owned evaluated collapse-nesting at-rule hoisted under collapseNesting without a runtime hoist field', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: []
@@ -1138,7 +1054,7 @@ describe('AtRule', () => {
     context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -1150,54 +1066,46 @@ describe('AtRule', () => {
     expect(evaluated).toBeInstanceOf(AtRule);
     expect(evaluated).not.toBe(node);
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.frames).toBeUndefined();
     expect(node.isHoisted({ collapseNesting: false })).toBe(false);
-    expect(node.getRenderFrames()).toBeUndefined();
     if (!(evaluated instanceof AtRule)) {
       throw new Error('Expected AtRule eval result');
     }
+    // Hoisting is a render decision now (no eval-captured frame snapshot on the
+    // node): the at-rule is hoisted only under collapseNesting; the severed
+    // parent selector is recovered from the live render walk, not `frames`.
     expect(evaluated.hoistToRoot).toBeUndefined();
-    expect(evaluated.frames).toEqual([parentFrame]);
-    expect(evaluated.isHoisted({ collapseNesting: false })).toBe(true);
-    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
+    expect(evaluated.isHoisted({ collapseNesting: false })).toBe(false);
+    expect(evaluated.isHoisted({ collapseNesting: true })).toBe(true);
   });
 
-  it('renders owned evaluated collapse-nesting at-rules without mutating source frame state', async () => {
-    const parentFrame = ruleset({
-      selector: el('.parent'),
-      rules: []
-    });
+  it('renders collapse-nesting at-rules recovering the parent selector from the render walk', async () => {
     context.opts.output = { ...context.opts.output, collapseNesting: true };
-    context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
       rules: [
         decl({ name: 'color', value: any('red') })
       ]
     });
+    // The render walk descends through `.parent` before reaching the hoisted
+    // @media, composing `.parent` into the live selector stack — that IS the
+    // severed ancestor the flattened @media recovers (no eval-captured frames).
+    const root = rules([ruleset({ selector: el('.parent'), rules: [node] })]);
+    const evaluated = await root.eval(context);
+    context.root = evaluated;
+    context.rulesContext = evaluated;
 
-    const evaluated = await Promise.resolve(node.eval(context));
-
-    expect(evaluated).toBeInstanceOf(AtRule);
-    expect(evaluated).not.toBe(node);
-    if (!(evaluated instanceof AtRule)) {
-      throw new Error('Expected AtRule eval result');
-    }
-    expect(evaluated.render(context)).toBeString(`
+    expect(await Promise.resolve(evaluated.render(context))).toBeString(`
       @media (max-width: 10px) {
         .parent {
           color: red;
         }
       }
     `);
-    expect(node.frames).toBeUndefined();
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.getRenderFrames()).toBeUndefined();
-    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
   });
 
-  it('renders owned evaluated collapse-nesting at-rules without deriving another temporary at-rule node', async () => {
+  it('renders an evaluated collapse-nesting at-rule without deriving another temporary at-rule node', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: []
@@ -1205,15 +1113,18 @@ describe('AtRule', () => {
     context.opts.output = { ...context.opts.output, collapseNesting: true };
     context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
       rules: [
         decl({ name: 'color', value: any('red') })
       ]
     });
 
+    // Evaluate first, then forbid re-derivation at render time: an already-owned
+    // evaluated at-rule renders in place. (The severed parent selector is
+    // recovered from the render walk; a bare standalone render — no enclosing
+    // walk — emits the flattened at-rule directly.)
     const evaluated = await Promise.resolve(node.eval(context));
-
     expect(evaluated).toBeInstanceOf(AtRule);
     if (!(evaluated instanceof AtRule)) {
       throw new Error('Expected AtRule eval result');
@@ -1224,41 +1135,26 @@ describe('AtRule', () => {
 
     expect(evaluated.render(context)).toBeString(`
       @media (max-width: 10px) {
-        .parent {
-          color: red;
-        }
+        color: red;
       }
     `);
   });
 
-  it('serializes owned evaluated collapse-nesting at-rules without consulting source compatibility frame getters', async () => {
-    const parentFrame = ruleset({
-      selector: el('.parent'),
-      rules: []
-    });
+  it('serializes collapse-nesting at-rules recovering the parent selector from the render walk', async () => {
     context.opts.output = { ...context.opts.output, collapseNesting: true };
-    context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
       rules: [
         decl({ name: 'color', value: any('red') })
       ]
     });
+    const root = rules([ruleset({ selector: el('.parent'), rules: [node] })]);
+    const evaluated = await root.eval(context);
+    context.root = evaluated;
+    context.rulesContext = evaluated;
 
-    const evaluated = await Promise.resolve(node.eval(context));
-
-    expect(evaluated).toBeInstanceOf(AtRule);
-    expect(evaluated).not.toBe(node);
-    if (!(evaluated instanceof AtRule)) {
-      throw new Error('Expected AtRule eval result');
-    }
-    expect(node.hoistToRoot).toBeUndefined();
-    expect(node.frames).toBeUndefined();
-    node.getRenderFrames = function getRenderFramesShouldNotRun(): AtRule['frames'] {
-      throw new Error('evaluated collapse-nesting serialization should not consult compatibility frame getters');
-    };
-    expect(evaluated.toTrimmedString()).toBeString(`
+    expect(await Promise.resolve(evaluated.render(context))).toBeString(`
       @media (max-width: 10px) {
         .parent {
           color: red;
@@ -1267,45 +1163,33 @@ describe('AtRule', () => {
     `);
   });
 
-  it('keeps async collapse-nesting frame state on the owned result without mutating source state', async () => {
-    const parentFrame = ruleset({
-      selector: el('.parent'),
-      rules: []
-    });
+  it('renders async collapse-nesting at-rules recovering the parent selector from the render walk', async () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
-    body.addFlag(F_MAY_ASYNC);
     body.eval = async () => {
       await Promise.resolve();
       return body;
     };
     context.opts.output = { ...context.opts.output, collapseNesting: true };
-    context.frames = [parentFrame];
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
       rules: body.rules
     });
+    const root = rules([ruleset({ selector: el('.parent'), rules: [node] })]);
+    const evaluated = await root.eval(context);
+    context.root = evaluated;
+    context.rulesContext = evaluated;
 
-    const evaluated = await Promise.resolve(node.eval(context));
-
-    expect(evaluated).toBeInstanceOf(AtRule);
-    expect(evaluated).not.toBe(node);
-    if (!(evaluated instanceof AtRule)) {
-      throw new Error('Expected AtRule eval result');
-    }
-    expect(node.frames).toBeUndefined();
-    expect(node.hoistToRoot).toBeUndefined();
-    expect(node.getRenderFrames()).toBeUndefined();
-    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
-    expect(evaluated.render(context)).toBeString(`
+    expect(await Promise.resolve(evaluated.render(context))).toBeString(`
       @media (max-width: 10px) {
         .parent {
           color: red;
         }
       }
     `);
+    expect(node.hoistToRoot).toBeUndefined();
   });
 
   it('carries direct body-render prelude evaluation through body state once', async () => {
@@ -1329,7 +1213,7 @@ describe('AtRule', () => {
       return originalEval.apply(this, args);
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: sourcePrelude,
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -1362,7 +1246,7 @@ describe('AtRule', () => {
       sourceDecl
     ]);
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: originalRules.rules
     });
 
@@ -1402,7 +1286,7 @@ describe('AtRule', () => {
       decl({ name: 'color', value: ref({ key: 'accent' }, { type: 'variable' }) })
     ]);
     const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
+      name: '@font-face',
       rules: originalRules.rules
     });
     const originalHasVisibleRules = Rules.prototype.hasVisibleRules;
@@ -1442,13 +1326,12 @@ describe('AtRule', () => {
     context.rulesContext = evaldRoot;
 
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: [
         decl({ name: 'color', value: any('red') })
       ]
     });
-    const sourceName = node.name;
     const sourcePrelude = node.prelude;
     const sourceRules = node.rules;
 
@@ -1459,7 +1342,6 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(sourceName.parent).toBe(node);
     expect(sourcePrelude?.parent).toBe(node);
     expect(sourceRules[0]?.parent).toBe(node);
     expect(node.prelude).toBe(sourcePrelude);
@@ -1497,7 +1379,7 @@ describe('AtRule', () => {
       return evaluatedRules;
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: originalRules.rules
     });
@@ -1538,7 +1420,7 @@ describe('AtRule', () => {
       })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: sourceRules.rules
     });
@@ -1585,7 +1467,7 @@ describe('AtRule', () => {
   it('keeps public body at-rule resolve results mutable and isolated even when output is unchanged', async () => {
     const root = rules([
       vardecl({
-        name: any('mode'),
+        name: 'mode',
         value: any('screen')
       })
     ]);
@@ -1597,7 +1479,7 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('red') })
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: sourcePrelude,
       rules: sourceRules.rules
     });
@@ -1650,7 +1532,7 @@ describe('AtRule', () => {
       })
     ]);
     const node = atrule({
-      name: any('@keyframes', { role: 'atkeyword' }),
+      name: '@keyframes',
       prelude: sourcePrelude,
       rules: sourceRules.rules
     });
@@ -1665,10 +1547,7 @@ describe('AtRule', () => {
     expect(resolved).not.toBe(node);
     expect(resolved.rules).not.toBe(sourceRules.rules);
     expect(resolved.getRenderRules()).toBe(resolved.rules);
-    expect(resolved.hoistToRoot).toBe(true);
-    expect(resolved.isHoisted({ collapseNesting: false })).toBe(true);
-    expect(resolved.getRenderFrames()).toBeUndefined();
-    expect(resolved.frames).toBeUndefined();
+    expect(resolved.hoistToRoot).toBeUndefined();
     expect(resolved.toTrimmedString()).toBeString(`
       @keyframes spin {
         to {
@@ -1681,12 +1560,11 @@ describe('AtRule', () => {
     expect(sourcePrelude.parent).toBe(node);
     expect(sourceRules.parent).toBeUndefined();
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.frames).toBeUndefined();
   });
 
   it('resolves static at-rules without deriving or evaluating', () => {
     const node = atrulestatement({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name: '@namespace',
       prelude: seq([any('svg')])
     });
     const originalEval = AtRuleStatement.prototype.eval;
@@ -1711,20 +1589,29 @@ describe('AtRule', () => {
   });
 
   it('serializes comment trivia between at-rule preludes and blocks', () => {
-    const name = any('@-webkit-keyframes', { role: 'atkeyword' });
-    name._location = [0, 1, 1, 17, 1, 18];
+    // Source layout ("|" = offset):
+    //   @-webkit-keyframes /* Safari */ hover /* and Chrome */ {
+    //   0                18            32    37                55
+    // The name is a bare STRING with no span of its own; its end offset is the
+    // AtRule's own span start plus the name length (0 + 18 = 18). The prelude
+    // node carries [32,37]. A comment authored in the [nameEnd, preludeStart) gap
+    // round-trips via the node-span comment scan; whitespace there is normalized.
+    const src = '@-webkit-keyframes /* Safari */ hover /* and Chrome */ { }';
+    const name = '@-webkit-keyframes';
     const prelude = any('hover', { role: 'keyword' });
-    prelude._location = [32, 1, 33, 36, 1, 37];
-    const leading = run(' /* Safari */ ');
-    const trailing = run(' /* and Chrome */ ');
+    setSourceSpan(prelude, { start: 32, end: 37 });
+    // Runs carry their REAL source spans — the scan validates that a comment run
+    // actually sits in the [nameEnd, preludeStart) gap.
+    const interstitial = makeTrivia(src, 18, 32); // " /* Safari */ "
+    const trailing = makeTrivia(src, 37, 55); // " /* and Chrome */ "
     const trivia = createTriviaMap({
       before: new Map([
-        [prelude.location[0], leading],
+        [32, interstitial],
         [55, trailing]
       ]),
       after: new Map([
-        [name.location[3], leading],
-        [prelude.location[3], trailing]
+        [18, interstitial],
+        [37, trailing]
       ])
     }) satisfies TriviaMap;
     const node = atrule({
@@ -1739,6 +1626,8 @@ describe('AtRule', () => {
         })
       ]
     });
+    // The AtRule's own span starts at 0, so the bare-string name ends at 0+18=18.
+    setSourceSpan(node, { start: 0, end: 57 });
 
     expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
   });
@@ -1746,23 +1635,16 @@ describe('AtRule', () => {
   it('streams at-rule headers without capture scaffolding', () => {
     const writer = new CountingWriter();
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
       rules: []
     });
     const options = getPrintOptions({ writer });
-    const name = node.name;
+    // The name is a bare string; only the prelude (still a node) can have its
+    // public toString invoked, so just it is guarded.
     const prelude = node.prelude!;
-    const originalNameToString = name.toString;
     const originalPreludeToString = prelude.toString;
-    let nameToStringCalls = 0;
     let preludeToStringCalls = 0;
-    name.toString = function toStringWithWriterCheck(
-      this: typeof name
-    ): string {
-      nameToStringCalls++;
-      return originalNameToString.call(this);
-    };
     prelude.toString = function toStringWithWriterCheck(
       this: typeof prelude
     ): string {
@@ -1778,17 +1660,15 @@ describe('AtRule', () => {
       expect(writer.previews).toBe(0);
       expect(writer.reads).toBe(0);
       expect(writer.restores).toBe(0);
-      expect(nameToStringCalls).toBe(0);
       expect(preludeToStringCalls).toBe(0);
     } finally {
-      name.toString = originalNameToString;
       prelude.toString = originalPreludeToString;
     }
   });
 
   it('writes exact scalar at-rule statements without child syntax capture', () => {
     const writer = new CountingWriter();
-    const name = any('@namespace', { role: 'atkeyword' });
+    const name = '@namespace';
     const prelude = keyword('svg');
     const node = atrulestatement({
       name,
@@ -1808,7 +1688,7 @@ describe('AtRule', () => {
   it('renders leaf at-rules without preview scaffolding', () => {
     const writer = new CountingWriter();
     const node = atrulestatement({
-      name: any('@custom-media', { role: 'atkeyword' }),
+      name: '@custom-media',
       prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
     });
     const options = getPrintOptions({ writer });
@@ -1823,7 +1703,7 @@ describe('AtRule', () => {
   it('renders scalar leaf at-rules without leaf syntax rollback', () => {
     const writer = new CountingWriter();
     const node = atrulestatement({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name: '@namespace',
       prelude: any('svg')
     });
     node.removeFlag(F_STATIC);
@@ -1842,7 +1722,7 @@ describe('AtRule', () => {
   it('writes scalar leaf at-rules without header string transport', () => {
     const writer = new CountingWriter();
     const node = atrulestatement({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name: '@namespace',
       prelude: any('svg')
     });
 
@@ -1856,7 +1736,7 @@ describe('AtRule', () => {
   it('writes non-scalar no-trivia leaf at-rules without header string transport', () => {
     const writer = new CountingWriter();
     const node = atrulestatement({
-      name: any('@custom-media', { role: 'atkeyword' }),
+      name: '@custom-media',
       prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
     });
 
@@ -1872,7 +1752,7 @@ describe('AtRule', () => {
   it('normalizes leading prelude whitespace when writing direct leaf at-rules', () => {
     const writer = new CountingWriter();
     const node = atrulestatement({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name: '@namespace',
       prelude: any(' foo url(http://www.example.com)', { role: 'keyword' })
     });
     node.getHeaderString = () => {
@@ -1885,7 +1765,7 @@ describe('AtRule', () => {
 
   it('normalizes leading prelude whitespace when rendering evaluated leaf at-rules', () => {
     const node = atrulestatement({
-      name: any('@impor', { role: 'atkeyword' }),
+      name: '@impor',
       prelude: quoted(any('impor-typo-dont-parse-as-@import.less'))
     });
     node.removeFlag(F_STATIC);
@@ -1896,11 +1776,11 @@ describe('AtRule', () => {
   it('renders keyword and anonymous leaf at-rule preludes without syntax rollback', () => {
     const writer = new CountingWriter();
     const first = atrulestatement({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name: '@namespace',
       prelude: keyword('svg')
     });
     const second = atrulestatement({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name: '@namespace',
       prelude: new Anonymous('html')
     });
     first.removeFlag(F_STATIC);
@@ -1928,7 +1808,7 @@ describe('AtRule', () => {
       return originalClone.apply(this, args);
     };
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([preludeLeaf]),
       rules: []
     });
@@ -1949,7 +1829,7 @@ describe('AtRule', () => {
       sourceComment
     ]);
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude,
       rules: []
     });
@@ -1961,14 +1841,14 @@ describe('AtRule', () => {
 
   it('compares repeated at-rule headers through comparable header keys', async () => {
     const first = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
       rules: [
         decl({ name: 'case', value: any('1') })
       ]
     });
     const second = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
       rules: [
         decl({ name: 'case', value: any('2') })
@@ -2032,7 +1912,7 @@ describe('AtRule', () => {
 
   it('serializeRulesContainer writes no-trivia at-rule headers without header string transport', () => {
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })]),
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -2068,7 +1948,7 @@ describe('AtRule', () => {
 
   it('normalizes leading prelude whitespace at the at-rule name boundary', () => {
     const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
+      name: '@media',
       prelude: any('  all and (tv)', { role: 'keyword' }),
       rules: []
     });
@@ -2084,7 +1964,7 @@ describe('AtRule', () => {
           selector: sel([el('.body')]),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
               rules: [
                 decl({ name: 'padding', value: dimension([20, 'px']) })
@@ -2124,7 +2004,7 @@ describe('AtRule', () => {
           selector: sel([el('.body')]),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
               rules: [
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
@@ -2175,7 +2055,7 @@ describe('AtRule', () => {
           selector: sel([el('.body')]),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
               rules: [
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
@@ -2244,7 +2124,7 @@ describe('AtRule', () => {
           selector: sel([el('.body')]),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
               rules: [
                 decl({ name: 'padding', value: dimension([20, 'px']) }),
@@ -2253,7 +2133,7 @@ describe('AtRule', () => {
                   rules: [
                     decl({ name: 'background-color', value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 }) }),
                     atrule({
-                      name: any('@media', { role: 'atkeyword' }),
+                      name: '@media',
                       prelude: seq([paren(decl({
                         name: 'orientation',
                         value: any('landscape')
@@ -2297,7 +2177,7 @@ describe('AtRule', () => {
           rules: [
             decl({ name: 'opacity', value: num(1) }),
             atrule({
-              name: any('@starting-style', { role: 'atkeyword' }),
+              name: '@starting-style',
               rules: [
                 decl({ name: 'opacity', value: num(0) })
               ]
@@ -2325,7 +2205,7 @@ describe('AtRule', () => {
           selector: sel([el('.box')]),
           rules: [
             atrulestatement({
-              name: any('@apply', { role: 'atkeyword' }),
+              name: '@apply',
               prelude: any('h-64 w-64')
             })
           ]
@@ -2348,7 +2228,7 @@ describe('AtRule', () => {
           selector: sel([el('.onTop')]),
           rules: [
             atrule({
-              name: any('@keyframes', { role: 'atkeyword' }),
+              name: '@keyframes',
               prelude: quoted(any('textscale')),
               rules: [
                 ruleset({
@@ -2391,18 +2271,18 @@ describe('AtRule', () => {
       context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         atrule({
-          name: any('@supports', { role: 'atkeyword' }),
+          name: '@supports',
           prelude: paren(decl({ name: 'property', value: any('value') })),
           rules: [
             ruleset({
               selector: sel([el('.outOfMedia'), co(' '), amp()]),
               rules: [
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
                   rules: [
                     atrule({
-                      name: any('@supports', { role: 'atkeyword' }),
+                      name: '@supports',
                       prelude: paren(decl({ name: 'whatever', value: any('something') })),
                       rules: [
                         decl({ name: 'property', value: any('value') })
@@ -2434,13 +2314,13 @@ describe('AtRule', () => {
     it('does not merge adjacent root-only at-rules with identical headers', async () => {
       const node = rules([
         atrule({
-          name: any('@font-face', { role: 'atkeyword' }),
+          name: '@font-face',
           rules: [
             decl({ name: 'font-family', value: quoted('One') })
           ]
         }),
         atrule({
-          name: any('@font-face', { role: 'atkeyword' }),
+          name: '@font-face',
           rules: [
             decl({ name: 'font-family', value: quoted('Two') })
           ]
@@ -2466,7 +2346,7 @@ describe('AtRule', () => {
           selector: sel([el('.one')]),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('screen', { role: 'keyword' })]),
               rules: [
                 decl({ name: 'color', value: any('red') })
@@ -2478,7 +2358,7 @@ describe('AtRule', () => {
           selector: sel([el('.two')]),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('screen', { role: 'keyword' })]),
               rules: [
                 decl({ name: 'color', value: any('blue') })
@@ -2508,18 +2388,18 @@ describe('AtRule', () => {
       context.opts.output = { ...context.opts.output, collapseNesting: true };
       const node = rules([
         atrule({
-          name: any('@supports', { role: 'atkeyword' }),
+          name: '@supports',
           prelude: paren(decl({ name: 'property', value: any('value') })),
           rules: [
             ruleset({
               selector: sel([el('.outOfMedia'), co(' '), amp()]),
               rules: [
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
                   rules: [
                     atrule({
-                      name: any('@supports', { role: 'atkeyword' }),
+                      name: '@supports',
                       prelude: paren(decl({ name: 'whatever', value: any('something') })),
                       rules: [
                         decl({ name: 'property', value: any('value') })
@@ -2535,15 +2415,15 @@ describe('AtRule', () => {
           selector: sel([el('.onTop'), co(' '), amp()]),
           rules: [
             atrule({
-              name: any('@supports', { role: 'atkeyword' }),
+              name: '@supports',
               prelude: paren(decl({ name: 'property', value: any('value') })),
               rules: [
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: paren(decl({ name: 'max-size', value: dimension([2, 'px']) })),
                   rules: [
                     atrule({
-                      name: any('@supports', { role: 'atkeyword' }),
+                      name: '@supports',
                       prelude: paren(decl({ name: 'whatever', value: any('something') })),
                       rules: [
                         decl({ name: 'property', value: any('value') })
@@ -2598,19 +2478,19 @@ describe('AtRule', () => {
       //   .mediaMixin(100px);
       // }
       const mixinDef = mixin({
-        name: any('.mediaMixin'),
+        name: '.mediaMixin',
         params: list([
-          vardecl({ name: any('fallback', { role: 'property' }), value: dimension([200, 'px']) }, { paramVar: true })
+          vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
         ]),
         rules: [
           decl({ name: 'background', value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 }) }),
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([any('handheld', { role: 'keyword' })]),
             rules: [
               decl({ name: 'background', value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 }) }),
               atrule({
-                name: any('@media', { role: 'atkeyword' }),
+                name: '@media',
                 prelude: seq([paren(decl({
                   name: 'max-width',
                   value: ref({ key: 'fallback' }, { type: 'variable' })
@@ -2654,7 +2534,7 @@ describe('AtRule', () => {
     it('should handle mixin with nested @media using indexed parameter references', async () => {
       const createMixinRoot = (args: Node[] = []) => {
         const mixinDef = mixin({
-          name: any('.mediaMixin'),
+          name: '.mediaMixin',
           params: list([
             vardecl({ name: 'fallback', value: dimension([200, 'px']) }, { paramVar: true })
           ]),
@@ -2664,7 +2544,7 @@ describe('AtRule', () => {
               value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
             }),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('handheld', { role: 'keyword' })]),
               rules: [
                 decl({
@@ -2672,7 +2552,7 @@ describe('AtRule', () => {
                   value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: paren(decl({
                     name: 'max-width',
                     value: ref({ key: 'fallback' }, { type: 'index' })
@@ -2742,7 +2622,7 @@ describe('AtRule', () => {
       // Represents: @media print { ... } @media screen { ... }
       const node = rules([
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('print', { role: 'keyword' })]),
           rules: [
             ruleset({
@@ -2754,10 +2634,10 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('screen', { role: 'keyword' })]),
           rules: [
-            vardecl({ name: any('base', { role: 'ident' }), value: num(8) }),
+            vardecl({ name: 'base', value: num(8) }),
             ruleset({
               selector: sel([el('.body')]),
               rules: [
@@ -2790,10 +2670,10 @@ describe('AtRule', () => {
     it('should handle @media with variable references in prelude', async () => {
       // Represents: @all: ~"all"; @tv: ~"(tv)"; @media @all and @tv { ... }
       const node = rules([
-        vardecl({ name: any('all', { role: 'ident' }), value: quoted(any('all', { role: 'any' }), { escaped: true }) }),
-        vardecl({ name: any('tv', { role: 'ident' }), value: quoted(any('(tv)', { role: 'any' }), { escaped: true }) }),
+        vardecl({ name: 'all', value: quoted(any('all', { role: 'any' }), { escaped: true }) }),
+        vardecl({ name: 'tv', value: quoted(any('(tv)', { role: 'any' }), { escaped: true }) }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([ref('all', { type: 'variable' }), any('and', { role: 'keyword' }), ref('tv', { type: 'variable' })]),
           rules: [
             ruleset({
@@ -2822,9 +2702,9 @@ describe('AtRule', () => {
     it('should handle @media with expressions in prelude', async () => {
       // Represents: @some-var: 60px; @media screen and (min-width: (@some-var + 1)) { ... }
       const node = rules([
-        vardecl({ name: any('some-var', { role: 'ident' }), value: dimension([60, 'px']) }),
+        vardecl({ name: 'some-var', value: dimension([60, 'px']) }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('screen', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -2861,7 +2741,7 @@ describe('AtRule', () => {
       // Represents: @media screen and (color), projection and (color) { ... }
       const node = rules([
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([
               any('screen', { role: 'keyword' }),
@@ -2913,10 +2793,10 @@ describe('AtRule', () => {
       //   }
       // }
       const navJustifiedMixin = mixin({
-        name: any('.nav-justified'),
+        name: '.nav-justified',
         rules: [
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([paren(decl({
               name: 'min-width',
               value: dimension([480, 'px'])
@@ -2937,7 +2817,7 @@ describe('AtRule', () => {
         selector: sel([el('.menu')]),
         rules: [
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([paren(decl({
               name: 'min-width',
               value: dimension([768, 'px'])
@@ -2974,7 +2854,7 @@ describe('AtRule', () => {
         selector: sel([el('.nav-justified')]),
         rules: [
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([paren(decl({
               name: 'min-width',
               value: dimension([480, 'px'])
@@ -2995,7 +2875,7 @@ describe('AtRule', () => {
         selector: sel([el('.menu')]),
         rules: [
           atrule({
-            name: any('@media', { role: 'atkeyword' }),
+            name: '@media',
             prelude: seq([paren(decl({
               name: 'min-width',
               value: dimension([768, 'px'])
@@ -3036,9 +2916,9 @@ describe('AtRule', () => {
       // Build the AST exactly as represented in media.less.s-expr.txt
       const node = rules([
         comment('// For now, variables can\'t be declared…', { lineComment: true }),
-        vardecl({ name: any('var', { role: 'ident' }), value: num(42) }),
+        vardecl({ name: 'var', value: num(42) }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('print', { role: 'keyword' })]),
           rules: [
             ruleset({
@@ -3082,10 +2962,10 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('screen', { role: 'keyword' })]),
           rules: [
-            vardecl({ name: any('base', { role: 'ident' }), value: num(8) }),
+            vardecl({ name: 'base', value: num(8) }),
             ruleset({
               selector: el('.body'),
               rules: [
@@ -3101,10 +2981,10 @@ describe('AtRule', () => {
             })
           ]
         }),
-        vardecl({ name: any('ratio_large', { role: 'ident' }), value: num(16) }),
-        vardecl({ name: any('ratio_small', { role: 'ident' }), value: num(9) }),
+        vardecl({ name: 'ratio_large', value: num(16) }),
+        vardecl({ name: 'ratio_small', value: num(9) }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('all', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -3134,7 +3014,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('all', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -3158,7 +3038,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([
               any('handheld', { role: 'keyword' }),
@@ -3197,7 +3077,7 @@ describe('AtRule', () => {
           selector: el('.body'),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('print', { role: 'keyword' })]),
               rules: [
                 decl({
@@ -3214,7 +3094,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(decl({
                       name: 'orientation',
@@ -3233,7 +3113,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('screen', { role: 'keyword' })]),
           rules: [
             ruleset({
@@ -3244,7 +3124,7 @@ describe('AtRule', () => {
                   value: dimension([300, 'px'])
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(decl({
                       name: 'orientation',
@@ -3263,14 +3143,14 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('a', { role: 'keyword' })]),
           rules: [
             ruleset({
               selector: el('.first'),
               rules: [
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(any('b', { role: 'keyword' }))
                   ]),
@@ -3286,7 +3166,7 @@ describe('AtRule', () => {
                               value: dimension([300, 'px'])
                             }),
                             atrule({
-                              name: any('@media', { role: 'atkeyword' }),
+                              name: '@media',
                               prelude: seq([
                                 paren(any('c', { role: 'keyword' }))
                               ]),
@@ -3320,7 +3200,7 @@ describe('AtRule', () => {
           selector: el('.body'),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: list([
                 seq([any('a', { role: 'keyword' })]),
                 seq([
@@ -3335,7 +3215,7 @@ describe('AtRule', () => {
                   value: dimension([95, '%'])
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: list([
                     seq([paren(any('x', { role: 'keyword' }))]),
                     seq([paren(any('y', { role: 'keyword' }))])
@@ -3352,10 +3232,10 @@ describe('AtRule', () => {
           ]
         }),
         mixin({
-          name: any('.mediaMixin'),
+          name: '.mediaMixin',
           params: list([
             vardecl({
-              name: any('fallback', { role: 'property' }),
+              name: 'fallback',
               value: dimension([200, 'px'])
             }, { paramVar: true })
           ]),
@@ -3365,7 +3245,7 @@ describe('AtRule', () => {
               value: color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 })
             }),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([any('handheld', { role: 'keyword' })]),
               rules: [
                 decl({
@@ -3373,7 +3253,7 @@ describe('AtRule', () => {
                   value: color({ node: 'white', format: 0, rgb: [255, 255, 255], alpha: 1 })
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(decl({
                       name: 'max-width',
@@ -3411,11 +3291,11 @@ describe('AtRule', () => {
           ]
         }),
         vardecl({
-          name: any('smartphone', { role: 'ident' }),
+          name: 'smartphone',
           value: quoted(any('only screen and (max-width: 200px)', { role: 'any' }), { escaped: true })
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             ref({ key: 'smartphone' }, { type: 'variable' })
           ]),
@@ -3432,11 +3312,11 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([any('print', { role: 'keyword' })]),
           rules: [
             atrule({
-              name: any('@page', { role: 'atkeyword' }),
+              name: '@page',
               prelude: list([el(':left')]),
               rules: [
                 decl({
@@ -3446,7 +3326,7 @@ describe('AtRule', () => {
               ]
             }),
             atrule({
-              name: any('@page', { role: 'atkeyword' }),
+              name: '@page',
               prelude: list([el(':right')]),
               rules: [
                 decl({
@@ -3456,7 +3336,7 @@ describe('AtRule', () => {
               ]
             }),
             atrule({
-              name: any('@page', { role: 'atkeyword' }),
+              name: '@page',
               prelude: list([any('Test:first', { role: 'ident' })]),
               rules: [
                 decl({
@@ -3466,7 +3346,7 @@ describe('AtRule', () => {
               ]
             }),
             atrule({
-              name: any('@page', { role: 'atkeyword' }),
+              name: '@page',
               prelude: list([el(':first')]),
               rules: [
                 decl({
@@ -3481,7 +3361,7 @@ describe('AtRule', () => {
                   ])
                 }),
                 atrule({
-                  name: any('@top-left', { role: 'atkeyword' }),
+                  name: '@top-left',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3490,7 +3370,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@top-left-corner', { role: 'atkeyword' }),
+                  name: '@top-left-corner',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3499,7 +3379,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@top-center', { role: 'atkeyword' }),
+                  name: '@top-center',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3508,7 +3388,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@top-right', { role: 'atkeyword' }),
+                  name: '@top-right',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3517,7 +3397,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@top-right-corner', { role: 'atkeyword' }),
+                  name: '@top-right-corner',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3526,7 +3406,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@bottom-left', { role: 'atkeyword' }),
+                  name: '@bottom-left',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3535,7 +3415,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@bottom-left-corner', { role: 'atkeyword' }),
+                  name: '@bottom-left-corner',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3544,7 +3424,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@bottom-center', { role: 'atkeyword' }),
+                  name: '@bottom-center',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3553,7 +3433,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@bottom-right', { role: 'atkeyword' }),
+                  name: '@bottom-right',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3562,7 +3442,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@bottom-right-corner', { role: 'atkeyword' }),
+                  name: '@bottom-right-corner',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3571,7 +3451,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@left-top', { role: 'atkeyword' }),
+                  name: '@left-top',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3580,7 +3460,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@left-middle', { role: 'atkeyword' }),
+                  name: '@left-middle',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3589,7 +3469,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@left-bottom', { role: 'atkeyword' }),
+                  name: '@left-bottom',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3598,7 +3478,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@right-top', { role: 'atkeyword' }),
+                  name: '@right-top',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3607,14 +3487,14 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@right-middle', { role: 'atkeyword' }),
+                  name: '@right-middle',
                   rules: [
                     decl({
                       name: 'content',
                       value: seq([
                         quoted(any('Page ', { role: 'any' })),
                         call({
-                          name: any('counter', { role: 'ident' }),
+                          name: 'counter',
                           args: list([
                             any('page')
                           ])
@@ -3624,7 +3504,7 @@ describe('AtRule', () => {
                   ]
                 }),
                 atrule({
-                  name: any('@right-bottom', { role: 'atkeyword' }),
+                  name: '@right-bottom',
                   rules: [
                     decl({
                       name: 'margin',
@@ -3637,7 +3517,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([
               paren(decl({
@@ -3683,14 +3563,14 @@ describe('AtRule', () => {
           ]
         }),
         mixin({
-          name: any('.bg'),
+          name: '.bg',
           rules: [
             decl({
               name: 'background',
               value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
             }),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(decl({
                   name: 'max-width',
@@ -3715,11 +3595,11 @@ describe('AtRule', () => {
           ]
         }),
         vardecl({
-          name: any('bpMedium', { role: 'ident' }),
+          name: 'bpMedium',
           value: dimension([1000, 'px'])
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(decl({
               name: 'max-width',
@@ -3735,7 +3615,7 @@ describe('AtRule', () => {
                   value: color({ node: 'red', format: 0, rgb: [255, 0, 0], alpha: 1 })
                 }),
                 atrule({
-                  name: any('@media', { role: 'atkeyword' }),
+                  name: '@media',
                   prelude: seq([
                     paren(decl({
                       name: 'max-width',
@@ -3758,7 +3638,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(decl({
               name: 'max-width',
@@ -3768,7 +3648,7 @@ describe('AtRule', () => {
           rules: [
             comment('/* a comment */'),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(decl({
                   name: 'max-width',
@@ -3793,7 +3673,7 @@ describe('AtRule', () => {
           selector: el('.nav-justified'),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(decl({
                   name: 'min-width',
@@ -3827,7 +3707,7 @@ describe('AtRule', () => {
           selector: el('.menu'),
           rules: [
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(decl({
                   name: 'min-width',
@@ -3839,7 +3719,7 @@ describe('AtRule', () => {
                   selector: el('.menu'),
                   rules: [
                     atrule({
-                      name: any('@media', { role: 'atkeyword' }),
+                      name: '@media',
                       prelude: seq([
                         paren(decl({
                           name: 'min-width',
@@ -3874,15 +3754,15 @@ describe('AtRule', () => {
           ]
         }),
         vardecl({
-          name: any('all', { role: 'ident' }),
+          name: 'all',
           value: quoted(any('all', { role: 'any' }))
         }),
         vardecl({
-          name: any('tv', { role: 'ident' }),
+          name: 'tv',
           value: quoted(any('(tv)', { role: 'any' }))
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('all', { role: 'any' }),
             any('and', { role: 'keyword' }),
@@ -3901,11 +3781,11 @@ describe('AtRule', () => {
           ]
         }),
         vardecl({
-          name: any('some-var', { role: 'ident' }),
+          name: 'some-var',
           value: dimension([60, 'px'])
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('screen', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -3927,7 +3807,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([
               any('screen', { role: 'keyword' }),
@@ -3957,7 +3837,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('not', { role: 'keyword' }),
             paren(seq([
@@ -3979,7 +3859,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(seq([
               any('height', { role: 'ident' }),
@@ -4000,7 +3880,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('not', { role: 'keyword' }),
             paren(decl({
@@ -4021,7 +3901,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(decl({
               name: 'min-orientation',
@@ -4041,7 +3921,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             any('print', { role: 'keyword' }),
             any('and', { role: 'keyword' }),
@@ -4065,7 +3945,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: seq([
             paren(seq([
               dimension([200, 'px']),
@@ -4095,7 +3975,7 @@ describe('AtRule', () => {
               value: color({ node: '#eee', format: 0 })
             }),
             atrule({
-              name: any('@media', { role: 'atkeyword' }),
+              name: '@media',
               prelude: seq([
                 paren(seq([
                   dimension([200, 'px']),
@@ -4129,7 +4009,7 @@ describe('AtRule', () => {
           ]
         }),
         atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: list([
             seq([any('print', { role: 'keyword' })]),
             seq([

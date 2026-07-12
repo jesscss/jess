@@ -8,7 +8,7 @@
  * real Mixin node with its declarations.
  */
 import { describe, test, expect } from 'vitest';
-import { parseLessFn } from '../src/grammar.js';
+import { parseLessFn } from '../src/functional-parser.js';
 import { serializeTypes } from '@jesscss/core';
 
 describe('nested mixin definitions', () => {

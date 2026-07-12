@@ -34,6 +34,13 @@ export interface TriviaMap {
   /** Iterate one lookup index for public inspection and diagnostics. */
   entries(direction: TriviaLookup): IterableIterator<[number, Trivia]>;
   has(offset: number | undefined, direction: TriviaLookup): boolean;
+  /**
+   * All comment-bearing runs, deduped by identity and sorted ascending by
+   * `start`. Built once (lazily) and cached, so in-span comment lookups can
+   * binary-search this window instead of re-scanning the whole `after` index
+   * per serialized node.
+   */
+  commentRuns(): readonly Trivia[];
 }
 
 export interface IParseResult<T extends Node = Node> {

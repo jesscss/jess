@@ -2,7 +2,7 @@
 // Converted from Chevrotain-based productions.ts
 
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser';
+import type { IToken } from 'chevrotain';
 import {
   Node,
   Any,

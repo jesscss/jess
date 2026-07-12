@@ -5,12 +5,12 @@ const parse = parser.parse;
 
 describe('wrappedDeclarationList', () => {
   it('should parse wrapped declaration list', () => {
-    const { errors } = parse('@var: { color: red; margin: 10px; }', 'stylesheet');
+    const { errors } = parse('@var: { color: red; margin: 10px; }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse empty wrapped declaration list', () => {
-    const { errors } = parse('@var: { }', 'stylesheet');
+    const { errors } = parse('@var: { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });

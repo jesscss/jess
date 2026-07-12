@@ -17,7 +17,7 @@ class WholeBufferCountingWriter extends OutputWriter {
 describe('Func', () => {
   it('serializes function definitions through toTrimmedString()', () => {
     const node = fn({
-      name: any('answer'),
+      name: 'answer',
       body: rules([
         decl({ name: 'return', value: any('42') })
       ])
@@ -33,7 +33,7 @@ describe('Func', () => {
   it('captures function source syntax without outer whole-buffer readback', () => {
     const writer = new WholeBufferCountingWriter();
     const node = fn({
-      name: any('answer'),
+      name: 'answer',
       params: list([
         vardecl({ name: 'value', value: nil() }, { paramVar: true })
       ]),
@@ -53,7 +53,7 @@ describe('Func', () => {
   it('resolves function definitions without touching render state', async () => {
     const ctx = new Context();
     const node = fn({
-      name: any('answer'),
+      name: 'answer',
       body: rules([
         decl({ name: 'return', value: any('42') })
       ])
@@ -76,7 +76,7 @@ describe('Func', () => {
 
     const tree = rules([
       fn({
-        name: any('add'),
+        name: 'add',
         params: list([
           vardecl({ name: 'a', value: nil() }),
           vardecl({ name: 'b', value: nil() })
@@ -99,7 +99,7 @@ describe('Func', () => {
     ctx.depth = 2;
 
     const answer = fn({
-      name: any('answer'),
+      name: 'answer',
       body: rules([
         decl({ name: 'return', value: any('42') })
       ])

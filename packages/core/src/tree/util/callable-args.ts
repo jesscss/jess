@@ -2,6 +2,7 @@ import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { cast } from './cast.js';
+import { coerceValueNode } from './evaluate-node-array.js';
 import { withRulesContext } from './context.js';
 import { isNode } from './is-node.js';
 
@@ -27,7 +28,23 @@ export async function evaluateCallableArgs({
           evaluatedArgs.push(arg);
           continue;
         }
+        // Detached-ruleset closure capture: a Rules passed as an arg is a lexical
+        // closure over the surface where it is WRITTEN (the current caller scope T,
+        // which carries per-call param live-slots). Capture T BEFORE evaluating the
+        // arg — the body may be eagerly evaluated here (e.g. `{ x: @outer }`), and its
+        // free vars must resolve up T (the re-pointed placement surface), NOT the
+        // arg's canonical `.parent`. Setting it post-eval was too late for that eager
+        // body eval. `inherit()` propagates `_closureScope` onto the evaluated result.
+        const closureScope = context.rulesContext;
+        if (isNode(arg, N.Rules) && closureScope) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          (arg as unknown as { _closureScope?: unknown })._closureScope = closureScope;
+        }
         const evald = await arg.eval(context);
+        if (isNode(evald, N.Rules) && closureScope) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          (evald as unknown as { _closureScope?: unknown })._closureScope = closureScope;
+        }
         if (evald.type === 'Rest') {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const restValue = (evald as unknown as { value: Node | undefined }).value;
@@ -45,6 +62,16 @@ export async function evaluateCallableArgs({
           }
         }
         evaluatedArgs.push(evald);
+        continue;
+      }
+      // A non-Node arg is either a parser value-shape (a space-group array or a
+      // bare string terminal) or a JS-interop value. The former must coerce to a
+      // space `Sequence` / keyword via `coerceValueNode`; `cast` would wrap an
+      // array as a comma `List`, corrupting a space-separated argument. Route
+      // value-shapes through coercion (and evaluate the result) and keep `cast`
+      // for genuine JS primitives.
+      if (typeof arg === 'string' || Array.isArray(arg)) {
+        evaluatedArgs.push(await coerceValueNode(arg).eval(context));
         continue;
       }
       evaluatedArgs.push(cast(arg));

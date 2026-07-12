@@ -4,6 +4,7 @@
  */
 import {
   Node,
+  F_ALLOW_ROOT,
   F_VISIBLE,
   F_STATIC,
   defineType,
@@ -11,7 +12,8 @@ import {
   type NodeOptions
 } from './node-base.js';
 import type { Context } from '../context.js';
-import type { FinalPrintOptions } from './util/print.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
+import { renderInvisibleEffect, type RenderBuffer } from './util/render-buffer.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
@@ -30,8 +32,9 @@ export interface Nil extends Node<''> {
 export class Nil extends Node<''> {
   static override childKeys = null;
 
-  override allowRoot = true;
-  override allowRuleRoot = true;
+  // Invariant 7: each node owns its value; Nil's is always the empty string.
+  readonly value: '' = '';
+
   constructor(
     value?: '',
     options?: NodeOptions,
@@ -41,9 +44,12 @@ export class Nil extends Node<''> {
     super('', options, location);
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
+    this.addFlag(F_ALLOW_ROOT);
     this.removeFlag(F_VISIBLE);
-    // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
-    this.fullRender = false;
+  }
+
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
   }
 
   override toTrimmedString() {
@@ -56,6 +62,14 @@ export class Nil extends Node<''> {
 
   /** @internal */
   override writeSyntax(_options: FinalPrintOptions): void {}
+
+  // Static-by-type invisibility: Nil is never CSS output. The no-op render
+  // keeps the base render() gate off the common hot path (Focus D.1 stage 2).
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
+  }
 
   override resolve(_context: Context): this {
     return this;

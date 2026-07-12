@@ -1,5 +1,6 @@
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType, type NodeLocation } from './node.js';
+import { Node, defineType, type NodeLocation } from './node.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -25,12 +26,10 @@ export interface Block extends Node<Node, BlockOptions> {
 export class Block extends Node<Node, BlockOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Node;
+  readonly value: Node;
 
   private withValue(value: Node): Block {
-    const location = this._location && this._location.length === 6
-      ? this._location
-      : undefined;
+    const location = sourceSpanOf(this);
     return new Block(
       value,
       this._options ? { ...this._options } : undefined,
@@ -46,6 +45,8 @@ export class Block extends Node<Node, BlockOptions> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
   }
 
@@ -59,11 +60,11 @@ export class Block extends Node<Node, BlockOptions> {
     w.add(start);
     const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia) {
-      w.add(consumeTriviaText(trivia, value.location[0], 'before', options));
+      w.add(consumeTriviaText(trivia, spanStartOf(value), 'before', options));
     }
     value.writeSyntax(options);
     if (trivia) {
-      w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
+      w.add(consumeTriviaText(trivia, spanEndOf(this), 'before', options));
     }
     w.add(end);
     return w.getSince(position);
@@ -80,7 +81,7 @@ export class Block extends Node<Node, BlockOptions> {
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
-    const value = this.hasFlag(F_STATIC) ? this.value : this.value.eval(context);
+    const value = this.value.eval(context);
     if (isThenable(value)) {
       return (value as Promise<Node>).then((resolved) => {
         const out = this.renderBlockSyntax(resolved, prepared);
@@ -104,9 +105,6 @@ export class Block extends Node<Node, BlockOptions> {
   }
 
   private evaluateValue(context: Context): MaybePromise<Block> {
-    if (this.hasFlag(F_STATIC)) {
-      return this;
-    }
     const value = this.value.eval(context);
     const finalize = (resolvedValue: Node): Block => {
       if (resolvedValue === this.value) {

@@ -1,28 +1,36 @@
+import { sourceSpanOf } from './util/provenance.js';
 import {
   defineType,
   Node,
   F_VISIBLE,
+  F_AMPERSAND,
   F_NON_STATIC,
   F_IMPLICIT_AMPERSAND,
-  F_MAY_ASYNC,
   type NodeLocation,
   type NodeOptions
 } from './node.js';
 import { type Context } from '../context.js';
-import { attachSelectorBitLibrary, Selector } from './selector.js';
+import { attachSelectorBitLibrary, Selector, type SelectorLike } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import type { Rules } from './rules.js';
 import type { Ruleset } from './ruleset.js';
 import { createPublicNil, Nil } from './nil.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
-import { Combinator } from './combinator.js';
 import { createGeneratedIsPseudo } from './selector-pseudo.js';
-import { SelectorList } from './selector-list.js';
+import {
+  SelectorList,
+  type SelectorListItem,
+  isSelectorListLike,
+  selectorSurfaceValueOf,
+  emitSelectorListLike
+} from './selector-list.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { copySelectorForPlacement } from './util/selector-utils.js';
+import { asExtendSelectorNode } from './util/extend-roots.js';
 import {
   renderInvisibleEffect,
   type RenderBuffer
@@ -36,10 +44,11 @@ export enum ExtendFlag {
 }
 
 export type ExtendValue = {
-  /** The current selector. By default is `&` */
-  selector?: Selector;
-  /** The target to extend */
-  target: Selector;
+  /** The current selector. By default is `&`. An array stands in for a selector list. */
+  selector?: Selector | SelectorListItem[];
+  /** The target to extend. Any selector-like: a node, a bare string (e.g. `&`), or
+   * an array standing in for a selector list. */
+  target: SelectorLike;
   /**
    * Optional namespace scoping for extend targets.
    *
@@ -64,8 +73,8 @@ export interface Extend extends Node<ExtendValue> {
 export class Extend extends Node<ExtendValue> {
   static override childKeys = ['selector', 'target'] as const;
 
-  readonly selector: Selector | undefined;
-  readonly target: Selector;
+  readonly selector: Selector | SelectorListItem[] | undefined;
+  readonly target: SelectorLike;
   readonly namespace: string | undefined;
   readonly flag: ExtendFlag | undefined;
 
@@ -82,11 +91,14 @@ export class Extend extends Node<ExtendValue> {
     this.namespace = value.namespace;
     this.flag = value.flag;
     this.removeFlag(F_VISIBLE);
-    this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
+    this.addFlags(F_NON_STATIC);
   }
 
   override valueOf() {
-    return `$extend ${this.target.valueOf()}`;
+    const targetText = isSelectorListLike(this.target)
+      ? selectorSurfaceValueOf(this.target)
+      : this.target.valueOf();
+    return `$extend ${targetText}`;
   }
 
   /** @internal */
@@ -98,7 +110,11 @@ export class Extend extends Node<ExtendValue> {
       w.add(' ');
       const saved = options.suppressBoundaryTrivia;
       options.suppressBoundaryTrivia = 'pre';
-      selector.writeSyntax(options);
+      if (isSelectorListLike(selector)) {
+        emitSelectorListLike(selector, options, true);
+      } else {
+        selector.writeSyntax(options);
+      }
       options.suppressBoundaryTrivia = saved;
       w.add(' ->');
     }
@@ -108,7 +124,11 @@ export class Extend extends Node<ExtendValue> {
     }
     const saved = options.suppressBoundaryTrivia;
     options.suppressBoundaryTrivia = 'pre';
-    target.writeSyntax(options);
+    if (isSelectorListLike(target)) {
+      emitSelectorListLike(target, options, true);
+    } else {
+      target.writeSyntax(options);
+    }
     options.suppressBoundaryTrivia = saved;
     if (flag === ExtendFlag.Exact) {
       w.add(' !exact');
@@ -129,8 +149,12 @@ export class Extend extends Node<ExtendValue> {
 
   /** @internal Run the invisible extend registration effect without public render/eval materialization. */
   runEffect(context: Context): MaybePromise<void> {
-    let { selector, target, flag } = this;
+    let { selector, flag } = this;
     const { selectorBits } = context;
+    // The parser delivers simple targets as bare strings (e.g. `.button`) per the
+    // strings-not-nodes model; materialize to a Selector node so the record stays
+    // node-shaped for the matching engine and the bit-library attach below.
+    const target = asExtendSelectorNode(this.target);
     attachSelectorBitLibrary(target, selectorBits);
 
     const currentFrame = context.rulesetFrames.at(-1);
@@ -155,7 +179,13 @@ export class Extend extends Node<ExtendValue> {
       return undefined;
     }
 
-    const maybeSel = selector.eval(context);
+    // The parser may deliver the extend selector as a bare string or raw
+    // component array (strings-not-nodes model); materialize to a Selector node
+    // before evaluating.
+    const selectorNode = typeof selector === 'string' || Array.isArray(selector)
+      ? asExtendSelectorNode(selector)
+      : selector;
+    const maybeSel = selectorNode.eval(context);
     const register = (sel: Selector | Nil): void => {
       if (sel instanceof Nil) {
         return;
@@ -251,7 +281,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
         );
         resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
           parentIs,
-          Combinator.create(' '),
+          ' ',
           copySelectorForExtendRecord(ownSel, selectorBits)
         ]), selectorBits);
         usedParentListComposition = true;
@@ -259,7 +289,32 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
     }
     if (!authoredSelector && !usedParentListComposition) {
       if (fullSel && !(fullSel instanceof Nil) && typeof fullSel !== 'string') {
-        resolvedSel = fullSel;
+        // `rs.selector` may be a raw `SelectorListItem[]` surface (array). The
+        // extend record's extendWith must be a Selector node so both the walk and
+        // location apply paths can clone/place it uniformly — materialize arrays.
+        resolvedSel = Array.isArray(fullSel) ? asExtendSelectorNode(fullSel) : fullSel;
+        // A nested extend-only ruleset (e.g. `.submit { &:hover:extend(...) {} }`)
+        // carries its authored `&:hover` frame selector with the leading `&` still
+        // unresolved. Compose it against the parent frame so the extendWith is the
+        // real replacement (`.submit:hover`), not a live `&:hover` that would later
+        // resolve against the extend target.
+        const parentFrame = context.rulesetFrames.at(-2);
+        const parentSel = parentFrame && isNode(parentFrame, N.Ruleset) ? parentFrame.selector : undefined;
+        if (
+          !Array.isArray(fullSel)
+          && fullSel.hasFlag(F_AMPERSAND)
+          && parentSel
+          && !(parentSel instanceof Nil)
+        ) {
+          const composeSelector = (rs.constructor as { composeSelector(child: SelectorLike, parent: SelectorLike): SelectorLike }).composeSelector;
+          const composed = composeSelector(
+            copySelectorForExtendRecord(fullSel, selectorBits),
+            typeof parentSel === 'string' ? parentSel : copySelectorForExtendRecord(parentSel, selectorBits)
+          );
+          // composeSelector goes textual when the parent is a string surface, so the
+          // result may be a bare string — materialize it back to a Selector node.
+          resolvedSel = attachSelectorBitLibrary(asExtendSelectorNode(composed), selectorBits);
+        }
       } else {
         // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
         // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
@@ -267,7 +322,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
         if (parentSel && !(parentSel instanceof Nil) && typeof parentSel !== 'string' && resolvedSel.valueOf() !== parentSel.valueOf()) {
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
             copySelectorForExtendRecord(parentSel, selectorBits),
-            Combinator.create(' '),
+            ' ',
             copySelectorForExtendRecord(resolvedSel, selectorBits)
           ]), selectorBits);
         }
@@ -397,7 +452,7 @@ function hasMaterializableImplicitAmpersand(
     if (isNode(node, N.ComplexSelector)) {
       return node.value.some(part => (
         typeof part !== 'string'
-        && !isNode(part, N.Combinator)
+        && !isCombinator(part)
         && visit(part)
       ));
     }
@@ -417,7 +472,7 @@ function getDocumentOrderForExtend(rs: Ruleset | undefined, context: Context): n
   if (!rs) {
     return context.extends.length;
   }
-  const loc = rs.location;
+  const loc = sourceSpanOf(rs);
   const fromLoc = Array.isArray(loc) && loc.length >= 1 && typeof loc[0] === 'number' ? loc[0] : undefined;
   if (fromLoc !== undefined) {
     return fromLoc;

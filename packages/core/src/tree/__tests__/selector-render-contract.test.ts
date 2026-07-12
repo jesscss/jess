@@ -38,7 +38,7 @@ describe('Selector render contract', () => {
   it('keeps selector capture source serializers canonical while render(context) resolves its payload', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: el('.foo')
       })
     ]);
@@ -55,7 +55,7 @@ describe('Selector render contract', () => {
   it('renders selector captures directly without public resolve', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector'),
+        name: 'capture-selector',
         value: el('.foo')
       })
     ]);
@@ -74,7 +74,7 @@ describe('Selector render contract', () => {
   it('keeps pseudo-selector source serializers canonical while render(context) resolves selector-list arguments', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -93,7 +93,7 @@ describe('Selector render contract', () => {
   it('renders selector nodes directly without public resolve', async () => {
     const node = rules([
       vardecl({
-        name: any('capture-selector-list'),
+        name: 'capture-selector-list',
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
@@ -114,7 +114,7 @@ describe('Selector render contract', () => {
   it('keeps complex selector source serializers canonical while render(context) resolves nested selector values', async () => {
     const node = rules([
       vardecl({
-        name: any('attr-name'),
+        name: 'attr-name',
         value: any('foo')
       })
     ]);

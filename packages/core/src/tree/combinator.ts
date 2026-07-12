@@ -1,5 +1,6 @@
+import { sourceSpanOf } from './util/provenance.js';
 import type { Context } from '../context.js';
-import { defineType, F_STATIC, F_VISIBLE, type Node } from './node.js';
+import { defineType, F_STATIC, type Node } from './node.js';
 import { Selector } from './selector.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
@@ -15,7 +16,7 @@ export interface Combinator extends Selector<Combinators> {
 export class Combinator extends Selector<Combinators> {
   static override childKeys = null;
 
-  declare readonly value: Combinators;
+  override readonly value: Combinators;
 
   constructor(
     value: Combinators,
@@ -24,8 +25,14 @@ export class Combinator extends Selector<Combinators> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
+  }
+
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
   }
 
   override resolve(context: Context): MaybePromise<Node> {
@@ -45,9 +52,6 @@ export class Combinator extends Selector<Combinators> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
-      return '';
-    }
     const out = this.value;
     if (isRenderBuffer(bufferOrOptions)) {
       return writeRenderText(bufferOrOptions, out);
@@ -59,7 +63,7 @@ export class Combinator extends Selector<Combinators> {
   /** @todo move to visitor */
   // toCSS(context: Context, out: OutputCollector) {
   //   const val = this.value
-  //   out.add(val === ' ' ? val : ` ${val} `, this.location)
+  //   out.add(val === ' ' ? val : ` ${val} `, sourceSpanOf(this))
   // }
 
   /** @todo move to visitor */

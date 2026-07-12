@@ -1,4 +1,4 @@
-import { parseCssFn } from '../src/grammar.js';
+import { parseCssFn } from '../src/functional-parser.js';
 import { serializeTypes } from '@jesscss/core';
 
 describe('functional CSS grammar — core', () => {
@@ -15,7 +15,8 @@ describe('functional CSS grammar — core', () => {
                 [
                   (Declaration
                     name: 'b'
-                    value: 'c'
+                    value:
+                      (Keyword [role=keyword] 'c')
                   )
                 ]
             )

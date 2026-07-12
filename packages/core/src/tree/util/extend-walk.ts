@@ -52,11 +52,13 @@ import { SelectorList, type SelectorListItem } from '../selector-list.js';
 import { selectorListItemForMatch } from './selector-match-core.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
+import { BasicSelector } from '../selector-basic.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { Ruleset } from '../ruleset.js';
 import { isNode } from './is-node.js';
+import { isCombinator, combinatorValue } from './combinator.js';
 import { N } from '../node-type.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET } from '../node.js';
 import { createProcessedSelector } from './extend.js';
@@ -69,9 +71,7 @@ function copySelectorsForPlacement(value: Selector[]): Selector[] {
 }
 
 function isSelectorNode(value: unknown): value is Selector {
-  return !!value
-    && typeof value === 'object'
-    && (value as { isSelector?: unknown }).isSelector === true;
+  return isNode(value, N.Selector);
 }
 
 function expectSelector(value: unknown): Selector {
@@ -85,7 +85,7 @@ function isComplexComponent(value: unknown): value is ComplexSelectorComponent {
   return value instanceof SimpleSelector
     || value instanceof CompoundSelector
     || value instanceof ComplexSelector
-    || value instanceof Combinator;
+    || isCombinator(value);
 }
 
 function selectorArgOf(pseudo: PseudoSelector): Selector | undefined {
@@ -115,13 +115,96 @@ interface FindSpec {
   original: Selector;
 }
 
+// ─────────────────────────────────────────────────
+// Pass-scoped matcher memoization
+//
+// During a single `processExtends` pass the extend set is immutable: the same
+// (target, find, extendWith, partial, parentSelector) tuple is re-matched
+// O(I²) times by the chained-extend discovery + classify passes, each time
+// re-running `decomposeFind` + a full `wouldMatchNode` descent. Caching the
+// invariant answers for the duration of one pass collapses that quadratic.
+//
+// Both caches are pass-scoped (installed by `beginExtendMatchPass` /
+// `endExtendMatchPass` around `processExtends`) — they are `undefined` outside
+// a pass so a plain non-pass call (tests, diagnostics) memoizes nothing and can
+// never observe cross-render staleness.
+//
+// KEY CORRECTNESS: `wouldExtendChange`'s result depends on the full value of
+// target, find, extendWith (self-extend short-circuit + recursive composed
+// probe), partial, AND parentSelector (root/ampersand/parentContains branches).
+// The key captures all five by `valueOf()`. `wouldExtendChange` always forces
+// `presenceMatchMode = false`, so that bit is constant here and needs no key.
+let findSpecCache: Map<string, FindSpec> | undefined;
+let wouldExtendChangeCache: Map<string, boolean> | undefined;
+
+// Deterministic matcher-work counter for the render-scaling guardrail. Counts
+// every FULL (cache-missing) `wouldExtendChange` matcher descent — the O(I²)
+// driver on multi-root extend. The pass-scoped memo turns repeat probes into
+// cache hits, so this total scales with the number of DISTINCT match relations
+// (~O(I·k)), not the number of probe calls (~O(I²)). Reverting the memo makes
+// the same workload recompute every probe → the counter jumps super-linearly,
+// which the guardrail asserts against. Instrumentation only; no behavior.
+let extendMatchWork = 0;
+export function resetExtendMatchWork(): void {
+  extendMatchWork = 0;
+}
+export function getExtendMatchWork(): number {
+  return extendMatchWork;
+}
+
+// Test-only escape hatch: when disabled, `beginExtendMatchPass` installs no
+// caches so `wouldExtendChange`/`decomposeFind` recompute every probe. Used by
+// the memo differential test to render the same sheet with the memo ON vs OFF
+// and assert byte-identical CSS. Never toggled in production paths.
+let extendMatchMemoEnabled = true;
+export function setExtendMatchMemoEnabled(enabled: boolean): void {
+  extendMatchMemoEnabled = enabled;
+}
+
+export function beginExtendMatchPass(): void {
+  if (!extendMatchMemoEnabled) {
+    findSpecCache = undefined;
+    wouldExtendChangeCache = undefined;
+    return;
+  }
+  findSpecCache = new Map();
+  wouldExtendChangeCache = new Map();
+}
+
+export function endExtendMatchPass(): void {
+  findSpecCache = undefined;
+  wouldExtendChangeCache = undefined;
+}
+
 function decomposeFind(find: Selector): FindSpec {
+  const cache = findSpecCache;
+  if (cache) {
+    const key = find.valueOf();
+    const cached = cache.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const computed = decomposeFindUncached(find);
+    cache.set(key, computed);
+    return computed;
+  }
+  return decomposeFindUncached(find);
+}
+
+function decomposeFindUncached(find: Selector): FindSpec {
   if (isNode(find, N.ComplexSelector)) {
     const positions: Selector[][] = [];
     const combinators: string[] = [];
     for (const comp of find.value) {
-      if (comp instanceof Combinator) {
-        combinators.push(comp.value);
+      if (isCombinator(comp)) {
+        combinators.push(combinatorValue(comp));
+      } else if (typeof comp === 'string') {
+        // Parser-delivered complex selectors can carry raw-string components
+        // (a combinator like `' '` handled above, or a simple/compound part
+        // like `'.ext8'`). A string simple-part must still open a position, or
+        // a descendant find like `.ext8 .ext9` decomposes to zero positions and
+        // the multi-position (crossing) path is silently skipped.
+        positions.push([new BasicSelector(comp)]);
       } else if (comp instanceof CompoundSelector) {
         positions.push(comp.value.filter((c): c is SimpleSelector => typeof c !== 'string'));
       } else if (isSelectorNode(comp)) {
@@ -163,15 +246,14 @@ function isWholeNodeMatch(node: Selector, spec: FindSpec): boolean {
   if (isNode(node, N.ComplexSelector) && isNode(find, N.ComplexSelector)) {
     return areComplexEquivalent(node as ComplexSelector, find as ComplexSelector);
   }
-  if (isNode(node, N.ComplexSelector) && !isNode(find, N.ComplexSelector)) {
-    return false;
-  }
   if (isNode(node, N.CompoundSelector) && isNode(find, N.CompoundSelector)) {
     return areCompoundsEquivalent(node as CompoundSelector, find as CompoundSelector);
   }
-  if (isNode(node, N.CompoundSelector) && !isNode(find, N.CompoundSelector)) {
-    return false;
-  }
+  // Mismatched container vs. simpler find: a WHOLE match only when they serialize
+  // identically — i.e. the node reduces to a single unit equal to find (a
+  // single-component compound `.a` or single-compound complex `.a`). A genuine
+  // multi-part node (`.a.b`, `.a .b`) has a different valueOf, so find is only a
+  // COMPONENT of it and full mode correctly rejects it here (→ partial path).
   return node.valueOf() === find.valueOf();
 }
 
@@ -210,11 +292,11 @@ function areComplexEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
   for (let i = 0; i < a.value.length; i++) {
     const ac = a.value[i]!;
     const bc = b.value[i]!;
-    if (isNode(ac, N.Combinator) !== isNode(bc, N.Combinator)) {
+    if (isCombinator(ac) !== isCombinator(bc)) {
       return false;
     }
-    if (ac instanceof Combinator) {
-      if (!(bc instanceof Combinator) || ac.value !== bc.value) {
+    if (isCombinator(ac)) {
+      if (!isCombinator(bc) || combinatorValue(ac) !== combinatorValue(bc)) {
         return false;
       }
       continue;
@@ -251,7 +333,7 @@ function tailOf(sel: Selector): Selector {
     const comps = sel.value;
     for (let i = comps.length - 1; i >= 0; i--) {
       const comp = comps[i];
-      if (comp && !(comp instanceof Combinator) && isSelectorNode(comp)) {
+      if (comp && !isCombinator(comp) && isSelectorNode(comp)) {
         return comp;
       }
     }
@@ -269,9 +351,15 @@ function tailOf(sel: Selector): Selector {
  *   .y  vs  :is(.x > .y)  → true (.y is the tail of .x > .y)
  *   .x  vs  :is(.x > .y)  → false (.x is in the ancestral prefix)
  */
-function positionSimpleMatches(find: Selector, target: Selector): boolean {
-  if (find.valueOf() === target.valueOf()) {
+function positionSimpleMatches(find: Selector, target: string | Selector): boolean {
+  if (find.valueOf() === (typeof target === 'string' ? target : target.valueOf())) {
     return true;
+  }
+  // A string-backed leaf (`'.a'`) carries no structure to recurse into, so a
+  // valueOf mismatch is a definitive miss — the :is()/tail expansions below only
+  // apply to node targets.
+  if (typeof target === 'string') {
+    return false;
   }
 
   // find is :is() → OR: try each alternative's tail
@@ -345,12 +433,12 @@ function findSubsequence(
       const tc = targetComps[start + j]!;
       const fc = findComps[j]!;
       if (fc.type === 'Combinator') {
-        if (!isNode(tc, N.Combinator) || (tc as Combinator).value !== fc.value) {
+        if (!isCombinator(tc) || combinatorValue(tc) !== fc.value) {
           matches = false;
           break;
         }
       } else {
-        if (isNode(tc, N.Combinator)) {
+        if (isCombinator(tc)) {
           matches = false;
           break;
         }
@@ -386,7 +474,7 @@ function findSubsequence(
  * Returns matched indices or null if not all consumed.
  */
 function consumeSimples(
-  targetComps: SimpleSelector[],
+  targetComps: readonly (string | SimpleSelector)[],
   findSimples: Selector[]
 ): number[] | null {
   const matchIndices: number[] = [];
@@ -639,10 +727,24 @@ function walkComplexSelector(
   const value = complex.value;
   let anyChanged = false;
   const newComponents = [...value];
+  const singleSimple = spec.positions.length === 1 && spec.positions[0]!.length === 1;
 
   for (let i = 0; i < value.length; i++) {
     const comp = value[i]!;
-    if (isNode(comp, N.Combinator) || typeof comp === 'string') {
+    if (isCombinator(comp)) {
+      continue;
+    }
+    if (typeof comp === 'string') {
+      // String-backed position leaf (`'.foo'` in `.foo .bar`): a fragment match at
+      // a complex position is PARTIAL. Full mode leaves it (whole-complex match is
+      // handled by isWholeNodeMatch); partial wraps the matched leaf in :is().
+      if (partial && singleSimple && positionSimpleMatches(spec.positions[0]![0]!, comp)) {
+        const wrapped = wrapInIs(spec.original, extendWith);
+        if (wrapped.valueOf() !== comp) {
+          newComponents[i] = wrapped;
+          anyChanged = true;
+        }
+      }
       continue;
     }
 
@@ -691,9 +793,19 @@ function walkCompoundSelector(
   let anyChanged = false;
   const newComponents = [...value];
 
+  const singleSimple = spec.positions.length === 1 && spec.positions[0]!.length === 1;
   for (let i = 0; i < value.length; i++) {
     const comp = value[i]!;
     if (typeof comp === 'string') {
+      // String leaf: a component match inside a compound is PARTIAL. Full mode
+      // rejects it (leave unchanged); partial wraps the matched leaf in :is().
+      if (partial && singleSimple && positionSimpleMatches(spec.positions[0]![0]!, comp)) {
+        const wrapped = wrapInIs(spec.original, extendWith);
+        if (wrapped.valueOf() !== comp) {
+          newComponents[i] = wrapped;
+          anyChanged = true;
+        }
+      }
       continue;
     }
     const childCtx: WalkContext = {
@@ -728,7 +840,7 @@ function consumeSimplesFromCompound(
   spec: FindSpec,
   extendWith: Selector
 ): Selector {
-  const targetComps = compound.value.filter((c): c is SimpleSelector => typeof c !== 'string');
+  const targetComps = compound.value;
   const findSimples = spec.positions[0]!;
 
   const matchIndices = consumeSimples(targetComps, findSimples);
@@ -737,7 +849,7 @@ function consumeSimplesFromCompound(
   }
 
   const matchedSet = new Set(matchIndices);
-  const remainders: SimpleSelector[] = [];
+  const remainders: (string | SimpleSelector)[] = [];
   for (let i = 0; i < targetComps.length; i++) {
     if (!matchedSet.has(i)) {
       remainders.push(targetComps[i]!);
@@ -748,7 +860,7 @@ function consumeSimplesFromCompound(
   if (!(isWrapper instanceof SimpleSelector)) {
     return compound;
   }
-  const newComponents: SimpleSelector[] = [isWrapper, ...remainders];
+  const newComponents: (string | SimpleSelector)[] = [isWrapper, ...remainders];
   const result = CompoundSelector.create(newComponents).inherit(compound);
   result.addFlag(F_EXTENDED);
   return result;
@@ -939,7 +1051,7 @@ function walkAlternativeTailAware(
   const comps = alt.value;
   let tailIdx = -1;
   for (let i = comps.length - 1; i >= 0; i--) {
-    if (!isNode(comps[i], N.Combinator)) {
+    if (!isCombinator(comps[i])) {
       tailIdx = i;
       break;
     }
@@ -1074,7 +1186,7 @@ function parentContainsTarget(parent: Selector | string, target: Selector): bool
   }
   if (isNode(parent, N.ComplexSelector)) {
     return parent.value.some(comp =>
-      !isNode(comp, N.Combinator) && isSelectorNode(comp) && parentContainsTarget(comp, target)
+      !isCombinator(comp) && isSelectorNode(comp) && parentContainsTarget(comp, target)
     );
   }
   if (isNode(parent, N.CompoundSelector)) {
@@ -1083,6 +1195,14 @@ function parentContainsTarget(parent: Selector | string, target: Selector): bool
   return false;
 }
 
+// `classifyExtendMatch` reports whether a target CONTAINS the find (presence, for
+// self-extend / F_EXTEND_TARGET marking), whereas `wouldExtendChange` reports
+// whether applying the extend would change OUTPUT. They differ only for a
+// self-extend (`find === extendWith`): presence is still true, output-change is
+// false. The recursive walk is fully synchronous, so a save/restore module flag
+// carries that one bit of intent without threading a param through every call site.
+let presenceMatchMode = false;
+
 export function wouldExtendChange(
   target: Selector,
   find: Selector,
@@ -1090,8 +1210,28 @@ export function wouldExtendChange(
   partial: boolean,
   parentSelector?: Selector
 ): boolean {
-  const spec = decomposeFind(find);
-  return !!wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+  const cache = wouldExtendChangeCache;
+  let key: string | undefined;
+  if (cache) {
+    key = `${partial ? 1 : 0} ${target.valueOf()} ${find.valueOf()} ${extendWith.valueOf()} ${parentSelector ? parentSelector.valueOf() : ''}`;
+    const cached = cache.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+  extendMatchWork += 1;
+  const prev = presenceMatchMode;
+  presenceMatchMode = false;
+  try {
+    const spec = decomposeFind(find);
+    const result = !!wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+    if (cache && key !== undefined) {
+      cache.set(key, result);
+    }
+    return result;
+  } finally {
+    presenceMatchMode = prev;
+  }
 }
 
 export function classifyExtendMatch(
@@ -1101,8 +1241,14 @@ export function classifyExtendMatch(
   partial: boolean,
   parentSelector?: Selector
 ): MatchResult {
-  const spec = decomposeFind(find);
-  return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+  const prev = presenceMatchMode;
+  presenceMatchMode = true;
+  try {
+    const spec = decomposeFind(find);
+    return wouldMatchNode(target, spec, extendWith, partial, ROOT_CTX, parentSelector);
+  } finally {
+    presenceMatchMode = prev;
+  }
 }
 
 function wouldMatchNode(
@@ -1116,7 +1262,7 @@ function wouldMatchNode(
   if (typeof node === 'string') {
     return false;
   }
-  if (spec.original.valueOf() === extendWith.valueOf()) {
+  if (!presenceMatchMode && spec.original.valueOf() === extendWith.valueOf()) {
     return false;
   }
 
@@ -1181,7 +1327,7 @@ function wouldMatchNode(
     }
     for (let i = 0; i < node.value.length; i++) {
       const comp = node.value[i]!;
-      if (isNode(comp, N.Combinator)) {
+      if (isCombinator(comp)) {
         continue;
       }
       const result = wouldMatchNode(comp, spec, extendWith, partial, {
@@ -1299,7 +1445,7 @@ function wouldMatchPseudoTailAware(
     }
     const comps = alt.value;
     for (let i = comps.length - 1; i >= 0; i--) {
-      if (!isNode(comps[i], N.Combinator)) {
+      if (!isCombinator(comps[i])) {
         return wouldMatchNode(comps[i]!, spec, extendWith, partial, {
           isRoot: false,
           parentType: 'CompoundSelector',
@@ -1351,7 +1497,7 @@ function wouldMatchWithParent(
     ? (child as SelectorList).value.filter((item): item is Selector => typeof item !== 'string')
     : [child];
 
-  const spaceComb = Combinator.create(' ');
+  const spaceComb = ' ';
   for (const pItem of parentItems) {
     const parentComps = isNode(pItem, N.ComplexSelector)
       ? (pItem as ComplexSelector).value

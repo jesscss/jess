@@ -1,9 +1,11 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation } from './node.js';
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { coerceNodeArray } from './util/evaluate-node-array.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
-import { callWithContext, getRawArgsPlacement, setRawArgsPlacement } from '../define-function.js';
+import { callWithContext } from '../define-function.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -49,6 +51,19 @@ function isExtendedFn(value: unknown): value is ExtendedFn {
   return typeof value === 'function';
 }
 
+/**
+ * A `calc()` argument that collapses to a bare Dimension (through any
+ * redundant Parens) reduces to that Dimension — the wrapper is dropped.
+ * A preserved Operation/Paren/calc-fallback returns undefined (keep `calc`).
+ */
+function unwrapToDimension(node: Node): Dimension | undefined {
+  let n = node;
+  while (n instanceof Paren && n.value) {
+    n = n.value;
+  }
+  return n instanceof Dimension ? n : undefined;
+}
+
 function isTriviaMap(value: unknown): value is NonNullable<PrintOptions['trivia']> {
   if (!value || typeof value !== 'object') {
     return false;
@@ -70,6 +85,14 @@ function sourceTriviaForNode(node: Node): PrintOptions['trivia'] | undefined {
 
 function createImportantFlag(): Any<'flag'> {
   return new Any<'flag'>('!important', { role: 'flag' });
+}
+
+function startsWithWhitespace(text: string): boolean {
+  return text.length > 0 && /^[ \t\r\n\f]/u.test(text);
+}
+
+function endsWithWhitespace(text: string): boolean {
+  return text.length > 0 && /[ \t\r\n\f]$/u.test(text);
 }
 
 function emitCallArgSyntax(
@@ -94,7 +117,7 @@ function emitCallArgSeparator(
 ): void {
   emitCommentTriviaBetweenNodes(prev, arg, options);
   const leadingTrivia = options.trivia
-    ? consumeTrivia(options.trivia, arg.location[0], 'before', options)
+    ? consumeTrivia(options.trivia, spanStartOf(arg), 'before', options)
     : undefined;
   const preserveLeadingWhitespace = /[\r\n]/.test(triviaLeadingWhitespace(leadingTrivia));
   if (sep === '/') {
@@ -118,8 +141,8 @@ function emitCommentTriviaBetweenCallArgs(
   options: FinalPrintOptions
 ): string {
   const trivia = options.trivia ?? sourceTriviaForNode(prev) ?? sourceTriviaForNode(next);
-  const prevEnd = prev.location[3];
-  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
+  const prevEnd = spanEndOf(prev);
+  if (!trivia || prevEnd === undefined || spanStartOf(next) === undefined) {
     return '';
   }
   const run = trivia.lookup(prevEnd, 'after');
@@ -135,11 +158,20 @@ function withMixinRulesetCallArgsHint(name: string | Node, args?: List<Node>): s
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference;
 function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<Node>): T | Reference {
   if (
-    args?.value.length
-    && isNode(name, N.Reference)
+    isNode(name, N.Reference)
     && name.options?.type === 'mixin-ruleset'
-    && name.options.mixinRulesetCallHasArgs !== true
   ) {
+    const hasArgs = Boolean(args?.value.length);
+    // Mark every mixin-ruleset reference reached through a call as an emitting
+    // call (all same-named namespaces on the path contribute), and carry the
+    // args hint. A bare value/index lookup never routes here, so it keeps
+    // override (last-wins) namespace semantics.
+    if (
+      name.options.mixinRulesetCall === true
+      && name.options.mixinRulesetCallHasArgs === hasArgs
+    ) {
+      return name;
+    }
     return new Reference(
       {
         target: name.target,
@@ -148,9 +180,10 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
       },
       {
         ...name.options,
-        mixinRulesetCallHasArgs: true
+        mixinRulesetCall: true,
+        mixinRulesetCallHasArgs: hasArgs || undefined
       },
-      name.location.length === 0 ? undefined : name.location,
+      sourceSpanOf(name),
       name.sourceRoot?._treeContext
     );
   }
@@ -193,17 +226,6 @@ type CallEvalState = {
   preservesRulesLikeVariableTarget: boolean;
 };
 
-type CallRawArgsPlacementState = {
-  source: Call;
-  sourceArgs: List<Node>;
-};
-
-export type CallRawArgDiagnosticSource = {
-  source: Call;
-  sourceArg: Node;
-  index: number;
-};
-
 type OptionalFallbackRenderOutput = Node | string;
 type CallRenderTextState = { text: string | undefined };
 type CallRenderArgOptions = { evaluateCalcArgs: boolean };
@@ -233,7 +255,20 @@ function getRenderedCallNameText(name: string | Node | unknown): string | undefi
   return undefined;
 }
 
-function getKnownRenderedCallText(node: Node): string | undefined {
+/**
+ * A `calc(...)` Call — including when the name arrives as a Reference/Any that
+ * renders to `calc`. Uses the same rendered-name detection as the calc-frame
+ * bookkeeping in `renderPlainFunctionCall`, so a preserved calc fallback is
+ * recognized wherever calc is (e.g. as an unoperable operand in `Operation`).
+ */
+export function isCalcCall(node: Node): node is Call {
+  return isNode(node, N.Call) && getRenderedCallNameText(node.name) === 'calc';
+}
+
+function getKnownRenderedCallText(node: string | Node): string | undefined {
+  if (typeof node === 'string') {
+    return node;
+  }
   if (node instanceof Any) {
     return typeof node.value === 'string' ? node.value : undefined;
   }
@@ -275,7 +310,7 @@ function getKnownRenderedCallText(node: Node): string | undefined {
       if (text === undefined) {
         return undefined;
       }
-      if (i > 0) {
+      if (i > 0 && !endsWithWhitespace(out) && !startsWithWhitespace(text)) {
         out += ' ';
       }
       out += text;
@@ -357,7 +392,10 @@ function getKnownRenderedCallText(node: Node): string | undefined {
   return undefined;
 }
 
-function getKnownSourceCallText(node: Node): string | undefined {
+function getKnownSourceCallText(node: string | Node): string | undefined {
+  if (typeof node === 'string') {
+    return node;
+  }
   if (node instanceof Any) {
     return typeof node.value === 'string' ? node.value : undefined;
   }
@@ -485,45 +523,6 @@ function callRenderSharesWriter(bufferOrOptions?: RenderBuffer | PrintOptions): 
   return Boolean(isRenderBuffer(bufferOrOptions) && 'shareWriter' in bufferOrOptions && bufferOrOptions.shareWriter);
 }
 
-export function getCallRawArgsPlacement(rawArgs: List<Node>): CallRawArgsPlacementState | undefined {
-  const placement = getRawArgsPlacement(rawArgs);
-  if (!placement || !(placement.source instanceof Call) || !isNode(placement.sourceArgs, N.List)) {
-    return undefined;
-  }
-  return {
-    source: placement.source,
-    sourceArgs: placement.sourceArgs
-  };
-}
-
-export function getCallRawArgSourceNode(rawArgs: List<Node>, index: number): Node | undefined {
-  const placement = getCallRawArgsPlacement(rawArgs);
-  return placement?.sourceArgs.value[index];
-}
-
-export function getCallRawArgDiagnosticSource(rawArgs: List<Node>, index: number): CallRawArgDiagnosticSource | undefined {
-  const placement = getCallRawArgsPlacement(rawArgs);
-  const sourceArg = placement?.sourceArgs.value[index];
-  if (!placement || !sourceArg) {
-    return undefined;
-  }
-  return {
-    source: placement.source,
-    sourceArg,
-    index
-  };
-}
-
-export function getCallRawArgDiagnosticMessageSource(rawArgs: List<Node>, index: number): string | undefined {
-  const diagnosticSource = getCallRawArgDiagnosticSource(rawArgs, index);
-  if (!diagnosticSource) {
-    return undefined;
-  }
-  const sourceText = getKnownSourceCallText(diagnosticSource.sourceArg) ?? diagnosticSource.sourceArg.toTrimmedString();
-  const sourceArgText = sourceText.startsWith('$') ? sourceText : `$${sourceText}`;
-  return `argument ${diagnosticSource.index + 1} from ${sourceArgText}`;
-}
-
 /**
  * This is an exported type that allows extra properties
  * and specifies the shape of `this` for a function call.
@@ -584,7 +583,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ...name.options,
           preserveRulesLike: true
         },
-        name.location.length === 0 ? undefined : name.location,
+        sourceSpanOf(name),
         name.sourceRoot?._treeContext
       );
     }
@@ -641,19 +640,11 @@ export class Call extends Node<CallValue, CallOptions> {
       return undefined;
     }
     const ownResults = options?.ownResults ?? true;
-    const source = nodes.value;
+    const source = coerceNodeArray(nodes.value);
     const out = new Array<Node>(source.length);
-    let changed = false;
-    const evalImmediate = (node: Node): Node => {
-      const evald = Node.evalStatic(node, context);
-      if (!(evald instanceof Node)) {
-        throw new TypeError('Expected sync node result.');
-      }
-      if (node !== evald) {
-        evald.inherit(node);
-      }
-      return evald;
-    };
+    // Coercing raw parser segments to nodes is itself a change — the returned
+    // list must be rebuilt from `out`, not the original raw-valued `nodes`.
+    let changed = source !== (nodes.value as unknown as Node[]);
     const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
       let evald = await first;
       out[startIndex] = evald === source[startIndex]!
@@ -663,11 +654,12 @@ export class Call extends Node<CallValue, CallOptions> {
       for (let i = startIndex + 1; i < source.length; i++) {
         const next = source[i]!;
         let nextEvald: Node;
-        if (
-          !next.hasFlag(F_MAY_ASYNC)
-          && next.eval === Node.prototype.eval
-        ) {
-          nextEvald = evalImmediate(next);
+        if (next.eval === Node.prototype.eval) {
+          const evaldStatic = await Node.evalStatic(next, context);
+          nextEvald = evaldStatic;
+          if (next !== nextEvald) {
+            nextEvald.inherit(next);
+          }
         } else {
           nextEvald = await next.eval(context) as Node;
         }
@@ -680,11 +672,15 @@ export class Call extends Node<CallValue, CallOptions> {
     };
     for (let i = 0; i < source.length; i++) {
       const node = source[i]!;
-      if (
-        !node.hasFlag(F_MAY_ASYNC)
-        && node.eval === Node.prototype.eval
-      ) {
-        const evald = evalImmediate(node);
+      if (node.eval === Node.prototype.eval) {
+        const evaldStatic = Node.evalStatic(node, context);
+        if (isThenable(evaldStatic)) {
+          return continueAsync(i, evaldStatic as Promise<Node>);
+        }
+        const evald = evaldStatic as Node;
+        if (node !== evald) {
+          evald.inherit(node);
+        }
         out[i] = evald === node
           ? ownResults ? evald.cloneForPlacement() : evald
           : evald;
@@ -982,7 +978,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
-    const rawArgs = args.value;
+    const rawArgs = coerceNodeArray(args.value);
     const last = rawArgs.length - 1;
     const findNextArgIndex = (start: number): number => {
       let i = start;
@@ -1568,8 +1564,12 @@ export class Call extends Node<CallValue, CallOptions> {
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
-    // Function calls are always non-static and may be async
-    this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    // Function calls are always non-static
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
+  }
+
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
   }
 
   override toTrimmedString(rawOptions?: PrintOptions) {
@@ -1825,16 +1825,29 @@ export class Call extends Node<CallValue, CallOptions> {
       const argNodes = await this.evalArgNodes(context, args) ?? list([]);
       const result = await n.evalCall(context, argNodes);
       return result;
-    } else if ((isNode(n, N.Rules) || isNode(n, N.Collection)) && n instanceof Rules) {
+    } else if (isNode(n, N.Collection)) {
+      // A no-arg call of a detached collection returns the collection surface
+      // itself (thin: no clone, no callable eval). Its declarations render from
+      // the shared surface. Args are meaningless on a collection.
+      if (args && args.value.length > 0) {
+        throw new ReferenceError(`Cannot call ${n.type} with arguments`);
+      }
+      return this.markCallOutput(n);
+    } else if (isNode(n, N.Rules) && n instanceof Rules) {
       const rulesNode = n;
       // PreserveRulesLike variable calls intentionally evaluate from the
       // detached ruleset's lexical parent. Removing this lets non-leaky calls
       // see caller variables; see call.test.ts "does not let detached ruleset
       // calls read caller scope in non-leaky mode".
       if (state.preservesRulesLikeVariableTarget) {
-        const sourceParent = 'sourceNode' in rulesNode && isNode(rulesNode.sourceNode)
+        // A detached ruleset resolves free vars up the surface where it was
+        // WRITTEN. Prefer the closure scope captured at arg-binding (the per-call
+        // surface T, which carries param live-slots); fall back to the canonical
+        // lexical parent when there is no closure capture.
+        const closureScope = rulesNode._closureScope;
+        const sourceParent = closureScope ?? ('sourceNode' in rulesNode && isNode(rulesNode.sourceNode)
           ? rulesNode.sourceNode.parent
-          : undefined;
+          : undefined);
         if (sourceParent) {
           rulesNode.parent = sourceParent;
         }
@@ -1894,12 +1907,6 @@ export class Call extends Node<CallValue, CallOptions> {
         try {
           const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
           let callArgs = args;
-          if (shouldPassListArgs && callArgs && state.args) {
-            setRawArgsPlacement(callArgs, {
-              source: state.source,
-              sourceArgs: state.args
-            });
-          }
           const result = await (
             callArgs
               ? (
@@ -1931,24 +1938,46 @@ export class Call extends Node<CallValue, CallOptions> {
         }
       });
     } else {
-      if (n === 'calc') {
+      // The name resolves to a value (e.g. a Reference → Any 'calc'), so detect
+      // calc by its rendered text rather than string identity.
+      const isCalc = getRenderedCallNameText(n) === 'calc';
+      if (isCalc) {
         context.calcFrames++;
       }
       const evaluatedArgs = await this.evalArgNodes(context, args, {
         ownResults: !(this._options?.silentFail && typeof this.name !== 'string')
       })
         .finally(() => {
-          if (n === 'calc') {
+          if (isCalc) {
             context.calcFrames--;
           }
         });
       if (
-        n === 'calc' && evaluatedArgs
+        isCalc && evaluatedArgs && evaluatedArgs.value.length === 1
       ) {
-        if (isNode(evaluatedArgs.value[0], N.Dimension)) {
-          return evaluatedArgs.value[0]!;
+        const arg0 = evaluatedArgs.value[0]!;
+        const dim = unwrapToDimension(arg0);
+        if (dim) {
+          return dim;
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.value[0]!);
+          return new Paren(arg0);
+        }
+        // Outermost calc wrapping an already-preserved calc — e.g. an explicit
+        // `calc(@x)` where `@x` is `calc(a op b)`. CSS flattens nested calc:
+        // rebuild as a single `calc(...)` around the inner calc's content so we
+        // emit `calc(a op b)` (not `calc((a op b))`) and keep a calc Call (not
+        // an Any), so a further `calc(@x) op Y` still composes.
+        if (isCalcCall(arg0)) {
+          const innerArgs = arg0.args;
+          if (innerArgs && innerArgs.value.length === 1) {
+            const node = new Call(
+              { name: 'calc', args: list([innerArgs.value[0]!]), contentNode: state.contentNode },
+              { silentFail: false },
+              sourceSpanOf(this),
+              this.sourceRoot?._treeContext
+            );
+            return this.markCallOutput(node);
+          }
         }
       }
       const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
@@ -1968,7 +1997,7 @@ export class Call extends Node<CallValue, CallOptions> {
         this._options
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
-        this.location,
+        sourceSpanOf(this),
         this.sourceRoot?._treeContext
       );
       return this.markCallOutput(node);

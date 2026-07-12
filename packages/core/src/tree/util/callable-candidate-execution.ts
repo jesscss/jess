@@ -1,7 +1,7 @@
 import type { Context } from '../../context.js';
 import type { Node } from '../node.js';
-import { F_STATIC } from '../node.js';
 import type { List } from '../list.js';
+import { isConstantGuard } from './callable-guard-constant.js';
 import type { Rules } from '../rules.js';
 import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
 import type { CallableEntry } from './callable-entry.js';
@@ -60,7 +60,8 @@ export async function executeCallableCandidate({
     signatureKey,
     parentFrame,
     lexicalScopeFrame,
-    fallbackScopeFrame
+    fallbackScopeFrame,
+    definedInImportedSurface
   } = candidateState;
 
   let outerRules: Rules | undefined;
@@ -68,7 +69,7 @@ export async function executeCallableCandidate({
   let usesPreboundParamGuardOuterRules = false;
 
   if (candidateParams || paramBindings.length > 0) {
-    const needsOuterRules = Boolean(candidateGuard && !candidateGuard.hasFlag(F_STATIC));
+    const needsOuterRules = Boolean(candidateGuard && !isConstantGuard(candidateGuard));
     if (needsOuterRules) {
       outerRules = ensureCallableOuterRulesSurface({
         currentOuterRules: outerRules,
@@ -108,6 +109,19 @@ export async function executeCallableCandidate({
       rules,
       parentFrame,
       leakyRules: true
+    });
+  } else if (definedInImportedSurface) {
+    // Param-less callable defined inside an imported/composed surface: no live
+    // slots, but the body (and any detached-ruleset closure it defines) must
+    // still reach config vars applied at the import/call site — an imported
+    // `with`/`set` binding lives on the call-site chain, not the definition
+    // chain. Wire the body-surface frame's fallback so those vars resolve.
+    wireCallableScopeFrames({
+      rules,
+      lexicalScopeFrame,
+      fallbackScopeFrame,
+      parentFrame,
+      definedInImportedSurface
     });
   }
 

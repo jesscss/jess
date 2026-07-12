@@ -126,7 +126,7 @@ const parser = new Parser();
 
 function parseJess(text: string): number {
   const result = parser.parse(text);
-  return result.errors.length + (result.lexerResult?.errors?.length ?? 0);
+  return result.errors.length;
 }
 
 interface BenchResult {

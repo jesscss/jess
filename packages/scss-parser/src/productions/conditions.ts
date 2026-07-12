@@ -1,5 +1,5 @@
 import type { RuleContext, TokenMap } from '../scssRecursiveParser.js';
-import type { IToken } from '@jesscss/parser';
+import type { IToken } from 'chevrotain';
 import {
   Condition,
   Paren,

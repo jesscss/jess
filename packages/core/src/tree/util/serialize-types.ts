@@ -166,8 +166,12 @@ function serializeNodeChildFields(n: Node, depth: number, opts: Required<Seriali
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? n.shortType : n.type;
   const pad = indent(depth, opts.indentSize);
+  // `role` lives on an own field for some node types (e.g. `Any`) but is derived
+  // from `options.role` for others (`Reference` dropped the eager own field in
+  // the slim pass) — read the own field first, then fall back to the option.
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const roleValue = 'role' in n ? (n as unknown as { role: unknown }).role : undefined;
+  const withRole = n as unknown as { role?: unknown; options?: { role?: unknown } };
+  const roleValue = withRole.role ?? withRole.options?.role;
   const role = typeof roleValue === 'string' ? roleValue : undefined;
   const meta = role ? ` [role=${role}]` : '';
   const open = `${pad}(${typeName}${meta}`;
@@ -188,8 +192,26 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
     return childFieldsStr ? `${open}\n${childFieldsStr}\n${pad})` : `${open})`;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const value = 'value' in n ? (n as unknown as { value: unknown }).value : undefined;
+  // Dimension owns its data in scalar `number`/`unit` fields (childKeys=null, no
+  // `value`; valueOf() yields the compact display string like '10px'). Expand the
+  // scalar fields the way a plain-object value would serialize.
+  if (typeName === 'Dimension') {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const dim = n as unknown as { number: number; unit?: string };
+    const inner = serializePlainObject({ number: dim.number, unit: dim.unit }, depth, opts, visiting);
+    visiting.delete(n);
+    if (optionsStr) {
+      return `${open}\n${optionsStr}${inner ? '\n' + inner : ''}\n${pad})`;
+    }
+    return inner ? `${open}\n${inner}\n${pad})` : `${open})`;
+  }
+
+  const value = 'value' in n
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    ? (n as unknown as { value: unknown }).value
+    // Nodes that own their data in named fields instead of `value` (e.g.
+    // Dimension/Num store number/unit) expose the display value via valueOf().
+    : n.valueOf();
   // If the main value is a primitive, include it inline
   if (
     value === null

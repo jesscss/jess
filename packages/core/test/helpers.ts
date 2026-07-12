@@ -1,5 +1,5 @@
 import {
-  F_MAY_ASYNC, F_STATIC, F_NON_STATIC,
+  F_STATIC,
   type Node, type Rules, Any, Node as NodeClass, Rules as RulesNode,
   // Simplified API
   decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, op, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, interpolatedSelector, num,
@@ -232,7 +232,7 @@ export function createStyleImport(importPath = any('x.less')) {
 export function createMixinDefinition(bodyDecl = decl({ name: 'color', value: DEFAULT_COLOR })) {
   return rules([
     mixin({
-      name: any('mixin'),
+      name: 'mixin',
       rules: [bodyDecl]
     })
   ]);
@@ -265,7 +265,7 @@ export function createGuardWithVariable(guardCondition = condition([DEFAULT_VARI
 export function createAtRuleStatic(atRuleContent = createStaticRuleset(el('.a'), [decl({ name: 'color', value: DEFAULT_COLOR })])) {
   return rules([
     atrule({
-      name: new Any('media', { role: 'atkeyword' }),
+      name: 'media',
       prelude: any('screen'),
       rules: atRuleContent.rules
     })
@@ -275,7 +275,7 @@ export function createAtRuleStatic(atRuleContent = createStaticRuleset(el('.a'),
 export function createAtRuleVariable(atRuleContent = createVariableReference('color', DEFAULT_VARIABLE)) {
   return rules([
     atrule({
-      name: new Any('media', { role: 'atkeyword' }),
+      name: 'media',
       prelude: any('screen'),
       rules: atRuleContent.rules
     })
@@ -310,16 +310,18 @@ export function createMultipleRules(ruleNodes: Node[] = []) {
   }));
 }
 
-// Flag assertion helpers
+// Flag assertion helpers.
+// The former `mayAsync` dimension was removed with F_MAY_ASYNC (every node is
+// async-capable under the reactive render/eval path); the argument is retained
+// for call-site compatibility but only F_STATIC is asserted now. A static node
+// is never non-static and vice versa.
 export const expectFlags = (
   node: Node,
   isStatic: boolean,
-  mayAsync: boolean,
+  _mayAsync: boolean,
   description = ''
 ) => {
-  const prefix = description ? `${description}: ` : '';
   expect(node.hasFlag(F_STATIC)).toBe(isStatic);
-  expect(node.hasFlag(F_MAY_ASYNC)).toBe(mayAsync);
 };
 
 export const expectStatic = (node: Node, description = '') => {

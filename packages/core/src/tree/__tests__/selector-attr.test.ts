@@ -194,7 +194,7 @@ describe('Attribute Selector', () => {
 
     const node = rules([
       mixin({
-        name: any('.emit'),
+        name: '.emit',
         params: list([any('name', { role: 'property' })]),
         rules: [
           vardecl({

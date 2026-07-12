@@ -1,9 +1,10 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { type Context } from '../context.js';
 import { Any } from './any.js';
 import { Bool, createPublicBool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_MAY_ASYNC, F_NON_STATIC, type NodeLocation } from './node.js';
+import { Node, defineType, F_NON_STATIC, type NodeLocation } from './node.js';
 import { Dimension } from './dimension.js';
 import { List, renderListValueSyntax } from './list.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
@@ -16,6 +17,7 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { getDefaultGuardValue } from './util/default-guard.js';
+import { coerceValueNode, type NodeArrayItem } from './util/evaluate-node-array.js';
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
@@ -36,7 +38,7 @@ const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | u
 function writeParenValue(value: Node, options: FinalPrintOptions): void {
   if (options.trivia) {
     emitTriviaTokens(
-      consumeTrivia(options.trivia, value.location[0], 'before', options),
+      consumeTrivia(options.trivia, spanStartOf(value), 'before', options),
       options,
       { skipLeadingWhitespace: true }
     );
@@ -56,7 +58,7 @@ function writeParenValue(value: Node, options: FinalPrintOptions): void {
 export class Paren extends Node<Node | undefined, ParenOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Node | undefined;
+  readonly value: Node | undefined;
 
   private getDelimiters(): [open: string, close: string] {
     return this._options?.delimiter === 'square' ? ['[', ']'] : ['(', ')'];
@@ -97,22 +99,39 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return new Paren(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
   constructor(
-    value?: Node,
+    value?: NodeArrayItem,
     options?: ParenOptions,
     location?: NodeLocation,
     treeContext?: Context['treeContext']
   ) {
-    super(value, options, location);
+    // A parser space-group arrives as a raw string/array; normalize to the
+    // canonical node form so paren eval/render stays node-only.
+    const node = value === undefined || value instanceof Node
+      ? value
+      : coerceValueNode(value);
+    super(node, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = node;
     this._treeContext = treeContext;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
+    // Inherit may_async (and other child-derived flags) from the wrapped value
+    // so a paren around an async child (e.g. `(min(...))`) is itself scheduled
+    // on the async path.
+    if (node instanceof Node) {
+      this.propagateFlagsFrom(node);
+    }
+  }
+
+  protected override ownStaticFlag(): number {
+    return this._options?.escaped ? F_NON_STATIC : 0;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -185,17 +204,15 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       return this.renderEvaluatedNode(context, currentValue, isOp, resolved, bufferOrOptions, options);
     };
     try {
-      if (!currentValue.hasFlag(F_MAY_ASYNC)) {
-        const evaluated = currentValue.eval(context);
-        if (!(evaluated instanceof Node)) {
-          throw new TypeError('Expected paren value to evaluate to a node');
-        }
-        return finish(evaluated);
-      }
       const maybeEvald = currentValue.eval(context);
       if (isThenable(maybeEvald)) {
         return maybeEvald.then(
-          finish,
+          (evaluated) => {
+            if (!(evaluated instanceof Node)) {
+              throw new TypeError('Expected paren value to evaluate to a node');
+            }
+            return finish(evaluated);
+          },
           (error) => {
             if (isOp) {
               context.parenFrames.pop();
@@ -204,7 +221,10 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           }
         );
       }
-      return finish(maybeEvald as Node);
+      if (!(maybeEvald instanceof Node)) {
+        throw new TypeError('Expected paren value to evaluate to a node');
+      }
+      return finish(maybeEvald);
     } catch (error) {
       if (isOp) {
         context.parenFrames.pop();
@@ -379,7 +399,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   out.add('$J.paren(', loc)
   //   this.value.toModule(context, out)
   //   out.add(')')

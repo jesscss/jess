@@ -58,7 +58,7 @@ describe('toLessTree', () => {
   it('should convert entire Rules tree', () => {
     const rules = new Rules([
       new Declaration({
-        name: new Any('color', { role: 'property' }),
+        name: 'color',
         value: new Any('red')
       })
     ]);
@@ -68,7 +68,7 @@ describe('toLessTree', () => {
 
   it('should preserve node relationships', () => {
     const decl = new Declaration({
-      name: new Any('color', { role: 'property' }),
+      name: 'color',
       value: new Any('red')
     });
     const ruleset = new Ruleset({

@@ -4,7 +4,6 @@ import {
   Node,
   F_STATIC,
   F_NON_STATIC,
-  F_MAY_ASYNC,
   any,
   dimension,
   num,
@@ -39,14 +38,14 @@ function buildDeclTree(count: number, staticRatio: number = 1.0): Node[] {
     if (i / count < staticRatio) {
       decls.push(
         decl({
-          name: any(`prop-${i}`, { role: 'property' }),
+          name: `prop-${i}`,
           value: expr(any(`value-${i}`))
         })
       );
     } else {
       decls.push(
         decl({
-          name: any(`prop-${i}`, { role: 'property' }),
+          name: `prop-${i}`,
           value: expr(ref({ key: any(`var-${i}`) }))
         })
       );
@@ -105,7 +104,6 @@ describe('Node Flags Performance', () => {
   it('should verify static trees have correct flags', () => {
     const tree = buildStaticTree(3, 4);
     expect(tree.hasFlag(F_STATIC)).toBe(true);
-    expect(tree.hasFlag(F_MAY_ASYNC)).toBe(false);
     expect(tree.hasFlag(F_NON_STATIC)).toBe(false);
   });
 

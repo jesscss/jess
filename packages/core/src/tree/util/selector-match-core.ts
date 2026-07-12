@@ -3,13 +3,16 @@ import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList, SelectorListItem } from '../selector-list.js';
 import { ComplexSelector, ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
+import { BasicSelector } from '../selector-basic.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import type { Context } from '../../context.js';
 import { isNode } from './is-node.js';
+import { isCombinator, combinatorValue } from './combinator.js';
 import { N } from '../node-type.js';
 import { isSubsetOf, isDisjoint } from './bitset.js';
+import { keySetOf, requiredKeySetOf } from './selector-analysis.js';
 
 function shareKeySetLibrary(a: Selector, b: Selector): boolean {
   return !!a.keySetLibrary && a.keySetLibrary === b.keySetLibrary;
@@ -17,6 +20,66 @@ function shareKeySetLibrary(a: Selector, b: Selector): boolean {
 
 export function selectorListItemForMatch(item: SelectorList['value'][number]): Selector {
   return typeof item === 'string' ? new ComplexSelector([item]) : item;
+}
+
+/**
+ * Materialize string-backed selector leaves inside a ComplexSelector/CompoundSelector
+ * to `BasicSelector` nodes. The location matcher's structural comparison operates on
+ * selector NODES; a raw string leaf (`'.foo'` in `ComplexSelector(['.foo', ' ', '.bar'])`,
+ * as the parser emits) is neither a combinator nor a node, so the matcher mis-handles
+ * it — falling through to a spurious whole-selector match. Combinator strings (`' '`,
+ * `'>'`, …) are left as-is. Read-only fast path when there is nothing to materialize.
+ */
+function materializeStringLeaves(selector: Selector): Selector {
+  if (isNode(selector, N.ComplexSelector) || isNode(selector, N.CompoundSelector)) {
+    const value = selector.value;
+    let changed = false;
+    const mapped = value.map((comp): ComplexSelectorComponent => {
+      if (typeof comp === 'string') {
+        if (isCombinator(comp)) {
+          return comp;
+        }
+        changed = true;
+        return new BasicSelector(comp);
+      }
+      const inner = materializeStringLeaves(comp);
+      if (inner !== comp) {
+        changed = true;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      return inner as ComplexSelectorComponent;
+    });
+    if (!changed) {
+      return selector;
+    }
+    const rebuilt = isNode(selector, N.ComplexSelector)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      ? new ComplexSelector(mapped as ComplexSelector['value']).inherit(selector)
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      : new CompoundSelector(mapped as CompoundSelector['value']).inherit(selector);
+    rebuilt.keySetLibrary = selector.keySetLibrary;
+    return rebuilt;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    let changed = false;
+    const items = selector.value.map((item): SelectorListItem => {
+      if (typeof item === 'string') {
+        return item;
+      }
+      const inner = materializeStringLeaves(item);
+      if (inner !== item) {
+        changed = true;
+      }
+      return inner;
+    });
+    if (!changed) {
+      return selector;
+    }
+    const rebuilt = new SelectorList(items).inherit(selector);
+    rebuilt.keySetLibrary = selector.keySetLibrary;
+    return rebuilt;
+  }
+  return selector;
 }
 
 function normalizedSelectorListItemValueForMatch(item: SelectorList['value'][number]): string {
@@ -82,9 +145,10 @@ export function determineExtensionType(
  * Extracted from multiple pseudo-selector checks
  */
 export function isSelector(value: any): value is Selector {
-  // Avoid `instanceof` (module identity can diverge under Vite/Vitest).
-  // All selector nodes set `isSelector = true` on the base Selector class.
-  return !!value && typeof value === 'object' && (value as any).isSelector === true;
+  // Avoid `instanceof` (module identity can diverge under Vite/Vitest). The
+  // nodeType bitmask is a prototype value keyed by string type, so it is
+  // realm-stable and matches any Selector subtype.
+  return isNode(value, N.Selector);
 }
 
 /**
@@ -92,7 +156,7 @@ export function isSelector(value: any): value is Selector {
  * This pattern appears in many complex selector algorithms
  */
 export function getNonCombinatorComponents(selector: ComplexSelector): Selector[] {
-  return selector.value.filter((c): c is Selector => typeof c !== 'string' && !isNode(c, N.Combinator));
+  return selector.value.filter((c): c is Selector => typeof c !== 'string' && !isCombinator(c));
 }
 
 /**
@@ -100,7 +164,7 @@ export function getNonCombinatorComponents(selector: ComplexSelector): Selector[
  * Used in complex selector matching algorithms
  */
 export function getCombinatorComponents(selector: ComplexSelector): Combinator[] {
-  return selector.value.filter(c => isNode(c, N.Combinator)) as Combinator[];
+  return selector.value.filter(c => isCombinator(c)) as Combinator[];
 }
 
 /**
@@ -525,11 +589,11 @@ export function areComplexSelectorsEquivalent(a: ComplexSelector, b: ComplexSele
     }
 
     // Both must be same type
-    if (isNode(aComp, N.Combinator) && isNode(bComp, N.Combinator)) {
-      if (aComp.value !== bComp.value) {
+    if (isCombinator(aComp) && isCombinator(bComp)) {
+      if (combinatorValue(aComp) !== combinatorValue(bComp)) {
         return false;
       }
-    } else if (!isNode(aComp, N.Combinator) && !isNode(bComp, N.Combinator)) {
+    } else if (!isCombinator(aComp) && !isCombinator(bComp)) {
       // Both are value - check equivalence
       if (isNode(aComp, N.CompoundSelector) && isNode(bComp, N.CompoundSelector)) {
         if (!areCompoundSelectorsEquivalent(aComp, bComp)) {
@@ -714,19 +778,31 @@ const EMPTY_LOCATIONS: ExtendLocation[] = [];
  * @returns ExtendSearchResult with all found locations and performance optimizations
  */
 export function findExtendableLocations(
-  target: Selector,
-  find: Selector
+  targetRaw: Selector,
+  findRaw: Selector
 ): ExtendSearchResult {
+  // The structural matcher compares selector NODES; parser-delivered string leaves
+  // (`'.foo'` in a `ComplexSelector`) are neither nodes nor combinators and cause
+  // mis-matches. Materialize them to `BasicSelector` nodes up front so search runs
+  // on a uniform node shape.
+  const target = materializeStringLeaves(targetRaw);
+  const find = materializeStringLeaves(findRaw);
+  // Identity caches key on node identity; a string-normalized leaf selector is
+  // not an object (invalid WeakMap/Map key). Such leaves are cheap and
+  // value-comparable, so skip the cache for them rather than key on a string.
+  const cacheable = typeof target === 'object' && typeof find === 'object';
   // Check general search result cache first
-  let targetCache = SEARCH_RESULT_CACHE.get(target);
-  if (targetCache) {
-    const cached = targetCache.get(find);
-    if (cached) {
-      return cached;
+  let targetCache = cacheable ? SEARCH_RESULT_CACHE.get(target) : undefined;
+  if (cacheable) {
+    if (targetCache) {
+      const cached = targetCache.get(find);
+      if (cached) {
+        return cached;
+      }
+    } else {
+      targetCache = new Map<Selector, ExtendSearchResult>();
+      SEARCH_RESULT_CACHE.set(target, targetCache);
     }
-  } else {
-    targetCache = new Map<Selector, ExtendSearchResult>();
-    SEARCH_RESULT_CACHE.set(target, targetCache);
   }
 
   const locations: ExtendLocation[] = [];
@@ -739,7 +815,7 @@ export function findExtendableLocations(
     const cached = EXACT_MATCH_CACHE.get(target);
     if (cached) {
       const result = { locations: cached, hasMatches: cached.length > 0, hasWholeMatch: true, metrics };
-      targetCache.set(find, result);
+      targetCache?.set(find, result);
       return result;
     }
 
@@ -749,27 +825,27 @@ export function findExtendableLocations(
       matchedNode: target,
       extensionType: 'replace'
     });
-    EXACT_MATCH_CACHE.set(target, [exactLocation]);
+    if (cacheable) EXACT_MATCH_CACHE.set(target, [exactLocation]);
     const result = { locations: [exactLocation], hasMatches: true, hasWholeMatch: true, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
   const canFastReject = shareKeySetLibrary(target, find);
 
   // OPTIMIZATION 2: BitSet fast rejection - bail early for impossible matches
-  if (canFastReject && isDisjoint(target.keySet, find.keySet)) {
+  if (canFastReject && isDisjoint(keySetOf(target), keySetOf(find))) {
     metrics.fastRejections++;
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
   // OPTIMIZATION 3: RequiredKeyBits subset rejection for partial matching
-  if (canFastReject && !isSubsetOf(find.requiredKeySet, target.keySet)) {
+  if (canFastReject && !isSubsetOf(requiredKeySetOf(find), keySetOf(target))) {
     metrics.fastRejections++;
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
@@ -781,12 +857,12 @@ export function findExtendableLocations(
       const listItem = find.value[i]!;
       const result = findExtendableLocations(target, selectorListItemForMatch(listItem));
       if (result.hasMatches) {
-        targetCache.set(find, result);
+        targetCache?.set(find, result);
         return result;
       }
     }
     const result = { locations: EMPTY_LOCATIONS, hasMatches: false, hasWholeMatch: false, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
@@ -795,7 +871,7 @@ export function findExtendableLocations(
     metrics.fastPathHits++;
     const hasWholeMatch = fastPathResult.some(loc => loc.path.length === 0 && loc.matchedNode === target);
     const result = { locations: fastPathResult, hasMatches: true, hasWholeMatch, metrics };
-    targetCache.set(find, result);
+    targetCache?.set(find, result);
     return result;
   }
 
@@ -810,7 +886,7 @@ export function findExtendableLocations(
     hasWholeMatch,
     metrics
   };
-  targetCache.set(find, result);
+  targetCache?.set(find, result);
   return result;
 }
 
@@ -824,7 +900,7 @@ export function selectorMatchesExtendTarget(
   target: Selector,
   partial: boolean
 ): boolean {
-  if (shareKeySetLibrary(selector, target) && !isSubsetOf(target.requiredKeySet, selector.keySet)) {
+  if (shareKeySetLibrary(selector, target) && !isSubsetOf(requiredKeySetOf(target), keySetOf(selector))) {
     return false;
   }
   const targetValue = target.valueOf();
@@ -995,7 +1071,7 @@ function tryFastPathExtendMatch(
     const locations: ExtendLocation[] = [];
     for (let i = 0; i < target.value.length; i++) {
       const component = target.value[i];
-      if (component && typeof component !== 'string' && !isNode(component, N.Combinator)) {
+      if (component && typeof component !== 'string' && !isCombinator(component)) {
         const childResult = tryFastPathExtendMatch(component, find, [...basePath, i]);
         if (childResult) {
           locations.push(...childResult);
@@ -1015,7 +1091,7 @@ function tryFastPathExtendMatch(
           if (lastSeg === 0) {
             const remainingComponents = target.value.slice(1);
             const firstRemaining = remainingComponents[0];
-            location.remainders = remainingComponents.length === 1 && firstRemaining && typeof firstRemaining !== 'string' && !isNode(firstRemaining, N.Combinator)
+            location.remainders = remainingComponents.length === 1 && firstRemaining && typeof firstRemaining !== 'string' && !isCombinator(firstRemaining)
               ? [firstRemaining]
               : [new ComplexSelector(remainingComponents).inherit(target)];
           }
@@ -1058,12 +1134,12 @@ function tryPartialComplexMatch(
         break;
       }
 
-      if (isNode(tComp, N.Combinator) && isNode(fComp, N.Combinator)) {
-        if (tComp.value !== fComp.value) {
+      if (isCombinator(tComp) && isCombinator(fComp)) {
+        if (combinatorValue(tComp) !== combinatorValue(fComp)) {
           matches = false;
           break;
         }
-      } else if (!isNode(tComp, N.Combinator) && !isNode(fComp, N.Combinator) && typeof tComp !== 'string' && typeof fComp !== 'string') {
+      } else if (!isCombinator(tComp) && !isCombinator(fComp) && typeof tComp !== 'string' && typeof fComp !== 'string') {
         let compMatch = componentsMatch(tComp, fComp);
         // Compound superset: target compound can contain find compound as subsequence (.a.c.b contains .a.b)
         if (!compMatch && isNode(tComp, N.CompoundSelector) && isNode(fComp, N.CompoundSelector)) {
@@ -1174,12 +1250,24 @@ function trySmallCompoundExtendMatch(
         }
       }
 
-      // Calculate remainder after removing matched value
-      const remainderComponents = target.value.filter(targetComp =>
-        typeof targetComp !== 'string' && !find.value.some(findComp =>
-          typeof findComp !== 'string' && compoundComponentMatches(findComp, targetComp)
-        )
-      );
+      // Calculate remainder as a MULTISET difference: each find atom consumes exactly
+      // ONE distinct target atom. Target atoms the find does not consume (including
+      // extra duplicates) are the remainder. A stranded leftover — e.g. the second
+      // `.b` in `.b.b.c` find `.b.c` — makes this a PARTIAL match, not a full one.
+      const consumed = new Array<boolean>(target.value.length).fill(false);
+      for (const findComp of find.value) {
+        if (typeof findComp === 'string') {
+          continue;
+        }
+        for (let ti = 0; ti < target.value.length; ti++) {
+          const targetComp = target.value[ti]!;
+          if (!consumed[ti] && typeof targetComp !== 'string' && compoundComponentMatches(findComp, targetComp)) {
+            consumed[ti] = true;
+            break;
+          }
+        }
+      }
+      const remainderComponents = target.value.filter((_, ti) => !consumed[ti]);
 
       const selectorRemainders = remainderComponents.filter((c): c is SimpleSelector => typeof c !== 'string');
       const remainders: Selector[] = selectorRemainders.length === 0
@@ -1412,7 +1500,7 @@ function searchWithinComplexSelector(
   for (let index = 0; index < complex.value.length; index++) {
     const component = complex.value[index]!;
     // Skip combinators, only search selector value
-    if (!isNode(component, N.Combinator) && typeof component !== 'string') {
+    if (!isCombinator(component) && typeof component !== 'string') {
       currentPath.push(index);
       searchWithinSelector(component, target, currentPath, locations);
       currentPath.pop();
@@ -1433,7 +1521,7 @@ function searchWithinComplexSelector(
         if (lastPathSegment === 0) {
           const remainingComponents = complex.value.slice(1);
           const firstRem = remainingComponents[0];
-          if (remainingComponents.length === 1 && firstRem && typeof firstRem !== 'string' && !isNode(firstRem, N.Combinator)) {
+          if (remainingComponents.length === 1 && firstRem && typeof firstRem !== 'string' && !isCombinator(firstRem)) {
             location.remainders = [firstRem];
           } else if (remainingComponents.length > 0) {
             location.remainders = [new ComplexSelector(remainingComponents).inherit(complex)];
@@ -1493,13 +1581,13 @@ function tryComplexSelectorPatternMatch(
         break;
       }
 
-      if (isNode(targetComp, N.Combinator) && isNode(complexComp, N.Combinator)) {
+      if (isCombinator(targetComp) && isCombinator(complexComp)) {
         // Both are combinators - must match exactly
-        if (targetComp.value !== complexComp.value) {
+        if (combinatorValue(targetComp) !== combinatorValue(complexComp)) {
           isMatch = false;
           break;
         }
-      } else if (isNode(targetComp, N.Combinator) || isNode(complexComp, N.Combinator)) {
+      } else if (isCombinator(targetComp) || isCombinator(complexComp)) {
         // One is combinator, other is not - no match
         isMatch = false;
         break;
@@ -1543,7 +1631,7 @@ function tryComplexSelectorPatternMatch(
       // Create remainder selector if there are remaining value
       let remainders: any[] = [];
       if (remainingComponents.length > 0) {
-        if (remainingComponents.length === 1 && !isNode(remainingComponents[0], N.Combinator)) {
+        if (remainingComponents.length === 1 && !isCombinator(remainingComponents[0])) {
           remainders = [remainingComponents[0]];
         } else if (remainingComponents.length > 1) {
           remainders = [ComplexSelector.create(remainingComponents).inherit(complex)];
@@ -1597,18 +1685,18 @@ function trySequentialComplexMatch(
       }
 
       // Both must be same type (combinator vs selector)
-      if (isNode(targetComp, N.Combinator) !== isNode(findComp, N.Combinator)) {
+      if (isCombinator(targetComp) !== isCombinator(findComp)) {
         matches = false;
         break;
       }
 
       // If both are combinators, they must match exactly
-      if (isNode(targetComp, N.Combinator) && isNode(findComp, N.Combinator)) {
-        if (targetComp.value !== findComp.value) {
+      if (isCombinator(targetComp) && isCombinator(findComp)) {
+        if (combinatorValue(targetComp) !== combinatorValue(findComp)) {
           matches = false;
           break;
         }
-      } else if (!isNode(targetComp, N.Combinator) && !isNode(findComp, N.Combinator)) {
+      } else if (!isCombinator(targetComp) && !isCombinator(findComp)) {
         // If both are value, use existing selector matching logic
         // But also check for partial compound matching
         if (typeof targetComp === 'string' || typeof findComp === 'string') {
@@ -1649,7 +1737,7 @@ function trySequentialComplexMatch(
         const targetComp = targetComponents[startIdx + i];
         const findComp = findComponents[i];
 
-        if (!isNode(targetComp, N.Combinator) && !isNode(findComp, N.Combinator)) {
+        if (!isCombinator(targetComp) && !isCombinator(findComp)) {
           if (isNode(targetComp, N.CompoundSelector) && isNode(findComp, N.SimpleSelector)) {
             // Check if there's a partial match leaving compound remainders
             const matchingComponent = targetComp.value.find(comp => comp.valueOf() === findComp.valueOf());
@@ -1690,8 +1778,8 @@ function tryBacktrackingComplexMatch(
   basePath: Array<string | number>
 ): ExtendLocation[] | null {
   // Extract non-combinator value
-  const targetComponents = target.value.filter(c => !isNode(c, N.Combinator));
-  const findComponents = find.value.filter(c => !isNode(c, N.Combinator));
+  const targetComponents = target.value.filter(c => !isCombinator(c));
+  const findComponents = find.value.filter(c => !isCombinator(c));
 
   if (findComponents.length === 0) {
     return null;
@@ -1717,7 +1805,7 @@ function tryBacktrackingComplexMatch(
         // If :is() contains a complex selector
         if (isNode(isArg, N.ComplexSelector)) {
           // Get the :is() content value
-          const isArgComponents = isArg.value.filter((c): c is Selector => !isNode(c, N.Combinator) && typeof c !== 'string');
+          const isArgComponents = isArg.value.filter((c): c is Selector => !isCombinator(c) && typeof c !== 'string');
 
           // Try to match the find pattern
           if (isArgComponents.length >= 2) {
@@ -1825,6 +1913,7 @@ function searchWithinPseudoSelector(
     if (isNode(argSelector, N.SelectorList)) {
       // Check if target matches any alternative in the :is() selector list
       currentPath.push('arg');
+      const locsBefore = locations.length;
       for (let altIndex = 0; altIndex < argSelector.value.length; altIndex++) {
         const alternative = selectorListItemForMatch(argSelector.value[altIndex]!);
         currentPath.push(altIndex);
@@ -1843,9 +1932,15 @@ function searchWithinPseudoSelector(
       }
       currentPath.pop();
 
-      // Additional optimization: Check if target could be added as new alternative
-      // This enables extending :is(.a, .b) with .c to become :is(.a, .b, .c)
-      const canExtendAsList = !argSelector.value.some(alt => isStructurallyEqual(selectorListItemForMatch(alt), target));
+      // Additional optimization: Check if the find (`target`) could be added as a new
+      // alternative — extending `:is(.a, .b)` with `.c` to become `:is(.a, .b, .c)`.
+      // This is only valid when the find actually OCCURS within this `:is()` (matched an
+      // existing alternative, above). An unconditional append would spuriously "match"
+      // any find against any `:is()` (e.g. a multi-position find `.ext8 .ext9` against
+      // `:is(.foo, …)` where it never appears), corrupting the selector.
+      const foundWithinIs = locations.length > locsBefore;
+      const canExtendAsList = foundWithinIs
+        && !argSelector.value.some(alt => isStructurallyEqual(selectorListItemForMatch(alt), target));
       if (canExtendAsList) {
         currentPath.push('arg');
         locations.push(withMatchScope({
@@ -2063,11 +2158,13 @@ export interface SelectorComparisonResult {
 }
 
 export function selectorCompare(
-  a: Selector,
-  b: Selector,
+  aRaw: Selector,
+  bRaw: Selector,
   forwardSearch?: ExtendSearchResult,
   backwardSearch?: ExtendSearchResult
 ): SelectorComparisonResult {
+  const a = materializeStringLeaves(aRaw);
+  const b = materializeStringLeaves(bRaw);
   const normalizedA = normalizeSelectorForExtend(a);
   const normalizedB = normalizeSelectorForExtend(b);
   if (isNode(normalizedA, N.SelectorList) && isNode(normalizedB, N.SelectorList)) {

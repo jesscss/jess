@@ -12,15 +12,8 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
-    },
-    "./internal/raw-selector": {
-      "types": "./lib/tree/util/raw-selector.d.ts",
-      "source": "./src/tree/util/raw-selector.ts",
-      "import": "./lib/internal/raw-selector.js",
-      "require": "./lib/internal/raw-selector.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -36,6 +29,7 @@
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
     "chalk": "^5.2.0",
+    "color-name": "~2.0.0",
     "combinate": "^1.1.11",
     "data-structure-typed": "~2.0.0",
     "enhanced-resolve": "~5.18.3",
@@ -47,7 +41,7 @@
     "build": "pnpm clean && pnpm compile",
     "clean": "shx rm -rf ./lib tsconfig.tsbuildinfo",
     "visualize": "vite build",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts --minify && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsc -p tsconfig.build.json -w",
     "test": "cross-env TEST=true vitest",
     "test:bench": "cross-env TEST=true vitest --run --include '**/bench*'",

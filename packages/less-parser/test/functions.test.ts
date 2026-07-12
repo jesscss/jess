@@ -43,7 +43,8 @@ describe('functionCallArgs', () => {
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Call');
-    expect(out).toContainString('(Sequence');
+    expect(out).toContainString('1,2,3');
+    expect(out).toContainString('(Num 2)');
   });
 
   it('should parse single space-delimited argument as one positional Sequence', () => {
@@ -51,7 +52,7 @@ describe('functionCallArgs', () => {
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Call');
-    expect(out).toContainString('(Sequence');
+    expect(out).toContainString('[Num, Num, Num]');
   });
 
   it('normalizes plain color keywords in function args to Color nodes', () => {
@@ -72,33 +73,45 @@ describe('functionCallArgs', () => {
     expect(out).toContainString('key: \'func\'');
     expect(out).toContainString('args: \n  (List');
     expect(out).not.toContainString('sep: \';\'');
-    expect(out).toContainString('(Any [role=ident]');
+    expect(out).toContainString('(Keyword [role=keyword]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
     expect(out).toContainString('\'c\'');
   });
 
-  it('serializes semicolon-root function args as a semicolon List', () => {
+  // Function calls share the mixin-args path, so `;`-args are LOWERED the same way:
+  // comma-separated, comma-list args wrapped in `~(…)` (escaped Paren).
+  it('lowers semicolon function args with SCALAR groups to a plain comma List', () => {
     const { errors, tree } = parser.parse('func(a; b; c)');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Reference\n          type: \'function\'');
     expect(out).toContainString('key: \'func\'');
-    expect(out).toContainString('(List\n          sep: \';\'');
-    expect(out).toContainString('(Any [role=ident]');
+    expect(out).not.toContainString('sep: \';\'');
+    expect(out).not.toContainString('(Paren');
+    expect(out).toContainString('(Keyword [role=keyword]');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
     expect(out).toContainString('\'c\'');
   });
 
-  it('preserves escaped nested comma values inside semicolon-root function args', () => {
+  it('lowers a comma-list function arg to an escaped Paren (`~(…)`)', () => {
+    const { errors, tree } = parser.parse('func(a, b; c)');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).not.toContainString('sep: \';\'');
+    expect(out).toContainString('(Paren\n                    escaped: true');
+    expect(out).toContainString('\'a\'');
+    expect(out).toContainString('\'b\'');
+    expect(out).toContainString('\'c\'');
+  });
+
+  it('an authored `~(…)` function arg round-trips to the same escaped Paren', () => {
     const { errors, tree } = parser.parse('func(~(a, b); c)');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
-    expect(out).toContainString('(List\n          sep: \';\'');
-    expect(out).toContainString('(Paren\n              escaped: true');
-    expect(out).toContainString('(List');
-    expect(out).toContainString('(Any [role=ident]');
+    expect(out).not.toContainString('sep: \';\'');
+    expect(out).toContainString('(Paren\n                    escaped: true');
     expect(out).toContainString('\'a\'');
     expect(out).toContainString('\'b\'');
     expect(out).toContainString('\'c\'');
@@ -157,7 +170,7 @@ describe('ifFunction', () => {
           ${declarations}
         }
       }
-    `, 'stylesheet');
+    `, 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
@@ -177,7 +190,7 @@ describe('booleanFunction', () => {
 
 describe('callArgument', () => {
   it('should parse anonymous mixin as argument', () => {
-    const { errors } = parse('.mixin({ color: red; })', 'mixinOrQualifiedRule');
+    const { errors } = parse('.mixin({ color: red; })', 'MixinOrQualifiedRule');
     expect(errors.length).toBe(0);
   });
 

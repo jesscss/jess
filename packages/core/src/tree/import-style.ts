@@ -1,6 +1,7 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
+import { Node, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
@@ -13,10 +14,10 @@ import type { Collection } from './collection.js';
 import { AtRule } from './at-rule.js';
 import { AtRuleStatement } from './at-rule-statement.js';
 import { Any } from './any.js';
+import { declarationNameKey } from './declaration.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
-import { buildScopeFrame, copyScopeFrameLiveBindingSlots, type BindingCell } from './scope-frame.js';
-import { Comment } from './comment.js';
+import { setScopeFrameLiveBinding, type BindingCell } from './scope-frame.js';
 import {
   isRenderBuffer,
   type RenderBuffer
@@ -94,9 +95,7 @@ function variableNameKey(node: Node): string {
     return '';
   }
   const name = node.name;
-  return name instanceof Any
-    ? name.value
-    : String(name.valueOf?.() ?? '');
+  return declarationNameKey(name);
 }
 
 function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void): void {
@@ -133,17 +132,7 @@ function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void)
 }
 
 function getInlineSourceLocation(source: string): NodeLocation {
-  let line = 1;
-  let column = 1;
-  for (let index = 0; index < source.length; index++) {
-    if (source.charCodeAt(index) === 10) {
-      line++;
-      column = 1;
-    } else {
-      column++;
-    }
-  }
-  return [0, 1, 1, source.length, line, column];
+  return { start: 0, end: source.length };
 }
 
 /**
@@ -332,6 +321,25 @@ function nodeChildKeys(node: Node): readonly string[] | undefined {
   return childKeys === null ? undefined : childKeys;
 }
 
+// A source child that a first-use import placement may OWN (clone) rather than
+// share: a plain Declaration, or a Ruleset/Rules whose entire body is likewise
+// ownable. Anything callable-bearing (Mixin, AtRule, nested StyleImport) stays
+// shared so reference-import guard/param scope resolution is preserved.
+function isPlacementScalarChild(node: Node): boolean {
+  if (isNode(node, N.Declaration | N.VarDeclaration)) {
+    return true;
+  }
+  if (isNode(node, N.Ruleset) && node instanceof Rules) {
+    for (let i = 0; i < node.rules.length; i++) {
+      if (!isPlacementScalarChild(node.rules[i]!)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 function findImportPlacementValuePath(
   value: unknown,
   target: Node,
@@ -437,9 +445,11 @@ export function getImportPlacementSegmentSourceChild(
   if (!state) {
     return undefined;
   }
-  if (placementChild.canReuseAsLeaf()) {
-    return placementChild;
-  }
+  // NOTE: a placement child may itself LOOK like a reusable leaf (a cloned
+  // container whose only child was reused-as-leaf clears F_HAS_NODE_CHILD) yet
+  // still map to a distinct source child. So resolve positionally through the
+  // segments — a genuinely shared leaf resolves to itself via the value-path
+  // walk (it is the same object in both source and placement).
   for (const segment of state.childSegments) {
     const placementSegment = placementRules.rules[segment.index];
     if (placementSegment === placementChild) {
@@ -549,7 +559,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       shareChildren?: boolean;
     }
   ): Rules {
-    const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
+    const sourceLocation = sourceSpanOf(anchorRules);
     const wrapped = childNodes !== undefined
       ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules._treeContext)
       : anchorRules.derive();
@@ -587,20 +597,38 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     });
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- getInlineSourceLocation always returns a full 6-element tuple, never []
     const node = new Any(source, { role: 'any' }, getInlineSourceLocation(source) as LocationInfo);
-    new Rules([node], undefined, undefined, treeContext);
+    const inlineRules = new Rules([node], undefined, undefined, treeContext);
+    // Pin the inline source root so later `adopt` into an import-site surface
+    // (whose treeContext is the importing file) cannot re-root the inline node's
+    // provenance. Source-map segments read `sourceRoot._treeContext.file`, so the
+    // inline node must keep resolving to the inlined file's tree context.
+    node._sourceRoot = inlineRules;
     return node;
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
-    // Thin placement: SHARE the imported source children directly (the
-    // canonical tree is never copied). Per-placement state lives in the
-    // placement state record / scope frame, not in copied nodes.
+    // Thin placement: the placement OWNS its child containers (a fresh
+    // declaration/ruleset surface per placement) while REUSING inert scalar
+    // leaves (shared by identity via `reuseAsLeaf`). The canonical source
+    // children keep their imported-tree parent — `cloneForPlacement` never
+    // reparents the source. Each segment records the ORIGINAL source child so
+    // placement→source mapping (getImportPlacementSourceChild) still resolves,
+    // and a reusable leaf placement child IS its own source. See
+    // LIVE_BINDING_ARCHITECTURE.md §4.
     const children = new Array<Node>(sourceRules.rules.length);
     const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const source = sourceRules.rules[index]!;
-      children[index] = source;
-      childSegments[index] = createPlacementChildSegment(source, source, index);
+      // Only pure scalar-declaration content is placement-owned (a fresh
+      // declaration/ruleset surface reusing the scalar leaf). Callable-bearing
+      // content (mixins with guards/params, at-rules, nested imports) MUST stay
+      // shared: a reference-import's mixin guards resolve caller scope through
+      // the shared source parent chain, which cloning would sever.
+      const output = isPlacementScalarChild(source)
+        ? source.cloneForPlacement({ detachChildren: true })
+        : source;
+      children[index] = output;
+      childSegments[index] = createPlacementChildSegment(source, output, index);
     }
     return {
       source: sourceRules,
@@ -645,7 +673,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
     const wrappedAtRule = new AtRule({
-      name: new Any(name, { role: 'atkeyword' }),
+      name,
       prelude,
       rules: rules.rules
     });
@@ -787,8 +815,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
-    const liveSlots = copyScopeFrameLiveBindingSlots(targetRules._scopeFrame);
-    let didAdd = false;
+    // Build the target frame through the normal getter so it carries the
+    // assignment-binding chain (prepareScopeFrameAssignmentBindings surfaces any
+    // additive child rulesets' public property decls) and inline-import fallbacks,
+    // then overlay the config vars as live slots on that prepared frame. Injecting
+    // in place keeps `configuredProp`/`setConfiguredProp`-style non-variable decls
+    // resolvable via the same assignment chain variables use — no bare frame rebuild
+    // that would drop them.
+    const frame = targetRules.scopeFrame;
     for (const node of variableNodes) {
       if (!isNode(node, N.VarDeclaration)) {
         continue;
@@ -797,33 +831,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (!name) {
         continue;
       }
-      liveSlots.set(name, {
+      setScopeFrameLiveBinding(frame, name, {
         value: node.value instanceof Node ? node.value : undefined,
         sourceNode: node,
         readonly: node.options?.readonly
       } satisfies BindingCell);
-      didAdd = true;
     }
-    if (!didAdd) {
-      return;
-    }
-    const existingFallbackFrame = targetRules._scopeFrame?.fallbackFrame;
-    targetRules.scopeFrame = buildScopeFrame(
-      undefined,
-      targetRules,
-      targetRules._scopeFrame?.parent,
-      liveSlots,
-      targetRules._scopeFrame?.pendingDeclarationNames,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      targetRules._scopeFrame?.hasReferenceImports ?? targetRules._hasReferenceImports
-    );
-    targetRules.scopeFrame.fallbackFrame = existingFallbackFrame;
   }
 
   private toImportPathNode(node: Node): Quoted | Url {
@@ -861,10 +874,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       ? preludeNodes[0]
       : new Sequence(preludeNodes);
 
-    const location = this.location && this.location.length === 6 ? this.location : undefined;
+    const location = sourceSpanOf(this);
     // @import has no block body — it is a semicolon at-rule statement.
     return new AtRuleStatement({
-      name: new Any('@import', { role: 'atkeyword' }),
+      name: '@import',
       prelude
     }, undefined, location);
   }
@@ -875,8 +888,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     this.path = value.path;
     this.with = value.with;
     this.withNode = value.with?.node;
-    // Style imports are always non-static and may be async
-    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+    // Style imports are always non-static
+    this.addFlags(F_NON_STATIC);
   }
 
   private getCanonicalSourcePath(options: FinalPrintOptions): string | undefined {
@@ -999,9 +1012,23 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       local: isLocal,
       forward: isForward,
       importBoundary: hasImportBoundary,
+      // A plain `@import` or a wildcard `@compose (namespace: *)` dumps its members
+      // into the enclosing scope (linked as a fallback frame there). A named/plain
+      // compose keeps its members behind its namespace. A `@forward` re-exports
+      // downstream but is NOT visible in the forwarder's OWN local scope, so it
+      // never inlines its members here (see the forward comment above).
+      inlinesMembersToParent: !isForward
+        && (this.options.type === 'import' || this.options.namespace === '*'),
       referenceMode: isReferenceMode,
       readonly
     };
+    // A boundary wrapper IS the import boundary: its members belong to itself, so
+    // the boundary is tracked on this surface's own options — not inherited from
+    // upstream source provenance. Re-point sourceNode to self so boundary checks
+    // (and declaration ownership) read from this wrapper, not the imported tree.
+    if (hasImportBoundary) {
+      out.sourceNode = out;
+    }
     importPlacementOptionsStates.set(out, {
       referenceMode: isReferenceMode,
       rulesVisibility: out.options.rulesVisibility
@@ -1131,6 +1158,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         node.options.resolvedFromPath = resolvedFromPath;
         node.options.resolvedFromFilePath = resolvedFromFilePath;
         rules.options.importBoundary ??= this.options.type !== 'import';
+        // A plain `@import` or a wildcard `@compose (namespace: *)` inlines its
+        // members into the enclosing scope (the enclosing frame links this as a
+        // fallback). A named/plain compose keeps its members behind its namespace.
+        rules.options.inlinesMembersToParent
+          ??= this.options.type === 'import' || this.options.namespace === '*';
         let evaldRules = context.evaldTrees.get(resolvedPath);
         if (type === 'import' && !evaldRules && !withValues) {
           // Plain imports still need an import-site-local Rules surface during
@@ -1155,7 +1187,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // Reuse cached evaluated rules tree.
           rules = evaldRules;
           // Default: de-dupe output for compose re-imports unless explicitly multiple.
-          if (!importOptions!.multiple) {
+          // A configured (`with`/`set`) compose is a distinct instance whose child
+          // surface is re-derived and re-emitted below, so it is never a dedup re-import.
+          if (!importOptions!.multiple && !withValues) {
             importOptions!.reference = true;
           }
         }
@@ -1387,5 +1421,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 defineType<StyleImportValue>(StyleImport, 'StyleImport', 'style');
 
 export const style = (...args: ConstructorParameters<typeof StyleImport>) => {
-  return new StyleImport(...args);
+  // Canonical factory parents one level (invariant 7); raw `new StyleImport` shares.
+  return new StyleImport(...args).parentChildren();
 };

@@ -17,74 +17,128 @@ const testData = resolveLessTestDataRoot();
 
 describe('importAtRule', () => {
   it('should parse @import with url', () => {
-    const { errors } = parse('@import "file.css";', 'stylesheet');
+    const { errors } = parse('@import "file.css";', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @import with url() function', () => {
-    const { errors } = parse('@import url("file.css");', 'stylesheet');
+    const { errors } = parse('@import url("file.css");', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @import with options', () => {
-    const { errors } = parse('@import (reference) "file.less";', 'stylesheet');
+    const { errors } = parse('@import (reference) "file.less";', 'Stylesheet');
     expect(errors.length).toBe(0);
+  });
+
+  it('keeps a CSS @import media-query tail (not just the path)', () => {
+    const { errors, tree } = parse('@import "test.css" screen, print;', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    expect(tree.toString()).toBe('@import "test.css" screen, print;\n');
+  });
+
+  it('gives a Less (reference) url() import an unquoted Url path (not undefined)', () => {
+    // A `@import (reference) url(https://…)` with an UNQUOTED url() has no
+    // Quoted path; StyleImport.path fell back to undefined and derefed
+    // `this.path.eval` at eval. The parsed Url node must become the path.
+    const { errors, tree } = parse(
+      '@import (reference) url(https://cdn.example.com/a.less);',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const imp = (tree as any).rules.find((n: any) => isNode(n, N.StyleImport));
+    expect(imp).toBeDefined();
+    expect(imp.path).toBeDefined();
+    expect(isNode(imp.path)).toBe(true);
   });
 });
 
 describe('innerAtRule', () => {
   it('should parse @media inside rule', () => {
-    const { errors } = parse('.test { @media screen { color: red; } }', 'stylesheet');
+    const { errors } = parse('.test { @media screen { color: red; } }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @supports inside rule', () => {
-    const { errors } = parse('.test { @supports (display: flex) { color: red; } }', 'stylesheet');
+    const { errors } = parse('.test { @supports (display: flex) { color: red; } }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });
 
 describe('layerName', () => {
   it('should parse @layer with name', () => {
-    const { errors } = parse('@layer theme { }', 'stylesheet');
+    const { errors } = parse('@layer theme { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @layer with variable in name', () => {
-    const { errors } = parse('@layer @var { }', 'stylesheet');
+    const { errors } = parse('@layer @var { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });
 
 describe('keyframesName', () => {
   it('should parse @keyframes with identifier', () => {
-    const { errors } = parse('@keyframes name { }', 'stylesheet');
+    const { errors } = parse('@keyframes name { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @keyframes with variable in name', () => {
-    const { errors } = parse('@keyframes @var { }', 'stylesheet');
+    const { errors } = parse('@keyframes @var { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });
 
 describe('mediaInParens', () => {
   it('should parse media query in parentheses', () => {
-    const { errors } = parse('@media (min-width: 500px) { }', 'stylesheet');
+    const { errors } = parse('@media (min-width: 500px) { }', 'Stylesheet');
     expect(errors.length).toBe(0);
+  });
+
+  it('does not duplicate the query prelude paren into the at-rule body', () => {
+    // `g.queryPrelude` parses the prelude into real node children, so the query
+    // block builder must not also emit those prelude nodes as body rules.
+    const { errors, tree } = parse('@media (max-width: 600px) { .mobile-only { display: block; } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const atRule = tree!.rules[0];
+    if (!isNode(atRule, N.AtRule)) {
+      throw new Error('Expected an at-rule');
+    }
+    const body = atRule.rules;
+    expect(body.length).toBe(1);
+    expect(isNode(body[0], N.Ruleset)).toBe(true);
+    expect(isNode(body[0], N.Paren)).toBe(false);
   });
 
   it('should parse escaped string in media query', () => {
-    const { errors } = parse('@media ~"screen" { }', 'stylesheet');
+    const { errors } = parse('@media ~"screen" { }', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
+  it('unwraps an escaped-string media query to its literal content on eval', async () => {
+    const { errors, tree } = parse('@media ~"screen" { a { color: red; } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('@media screen {');
+    expect(String(evald)).not.toContain('~"screen"');
+  });
+
+  it('keeps an escaped-string media query atomic across embedded spaces/parens', async () => {
+    const { errors, tree } = parse(
+      '@media ~"screen and (min-width: 400px)" { a { color: red; } }',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('@media screen and (min-width: 400px) {');
+  });
+
   it('should parse variable media query at top level', () => {
-    const { errors, tree } = parse('@media @breakpoint, print { }', 'stylesheet');
+    const { errors, tree } = parse('@media @breakpoint, print { }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule\n          nestable: true');
-    expect(out).toContainString('(Any [role=atkeyword]');
+    expect(out).toContainString('\'@media\'');
     expect(out).toContainString('\'@media\'');
     expect(out).toContainString('(List\n            value:');
     expect(out).toContainString('(Reference [role=ident]');
@@ -95,7 +149,7 @@ describe('mediaInParens', () => {
   });
 
   it('should parse namespaced reference media query at top level', () => {
-    const { errors, tree } = parse('@media #ns.breakpoint(.valToGet[])[@max] { }', 'stylesheet');
+    const { errors, tree } = parse('@media #ns.breakpoint(.valToGet[])[@max] { }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule\n          nestable: true');
@@ -110,12 +164,12 @@ describe('mediaInParens', () => {
   });
 
   it('should parse simple bare variable media query at top level as indexed reference', () => {
-    const { errors, tree } = parse('@media @breakpoint { }', 'stylesheet');
+    const { errors, tree } = parse('@media @breakpoint { }', 'Stylesheet');
     expect(errors.length).toBe(0);
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(AtRule');
     expect(out).toContainString('nestable: true');
-    expect(out).toContainString('(Any [role=atkeyword]');
+    expect(out).toContainString('\'@media\'');
     expect(out).toContainString('\'@media\'');
     expect(out).toContainString('(Reference [role=ident]');
     expect(out).toContainString('type: \'index\'');
@@ -125,8 +179,59 @@ describe('mediaInParens', () => {
 
 describe('mfValue', () => {
   it('should parse media feature value', () => {
-    const { errors } = parse('@media (width: 500px) { }', 'stylesheet');
+    const { errors } = parse('@media (width: 500px) { }', 'Stylesheet');
     expect(errors.length).toBe(0);
+  });
+
+  it('builds an indexed accessor for `@var[key]` in a feature value (not an opaque keyword)', () => {
+    const { errors, tree } = parse('@media (min-width: @breakpoints[mobile]) { }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    // The feature value must be a Reference accessor (target Reference + key),
+    // NOT a Keyword('@breakpoints[mobile]').
+    expect(out).toContainString('(Reference');
+    expect(out).toContainString('key:\n');
+    expect(out).not.toContainString('@breakpoints[mobile]');
+  });
+
+  it('builds a math Operation for a parenthesized feature value (not an opaque keyword)', () => {
+    const { errors, tree } = parse('@media screen and (min-width: (@some-var + 1)) { }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Operation');
+    expect(out).not.toContainString('(@some-var + 1)');
+  });
+
+  it('evaluates a parenthesized math feature value in a media prelude', async () => {
+    const { errors, tree } = parse(
+      '@some-var: 60px;\n@media screen and (min-width: (@some-var + 1)) { a { color: red; } }',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('@media screen and (min-width: 61px) {');
+  });
+
+  it('unwraps an escaped-string feature value (`~"2/1"`) to its literal content', async () => {
+    const { errors, tree } = parse(
+      '@media (-o-min-device-pixel-ratio: ~"2/1") { a { color: red; } }',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('(-o-min-device-pixel-ratio: 2/1)');
+    expect(String(evald)).not.toContain('~"2/1"');
+  });
+
+  it('unwraps a bare `@var` referencing an escaped string in a media prelude', async () => {
+    const { errors, tree } = parse(
+      '@all: ~"all";\n@tv: ~"(tv)";\n@media @all and @tv { a { color: red; } }',
+      'Stylesheet'
+    );
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('@media all and (tv) {');
+    expect(String(evald)).not.toContain('"all"');
   });
 });
 
@@ -141,7 +246,7 @@ describe('at-rule prelude comments', () => {
 @import "test.css" screen /* comment */, print;
 `;
 
-    const { errors, tree } = parse(source, 'stylesheet');
+    const { errors, tree } = parse(source, 'Stylesheet');
 
     expect(errors.length).toBe(0);
     expect(tree.toString()).toContain('screen /* comment */, print /* another */, handheld');
@@ -167,7 +272,7 @@ describe('at-rule prelude comments', () => {
       'utf8'
     );
     const source = readFileSync(fixture, 'utf8');
-    const { errors, tree } = parse(source, 'stylesheet');
+    const { errors, tree } = parse(source, 'Stylesheet');
 
     expect(errors.length).toBe(0);
 
@@ -180,17 +285,17 @@ describe('at-rule prelude comments', () => {
 
 describe('exportAtRule', () => {
   it('should parse @-export with path', () => {
-    const { errors } = parse('@-export "./theme.jess";', 'stylesheet');
+    const { errors } = parse('@-export "./theme.jess";', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @-export with namespace', () => {
-    const { errors } = parse('@-export "./theme.jess" as theme;', 'stylesheet');
+    const { errors } = parse('@-export "./theme.jess" as theme;', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 
   it('should parse @-export with url()', () => {
-    const { errors } = parse('@-export url("./theme.jess");', 'stylesheet');
+    const { errors } = parse('@-export url("./theme.jess");', 'Stylesheet');
     expect(errors.length).toBe(0);
   });
 });

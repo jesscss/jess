@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar-rules.ts + builders.ts) is the maintained parser.
+// Not type-checked.
 // Root production rules for LessRecursiveParser
 // Converted from lines 1-1145 of productions.ts (Chevrotain → hand-written recursive-descent)
 import type { RuleContext } from '../lessRecursiveParser.js';
@@ -83,7 +88,7 @@ function extendWithSelector(node: ExtendType, selector: Selector | undefined, co
     target: node.target,
     namespace: node.namespace,
     flag: node.flag
-  }, undefined, node.location.length === 6 ? node.location : undefined, context);
+  }, undefined, node.location, context);
 }
 
 function prependRules(rules: Rules, nodes: Node[], context: TreeContext): Rules {
@@ -962,8 +967,9 @@ export function mediaFeature(this: P, T: TokenMap) {
                 const value = $.SUBRULE($.mfValue, { ARGS: [ctx] });
                 if (!RECORDING_PHASE) {
                   const location = $.endRule();
+                  const featureName = createFeatureIdentNode(ident, 'property');
                   return new Declaration({
-                    name: createFeatureIdentNode(ident, 'property'),
+                    name: featureName instanceof Any ? String(featureName.valueOf()) : featureName,
                     value: value
                   }, undefined, location, $.context);
                 }
@@ -978,7 +984,7 @@ export function mediaFeature(this: P, T: TokenMap) {
                 if (!RECORDING_PHASE) {
                   const [startOffset, startLine, startColumn] = $.endRule();
                   seq.value.unshift(createFeatureIdentNode(ident, 'ident'));
-                  seq.location[0] = startOffset;
+                  seq.location.start = startOffset;
                   seq.location[1] = startLine;
                   seq.location[2] = startColumn;
                   return new QueryCondition(seq.value, undefined, seq.location, $.context);
@@ -1051,7 +1057,7 @@ export function mediaFeature(this: P, T: TokenMap) {
               if (!RECORDING_PHASE) {
                 const [startOffset, startLine, startColumn] = $.endRule();
                 seq.value.unshift(left);
-                seq.location[0] = startOffset;
+                seq.location.start = startOffset;
                 seq.location[1] = startLine;
                 seq.location[2] = startColumn;
                 return new QueryCondition(seq.value, undefined, seq.location, $.context);
@@ -1356,10 +1362,8 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
 
         // If it's an Any node with role: 'name', convert it to VarDeclaration for mixin definition parameters
         if (isNode(node, N.Any) && node.role === 'name') {
-          // Create a new Any node with role 'property' for the name
-          const nameNode = new Any(node.valueOf(), { ...node.options, role: 'property' }, node.location.length ? node.location : undefined, $.context);
           const replacement = new VarDeclaration({
-            name: nameNode,
+            name: String(node.valueOf()),
             value: new Nil(undefined, undefined, location, $.context)
           }, { paramVar: true }, location, $.context);
           args.adopt(replacement);
@@ -1511,7 +1515,7 @@ export function mixinOrQualifiedRule(this: P, T: TokenMap) {
                   const guardText = String(guard?.toString?.() ?? '');
                   const hasDefault = Boolean(ctx.hasDefault) || guardContainsDefaultCall(guard) || guardText.includes('??()');
                   const node = new Mixin(
-                    { name: new Any(selector.valueOf(), { role: 'name' }), params: args, rules: rules.rules, guard },
+                    { name: selector.valueOf(), params: args, rules: rules.rules, guard },
                     guard && hasDefault ? { hasDefault } : undefined,
                     $.endRule(),
                     $.context

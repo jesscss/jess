@@ -89,7 +89,7 @@ describe('createLessAdapter', () => {
 
   it('routes deprecated Less declaration value mutation through the Jess direct field', () => {
     const declaration = new Declaration({
-      name: new Any('color', { role: 'property' }),
+      name: 'color',
       value: new Any('red')
     });
     const adapter = toLessNode(declaration);
@@ -166,7 +166,7 @@ describe('toLessNode', () => {
 describe('toLessTree', () => {
   it('preserves adapter identity for nested reused nodes via cache', () => {
     const decl = new Declaration({
-      name: new Any('color', { role: 'property' }),
+      name: 'color',
       value: new Any('red')
     });
     const ruleset = new Ruleset({

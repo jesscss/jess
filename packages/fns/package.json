@@ -11,13 +11,11 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./*": {
       "types": "./lib/*.d.ts",
-      "source": "./src/*.ts",
       "import": "./lib/*.js",
       "require": "./lib/*.cjs"
     },

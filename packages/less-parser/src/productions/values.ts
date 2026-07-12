@@ -1,3 +1,7 @@
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar-rules.ts + builders.ts) is the maintained parser.
+// Not type-checked.
 // Values productions for LessRecursiveParser
 // Converted from Chevrotain-based productions.ts (lines 2060-3015)
 import type { RuleContext, TokenMap } from '../lessRecursiveParser.js';
@@ -181,7 +185,7 @@ function createEachPattern(
 } {
   const defaultVars = ['value', 'key', 'index'].map((name) => {
     return new VarDeclaration({
-      name: new Any(name, { role: 'property' }),
+      name,
       value: new Any('', { role: 'any' })
     }, { paramVar: true }, location, context);
   });
@@ -200,7 +204,7 @@ function createEachPattern(
       }
       if (isNode(param, N.Any) && param.role === 'property') {
         return new VarDeclaration({
-          name: new Any(param.value, { role: 'property' }, param._location?.length ? param._location : undefined, param.sourceRoot?._treeContext),
+          name: String(param.value),
           value: new Any('', { role: 'any' })
         }, { paramVar: true }, param.location, context);
       }

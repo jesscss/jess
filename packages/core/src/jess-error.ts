@@ -12,7 +12,7 @@ type JessFile = TreeContext['file'];
 export type TreeContextLike = { file: JessFile };
 
 /** Node type carrying a `location` tuple. */
-export type LocNode = { location?: LocationInfo };
+export type LocNode = { location?: LocationInfo; spanStart?: number; spanEnd?: number };
 
 type Phase = 'parse' | 'resolve' | 'import' | 'eval' | 'extend' | 'plugin';
 type Severity = 'error' | 'warn';
@@ -25,6 +25,7 @@ export type JessErrorCode =
   | 'import/circular-compose'
   | 'eval/bad-call-arity'
   | 'eval/type-mismatch'
+  | 'eval/invalid-statement'
   | 'extend/protected-boundary'
   | 'extend/not-found'
   | 'extend/not-accessible'
@@ -148,6 +149,23 @@ export type JessErrorInit = {
  */
 type Template = { summary: string; reason: string; fix: string };
 
+/**
+ * Derive 1-based line/column at a source offset. Line/col are no longer stored on
+ * nodes (only offsets are) — they're computed here on the cold error path.
+ */
+function lineColAt(source: string, offset: number): { line: number; column: number } {
+  let line = 1;
+  let lineStart = 0;
+  const end = Math.min(offset, source.length);
+  for (let i = 0; i < end; i++) {
+    if (source.charCodeAt(i) === 10 /* \n */) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, column: end - lineStart + 1 };
+}
+
 const TEMPLATES = new Map<JessErrorCode, Template>([
   // Parse/Lex
   ['parse/unexpected-token', {
@@ -193,6 +211,11 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Type mismatch',
     reason: '${callee} expects ${expected}, got ${got}.',
     fix: 'Pass a ${expected}; convert or choose a compatible value.'
+  }],
+  ['eval/invalid-statement', {
+    summary: 'Value node is not valid as a statement',
+    reason: '${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.',
+    fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
   }],
 
   // Extend
@@ -466,9 +489,15 @@ export class JessError extends Error {
     // Resolve context from ctx/node first, else from explicit fields.
     const fileObj = init.ctx?.file;
     const abs = fileObj?.fullPath ?? init.filePath;
-    const line = init.node?.location?.[1] ?? init.line ?? 1;
-    const column = init.node?.location?.[2] ?? init.column ?? 1;
     const source = fileObj?.source ?? init.source;
+    // Line/col are derived from the node's source offset + the source (they are no
+    // longer stored on the node — only `spanStart`/`spanEnd` are).
+    const nodeOffset = init.node?.spanStart;
+    const derived = nodeOffset !== undefined && source !== undefined
+      ? lineColAt(source, nodeOffset)
+      : undefined;
+    const line = derived?.line ?? init.line ?? 1;
+    const column = derived?.column ?? init.column ?? 1;
 
     const meta = init.meta ?? {};
     const t = TEMPLATES.get(init.code) ?? TEMPLATES.get('parse/syntax-error')!;
@@ -784,15 +813,15 @@ export function toDiagnostic(error: JessError): ErrorDiagnostic | WarningDiagnos
   // Extract relevant lines from source (error line + context)
   const lines = extractRelevantLines(error.source ?? error.fileObj?.source, error.line);
 
-  // Extract endLine/endColumn from node location if available
-  // Location format: [startOffset, startLine, startColumn, endOffset, endLine, endColumn]
-  const nodeLocation = error.node?.location;
-  const endLine = nodeLocation && nodeLocation.length >= 6
-    ? nodeLocation[4]
+  // Derive endLine/endColumn from the node's end offset + source (line/col are no
+  // longer stored on the node — only spanStart/spanEnd are).
+  const endSource = error.source ?? error.fileObj?.source;
+  const endOffset = error.node?.spanEnd;
+  const endLc = endOffset !== undefined && endSource !== undefined
+    ? lineColAt(endSource, endOffset)
     : undefined;
-  const endColumn = nodeLocation && nodeLocation.length >= 6
-    ? nodeLocation[5]
-    : undefined;
+  const endLine = endLc?.line;
+  const endColumn = endLc?.column;
 
   // Create file object without source (we only use 'lines' for code frames)
   const file = error.fileObj

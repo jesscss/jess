@@ -18,7 +18,7 @@ describe('callable candidate execution helper', () => {
   it('evaluates a parameterized callable candidate and returns output', async () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       params: list([vardecl({ name: 'tone', value: any('red') })]),
       rules: [
         decl({ name: 'color', value: any('red') })
@@ -72,7 +72,7 @@ describe('callable candidate execution helper', () => {
     dynamicGuard.eval = (async (evalContext: Context) => new Bool(evalContext.isDefault === true)) as unknown as (context: Context) => Bool;
 
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       rules: [
         decl({ name: 'color', value: any('red') })
       ],

@@ -1,4 +1,6 @@
+import { isSourceFree } from './provenance.js';
 import { F_HAS_NODE_CHILD, F_NON_STATIC, Node } from '../node-base.js';
+import { Selector } from '../selector.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 
@@ -8,7 +10,7 @@ import { isNode } from './is-node.js';
  * their children for a particular placement.
  */
 export function canReuseLeaf(node: Node): boolean {
-  return (node._location?.length ?? 0) === 0
+  return isSourceFree(node)
     && !node.hasFlag(F_NON_STATIC)
     && !node.hasFlag(F_HAS_NODE_CHILD);
 }
@@ -40,10 +42,7 @@ function copyForPlacement(
   options: { owned?: boolean; preserveComments?: boolean } = {}
 ): Node {
   if (!options.preserveComments && node.type === 'Comment') {
-    const nilNode = node.nil?.();
-    if (nilNode) {
-      return nilNode.inherit(node);
-    }
+    return node.nil().inherit(node);
   }
   const derivedAmpersand = deriveAmpersand(node);
   if (derivedAmpersand) {
@@ -52,6 +51,17 @@ function copyForPlacement(
   }
   if (!options.owned && canReuseLeaf(node)) {
     return reuseLeaf(node);
+  }
+  // A Selector's placement clone SHARES its child selectors (frozen) instead of
+  // deep-copying them: `Selector.inherit()` adopts each child, but the frozen bit
+  // makes `adopt` skip the reparent, so the shared SOURCE children keep their
+  // canonical `.parent` and are not mutated. Scalar leaves are still reused.
+  if (node instanceof Selector) {
+    return node.cloneForPlacement({
+      reuseLeaves: true,
+      shareChildren: true,
+      ...(options.preserveComments ? { stripComments: false } : {})
+    });
   }
   return node.cloneForPlacement(options.preserveComments ? { stripComments: false } : undefined);
 }
@@ -69,18 +79,26 @@ export function copyOwnedWithReusableLeaves(node: Node): Node {
 }
 
 /**
- * Collapsing a selector/container to a single surviving source child must not
- * inherit container metadata onto the canonical child. Own that child first;
- * evaluated replacement children may inherit directly because they are already
- * placement-local output.
+ * Copy a Node array using a specified copy function, validating that each
+ * copy remains a Node. Used by Ruleset, Mixin, and AtRule to consolidate
+ * their identical ownRules() implementations.
+ *
+ * @param nodes - Array of nodes to copy
+ * @param copyFn - Copy function (e.g., copyOwnedWithReusableLeaves, copyWithReusableLeaves)
+ * @returns Array of copied nodes
+ * @throws TypeError if a copy doesn't remain a Node
  */
-export function ownCollapsedSourceChild(
-  node: Node,
-  sourceValue: readonly unknown[],
-  owner: Node
-): Node {
-  const owned = sourceValue.includes(node)
-    ? copyOwnedWithReusableLeaves(node)
-    : node;
-  return owned.inherit(owner);
+export function copyNodesForOwnership(
+  nodes: readonly Node[],
+  copyFn: (n: Node) => Node
+): Node[] {
+  const owned = new Array<Node>(nodes.length);
+  for (let i = 0; i < nodes.length; i++) {
+    const copied = copyFn(nodes[i]!);
+    if (!(copied instanceof Node)) {
+      throw new TypeError('Expected node copy to remain a node');
+    }
+    owned[i] = copied;
+  }
+  return owned;
 }

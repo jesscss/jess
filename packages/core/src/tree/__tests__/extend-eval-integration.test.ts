@@ -7,7 +7,6 @@ import {
   Ampersand,
   attr,
   atrule,
-  co,
   color,
   comment,
   compound,
@@ -55,20 +54,20 @@ describe('extend integration (eval -> toString)', () => {
       name: ':is',
       arg: sellist([
         compound([el('.replace'), el('.replace')]),
-        sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+        sel([compound([el('.c'), el('.replace')]), '+', el('.replace')])
       ])
     });
 
     const root = rules([
       ruleset({
-        selector: sellist([sel([parentIs, co(' '), el('.replace')]), sel([parentIs.clone(true), co(' '), el('.c')])]),
+        selector: sellist([sel([parentIs, ' ', el('.replace')]), sel([parentIs.clone(), ' ', el('.c')])]),
         rules: [decl({ name: 'prop', value: any('copy-paste-replace') })]
       }),
       ruleset({
         selector: el('.rep_ace'),
         rules: [
           extend({
-            target: sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]),
+            target: sel([compound([el('.replace'), el('.replace')]), ' ', el('.replace')]),
             flag: ExtendFlag.Exact
           })
         ]
@@ -99,7 +98,7 @@ describe('extend integration (eval -> toString)', () => {
       ruleset({
         selector: sellist([
           compound([el('.replace'), el('.replace')]),
-          sel([compound([el('.c'), el('.replace')]), co('+'), el('.replace')])
+          sel([compound([el('.c'), el('.replace')]), '+', el('.replace')])
         ]),
         rules: [
           ruleset({
@@ -212,7 +211,7 @@ describe('extend integration (eval -> toString)', () => {
             selector: footerNav,
             rules: [
               extend({
-                target: sel([el('.header'), co(' '), el('.header-nav')]),
+                target: sel([el('.header'), ' ', el('.header-nav')]),
                 flag: ExtendFlag.All
               })
             ]
@@ -372,12 +371,19 @@ describe('extend integration (eval -> toString)', () => {
     }
   });
 
-  it('extends attribute value without duplicating implicit parent prefix (Less extend-selector attributes)', async () => {
+  it('extends attribute value with substring replacement using the extender local selector (Less extend-selector attributes)', async () => {
     // Represents:
     // .attributes {
     //   [data="test"] { extend: attributes; }
     //   .attribute-test { &:extend([data="test"] all); }
     // }
+    // Target and extender share the `.attributes` parent frame. The replaceWith `&`
+    // is therefore the extender's LOCAL selector `.attribute-test` (not the composed
+    // `.attributes .attribute-test`): the `.attributes` prefix comes from the render
+    // nesting, so storing it in the member too would double it. This matches Less 4.x
+    // exactly (test-data/tests-unit/extend-selector/extend-selector.css emits bare
+    // `.attribute-test` inside the `.attributes {}` block). The prior `.attributes
+    // .attribute-test` expectation encoded the pre-fix doubling bug.
     const dataTest = attr({ name: 'data', op: '=', value: quoted('test') });
 
     const root = rules([
@@ -445,26 +451,21 @@ describe('extend integration (eval -> toString)', () => {
     );
     const isRulesetWithRules = (node: unknown): node is Ruleset => (
       node instanceof Ruleset
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      && Array.isArray((node.rules as unknown as Rules).rules)
+      && Array.isArray(node.rules)
     );
 
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
     const outerBb = evaldRules.rules.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        && (node.rules as unknown as Rules).rules.some((rule: Node) => isDeclarationNamed(rule, 'background'))
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        && (node.rules as unknown as Rules).rules.some((rule: Node) => rule instanceof Ruleset)
+        && node.rules.some((rule: Node) => isDeclarationNamed(rule, 'background'))
+        && node.rules.some((rule: Node) => rule instanceof Ruleset)
     );
     expect(outerBb).toBeTruthy();
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const inner = (outerBb?.rules as unknown as Rules)?.rules.find(
+    const inner = outerBb?.rules.find(
       (node: Node): node is Ruleset =>
         isRulesetWithRules(node)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        && (node.rules as unknown as Rules).rules.some((rule: Node) => isDeclarationNamed(rule, 'color'))
+        && node.rules.some((rule: Node) => isDeclarationNamed(rule, 'color'))
     );
     expect(inner).toBeTruthy();
     const innerSelectorStr = inner?.selector?.valueOf() ?? '';
@@ -480,15 +481,15 @@ describe('extend integration (eval -> toString)', () => {
     // .all:extend(.ext1 all) {}
     const root = rules([
       ruleset({
-        selector: sellist([sel([el('.ext1'), co(' '), el('.ext2')])]),
+        selector: sellist([sel([el('.ext1'), ' ', el('.ext2')])]),
         rules: [decl({ name: 'background', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
-            selector: sellist([sel([el('.ext1'), co(' '), el('.ext3')])]),
+            selector: sellist([sel([el('.ext1'), ' ', el('.ext3')])]),
             rules: [decl({ name: 'color', value: any('inherit') })]
           }),
           ruleset({
@@ -499,11 +500,11 @@ describe('extend integration (eval -> toString)', () => {
             ]
           }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(hires)'),
             rules: [
               ruleset({
-                selector: sellist([sel([el('.ext1'), co(' '), el('.ext4')])]),
+                selector: sellist([sel([el('.ext1'), ' ', el('.ext4')])]),
                 rules: [decl({ name: 'color', value: any('green') })]
               }),
               ruleset({
@@ -557,7 +558,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -615,7 +616,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -675,7 +676,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -865,7 +866,7 @@ describe('extend integration (eval -> toString)', () => {
       }),
       comment('// media queries - don\'t extend outside, do extend inside'),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: paren(query([keyword('tv')])),
         rules: [
           ruleset({
@@ -880,7 +881,7 @@ describe('extend integration (eval -> toString)', () => {
             rules: [decl({ name: 'color', value: any('inherit') })]
           }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: paren(query([keyword('plasma')])),
             rules: [
               // Parsed structure: inner Rules wrapping Extend then Ruleset (same as snapshot)
@@ -951,7 +952,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -1009,7 +1010,7 @@ describe('extend integration (eval -> toString)', () => {
         rules: [decl({ name: 'color', value: any('black') })]
       }),
       atrule({
-        name: any('@media'),
+        name: '@media',
         prelude: any('(tv)'),
         rules: [
           ruleset({
@@ -1074,7 +1075,7 @@ describe('extend integration (eval -> toString)', () => {
           rules: [decl({ name: 'color', value: spaced([any('red')]) })]
         }),
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('screen'),
           rules: [
             ruleset({
@@ -1108,7 +1109,7 @@ describe('extend integration (eval -> toString)', () => {
     it('B: .a:extend(.b) at root can reach in - .a merged with .b inside @media', async () => {
       const root = rules([
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('screen'),
           rules: [
             ruleset({
@@ -1146,7 +1147,7 @@ describe('extend integration (eval -> toString)', () => {
     it('C: .c:extend(.b) inside @media extends sibling .b - same extend root', async () => {
       const root = rules([
         atrule({
-          name: any('@media'),
+          name: '@media',
           prelude: any('screen'),
           rules: [
             ruleset({
@@ -1205,7 +1206,7 @@ describe('extend integration (eval -> toString)', () => {
             selector: el('.footer-nav'),
             rules: [
               extend({
-                target: sel([el('.header'), co(' '), el('.header-nav')]),
+                target: sel([el('.header'), ' ', el('.header-nav')]),
                 flag: ExtendFlag.All
               })
             ]
@@ -1264,7 +1265,7 @@ describe('extend integration (eval -> toString)', () => {
         selector: el('.theme'),
         rules: [
           extend({
-            target: sel([el('.one'), co(' '), el('.three')]),
+            target: sel([el('.one'), ' ', el('.three')]),
             flag: ExtendFlag.Exact
           })
         ]

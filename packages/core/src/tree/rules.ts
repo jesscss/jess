@@ -1,11 +1,14 @@
+import { setSourceSpan, spanStartOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   defineType,
   type NodeOptions,
   type LocationInfo,
   type TreeContext,
+  F_ALLOW_ROOT,
   F_STATIC,
-  F_VISIBLE
+  F_VISIBLE,
+  F_MERGE_SUPPRESSED
 } from './node.js';
 import { Context } from '../context.js';
 import { isNode } from './util/is-node.js';
@@ -15,7 +18,6 @@ import { type Mixin } from './mixin.js';
 import type { Selector } from './selector.js';
 import { spaced, Sequence } from './sequence.js';
 import {
-  OutputWriter,
   type FinalPrintOptions,
   type PrintOptions,
   getPrintOptions,
@@ -50,6 +52,7 @@ import {
   buildScopeFrame,
   copyScopeFrameLiveBindingSlots,
   createVarDeclarationBindingEntry,
+  injectFrameLeakBinding,
   lookupScopeFrameCallable,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
@@ -76,18 +79,17 @@ import {
   type RulesEntryLike
 } from './util/mixin-output-slot.js';
 import type { MixinOutputSlot } from './util/mixin-output-slot.js';
-import { canRenderStaticRulesDirectly } from './util/static-rules.js';
 import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
   findWritableSetDefinedDeclarationOccurrence,
   type DirectDeclarationOccurrence
 } from './util/direct-rules-lookup.js';
+import { checkValidNodes } from './util/check-valid-nodes.js';
 const { isArray } = Array;
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
-type FlagLikeNode = { hasFlag(flag: number): boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 type RulesRenderContextSnapshot = {
   rulesContext: Context['rulesContext'];
@@ -114,6 +116,13 @@ type ExactCallableFindOptions = {
   hasTarget?: boolean;
   local?: boolean;
   includeRulesets?: boolean;
+  /**
+   * Ruleset-only lookup: collect ONLY plain `Ruleset` candidates (`.foo {}`),
+   * dropping `Mixin` (parametric/parens `.foo() {}`) and any other callable. Used
+   * by Jess `$apply` and `*[…]` selector capture, whose semantics apply rulesets
+   * as-is — never the args/guards callable machinery.
+   */
+  rulesetsOnly?: boolean;
   searchParents?: boolean;
   skipCurrentSurface?: boolean;
 };
@@ -155,6 +164,99 @@ function isImportAtRule(node: Node): node is AtRule {
     && String(node.name.valueOf?.() ?? node.name ?? '').trim() === '@import';
 }
 
+// An evaluated import placement that dumps its members into the ENCLOSING scope:
+// a plain `@import` (marked `importBoundary === false`) or a wildcard
+// `@compose (namespace: *)` (marked `inlinesMembersToParent`, while it keeps
+// `importBoundary === true` to still block the imported body from seeing parent vars).
+function importInlinesMembersToParent(rules: Rules): boolean {
+  return rules.options.importBoundary === false
+    || rules.options.inlinesMembersToParent === true;
+}
+
+// Link an inline-import's own scope frame as `frame`'s fallback, preserving any
+// earlier sibling imports already chained on `frame.fallbackFrame`. A nested
+// import (an imported file that itself `@import`s) already points its own
+// fallbackFrame at its inner import, so the earlier siblings must be threaded
+// past that internal chain — appended at the TAIL of the import frame's fallback
+// chain — rather than skipped. Skipping (the old `=== undefined` guard) dropped
+// every earlier top-level import the moment a later import was itself nested.
+// The tail walk stops if it would revisit `frame`, `importFrame`, or the chain
+// head, so no cycle is ever formed. Fallbacks are consulted only AFTER the
+// primary scope chain, so an enclosing declaration always wins.
+function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): void {
+  if (importFrame === frame || importFrame === frame.fallbackFrame) {
+    return;
+  }
+  const chain = frame.fallbackFrame;
+  let tail: ScopeFrame = importFrame;
+  // Walk to the tail of importFrame's own fallback chain. The `seen` guard makes
+  // this loop total even if a prior link left a cycle in the chain (which would
+  // otherwise never hit the `=== chain/frame` stops) — we simply stop rather
+  // than append into a cycle.
+  const seen = new Set<ScopeFrame>([importFrame]);
+  while (
+    tail.fallbackFrame !== undefined
+    && tail.fallbackFrame !== chain
+    && tail.fallbackFrame !== frame
+    && !seen.has(tail.fallbackFrame)
+  ) {
+    tail = tail.fallbackFrame;
+    seen.add(tail);
+  }
+  if (tail.fallbackFrame === undefined) {
+    tail.fallbackFrame = chain;
+  }
+  frame.fallbackFrame = importFrame;
+}
+
+// Walk a frame's lexical parent chain to detect any per-call live-binding scope
+// (mixin params / loop vars). Used to distinguish a genuinely re-usable mixin body
+// child (whose per-call output must not be baked into the shared template) from a
+// nested ruleset/@media body re-used only for selector nesting (whose output is
+// invariant across evals). Bounded + cycle-guarded like the other frame walks.
+function frameChainHasLiveBindings(frame: ScopeFrame | undefined): boolean {
+  let f = frame;
+  const seen = new Set<ScopeFrame>();
+  while (f && !seen.has(f)) {
+    if (f.hasLiveBindings) {
+      return true;
+    }
+    seen.add(f);
+    f = f.parent;
+  }
+  return false;
+}
+
+// A callable's per-call surface adopted under a mixin-output namespace member
+// (e.g. `.sayGender` bound under the output `.person` for `.person.sayGender()`)
+// resolves free vars up that DEFINITION member, not the call site. The member is
+// a RETAINED per-call output frame: its scope-frame parent carries the call's
+// live param slots (hasLiveBindings). Distinct from the placement scope, so the
+// §4 placement re-point must leave the definition parent intact.
+function isRetainedOutputDefinitionParent(
+  parent: Node | undefined,
+  enclosingScope: Rules | undefined
+): boolean {
+  if (!isNode(parent, N.Rules) || parent === enclosingScope) {
+    return false;
+  }
+  const frame = (parent as Rules).getScopeFrame();
+  // The hasLiveBindings-parent signal alone is too broad: an ordinary nested
+  // ruleset inside a mixin body (e.g. a doubly-nested `.innest` inside `.inner`)
+  // also chains to the call's param slots, yet it is NOT a retained output — its
+  // per-call placement re-point must still fire so a second call rebinds its free
+  // vars to the new call's slots instead of resolving through the first call's
+  // cached frame chain.
+  //
+  // A retained mixin-output member OWNS its frame (`frame.rulesNode === parent`). A
+  // per-call re-evaluated body child is COW-derived during eval, which re-points its
+  // frame's `rulesNode` to the derived output surface (`frame.rulesNode !== parent`)
+  // — the marker that it is a placed body, not a retained definition. Require frame
+  // ownership so only the genuine retained-output parent suppresses the re-point.
+  return frame.parent?.hasLiveBindings === true
+    && frame.rulesNode === parent;
+}
+
 function keysStartWith(keys: readonly string[], path: readonly string[], pathStart = 0): boolean {
   if (keys.length > path.length - pathStart) {
     return false;
@@ -176,10 +278,19 @@ function collectKeyRemainder(keys: readonly string[], start: number): string[] {
   return remainder;
 }
 
-function splitStaticCallablePathKey(key: string): string[] | undefined {
-  let firstStart = -1;
-  let firstEnd = -1;
-  let out: string[] | undefined;
+// Combinators are string leaves between selector segments; a compound namespace
+// key like `#theme>.button` (or `#theme .button`) concatenates them without
+// spaces, so each segment slice must drop any trailing combinator characters.
+function isCombinatorCharCode(char: number): boolean {
+  // ' ' | '>' | '+' | '~' | '|'
+  return char === 32 || char === 62 || char === 43 || char === 126 || char === 124;
+}
+
+// Split a `#`/`.`-delimited selector string into its ordered segment keys,
+// dropping trailing combinator characters from each segment (`#theme>.button`
+// → ['#theme', '.button']). Returns [] for strings with no class/id segment.
+function splitSelectorStringKeys(key: string): string[] {
+  const out: string[] = [];
   for (let i = 0; i < key.length; i++) {
     const char = key.charCodeAt(i);
     if (char !== 35 && char !== 46) {
@@ -194,21 +305,22 @@ function splitStaticCallablePathKey(key: string): string[] | undefined {
       }
       i++;
     }
-    if (i === start + 1) {
-      i--;
-      continue;
+    let end = i;
+    while (end > start + 1 && isCombinatorCharCode(key.charCodeAt(end - 1))) {
+      end--;
     }
-    if (firstStart < 0) {
-      firstStart = start;
-      firstEnd = i;
-      i--;
-      continue;
-    }
-    out ??= [key.slice(firstStart, firstEnd)];
-    out.push(key.slice(start, i));
     i--;
+    if (end === start + 1) {
+      continue;
+    }
+    out.push(key.slice(start, end));
   }
   return out;
+}
+
+function splitStaticCallablePathKey(key: string): string[] | undefined {
+  const keys = splitSelectorStringKeys(key);
+  return keys.length > 1 ? keys : undefined;
 }
 
 function isSelectorLikeNode(node: unknown): node is Selector {
@@ -499,11 +611,7 @@ function rulesMayContainExtends(rules: Rules): boolean {
 }
 
 function rulesMayContainReferenceImports(rules: Rules): boolean {
-  if (
-    rules.options.referenceMode === true
-    || rules._hasReferenceImports
-    || rules.hasReferenceImportChildSurface
-  ) {
+  if (rulesHasCarriedReferenceImportSurface(rules)) {
     return true;
   }
   const value = rules.rules;
@@ -535,18 +643,20 @@ function rulesHasCarriedReferenceImportSurface(rules: Rules): boolean {
 }
 
 function sourceRulesOf(rules: Rules): Rules {
-  return isNode(rules.sourceNode, N.Rules) ? rules.sourceNode : rules;
+  // A canonical body may be any Rules subclass (Mixin/Ruleset) now that the
+  // Mixin.sourceNode wrapper is gone — `instanceof Rules` covers all three.
+  return rules.sourceNode instanceof Rules ? rules.sourceNode : rules;
 }
 
 function isStyleImportPathResolutionError(error: unknown): boolean {
   return error instanceof Error && (error as PathResolutionError)._isPathResolutionError === true;
 }
 
-function hasFlagMethod(value: unknown): value is FlagLikeNode {
+function hasStaticNameMethod(value: unknown): value is { hasStaticName(): boolean } {
   return typeof value === 'object'
     && value !== null
-    && 'hasFlag' in value
-    && typeof value.hasFlag === 'function';
+    && 'hasStaticName' in value
+    && typeof (value as { hasStaticName?: unknown }).hasStaticName === 'function';
 }
 
 function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
@@ -556,7 +666,7 @@ function consumeLeadingTrivia(node: Node, options: PrintOptions): string {
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
   }
-  const offset = node.location[0];
+  const offset = spanStartOf(node);
   return trivia ? consumeTriviaText(trivia, offset, 'before', options) : '';
 }
 
@@ -571,12 +681,13 @@ function consumeEofTrivia(node: Node, options: PrintOptions): string {
 }
 
 function writeDetached(options: PrintOptions, fn: (nextOptions: FinalPrintOptions) => void): string {
-  const writer = new OutputWriter();
-  fn(getPrintOptions({
-    ...options,
-    writer
-  }));
-  return writer.toString();
+  const resolved = getPrintOptions(options);
+  const writer = resolved.writer;
+  const mark = writer.mark();
+  fn(resolved);
+  const frag = writer.getSince(mark);
+  writer.restore(mark);
+  return frag;
 }
 
 export type RulesVisibility = 'public' | 'optional' | 'private';
@@ -648,6 +759,14 @@ export type RulesOptions = {
   forward?: boolean;
   /** Non-classic import boundary marker (`compose`, `use`, `forward`, etc.). */
   importBoundary?: boolean;
+  /**
+   * This import placement dumps its members into the ENCLOSING scope as if written
+   * in place: a plain `@import`, or a `@compose (namespace: *)` wildcard. Distinct
+   * from `importBoundary` (which blocks the imported body from seeing PARENT vars —
+   * the opposite direction): a wildcard compose both blocks upward AND inlines down.
+   * The enclosing ScopeFrame links such a placement's frame as a fallback.
+   */
+  inlinesMembersToParent?: boolean;
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
 };
@@ -697,7 +816,8 @@ function mergeDirectChildRulesVisibility(
 
 function collectCallableBucketResults(
   bucket: CallableLookupEntry[],
-  includeRulesets: boolean
+  includeRulesets: boolean,
+  rulesetsOnly = false
 ): MixinEntry[] | undefined {
   let results: MixinEntry[] | undefined;
   for (let i = bucket.length - 1; i >= 0; i--) {
@@ -709,6 +829,10 @@ function collectCallableBucketResults(
     if (!includeRulesets && isNode(candidate, N.Ruleset)) {
       continue;
     }
+    // Ruleset-only (bracket capture `*[.foo]()`): drop non-Ruleset callables.
+    if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
+      continue;
+    }
     (results ??= []).push(candidate);
   }
   return results;
@@ -718,7 +842,8 @@ function collectCallableBucketRemainderResults(
   bucket: CallableLookupEntry[],
   includeRulesets: boolean,
   path: readonly string[],
-  offset: number
+  offset: number,
+  rulesetsOnly = false
 ): MixinEntry[] | undefined {
   const restLength = path.length - offset - 1;
   if (restLength <= 0) {
@@ -742,6 +867,9 @@ function collectCallableBucketRemainderResults(
     }
     const candidate = entry.value;
     if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+      continue;
+    }
+    if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
       continue;
     }
     (results ??= []).push(candidate);
@@ -842,61 +970,422 @@ function setAssignmentTargetBinding(
  *   (Declaration background-color: white;)
  * ]
  */
+// Rules-only packed flags (see `rulesFlags`). A Rules-private int, distinct from
+// the base `flags` bitmask that every leaf node shares — keeps leaf reads narrow.
+const R_HAS_DIRECT_CHILD_RULE_SURFACE = 1 << 0;
+const R_HAS_DECLARATION_CHILD_SURFACE = 1 << 1;
+const R_HAS_VAR_DECLARATION_CHILD_SURFACE = 1 << 2;
+const R_HAS_REFERENCE_IMPORT_CHILD_SURFACE = 1 << 3;
+const R_HAS_EXACT_CALLABLE_CHILD_SURFACE = 1 << 4;
+const R_HAS_EXACT_MIXIN_CHILD_SURFACE = 1 << 5;
+const R_HAS_EXACT_RULESET_CHILD_SURFACE = 1 << 6;
+const R_BODY_EVALUATED = 1 << 7;
+const R_HAS_EXTENDS = 1 << 8;
+const R_HAS_REFERENCE_IMPORTS = 1 << 9;
+const R_REGISTRATION_PREPARED = 1 << 10;
+const R_PLACEMENT_REPOINTED = 1 << 11;
+/** Bits reset by `resetDerivedState` (child-derived surfaces + extend/reference-import). */
+const R_DERIVED_STATE_MASK =
+  R_HAS_DIRECT_CHILD_RULE_SURFACE
+  | R_HAS_DECLARATION_CHILD_SURFACE
+  | R_HAS_VAR_DECLARATION_CHILD_SURFACE
+  | R_HAS_REFERENCE_IMPORT_CHILD_SURFACE
+  | R_HAS_EXACT_CALLABLE_CHILD_SURFACE
+  | R_HAS_EXACT_MIXIN_CHILD_SURFACE
+  | R_HAS_EXACT_RULESET_CHILD_SURFACE
+  | R_HAS_EXTENDS
+  | R_HAS_REFERENCE_IMPORTS;
+
+/**
+ * Cold, rarely-allocated callable/function/child-rule lookup state, moved OFF the
+ * per-instance `Rules` shape into one lazily-allocated fixed-shape struct. A leaf
+ * declaration-only Ruleset (the majority of the ~12k instances) never runs a
+ * multi-kind lookup, so it carries ONE `undefined` `_lookup` slot instead of the
+ * ~12 fields below. Only a WRITE allocates the struct; reads see `undefined` and
+ * fall back to the neutral value (undefined map / `0` version).
+ *
+ * FAST-V8: every field is declared up-front so V8 keeps a single monomorphic
+ * hidden class. No dynamic attach / `Object.assign` / `defineProperty` / `delete`.
+ */
+class RulesLookupState {
+  varsByName: Map<string, BindingEntry[]> | undefined = undefined;
+  functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
+  callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
+  directChildRuleEntries: Array<RulesEntryLike> | null | undefined = undefined;
+  directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined = undefined;
+  directDeclarationsByName: Map<string, Declaration[] | null> | undefined = undefined;
+  directDeclarationLookupCache: Map<string, {
+    readonly optionalMatch: DirectDeclarationOccurrence | undefined;
+    readonly publicMatch: DirectDeclarationOccurrence | undefined;
+    readonly readonly: boolean;
+  }> | undefined = undefined;
+
+  declarationLookupVersionsByName: Map<string, number> | undefined = undefined;
+  functionLookupVersionsByName: Map<string, number> | undefined = undefined;
+  _closureScope: Rules | undefined = undefined;
+  callableLookupVersion = 0;
+  functionLookupVersion = 0;
+  declarationLookupVersion = 0;
+  lookupVersion = 0;
+}
+
 export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions> extends Node<V, O> {
   static override childKeys: readonly string[] = ['rules'] as const;
 
   readonly rules: Node[];
 
-  override allowRuleRoot = true;
-  override allowRoot = true;
-
-  functionsByName: Map<string, JsFunction | Func> | undefined;
   /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
-  varsByName: Map<string, BindingEntry[]> | undefined;
-  /** Per-request cache: callable start-key -> ordered entries with remaining path keys. */
-  callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined;
-  directChildRuleEntries: Array<RulesEntryLike> | null | undefined;
-  directDeclarationChildEntries: Array<RulesEntryLike> | null | undefined;
-  hasDirectChildRuleSurface = false;
-  hasDeclarationChildSurface = false;
-  hasVarDeclarationChildSurface = false;
-  hasReferenceImportChildSurface = false;
-  hasExactCallableChildSurface = false;
-  hasExactMixinChildSurface = false;
-  hasExactRulesetChildSurface = false;
-  directDeclarationsByName: Map<string, Declaration[] | null> | undefined;
-  directDeclarationLookupCache: Map<string, {
+  get varsByName(): Map<string, BindingEntry[]> | undefined {
+    return this._lookup?.varsByName;
+  }
+
+  set varsByName(value: Map<string, BindingEntry[]> | undefined) {
+    this.ensureLookup().varsByName = value;
+  }
+
+  /**
+   * Cold callable/function/child-rule lookup state (see `RulesLookupState`). One
+   * slot instead of ~12 eager fields; lazily allocated on first WRITE by
+   * `ensureLookup()`. Reads go through the property getters below (never allocate).
+   */
+  private _lookup: RulesLookupState | undefined = undefined;
+
+  private ensureLookup(): RulesLookupState {
+    return this._lookup ??= new RulesLookupState();
+  }
+
+  get functionsByName(): Map<string, JsFunction | Func> | undefined {
+    return this._lookup?.functionsByName;
+  }
+
+  set functionsByName(value: Map<string, JsFunction | Func> | undefined) {
+    this.ensureLookup().functionsByName = value;
+  }
+
+  get callableLookupCache(): Map<string, CallableLookupEntry[] | null> | undefined {
+    return this._lookup?.callableLookupCache;
+  }
+
+  set callableLookupCache(value: Map<string, CallableLookupEntry[] | null> | undefined) {
+    this.ensureLookup().callableLookupCache = value;
+  }
+
+  get directChildRuleEntries(): Array<RulesEntryLike> | null | undefined {
+    return this._lookup?.directChildRuleEntries;
+  }
+
+  set directChildRuleEntries(value: Array<RulesEntryLike> | null | undefined) {
+    this.ensureLookup().directChildRuleEntries = value;
+  }
+
+  get directDeclarationChildEntries(): Array<RulesEntryLike> | null | undefined {
+    return this._lookup?.directDeclarationChildEntries;
+  }
+
+  set directDeclarationChildEntries(value: Array<RulesEntryLike> | null | undefined) {
+    this.ensureLookup().directDeclarationChildEntries = value;
+  }
+
+  /**
+   * Rules-only packed boolean state (11 formerly-per-instance booleans). One int
+   * slot instead of eleven `false`/`false`… fields keeps the Rules shape narrow
+   * (~12k instances). Backed by the `R_*` bits above; each boolean keeps its
+   * original name via a get/set pair so all call sites are unchanged.
+   */
+  private rulesFlags = 0;
+
+  get hasDirectChildRuleSurface(): boolean {
+    return (this.rulesFlags & R_HAS_DIRECT_CHILD_RULE_SURFACE) !== 0;
+  }
+
+  set hasDirectChildRuleSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_DIRECT_CHILD_RULE_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_DIRECT_CHILD_RULE_SURFACE;
+    }
+  }
+
+  get hasDeclarationChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_DECLARATION_CHILD_SURFACE) !== 0;
+  }
+
+  set hasDeclarationChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_DECLARATION_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_DECLARATION_CHILD_SURFACE;
+    }
+  }
+
+  get hasVarDeclarationChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_VAR_DECLARATION_CHILD_SURFACE) !== 0;
+  }
+
+  set hasVarDeclarationChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_VAR_DECLARATION_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_VAR_DECLARATION_CHILD_SURFACE;
+    }
+  }
+
+  get hasReferenceImportChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_REFERENCE_IMPORT_CHILD_SURFACE) !== 0;
+  }
+
+  set hasReferenceImportChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_REFERENCE_IMPORT_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_REFERENCE_IMPORT_CHILD_SURFACE;
+    }
+  }
+
+  get hasExactCallableChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_EXACT_CALLABLE_CHILD_SURFACE) !== 0;
+  }
+
+  set hasExactCallableChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_EXACT_CALLABLE_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_EXACT_CALLABLE_CHILD_SURFACE;
+    }
+  }
+
+  get hasExactMixinChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_EXACT_MIXIN_CHILD_SURFACE) !== 0;
+  }
+
+  set hasExactMixinChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_EXACT_MIXIN_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_EXACT_MIXIN_CHILD_SURFACE;
+    }
+  }
+
+  get hasExactRulesetChildSurface(): boolean {
+    return (this.rulesFlags & R_HAS_EXACT_RULESET_CHILD_SURFACE) !== 0;
+  }
+
+  set hasExactRulesetChildSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_EXACT_RULESET_CHILD_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_EXACT_RULESET_CHILD_SURFACE;
+    }
+  }
+
+  get directDeclarationsByName(): Map<string, Declaration[] | null> | undefined {
+    return this._lookup?.directDeclarationsByName;
+  }
+
+  set directDeclarationsByName(value: Map<string, Declaration[] | null> | undefined) {
+    this.ensureLookup().directDeclarationsByName = value;
+  }
+
+  get directDeclarationLookupCache(): Map<string, {
     readonly optionalMatch: DirectDeclarationOccurrence | undefined;
     readonly publicMatch: DirectDeclarationOccurrence | undefined;
     readonly readonly: boolean;
-  }> | undefined;
+  }> | undefined {
+    return this._lookup?.directDeclarationLookupCache;
+  }
 
-  lookupVersion = 0;
-  declarationLookupVersion = 0;
-  declarationLookupVersionsByName: Map<string, number> | undefined;
-  callableLookupVersion = 0;
-  functionLookupVersion = 0;
-  functionLookupVersionsByName: Map<string, number> | undefined;
+  set directDeclarationLookupCache(value: Map<string, {
+    readonly optionalMatch: DirectDeclarationOccurrence | undefined;
+    readonly publicMatch: DirectDeclarationOccurrence | undefined;
+    readonly readonly: boolean;
+  }> | undefined) {
+    this.ensureLookup().directDeclarationLookupCache = value;
+  }
+
+  get lookupVersion(): number {
+    return this._lookup?.lookupVersion ?? 0;
+  }
+
+  set lookupVersion(value: number) {
+    this.ensureLookup().lookupVersion = value;
+  }
+
+  get declarationLookupVersion(): number {
+    return this._lookup?.declarationLookupVersion ?? 0;
+  }
+
+  set declarationLookupVersion(value: number) {
+    this.ensureLookup().declarationLookupVersion = value;
+  }
+
+  get declarationLookupVersionsByName(): Map<string, number> | undefined {
+    return this._lookup?.declarationLookupVersionsByName;
+  }
+
+  set declarationLookupVersionsByName(value: Map<string, number> | undefined) {
+    this.ensureLookup().declarationLookupVersionsByName = value;
+  }
+
+  get callableLookupVersion(): number {
+    return this._lookup?.callableLookupVersion ?? 0;
+  }
+
+  set callableLookupVersion(value: number) {
+    this.ensureLookup().callableLookupVersion = value;
+  }
+
+  get functionLookupVersion(): number {
+    return this._lookup?.functionLookupVersion ?? 0;
+  }
+
+  set functionLookupVersion(value: number) {
+    this.ensureLookup().functionLookupVersion = value;
+  }
+
+  get functionLookupVersionsByName(): Map<string, number> | undefined {
+    return this._lookup?.functionLookupVersionsByName;
+  }
+
+  set functionLookupVersionsByName(value: Map<string, number> | undefined) {
+    this.ensureLookup().functionLookupVersionsByName = value;
+  }
+
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
+  /**
+   * Transient, set for exactly one eval when `_evalPreparedRules` re-points this
+   * shared canonical body child's lexical frame parent to a per-call placement
+   * scope (§4). It marks the node as a re-used body whose evaluated output must NOT
+   * be baked back into the shared template (Ruleset.finishEvaluatedRules reads +
+   * clears it), so a second call of the enclosing mixin re-evaluates cleanly.
+   */
+  get _placementRepointed(): boolean {
+    return (this.rulesFlags & R_PLACEMENT_REPOINTED) !== 0;
+  }
+
+  set _placementRepointed(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_PLACEMENT_REPOINTED;
+    } else {
+      this.rulesFlags &= ~R_PLACEMENT_REPOINTED;
+    }
+  }
+
+  /**
+   * Set once this Rules' body has been evaluated (even a lazy mixin body, when it
+   * IS evaluated). Narrow §2.7 eval-state signal — the replacement for the deleted
+   * general `evaluated` flag, mirroring `Call._evaluatedCallOutput`. Purely gates
+   * lazy child-frame construction in callable-descendant lookup: an uncalled body
+   * must stay cold (broad crawl), an evaluated body may expose its frame.
+   */
+  get _bodyEvaluated(): boolean {
+    return (this.rulesFlags & R_BODY_EVALUATED) !== 0;
+  }
+
+  set _bodyEvaluated(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_BODY_EVALUATED;
+    } else {
+      this.rulesFlags &= ~R_BODY_EVALUATED;
+    }
+  }
+
+  /**
+   * Closure environment for a detached ruleset: the per-call eval surface where
+   * this detached ruleset was WRITTEN (captured at arg-binding). A detached
+   * ruleset is a lexical closure — when later invoked (`@content()`), its free
+   * variables resolve up THIS surface (which carries per-call param live-slots),
+   * not its canonical `sourceNode.parent` (which lacks them). See
+   * parseman-wrapper-is-scope-identity.
+   */
+  get _closureScope(): Rules | undefined {
+    return this._lookup?._closureScope;
+  }
+
+  set _closureScope(value: Rules | undefined) {
+    this.ensureLookup()._closureScope = value;
+  }
+
   /**
    * Track whether this Rules subtree contains extend instructions.
    * Prep work for Track 5 segmented render selection.
    */
-  _hasExtends = false;
+  get _hasExtends(): boolean {
+    return (this.rulesFlags & R_HAS_EXTENDS) !== 0;
+  }
+
+  set _hasExtends(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_EXTENDS;
+    } else {
+      this.rulesFlags &= ~R_HAS_EXTENDS;
+    }
+  }
+
   /**
    * Track whether this Rules subtree contains any reference-import render
    * surfaces (`referenceMode` wrappers or reference/dedupe style imports).
    * Used to skip serializer-time reference-origin work when impossible.
    */
-  _hasReferenceImports = false;
+  get _hasReferenceImports(): boolean {
+    return (this.rulesFlags & R_HAS_REFERENCE_IMPORTS) !== 0;
+  }
 
-  private _registrationPrepared = false;
+  set _hasReferenceImports(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_REFERENCE_IMPORTS;
+    } else {
+      this.rulesFlags &= ~R_HAS_REFERENCE_IMPORTS;
+    }
+  }
+
+  private get _registrationPrepared(): boolean {
+    return (this.rulesFlags & R_REGISTRATION_PREPARED) !== 0;
+  }
+
+  private set _registrationPrepared(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_REGISTRATION_PREPARED;
+    } else {
+      this.rulesFlags &= ~R_REGISTRATION_PREPARED;
+    }
+  }
 
   /**
    * Rules clones still need to preserve function bindings so visitor/plugin
    * registrations survive the explicit clone sites that remain outside the hot path.
    */
+  override toJSON(): Record<string, unknown> {
+    // `_scopeFrame` back-references this `Rules` (frame → rulesNode) at eval
+    // time, so it must be dropped to keep `JSON.stringify` cycle-safe — the same
+    // discipline as the base back-refs (sourceNode/parent/_sourceRoot). The
+    // lookup caches hold resolved callables/frames that can also retain
+    // back-refs; they are derived, non-tree data, so drop them too.
+    const json = super.toJSON();
+    delete json._scopeFrame;
+    // The cold lookup fields now live on `_lookup` (a nested struct). Drop the raw
+    // struct and re-emit only the non-cyclic, non-cache subset at top level so the
+    // serialized shape matches the pre-slim behavior (functions + child-entry
+    // surfaces + version counters kept; `callableLookupCache` /
+    // `directDeclarationLookupCache` / `_closureScope` back-ref dropped).
+    delete json._lookup;
+    const lookup = this._lookup;
+    if (lookup) {
+      json.varsByName = lookup.varsByName;
+      json.functionsByName = lookup.functionsByName;
+      json.functionLookupVersion = lookup.functionLookupVersion;
+      json.functionLookupVersionsByName = lookup.functionLookupVersionsByName;
+      json.directChildRuleEntries = lookup.directChildRuleEntries;
+      json.directDeclarationChildEntries = lookup.directDeclarationChildEntries;
+      json.directDeclarationsByName = lookup.directDeclarationsByName;
+      json.declarationLookupVersion = lookup.declarationLookupVersion;
+      json.declarationLookupVersionsByName = lookup.declarationLookupVersionsByName;
+      json.callableLookupVersion = lookup.callableLookupVersion;
+      json.lookupVersion = lookup.lookupVersion;
+    }
+    return json;
+  }
+
   override clone(cloneFn?: (n: Node) => Node): this {
     const source = this.rules;
     let value: Node[];
@@ -935,7 +1424,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   derive(value: Node[] = [...this.rules]): Rules {
-    const sourceLocation = this.location.length === 6 ? this.location : undefined;
+    const sourceLocation = sourceSpanOf(this);
     // Thin surface: construct EMPTY (so the constructor parents nothing) and
     // SHARE the children — push without adopting, so a shared canonical child's
     // parent is never overwritten. `sourceNode` is the surface's only link back
@@ -952,43 +1441,32 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private resetDerivedState(source: Rules): void {
-    // Only preserve explicit function bindings across clones. This supports
-    // Less plugin compat without reusing derived declaration/callable lookup
-    // state, which must be rebuilt from AST nodes via lazy indexing.
+    // IMPORTANT: cloned Rules must rebuild their derived lookup state. Otherwise a
+    // clone can inherit empty/incorrect lookup maps, causing lookup misses (e.g. @c
+    // in detached-rulesets). The derive shell starts with `_lookup === undefined`
+    // (all cold lookup fields at their neutral value), so the only thing to carry
+    // across is the explicit function-binding subset below — everything else is
+    // already cleared by virtue of the struct being unallocated.
+    //
+    // Only preserve explicit function bindings across clones. This supports Less
+    // plugin compat without reusing derived declaration/callable lookup state,
+    // which must be rebuilt from AST nodes via lazy indexing.
     if (source.functionsByName) {
-      this.functionsByName = new Map(source.functionsByName);
-      this.functionLookupVersion = source.functionLookupVersion;
-      this.functionLookupVersionsByName = source.functionLookupVersionsByName
+      const lookup = this.ensureLookup();
+      lookup.functionsByName = new Map(source.functionsByName);
+      lookup.functionLookupVersion = source.functionLookupVersion;
+      lookup.functionLookupVersionsByName = source.functionLookupVersionsByName
         ? new Map(source.functionLookupVersionsByName)
         : undefined;
-    } else {
-      this.functionsByName = undefined;
-      this.functionLookupVersion = 0;
-      this.functionLookupVersionsByName = undefined;
     }
-
-    // IMPORTANT: cloned Rules must rebuild their derived lookup state.
-    // Otherwise, a clone can inherit empty/incorrect lookup maps, causing
-    // lookup misses (e.g. @c in detached-rulesets).
-    this.varsByName = undefined;
-    this.callableLookupCache = undefined;
-    this.directChildRuleEntries = undefined;
-    this.directDeclarationChildEntries = undefined;
-    this.hasDirectChildRuleSurface = false;
-    this.hasDeclarationChildSurface = false;
-    this.hasVarDeclarationChildSurface = false;
-    this.hasReferenceImportChildSurface = false;
-    this.hasExactCallableChildSurface = false;
-    this.hasExactMixinChildSurface = false;
-    this.hasExactRulesetChildSurface = false;
-    this.directDeclarationsByName = undefined;
-    this.directDeclarationLookupCache = undefined;
-    this.lookupVersion = 0;
-    this.declarationLookupVersion = 0;
-    this.declarationLookupVersionsByName = undefined;
-    this.callableLookupVersion = 0;
-    this._hasExtends = false;
-    this._hasReferenceImports = false;
+    // Clear all child-derived surface bits + _hasExtends/_hasReferenceImports in
+    // one masked write. Deliberately leaves _bodyEvaluated and _registrationPrepared
+    // untouched, matching the prior per-field resets (which did not reset those).
+    this.rulesFlags &= ~R_DERIVED_STATE_MASK;
+    if (this._lookup) {
+      this._lookup.varsByName = undefined;
+      this._lookup.lookupVersion = 0;
+    }
     // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
     // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
     // re-wire against the clone's actual parent chain. Reusing an empty frame from the
@@ -1020,6 +1498,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * nodes inherit the represented parent frame even when the ancestor frame
    * was not accessed first.
    */
+  /**
+   * True once this Rules' body has been evaluated. Public read of the narrow
+   * §2.7 eval-state signal (`_bodyEvaluated`); lets render/serialize callers
+   * confirm they hold the evaluated root, not a pre-eval source tree.
+   */
+  get evaluated(): boolean {
+    return this._bodyEvaluated;
+  }
+
   get scopeFrame(): ScopeFrame {
     return this.getScopeFrame();
   }
@@ -1062,8 +1549,25 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._hasReferenceImports
       );
       this.prepareScopeFrameAssignmentBindings(this._scopeFrame, rulesBody);
+      this.linkInlineImportFallbackFrames(this._scopeFrame, rulesBody);
     }
     return this._scopeFrame;
+  }
+
+  // A non-boundary `@import` inlines its body into this scope. Chain each such
+  // imported Rules' own scope frame (which already indexes the imported decls +
+  // callables) as this frame's fallback, so lookups resolve imported symbols on the
+  // fast frame path — consulted only AFTER the primary scope chain, so an enclosing
+  // declaration always wins. Boundaries (`@compose` = true, rulesets = undefined)
+  // are skipped. Reuses the already-read rules array (no extra scan).
+  private linkInlineImportFallbackFrames(frame: ScopeFrame, rulesBody: Node[]): void {
+    for (let i = 0; i < rulesBody.length; i++) {
+      const child = rulesBody[i]!;
+      if (!(child instanceof Rules) || !importInlinesMembersToParent(child)) {
+        continue;
+      }
+      linkImportFallbackFrame(frame, child.getScopeFrame());
+    }
   }
 
   private collectScopeFramePendingDeclarationNames(): VarDeclaration[] | undefined {
@@ -1304,6 +1808,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): MixinEntry[] {
     let results: MixinEntry[] | undefined;
     const includeRulesets = options?.includeRulesets !== false;
+    const rulesetsOnly = options?.rulesetsOnly === true;
     const collectBucketResults = (candidates: CallableLookupEntry[]): boolean => {
       let found = false;
       for (let i = candidates.length - 1; i >= 0; i--) {
@@ -1313,6 +1818,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         const candidate = entry.value;
         if (!includeRulesets && isNode(candidate, N.Ruleset)) {
+          continue;
+        }
+        // Ruleset-only ($apply / *[…]): keep plain Rulesets, drop Mixins etc.
+        if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
           continue;
         }
         (results ??= []).push(candidate);
@@ -1410,7 +1919,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     key: string,
     reason: Extract<ScopeFrameCallableLookupResult, { kind: 'uncovered' }>['reason'],
     includeRulesets: boolean,
-    options: CallableFindOptions
+    options: CallableFindOptions,
+    rulesetsOnly = false
   ): UncoveredCallableResult {
     if (reason !== 'child-surface' && reason !== 'reference-import') {
       return UNCOVERED_CALLABLE_UNSUPPORTED;
@@ -1459,7 +1969,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         searchParents: false
       });
       if (frameHit.kind === 'hit') {
-        const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+        const results = collectCallableBucketResults(frameHit.bucket, includeRulesets, rulesetsOnly);
         if (results) {
           (frameResults ??= []).push(...results);
         }
@@ -1489,7 +1999,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           key,
           reason,
           includeRulesets,
-          options
+          options,
+          rulesetsOnly
         );
         if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
           if (direct.length > 0) {
@@ -1502,13 +2013,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         key,
         reason,
         includeRulesets,
-        options
+        options,
+        rulesetsOnly
       );
       if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED && direct.length > 0) {
         frameResults = direct;
       }
     }
-    return frameResults ?? UNCOVERED_CALLABLE_UNSUPPORTED;
+    if (frameResults) {
+      return frameResults;
+    }
+    return modeledChildSurface ? UNCOVERED_CALLABLE_MISS : UNCOVERED_CALLABLE_UNSUPPORTED;
   }
 
   private addCallableEntry(
@@ -1524,7 +2039,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     bucket.push({ value, match });
   }
 
-  private addDirectCallableSelectorEntries(
+  private addCallableSelectors(
     lookupKey: string,
     ruleset: Ruleset,
     keys: string[],
@@ -1552,7 +2067,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this.addCallableEntry(lookupKey, key, ruleset, match ?? [], bucket);
   }
 
-  private collectCallableEntriesForKeyFrom(
+  private collectCallablesFor(
     rules: Rules,
     lookupKey: string,
     bucket: CallableLookupEntry[]
@@ -1562,8 +2077,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const node = value[i]!;
       if (isNode(node, N.Mixin)) {
         const name = node.name;
-        if (name && name.type !== 'Interpolated') {
-          this.addCallableEntry(lookupKey, String(name.valueOf()), node, [], bucket);
+        if (typeof name === 'string') {
+          this.addCallableEntry(lookupKey, name, node, [], bucket);
         }
         continue;
       }
@@ -1571,7 +2086,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         continue;
       }
       let selector = node.selector;
-      if (!selector || isNode(selector, N.Nil) || typeof selector === 'string') {
+      if (typeof selector === 'string') {
+        // Parsed simple selectors (`#theme`, `.button`) are stored as plain
+        // strings, not Selector nodes, but they are valid callable namespaces —
+        // register them under their split ordered keys just like node selectors.
+        this.addCallableSelectors(lookupKey, node, splitSelectorStringKeys(selector), bucket);
+        continue;
+      }
+      if (!selector || isNode(selector, N.Nil)) {
         continue;
       }
       const ownSelector = isSelectorLikeNode(node.options.ownSelector)
@@ -1595,7 +2117,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (isNode(selector, N.SelectorList)) {
         for (const item of selector.value) {
           if (typeof item !== 'string') {
-            this.addDirectCallableSelectorEntries(
+            this.addCallableSelectors(
               lookupKey,
               node,
               getOrderedSelectorKeys(item),
@@ -1617,11 +2139,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && keys.length > parentKeys.length
           && keysStartWith(keys, parentKeys)
         ) {
-          this.addDirectCallableSelectorEntries(lookupKey, node, keys, bucket, parentKeys.length);
+          this.addCallableSelectors(lookupKey, node, keys, bucket, parentKeys.length);
           continue;
         }
       }
-      this.addDirectCallableSelectorEntries(lookupKey, node, keys, bucket);
+      this.addCallableSelectors(lookupKey, node, keys, bucket);
     }
   }
 
@@ -1635,10 +2157,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
 
     const bucket: CallableLookupEntry[] = [];
-    this.collectCallableEntriesForKeyFrom(this, lookupKey, bucket);
+    this.collectCallablesFor(this, lookupKey, bucket);
     const sourceRules = sourceRulesOf(this);
     if (bucket.length === 0 && sourceRules !== this) {
-      this.collectCallableEntriesForKeyFrom(sourceRules, lookupKey, bucket);
+      this.collectCallablesFor(sourceRules, lookupKey, bucket);
     }
     (this.callableLookupCache ??= new Map()).set(
       lookupKey,
@@ -1956,7 +2478,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     });
   }
 
-  private findVisibleExactCallableRulesetPath(
+  private findCallableRulesetPath(
     path: string[],
     options?: CallableFindOptions,
     pathStart = 0
@@ -2048,7 +2570,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return results;
   }
 
-  private findVisibleCallableRulesetPrefixMatches(
+  private findCallablePrefixMatches(
     path: string[],
     options?: CallableFindOptions,
     pathStart = 0
@@ -2349,7 +2871,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return false;
   }
 
-  private prepareCallableLookupFrameChain(
+  private prepareCallableFrameChain(
     frame: ScopeFrame,
     segment: string,
     includeRulesets: boolean,
@@ -2367,7 +2889,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
-  private frameChainHasExactMixinNamespace(
+  private hasMixinNamespace(
     frame: ScopeFrame,
     segment: string,
     searchParents: boolean
@@ -2385,7 +2907,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return false;
   }
 
-  private collectCallableRulesetPrefixMatchesFromFrame(
+  private collectRulesetPrefixes(
     frame: ScopeFrame,
     path: string[],
     results: CallableRulesetPrefixMatch[],
@@ -2487,10 +3009,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       const childFrame = entry.node.getScopeFrame();
       entry.node.prepareCallableLookupFrame(childFrame, segment, true);
-      this.collectCallableRulesetPrefixMatchesFromFrame(childFrame, path, results, pathStart);
+      this.collectRulesetPrefixes(childFrame, path, results, pathStart);
       if (
         (!childFrame.callableMissCoverageKnown || !childFrame.callableMissesCovered)
-        && !this.prefixOwnsChildRules(scope, entry.node, segment, results)
+        && !this.prefixOwnsChildren(scope, entry.node, segment, results)
       ) {
         covered = false;
       }
@@ -2540,7 +3062,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return covered;
   }
 
-  private collectVisibleCallableRulesetPrefixMatchesFromFrames(
+  private collectVisiblePrefixes(
     frame: ScopeFrame,
     path: string[],
     searchParents: boolean,
@@ -2566,7 +3088,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       first = false;
       scope.prepareCallableLookupFrame(cursor, segment, true);
-      this.collectCallableRulesetPrefixMatchesFromFrame(cursor, path, results, pathStart);
+      this.collectRulesetPrefixes(cursor, path, results, pathStart);
       if (!this.collectChildCallableRulesetPrefixMatchesFromFrames(scope, path, options, results, pathStart)) {
         covered = false;
       }
@@ -2616,7 +3138,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return covered;
   }
 
-  private prefixOwnsChildRules(
+  private prefixOwnsChildren(
     scope: Rules,
     entryRules: Rules,
     segment: string,
@@ -2633,8 +3155,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       ) {
         return true;
       }
+      // The prefix match IS this entry's own namespace ruleset. That holds for
+      // compound-selector namespaces (`#panel.dark.navbar`) too, where
+      // `consumed` carries every selector key — not just a single segment.
       if (
-        consumed.length === 1
+        consumed.length >= 1
         && consumed[0] === segment
         && sourceRulesOf(ruleset) === entrySource
         && (matchScope === scope || matchSource === sourceRulesOf(scope))
@@ -2645,7 +3170,40 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return false;
   }
 
-  private childMixinNamespaceUncertaintyIsLimitedToPrefixes(
+  /**
+   * True when `node` is a callable namespace with a definite own key that is
+   * not `segment` and cannot emit into the enclosing ambient namespace. Such a
+   * namespace's mixin surface lives behind its own name, so it never
+   * contributes a `segment` callable to the scope that contains it.
+   */
+  private staticNamespaceExcludesKey(node: Rules, segment: string): boolean {
+    // An ambient mixin-output surface can inject arbitrary callables into the
+    // scope, so its key is not statically known — never skip it.
+    if (node.options.mixinOutputSlot) {
+      return false;
+    }
+    if (isNode(node, N.Mixin)) {
+      const { name } = node;
+      return typeof name === 'string' && name !== segment;
+    }
+    if (isNode(node, N.Ruleset)) {
+      const { selector } = node;
+      if (!selector || isNode(selector, N.Nil)) {
+        return false;
+      }
+      // Simple selectors (`#theme`, `.button`) are stored as plain strings;
+      // node selectors carry ordered keys. Either way, a resolvable first key
+      // that differs from `segment` means the namespace is reachable only under
+      // its own name — irrelevant to a `segment` lookup.
+      const keys = typeof selector === 'string'
+        ? splitSelectorStringKeys(selector)
+        : getOrderedSelectorKeys(selector);
+      return keys.length > 0 && keys[0] !== segment;
+    }
+    return false;
+  }
+
+  private uncertaintyLimitedToPrefixes(
     scope: Rules,
     segment: string,
     prefixMatches: CallableRulesetPrefixMatch[],
@@ -2671,14 +3229,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (options.local && entry.node.options?.local) {
         continue;
       }
-      if (!this.prefixOwnsChildRules(scope, entry.node, segment, prefixMatches)) {
+      if (this.staticNamespaceExcludesKey(entry.node, segment)) {
+        // A definitely-named callable namespace (`#ns() {…}`, `#panel.x {…}`)
+        // gates its inner mixins behind its own key. It can never inject a
+        // differently-named callable into this scope's ambient namespace, so a
+        // `segment` lookup is unaffected by it — even though it carries a mixin
+        // surface. Skip it so a sibling namespace doesn't defeat the fast path.
+        continue;
+      }
+      if (!this.prefixOwnsChildren(scope, entry.node, segment, prefixMatches)) {
         return false;
       }
     }
     return true;
   }
 
-  private visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
+  private visibleUncertaintyLimitedToPrefixes(
     scope: Rules,
     segment: string,
     prefixMatches: CallableRulesetPrefixMatch[],
@@ -2694,7 +3260,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           break;
         }
         first = false;
-        if (!this.childMixinNamespaceUncertaintyIsLimitedToPrefixes(
+        if (!this.uncertaintyLimitedToPrefixes(
           visibleScope,
           segment,
           prefixMatches,
@@ -2714,7 +3280,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   private findRulesetNamespacePathFast(
     keys: string[],
     options: CallableFindOptions = {},
-    pathStart = 0
+    pathStart = 0,
+    // When the head namespace also exists in mixin form the walk defers to the
+    // mixin path (returns undefined). Passing a collector captures the ruleset-form
+    // prefix defs in the SAME pass so findMixinPath can UNION ruleset + mixin
+    // namespace results (`#g when(…) {…} #g() {…}` — both contribute) without a
+    // second full frame walk.
+    despiteMixinNamespaceOut?: { entries?: MixinEntry[] }
   ): MixinEntry[] | undefined {
     if (keys.length - pathStart < 2) {
       return undefined;
@@ -2743,7 +3315,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ? scope.getScopeFrame()
         : undefined;
       if (scopeFrame) {
-        this.collectVisibleCallableRulesetPrefixMatchesFromFrames(
+        this.collectVisiblePrefixes(
           scopeFrame,
           path,
           searchParents,
@@ -2751,7 +3323,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           prefixMatches,
           offset
         );
-        this.prepareCallableLookupFrameChain(scopeFrame, segment, false, searchParents);
+        this.prepareCallableFrameChain(scopeFrame, segment, false, searchParents);
         const frameHit = lookupScopeFrameCallable(scopeFrame, segment, {
           includeRulesets: false,
           searchParents
@@ -2778,13 +3350,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
               mixinNamespaceCovered = true;
             }
           }
-          if (!mixinNamespaceCovered && this.frameChainHasExactMixinNamespace(scopeFrame, segment, searchParents)) {
+          if (!mixinNamespaceCovered && this.hasMixinNamespace(scopeFrame, segment, searchParents)) {
             hasMixinNamespace = true;
             mixinNamespaceCovered = true;
           } else if (
             !mixinNamespaceCovered
             && prefixMatches.length > 0
-            && this.visibleChildMixinNamespaceUncertaintyIsLimitedToPrefixes(
+            && this.visibleUncertaintyLimitedToPrefixes(
               scope,
               segment,
               prefixMatches,
@@ -2831,7 +3403,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           let fallbackFrame = scopeFrame.fallbackFrame;
           while (fallbackFrame) {
             if (isNode(fallbackFrame.rulesNode, N.Rules)) {
-              const fallbackPrefixMatches = fallbackFrame.rulesNode.findVisibleCallableRulesetPrefixMatches(path, {
+              const fallbackPrefixMatches = fallbackFrame.rulesNode.findCallablePrefixMatches(path, {
                 hasTarget: options.hasTarget,
                 local: options.local,
                 searchParents: false
@@ -2846,7 +3418,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       }
       if (prefixMatches.length === 0 && !scopeFrame) {
-        prefixMatches = scope.findVisibleCallableRulesetPrefixMatches(path, {
+        prefixMatches = scope.findCallablePrefixMatches(path, {
           hasTarget: options.hasTarget,
           local: options.local,
           searchParents
@@ -2886,7 +3458,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           searchParents
         }).length > 0;
       }
-      if (hasMixinNamespace) {
+      const captureDespiteMixinNamespace = hasMixinNamespace
+        && despiteMixinNamespaceOut !== undefined
+        && prefixMatches.length > 0;
+      if (hasMixinNamespace && !captureDespiteMixinNamespace) {
         return undefined;
       }
 
@@ -2934,7 +3509,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           }
         }
         if (!scopeFrame) {
-          const exactPathMatches = scope.findVisibleExactCallableRulesetPath(path, {
+          const exactPathMatches = scope.findCallableRulesetPath(path, {
             hasTarget: options.hasTarget,
             local: options.local,
             searchParents
@@ -2946,14 +3521,28 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         return DEFINITE_MISS;
       }
 
+      // A mixin CALL (`#foo > .m()`) invokes every same-named namespace on the
+      // path, so accumulate each prefix match's resolution. A bare value/index
+      // lookup keeps override (last-wins) semantics — return the first match.
+      const accumulate = options.mixinCall === true;
+      // Longest-consumed prefixes win first. Stable-sort keeps the incoming
+      // newest-first order within a length; the call accumulation wants source
+      // order (oldest first) so later same-named namespaces override as authored,
+      // so reverse within each equal-length group when accumulating.
       if (prefixMatches.length > 1) {
-        prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+        if (accumulate) {
+          prefixMatches.sort((a, b) => a.consumed.length - b.consumed.length).reverse();
+        } else {
+          prefixMatches.sort((a, b) => b.consumed.length - a.consumed.length);
+        }
       }
       let sawLegacyOnlyPrefix = false;
       let simpleLookupOptions: ExactCallableFindOptions | undefined;
       let nestedOptions: CallableFindOptions | undefined;
       const existingNoParentOptions = options.searchParents === false ? options : undefined;
       const terminalFilterType = options.terminalMixinOnly === true ? 'Mixin' : undefined;
+      let accumulated: MixinEntry[] | undefined;
+      let accumulatedOwned = false;
 
       for (const { ruleset, consumed } of prefixMatches) {
         if (selectorNeedsLegacyFallback(ruleset)) {
@@ -2963,7 +3552,23 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const remainderStart = offset + consumed.length;
         const remainderLength = path.length - remainderStart;
         if (remainderLength === 0) {
-          return options.terminalMixinOnly === true ? DEFINITE_MISS : [ruleset];
+          if (options.terminalMixinOnly === true) {
+            continue;
+          }
+          if (!accumulate) {
+            return [ruleset];
+          }
+          if (accumulated === undefined) {
+            accumulated = [ruleset];
+            accumulatedOwned = true;
+          } else {
+            if (!accumulatedOwned) {
+              accumulated = [...accumulated];
+              accumulatedOwned = true;
+            }
+            accumulated.push(ruleset);
+          }
+          continue;
         }
         let resolved: MixinEntry[] | undefined;
         if (remainderLength === 1) {
@@ -3017,7 +3622,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
               }
             }
             if (resolved === undefined && !options.terminalMixinOnly) {
-              const simpleCallableRulesets = ruleset.findVisibleExactCallableRulesetPath(path, {
+              const simpleCallableRulesets = ruleset.findCallableRulesetPath(path, {
                 hasTarget: options.hasTarget,
                 local: options.local,
                 searchParents: false
@@ -3030,32 +3635,40 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             ...options,
             searchParents: false
           };
-          resolved = ruleset.findRulesetNamespacePathFast(
+          resolved = ruleset.resolveNamespaceRemainder(
             path,
+            remainderStart,
             nestedOptions,
-            remainderStart
+            terminalFilterType
           );
-          if (resolved === undefined) {
-            resolved = ruleset.findMixinNamespacePathFast(
-              path,
-              undefined,
-              nestedOptions,
-              remainderStart
-            );
-          }
-          if (resolved === undefined) {
-            resolved = ruleset.findMixin(
-              collectKeyRemainder(path, remainderStart),
-              terminalFilterType,
-              nestedOptions
-            );
-          }
         }
         if (resolved?.length) {
-          return resolved;
+          if (!accumulate) {
+            return resolved;
+          }
+          if (accumulated === undefined) {
+            accumulated = resolved;
+          } else {
+            if (!accumulatedOwned) {
+              accumulated = [...accumulated];
+              accumulatedOwned = true;
+            }
+            for (let i = 0; i < resolved.length; i++) {
+              accumulated.push(resolved[i]!);
+            }
+          }
         }
       }
 
+      if (captureDespiteMixinNamespace) {
+        if (accumulated !== undefined && accumulated.length > 0) {
+          despiteMixinNamespaceOut!.entries = accumulated;
+        }
+        return undefined;
+      }
+      if (accumulated !== undefined && accumulated.length > 0) {
+        return accumulated;
+      }
       return sawLegacyOnlyPrefix ? undefined : DEFINITE_MISS;
     };
 
@@ -3063,7 +3676,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return result === DEFINITE_MISS ? [] : result;
   }
 
-  private findCompoundPrefixCallableRulesetPathFast(
+  private findCompoundPrefixPath(
     keys: string[],
     options: CallableFindOptions = {}
   ): CallableRulesetPathResult | undefined {
@@ -3071,7 +3684,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return undefined;
     }
 
-    const prefixMatches = this.findVisibleCallableRulesetPrefixMatches(keys, {
+    const prefixMatches = this.findCallablePrefixMatches(keys, {
       hasTarget: options.hasTarget,
       local: options.local
     });
@@ -3102,26 +3715,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (remainderLength === 1) {
         resolved = ruleset.findMixin(keys[consumed.length]!, terminalFilterType, nestedOptions);
       } else {
-        resolved = ruleset.findRulesetNamespacePathFast(
+        resolved = ruleset.resolveNamespaceRemainder(
           keys,
+          consumed.length,
           nestedOptions,
-          consumed.length
+          terminalFilterType
         );
-        if (resolved === undefined) {
-          resolved = ruleset.findMixinNamespacePathFast(
-            keys,
-            undefined,
-            nestedOptions,
-            consumed.length
-          );
-        }
-        if (resolved === undefined) {
-          resolved = ruleset.findMixin(
-            collectKeyRemainder(keys, consumed.length),
-            terminalFilterType,
-            nestedOptions
-          );
-        }
       }
       if (resolved?.length) {
         return { entries: resolved, owned: false };
@@ -3131,7 +3730,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return { entries: [], owned: true };
   }
 
-  private findCallableDescendantsWithinMixinNamespaces(
+  private findCallableDescendants(
     namespaceMixins: MixinEntry[],
     keys: string[],
     options: CallableFindOptions = {}
@@ -3147,7 +3746,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let resolved: MixinEntry[] | undefined;
     let resolvedOwned = false;
     let descendantMissCovered = false;
-    for (let i = 0; i < namespaceMixins.length; i++) {
+    // namespaceMixins arrives newest-first (reverse bucket order); walk it back
+    // to front so same-named namespaces' descendant output accumulates in the
+    // source order they were authored.
+    for (let i = namespaceMixins.length - 1; i >= 0; i--) {
       const entry = namespaceMixins[i]!;
       if (!isNode(entry, N.Mixin)) {
         continue;
@@ -3158,7 +3760,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const firstRemainder = keys[1]!;
       const firstRemainderIncludesRulesets = keys.length === 2 && options.terminalMixinOnly !== true;
       const entryRules = entry;
-      const childFrame = entryRules._scopeFrame ?? entryRules.getScopeFrame();
+      const childFrame = entryRules._scopeFrame ?? (entryRules._bodyEvaluated ? entryRules.getScopeFrame() : undefined);
       let nested: MixinEntry[] | undefined;
       if (childFrame && !options.hasTarget && !options.local) {
         entryRules.prepareCallableLookupFrame(childFrame, firstRemainder, firstRemainderIncludesRulesets);
@@ -3207,7 +3809,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && keys.length === 2
           && (firstRemainderHit.reason === 'child-surface' || firstRemainderHit.reason === 'reference-import')
         ) {
-          const uncovered = entryRules.findMixinsFastForUncoveredCallable(
+          // Crawl the frame's evaluated surface, not the canonical entry: a
+          // namespace-mixin body evaluated for its reference imports splices the
+          // import wrapper into the derived OUTPUT (frame.rulesNode), leaving the
+          // canonical `[StyleImport]` untouched (invariant: canonical immutable).
+          // The import-wrapper child surface lives only on the output.
+          const uncoveredSurface = isNode(childFrame.rulesNode, N.Rules)
+            ? childFrame.rulesNode
+            : entryRules;
+          const uncovered = uncoveredSurface.findMixinsFastForUncoveredCallable(
             firstRemainder,
             firstRemainderHit.reason,
             firstRemainderIncludesRulesets,
@@ -3230,22 +3840,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         remainder ??= keys[1]!;
         nested = entryRules.findMixin(remainder, terminalFilterType, nestedOptions);
       } else if (nested === undefined) {
-        nested = entryRules.findRulesetNamespacePathFast(
+        nested = entryRules.resolveNamespaceRemainder(
           keys,
+          1,
           nestedOptions,
-          1
+          terminalFilterType
         );
-        if (nested === undefined) {
-          nested = entryRules.findMixinNamespacePathFast(keys, undefined, nestedOptions, 1);
-        }
-        if (nested === undefined) {
-          remainder ??= collectKeyRemainder(keys, 1);
-          nested = entryRules.findMixin(
-            remainder,
-            terminalFilterType,
-            nestedOptions
-          );
-        }
       }
       if (nested?.length) {
         if (resolved === undefined) {
@@ -3272,6 +3872,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
+      // Bracket-capture call `*[.foo]()`: terminal hits must be plain Rulesets only.
+      const rulesetsOnly = options.rulesetsOnly === true;
       const callableFrame = this._scopeFrame;
       if (callableFrame && !options.hasTarget && !options.local) {
         this.prepareCallableLookupFrame(callableFrame, keys, includeRulesets);
@@ -3281,7 +3883,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
-          const results = collectCallableBucketResults(frameHit.bucket, includeRulesets);
+          const results = collectCallableBucketResults(frameHit.bucket, includeRulesets, rulesetsOnly);
           if (results) {
             return results;
           }
@@ -3294,7 +3896,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             keys,
             frameHit.reason,
             includeRulesets,
-            options
+            options,
+            rulesetsOnly
           );
           if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
             frameMissCovered = true;
@@ -3312,13 +3915,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ) {
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            return this.findMixin(pathKeys, filterType, options);
+            return this.findMixinPath(pathKeys, filterType, options);
           }
           return undefined;
         }
         if (frameHit.kind === 'miss' || frameHit.kind === 'uncovered') {
           let retryFrame = callableFrame.parent;
-          let fallbackFrame = callableFrame.fallbackFrame;
+          // Reference/inline imports link their evaluated member surface as the
+          // enclosing scope's own fallback frame (linkInlineImportFallbackFrames).
+          // The retry walk visits each ancestor's primary frame but must also
+          // consult the fallback chain hanging off any frame it passes — an
+          // imported callable is otherwise invisible once the primary chain
+          // exhausts. Queue fallback heads in encounter order (parent-chain first),
+          // then drain them, so primaries always win.
+          const fallbackQueue: ScopeFrame[] = [];
+          let queuedFallback: ScopeFrame | undefined = callableFrame.fallbackFrame;
+          while (queuedFallback) {
+            fallbackQueue.push(queuedFallback);
+            queuedFallback = queuedFallback.fallbackFrame;
+          }
+          let drainingFallbacks = false;
           while (retryFrame) {
             let retryHit = lookupScopeFrameCallable(retryFrame, keys, {
               includeRulesets,
@@ -3334,7 +3950,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
               }
             }
             if (retryHit.kind === 'hit') {
-              const results = collectCallableBucketResults(retryHit.bucket, includeRulesets);
+              const results = collectCallableBucketResults(retryHit.bucket, includeRulesets, rulesetsOnly);
               if (results) {
                 return results;
               }
@@ -3348,7 +3964,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                   keys,
                   retryHit.reason,
                   includeRulesets,
-                  options
+                  options,
+                  rulesetsOnly
                 );
                 if (direct !== UNCOVERED_CALLABLE_UNSUPPORTED) {
                   frameMissCovered = true;
@@ -3358,35 +3975,42 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
                 }
               }
             }
+            if (!drainingFallbacks && retryFrame.fallbackFrame) {
+              let head: ScopeFrame | undefined = retryFrame.fallbackFrame;
+              while (head) {
+                fallbackQueue.push(head);
+                head = head.fallbackFrame;
+              }
+            }
             retryFrame = retryFrame.parent;
-            if (!retryFrame && fallbackFrame) {
-              retryFrame = fallbackFrame;
-              fallbackFrame = fallbackFrame.fallbackFrame;
+            if (!retryFrame && fallbackQueue.length > 0) {
+              retryFrame = fallbackQueue.shift();
+              drainingFallbacks = true;
             }
           }
           if (frameHit.kind === 'miss') {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
-              return this.findMixin(pathKeys, filterType, options);
+              return this.findMixinPath(pathKeys, filterType, options);
             }
             return undefined;
           }
           if (frameMissCovered) {
             const pathKeys = splitStaticCallablePathKey(keys);
             if (pathKeys) {
-              return this.findMixin(pathKeys, filterType, options);
+              return this.findMixinPath(pathKeys, filterType, options);
             }
             return undefined;
           }
           const pathKeys = splitStaticCallablePathKey(keys);
           if (pathKeys) {
-            return this.findMixin(pathKeys, filterType, options);
+            return this.findMixinPath(pathKeys, filterType, options);
           }
         }
       }
       const pathKeys = splitStaticCallablePathKey(keys);
       if (pathKeys) {
-        return this.findMixin(pathKeys, filterType, options);
+        return this.findMixinPath(pathKeys, filterType, options);
       }
       const direct = this.findMixinsFast(keys, {
         hasTarget: options.hasTarget,
@@ -3400,116 +4024,186 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     } else if (isArray(keys) && keys.length === 1) {
       return this.findMixin(keys[0]!, filterType, options);
     } else if (isArray(keys) && keys.length > 1) {
-      const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
-      let compoundPrefixFast: CallableRulesetPathResult | undefined;
-      let mixinNamespaceFast: MixinEntry[] | undefined;
-      if (mixinFilterType !== 'Mixin') {
-        const rulesetNamespaceFast = this.findRulesetNamespacePathFast(keys, options);
-        if (rulesetNamespaceFast !== undefined) {
-          return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
-        }
-        let namespaceMixins: MixinEntry[] | undefined;
-        let namespaceMixinMissCovered = false;
-        if (this._scopeFrame) {
-          const namespaceKey = keys[0]!;
-          this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
-          const frameHit = lookupScopeFrameCallable(this._scopeFrame, namespaceKey, {
-            includeRulesets: false
-          });
-          if (frameHit.kind === 'hit') {
-            namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
-          } else if (frameHit.kind === 'miss') {
-            namespaceMixinMissCovered = true;
-          } else if (
-            frameHit.reason === 'child-surface'
-            || frameHit.reason === 'reference-import'
-            || (frameHit.reason === 'key' && this._scopeFrame.hasReferenceImports)
-          ) {
-            const reason = frameHit.reason === 'key' ? 'reference-import' : frameHit.reason;
-            const uncovered = this.findMixinsFastForUncoveredCallable(
-              namespaceKey,
-              reason,
-              false,
-              options
-            );
-            if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
-              namespaceMixins = uncovered;
-              namespaceMixinMissCovered = true;
-            }
-          }
-        }
-        if (namespaceMixins === undefined && !namespaceMixinMissCovered) {
-          if (options.searchParents === false) {
-            const uncoveredChildNamespaceMixins = this.findMixinsFastForUncoveredCallable(
-              keys[0]!,
-              'child-surface',
-              false,
-              options
-            );
-            if (uncoveredChildNamespaceMixins !== UNCOVERED_CALLABLE_UNSUPPORTED) {
-              namespaceMixins = uncoveredChildNamespaceMixins;
-              namespaceMixinMissCovered = true;
-            }
-          }
-        }
-        if (
-          namespaceMixins === undefined
-          && !namespaceMixinMissCovered
-          && !this._scopeFrame
-        ) {
-          namespaceMixins = this.findMixinsFast(keys[0]!, {
-            hasTarget: options.hasTarget,
-            local: options.local,
-            includeRulesets: false
-          });
-        }
-        if (!namespaceMixins || namespaceMixins.length === 0) {
-          if (!namespaceMixinMissCovered && options.terminalMixinOnly !== true) {
-            const namespaceRulesets = this.findVisibleExactCallableRulesetPath([keys[0]!], {
-              hasTarget: options.hasTarget,
-              local: options.local
-            });
-            if (namespaceRulesets.length !== 0) {
-              return undefined;
-            }
-            const exactRulesetPath = this.findVisibleExactCallableRulesetPath(keys, {
-              hasTarget: options.hasTarget,
-              local: options.local
-            });
-            if (exactRulesetPath.length > 0) {
-              return exactRulesetPath;
-            }
-          }
-          return undefined;
-        }
-        compoundPrefixFast = this.findCompoundPrefixCallableRulesetPathFast(keys, options);
-        mixinNamespaceFast = this.findCallableDescendantsWithinMixinNamespaces(
-          namespaceMixins,
-          keys,
-          options
-        );
-      }
-      const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
-      if (compoundPrefixFast !== undefined && compoundPrefixFast.entries.length > 0) {
-        let compoundUnion = compoundPrefixFast.entries;
-        let compoundUnionOwned = compoundPrefixFast.owned;
-        if (fast !== undefined && fast.length > 0) {
-          if (!compoundUnionOwned) {
-            compoundUnion = [...compoundUnion];
-            compoundUnionOwned = true;
-          }
-          for (let i = 0; i < fast.length; i++) {
-            compoundUnion.push(fast[i]!);
-          }
-        }
-        return compoundUnion;
-      }
-      if (fast !== undefined) {
-        return fast.length > 0 ? fast : undefined;
-      }
-      return undefined;
+      return this.findMixinPath(keys, filterType, options);
     }
     return undefined;
+  }
+
+  /**
+   * Resolve the tail of a namespace path (everything after a consumed prefix or
+   * a matched head namespace) uniformly: a namespace is a namespace, so ruleset-
+   * form and mixin-form segments resolve through the same ordered fallthrough
+   * (ruleset-form path, then mixin-form path, then the generic key lookup). This
+   * is the single remainder resolver the three namespace walks all delegate to.
+   */
+  private resolveNamespaceRemainder(
+    path: string[],
+    offset: number,
+    nestedOptions: CallableFindOptions,
+    terminalFilterType: 'Mixin' | undefined
+  ): MixinEntry[] | undefined {
+    let resolved = this.findRulesetNamespacePathFast(path, nestedOptions, offset);
+    if (resolved === undefined) {
+      resolved = this.findMixinNamespacePathFast(path, undefined, nestedOptions, offset);
+    }
+    if (resolved === undefined) {
+      resolved = this.findMixin(
+        collectKeyRemainder(path, offset),
+        terminalFilterType,
+        nestedOptions
+      );
+    }
+    return resolved;
+  }
+
+  /**
+   * Resolve a multi-segment namespace path (`#theme > .dark > .colors`) via the
+   * frame fast path. Leads with `findRulesetNamespacePathFast`, which walks the
+   * scope-frame chain to the frame that owns the head namespace — so a single
+   * pass at the current scope resolves the whole path without a per-scope
+   * array crawl. The string branch splits static paths straight to here rather
+   * than round-tripping through the public array-form `findMixin`.
+   */
+  private findMixinPath(
+    keys: string[],
+    filterType?: string,
+    options: CallableFindOptions = {}
+  ): MixinEntry[] | undefined {
+    const mixinFilterType = filterType === 'Mixin' ? 'Mixin' : undefined;
+    let compoundPrefixFast: CallableRulesetPathResult | undefined;
+    let mixinNamespaceFast: MixinEntry[] | undefined;
+    let rulesetNamespaceUnion: MixinEntry[] | undefined;
+    if (mixinFilterType !== 'Mixin') {
+      // For an emitting call the head namespace may also exist in mixin form; the
+      // ruleset walk then defers (returns undefined) but the collector captures its
+      // ruleset-form prefix defs in the SAME pass so they union with the mixin path
+      // below — same-named ruleset and mixin namespaces both contribute their
+      // descendant output. Value lookups keep override semantics (no collector).
+      const despiteMixinNamespaceOut: { entries?: MixinEntry[] } | undefined =
+        options.mixinCall === true ? {} : undefined;
+      const rulesetNamespaceFast = this.findRulesetNamespacePathFast(
+        keys,
+        options,
+        0,
+        despiteMixinNamespaceOut
+      );
+      if (rulesetNamespaceFast !== undefined) {
+        return rulesetNamespaceFast.length > 0 ? rulesetNamespaceFast : undefined;
+      }
+      if (despiteMixinNamespaceOut?.entries !== undefined && despiteMixinNamespaceOut.entries.length > 0) {
+        rulesetNamespaceUnion = despiteMixinNamespaceOut.entries;
+      }
+      let namespaceMixins: MixinEntry[] | undefined;
+      let namespaceMixinMissCovered = false;
+      if (this._scopeFrame) {
+        const namespaceKey = keys[0]!;
+        this.prepareCallableLookupFrame(this._scopeFrame, namespaceKey, false);
+        const frameHit = lookupScopeFrameCallable(this._scopeFrame, namespaceKey, {
+          includeRulesets: false
+        });
+        if (frameHit.kind === 'hit') {
+          namespaceMixins = collectCallableBucketResults(frameHit.bucket, false) ?? [];
+        } else if (frameHit.kind === 'miss') {
+          namespaceMixinMissCovered = true;
+        } else if (
+          frameHit.reason === 'child-surface'
+          || frameHit.reason === 'reference-import'
+          || (frameHit.reason === 'key' && this._scopeFrame.hasReferenceImports)
+        ) {
+          const reason = frameHit.reason === 'key' ? 'reference-import' : frameHit.reason;
+          const uncovered = this.findMixinsFastForUncoveredCallable(
+            namespaceKey,
+            reason,
+            false,
+            options
+          );
+          if (uncovered !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            namespaceMixins = uncovered;
+            namespaceMixinMissCovered = true;
+          }
+        }
+      }
+      if (namespaceMixins === undefined && !namespaceMixinMissCovered) {
+        if (options.searchParents === false) {
+          const uncoveredChildNamespaceMixins = this.findMixinsFastForUncoveredCallable(
+            keys[0]!,
+            'child-surface',
+            false,
+            options
+          );
+          if (uncoveredChildNamespaceMixins !== UNCOVERED_CALLABLE_UNSUPPORTED) {
+            namespaceMixins = uncoveredChildNamespaceMixins;
+            namespaceMixinMissCovered = true;
+          }
+        }
+      }
+      if (
+        namespaceMixins === undefined
+        && !namespaceMixinMissCovered
+        && !this._scopeFrame
+      ) {
+        namespaceMixins = this.findMixinsFast(keys[0]!, {
+          hasTarget: options.hasTarget,
+          local: options.local,
+          includeRulesets: false
+        });
+      }
+      if (!namespaceMixins || namespaceMixins.length === 0) {
+        if (!namespaceMixinMissCovered && options.terminalMixinOnly !== true) {
+          const namespaceRulesets = this.findCallableRulesetPath([keys[0]!], {
+            hasTarget: options.hasTarget,
+            local: options.local
+          });
+          if (namespaceRulesets.length !== 0) {
+            return undefined;
+          }
+          const exactRulesetPath = this.findCallableRulesetPath(keys, {
+            hasTarget: options.hasTarget,
+            local: options.local
+          });
+          if (exactRulesetPath.length > 0) {
+            return exactRulesetPath;
+          }
+        }
+        return undefined;
+      }
+      compoundPrefixFast = this.findCompoundPrefixPath(keys, options);
+      mixinNamespaceFast = this.findCallableDescendants(
+        namespaceMixins,
+        keys,
+        options
+      );
+    }
+    const fast = mixinNamespaceFast ?? this.findMixinNamespacePathFast(keys, mixinFilterType, options);
+    let combined: MixinEntry[] | undefined;
+    let combinedOwned = false;
+    if (compoundPrefixFast !== undefined && compoundPrefixFast.entries.length > 0) {
+      combined = compoundPrefixFast.entries;
+      combinedOwned = compoundPrefixFast.owned;
+      if (fast !== undefined && fast.length > 0) {
+        if (!combinedOwned) {
+          combined = [...combined];
+          combinedOwned = true;
+        }
+        for (let i = 0; i < fast.length; i++) {
+          combined.push(fast[i]!);
+        }
+      }
+    } else if (fast !== undefined && fast.length > 0) {
+      combined = fast;
+    }
+    if (rulesetNamespaceUnion !== undefined) {
+      // Ruleset-form namespace defs precede the mixin-form defs in source order.
+      if (combined === undefined) {
+        return rulesetNamespaceUnion;
+      }
+      const merged = [...rulesetNamespaceUnion];
+      for (let i = 0; i < combined.length; i++) {
+        merged.push(combined[i]!);
+      }
+      return merged;
+    }
+    return combined;
   }
 
   findFunction(
@@ -3546,18 +4240,31 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
     }
+    // The `.parent` walk dead-ends when the lookup starts inside a surface that
+    // eval created but did not node-parent into the tree — a THIN control body
+    // (For/If/While), an @media/@supports body eval frame, or a called detached
+    // ruleset. Plugin/global functions (`range`, `length`, …) are registered on
+    // the tree root, so fall back to it: JS functions live in one global
+    // namespace, and any locally-bound function would have been found on the
+    // parent walk above before we reach here.
+    if (searchParents && options?.context) {
+      const root = options.context.root;
+      if (root && root !== this) {
+        return root.functionsByName?.get(keys);
+      }
+    }
     return undefined;
   }
 
   override toString(options?: PrintOptions): string {
-    if (!this.visible && !this.fullRender) {
+    if (!this.visible) {
       return '';
     }
     return this._toDocumentString(options);
   }
 
   _toDocumentString(rawOptions?: PrintOptions): string {
-    if (!this.visible && !this.fullRender) {
+    if (!this.visible) {
       return '';
     }
     const options = getPrintOptions(rawOptions);
@@ -3566,7 +4273,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const mark = w.mark();
 
     const ctx = options.context;
-    const suppressedLeadingComments: Array<{ node: Node; visible: boolean }> = [];
+    const hoistedLeadingComments = new Set<Node>();
     const saved = savePrintState(options, ['referenceMode', 'referenceRenderEnabled']);
     const ownReferenceMode = this.options.referenceMode === true;
     if (ownReferenceMode && options.referenceMode !== true) {
@@ -3608,11 +4315,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           const commentStr = writeDetached(options, nextOptions => node.writeSyntax(nextOptions));
           w.add(normalizeIndent(commentStr, ''), node);
           w.add('\n');
-          const wasVisible = node.hasFlag(F_VISIBLE);
-          suppressedLeadingComments.push({ node, visible: wasVisible });
-          if (wasVisible) {
-            node.removeFlag(F_VISIBLE);
-          }
+          // Already emitted above; exclude from the body render-list instead of
+          // mutating F_VISIBLE (which must stay a by-type property).
+          hoistedLeadingComments.add(node);
         }
       }
       // @import must come after @charset but before other rules
@@ -3622,8 +4327,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             const importPrelude = importRule.prelude;
             if (importPrelude && typeof importPrelude !== 'string' && String(importPrelude.valueOf?.() ?? '').includes('$')) {
               const maybePrelude = importPrelude.eval(ctx);
-              if (!isThenable(maybePrelude)) {
-                importRule.prelude = maybePrelude as Node;
+              if (!isThenable<Node>(maybePrelude) && isNode(maybePrelude)) {
+                importRule.prelude = maybePrelude;
                 importRule.adopt(importRule.prelude);
               }
             }
@@ -3640,7 +4345,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
     }
 
-    this._emitRulesBody(options, 'source');
+    this._emitRulesBody(options, 'source', hoistedLeadingComments);
     if (depth === 0) {
       const eofTrivia = consumeEofTrivia(this, options);
       if (eofTrivia.trim()) {
@@ -3654,11 +4359,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // At root level, ensure output ends with a single newline (standard for CSS files)
     // Don't propagate all the last child's post content (which may have extra whitespace)
     if (depth === 0) {
-      for (const suppressed of suppressedLeadingComments) {
-        if (suppressed.visible) {
-          suppressed.node.addFlag(F_VISIBLE);
-        }
-      }
       result = w.getSince(mark).trimEnd();
       // Ensure exactly one trailing newline (only if there's content)
       result = result ? result + '\n' : '';
@@ -3668,8 +4368,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     restorePrintState(options, saved);
     return result;
   }
-
-  pendingExtends = new Set<[find: Selector, extendWith: Selector, partial: boolean]>();
 
   constructor(
     value: Node[],
@@ -3691,12 +4389,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
     super();
-    this._location = location;
+    setSourceSpan(this, location);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     this._options = mergedOptions as unknown as typeof this._options;
-    this.rules = this._processNodes(value ?? []);
+    // Invariant 7: store, don't adopt. `parentChildren()` (called by the factory)
+    // parents the rules one level.
+    this.rules = value ?? [];
     this._sourceRoot = this;
     this._treeContext = treeContext;
+    // Rules and every container subclass (Ruleset, AtRule, Mixin, If/For/While,
+    // Stylesheet, Collection) are valid statements in a rules body.
+    this.addFlag(F_ALLOW_ROOT);
   }
 
   /**
@@ -3741,9 +4444,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return this._emitRulesBody(options, 'render');
   }
 
-  private _emitRulesBody(options: FinalPrintOptions, mode: 'source'): void;
-  private _emitRulesBody(options: FinalPrintOptions, mode: 'render'): MaybePromise<void>;
-  private _emitRulesBody(options: FinalPrintOptions, mode: 'source' | 'render'): MaybePromise<void> {
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'render', exclude?: Set<Node>): MaybePromise<void>;
+  private _emitRulesBody(options: FinalPrintOptions, mode: 'source' | 'render', exclude?: Set<Node>): MaybePromise<void> {
     const w = options.writer!;
     const context = options.context;
     const depth = options.depth ?? 0;
@@ -3857,7 +4560,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       ) {
         return;
       }
-      if (!n.visible && !n.fullRender) {
+      if (exclude?.has(n) || !n.visible) {
         emitLeadingBlockCommentForNode(n);
         return;
       }
@@ -3881,7 +4584,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           const child = n.rules[i]!;
           if (
             child.visible
-            || child.fullRender
             || hasPrintableTriviaAt(child, 'before', options)
             || hasPrintableTriviaAt(child, 'after', options)
           ) {
@@ -4030,14 +4732,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
-    if (!this.visible && !this.fullRender) {
+    if (!this.visible) {
       return;
     }
     this._emitSourceRulesBody(options);
   }
 
   toRenderString(rawOptions?: PrintOptions): MaybePromise<string> {
-    if (!this.visible && !this.fullRender) {
+    if (!this.visible) {
       return '';
     }
     const options = getPrintOptions(rawOptions);
@@ -4050,9 +4752,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private evalForRender(context: Context, sourceWasRoot: boolean): MaybePromise<RulesRenderState> {
-    if (canRenderStaticRulesDirectly(this)) {
-      return createRulesRenderState(this, this, sourceWasRoot);
-    }
     if (this.registrationPrepared) {
       const output = this.eval(context);
       const toState = (rules: Rules): RulesRenderState => createRulesRenderState(this, rules, sourceWasRoot);
@@ -4088,15 +4787,29 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const sourceWasRoot = this === context.root || (context.root === undefined && context.rulesContext === undefined);
+    // The effective PrintOptions is the 3rd arg in the buffer overload, else the
+    // 2nd. Its `preSerializeRoot` hook (D3) runs the compiler's post-eval /
+    // pre-render plugin visitors on the tree render just evaluated — the reason
+    // the old separate eval pre-pass existed — so no second eval is needed.
+    const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    const preSerializeRoot = sourceWasRoot ? printOptions?.preSerializeRoot : undefined;
+    const serialize = (state: RulesRenderState): MaybePromise<string> => {
+      checkValidNodes(state.output?.rules, context);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
+        : renderRulesStateToString(state, context, bufferOrOptions);
+    };
+    const afterEval = (state: RulesRenderState): MaybePromise<string> => {
+      if (!preSerializeRoot || !state.output) {
+        return serialize(state);
+      }
+      const hooked = preSerializeRoot(state.output);
+      const applyHook = (replaced: Rules | void): MaybePromise<string> =>
+        serialize(replaced ? { ...state, output: replaced } : state);
+      return isThenable(hooked) ? hooked.then(applyHook) : applyHook(hooked);
+    };
     const value = this.evalForRender(context, sourceWasRoot);
-    if (isRenderBuffer(bufferOrOptions)) {
-      return isThenable(value)
-        ? value.then(state => writeRulesStateRenderOutput(bufferOrOptions, state, context, options))
-        : writeRulesStateRenderOutput(bufferOrOptions, value, context, options);
-    }
-    return isThenable(value)
-      ? value.then(state => renderRulesStateToString(state, context, bufferOrOptions))
-      : renderRulesStateToString(value, context, bufferOrOptions);
+    return isThenable(value) ? value.then(afterEval) : afterEval(value);
   }
 
   /** All rules, with nested rules flattened */
@@ -4108,7 +4821,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           iterateRules(n);
           continue;
         }
-        if (!visibleOnly || n.visible || n.fullRender) {
+        if (!visibleOnly || n.visible) {
           finalRules.push(n);
         }
       }
@@ -4294,6 +5007,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.callableMissCoverageKnown = false;
         this._scopeFrame.mixinCallableMissesCovered = false;
         this._scopeFrame.mixinCallableMissCoverageKnown = false;
+        // A member-inlining import (`@import`, or `@compose (namespace: *)`) dumps its
+        // declarations and callables into this scope as if written in place — like a
+        // Less mixin call's ambient output. Rather than flatten the AST or slow every
+        // lookup to the crawl, link the imported Rules' OWN scope frame (which already
+        // indexes the imported decls) as this frame's fallback. `lookupScopeFrame*`
+        // consults fallbacks only AFTER the primary scope chain, so an enclosing
+        // declaration always wins (imported members never override), and the fast frame
+        // path is preserved. Named `@compose` and nested rulesets keep their own scope.
+        if (importInlinesMembersToParent(node)) {
+          linkImportFallbackFrame(this._scopeFrame, node.getScopeFrame());
+        }
       }
       if (rulesMayContainExtends(node)) {
         this._hasExtends = true;
@@ -4477,6 +5201,33 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   /**
+   * Leaky Less mode: register a mixin CALL's evaluated output declarations into
+   * this caller frame at the call's source index, so a LATER sibling's variable
+   * lookup resolves them while an earlier sibling (start-gated) still does not.
+   * The output declarations otherwise only live on the output child Rules, which
+   * the `full` scope-frame lookup does not consult.
+   */
+  injectLeakyMixinOutputBindings(output: Rules, callIndex: number): void {
+    const frame = this._scopeFrame;
+    const vars = output.varsByName;
+    if (!frame || !vars) {
+      return;
+    }
+    if (!isPublicRulesEntry({ node: output }, 'VarDeclaration')) {
+      return;
+    }
+    for (const [name, entries] of vars) {
+      const current = entries[entries.length - 1];
+      if (!current) {
+        continue;
+      }
+      const decl = current.sourceNode;
+      decl.index = callIndex;
+      injectFrameLeakBinding(frame, name, { cell: current.cell, sourceNode: decl });
+    }
+  }
+
+  /**
    * Overwrite the runtime binding cell for an existing variable owned by this
    * scope, as resolved by the setDefined occurrence crawl. Prefers a built
    * frame's modeled cell (which also covers imported assignment targets);
@@ -4608,13 +5359,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           context.extendRoots.popExtendRoot();
         }
       };
-      if (isThenable(mp)) {
-        return (mp as Promise<this>)
-          .then((result) => {
+      if (isThenable<this>(mp)) {
+        return mp
+          .then((result: this) => {
             popNestableBody();
             return result;
           })
-          .catch((error) => {
+          .catch((error: unknown) => {
             rules._registrationPrepared = false;
             this._restoreRegistrationAfterError(context, saved);
             throw error;
@@ -4680,12 +5431,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     prepState: RegistrationPrepState
   ): MaybePromise<this> {
     const pendingResult = this._scanRegistrationNodes(rules, context, prepState);
-    if (isThenable(pendingResult)) {
-      return (pendingResult as Promise<RegistrationPrepState>).then(scanState =>
+    if (isThenable<RegistrationPrepState>(pendingResult)) {
+      return pendingResult.then((scanState: RegistrationPrepState) =>
         this._finishRegistrationPrep(rules, context, saved, scanState)
       );
     }
-    return this._finishRegistrationPrep(rules, context, saved, pendingResult as RegistrationPrepState);
+    return this._finishRegistrationPrep(rules, context, saved, pendingResult);
   }
 
   private _scanRegistrationNodes(
@@ -4707,7 +5458,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const placeholder = new Nil(
           '',
           undefined,
-          node.location.length === 0 ? undefined : node.location
+          sourceSpanOf(node)
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
@@ -4723,7 +5474,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const placeholder = new Nil(
           '',
           undefined,
-          node.location.length === 0 ? undefined : node.location
+          sourceSpanOf(node)
         );
         placeholder.sourceNode = node;
         placeholder.index = nodeIndex;
@@ -4767,8 +5518,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const finishAfterDeclarations = () => {
       return this._finishOrderedIdentityRegistrationPrep(rules, context, saved, prepState);
     };
-    if (isThenable(declarationResult)) {
-      return (declarationResult as Promise<void>).then(finishAfterDeclarations);
+    if (isThenable<void>(declarationResult)) {
+      return declarationResult.then(finishAfterDeclarations);
     }
     return finishAfterDeclarations();
   }
@@ -4813,11 +5564,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   /**
-   * Helper to check if a value is static (either a Node with F_STATIC flag or a primitive value)
+   * Does a name/path value resolve to a fixed identifier at construction time?
+   * A primitive (bare string) always does; a name/path Node answers from its own
+   * structure (`hasStaticName`) rather than the bubbled `F_STATIC` flag.
    */
   private _isStatic(value: unknown): boolean {
-    if (hasFlagMethod(value)) {
-      return value.hasFlag(F_STATIC);
+    if (hasStaticNameMethod(value)) {
+      return value.hasStaticName();
     }
     // Primitive values (strings, numbers, etc.) are considered static
     return true;
@@ -4931,9 +5684,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (node.registrationPrepared) {
         return true;
       }
-      // Check F_STATIC flag for other selector types.
-      if (hasFlagMethod(selector)) {
-        return selector.hasFlag(F_STATIC);
+      // Other selector types (Interpolated/Ampersand/Attribute/Pseudo): ask the
+      // selector whether its identity is fixed at construction, from structure.
+      if (hasStaticNameMethod(selector)) {
+        return selector.hasStaticName();
       }
       return false;
     }
@@ -4981,8 +5735,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const finish = () => {
       this._applyResolvedRegistrationNodes(rules, pendingDeclarationNames.resolvedNodes);
     };
-    if (isThenable(result)) {
-      return (result as Promise<void>).then(finish);
+    if (isThenable<void>(result)) {
+      return result.then(finish);
     }
     return finish();
   }
@@ -5012,8 +5766,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this._restoreRegistrationContext(context, saved);
       return this;
     };
-    if (isThenable(orderedResult)) {
-      return (orderedResult as Promise<void>).then(finish);
+    if (isThenable<void>(orderedResult)) {
+      return orderedResult.then(finish);
     }
     return finish();
   }
@@ -5117,12 +5871,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         try {
           const result = node.prepareRegistration(context);
 
-          if (isThenable(result)) {
+          if (isThenable<Node>(result)) {
             const remaining: Node[] = [];
             for (let nextIndex = i + 1; nextIndex < unresolvedDeclarations.length; nextIndex++) {
               remaining.push(unresolvedDeclarations[nextIndex]!);
             }
-            return result.then((resolvedNode) => {
+            return result.then((resolvedNode: Node) => {
               if (handleResolvedNode(resolvedNode, node, stillUnresolved)) {
                 madeProgress = true;
               }
@@ -5139,7 +5893,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             });
           }
 
-          if (handleResolvedNode(result as Node, node, stillUnresolved)) {
+          if (handleResolvedNode(result, node, stillUnresolved)) {
             madeProgress = true;
           }
         } catch {
@@ -5173,12 +5927,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         try {
           const result = node.prepareRegistration(context);
 
-          if (isThenable(result)) {
+          if (isThenable<Node>(result)) {
             const remaining: Node[] = [];
             for (let nextIndex = i + 1; nextIndex < orderedIdentities.length; nextIndex++) {
               remaining.push(orderedIdentities[nextIndex]!);
             }
-            return result.then((resolvedNode) => {
+            return result.then((resolvedNode: Node) => {
               handleResolvedNode(resolvedNode, node, []);
               // Continue with remaining nodes
               orderedIdentities.length = 0;
@@ -5189,7 +5943,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             });
           }
 
-          handleResolvedNode(result as Node, node, []);
+          handleResolvedNode(result, node, []);
         } catch {
           // Can't resolve during registration prep — leave in place for eval.
         }
@@ -5265,7 +6019,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
-  private _evaluateSourceOrder(rules: Rules, context: Context): MaybePromise<{ output: Rules; rulesToHoist: boolean }> {
+  private _evaluateSourceOrder(
+    rules: Rules,
+    context: Context,
+    importsOnly = false
+  ): MaybePromise<{ output: Rules; rulesToHoist: boolean }> {
     let rulesToHoist = false;
     const pendingImports: Array<[number, Node]> = [];
     // §2.7: never mutate the canonical node. Source children are read from
@@ -5284,8 +6042,28 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         output = rules.derive() as Rules;
         // The output resolves scope identically to the canonical (share its
         // prepared scope frame), and becomes the current rules context so later
-        // siblings + registration during this same eval stay consistent.
-        output.scopeFrame = rules._scopeFrame;
+        // siblings + registration during this same eval stay consistent. Build the
+        // source frame first if it isn't cached yet: registerNode links an inlining
+        // import's fallback frame onto `_scopeFrame` at splice time, and later
+        // siblings (e.g. a consumer referencing an imported property) resolve through
+        // the SAME source frame via the node parent chain. Without a shared frame the
+        // output would lazily build its own, and the inline-import fallback link would
+        // never reach the consumer's lookup.
+        const sharedFrame = rules.getScopeFrame();
+        output.scopeFrame = sharedFrame;
+        // Re-point the shared frame's node back-pointer to the output. The
+        // child-surface crawl (collectDirectChildRulesEntries / findMixin's
+        // namespace descent) reads `frame.rulesNode.rules` to reach evaluated
+        // callable children — mixin-call OUTPUT rulesets spliced into `output`
+        // during this eval. The canonical `rules.rules` never gains those output
+        // children (invariant: canonical is immutable), so a frame still pointing
+        // at the canonical makes an evaluated namespace member (`.person` produced
+        // by a mixin call, incl. post-interpolation names) invisible to a later
+        // sibling `.person.sayGender` lookup. The frame IS this scope's identity;
+        // after COW-derive the output supersedes the canonical for the rest of the
+        // eval (context.rulesContext/root follow it below), so its lookup surface
+        // must be the output's rules. No new frame, no clone.
+        sharedFrame.rulesNode = output;
         if (context.rulesContext === rules) {
           context.rulesContext = output;
         }
@@ -5314,6 +6092,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             rulesVisibility: result.options.rulesVisibility,
             readonly: result.options.readonly
           }, context);
+          if (context.leakyRules && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
+            out.injectLeakyMixinOutputBindings(result, idx);
+          }
           if (result.hoistToRoot) {
             rulesToHoist = true;
           }
@@ -5344,17 +6125,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const result = (() => {
         try {
           const value = rule.eval(context);
-          return isThenable(value)
-            ? (value as Promise<Node>).catch(handleError)
+          return isThenable<Node>(value)
+            ? value.catch(handleError)
             : value;
         } catch (error) {
           return handleError(error);
         }
       })();
-      if (isThenable(result)) {
-        return (result as Promise<Node | undefined>).then(resolved => applyResult(idx, rule, resolved));
+      if (isThenable<Node | undefined>(result)) {
+        return result.then((resolved: Node | undefined) => applyResult(idx, rule, resolved));
       }
-      applyResult(idx, rule, result as Node | undefined);
+      applyResult(idx, rule, result);
     };
 
     // These are the two eval-owned side-effect lanes left after removing the
@@ -5393,16 +6174,34 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       };
       const drained = drainRest(0);
-      if (isThenable(drained) && allowRetry) {
-        return (drained as Promise<void>).then(() => drainPendingImports(false));
+      if (isThenable<void>(drained) && allowRetry) {
+        return drained.then(() => drainPendingImports(false));
       }
       return drained;
     };
 
-    const evaluateImports = evaluateLane(isStyleImportRegistrationNode, true);
+    // A reference-import-only pass (namespace-mixin body eval, §Mixin.evalNode)
+    // resolves ONLY the reference/dedupe StyleImport children into callable
+    // surfaces — it must not run the call/normal body lanes (that is a full
+    // body eval, reserved for a real call). Plain (non-reference) imports also
+    // stay cold: they contribute render output, not callable descendants.
+    const isReferenceImportNode = (rule: Node): boolean => {
+      if (!isStyleImportRegistrationNode(rule)) {
+        return false;
+      }
+      const importOptions = 'importOptions' in rule.options ? rule.options.importOptions : undefined;
+      return importOptions?.reference === true || importOptions?._dedupe === true;
+    };
+    const evaluateImports = evaluateLane(
+      importsOnly ? isReferenceImportNode : isStyleImportRegistrationNode,
+      true
+    );
     const evaluateBody = (): MaybePromise<{ output: Rules; rulesToHoist: boolean }> => {
       const importDrain = drainPendingImports(false);
       const afterImports = () => {
+        if (importsOnly) {
+          return { output, rulesToHoist };
+        }
         const calls = evaluateLane(rule => isNode(rule, N.Call), false);
         const afterCalls = () => {
           const normal = evaluateLane((rule) => {
@@ -5411,24 +6210,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             }
             return true;
           }, false);
-          if (isThenable(normal)) {
-            return (normal as Promise<void>).then(() => ({ output, rulesToHoist }));
+          if (isThenable<void>(normal)) {
+            return normal.then(() => ({ output, rulesToHoist }));
           }
           return { output, rulesToHoist };
         };
-        if (isThenable(calls)) {
-          return (calls as Promise<void>).then(afterCalls);
+        if (isThenable<void>(calls)) {
+          return calls.then(afterCalls);
         }
         return afterCalls();
       };
-      if (isThenable(importDrain)) {
-        return (importDrain as Promise<void>).then(afterImports);
+      if (isThenable<void>(importDrain)) {
+        return importDrain.then(afterImports);
       }
       return afterImports();
     };
 
-    if (isThenable(evaluateImports)) {
-      return (evaluateImports as Promise<void>).then(evaluateBody);
+    if (isThenable<void>(evaluateImports)) {
+      return evaluateImports.then(evaluateBody);
     }
     return evaluateBody();
   }
@@ -5666,7 +6465,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const lastVisibleByName = new Map<string, DeclOccurrence>();
     const mergedAnchorByName = new Map<string, DeclOccurrence>();
     const accumulatedValueByName = new Map<string, Node>();
-    const processDeclarationOccurrence = (node: Node, ownerRules: Rules): void => {
+    const processDeclarationOccurrence = (node: Node, ownerRules: Rules, inMixinOutput: boolean): void => {
       if (!isNode(node, N.Declaration)) {
         return;
       }
@@ -5682,6 +6481,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           lastVisibleByName.set(name, { node, ownerRules });
         }
         return;
+      }
+      // A mixin-ruleset output reuses the callee's evaluated declaration node by
+      // identity (thin model): the SAME node is both the callee's own rendered
+      // declaration and the placement copy in this host's output subtree. A merge
+      // occurrence here can be superseded by a later `+:` in the host, and the
+      // coalesce marks it merge-suppressed by node identity — which would also hide
+      // the callee's own declaration. Detach (COW) the shared placement copy into a
+      // distinct instance owned by the output surface before it can be superseded.
+      if (inMixinOutput) {
+        const idx = ownerRules.rules.indexOf(node);
+        if (idx !== -1) {
+          const copy = node.deriveWithParts({ value: node.value });
+          ownerRules.rules[idx] = copy;
+          ownerRules.adopt(copy);
+          node = copy;
+        }
       }
       currentNode = normalizeMergedDeclarationValue(node);
       let currentAccumulatedValue: Node | undefined;
@@ -5721,9 +6536,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && existingAnchor.ownerRules === ownerRules;
         if (!anchorIsSameOccurrence) {
           if (existingAnchor.node === currentNode && existingAnchor.ownerRules !== ownerRules) {
-            existingAnchor.ownerRules.removeFlag(F_VISIBLE);
+            existingAnchor.ownerRules.addFlag(F_MERGE_SUPPRESSED);
           } else {
-            existingAnchor.node.removeFlag(F_VISIBLE);
+            existingAnchor.node.addFlag(F_MERGE_SUPPRESSED);
           }
           mergedAnchorByName.set(name, occurrence);
           if (currentAccumulatedValue) {
@@ -5744,21 +6559,28 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         lastVisibleByName.set(name, occurrence);
       }
     };
-    const walkMergedDeclarations = (node: Node, ownerRules: Rules): void => {
+    const walkMergedDeclarations = (node: Node, ownerRules: Rules, inMixinOutput: boolean): void => {
       if (isNode(node, N.Declaration)) {
-        processDeclarationOccurrence(node, ownerRules);
+        processDeclarationOccurrence(node, ownerRules, inMixinOutput);
         return;
       }
-      if (!isNode(node, N.Rules)) {
+      // A nested Ruleset / at-rule is its OWN cascade scope (a distinct selector
+      // block, coalesced by its own eval pass). `Ruleset`'s nodeType carries the
+      // `Rules` bit, so guard against it explicitly — otherwise sibling rulesets
+      // are walked as one merge chain and later `+:` values suppress earlier
+      // selectors. Only descend into inline Rules (mixin outputs, plain groups)
+      // that render into the CURRENT selector scope.
+      if (!isNode(node, N.Rules) || isNode(node, N.Ruleset | N.AtRule)) {
         return;
       }
+      const childInMixinOutput = inMixinOutput || Boolean(node.options.mixinOutputSlot);
       for (let i = 0; i < node.rules.length; i++) {
-        walkMergedDeclarations(node.rules[i]!, node);
+        walkMergedDeclarations(node.rules[i]!, node, childInMixinOutput);
       }
     };
 
     for (const node of rules.rules) {
-      walkMergedDeclarations(node, rules);
+      walkMergedDeclarations(node, rules, Boolean(rules.options.mixinOutputSlot));
     }
   }
 
@@ -5830,16 +6652,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * After registration prep: ensure root on extend stack, then evaluate
    * children in source order.
    */
-  private _evalAfterRegistrationPrep(rules: Rules, context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+  private _evalAfterRegistrationPrep(
+    rules: Rules,
+    context: Context,
+    importsOnly = false
+  ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._ensureRootExtendStack(rules, context);
     this._assignRootDocumentOrder(rules, context);
-    const evaluated = this._evaluateSourceOrder(rules, context);
-    if (isThenable(evaluated)) {
-      return (evaluated as Promise<{ output: Rules; rulesToHoist: boolean }>).then(({ output, rulesToHoist }) =>
+    const evaluated = this._evaluateSourceOrder(rules, context, importsOnly);
+    if (isThenable<{ output: Rules; rulesToHoist: boolean }>(evaluated)) {
+      return evaluated.then(({ output, rulesToHoist }: { output: Rules; rulesToHoist: boolean }) =>
         this._finishSourceOrderEvaluation(output, rulesToHoist)
       );
     }
-    const { output, rulesToHoist } = evaluated as { output: Rules; rulesToHoist: boolean };
+    const { output, rulesToHoist } = evaluated;
     return this._finishSourceOrderEvaluation(output, rulesToHoist);
   }
 
@@ -5899,12 +6725,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (rules !== context.root) {
       return;
     }
+    // The document-order map is read only during extend application
+    // (documentOrderOf in extend.ts). With no extends anywhere in the tree
+    // (root._hasExtends aggregates nested + mixin-body extends via
+    // rulesMayContainExtends), the map is never consulted — skip the whole walk.
+    if (!rules._hasExtends) {
+      return;
+    }
     const map = new WeakMap<Ruleset, number>();
     context.documentOrderByRuleset = map;
     this._assignDocumentOrderDepthFirst(rules, map, { value: 0 });
   }
 
-  private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+  private _prepareForEval(
+    context: Context,
+    importsOnly = false
+  ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     // The DYNAMIC enclosing scope, captured before we overwrite rulesContext.
     // A derived eval surface's lexical parent is where it is being PLACED, not
     // its static canonical parent — see _evalPreparedRules.
@@ -5913,18 +6749,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       : undefined;
     this._setupContextForRules(context, this);
     const rulesAfterPrep = this._prepareRegistrationForEval(context);
-    if (isThenable(rulesAfterPrep)) {
-      return (rulesAfterPrep as Promise<Rules>).then(rules =>
-        this._evalPreparedRules(rules, context, enclosingScope)
+    if (isThenable<Rules>(rulesAfterPrep)) {
+      return rulesAfterPrep.then((rules: Rules) =>
+        this._evalPreparedRules(rules, context, enclosingScope, importsOnly)
       );
     }
-    return this._evalPreparedRules(rulesAfterPrep as Rules, context, enclosingScope);
+    return this._evalPreparedRules(rulesAfterPrep, context, enclosingScope, importsOnly);
   }
 
   private _evalPreparedRules(
     rules: Rules,
     context: Context,
-    enclosingScope?: Rules
+    enclosingScope?: Rules,
+    importsOnly = false
   ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     // Fix the parent WALK, don't clone around it. `getScopeFrame` bakes the
     // static canonical `this.parent` as a frame's lexical parent. But a shared
@@ -5944,16 +6781,25 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       rules === this
       && rules !== enclosingScope
       // A THIN SURFACE is intrinsically a Rules whose `sourceNode` points at a
-      // DIFFERENT canonical Rules — it re-uses that shared canonical body over a
+      // DIFFERENT canonical body — it re-uses that shared canonical body over a
       // per-placement scope frame (a mixin/ruleset body call, a style import). A
-      // canonical node instead points at itself / nothing.
-      && isNode(enclosingScope?.sourceNode, N.Rules)
+      // canonical node instead points at itself / nothing. The canonical body can
+      // be any Rules SUBCLASS: a plain Rules (detached/import), a Mixin (mixin
+      // body — since the Mixin.sourceNode wrapper was eliminated the per-call
+      // surface's sourceNode IS the Mixin), or a Ruleset. `instanceof Rules`
+      // covers all three; a bitmask `N.Rules` check misses Mixin/Ruleset (distinct
+      // nodeType bits) and would silently stop re-pointing mixin-body surfaces.
+      && enclosingScope?.sourceNode instanceof Rules
       && enclosingScope.sourceNode !== enclosingScope
-      // WART: the canonical `Mixin` constructor also sets `sourceNode` (= its
-      // body) — the scope wrapper smell. Exclude it here; drop this guard once
-      // the Mixin.sourceNode wrapper is eliminated (see
-      // parseman-wrapper-is-scope-identity, task: "Eliminate Mixin sourceNode").
-      && !isNode(enclosingScope, N.Mixin)
+      // EXCEPT a callable adopted under a RETAINED mixin-output namespace member:
+      // `.person.sayGender()` binds `.sayGender`'s per-call surface under the output
+      // `.person`, whose frame chains to the call's retained param slot
+      // (`gender_="Male"`, hasLiveBindings). That definition parent — not the call
+      // SITE (enclosingScope) — is where `.sayGender`'s body resolves `@gender`. The
+      // placement re-point would clobber it with the caller, where `@gender` is
+      // undefined. Same retained-frame signal c1ded0b6c uses for value resolution
+      // (ownerFrame.parent.hasLiveBindings); here it gates the lexical-parent choice.
+      && !isRetainedOutputDefinitionParent(rules.parent, enclosingScope)
     ) {
       // A child evaluated under a thin surface resolves its free vars up the
       // PLACEMENT scope, not its static canonical parent. Re-point its
@@ -5962,7 +6808,29 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // with/set). One behavior for every node-re-use site, keyed on what the
       // node IS (its sourceNode), not a stamped marker. No reparent, no clone.
       // See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
-      rules.getScopeFrame().parent = enclosingScope.getScopeFrame();
+      const placementFrame = enclosingScope.getScopeFrame();
+      rules.getScopeFrame().parent = placementFrame;
+      // Signal Ruleset.finishEvaluatedRules NOT to bake this eval's output back into
+      // the shared canonical node — but ONLY when the placement scope resolves live
+      // per-call bindings (mixin params). Such a body produces DIFFERENT output per
+      // call (the mixins-nested second-call bug: `width: @a` baked to `30`), so it
+      // must return a fresh surface. A placement with no live-binding ancestor
+      // (a nested ruleset / @media body re-used for selector nesting) produces the
+      // same output every eval, so the in-place bake stays correct there — and, more
+      // importantly, keeps the node identity that extend post-processing relies on.
+      if (frameChainHasLiveBindings(placementFrame)) {
+        rules._placementRepointed = true;
+      }
+    } else if (rules === this && rules._closureScope) {
+      // Detached-ruleset closure: a Rules passed as an arg / stored in a variable
+      // closes over the SURFACE where it was written (`_closureScope`, captured at
+      // arg-binding), which carries the enclosing per-call param slots — NOT its
+      // canonical `.parent`. When such a body is evaluated (eagerly at arg-bind or
+      // lazily on call), re-point its scope-frame lexical parent to that closure
+      // surface so free vars resolve up the placement scope. The enclosingScope
+      // (§4) branch above handles shared canonical bodies under a thin surface; a
+      // detached ruleset's placement is instead pinned by its captured closure.
+      rules.getScopeFrame().parent = rules._closureScope.getScopeFrame();
     }
     this._setupContextForRules(context, rules);
     // When we're the outermost Rules, use the tree we're evaling as root
@@ -5970,7 +6838,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (context.rulesEvalStack.length === 1) {
       context.root = rules;
     }
-    return this._evalAfterRegistrationPrep(rules, context);
+    return this._evalAfterRegistrationPrep(rules, context, importsOnly);
   }
 
   private _prepareRegistrationForEval(context: Context): MaybePromise<Rules> {
@@ -5982,8 +6850,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     // Eval owns registration prep. This step establishes lookup identities
     // before the source-order eval walk without evaluating rule bodies.
-    const result = this._prepareRegistrationOnce(context);
-    return isThenable(result) ? (result as Promise<Rules>) : result;
+    return this._prepareRegistrationOnce(context);
   }
 
   private _createRegistrationPrepState(): RegistrationPrepState {
@@ -6032,6 +6899,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     context.rulesEvalStack.pop();
     context.depth--;
+    // The evaluated OUTPUT (which render/serialize hold) may be a derived node,
+    // not `this`; carry the eval-state signal onto it so `evaluated` is true for
+    // the tree callers actually render.
+    rules._bodyEvaluated = true;
     return rules;
   }
 
@@ -6051,6 +6922,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   override evalNode(context: Context): MaybePromise<Rules> {
+    // Narrow §2.7 eval-state signal: this Rules body has now been evaluated.
+    // Marked on the canonical node (`this`) — what callable-descendant lookup
+    // reads via `entry` — so a never-evaluated body stays cold. Mixin.evalNode
+    // returns self without reaching here, so it stamps this flag itself.
+    this._bodyEvaluated = true;
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(sourceRulesOf(this));
     let result: MaybePromise<{ rules: Rules; rulesToHoist: boolean }>;
@@ -6061,6 +6937,43 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       throw error;
     }
     const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules => this._finishEval(rules, context, saved);
+    if (isThenable(result)) {
+      return result.then(
+        finish,
+        (error) => {
+          this._restoreEvalAfterError(context, saved);
+          throw error;
+        }
+      );
+    }
+    return finish(result);
+  }
+
+  /**
+   * Evaluate ONLY this body's reference/dedupe StyleImport children into
+   * callable surfaces, preparing body registration first. Used by a namespace
+   * mixin body (`Mixin.evalNode`), whose lazy self-return never walks the body:
+   * a `reference:true` import inside it would otherwise stay unevaluated, so its
+   * imported mixins never become reachable callable descendants. This runs the
+   * shared eval pipeline's import lane only — no call/normal body lanes — so the
+   * body is not fully evaluated (that is reserved for a real call). No-op when
+   * the body carries no reference imports.
+   */
+  resolveBodyReferenceImports(context: Context): MaybePromise<Rules> {
+    if (!rulesMayContainReferenceImports(this)) {
+      return this;
+    }
+    const saved = this._snapshotContext(context);
+    context.rulesEvalStack.push(sourceRulesOf(this));
+    let result: MaybePromise<{ rules: Rules; rulesToHoist: boolean }>;
+    try {
+      result = this._prepareForEval(context, true);
+    } catch (error) {
+      this._restoreEvalAfterError(context, saved);
+      throw error;
+    }
+    const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules =>
+      this._finishEval(rules, context, saved);
     if (isThenable(result)) {
       return result.then(
         finish,
@@ -6092,6 +7005,37 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 }
 
 export const rules = defineType(Rules, 'Rules');
+
+/**
+ * Ruleset-only, whole-selector lookup shared by Jess `$apply` and `*[…]` selector
+ * capture. Resolves `selector` (e.g. `.foo`) against `scope`'s callable surface,
+ * returning EVERY matching plain `Ruleset` (`.foo {}`) — merge-all, in scope order.
+ * Parametric `Mixin` definitions (`.foo() {}` / `.foo(@a) {}`) are NEVER returned;
+ * this deliberately does not touch the args/guards callable machinery.
+ *
+ * A capture whose selector has no plain basic key (e.g. `*`, `:hover`) yields `[]`.
+ */
+export function resolveRulesetBySelector(
+  selector: Selector | undefined,
+  scope: Rules
+): Ruleset[] {
+  const keys = getOrderedSelectorKeys(selector);
+  if (keys.length === 0) {
+    return [];
+  }
+  const found: Ruleset[] = [];
+  const seen = new Set<Ruleset>();
+  for (const key of keys) {
+    for (const entry of scope.findMixinsFast(key, { rulesetsOnly: true })) {
+      // rulesetsOnly guarantees Rulesets, but narrow defensively + de-dupe.
+      if (isNode(entry, N.Ruleset) && !seen.has(entry)) {
+        seen.add(entry);
+        found.push(entry);
+      }
+    }
+  }
+  return found;
+}
 
 // Registration prep has two pending lanes. Declaration-name nodes own a local
 // fixed-point state because one declaration name can unblock another; every

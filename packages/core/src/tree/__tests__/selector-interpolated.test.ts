@@ -48,7 +48,7 @@ describe('InterpolatedSelector', () => {
   it('renders resolved interpolated selectors through render(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -69,7 +69,7 @@ describe('InterpolatedSelector', () => {
   it('writes resolved interpolated selector output into flat buffers', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -101,7 +101,7 @@ describe('InterpolatedSelector', () => {
   it('renders resolved interpolated selector output directly without public resolve', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -124,7 +124,7 @@ describe('InterpolatedSelector', () => {
   it('resolves interpolated selectors without touching render state', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);
@@ -146,7 +146,7 @@ describe('InterpolatedSelector', () => {
   it('keeps source interpolated selector child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('capture-attr'),
+        name: 'capture-attr',
         value: any('foo')
       })
     ]);
@@ -177,7 +177,7 @@ describe('InterpolatedSelector', () => {
   it('does not clone the source interpolated value before resolving interpolated selectors', async () => {
     const root = rules([
       vardecl({
-        name: any('name'),
+        name: 'name',
         value: any('foo')
       })
     ]);

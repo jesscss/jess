@@ -1,12 +1,7 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as treeIndex from '../index.js';
-import { Any, Call, Color, F_MAY_ASYNC, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
-import {
-  getCallRawArgDiagnosticMessageSource,
-  getCallRawArgDiagnosticSource,
-  getCallRawArgSourceNode,
-  getCallRawArgsPlacement
-} from '../call.js';
+import { Any, Call, Color, F_NON_STATIC, JsFunction, List, Node, Reference, Rules, Sequence, any, call, coll, condition, decl, dimension, el, fn, list, mixin, negative, num, op, query, quoted, ref, rules, ruleset, seq, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
@@ -58,7 +53,6 @@ const run = (text: string) => makeTrivia(text, 0, text.length);
 class AsyncAny extends Any<string> {
   constructor(value: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -69,7 +63,6 @@ class AsyncAny extends Any<string> {
 class AsyncRenderedAny extends Any<string> {
   constructor(value: string, private readonly renderedValue: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -80,7 +73,6 @@ class AsyncRenderedAny extends Any<string> {
 class RejectingAny extends Any<string> {
   constructor(value: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -104,8 +96,10 @@ class SyncOverrideAny extends Any<string> {
 }
 
 class CustomSyntaxNode extends Node<string> {
+  readonly value: string;
   constructor(value: string) {
     super(value);
+    this.value = value;
   }
 
   override writeSyntax(options?: Parameters<Node['writeSyntax']>[0]): void {
@@ -129,7 +123,6 @@ class AsyncWriterTrackingCustomSyntaxAny extends Any<string> {
   constructor(value: string) {
     super(value);
     this.renderedNode = new WriterTrackingCustomSyntaxNode(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -140,7 +133,6 @@ class AsyncWriterTrackingCustomSyntaxAny extends Any<string> {
 class AsyncCustomSyntaxAny extends Any<string> {
   constructor(value: string) {
     super(value);
-    this.addFlag(F_MAY_ASYNC);
   }
 
   override eval() {
@@ -254,6 +246,25 @@ describe('Call', () => {
     expect(writer.toString()).toBe('fn(10, 20, 30)');
     expect(writer.marks).toBe(0);
     expect(writer.readbacks).toBe(0);
+  });
+
+  it('does not double the separator when a space-group arg term already carries leading whitespace', () => {
+    // Repro of the `less` `modern` fixture: the parser bakes leading spaces into
+    // value keywords that follow a `)`-terminated term (e.g. `... calc(l - 0.1) c h`
+    // yields keyword terms `" c"` / `" h"`). The known-text fast path in
+    // `getKnownRenderedCallText` joined space-group terms with an unconditional
+    // space, so a term that already carried a leading space rendered doubled.
+    const rule = call({
+      name: 'fn',
+      args: list([
+        seq([
+          any('from'),
+          any(' c'),
+          any(' h')
+        ])
+      ])
+    });
+    expect(rule.render(context)).toBe('fn(from c h)');
   });
 
   it('serializes escaped scalar list call source args without whole-call readback', () => {
@@ -440,8 +451,8 @@ describe('Call', () => {
   });
 
   it('serializes comment trivia owned by function argument separators', () => {
-    const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
-    const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
+    const first = new Any('#333', undefined, { start: 20, end: 23 });
+    const second = new Any('#111', undefined, { start: 40, end: 43 });
     const rule = new Call({
       name: 'linear-gradient',
       args: new List([first, second])
@@ -449,7 +460,7 @@ describe('Call', () => {
     const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
     }) satisfies TriviaMap;
 
     expect(rule.toString({ trivia })).toBe('linear-gradient(#333 /*{comment}*/, #111)');
@@ -457,8 +468,8 @@ describe('Call', () => {
 
   it('writes trivia-bearing call args without arg-list trim marks', () => {
     const writer = new CountingWriter();
-    const first = new Any('#333', undefined, [20, 1, 21, 23, 1, 24]);
-    const second = new Any('#111', undefined, [40, 1, 41, 43, 1, 44]);
+    const first = new Any('#333', undefined, { start: 20, end: 23 });
+    const second = new Any('#111', undefined, { start: 40, end: 43 });
     const rule = new Call({
       name: 'linear-gradient',
       args: new List([first, second])
@@ -466,7 +477,7 @@ describe('Call', () => {
     const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
     }) satisfies TriviaMap;
 
     rule.writeSyntax(getPrintOptions({ writer, trivia }));
@@ -565,7 +576,7 @@ describe('Call', () => {
   it('writes dynamic finalized call render output into shared flat buffers without whole-string writeback', async () => {
     const root = rules([
       vardecl({
-        name: any('fnName'),
+        name: 'fnName',
         value: any('rgb')
       })
     ]);
@@ -620,7 +631,7 @@ describe('Call', () => {
   it('writes CSS call arguments without resolving child wrappers', async () => {
     const root = rules([
       vardecl({
-        name: any('red-channel'),
+        name: 'red-channel',
         value: num(100)
       })
     ]);
@@ -869,7 +880,7 @@ describe('Call', () => {
 
   it('renders dynamic stylesheet function names without evaluating the name twice', async () => {
     const fnNode = fn({
-      name: any('make-color'),
+      name: 'make-color',
       body: rules([
         decl({ name: 'return', value: any('blue') })
       ])
@@ -907,7 +918,7 @@ describe('Call', () => {
     }
 
     const fnNode = fn({
-      name: any('inspect'),
+      name: 'inspect',
       params: list([
         vardecl({ name: 'value', value: any('') })
       ]),
@@ -943,7 +954,10 @@ describe('Call', () => {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('red 10px');
-      expect(CountingSequence.constructedCopies).toBe(2);
+      // Thin placement (LIVE_BINDING invariants 2/3): the callable binding
+      // surface SHARES the source arg node instead of deep-cloning it, so the
+      // Sequence is never reconstructed.
+      expect(CountingSequence.constructedCopies).toBe(0);
       expect(collectionEvalCalls).toBe(0);
       expect(originalArg.parent).toBe(originalArgs);
       expect(originalArgs.parent).toBe(rule);
@@ -956,7 +970,7 @@ describe('Call', () => {
 
   it('renders dynamic mixin names without calling public eval state', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: any('red') })
       ]
@@ -1012,7 +1026,7 @@ describe('Call', () => {
 
   it('renders dynamic mixin collection names without calling public eval state', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: any('green') })
       ]
@@ -1041,7 +1055,7 @@ describe('Call', () => {
 
   it('renders dynamic callable array names without calling public eval state', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: any('purple') })
       ]
@@ -1069,7 +1083,7 @@ describe('Call', () => {
 
   it('renders dynamic call alias names without calling public eval state', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: any('orange') })
       ]
@@ -1100,7 +1114,7 @@ describe('Call', () => {
 
   it('renders silent-fail dynamic callable failures without owning a fallback call', async () => {
     const mixinDef = mixin({
-      name: any('.theme'),
+      name: '.theme',
       rules: [
         decl({ name: 'color', value: ref('missing-color', { type: 'variable' }) })
       ]
@@ -1143,7 +1157,7 @@ describe('Call', () => {
   it('streams dynamic CSS call arguments without materializing a replacement arg list', async () => {
     const root = rules([
       vardecl({
-        name: any('red-channel'),
+        name: 'red-channel',
         value: num(100)
       })
     ]);
@@ -1455,12 +1469,12 @@ describe('Call', () => {
   });
 
   it('preserves source trivia in optional fallback call arguments', async () => {
-    const first = new Color({ node: '#333' }, undefined, [20, 1, 21, 23, 1, 24]);
-    const second = new Color({ node: '#111' }, undefined, [40, 1, 41, 43, 1, 44]);
+    const first = new Color({ node: '#333' }, undefined, { start: 20, end: 23 });
+    const second = new Color({ node: '#111' }, undefined, { start: 40, end: 43 });
     const tokens = run(' /*{comment}*/');
     const trivia = createTriviaMap({
       before: new Map([[38, tokens]]),
-      after: new Map([[first.location[3], tokens]])
+      after: new Map([[sourceSpanOf(first)?.end, tokens]])
     }) satisfies TriviaMap;
     context = new Context({ trivia });
     const args = list([first, second]);
@@ -1512,10 +1526,9 @@ describe('Call', () => {
   it('marks declarations important by replacing owned declaration slots', () => {
     const topDeclaration = decl({ name: 'color', value: any('red') });
     const nestedDeclaration = decl({ name: 'background', value: any('blue') });
-    const nestedRules = rules([nestedDeclaration]);
     const nestedRuleset = ruleset({
       selector: el('.nested'),
-      rules: nestedRules
+      rules: [nestedDeclaration]
     });
     const root = rules([topDeclaration, nestedRuleset]);
     const rule = call({ name: 'noop' });
@@ -1523,7 +1536,7 @@ describe('Call', () => {
     expect(rule.makeImportant(root)).toBe(root);
 
     const topReplacement = root.rules[0];
-    const nestedReplacement = nestedRules.rules[0];
+    const nestedReplacement = nestedRuleset.rules[0];
     expect(topReplacement).not.toBe(topDeclaration);
     expect(nestedReplacement).not.toBe(nestedDeclaration);
     expect(isNode(topReplacement, N.Declaration)).toBe(true);
@@ -1619,7 +1632,7 @@ describe('Call', () => {
   it('renders evaluated scalar node names without whole-call readback', () => {
     const writer = new CountingWriter();
     const rule = call({
-      name: any('rgb'),
+      name: 'rgb',
       args: list([num(10), num(20)])
     });
     rule._evaluatedCallOutput = true;
@@ -1772,7 +1785,7 @@ describe('Call', () => {
   it('keeps source CSS call child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('channel'),
+        name: 'channel',
         value: num(20)
       })
     ]);
@@ -2099,7 +2112,7 @@ describe('Call', () => {
     root.setFunctionBinding('decls', new JsFunction({
       name: 'decls',
       fn: () => rules([
-        decl({ name: new Any('color', { role: 'property' }), value: any('red') })
+        decl({ name: 'color', value: any('red') })
       ])
     }));
 
@@ -2288,8 +2301,11 @@ describe('Call', () => {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('ok');
-      expect(CountingSequence.constructedCopies).toBe(1);
-      expect(rawArg).not.toBe(originalValue);
+      // Thin placement (LIVE_BINDING invariants 2/3): rawArgs owns a fresh List
+      // surface for mutation isolation, but SHARES the source arg node — the
+      // Sequence is never reconstructed and stays canonically parented.
+      expect(CountingSequence.constructedCopies).toBe(0);
+      expect(rawArg).toBe(originalValue);
       expect(rawArg instanceof Sequence ? rawArg.value[0] : undefined).toBe(originalLeaf);
       expect(rawArg?.parent?.parent).toBe(rule);
       expect(originalValue.parent).toBe(originalArgs);
@@ -2333,51 +2349,6 @@ describe('Call', () => {
     expect(originalArgs.value).toEqual([originalValue]);
     expect(originalValue.parent).toBe(originalArgs);
     expect(originalArgs.parent).toBe(rule);
-  });
-
-  it('records metadata rawArgs placement beside the owned argument surface', async () => {
-    let rawArgsDuringCall: List | undefined;
-    const root = rules([]);
-    root.setFunctionBinding('inspect-raw', new JsFunction({
-      name: 'inspect-raw',
-      fn: defineFunction(
-        'inspect-raw',
-        async function(this: { rawArgs: List }) {
-          rawArgsDuringCall = this.rawArgs;
-          return any('ok');
-        },
-        { params: [{ name: 'value', type: Sequence }] }
-      )
-    }));
-    context.root = root;
-    context.rulesContext = root;
-
-    const originalValue = seq([any('red'), dimension(10, 'px')]);
-    const originalArgs = list([originalValue]);
-    const rule = call({
-      name: ref({ key: 'inspect-raw' }, { type: 'function' }),
-      args: originalArgs
-    });
-
-    const result = await rule.eval(context);
-
-    expect(result.toTrimmedString()).toBe('ok');
-    expect(rawArgsDuringCall).toBeDefined();
-    if (!rawArgsDuringCall) {
-      throw new Error('Expected metadata rawArgs');
-    }
-    expect(rawArgsDuringCall).not.toBe(originalArgs);
-    expect(getCallRawArgsPlacement(rawArgsDuringCall)).toEqual({
-      source: rule,
-      sourceArgs: originalArgs
-    });
-    expect(getCallRawArgSourceNode(rawArgsDuringCall, 0)).toBe(originalValue);
-    expect(getCallRawArgDiagnosticSource(rawArgsDuringCall, 0)).toEqual({
-      source: rule,
-      sourceArg: originalValue,
-      index: 0
-    });
-    expect(getCallRawArgDiagnosticMessageSource(rawArgsDuringCall, 0)).toBe('argument 1 from $red 10');
   });
 
   it('keeps metadata rawArgs owned across dynamic render and resolve', async () => {
@@ -2524,10 +2495,14 @@ describe('Call', () => {
         expect(rawArgs).not.toBe(buffered.originalArgs);
         expect(rawArgs).not.toBe(resolved.originalArgs);
       }
-      for (const { originalValue, originalArgs, rule } of [direct, buffered, resolved]) {
+      for (const { originalValue, originalArgs } of [direct, buffered, resolved]) {
         expect(originalArgs.value).toEqual([originalValue]);
         expect(originalValue.parent).toBe(originalArgs);
-        expect(originalArgs.parent).toBe(rule);
+        // The Call is built with the raw `new CountingCall` constructor, which
+        // parents nothing (LIVE_BINDING invariant 6). Only the `list()` factory
+        // parented originalValue → originalArgs; originalArgs itself stays
+        // unparented, and thin-placement render/resolve never reparents it.
+        expect(originalArgs.parent).toBeUndefined();
       }
     } finally {
       CountingCall.countConstructions = false;
@@ -2578,7 +2553,9 @@ describe('Call', () => {
         'inspect-owned',
         async function(value: Sequence) {
           receivedArg = value;
-          return any(value !== originalValue ? 'ok' : 'bad');
+          // Thin placement (LIVE_BINDING invariants 2/3): a static arg evaluates
+          // to itself and is SHARED through the callable surface, not deep-cloned.
+          return any(value === originalValue ? 'ok' : 'bad');
         },
         { params: [{ name: 'value', type: Sequence }] }
       )
@@ -2595,7 +2572,7 @@ describe('Call', () => {
 
     expect(result.toTrimmedString()).toBe('ok');
     expect(receivedArg).toBeDefined();
-    expect(receivedArg).not.toBe(originalValue);
+    expect(receivedArg).toBe(originalValue);
     expect(originalValue.parent).toBe(originalArgs);
     expect(originalArgs.parent).toBe(rule);
   });
@@ -2703,10 +2680,12 @@ describe('Call', () => {
     }
 
     const originalArgs = list([any('red')]);
+    // Invariant 7: raw `new` shares; parent canonically via the explicit primitive
+    // (as the `call` factory does) so resolve() has real source parentage.
     const rule = new CountingCall({
       name: ref({ key: 'echo' }, { type: 'function' }),
       args: originalArgs
-    });
+    }).parentChildren();
 
     CountingCall.countConstructions = true;
     try {
@@ -2856,7 +2835,7 @@ describe('Call', () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
-      [10, 1, 11, 20, 1, 21]
+      { start: 10, end: 20 }
     );
     const rule = call({
       name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
@@ -2885,7 +2864,7 @@ describe('Call', () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
-      [10, 1, 11, 20, 1, 21]
+      { start: 10, end: 20 }
     );
     const rule = call({
       name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
@@ -2923,7 +2902,7 @@ describe('Call', () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
-      [10, 1, 11, 20, 1, 21]
+      { start: 10, end: 20 }
     );
     const rule = call({
       name: ref({ key: 'missing-fn' }, { type: 'function', fallbackValue: true }),
@@ -2975,7 +2954,7 @@ describe('Call', () => {
     const content = new Sequence(
       [any('raw'), any('content')],
       undefined,
-      [10, 1, 11, 20, 1, 21]
+      { start: 10, end: 20 }
     );
     const rule = call({
       name: ref({ key: 'bad' }, { type: 'function', fallbackValue: true }),
@@ -3026,7 +3005,7 @@ describe('Call', () => {
       contentNode: new Sequence(
         [any('raw'), any('content')],
         undefined,
-        [10, 1, 11, 20, 1, 21]
+        { start: 10, end: 20 }
       )
     }, { silentFail: true });
 

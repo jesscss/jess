@@ -30,7 +30,6 @@ let context: Context;
 
 describe('Style import extend behavior', () => {
   beforeAll(() => {
-    Node.prototype.fullRender = true;
   });
 
   beforeEach(() => {

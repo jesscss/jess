@@ -186,8 +186,26 @@ export class LessPlugin extends AbstractPlugin {
     let tree: Rules | undefined;
 
     try {
-      const parseResult = this.parser.parse(source, 'stylesheet', { context });
+      const parseResult = this.parser.parse(source);
       tree = parseResult.tree;
+
+      // The functional Less parser is context-free: it never receives the
+      // file-bearing TreeContext, so the root Rules has no `_treeContext` and
+      // import base-dir resolution falls back to `process.cwd()`. Attach the
+      // context (built above) to the root so relative `@import` paths resolve
+      // against the importing file's directory (`context.ts` `currentDirectory`).
+      if (tree) {
+        tree._treeContext = context;
+      }
+
+      // Thread the parser's whitespace/comment trivia into the render context so
+      // the serializer can round-trip authored value whitespace (multi-line
+      // lists, custom-property value spacing) AND inline comments. Standalone
+      // comments already round-trip as `Comment` nodes; their source ranges are
+      // reported so the render-time trivia view hides them (no double-emit). The
+      // functional CSS parser forwards trivia the same way (cssParser.ts).
+      context.opts.trivia = parseResult.trivia;
+      context.opts.liftedCommentRanges = parseResult.liftedCommentRanges;
 
       // Convert parser deprecation warnings to diagnostics
       if ('warnings' in parseResult && parseResult.warnings) {
@@ -209,9 +227,9 @@ export class LessPlugin extends AbstractPlugin {
         }
       }
 
-      // Convert all parser/lexer errors to normalized diagnostics
-      if (parseResult.errors.length || parseResult.lexerResult?.errors?.length) {
-        // Convert each parser error to a diagnostic
+      // Convert parser errors to normalized diagnostics. The functional parser
+      // has no separate lexer phase, so there are no lexer errors to convert.
+      if (parseResult.errors.length) {
         for (const error of parseResult.errors) {
           const line = error.token?.startLine ?? 1;
           const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
@@ -224,23 +242,6 @@ export class LessPlugin extends AbstractPlugin {
             errors.push(diagnostic);
           } else {
             warnings.push(diagnostic);
-          }
-        }
-        // Convert lexer errors
-        if (parseResult.lexerResult?.errors) {
-          for (const lexError of parseResult.lexerResult.errors) {
-            const line = typeof lexError.line === 'number' ? lexError.line : 1;
-            const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
-            const diagnostic = toDiagnostic(jessError);
-            // Ensure lines are extracted
-            if (!diagnostic.lines) {
-              diagnostic.lines = extractRelevantLines(source, line);
-            }
-            if ('errors' in diagnostic) {
-              errors.push(diagnostic);
-            } else {
-              warnings.push(diagnostic);
-            }
           }
         }
       }

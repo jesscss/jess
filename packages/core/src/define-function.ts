@@ -44,21 +44,6 @@ export type FunctionThis = {
   rawArgs: List;
 };
 
-export type RawArgsPlacementState = {
-  source: unknown;
-  sourceArgs: List;
-};
-
-const rawArgsPlacements = new WeakMap<List, RawArgsPlacementState>();
-
-export function setRawArgsPlacement(rawArgs: List, placement: RawArgsPlacementState): void {
-  rawArgsPlacements.set(rawArgs, placement);
-}
-
-export function getRawArgsPlacement(rawArgs: List): RawArgsPlacementState | undefined {
-  return rawArgsPlacements.get(rawArgs);
-}
-
 export type ParamDefinition = {
   name: string;
   type: ArgType | readonly ArgType[];
@@ -349,20 +334,18 @@ export function defineFunction<
     return fn(...positionalArgs);
   } as DefinedFunction<T, F>;
 
-  /** Attach runtime metadata directly; keep the callable as a real function. */
-  Object.defineProperties(result, {
-    name: {
-      value: name,
-      configurable: true
-    },
-    options: {
-      value: options,
-      configurable: true
-    },
-    _internal: {
-      value: fn,
-      configurable: true
-    }
+  /**
+   * Attach runtime metadata directly; keep the callable as a real function.
+   * `options` and `_internal` are plain fixed-shape assignments. Only `name`
+   * needs a descriptor: a function's own `name` slot is non-writable, so plain
+   * assignment cannot override the inferred "result" name.
+   */
+  const runtime = result as RuntimeFunction;
+  runtime.options = options;
+  runtime._internal = fn;
+  Object.defineProperty(result, 'name', {
+    value: name,
+    configurable: true
   });
 
   return result;
@@ -408,10 +391,6 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
       throw new TypeError('Copied function arguments must remain a List');
     }
     originalArgsList = copiedListArg;
-    const placement = getRawArgsPlacement(listArg);
-    if (placement) {
-      setRawArgsPlacement(originalArgsList, placement);
-    }
   } else {
     const copiedArgs = new Array(args.length);
     for (let i = 0; i < args.length; i++) {

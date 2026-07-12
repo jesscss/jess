@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import type {
   IToken,
-  TokenType,
+  TokenType
 } from 'chevrotain';
 
 import {
@@ -14,7 +15,7 @@ import {
 import {
   Reference,
   type MathMode,
-  type Node,
+  type Node
 } from '@jesscss/core';
 
 import { type ScssExtraTokenType } from './scssTokens.js';
@@ -63,6 +64,13 @@ export type RuleContext = {
   [k: string]: object | boolean | string | object[] | number | undefined;
 };
 
+/**
+ * @deprecated LEGACY — Chevrotain-based SCSS parser engine (extends the deprecated
+ * CssRecursiveParser). The functional macro grammar (`ScssGrammar` in
+ * ./parseman/grammar.ts) is the successor; it is not yet at full parity, so the
+ * `ScssParser` wrapper still ships as the primary `Parser`. TO BE DELETED once the
+ * functional SCSS parser reaches parity.
+ */
 export class ScssRecursiveParser extends CssRecursiveParser {
   declare T: TokenMap;
 
@@ -83,7 +91,9 @@ export class ScssRecursiveParser extends CssRecursiveParser {
 
     type ProductionFactory = (this: ScssRecursiveParser, T: TokenMap) => Rule;
     for (const [key, factory] of Object.entries(productions as Record<string, ProductionFactory>)) {
-      if (typeof factory !== 'function') continue;
+      if (typeof factory !== 'function') {
+        continue;
+      }
       const rule = factory.call(this, this.T);
       if (key in cssProductions) {
         this.OVERRIDE_RULE(key, rule);

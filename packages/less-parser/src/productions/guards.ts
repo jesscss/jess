@@ -1,3 +1,8 @@
+/* eslint-disable -- Retired Chevrotain parser; not linted (see @ts-nocheck below). */
+// @ts-nocheck — Retired Chevrotain parser. Uses the legacy 6-tuple `.location`
+// shape removed from Node in the provenance-side-table refactor; the functional
+// Parséman grammar (grammar-rules.ts + builders.ts) is the maintained parser.
+// Not type-checked.
 import type { RuleContext } from '../lessRecursiveParser.js';
 import type { TokenMap } from '../lessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
@@ -698,7 +703,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
           /** Reference targets will technically precede the reference, so we need to update the location to the target start location */
           if (target) {
             let [targetStartOffset, targetStartLine, targetStartColumn] = target.location!;
-            ref.location[0] = targetStartOffset;
+            ref.location.start = targetStartOffset;
             ref.location[1] = targetStartLine;
             ref.location[2] = targetStartColumn;
           }
@@ -868,7 +873,7 @@ export function mixinArg(this: P, T: TokenMap) {
         return;
       }
       return new VarDeclaration({
-        name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+        name: name.image.slice(1),
         value
       }, { paramVar: true }, location, $.context);
     }
@@ -882,7 +887,7 @@ export function mixinArg(this: P, T: TokenMap) {
       const location = $.endRule();
       if (ctx.isDefinition) {
         return new VarDeclaration({
-          name: new Any(name.image.slice(1), { role: 'property' }, $.getLocationInfo(name), $.context),
+          name: name.image.slice(1),
           value: new Nil(undefined, undefined, location, $.context)
         }, { paramVar: true }, location, $.context);
       }
@@ -994,7 +999,7 @@ export function useAtRule(this: P, T: TokenMap) {
     }
     return new AtRuleStatement(
       {
-        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+        name: name.image,
         prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)
       },
       undefined,

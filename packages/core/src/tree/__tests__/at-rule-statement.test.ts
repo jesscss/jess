@@ -10,7 +10,7 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 describe('AtRuleStatement', () => {
   it('serializes semicolon at-rules without a Rules body', () => {
     const node = atrulestatement({
-      name: any('@import', { role: 'atkeyword' }),
+      name: '@import',
       prelude: quoted(any('theme.css'))
     });
 
@@ -21,7 +21,7 @@ describe('AtRuleStatement', () => {
   it('renders semicolon at-rules through the active context', async () => {
     const context = new Context();
     const node = atrulestatement({
-      name: any('@import', { role: 'atkeyword' }),
+      name: '@import',
       prelude: quoted(any('theme.css'))
     });
 
@@ -32,7 +32,7 @@ describe('AtRuleStatement', () => {
     const context = new Context();
     const buffer = createRenderBuffer('segmented');
     const node = atrulestatement({
-      name: any('@import', { role: 'atkeyword' }),
+      name: '@import',
       prelude: quoted(any('theme.css'))
     });
 

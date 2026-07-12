@@ -3,7 +3,7 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import type { Rules } from '../rules.js';
-import { type MixinEntry, getMixinEntryRules } from './callable-entry.js';
+import { type MixinEntry, getMixinEntryRules, getMixinEntryGuard } from './callable-entry.js';
 import { getRootSourceRules } from './callable-surface.js';
 
 export type CallableEvalCandidatePreparation = {
@@ -139,11 +139,18 @@ export function prepareCallableEvalCandidates({
     const candidate = mixinCandidates[i]!;
     const candidateRules = getMixinEntryRules(candidate);
     const sourceRules = candidateRules.sourceNode;
+    // A guarded candidate opts into termination-by-guard: structural
+    // (rulesEvalStack) recursion blocking would wrongly drop a valid guarded
+    // countdown (e.g. `.generate(@i) when (@i > 0) { ... .generate(@i - 1); }`).
+    // The call-map arg-signature check still stops same-signature infinite loops.
+    const guarded = getMixinEntryGuard(candidate) !== undefined;
     let inStack = false;
-    for (let j = 0; j < rulesEvalStack.length; j++) {
-      if (rulesEvalStack[j] === sourceRules) {
-        inStack = true;
-        break;
+    if (!guarded) {
+      for (let j = 0; j < rulesEvalStack.length; j++) {
+        if (rulesEvalStack[j] === sourceRules) {
+          inStack = true;
+          break;
+        }
       }
     }
     const blockedByFailedGuardAncestor = isNode(candidate)

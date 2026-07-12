@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { defineFunction, callWithContext } from '../define-function.js';
 import { Context } from '../context.js';
 import { expectTypeOf } from 'vitest';
-import { Any, Color, Dimension, F_MAY_ASYNC, type AnyRole } from '../tree/index.js';
+import { Any, Color, Dimension, type AnyRole } from '../tree/index.js';
 
 describe('defineFunction', () => {
   const args = [
@@ -478,7 +478,6 @@ describe('defineFunction', () => {
       class TestNode extends Color {
         constructor(value: string) {
           super(value);
-          this.addFlag(F_MAY_ASYNC);
         }
 
         override async evalNode(_context: Context): Promise<this> {
@@ -525,7 +524,7 @@ describe('defineFunction', () => {
         }
       }
 
-      const value = new CopyBomb('red', undefined, [0, 1, 1, 2, 1, 3]);
+      const value = new CopyBomb('red', undefined, { start: 0, end: 2 });
       CopyBomb.copyShouldThrow = true;
       try {
         const ctx = new Context();
@@ -545,7 +544,6 @@ describe('defineFunction', () => {
       class TestNode extends Color {
         constructor(value: string) {
           super(value);
-          this.addFlag(F_MAY_ASYNC);
         }
 
         override async evalNode(_context: Context): Promise<this> {

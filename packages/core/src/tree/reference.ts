@@ -1,10 +1,11 @@
-import { defineType, Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
+import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_STATIC, type LocationInfo } from './node.js';
 import type { Context } from '../context.js';
 import { cast } from './util/cast.js';
 import type { DeclarationFindOptions } from './util/lookup-utils.js';
 import { Any, type AnyRole } from './any.js';
 import { Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
+import { isCombinator, combinatorValue } from './util/combinator.js';
 import { N } from './node-type.js';
 import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
@@ -13,8 +14,8 @@ import { Num } from './number.js';
 import { Dimension } from './dimension.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { Rules } from './rules.js';
-import type { Interpolated } from './interpolated.js';
+import { Rules } from './rules.js';
+import { Interpolated } from './interpolated.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
 import { JsArray } from './js-array.js';
@@ -73,6 +74,20 @@ import {
  */
 export type ReferenceValue = {
   target?: Reference | Call | undefined;
+  /**
+   * The lookup name in its ORIGINAL, un-flattened form — kept alongside the
+   * normalized `key`. NOT related to hydration/materialization; this is a
+   * source-form-vs-lookup-form distinction.
+   *
+   * A complex reference (`.a > .b`, `#ns.mixin`, `.foo.bar`, `@map[a]`) is
+   * flattened into `key` — a `string[]` path the registry walk consumes — which
+   * DISCARDS combinators, node structure and spans. `rawKey` retains the original
+   * `Selector`/node so the reference can still be:
+   *   - rendered back with its authored spelling (`printableKey = rawKey ?? key`), and
+   *   - re-used structurally when the looked-up result is injected into a selector
+   *     or `:extend()` target (where the flattened `key` strings are insufficient).
+   * `undefined` for simple references, where `key` alone suffices.
+   */
   rawKey?:
     string
     | string[]
@@ -124,6 +139,13 @@ export type ReferenceOptions = {
   preserveRulesLike?: boolean;
   /** Internal call-site hint: terminal mixin-ruleset lookup cannot use rulesets when args are present. */
   mixinRulesetCallHasArgs?: boolean;
+  /**
+   * Internal call-site hint: this mixin-ruleset reference is being EVALUATED as a
+   * call statement (`#ns > .m()`), which emits output — every same-named namespace
+   * on the path contributes. A bare value/index lookup (`#ns.m[@x]`) does NOT set
+   * this and keeps override (last-wins) namespace semantics.
+   */
+  mixinRulesetCall?: boolean;
 };
 
 // `sourceNode` stays on the public shallow-owned surface for compatibility and
@@ -169,7 +191,7 @@ function promoteResolvedPendingVarDecls(
     }
 
     const declName = decl.name;
-    const isStaticName = !(declName instanceof Node) || declName.hasFlag(F_STATIC);
+    const isStaticName = !(declName instanceof Interpolated);
     if (!isStaticName) {
       remaining.push(decl);
       continue;
@@ -251,6 +273,17 @@ function isInsideSelectorCapture(node: Node | undefined): boolean {
   return false;
 }
 
+/**
+ * A bracket-capture call reference `*[.foo]()` — the reference's KEY is a
+ * `SelectorCapture` node. This is DISTINCT from the dot mixin-ruleset call
+ * `*.foo()` (a string key, `type: 'mixin-ruleset'`, no capture key). The bracket
+ * form resolves ruleset-only; the dot form is unchanged (both mixin + ruleset).
+ */
+function isSelectorCaptureKeyReference(referenceNode: Reference): boolean {
+  const key = referenceNode.key;
+  return typeof key === 'object' && key !== null && !Array.isArray(key) && key.type === 'SelectorCapture';
+}
+
 function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   if (isNode(selector, N.BasicSelector) || selector.type === 'InterpolatedSelector') {
     return selector.valueOf();
@@ -269,7 +302,7 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
       ) {
         continue;
       }
-      if (isNode(node, N.Combinator) && (node.value === '>' || node.value === ' ')) {
+      if (isCombinator(node) && (combinatorValue(node) === '>' || combinatorValue(node) === ' ')) {
         continue;
       }
       return selector.valueOf();
@@ -297,7 +330,14 @@ function getLookupStartIndex(node: Node): number | undefined {
     }
   }
 
-  while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
+  // Walk up to the nearest ENCLOSING SCOPE boundary, taking the outermost
+  // in-scope statement's index. The boundary is any Rules SUBCLASS — Ruleset,
+  // Mixin, and the control nodes ($if/$for/$while all extend Rules) — not just the
+  // exact `N.Rules` bit. `isNode(parent, N.Rules)` missed control-node parents, so
+  // for a SHARED loop body a body declaration's `@ref` walked PAST its own
+  // VarDeclaration up to the `$while`, overstating `start` and making a
+  // self-referential `i: i+1` read itself instead of the enclosing (previous) value.
+  while (currentNode && currentNode.parent && !(currentNode.parent instanceof Rules)) {
     currentNode = currentNode.parent;
     if (currentNode && currentNode.index !== undefined) {
       startIndex = currentNode.index;
@@ -482,7 +522,25 @@ function createScopeFrameVariableBindingHandle(
 }
 
 function getBindingHandleValue(handle: ScopeFrameVariableBindingHandle): Node {
-  return getBindingCellValue(handle.cell);
+  const value = getBindingCellValue(handle.cell);
+  // Detached-ruleset closure capture (variable case): a Rules stored in a
+  // variable closes over the surface where the variable was DEFINED (the binding's
+  // rulesContext T, which carries per-call param live-slots). Record it so the
+  // placement clone produced when it is invoked resolves free vars up T. Set (not
+  // ??=) because the shared canonical value is re-used across calls; eval is
+  // synchronous from here to the invoking clone, which inherits this via inherit().
+  if (isNode(value, N.Rules)) {
+    // The closure scope is the SURFACE that owns the binding (T) — the per-call
+    // eval surface carrying param live-slots — i.e. the owner frame's Rules, NOT
+    // the cell's canonical rulesContext (which is the definition Mixin/body).
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const t = handle.ownerFrame.rulesNode as Rules | undefined;
+    if (t && isNode(t, N.Rules)) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      (value as unknown as { _closureScope?: unknown })._closureScope = t;
+    }
+  }
+  return value;
 }
 
 function getBindingHandleRulesContext(handle: ScopeFrameVariableBindingHandle): Rules | undefined {
@@ -812,7 +870,8 @@ function lookupScopeFrameVariableBinding(
   key: string,
   opts: DeclarationFindOptions,
   env: RulesLookupAdapterEnv,
-  mode: ScopeFrameVariableBindingMode = 'full'
+  mode: ScopeFrameVariableBindingMode = 'full',
+  leakStart?: number
 ): ScopeFrameVariableBindingResult {
   if (mode === 'full' && (
     env.hasTarget
@@ -826,6 +885,7 @@ function lookupScopeFrameVariableBinding(
   }
   const hit = lookupScopeFrameVariable(frame, key, {
     start: mode === 'full' ? opts.start : undefined,
+    leakStart,
     filter: env.filter,
     blockedSource: node => env.context.searchScope.has(node),
     includeLive: mode === 'live-current' || env.readMode !== 'snapshot',
@@ -948,7 +1008,7 @@ function performVariableRulesLookup(
     const frameHit = lookupScopeFrameVariableBinding(scope, keyStr, {
       start: occurrenceStart,
       filter: env.filter
-    }, env, frameMode);
+    }, env, frameMode, shape.start);
     if (frameHit) {
       return frameHit === SCOPE_FRAME_VARIABLE_MISS ? undefined : frameHit;
     }
@@ -1022,14 +1082,19 @@ function performMixinRulesLookup(
   if (shouldPrepareCallableReferenceFrame(scope, lookupContext, shape, key)) {
     scope.getScopeFrame();
   }
+  // Bracket-capture call `*[.foo]()` resolves RULESET-only: allow rulesets through
+  // (no `'Mixin'` filter, which would drop them) and filter to Rulesets.
+  const captureKey = isSelectorCaptureKeyReference(lookupContext.referenceNode);
   return scope.findMixin(
     key,
-    'Mixin',
+    captureKey ? undefined : 'Mixin',
     {
       context: lookupContext.context,
       hasTarget: lookupContext.hasTarget,
       local: shape.local || undefined,
-      terminalMixinOnly: shape.terminalMixinOnly || undefined
+      terminalMixinOnly: shape.terminalMixinOnly || undefined,
+      rulesetsOnly: captureKey || undefined,
+      mixinCall: lookupContext.referenceNode.options.mixinRulesetCall || undefined
     }
   );
 }
@@ -1043,6 +1108,9 @@ function performMixinRulesetRulesLookup(
   if (shouldPrepareCallableReferenceFrame(scope, lookupContext, shape, key)) {
     scope.getScopeFrame();
   }
+  // Dot mixin-ruleset call `*.foo()` stays both; bracket-capture `*[.foo]()`
+  // resolves ruleset-only.
+  const captureKey = isSelectorCaptureKeyReference(lookupContext.referenceNode);
   return scope.findMixin(
     key,
     undefined,
@@ -1050,7 +1118,9 @@ function performMixinRulesetRulesLookup(
       context: lookupContext.context,
       hasTarget: lookupContext.hasTarget,
       local: shape.local || undefined,
-      terminalMixinOnly: shape.terminalMixinOnly || undefined
+      terminalMixinOnly: shape.terminalMixinOnly || undefined,
+      rulesetsOnly: captureKey || undefined,
+      mixinCall: lookupContext.referenceNode.options.mixinRulesetCall || undefined
     }
   );
 }
@@ -2549,48 +2619,64 @@ function isRulesLikeReferenceValue(node: Node): boolean {
 function createRulesLikeReferenceSurface(directValue: MixinEntry): MixinEntry;
 function createRulesLikeReferenceSurface(directValue: Node): PreservedRulesLikeValue;
 function createRulesLikeReferenceSurface(directValue: MixinEntry | Node): MixinEntry | PreservedRulesLikeValue {
-  const descriptors = Object.getOwnPropertyDescriptors(directValue);
-  const optionsDescriptor = descriptors._options;
-  if (
-    optionsDescriptor
-    && 'value' in optionsDescriptor
-    && optionsDescriptor.value
-    && typeof optionsDescriptor.value === 'object'
-  ) {
-    optionsDescriptor.value = { ...optionsDescriptor.value };
-  }
-  Reflect.deleteProperty(descriptors, 'sourceNode');
-  Reflect.deleteProperty(descriptors, 'parent');
-  Reflect.deleteProperty(descriptors, 'index');
+  // Fast fixed-shape surface. The surface must (a) stay the SAME class as the
+  // source (callers check `instanceof Rules`/`Mixin` and `.type`), (b) SHARE the
+  // source's child nodes WITHOUT re-parenting them (children keep pointing at the
+  // canonical source — the reference suite asserts `child.parent === source` and
+  // that neither `clone()` nor `inherit()` runs), and (c) carry independent
+  // `sourceNode`, `parent`, `index`. Running the node constructor is out (it
+  // adopts/re-parents structural children); `clone()`/`derive()` are out (they
+  // call `inherit`). So we allocate a bare same-prototype object and copy every
+  // own field of the source in the source's own declaration order — this
+  // reproduces the source's monomorphic hidden class exactly (no per-instance
+  // descriptor attach, no varying shape) — then override the 3 surface fields.
+  // This replaces the old `Object.getOwnPropertyDescriptors` +
+  // `defineProperties`x2 + `Reflect.deleteProperty`x3 reflective build (the #1
+  // dynamic-eval allocation) with a flat field copy on a fixed shape.
+  const directNode = isNode(directValue) ? directValue : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const preservedValue = Object.create(
     Object.getPrototypeOf(directValue)
-  );
+  ) as PreservedRulesLikeValue;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const source = directValue as unknown as Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const target = preservedValue as unknown as Record<string, unknown>;
+  const keys = Object.keys(source);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]!;
+    target[key] = source[key];
+  }
   if (!(preservedValue instanceof Node)) {
     throw new TypeError('Preserved rules-like value must remain a Node');
   }
-  Object.defineProperties(preservedValue, descriptors);
-  const directNode = isNode(directValue) ? directValue : undefined;
-  const sourceNode = directNode?.sourceNode instanceof Node ? directNode.sourceNode : directNode;
-  Object.defineProperties(preservedValue, {
-    sourceNode: {
-      value: directValue,
-      writable: true,
-      enumerable: false,
-      configurable: false
-    },
-    parent: {
-      value: (directNode?.parent) ?? sourceNode?.parent,
-      writable: true,
-      enumerable: false,
-      configurable: true
-    },
-    index: {
-      value: directValue.index ?? sourceNode?.index,
-      writable: true,
-      enumerable: true,
-      configurable: true
-    }
-  });
+  // Own `_options` so surface-local option edits never leak into the source. The
+  // field-copy above already shared the source's `_options` reference; replace it
+  // in place with a shallow clone (fixed shape — same key, object→object).
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const surfaceOptions = preservedValue as unknown as { _options: unknown };
+  const options = surfaceOptions._options;
+  if (options && typeof options === 'object') {
+    surfaceOptions._options = { ...options };
+  }
+  // Same discipline for a `Rules._lookup` struct: the key-copy above shared the
+  // source's struct object, so a surface-local lookup write would leak into the
+  // source. Give the surface its own shallow struct clone (still sharing the inner
+  // Maps by reference, matching the pre-slim per-field copy). Fixed shape — the
+  // struct is a plain class, so `{ ...struct }`-style field copy keeps it fast.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const surfaceLookup = preservedValue as unknown as { _lookup: object | undefined };
+  const lookup = surfaceLookup._lookup;
+  if (lookup && typeof lookup === 'object') {
+    surfaceLookup._lookup = Object.assign(Object.create(Object.getPrototypeOf(lookup)), lookup);
+  }
+  const sourceNode: Node | undefined = directNode?.sourceNode instanceof Node
+    ? directNode.sourceNode
+    : directNode;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  preservedValue.sourceNode = directValue as Node;
+  preservedValue.parent = (directNode?.parent) ?? sourceNode?.parent;
+  preservedValue.index = directValue.index ?? sourceNode?.index;
   return preservedValue;
 }
 
@@ -2637,7 +2723,7 @@ function finalizeFallbackReferenceResult(
     throw getReferenceNotFoundError(lookupType, valueKeyStr);
   }
   if (fallbackValue === true) {
-    return new Any(`${valueKey}`, { role: referenceNode.role });
+    return new Any(`${valueKey}`, { role: referenceNode.options.role });
   }
   return evaluateFallbackValue(fallbackValue, context, textOnly);
 }
@@ -2665,7 +2751,7 @@ function finalizeCallableFallbackReferenceResult(
     ? candidate.params.toTrimmedString()
     : '';
   context.popReference();
-  return new Any(`${getLookupKeyDisplay(valueKey)}(${params})`, { role: referenceNode.role });
+  return new Any(`${getLookupKeyDisplay(valueKey)}(${params})`, { role: referenceNode.options.role });
 }
 
 function finalizeDirectReferenceResult(
@@ -2793,12 +2879,40 @@ function finalizeScopeFrameVariableBindingResult(
     }
     return evald;
   };
+  // A variable found in a mixin-output namespace member (e.g. `@gender: @gender_`
+  // inside `.person`, reached via `.person.sayGender`) must resolve its OWN free
+  // references up the DEFINITION scope's retained frame — the output `.person`
+  // whose frame chain retains the call's param live-slots (`gender_="Male"`) — not
+  // the reading context (`.sayGender`'s output, which chains to the outer `.test`
+  // where the same name resolves to a different value). The retained-frame signal
+  // is intrinsic: the binding's owner frame carries live param bindings, and the
+  // definition scope (`bindingRulesContext`) is a distinct scope from the reader.
+  // Unlike a broad owner-frame re-point (which breaks detached-ruleset closures
+  // that intentionally resolve against a CAPTURED scope), this routes through
+  // `bindingRulesContext` — the SAME captured-definition scope those closures
+  // already use — so both cases resolve up their correct retained frame.
+  // The owner frame is where the variable was FOUND. When it retains per-call
+  // param live-slots in its parent chain (a mixin-output namespace member such as
+  // `.person`, whose frame chains to the call's `gender_="Male"` slot), the value's
+  // free refs must resolve up THAT retained frame — its rulesNode carries the live
+  // frame, whereas the cell/handle `bindingRulesContext` node may have lost its
+  // `_scopeFrame` by value-eval time and re-derive up the clobbered `.parent`.
+  const ownerFrameRetainsParams = isNode(bindingSource, N.VarDeclaration)
+    && !bindingSource.options?.paramVar
+    && binding.ownerFrame.parent?.hasLiveBindings === true
+    && isNode(binding.ownerFrame.rulesNode, N.Rules)
+    && binding.ownerFrame.rulesNode._scopeFrame === binding.ownerFrame
+    && binding.ownerFrame.rulesNode !== context.rulesContext;
+  const ownerDefinitionRules = ownerFrameRetainsParams
+    ? binding.ownerFrame.rulesNode
+    : undefined;
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
     bindingSource.options?.paramVar
     || (
       context.leakyRules !== true
       && isNode(bindingValue, N.Rules | N.Collection)
     )
+    || ownerFrameRetainsParams
   );
 
   let evalFlags = REF_EVAL_REUSE_SOURCE_FREE;
@@ -2815,7 +2929,9 @@ function finalizeScopeFrameVariableBindingResult(
   const evaluatedBinding = evaluateBindingHandleValue(
     bindingValue,
     bindingSource,
-    bindingRulesContext,
+    // Prefer the retained owner-frame rulesNode (carrying the live per-call params)
+    // over the cell/handle context, which may have lost its frame by value-eval time.
+    ownerDefinitionRules ?? bindingRulesContext,
     context,
     evalFlags,
     shouldUseDefinitionRulesContext
@@ -2849,33 +2965,44 @@ function evaluateBindingHandleValue(
     context.rulesContext = bindingRulesContext ?? bindingSource.rulesParent ?? context.rulesContext;
     changedRulesContext = true;
   }
+
+  // The searchScope recursion guard only needs to cover the SYNCHRONOUS span of
+  // the value evaluation: a self-reference (`i: i + 1`) reads the same binding
+  // while descending into its own value, which happens before eval returns. If
+  // the value eval yields a thenable, releasing the guard only in the deferred
+  // `.finally` keeps `bindingSource` blocked for the whole await window — long
+  // enough to falsely reject an INDEPENDENT, overlapping read of the same
+  // binding (e.g. two sibling `& when (@min ...)` guards in a mixin body, whose
+  // `@min` is an async plugin-fn call). Release the guard as soon as the sync
+  // phase completes so concurrent consumers resolve normally. The rulesContext
+  // swap genuinely spans the async eval, so it stays deferred to `.finally`.
   if (bindingSource) {
     context.searchScope.add(bindingSource);
   }
+  let guardHeld = bindingSource !== undefined;
+  const releaseGuard = () => {
+    if (guardHeld) {
+      context.searchScope.delete(bindingSource!);
+      guardHeld = false;
+    }
+  };
 
   try {
     const result = evaluateReferenceValueNode(bindingValue, context, evalFlags);
+    releaseGuard();
     if (isThenable(result)) {
       return Promise.resolve(result).finally(() => {
-        if (bindingSource) {
-          context.searchScope.delete(bindingSource);
-        }
         if (changedRulesContext) {
           context.rulesContext = savedRulesContext;
         }
       });
-    }
-    if (bindingSource) {
-      context.searchScope.delete(bindingSource);
     }
     if (changedRulesContext) {
       context.rulesContext = savedRulesContext;
     }
     return result;
   } catch (error) {
-    if (bindingSource) {
-      context.searchScope.delete(bindingSource);
-    }
+    releaseGuard();
     if (changedRulesContext) {
       context.rulesContext = savedRulesContext;
     }
@@ -2888,7 +3015,13 @@ function finalizeDeclarationReferenceResult(
   declaration: Declaration | VarDeclaration,
   context: Context
 ): MaybePromise<Node> {
-  const declarationValue = declaration.value;
+  // A Less value can be a flat parser segment array (`ice cream` →
+  // `[Keyword, Keyword]`) rather than a Node. Coalesce it to its structured
+  // node (a space `Sequence`) via `valueNode()` so an accessor result renders
+  // `ice cream`, not the array's comma-joined `String(...)` form.
+  const declarationValue = isNode(declaration.value)
+    ? declaration.value
+    : declaration.valueNode();
   let isMergedAssign = false;
   let hasImportant = false;
   if (isNode(declaration, N.Declaration)) {
@@ -2912,18 +3045,47 @@ function finalizeDeclarationReferenceResult(
     referenceNode.options?.preserveRulesLike === true
     && isNode(declarationValue, N.Rules | N.Collection)
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const preservedValue = createRulesLikeReferenceSurface(declarationValue as Node);
     context.popReference();
     return preservedValue;
   }
+  // The searchScope recursion guard only covers the SYNCHRONOUS span of the
+  // value evaluation (a self-reference reads the same declaration while
+  // descending into its own value, before eval returns). Releasing it only in
+  // the deferred `.finally` keeps the declaration blocked across the whole await
+  // window when the value eval is async, falsely rejecting an independent,
+  // overlapping read of the same declaration. Release once the sync phase ends.
   context.searchScope.add(declaration);
+  let searchScopeHeld = true;
+  const releaseSearchScope = () => {
+    if (searchScopeHeld) {
+      context.searchScope.delete(declaration);
+      searchScopeHeld = false;
+    }
+  };
   let referencePopped = false;
   let importantPushed = false;
   const popReference = () => {
     if (!referencePopped) {
       context.popReference();
       referencePopped = true;
+    }
+  };
+  // An accessor into a mixin-CALL output (`.mixin(1px)[@return]`) finds a
+  // declaration whose value still carries free references to the mixin's PARAMS
+  // (`@return: @val + 1px`). Those params live in the output Rules' OWN retained
+  // scope frame, not in the caller's rulesContext. Evaluate the value with the
+  // declaration's owning Rules active so `@val` resolves up that captured param
+  // frame. Only re-point when the owner carries its own frame (a called mixin
+  // output) — a plain lexical declaration keeps the ambient rulesContext.
+  const declOwner = declaration.parent;
+  const useDeclOwnerScope = isNode(declOwner, N.Rules)
+    && declOwner._scopeFrame !== undefined
+    && declOwner !== context.rulesContext;
+  const savedRulesContext = context.rulesContext;
+  const restoreRulesContext = () => {
+    if (useDeclOwnerScope) {
+      context.rulesContext = savedRulesContext;
     }
   };
   try {
@@ -2934,10 +3096,15 @@ function finalizeDeclarationReferenceResult(
     }
     if (!isNode(declarationValue)) {
       context.popReference();
-      return new Any(String(declarationValue), { role: referenceNode.role });
+      return new Any(String(declarationValue), { role: referenceNode.options.role });
+    }
+    if (useDeclOwnerScope) {
+      context.rulesContext = declOwner as Rules;
     }
     const evaluated = evaluateReferenceValueNode(declarationValue, context);
+    releaseSearchScope();
     const finalize = (evaluatedNode: Node): Node => {
+      restoreRulesContext();
       if (!isMergedAssign) {
         popReference();
         return evaluatedNode;
@@ -2955,27 +3122,24 @@ function finalizeDeclarationReferenceResult(
       return Promise.resolve(evaluated)
         .then(finalize)
         .catch((error) => {
+          restoreRulesContext();
           popReference();
           if (importantPushed) {
             context.popImportantSource();
             importantPushed = false;
           }
           throw error;
-        })
-        .finally(() => {
-          context.searchScope.delete(declaration);
         });
     }
-    const finalized = finalize(evaluated);
-    context.searchScope.delete(declaration);
-    return finalized;
+    return finalize(evaluated);
   } catch (error) {
+    releaseSearchScope();
+    restoreRulesContext();
     popReference();
     if (importantPushed) {
       context.popImportantSource();
       importantPushed = false;
     }
-    context.searchScope.delete(declaration);
     throw error;
   }
 }
@@ -3200,7 +3364,7 @@ function finalizeReferenceLookupResult(
       if (fallbackText) {
         context.popReference();
         referenceNode._rulesLookupHandle = undefined;
-        return new Any(fallbackText, { role: referenceNode.role });
+        return new Any(fallbackText, { role: referenceNode.options.role });
       }
       return finalizeFallbackReferenceResult(
         referenceNode,
@@ -3216,6 +3380,14 @@ function finalizeReferenceLookupResult(
   return finalizeDirectReferenceResult(referenceNode, returnVal, context);
 }
 
+/**
+ * Unwrap a variable-lookup result down to its value node. "Raw" = the DIRECT,
+ * un-unwrapped return of the lookup (a scope binding handle, a declaration
+ * occurrence, a `Declaration`/`VarDeclaration`, or already a value); this peels
+ * whichever wrapper it is to the underlying value. Returns `RAW_REFERENCE_TARGET_NOT_FOUND`
+ * when the lookup produced nothing. Not related to hydration/materialization —
+ * "raw" here is "the lookup's direct result before unwrapping".
+ */
 function finalizeRawReferenceLookupTarget(
   returnVal: ReferenceLookupReturnValue | unknown
 ): unknown {
@@ -3335,31 +3507,16 @@ function resolveRawReferenceLookupTarget(
   return finalizeRawReferenceLookupTarget(lookup.returnVal);
 }
 
+/**
+ * True for a PLAIN variable reference (`@foo` / `$foo`): variable type, no
+ * `target` accessor, no `filter`, not `preserveRulesLike` — nothing to resolve
+ * beyond the value itself, so it can be rendered from its direct lookup value.
+ */
 function canRenderRawVariableReferenceDirectly(referenceNode: Reference): boolean {
   return (referenceNode.options.type ?? 'variable') === 'variable'
     && referenceNode.target === undefined
     && referenceNode.options.filter === undefined
     && referenceNode.options.preserveRulesLike !== true;
-}
-
-function finalizeDirectRawRenderValue(
-  referenceNode: Reference,
-  returnVal: unknown,
-  context: Context
-): Node | undefined {
-  if (!canRenderRawVariableReferenceDirectly(referenceNode)) {
-    return undefined;
-  }
-  const target = finalizeRawReferenceLookupTarget(returnVal);
-  if (
-    target === RAW_REFERENCE_TARGET_NOT_FOUND
-    || !isNode(target)
-    || !canReturnReferenceValue(target)
-  ) {
-    return undefined;
-  }
-  context.popReference();
-  return target;
 }
 
 function emitReferenceSyntaxKey(
@@ -3385,6 +3542,66 @@ function emitReferenceSyntaxKey(
   w.add(String(key));
 }
 
+/**
+ * The invariant part of the reference resolution pipeline — everything the
+ * lookup + finalize tail needs that doesn't change between the per-stage
+ * suspension points. Built once per {@link evaluateReferenceNode} call so the
+ * sync/async tail helpers can thread through without re-listing every stage.
+ */
+type ReferenceLookupTail = {
+  referenceNode: Reference;
+  target: ReferenceValue['target'];
+  lookupType: LookupType;
+  fallbackValue: ReferenceOptions['fallbackValue'];
+  originalFilter: ReferenceOptions['filter'] | undefined;
+  context: Context;
+  renderTextOnly: boolean;
+};
+
+/** Tail stages: look up the resolved target, then finalize (sync or async). */
+function lookupAndFinalizeReference(
+  tail: ReferenceLookupTail,
+  resolvedTarget: unknown,
+  valueKey: NormalizedLookupKey
+): MaybePromise<Node> {
+  const { referenceNode, target, lookupType, fallbackValue, originalFilter, context, renderTextOnly } = tail;
+  const lookup = lookupResolvedReference({
+    referenceNode,
+    resolvedTarget,
+    lookupType,
+    valueKey,
+    target,
+    originalFilter,
+    context
+  });
+  if (isThenable(lookup)) {
+    return Promise.resolve(lookup).then(({ returnVal, valueKey }) =>
+      finalizeReferenceLookupResult(referenceNode, returnVal, valueKey, lookupType, fallbackValue, context, renderTextOnly)
+    );
+  }
+  return finalizeReferenceLookupResult(referenceNode, lookup.returnVal, lookup.valueKey, lookupType, fallbackValue, context, renderTextOnly);
+}
+
+/** Tail stages: resolve the target value, then look up + finalize (sync or async). */
+function resolveValueAndFinalizeReference(
+  tail: ReferenceLookupTail,
+  resolvedTarget: unknown,
+  valueKey: NormalizedLookupKey
+): MaybePromise<Node> {
+  const resolvedValue = resolveReferenceTargetValue({
+    referenceNode: tail.referenceNode,
+    resolvedTarget,
+    valueKey,
+    context: tail.context
+  });
+  if (isThenable(resolvedValue)) {
+    return Promise.resolve(resolvedValue).then(([nextTarget, nextKey]) =>
+      lookupAndFinalizeReference(tail, nextTarget, nextKey)
+    );
+  }
+  return lookupAndFinalizeReference(tail, resolvedValue[0], resolvedValue[1]);
+}
+
 function evaluateReferenceNode(args: {
   referenceNode: Reference;
   target: ReferenceValue['target'];
@@ -3394,7 +3611,6 @@ function evaluateReferenceNode(args: {
   originalFilter: ReferenceOptions['filter'] | undefined;
   context: Context;
   textOnly?: boolean;
-  directStaticRender?: boolean;
 }): MaybePromise<Node> {
   const {
     referenceNode,
@@ -3404,11 +3620,19 @@ function evaluateReferenceNode(args: {
     fallbackValue,
     originalFilter,
     context,
-    textOnly,
-    directStaticRender
+    textOnly
   } = args;
   const renderTextOnly = textOnly === true;
   context.pushReference();
+  const tail: ReferenceLookupTail = {
+    referenceNode,
+    target,
+    lookupType,
+    fallbackValue,
+    originalFilter,
+    context,
+    renderTextOnly
+  };
   const initialHandleLookup = tryReadInitialSourceStaticRulesLookupHandle({
     referenceNode,
     lookupType,
@@ -3418,17 +3642,10 @@ function evaluateReferenceNode(args: {
     context
   });
   if (initialHandleLookup !== undefined) {
-    const { returnVal, valueKey } = initialHandleLookup;
-    const directRenderValue = directStaticRender === true
-      ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-      : undefined;
-    if (directRenderValue) {
-      return directRenderValue;
-    }
     return finalizeReferenceLookupResult(
       referenceNode,
-      returnVal,
-      valueKey,
+      initialHandleLookup.returnVal,
+      initialHandleLookup.valueKey,
       lookupType,
       fallbackValue,
       context,
@@ -3439,155 +3656,14 @@ function evaluateReferenceNode(args: {
   if (isThenable(initialTarget)) {
     return Promise.resolve(initialTarget)
       .then(resolved => evaluateReferenceKey(key, resolved, context))
-      .then(([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
-        referenceNode,
-        resolvedTarget,
-        valueKey,
-        context
-      }))
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
-        return finalizeReferenceLookupResult(
-          referenceNode,
-          returnVal,
-          valueKey,
-          lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
-      });
+      .then(([resolvedTarget, valueKey]) => resolveValueAndFinalizeReference(tail, resolvedTarget, valueKey));
   }
   const evaluatedKey = evaluateReferenceKey(key, initialTarget, context);
   if (isThenable(evaluatedKey)) {
     return Promise.resolve(evaluatedKey)
-      .then(([resolvedTarget, valueKey]) => resolveReferenceTargetValue({
-        referenceNode,
-        resolvedTarget,
-        valueKey,
-        context
-      }))
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
-        return finalizeReferenceLookupResult(
-          referenceNode,
-          returnVal,
-          valueKey,
-          lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
-      });
+      .then(([resolvedTarget, valueKey]) => resolveValueAndFinalizeReference(tail, resolvedTarget, valueKey));
   }
-  const resolvedValue = resolveReferenceTargetValue({
-    referenceNode,
-    resolvedTarget: evaluatedKey[0],
-    valueKey: evaluatedKey[1],
-    context
-  });
-  if (isThenable(resolvedValue)) {
-    return Promise.resolve(resolvedValue)
-      .then(([resolvedTarget, valueKey]) => lookupResolvedReference({
-        referenceNode,
-        resolvedTarget,
-        lookupType,
-        valueKey,
-        target,
-        originalFilter,
-        context
-      }))
-      .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
-        return finalizeReferenceLookupResult(
-          referenceNode,
-          returnVal,
-          valueKey,
-          lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
-      });
-  }
-  const lookup = lookupResolvedReference({
-    referenceNode,
-    resolvedTarget: resolvedValue[0],
-    lookupType,
-    valueKey: resolvedValue[1],
-    target,
-    originalFilter,
-    context
-  });
-  if (isThenable(lookup)) {
-    return Promise.resolve(lookup)
-      .then(({ returnVal, valueKey }) => {
-        const directRenderValue = directStaticRender === true
-          ? finalizeDirectRawRenderValue(referenceNode, returnVal, context)
-          : undefined;
-        if (directRenderValue) {
-          return directRenderValue;
-        }
-        return finalizeReferenceLookupResult(
-          referenceNode,
-          returnVal,
-          valueKey,
-          lookupType,
-          fallbackValue,
-          context,
-          renderTextOnly
-        );
-      });
-  }
-
-  const directRenderValue = directStaticRender === true
-    ? finalizeDirectRawRenderValue(referenceNode, lookup.returnVal, context)
-    : undefined;
-  if (directRenderValue) {
-    return directRenderValue;
-  }
-  return finalizeReferenceLookupResult(
-    referenceNode,
-    lookup.returnVal,
-    lookup.valueKey,
-    lookupType,
-    fallbackValue,
-    context,
-    renderTextOnly
-  );
+  return resolveValueAndFinalizeReference(tail, evaluatedKey[0], evaluatedKey[1]);
 }
 
 // AUDIT: We have got to drastically trim this file.
@@ -3599,10 +3675,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   static override childKeys = ['target', 'key'] as const;
 
   _rulesLookupHandle: ReferenceRulesLookupHandle | undefined;
-  readonly target: ReferenceValue['target'];
   readonly key: ReferenceValue['key'];
-  readonly rawKey: ReferenceValue['rawKey'];
-  readonly role: AnyRole | undefined;
+  /**
+   * `target`/`rawKey` are DISJOINT fields: only index/property/mixin-ruleset
+   * references ever carry them (a plain `variable`/`function` reference — the
+   * bulk of live instances — never does). They are declared without an
+   * initializer and assigned only when present, so the common shape omits both
+   * hidden-class slots. Readers must tolerate the field being absent (accessing
+   * a missing own property returns `undefined`, e.g. `this.target ?? …`).
+   */
+  declare readonly target?: ReferenceValue['target'];
+  /** Original un-flattened lookup name; see {@link ReferenceValue.rawKey}. */
+  declare readonly rawKey?: ReferenceValue['rawKey'];
 
   constructor(
     value: ReferenceValue | string,
@@ -3615,12 +3699,19 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     }
     super(value, options, location);
     this._treeContext = treeContext;
-    this.target = value.target;
     this.key = value.key;
-    this.rawKey = value.rawKey;
-    this.role = options?.role;
-    // References are always non-static and may be async
-    this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
+    if (value.target !== undefined) {
+      (this as { target?: ReferenceValue['target'] }).target = value.target;
+    }
+    if (value.rawKey !== undefined) {
+      (this as { rawKey?: ReferenceValue['rawKey'] }).rawKey = value.rawKey;
+    }
+    // References are always non-static
+    this.addFlags(F_VISIBLE, F_NON_STATIC);
+  }
+
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
   }
 
   override valueOf() {
@@ -3651,17 +3742,28 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         w.add(']');
         break;
       case 'variable':
-        if (target) {
-          w.add('.$');
+        // A variable lookup ON a target renders in brackets (`$theme[foo]`);
+        // `.$key` is not a valid Jess form. A base-less variable-interpolation
+        // (`role: 'ident'`, e.g. `.widget-$[side]`) also brackets: `$[side]`. A
+        // plain bare `$foo` (no target) has already emitted its `$` above.
+        // (Role lives on `options.role` — the `this.role` field was removed in the
+        // dev merge that migrated role reads to `options.role`.)
+        if (target || this.options.role === 'ident') {
+          w.add('[');
+          emitReferenceSyntaxKey(this, printableKey, options);
+          w.add(']');
+        } else {
+          emitReferenceSyntaxKey(this, printableKey, options);
         }
-        emitReferenceSyntaxKey(this, printableKey, options);
         break;
       case 'declaration':
         w.add('.');
         emitReferenceSyntaxKey(this, printableKey, options);
         break;
       case 'property':
-        if (target) {
+        // Property lookup on a target, and base-less property-interpolation
+        // (`role: 'ident'`, e.g. `$['border-color']`), both render in brackets.
+        if (target || this.options.role === 'ident') {
           w.add('[');
           emitReferenceSyntaxKey(this, printableKey, options);
           w.add(']');
@@ -3725,8 +3827,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             fallbackValue: this.options.fallbackValue,
             originalFilter: this.options.filter,
             context,
-            textOnly: true,
-            directStaticRender: true
+            textOnly: true
           });
           return isThenable(evaluated)
             ? Promise.resolve(evaluated).then((node) => {
@@ -3757,8 +3858,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       fallbackValue: this.options.fallbackValue,
       originalFilter: this.options.filter,
       context,
-      textOnly: true,
-      directStaticRender: true
+      textOnly: true
     });
     return isThenable(evaluated)
       ? Promise.resolve(evaluated).then((node) => {

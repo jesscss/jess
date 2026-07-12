@@ -85,7 +85,9 @@ Less-style variable declarations will be converted to Jess-style variable declar
 
 :::info
 
-The caret in Jess `^` is used to only look upwards for variables, not per scope. That's how Sass variable lookups work.
+The `$!` live-binding sigil in Jess reads the latest (live) value of a variable
+rather than its value at that point in the scope. That matches how Sass variable
+lookups behave.
 
 :::
 
@@ -97,14 +99,21 @@ The caret in Jess `^` is used to only look upwards for variables, not per scope.
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $^color;
+  value: $!color;
   ```
   </div>
 </div>
 
 ### Expressions
 
-All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x.y()` are considered part of the expression. Math operations like `*` or `/` or comparisons like `=` or `>` must be wrapped in parentheses `$()` e.g. `$(x + 1)` or `$(x = 1)`.
+Jess expressions are always `$(`...`)`. Plain `$var` is a variable reference. Inside an expression, variables keep their `$` sigil — a bare identifier is a keyword, not a variable.
+
+Use:
+
+- `$var` for a direct variable reference
+- `$($var)` when you need that reference inside an expression
+- `$[ident]` for variable identifier interpolation (selector/property-name interpolation)
+- `$['name']` for property lookup interpolation keys (e.g. Less `${name}`)
 
 #### Less-to-Jess
 
@@ -117,8 +126,8 @@ All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $(width + 1);
-  value: $(width / 2);
+  value: $($width + 1);
+  value: $($width / 2);
   ```
   </div>
 </div>
@@ -134,8 +143,8 @@ All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $(^width + 1);
-  value: $(^width / 2);
+  value: $($!width + 1);
+  value: $($!width / 2);
   ```
   </div>
 </div>
@@ -202,7 +211,7 @@ All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x
   <div style={{ flex: 1 }}>
   ```less
   $ > .box();
-  $ > .with-params(1; 2);
+  $ > .with-params(1, 2);
   ```
   </div>
 </div>
@@ -219,7 +228,7 @@ All Jess expressions start with `$` and namespaces `$x.y` and function calls `$x
   <div style={{ flex: 1 }}>
   ```less
   $ > box();
-  $ > with-params(1; 2);
+  $ > with-params(1, 2);
   ```
   </div>
 </div>

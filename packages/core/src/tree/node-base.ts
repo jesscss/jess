@@ -23,6 +23,19 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
+import {
+  setSourceSpan,
+  sourceSpanOf,
+  spanStartOf,
+  isSourceFree,
+  valueSpansOf,
+  setValueSpans,
+  fieldSpansOf,
+  setFieldSpans,
+  F_HAS_SPAN,
+  F_HAS_VALUESPANS,
+  F_HAS_FIELDSPANS
+} from './util/provenance.js';
 
 const { isArray } = Array;
 
@@ -45,15 +58,11 @@ type AllNodeOptions = {
   semi?: boolean;
 };
 
-/**
- * @todo - Clean up and delete these types and symbols, if not used.
- */
 export type Primitive = undefined | boolean | string | number;
 export type PrimitiveOrFunc = Primitive | ((...args: any[]) => any);
 
 export const ABORT: unique symbol = Symbol('ABORT');
 export const REMOVE: unique symbol = Symbol('REMOVE');
-export const IS_PROXY: unique symbol = Symbol('IS_PROXY');
 export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
 export type RegistrationOptions = {
@@ -69,29 +78,30 @@ export type PlacementCloneOptions = {
    * Reuse source-free scalar leaves instead of allocating identical copies.
    */
   reuseLeaves?: boolean;
+  /**
+   * Copy-on-write: shallow-clone (detach) non-reusable child nodes instead of
+   * sharing them, so this placement can be reparented without mutating the
+   * shared source tree.
+   */
+  detachChildren?: boolean;
+  /**
+   * Share (do NOT clone) non-reusable child nodes, but FREEZE them so the
+   * placement's `inherit`/`adopt` skips the reparent. The shared source child
+   * keeps its canonical `.parent`; the placement reads structural context from
+   * `_sourceRoot`/frames, never `.parent`. This is the zero-copy alternative to
+   * `detachChildren` — a container child is shared frozen instead of deep-copied.
+   */
+  shareChildren?: boolean;
 };
-export const DEFAULT_DATA = 'value';
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
 type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]> | Record<string, any>;
 export type NodeValueObject = Record<string, NodeRecordValue>;
 export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject;
 
-export type NodeMapArray<
-  T extends NodeValueObject = NodeValueObject,
-  K = keyof T,
-  V = T[string]
-> = Array<[K, V]>;
-
-export type LocationInfo = [
-  startOffset: number,
-  startLine: number,
-  startColumn: number,
-  endOffset: number,
-  endLine: number,
-  endColumn: number
-];
-export type NodeLocation = LocationInfo | [];
+/** A source span: `{start, end}` offsets. The only source-position shape. */
+export type LocationInfo = { start: number; end: number };
+export type NodeLocation = LocationInfo | undefined;
 
 function createNodeOptions() {
   return Object.create(null);
@@ -120,10 +130,6 @@ function isRulesNode(node: Node | { type?: string } | undefined): node is Rules 
   return node instanceof Node && (node.nodeType & nodeTypeBits.Rules!) !== 0;
 }
 
-function hasFrameMetadata(node: Node): node is FrameMetadataNode {
-  return 'frames' in node;
-}
-
 function sourceRootOf(node: Node): Rules | undefined {
   if (isRulesNode(node)) {
     return node;
@@ -149,9 +155,6 @@ function sourceRootOf(node: Node): Rules | undefined {
 type TreeVisitMethod = (node: Node, ctx?: unknown) => NodeVisitReturn;
 type VisitMethod = (node: Node) => Node;
 type TypeVisitMethod = (node: Node) => NodeVisitReturn;
-type FrameMetadataNode = Node & {
-  frames?: unknown;
-};
 
 function getTreeVisitMethod(visitor: unknown): TreeVisitMethod | undefined {
   if (typeof visitor !== 'object' || visitor === null) {
@@ -190,11 +193,6 @@ function getTypeVisitMethod(visitor: unknown, methodName: string): TypeVisitMeth
   return typeof method === 'function' ? method as TypeVisitMethod : undefined;
 }
 
-/**
- * Utility type to mark a node's value as generated
- */
-export type GeneratedNodeValue<T> = T extends object ? T & { generated: true } : T;
-
 export const defineType = <
   V = never,
   T extends AbstractClass<Node> = AbstractClass<Node>,
@@ -229,9 +227,14 @@ export const defineType = <
   Clazz.prototype.nodeType = nodeType;
 
   type Args = [value?: P[0] | V, options?: P[1], location?: P[2]];
+  // The abstract-class constraint is a compile-time nicety; every class passed
+  // here is concrete, so construct it directly instead of through Reflect.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+  const Concrete = Clazz as unknown as new (...args: Args) => InstanceType<T>;
   return (...args: Args): InstanceType<T> => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return Reflect.construct(Clazz, args) as InstanceType<T>;
+    const node = new Concrete(...args);
+    // Invariant 7: the factory parents one level; the raw constructor did not.
+    return args.length > 0 ? (node.parentChildren() as InstanceType<T>) : node;
   };
 };
 
@@ -241,7 +244,7 @@ export type NoOverride<T> = Tagged<T, 'NoOverride'>;
 
 // Node state flags as bitmask
 export const F_VISIBLE = 0b1;
-export const F_MAY_ASYNC = 0b10;
+// bit 0b10 is free (was F_MAY_ASYNC, removed in the reactive single-render-pass drive)
 /**
  * @todo - The plan is to use these as signals for evaluation. If we
  * bubble these correctly, then we can exit early from evaluation for
@@ -260,6 +263,50 @@ export const F_EXTENDED = 0b1000000;
 export const F_EXTEND_TARGET = 0b10000000;
 /** Node value owns at least one child node. */
 export const F_HAS_NODE_CHILD = 0b100000000;
+/**
+ * This node type is valid as a statement in a rules body (Less `allowRoot`).
+ * Set in the constructor of each statement-legal node type. `checkValidNodes`
+ * throws for any node in an evaluated body without it — the realistic cause
+ * being a function/mixin/detached-ruleset that evaluated to a bare value.
+ */
+export const F_ALLOW_ROOT = 0b1000000000;
+/** Node was produced by eval/derivation, not authored source (was the `generated` field). */
+export const F_GENERATED = 0b10000000000;
+/** Node has completed registration identity prep (was the `registrationPrepared` field). */
+export const F_REG_PREPARED = 0b100000000000;
+/**
+ * `hoistToRoot` is a tri-state (`undefined` | `true` | `false`) — `?? ` callers
+ * distinguish unset from `false` — so it folds into TWO bits: `F_HOIST_SET`
+ * marks "a value was assigned", `F_HOIST_VALUE` carries that value.
+ */
+export const F_HOIST_SET = 0b1000000000000;
+export const F_HOIST_VALUE = 0b10000000000000;
+// F_HAS_SPAN lives in util/provenance.ts (the side table owns the span concern);
+// re-exported here so the flag bit stays discoverable alongside the others.
+export { F_HAS_SPAN };
+// Bit 15 — F_HAS_SPAN is bit 14; this is the next free bit.
+export const F_FROZEN = 0b1000000000000000;
+/**
+ * A declaration occurrence superseded by a later merge (`+:`/`&,:`/`&_:`) in the
+ * same cascade scope. This is DISTINCT from `F_VISIBLE` (which means "this node
+ * type is CSS output"): merge suppression is a runtime dedup/override signal that
+ * render, the merge re-coalesce idempotency check, and lookup all honor, while
+ * `F_VISIBLE` stays a purely by-type property. Set on the superseded anchor by
+ * `_coalesceMergedDeclarations`; a merge-suppressed node is treated as hidden by
+ * `visible`. Bit 16.
+ */
+export const F_MERGE_SUPPRESSED = 0b10000000000000000;
+// Bits 17/18 — per-slot span flags; also owned by util/provenance.ts (WeakMap
+// side tables), re-exported here to keep the bit allocation discoverable.
+export { F_HAS_VALUESPANS, F_HAS_FIELDSPANS };
+
+/**
+ * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
+ * faithful copy (`clone()`) PRESERVES these from its source — same structure ⇒
+ * same flags — rather than recomputing them from children (that is eval-path
+ * derivation, not copying). Canonical construction bubbles them via `adopt`.
+ */
+export const F_CHILD_DERIVED = F_STATIC | F_NON_STATIC | F_HAS_NODE_CHILD;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -270,9 +317,6 @@ export const F_DEFAULT = F_VISIBLE;
 // export const LOCKED = 0b100000000;
 
 // const FULLY_EVALUATED = F_EVALUATED | F_PRE_EVALUATED;
-
-export type Mutable<T extends { value: unknown }> =
-  Omit<T, 'value'> & { -readonly [P in 'value']: T[P] };
 
 type ValueBearingNode = Node & {
   value: unknown;
@@ -383,15 +427,22 @@ export abstract class Node<
   /**
    * Keys of direct instance fields that hold child nodes.
    *
-   * `undefined` means this node still uses legacy `value` introspection.
-   * `null` marks a migrated leaf with no child fields.
+   * `null` marks a leaf with no child fields (the default). Every child-bearing
+   * node class must declare its own list; there is no legacy `value` fallback.
    */
-  static childKeys: readonly string[] | null | undefined = undefined;
+  static childKeys: readonly string[] | null = null;
 
-  _location: NodeLocation | undefined;
-  get location() {
-    return (this._location ??= []);
-  }
+  // Node-level source span — INLINE fixed-shape fields, read and written via the
+  // free functions in `util/provenance.ts` (`sourceSpanOf`, `setSourceSpan`).
+  // Declared here initialized to `undefined` so the hidden class stays
+  // monomorphic; the parser sets them once at construction (via the constructor
+  // `location` arg). The one hot check is the `F_HAS_SPAN` flag. Per-slot span
+  // arrays are intentionally NOT stored as fields — they are sparse (only
+  // source multi-member nodes carry them) and live in WeakMap side tables in
+  // `util/provenance.ts`, gated by `F_HAS_VALUESPANS`/`F_HAS_FIELDSPANS`.
+  // NEVER attach these dynamically.
+  _spanStart: number | undefined = undefined;
+  _spanEnd: number | undefined = undefined;
 
   _sourceRoot: Rules | undefined;
   get sourceRoot(): Rules | undefined {
@@ -426,74 +477,73 @@ export abstract class Node<
   /** Bitmask of runtime flags (F_VISIBLE, F_STATIC, etc.). Renamed from `state` to free that name for Parséman. */
   flags = F_DEFAULT;
 
-  /** Parséman parse-context snapshot stored per node for incremental re-parsing. */
-  state: unknown = undefined;
-
-  /** Discriminant required by Parséman's NodeLike interface. */
-  readonly _tag = 'node' as const;
-
-  /**
-   * Parséman structural children (Node | CSTLeaf | CSTError items in parse order).
-   * Set by buildNode during grammar-driven construction; empty for directly constructed nodes.
-   */
-  private _cstChildren: ReadonlyArray<{ _tag: string }> = [];
-  get children(): ReadonlyArray<{ _tag: string }> {
-    return this._cstChildren;
+  /** Discriminant required by Parséman's NodeLike interface (constant — prototype getter). */
+  get _tag(): 'node' {
+    return 'node';
   }
 
-  /** @internal — called by JessParser.buildNode only */
-  _setCstChildren(children: ReadonlyArray<{ _tag: string }>) {
-    this._cstChildren = children;
+  /** Runtime tracking: has this node completed registration identity prep? Backed by `F_REG_PREPARED`. */
+  get registrationPrepared(): boolean {
+    return (this.flags & F_REG_PREPARED) !== 0;
   }
 
-  /** Source byte-offset span for Parséman's NodeLike interface. */
-  get span(): { start: number; end: number } {
-    return {
-      start: this._location?.[0] ?? 0,
-      end: this._location?.[3] ?? 0
-    };
+  set registrationPrepared(value: boolean) {
+    if (value) {
+      this.flags |= F_REG_PREPARED;
+    } else {
+      this.flags &= ~F_REG_PREPARED;
+    }
   }
 
-  /** Runtime tracking: has this node completed registration identity prep? */
-  registrationPrepared = false;
-
-  /** Runtime tracking: has eval been run on this node? */
-
   /**
-   * Optional scanner-first direct-field spans, packed by this node's static
-   * `childKeys` order as `[start, end, flags]` triples. This is offset-only
-   * source provenance, not legacy `LocationInfo`.
+   * Whether this node renders as CSS output. True iff its type is visible
+   * (`F_VISIBLE`) AND it has not been superseded by a later declaration merge
+   * (`F_MERGE_SUPPRESSED`). Keeping merge suppression in its own bit lets
+   * `F_VISIBLE` stay a purely by-type property that eval/clone can preserve,
+   * while render + merge re-coalesce idempotency read the combined signal here.
    */
-  declare fieldSpans: number[] | undefined;
-
-  /**
-   * Optional scanner-first spans for array-backed `value` entries, also packed
-   * as `[start, end, flags]` triples. Keep this separate from `fieldSpans` so
-   * a direct `value` field range is not confused with individual value
-   * segments.
-   */
-  declare valueSpans: number[] | undefined;
-
   get visible() {
-    return this.hasFlag(F_VISIBLE);
+    return (this.flags & (F_VISIBLE | F_MERGE_SUPPRESSED)) === F_VISIBLE;
   }
 
-  declare fullRender: boolean;
-
   /**
-   * @todo - Move some to _meta?
-   * Should do if some fields are not on the hot path
-   * (not read very often)
+   * Tri-state hoist directive, backed by `F_HOIST_SET` + `F_HOIST_VALUE`:
+   * `undefined` (never assigned), `true`, or `false`. Callers use `?? ` to tell
+   * unset apart from an explicit `false`, so both bits are load-bearing.
    */
-  allowRoot = false;
-  allowRuleRoot = false;
-  hoistToRoot: boolean | undefined = undefined;
+  get hoistToRoot(): boolean | undefined {
+    if ((this.flags & F_HOIST_SET) === 0) {
+      return undefined;
+    }
+    return (this.flags & F_HOIST_VALUE) !== 0;
+  }
+
+  set hoistToRoot(value: boolean | undefined) {
+    if (value === undefined) {
+      this.flags &= ~(F_HOIST_SET | F_HOIST_VALUE);
+    } else if (value) {
+      this.flags |= F_HOIST_SET | F_HOIST_VALUE;
+    } else {
+      this.flags = (this.flags | F_HOIST_SET) & ~F_HOIST_VALUE;
+    }
+  }
 
   /**
-   * Code internally should call .create() when making new
+   * True when produced by eval/derivation rather than authored source. Backed by
+   * `F_GENERATED`. Code internally should call `.create()` when making new
    * nodes, which will automatically mark the node as generated.
    */
-  generated = false;
+  get generated(): boolean {
+    return (this.flags & F_GENERATED) !== 0;
+  }
+
+  set generated(value: boolean) {
+    if (value) {
+      this.flags |= F_GENERATED;
+    } else {
+      this.flags &= ~F_GENERATED;
+    }
+  }
 
   /**
    * If the node must have a semi separator before
@@ -512,8 +562,10 @@ export abstract class Node<
 
   /**
    * Track the original source when cloned / copied,
-   * rather than keeping the entire tree
-   * Note: This property is defined in constructor as non-enumerable
+   * rather than keeping the entire tree. Plain data field (assigned in the
+   * constructor) — the old per-instance `Object.defineProperties` was ~38x
+   * slower and dominated node construction. `toJSON()` drops this + `parent`
+   * so `JSON.stringify(node)` stays cycle-safe.
    */
   declare sourceNode: Node;
 
@@ -538,34 +590,59 @@ export abstract class Node<
 
   /**
    * If true, prevents re-parenting of this node.
-   * This is used to maintain source lookup chains.
+   * This is used to maintain source lookup chains. Backed by the `F_FROZEN`
+   * flag bit rather than a per-instance boolean field, so every node saves one
+   * own property (~39k instances). Plain boolean semantics — read/assign as
+   * before.
    */
-  frozen = false;
+  get frozen(): boolean {
+    return (this.flags & F_FROZEN) !== 0;
+  }
+
+  set frozen(value: boolean) {
+    if (value) {
+      this.flags |= F_FROZEN;
+    } else {
+      this.flags &= ~F_FROZEN;
+    }
+  }
 
   /**
    * The parent node of this node. Usually, this
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
+   *
+   * Plain data field; dropped by `toJSON()` (see `sourceNode`) to keep
+   * `JSON.stringify(node)` cycle-safe.
    */
-  declare parent: Node | undefined;
+  parent: Node | undefined = undefined;
+
+  /**
+   * `sourceNode` and `parent` are circular (a node is its own source; parent
+   * points back up the tree). They were historically made non-enumerable via a
+   * per-instance `Object.defineProperties` purely so `JSON.stringify(node)`
+   * would not blow up. `JSON.stringify` honors `toJSON()` when present, so we
+   * drop them here instead — avoiding both the ctor cost and any accessor on
+   * the object shape.
+   */
+  toJSON(): Record<string, unknown> {
+    // Drop the internal back-references that would make `JSON.stringify(node)`
+    // cycle: `sourceNode` (a node is its own source), `parent` (points up the
+    // tree), `_sourceRoot` (points at the root `Rules`), and `_treeContext`
+    // (context → sourceTrees → nodes). `JSON.stringify` honors `toJSON()`, so
+    // excluding them keeps stringify cycle-safe without per-instance
+    // non-enumerable defs. Subclasses with their OWN back-refs (e.g. `Rules`
+    // `_scopeFrame`) must extend this via `super.toJSON()` and delete theirs.
+    const { sourceNode, parent, _sourceRoot, _treeContext, ...rest } = this;
+    void sourceNode;
+    void parent;
+    void _sourceRoot;
+    void _treeContext;
+    return rest;
+  }
 
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
-
-  // /**
-  //  * This is the internal `data` of the node.
-  //  */
-  // get value(): Data {
-  //   return this._value;
-  // }
-
-  // set value(val: Data) {
-  //   this._value = this._processNodes(val);
-  //   // Invalidate memoized valueOf() on selector-like nodes after mutation.
-  //   if ('_valueOf' in this) {
-  //     (this as unknown as { _valueOf?: unknown })._valueOf = undefined;
-  //   }
-  // }
 
   /**
    * Add a flag to the node's state
@@ -611,22 +688,110 @@ export abstract class Node<
     if (!node.frozen) {
       setParent(node, this);
     }
-    this.addFlag(F_HAS_NODE_CHILD);
     const sourceRoot = sourceRootOf(this);
     if (sourceRoot && !node._sourceRoot) {
       node._sourceRoot = sourceRoot;
     }
+    this.propagateFlagsFrom(node);
+  }
+
+  /**
+   * Used as a Declaration/Mixin/Func name or a StyleImport path: does this node
+   * resolve to a fixed identifier at construction (no interpolation to eval)?
+   * Answered from the node's OWN structure so registration need not read the
+   * bubbled `F_STATIC`. The base default matches the leaf ctors that set no
+   * static flag (e.g. `Url`) — never a fixed name → deferred registration.
+   */
+  hasStaticName(): boolean {
+    return false;
+  }
+
+  /**
+   * This node's OWN construction-time static contribution — the flag its
+   * constructor sets before children bubble: `F_STATIC`, `F_NON_STATIC`, or `0`
+   * for a pure container that only inherits its children's state.
+   */
+  protected ownStaticFlag(): number {
+    return 0;
+  }
+
+  /**
+   * Recompute the bubbled `F_STATIC` bit from structure: fold `ownStaticFlag`
+   * with the direct child Nodes reached by the same childKeys crawl `adopt`
+   * uses, under the exact `propagateFlagsFrom` precedence (a non-static child is
+   * sticky and wins; else static iff own-or-any child is static). Lets selector
+   * registration ask the node instead of reading `hasFlag(F_STATIC)`.
+   */
+  structuralStaticFlag(): boolean {
+    return this._staticState() === F_STATIC;
+  }
+
+  private _staticState(): number {
+    let state = this.ownStaticFlag();
+    if (state === F_NON_STATIC) {
+      return F_NON_STATIC;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const childKeys = (this.constructor as typeof Node).childKeys;
+    if (childKeys === null) {
+      return state;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const fields = this as unknown as Record<string, unknown>;
+    for (let i = 0; i < childKeys.length; i++) {
+      const folded = this._foldChildStatic(fields[childKeys[i]!]);
+      if (folded === F_NON_STATIC) {
+        return F_NON_STATIC;
+      }
+      state |= folded;
+    }
+    return state;
+  }
+
+  private _foldChildStatic(value: unknown): number {
+    if (isArray(value)) {
+      let acc = 0;
+      for (const val of value) {
+        if (val instanceof Node) {
+          const child = val._staticState();
+          if (child === F_NON_STATIC) {
+            return F_NON_STATIC;
+          }
+          acc |= child;
+        }
+      }
+      return acc;
+    }
+    if (isPlainObject(value)) {
+      let acc = 0;
+      for (const k in value) {
+        const inner = this._foldChildStatic(value[k]);
+        if (inner === F_NON_STATIC) {
+          return F_NON_STATIC;
+        }
+        acc |= inner;
+      }
+      return acc;
+    }
+    if (value instanceof Node) {
+      return value._staticState();
+    }
+    return 0;
+  }
+
+  /**
+   * OR a single direct child's propagated flags upward onto this node. This is
+   * the FLAG concern only — NO reparenting. Separate from `adopt` (which also
+   * sets `.parent`, canonical-only) so derived/eval nodes can recompute their
+   * flags by crawling shared children without reparenting them.
+   */
+  propagateFlagsFrom(node: Node) {
+    this.addFlag(F_HAS_NODE_CHILD);
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
       this.removeFlag(F_STATIC);
     } else if (node.hasFlag(F_STATIC)) {
       this.addFlag(F_STATIC);
-    }
-    if (node.hasFlag(F_MAY_ASYNC)) {
-      this.addFlag(F_MAY_ASYNC);
-    }
-    if (node.hasFlag(F_AMPERSAND) && this.type !== 'Rules') {
-      this.addFlag(F_AMPERSAND);
     }
   }
 
@@ -659,27 +824,40 @@ export abstract class Node<
     options?: O,
     location?: NodeLocation
   ) {
-    // Make some props non-enumerable to avoid JSON serialization issues
-    Object.defineProperties(this, {
-      sourceNode: {
-        value: this,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      },
-      parent: {
-        value: undefined,
-        writable: true,
-        enumerable: false,
-        configurable: false
-      }
-    });
-    if (arguments.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      (this as unknown as { value: unknown }).value = this._processNodes(value);
-    }
-    this._location = location;
+    // Plain-field assignment (see `sourceNode` / `parent` / `toJSON`): a node is
+    // its own source until cloned. `parent` defaults to `undefined` via its field
+    // initializer. This replaces the old per-instance `Object.defineProperties`.
+    this.sourceNode = this;
+    //
+    // Invariant 7: the base stores NOTHING and adopts NOTHING. Each concrete
+    // node owns its own field values (its constructor assigns them); the
+    // lowercase factory then calls `parentChildren()` to parent one level.
+    // `new Foo()` shares its children by default.
+    void value;
+    setSourceSpan(this, location);
     this._options = options;
+  }
+
+  /**
+   * Explicit, one-level parenting opt-in (invariant 7). Called by the canonical
+   * factory after construction; NEVER by the raw `new Foo()` (which shares) nor
+   * by eval-time construction. Drives parenting off `childKeys` so every
+   * child-bearing node is handled by this ONE primitive:
+   *   - `null`  → leaf, no child fields: no-op.
+   *   - `[...]` → parent each listed direct child field, one level.
+   */
+  parentChildren(): this {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const childKeys = (this.constructor as typeof Node).childKeys;
+    if (childKeys === null) {
+      return this;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const fields = this as unknown as Record<string, unknown>;
+    for (let i = 0; i < childKeys.length; i++) {
+      this._processNodes(fields[childKeys[i]!]);
+    }
+    return this;
   }
 
   /**
@@ -734,14 +912,6 @@ export abstract class Node<
    * Processed nodes must always return a Node.
    */
   private forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, _context: Context) {
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      this._visitEntries((node, key, coll, idx) => {
-        const result = mustBeNode(func(node, idx));
-        coll[key] = result;
-      });
-      return;
-    }
-
     let pending: Promise<void> | undefined;
     let resumeIndex = 0;
     let nodes: Node[] | undefined;
@@ -805,6 +975,20 @@ export abstract class Node<
     for (let i = 0; i < childKeys.length; i++) {
       visitLeafValues(readNodeField(this, childKeys[i]!), cb);
     }
+  }
+
+  /**
+   * True when this node structurally owns at least one child Node, read from the
+   * value directly (not the F_HAS_NODE_CHILD flag, which can be stale before
+   * adopt runs). Used by copy-on-write placement to detach containers that would
+   * otherwise masquerade as reusable leaves.
+   */
+  hasNodeChild(): boolean {
+    let found = false;
+    this._visitEntries(() => {
+      found = true;
+    });
+    return found;
   }
 
   /**
@@ -924,25 +1108,6 @@ export abstract class Node<
   }
 
   /**
-   * @todo - Remove?
-   */
-  // collectRoots(): Node[] {
-  //   let list: Node[] = []
-  //   this.walkNodes(n => {
-  //     if (n.type === 'Rules') {
-  //       const rules = n.rootRules
-  //       if (rules) {
-  //         for (let n of rules) {
-  //           list.push(n)
-  //         }
-  //         n.rootRules = undefined
-  //       }
-  //     }
-  //   })
-  //   return list
-  // }
-
-  /**
    * Accept a visitor (classic visitor pattern).
    *
    * Visits the node itself first, then recursively visits children.
@@ -1027,17 +1192,38 @@ export abstract class Node<
    * substitute a single node); `cloneFn` must not recurse into a deep copy.
    */
   clone(cloneFn?: (n: Node) => Node): this {
-    if (!hasNodeValue(this)) {
-      throw new TypeError(`${this.type} must implement clone() for direct fields`);
-    }
-    let cloned = this.cloneValue(this.value);
-
-    if (cloneFn) {
-      if (cloned instanceof Node) {
-        cloned = cloneFn(cloned);
-      } else {
-        this._mapChildNodes(cloned, cloneFn);
+    const applyMap = (v: unknown): unknown => {
+      if (!cloneFn) {
+        return v;
       }
+      if (v instanceof Node) {
+        return cloneFn(v);
+      }
+      this._mapChildNodes(v, cloneFn);
+      return v;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const childKeys = (this.constructor as typeof Node).childKeys;
+    // Multi-field nodes (childKeys other than a lone `value`) rebuild the
+    // value-object their constructor expects from the direct child fields; the
+    // base no longer mirrors those fields into `value`.
+    const isMultiField = childKeys != null
+      && !(childKeys.length === 1 && childKeys[0] === 'value');
+    let cloned: unknown;
+    if (isMultiField) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const fields = this as unknown as Record<string, unknown>;
+      const obj: Record<string, unknown> = {};
+      for (let i = 0; i < childKeys.length; i++) {
+        const k = childKeys[i]!;
+        obj[k] = applyMap(this.cloneValue(fields[k]));
+      }
+      cloned = obj;
+    } else {
+      if (!hasNodeValue(this)) {
+        throw new TypeError(`${this.type} must implement clone() for direct fields`);
+      }
+      cloned = applyMap(this.cloneValue(this.value));
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -1049,9 +1235,13 @@ export abstract class Node<
     const newNode = new Ctor(
       cloned,
       this._options ? { ...this._options } : undefined,
-      this._location
+      sourceSpanOf(this)
     );
     newNode.inherit(this);
+    // Faithful copy: a clone shares/maps the SAME children as its source, so it
+    // PRESERVES the source's child-derived flags rather than recomputing them.
+    // clone() is an AST-copy primitive — it must not do eval-path derivation.
+    newNode.flags = (newNode.flags & ~F_CHILD_DERIVED) | (this.flags & F_CHILD_DERIVED);
 
     return newNode;
   }
@@ -1063,7 +1253,9 @@ export abstract class Node<
    * replace their children for a specific placement.
    */
   canReuseAsLeaf(): boolean {
-    return (this._location?.length ?? 0) === 0
+    // Source-free (no span) is the hot condition — read the flag, not the
+    // provenance table. Equivalent to `spanStart === undefined`.
+    return isSourceFree(this)
       && !this.hasFlag(F_NON_STATIC)
       && !this.hasFlag(F_HAS_NODE_CHILD);
   }
@@ -1075,20 +1267,6 @@ export abstract class Node<
 
   private _copyPlacementMetadataTo(target: Node): void {
     target.hoistToRoot = this.hoistToRoot;
-    if (!hasFrameMetadata(this)) {
-      return;
-    }
-    const self = this as FrameMetadataNode;
-    const frames = self.frames;
-    if (Array.isArray(frames)) {
-      const frameCopy = new Array<unknown>(frames.length);
-      for (let i = 0; i < frames.length; i++) {
-        frameCopy[i] = frames[i];
-      }
-      (target as FrameMetadataNode).frames = frameCopy;
-      return;
-    }
-    (target as FrameMetadataNode).frames = undefined;
   }
 
   /**
@@ -1102,8 +1280,7 @@ export abstract class Node<
     const stripComments = options?.stripComments !== false;
     const reuseLeaves = options?.reuseLeaves !== false;
     if (stripComments && this.type === 'Comment') {
-      const nilNode = this.nil?.() || this._createMinimalNil();
-      return nilNode.inherit(this);
+      return this.nil().inherit(this);
     }
     if (reuseLeaves && this.canReuseAsLeaf()) {
       return this.reuseAsLeaf();
@@ -1113,10 +1290,25 @@ export abstract class Node<
     // in a deep-cloned sub-tree. We only map direct child nodes to apply
     // placement policy at this level (strip comments, reuse inert leaves); we do
     // NOT recurse into a deep copy.
+    const detachChildren = options?.detachChildren === true;
+    const shareChildren = options?.shareChildren === true;
     const clone = this.clone((n) => {
       if (stripComments && n.type === 'Comment') {
-        const nilNode = n.nil?.() || n._createMinimalNil();
-        return nilNode.inherit(n);
+        return n.nil().inherit(n);
+      }
+      // Copy-on-write detach: a child that itself owns child nodes will be
+      // reparented into this new placement, so it must clone-to-detach (its
+      // source parent stays intact). A container can still look like a reusable
+      // leaf when its F_HAS_NODE_CHILD flag is stale, so test the value directly.
+      if (detachChildren && n.hasNodeChild()) {
+        return n.cloneForPlacement({ reuseLeaves, detachChildren });
+      }
+      // Zero-copy share: keep the SAME container child, but freeze it so the
+      // placement's `inherit`/`adopt` skips the reparent. The shared source
+      // child keeps its canonical `.parent` — no source mutation, no clone.
+      if (shareChildren && n.hasNodeChild()) {
+        n.frozen = true;
+        return n;
       }
       return reuseLeaves && n.canReuseAsLeaf() ? n.reuseAsLeaf() : n;
     });
@@ -1149,18 +1341,6 @@ export abstract class Node<
     }
   }
 
-  /** Minimal nil fallback for edge cases where prototype method isn't attached yet */
-  private _createMinimalNil(): Node {
-    // @ts-expect-error - normally an abstract class
-    const nilish = new Node();
-    nilish.type = 'Nil';
-    nilish.shortType = 'nil';
-    nilish.nodeType = nodeTypeBits['Nil']!;
-    nilish.removeFlag(F_VISIBLE);
-    nilish.value = '';
-    return nilish;
-  }
-
   /**
    * Stop this node from reading file-owned trivia during serialization.
    *
@@ -1175,7 +1355,7 @@ export abstract class Node<
     if (isRulesNode(this)) {
       this._treeContext = undefined;
     }
-    this._location = undefined;
+    setSourceSpan(this, undefined);
     if (deep) {
       const childKeys = childKeysOf(this);
       if (childKeys) {
@@ -1252,26 +1432,6 @@ export abstract class Node<
     // §2.7: a node is a reusable template that re-evaluates per placement — no
     // retained `evaluated` result on the canonical node. This removes the
     // `evaluated` re-eval/cache reads from the hot path. See LIVE_BINDING §2.7.
-    if (!node.hasFlag(F_MAY_ASYNC)) {
-      return Node._evalStaticSync(node, context);
-    }
-
-    const evaluated = node.evalNode(context);
-    if (isThenable(evaluated)) {
-      return (evaluated as Promise<Node>).then((evald) => {
-        if (node !== evald) {
-          evald.inherit(node);
-        }
-        return evald;
-      });
-    }
-    if (node !== evaluated) {
-      evaluated.inherit(node);
-    }
-    return evaluated;
-  }
-
-  private static _evalStaticSync(node: Node, context: Context): MaybePromise<Node> {
     const evaluated = node.evalNode(context);
     if (isThenable(evaluated)) {
       return (evaluated as Promise<Node>).then((resolved) => {
@@ -1320,7 +1480,16 @@ export abstract class Node<
     } else {
       setParent(this, this.parent ?? node.parent);
     }
-    this._location = node.location;
+    setSourceSpan(this, sourceSpanOf(node));
+    // Per-slot spans are sparse (only source multi-member nodes carry them); the
+    // flag check keeps eval nodes free. Carry them across derivation so a derived
+    // selector-list / value surface can still place inter-member comment trivia.
+    if (node.hasFlag(F_HAS_VALUESPANS) && !this.hasFlag(F_HAS_VALUESPANS)) {
+      setValueSpans(this, valueSpansOf(node));
+    }
+    if (node.hasFlag(F_HAS_FIELDSPANS) && !this.hasFlag(F_HAS_FIELDSPANS)) {
+      setFieldSpans(this, fieldSpansOf(node));
+    }
     this._sourceRoot ??= node.sourceRoot;
     if (isRulesNode(this)) {
       this._treeContext ??= node.sourceRoot?._treeContext;
@@ -1344,12 +1513,22 @@ export abstract class Node<
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
     // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)
-    this.generated = this.generated || node.generated;
+    this.flags |= node.flags & F_GENERATED;
     /**
      * If it's replacing a node that's evaluated, it should inherit the same index.
      * Otherwise, it should be settable after cloning / copying.
      */
     this.index ??= node.index;
+    // A detached-ruleset closure scope (captured at arg-binding) must survive the
+    // placement clone/derive that produces the invoked surface. See
+    // parseman-wrapper-is-scope-identity.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    const closureScope = (node as unknown as { _closureScope?: unknown })._closureScope;
+    if (closureScope !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const self = this as unknown as { _closureScope?: unknown };
+      self._closureScope ??= closureScope;
+    }
     return this;
   }
 
@@ -1395,7 +1574,7 @@ export abstract class Node<
    * `toTrimmedString()` should be overridden instead.
    */
   toString(options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+    if (!this.hasFlag(F_VISIBLE)) {
       return '';
     }
     options = getPrintOptions(options);
@@ -1409,7 +1588,7 @@ export abstract class Node<
     const suppressPre = options.suppressBoundaryTrivia === 'pre'
       || options.suppressBoundaryTrivia === 'both';
     if (!suppressPre && trivia) {
-      emitTrivia(trivia, 'before', this.location[0], options);
+      emitTrivia(trivia, 'before', spanStartOf(this), options);
     }
     this.toTrimmedString(options);
     return w.getSince(mark);
@@ -1426,9 +1605,11 @@ export abstract class Node<
   render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   render(context: Context, options?: PrintOptions): MaybePromise<string>;
   render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): MaybePromise<string> {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
-      return '';
-    }
+    // Static-by-type invisibility is dispatched on the node type: the
+    // unconditionally-non-CSS types (function/mixin/nil/log/extend-list/...)
+    // override render() to a no-op, so the common hot path pays no F_VISIBLE
+    // branch here. Dynamic per-instance suppression stays on toString()'s gate
+    // and the render loop's `n.visible` check (Focus D.1 stage 2).
     return this.renderSource(context, bufferOrOptions, options);
   }
 
@@ -1531,14 +1712,4 @@ export abstract class Node<
       return -1;
     }
   }
-
-  /**
-   * Generates a .js module
-   * @todo - Generate a .ts module & .js.map
-   */
-  /** Move to ToModuleVisitor */
-  // toModule?(context: Context, out: OutputCollector): void
 }
-
-/** When converting Less/Sass to Jess, we'll switch this flag temporarily */
-Node.prototype.fullRender = false;

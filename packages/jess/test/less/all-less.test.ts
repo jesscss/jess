@@ -2,11 +2,10 @@ import { describe, it, expect } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync } from 'fs';
-import { createRequire } from 'module';
 import { invalidLess } from '@jesscss/shared';
 import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
-import { getTestCases } from '../test-utils.js';
+import { getTestCases, resolveLessTestDataRoot } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -51,8 +50,7 @@ const lessHarnessFunctionsPlugin = {
   }
 };
 
-const require = createRequire(import.meta.url);
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
@@ -143,19 +141,24 @@ const skippedFixtures: SkippedFixture[] = ([
 const skippedFixtureReasons = new Map(skippedFixtures.map(({ file, reason }) => [file, reason]));
 
 const expectedFailureFixtures = new Map<string, string>([
-  ['tests-unit/import/import-reference-issues.less', 'reference import selector scoping differs from Less'],
+  // NOTE: import-reference-issues.less and starting-style.less graduated OUT of
+  // this list — the D3 single-render-pass change (removing the separate
+  // Compiler-level eval pre-pass so render() is the sole eval driver) eliminated
+  // a double-eval that (a) re-ran `+_:` shorthand merges twice (starting-style's
+  // padding accumulated to 10 values) and (b) re-ran import resolution twice
+  // (import-reference-issues threw "File not found" on the 2nd pass). Both now
+  // match the Less golden .css under the harness config.
   ['tests-unit/import/import-reference.less', 'reference import filtering leaves extra at-rules'],
   ['tests-unit/import/import.less', 'Less @plugin script execution is not available in this harness'],
-  ['tests-unit/mixins-guards-default-func/mixins-guards-default-func.less', 'default() guard resolution differs from Less'],
   ['tests-unit/operations/operations-advanced.less', 'advanced math/color operation behavior differs from Less'],
   ['tests-unit/property-accessors/property-accessors.less', 'property accessor precedence differs from Less'],
   ['tests-unit/scope/scope.less', 'parent selector scope output differs from Less'],
-  ['tests-unit/starting-style/starting-style.less', 'nested shorthand math expansion in @starting-style differs from Less'],
   ['tests-config/namespacing/namespacing-1.less', 'namespace map duplicate precedence differs from Less'],
   ['tests-config/namespacing/namespacing-5.less', 'nested namespace callable lookup does not match Less'],
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],
   ['tests-config/namespacing/namespacing-functions.less', 'detached ruleset callable lookup result differs from Less'],
   ['tests-config/namespacing/namespacing-media.less', 'namespace lookup inside media query expression differs from Less'],
+  ['tests-unit/urls/urls.less', 'blocked upstream of url/data-uri by unimplemented import-path interpolation (@import "@{file_to_import}" via mixin arg) and svg-gradient; data-uri()/url serialization themselves work (fns data-uri.test.ts + core url.test.ts)'],
   ['tests-config/process-imports/google.less', 'processImports=false should leave remote CSS imports out of rendered CSS'],
   ['tests-config/rewrite-urls-all/rewrite-urls-all.less', 'rewriteUrls=all URL rebasing is not implemented'],
   ['tests-config/rewrite-urls-local/rewrite-urls-local.less', 'rewriteUrls=local URL rebasing is not implemented'],

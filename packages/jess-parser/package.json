@@ -10,14 +10,14 @@
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib"
+    "lib",
+    "src"
   ],
   "scripts": {
     "ci": "pnpm build && pnpm test",
@@ -36,14 +36,13 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/css-parser": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
-    "@jesscss/parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
     "chevrotain": "^12.0.0",
-    "color-name": "~2.0.0",
-    "parseman": "workspace:*"
+    "color-name": "~2.0.0"
   },
   "devDependencies": {
-    "@types/color-name": "^1.1.1"
+    "@types/color-name": "^1.1.1",
+    "parseman": "^0.16.0"
   },
   "type": "module",
   "module": "lib/index.js"

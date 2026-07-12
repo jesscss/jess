@@ -1,8 +1,7 @@
-import { BasicSelector, SelectorList, Selector, el, sel, sellist, compound, is, co, comment, amp, type Node } from '../../index.js';
+import { SelectorList, Selector, el, sel, sellist, compound, is, co, comment, amp, type Node } from '../../index.js';
 import { Ampersand } from '../../ampersand.js';
 import { N } from '../../node-type.js';
 import { extendSelector, type ExtendErrorType } from '../extend.js';
-import { addImplicitAmpersand } from '../selector-utils.js';
 import { isNode } from '../is-node.js';
 
 /** Narrow extendSelector result: throw if it's an ExtendErrorType string. */
@@ -287,68 +286,6 @@ describe('Extend Ampersand Handling Tests', () => {
 
     expect(output).toContain('&');
     expect(output).not.toContain('&&');
-  });
-
-  it('derives copied implicit ampersands without cloning the source ampersand', () => {
-    const parentContainer = { selector: el('.aa') };
-    const selector = addImplicitAmpersand(
-      el('.dd'),
-      false,
-      { value: parentContainer }
-    );
-    const sourceAmpersand = [...selector.nodes(true)].find((node): node is Ampersand => node instanceof Ampersand)!;
-    const originalClone = sourceAmpersand.clone;
-    let sourceAmpersandClones = 0;
-    sourceAmpersand.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalClone>
-    ): ReturnType<typeof originalClone> {
-      sourceAmpersandClones++;
-      return originalClone.apply(this, args);
-    };
-
-    try {
-      const result = expectSelector(extendSelector(selector, el('.dd'), el('.ee'), true));
-      const ampersands = [...result.nodes(true)].filter((node): node is Ampersand => node instanceof Ampersand);
-
-      expect(sourceAmpersandClones).toBe(0);
-      expect(ampersands.length).toBeGreaterThan(0);
-      expect(ampersands).not.toContain(sourceAmpersand);
-      expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.aa');
-
-      parentContainer.selector = el('.bb');
-
-      expect(ampersands[0]!.getResolvedSelector()?.valueOf()).toBe('.bb');
-    } finally {
-      sourceAmpersand.clone = originalClone;
-    }
-  });
-
-  it('reuses source-free selector leaves when adding an implicit ampersand', () => {
-    const parentContainer = { selector: el('.parent') };
-    const child = el('.child');
-    const originalClone = BasicSelector.prototype.clone;
-    let basicSelectorCloneCalls = 0;
-    BasicSelector.prototype.clone = function cloneForCounting(
-      this: BasicSelector,
-      ...args: Parameters<BasicSelector['clone']>
-    ): ReturnType<BasicSelector['clone']> {
-      basicSelectorCloneCalls++;
-      return originalClone.apply(this, args);
-    };
-
-    try {
-      const selector = addImplicitAmpersand(
-        child,
-        false,
-        { value: parentContainer }
-      );
-
-      expect(selector.valueOf()).toBe('.parent .child');
-      expect(basicSelectorCloneCalls).toBe(0);
-      expect(child.parent).toBeUndefined();
-    } finally {
-      BasicSelector.prototype.clone = originalClone;
-    }
   });
 
   it('preserves stored ampersand selector snapshots separately from live selector resolution', () => {

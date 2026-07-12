@@ -83,12 +83,12 @@ export function fromLessNode(
       const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
         ? val.value
         : String(val ?? '');
-      const out = new Declaration({
-        name: new Any(prop, { role: 'property' as const }),
+      const decl = new Declaration({
+        name: prop,
         value: new Any(valueStr)
       });
-      cache.set(lessNode, out);
-      return out;
+      cache.set(lessNode, decl);
+      return decl;
     }
 
     if (lessNode.type === 'DetachedRuleset') {
@@ -103,7 +103,7 @@ export function fromLessNode(
             ? val.value
             : String(val ?? '');
           const decl = new Declaration({
-            name: new Any(prop, { role: 'property' as const }),
+            name: prop,
             value: new Any(valueStr)
           });
           nodes.push(decl);

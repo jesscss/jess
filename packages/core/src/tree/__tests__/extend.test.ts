@@ -60,9 +60,8 @@ describe('Extend render', () => {
     const node = new ExtendList([child], undefined, undefined, treeContext);
 
     expect(node._treeContext).toBe(treeContext);
-    expect(node.nodes).toEqual([child]);
     expect(node.value).toEqual([child]);
-    expect(ExtendList.childKeys).toEqual(['nodes']);
+    expect(ExtendList.childKeys).toEqual(['value']);
   });
 
   it('keeps extend behavior when rendered inside a ruleset', async () => {
@@ -70,7 +69,7 @@ describe('Extend render', () => {
     const node = rules([
       ruleset({
         selector: el('.base'),
-        rules: [decl({ name: any('color'), value: any('red') })]
+        rules: [decl({ name: 'color', value: any('red') })]
       }),
       ruleset({
         selector: el('.child'),
@@ -155,7 +154,7 @@ describe('Extend render', () => {
       const root = rules([
         ruleset({
           selector: el('.target'),
-          rules: [decl({ name: any('color'), value: any('red') })]
+          rules: [decl({ name: 'color', value: any('red') })]
         }),
         ruleset({
           selector: parentSelector,

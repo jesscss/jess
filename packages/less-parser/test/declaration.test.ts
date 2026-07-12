@@ -37,20 +37,49 @@ describe('declaration', () => {
     const { errors, tree } = parse('--custom: rgba(0, 30, 0, 238)', 'declaration');
     expect(errors.length).toBe(0);
     const value: any = asDeclaration(tree).value;
-    expect(value.type).toBe('Sequence');
-    expect(value.value?.[0]?.type).toBe('Call');
+    expect(value.type).toBe('Call');
+    expect(value.name).toBeDefined();
   });
 
   it('should parse custom property declaration with if() as a structured call value', () => {
     const { errors, tree } = parse('--custom: if(not(true), 5)', 'declaration');
     expect(errors.length).toBe(0);
     const value: any = asDeclaration(tree).value;
-    expect(value.type).toBe('Sequence');
-    expect(value.value?.[0]?.type).toBe('Call');
+    expect(value.type).toBe('Call');
+    expect(value.name).toBeDefined();
+  });
+
+  it('should parse custom property declaration with an interpolated name', () => {
+    const { errors, tree } = parse('--@{key}: @value', 'declaration');
+    expect(errors.length).toBe(0);
+    const name: any = asDeclaration(tree).name;
+    expect(name.type).toBe('Interpolated');
+  });
+
+  it('opportunistically structures a curly-brace custom-property value as a declaration body', async () => {
+    const { errors, tree } = parse('@a: red; a { --foo: { color: @a; } }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    const evald = await tree!.eval(new Context());
+    expect(String(evald)).toContain('--foo:{color: red}');
+  });
+
+  it('tolerantly falls back to opaque text for a non-CSS-shaped curly custom-property value', () => {
+    const { errors, tree } = parse('a { --foo: { 1, 2, 3 }; }', 'Stylesheet');
+    expect(errors.length).toBe(0);
+    expect(String(tree)).toContain('{ 1, 2, 3 }');
+  });
+
+  it('should parse each() with an interpolated custom-property declaration in its body', () => {
+    const { errors } = parse(`:root {
+      each(@vars, {
+        --@{key}: @value;
+      });
+    }`, 'Stylesheet');
+    expect(errors.length).toBe(0);
   });
 
   it('preserves same-line block comments ahead of evaluated declarations during stylesheet serialization', async () => {
-    const { errors, tree } = parse('@tone: "content"; #x { /* lost comment */ content: @tone; }', 'stylesheet');
+    const { errors, tree } = parse('@tone: "content"; #x { /* lost comment */ content: @tone; }', 'Stylesheet');
     expect(errors.length).toBe(0);
     expect(tree).toBeDefined();
 
@@ -59,7 +88,7 @@ describe('declaration', () => {
   });
 
   it('preserves block comments attached to invisible evaluated variables during stylesheet serialization', async () => {
-    const { errors, tree } = parse('/* keep me */ @tone: red; .x { color: blue; }', 'stylesheet');
+    const { errors, tree } = parse('/* keep me */ @tone: red; .x { color: blue; }', 'Stylesheet');
     expect(errors.length).toBe(0);
     expect(tree).toBeDefined();
 

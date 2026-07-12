@@ -49,7 +49,7 @@ describe('url', () => {
   it('renders a resolved url value through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -72,7 +72,7 @@ describe('url', () => {
   it('writes resolved url render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -96,7 +96,7 @@ describe('url', () => {
   it('renders resolved url values without materializing a replacement url', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -127,8 +127,8 @@ describe('url', () => {
       after: new Map()
     });
     const treeContext = new TreeContext({ trivia });
-    const value = quoted('image.png', undefined, [4, 1, 5, 14, 1, 15], treeContext);
-    const node = url(value, undefined, [0, 1, 1, 15, 1, 16], treeContext);
+    const value = quoted('image.png', undefined, { start: 4, end: 14 }, treeContext);
+    const node = url(value, undefined, { start: 0, end: 15 }, treeContext);
 
     expect(node.render(context)).toBe('url("image.png")');
   });
@@ -157,7 +157,7 @@ describe('url', () => {
   it('resolves url values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);
@@ -184,10 +184,24 @@ describe('url', () => {
     expect(resolved.toTrimmedString()).toBe('url("image.png")');
   });
 
+  it('serializes an unquoted string url value verbatim', () => {
+    expect(url('image.png').toTrimmedString()).toBe('url(image.png)');
+    expect(url('image.png').render(context)).toBe('url(image.png)');
+  });
+
+  it('serializes a protocol-relative unquoted url without mangling the //', () => {
+    expect(url('//z').toTrimmedString()).toBe('url(//z)');
+    expect(url('//z').render(context)).toBe('url(//z)');
+  });
+
+  it('keeps a quoted url quoted through render', () => {
+    expect(url(quoted('http://x/y', undefined)).render(context)).toBe('url("http://x/y")');
+  });
+
   it('keeps source url values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('asset'),
+        name: 'asset',
         value: any('image.png')
       })
     ]);

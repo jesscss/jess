@@ -111,7 +111,14 @@
 import type { Rules } from '../rules.js';
 import type { Selector } from '../selector.js';
 import type { SimpleSelector } from '../selector-simple.js';
-import { SelectorList } from '../selector-list.js';
+import {
+  SelectorList,
+  type SelectorListItem,
+  type SelectorListLike,
+  finishSelectorListSurface,
+  isSelectorListLike,
+  selectorListItems
+} from '../selector-list.js';
 import { selectorListItemForMatch } from './selector-match-core.js';
 import { ComplexSelector, type ComplexSelectorComponent } from '../selector-complex.js';
 import { CompoundSelector } from '../selector-compound.js';
@@ -119,12 +126,14 @@ import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
 import { Combinator } from '../combinator.js';
 import { isNode } from './is-node.js';
+import { isCombinator, combinatorValue } from './combinator.js';
 import type { Node } from '../node.js';
 import { N } from '../node-type.js';
 import { findExtendableLocations, type ExtendLocation } from './extend-helpers.js';
 import { normalizeSelectorForExtend, type ExtendSearchResult } from './find-extendable-locations.js';
 import { F_AMPERSAND, F_EXTENDED, F_EXTEND_TARGET, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { isDisjoint, isSubsetOf } from './bitset.js';
+import { keySetOf, requiredKeySetOf } from './selector-analysis.js';
 import {
   selectorCompare,
   type SelectorComparisonResult,
@@ -148,8 +157,11 @@ export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderBy
   extendOrderByValueOf = orderByValueOf ?? null;
 }
 
+/** Selector surface accepted by the extend matcher (node or parser-delivered list array). */
+type ExtendSelectorSurface = Selector | SelectorListItem[];
+
 function isSelectorNode(value: unknown): value is Selector {
-  return !!value && typeof value === 'object' && 'isSelector' in value && value.isSelector === true;
+  return isNode(value, N.Selector);
 }
 
 function expectSelector(value: unknown): Selector {
@@ -167,10 +179,13 @@ function expectSelectorArray(value: Selector | Selector[] | ExtendErrorType): Se
 }
 
 function isComplexComponent(value: unknown): value is ComplexSelectorComponent {
+  if (typeof value === 'string') {
+    return true;
+  }
   return isNode(value, N.SimpleSelector)
     || isNode(value, N.CompoundSelector)
     || isNode(value, N.ComplexSelector)
-    || isNode(value, N.Combinator);
+    || isCombinator(value);
 }
 
 function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType): ComplexSelectorComponent[] {
@@ -178,12 +193,32 @@ function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType)
     throw new TypeError('Expected complex selector value, got extend error');
   }
   const items = isArray(value) ? value : [value];
+  const normalized: ComplexSelectorComponent[] = [];
   for (const item of items) {
     if (!isComplexComponent(item)) {
+      // A SelectorList occupying a complex/compound COMPONENT slot is semantically
+      // `:is(list)` — an upstream partial component-replace can leave the bare list
+      // here. Normalize it to a generated `:is()` so the tree stays valid rather
+      // than throwing. (Whole-selector list output is handled at the SelectorList
+      // level and never reaches the per-component path.)
+      if (isNode(item, N.SelectorList)) {
+        const wrapped = createValidatedIsWrapperWithErrors(
+          item.value.filter((s): s is Selector => typeof s !== 'string'),
+          item,
+          undefined,
+          undefined
+        );
+        if (typeof wrapped === 'string') {
+          throw new TypeError('Expected complex selector component');
+        }
+        normalized.push(wrapped);
+        continue;
+      }
       throw new TypeError('Expected complex selector component');
     }
+    normalized.push(item);
   }
-  return items;
+  return normalized;
 }
 
 /**
@@ -307,8 +342,8 @@ export function applyExtendsToSelector(
   const expandExactSelectorListTargets = (instructions: ExtendInstruction[]): ExtendInstruction[] => {
     const expanded: ExtendInstruction[] = [];
     for (const instruction of instructions) {
-      if (!instruction.partial && isNode(instruction.target, N.SelectorList)) {
-        for (const target of instruction.target.value) {
+      if (!instruction.partial && isSelectorListLike(instruction.target)) {
+        for (const target of selectorListItems(instruction.target)) {
           expanded.push({
             ...instruction,
             target: selectorListItemForMatch(target)
@@ -332,6 +367,10 @@ export function applyExtendsToSelector(
     inst.extendRoot,
     inst.extendNode
   ] as [Selector, Selector, boolean, Rules | undefined, Node | undefined]);
+  // Index `allExtends` by simple-target value once per pass so chained-extend
+  // discovery visits only extends whose target can appear in a candidate,
+  // instead of re-scanning the whole list per applied extend (O(I²)→~O(I·k)).
+  const extendTargetIndex = buildExtendTargetIndex(allExtendTuples);
   const queuedKeys = new Set(
     instructions.map(inst => `${inst.partial ? 1 : 0}|${inst.target.valueOf()}|${inst.extendWith.valueOf()}`)
   );
@@ -375,7 +414,8 @@ export function applyExtendsToSelector(
               allExtendTuples,
               skipKeys,
               originalSelector,
-              originalSelectorValues
+              originalSelectorValues,
+              extendTargetIndex
             );
             for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
               const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
@@ -414,7 +454,8 @@ export function applyExtendsToSelector(
             target,
             extendWith,
             originalSelector,
-            originalSelectorValues
+            originalSelectorValues,
+            extendTargetIndex
           );
           for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
             const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
@@ -442,8 +483,29 @@ export function applyExtendsToSelector(
   return selector;
 }
 
-function selectorListItemForExtend(item: SelectorList['value'][number]): Selector {
-  return typeof item === 'string' ? new ComplexSelector([item]) : item;
+/**
+ * Read a flag off a complex-selector combinator that may be a string or a node.
+ * String combinators are authored, literal source combinators (`' '`, `'>'`, …)
+ * — they carry no invisible/implicit flags, so they read as VISIBLE and as
+ * carrying no other flag. Only node combinators track visibility flags.
+ */
+function combinatorHasFlag(combinator: ComplexSelectorComponent, flag: number): boolean {
+  if (typeof combinator === 'string') {
+    return flag === F_VISIBLE;
+  }
+  return combinator.hasFlag(flag);
+}
+
+function selectorListItemForExtend(item: SelectorList['value'][number] | Selector[]): Selector {
+  if (typeof item === 'string') {
+    return new ComplexSelector([item]);
+  }
+  // A resolved selector list can arrive as a raw array of alternatives; wrap it
+  // in a SelectorList node so placement/copy stays node-only.
+  if (isArray(item)) {
+    return new SelectorList(item as SelectorList['value']);
+  }
+  return item;
 }
 
 /**
@@ -463,19 +525,20 @@ function applyBatchedExtend(
   find: Selector,
   extendWithList: Selector[]
 ): Selector | null {
-  // Fast path: non-partial SelectorList with a SimpleSelector find.
+  // Fast path: non-partial selector list with a SimpleSelector find.
   // One scan to find all matching items, then append all extendWiths at once.
-  if (isNode(selector, N.SelectorList) && isNode(find, N.SimpleSelector)) {
+  if (isSelectorListLike(selector) && isNode(find, N.SimpleSelector)) {
     const searchResult = findExtendableLocations(selector, find);
     if (!searchResult.hasMatches) {
       return null;
     }
 
+    const listItems = selectorListItems(selector);
     const originalItems: Selector[] = [];
     const newItems: Selector[] = [];
     let anyWholeMatch = false;
 
-    for (const item of (selector as SelectorList).value) {
+    for (const item of listItems) {
       const sItem = selectorListItemForExtend(item);
       const itemCompare = selectorCompare(sItem, find);
       if (!itemCompare.hasWholeMatch) {
@@ -515,7 +578,10 @@ function applyBatchedExtend(
       return null;
     }
     const processedArray = isArray(processed) ? processed : [processed];
-    return expectSelector(SelectorList.create(processedArray).inherit(selector));
+    const inheritFrom = isNode(selector, N.SelectorList)
+      ? selector
+      : SelectorList.create(listItems);
+    return expectSelector(SelectorList.create(processedArray).inherit(inheritFrom));
   }
 
   // Generic fallback: apply each extendWith sequentially.
@@ -622,6 +688,38 @@ function assignPseudoArg(pseudo: PseudoSelector, arg: Node): void {
   pseudo.adopt(arg);
   pseudo.arg = arg;
   pseudo.invalidateCache();
+}
+
+// Reprocess a compound/complex component array WITHOUT dropping string-backed
+// leaves. `createProcessedSelector` only accepts Selector nodes, so we process the
+// node components and re-merge the processed results back into their original
+// positions, leaving string leaves (`'.a'`) untouched. Safe because component
+// reprocessing runs with root=false (no dedup / no :is flattening), so the node
+// count is preserved and the positional re-merge is exact. Previously these sites
+// filtered strings out entirely, rebuilding e.g. `compound(['.a'])` as empty.
+function processComponentsPreservingStrings(
+  components: readonly (string | Selector)[],
+  root: boolean
+): (string | Selector)[] | ExtendErrorType {
+  const nodes = components.filter((c): c is Selector => typeof c !== 'string');
+  if (nodes.length === components.length) {
+    const processed = createProcessedSelector(nodes, root);
+    return typeof processed === 'string' ? processed : expectSelectorArray(processed);
+  }
+  const processedResult = createProcessedSelector(nodes, root);
+  if (typeof processedResult === 'string') {
+    return processedResult;
+  }
+  const processedNodes = expectSelectorArray(processedResult);
+  if (processedNodes.length !== nodes.length) {
+    return processedNodes;
+  }
+  const out: (string | Selector)[] = [];
+  let pi = 0;
+  for (const c of components) {
+    out.push(typeof c === 'string' ? c : processedNodes[pi++]!);
+  }
+  return out;
 }
 
 export function createProcessedSelector(value: Selector | Selector[], root?: boolean): Selector | Selector[] | ExtendErrorType {
@@ -786,22 +884,26 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
       push(sameArrayItems(flattened, el.value) ? el : SelectorList.create(flattened).inherit(el));
     } else if (isNode(el, N.CompoundSelector)) {
       // CRITICAL: Compound value can have duplicate value (e.g., .v.w.v)
-      // Process value with root=false to prevent deduplication
-      const compoundProcessed = createProcessedSelector(el.value.filter((c): c is Selector => typeof c !== 'string'), false);
+      // Process value with root=false to prevent deduplication. Preserve
+      // string-backed leaves (`compound(['.a'])`) instead of filtering them out.
+      const compoundProcessed = processComponentsPreservingStrings(el.value, false);
       if (typeof compoundProcessed === 'string') {
         return compoundProcessed;
       }
-      const processedComponents = expectSelectorArray(compoundProcessed);
-      push(sameArrayItems(processedComponents, el.value)
+      push(sameArrayItems(compoundProcessed, el.value)
         ? el
-        : CompoundSelector.create(processedComponents).inherit(el));
+        : CompoundSelector.create(compoundProcessed).inherit(el));
     } else if (isNode(el, N.ComplexSelector)) {
       let value = el.value;
-      let complexProcessed = createProcessedSelector(value.filter((c): c is Selector => typeof c !== 'string'));
+      // Preserve string-backed leaves AND combinators in place (combinators are
+      // plain strings); the index logic below depends on combinators staying at
+      // their positions. Filtering strings out (old behavior) dropped them.
+      let complexProcessed = processComponentsPreservingStrings(value, false);
       if (typeof complexProcessed === 'string') {
         return complexProcessed;
       }
-      let result = expectComplexComponents(complexProcessed);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      let result = expectComplexComponents(complexProcessed as unknown as Selector[]);
       let outputComponents = result;
       let [first, second] = value;
       /** Remove invisibility on combinator if it's a generated */
@@ -839,7 +941,7 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
       if (result.length >= 3) {
         const maybeCombinator = result[result.length - 2];
         const maybeIs = result[result.length - 1];
-        if (isNode(maybeCombinator, N.Combinator)
+        if (isCombinator(maybeCombinator)
           && isNode(maybeIs, N.PseudoSelector)
           && maybeIs.name === ':is'
           && maybeIs.arg
@@ -858,14 +960,14 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
               && isNode(first, N.Ampersand)
               && (first.hasFlag(F_IMPLICIT_AMPERSAND) || first.generated)
               && !first.hasFlag(F_VISIBLE)
-              && !maybeCombinator.hasFlag(F_VISIBLE))
+              && !combinatorHasFlag(maybeCombinator, F_VISIBLE))
             // ...or the prefix is a generated `:is(...)` wrapper that came from implicit nesting
             // materialization (e.g. when the parent selector is itself a selector list).
             || (!!first
               && isNode(first, N.PseudoSelector)
               && first.name === ':is'
               && first.generated === true
-              && !maybeCombinator.hasFlag(F_VISIBLE))
+              && !combinatorHasFlag(maybeCombinator, F_VISIBLE))
             // ...or we already resolved the invisible ampersand to a concrete selector in `result`,
             // but the original value indicate this came from implicit `& ` nesting.
             || (!!originalFirst
@@ -873,8 +975,8 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
               && (originalFirst.hasFlag(F_IMPLICIT_AMPERSAND) || originalFirst.generated)
               && !originalFirst.hasFlag(F_VISIBLE)
               && !!originalSecond
-              && isNode(originalSecond, N.Combinator)
-              && !originalSecond.hasFlag(F_VISIBLE));
+              && isCombinator(originalSecond)
+              && !combinatorHasFlag(originalSecond, F_VISIBLE));
 
           // Only flatten when we know this is the implicit `& ` nesting case.
           // Do NOT flatten other combinators (e.g. `.ext6 > :is(...)`) — Less expects
@@ -903,25 +1005,15 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
             && (originalFirst.hasFlag(F_IMPLICIT_AMPERSAND) || originalFirst.generated)
             && !originalFirst.hasFlag(F_VISIBLE)
             && !!originalSecond
-            && isNode(originalSecond, N.Combinator)
-            && !originalSecond.hasFlag(F_VISIBLE);
+            && isCombinator(originalSecond)
+            && !combinatorHasFlag(originalSecond, F_VISIBLE);
           const dropImplicitPrefixViaGeneratedIs =
             !!first
             && isNode(first, N.PseudoSelector)
             && first.name === ':is'
             && first.generated === true
-            && !maybeCombinator.hasFlag(F_VISIBLE);
+            && !combinatorHasFlag(maybeCombinator, F_VISIBLE);
           const outputPrefix = (dropImplicitPrefix || dropImplicitPrefixViaGeneratedIs) ? [] : prefix;
-
-          // Visible vs invisible ampersand (with partial extends producing :is()):
-          // - Visible authored `&`: keep one ampersand in front of the whole list.
-          // - Invisible (implicit) `&`: copy invisible ampersand + combinator onto each selector list
-          //   item so valueOf() is correct for extend matching (e.g. ".bb .bb", ".aa .dd").
-          const retainInvisibleAmpersandAndCombinator = dropImplicitPrefix && outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
-          const isIndexInResult = result.length - 1;
-          const suffixAfterIs = retainInvisibleAmpersandAndCombinator
-            ? copyComplexComponentsForPlacement(value.slice(isIndexInResult + 1))
-            : [];
 
           for (const inner of argList) {
             let innerSel = inner;
@@ -940,30 +1032,8 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
                 innerSel = ComplexSelector.create(innerParts.slice(dropCount)).inherit(innerSel);
               }
             }
-            const omitCombinator = outputPrefix.length === 0 && !maybeCombinator.hasFlag(F_VISIBLE);
-            if (retainInvisibleAmpersandAndCombinator) {
-              // Copy invisible ampersand + combinator onto each item so selector list items have
-              // correct valueOf() for extend (e.g. .bb .bb, .aa .dd). Preserve selectorContainer when present so & stays live.
-              if (!isNode(originalFirst, N.Ampersand)) {
-                throw new TypeError('Expected implicit ampersand source');
-              }
-              const origAmp = originalFirst;
-              const resolved = origAmp.getResolvedSelector();
-              const parentSel = resolved ?? undefined;
-              let amp = origAmp.derive();
-              if (!origAmp.getStoredSelector() && isSelectorNode(parentSel)) {
-                amp = Ampersand.create({ selectorContainer: { selector: copySelectorForExtend(parentSel) } });
-              }
-              amp.addFlag(F_IMPLICIT_AMPERSAND);
-              amp.removeFlag(F_VISIBLE);
-              const combCopy = copyComplexComponentForPlacement(maybeCombinator);
-              if (typeof combCopy !== 'string') {
-                combCopy.removeFlag(F_VISIBLE);
-              }
-              const parts: ComplexSelectorComponent[] = [amp, combCopy, copySelectorForExtend(innerSel), ...suffixAfterIs];
-              const next = ComplexSelector.create(parts).inherit(el);
-              push(next);
-            } else if (outputPrefix.length === 0 && omitCombinator) {
+            const omitCombinator = outputPrefix.length === 0 && !combinatorHasFlag(maybeCombinator, F_VISIBLE);
+            if (outputPrefix.length === 0 && omitCombinator) {
               // Prefix/combinator dropped but not implicit (e.g. first was :is()): emit inner as-is.
               push(copySelectorForExtend(innerSel).inherit(el));
             } else {
@@ -1057,7 +1127,11 @@ function isSimpleSelectorPlacementCopy(node: Node): node is SimpleSelector {
 
 function copySimpleSelectorsForPlacement(nodes: SimpleSelector[]): SimpleSelector[] {
   return nodes.map((node) => {
-    const copied = node.cloneForPlacement({ reuseLeaves: false });
+    // Extend materialization: these are shared SOURCE simple selectors (plus the
+    // freshly-built `:is()` wrapper) placed into a new Compound/Complex container.
+    // Share their child containers frozen (B3) so `inherit`/`adopt` skips the
+    // reparent and the shared source tree is never mutated.
+    const copied = node.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
     if (!isSimpleSelectorPlacementCopy(copied)) {
       throw new TypeError('Expected simple selector copy');
     }
@@ -1069,7 +1143,8 @@ function copyComplexComponentForPlacement(node: ComplexSelectorComponent): Compl
   if (typeof node === 'string') {
     return node;
   }
-  const copied = node.cloneForPlacement({ reuseLeaves: false });
+  // Shared-source complex component (see copySimpleSelectorsForPlacement): B3 share frozen.
+  const copied = node.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
   if (!isComplexComponent(copied)) {
     throw new TypeError('Expected complex selector component copy');
   }
@@ -1104,7 +1179,10 @@ function sameArrayItems<T>(left: readonly T[], right: readonly T[]): boolean {
  * @param inheritFrom - Optional selector to inherit from
  * @returns A new SelectorList with deduplicated and flattened value
  */
-function createExtendedSelectorList(value: Selector[], inheritFrom?: Selector): SelectorList | ExtendErrorType {
+function createExtendedSelectorList(
+  value: Selector[],
+  inheritFrom?: SelectorListLike
+): SelectorListLike | ExtendErrorType {
   // Extract value from any :is() wrappers in the array
   const extractedSelectors: Selector[] = [];
   for (const selector of value) {
@@ -1228,8 +1306,10 @@ function createExtendedSelectorList(value: Selector[], inheritFrom?: Selector): 
   // it before `.inherit(inheritFrom)` reads the parent chain.
   const placedArray = copySelectorsForPlacement(processedArray);
 
-  const result = SelectorList.create(placedArray);
-  return inheritFrom ? result.inherit(inheritFrom) : result;
+  if (!inheritFrom) {
+    return placedArray.length === 1 ? placedArray[0]! : placedArray;
+  }
+  return finishSelectorListSurface(placedArray, inheritFrom);
 }
 
 /**
@@ -1427,13 +1507,48 @@ export function tryExtendSelector(
  * @throws ExtendError if extension fails
  */
 export function extendSelector(
-  target: Selector,
+  target: ExtendSelectorSurface,
   find: Selector,
   extendWith: Selector,
   partial: boolean,
   skipAmpersandCheck: boolean = false,
   hasMoreAfterIs: boolean = false
-): Selector | ExtendErrorType {
+): ExtendSelectorSurface | ExtendErrorType {
+  // Parser-delivered array selector lists are wrapped into a transient
+  // SelectorList node so they run through the same match/NOT_FOUND search as
+  // node targets; the SelectorList branch below (after the search) delegates
+  // to extendSelectorList exactly as before.
+  if (Array.isArray(target)) {
+    return extendSelectorList(target, find, extendWith, partial, skipAmpersandCheck);
+  }
+  if (process.env.PROBE_EXTEND) {
+    console.error('[PROBE enter]', JSON.stringify({ target: target.valueOf(), find: find.valueOf(), partial }));
+  }
+  // Sweep instrumentation (rung 8): when a differential sweep installs the global sink, capture
+  // every TOP-LEVEL reachable tuple (the calls a production `processExtendsByIndex` wire replaces —
+  // `skipAmpersandCheck`/`hasMoreAfterIs` are the internal recursive calls). No-op unless installed.
+  // The own engine (which the sink runs) is pure w.r.t. its inputs, so the sink runs it FIRST on the
+  // pristine nodes; the walk body then runs on those same still-pristine nodes and its result is fed
+  // back to the sink to record the byte-for-byte comparison. Re-entrancy guarded via the BUSY flag.
+  const sweepGlobal = globalThis as {
+    __EXTEND_INDEX_SWEEP__?: (
+      t: ExtendSelectorSurface, f: Selector, e: Selector, p: boolean,
+      oracleThunk: () => ExtendSelectorSurface | ExtendErrorType
+    ) => ExtendSelectorSurface | ExtendErrorType;
+    __EXTEND_INDEX_SWEEP_BUSY__?: boolean;
+  };
+  const sweepSink = sweepGlobal.__EXTEND_INDEX_SWEEP__;
+  if (sweepSink && !sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ && !skipAmpersandCheck && !hasMoreAfterIs) {
+    sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ = true;
+    try {
+      // The sink runs the (pure) own engine on these pristine nodes FIRST, captures its string,
+      // then invokes this thunk to run the real walk on the same nodes, and records the comparison.
+      return sweepSink(target, find, extendWith, partial,
+        () => extendSelector(target, find, extendWith, partial, skipAmpersandCheck, hasMoreAfterIs));
+    } finally {
+      sweepGlobal.__EXTEND_INDEX_SWEEP_BUSY__ = false;
+    }
+  }
   if (partial && find.valueOf() === extendWith.valueOf()) {
     return target;
   }
@@ -1444,12 +1559,12 @@ export function extendSelector(
   // the find selector can never match within the target. SelectorList OR-paths are
   // encoded as an empty/smaller requiredKeySet, so this stays a pure data-type swap.
   if (!partial && canFastReject) {
-    if (!isSubsetOf(find.requiredKeySet, target.keySet)) {
+    if (!isSubsetOf(requiredKeySetOf(find), keySetOf(target))) {
       return 'NOT_FOUND';
     }
   } else if (partial && canFastReject) {
     // For partial extends, find's keys must have at least some overlap with target's keys
-    if (isDisjoint(find.keySet, target.keySet)) {
+    if (isDisjoint(keySetOf(find), keySetOf(target))) {
       return 'NOT_FOUND';
     }
   }
@@ -1486,7 +1601,7 @@ export function extendSelector(
       }
     }
   }
-  const comparison = selectorCompare(target, find, searchResult);
+  let comparison = selectorCompare(target, find, searchResult);
   if (!searchResult.hasMatches) {
     return 'NOT_FOUND';
   }
@@ -1505,11 +1620,22 @@ export function extendSelector(
         partial
         && ampersandCrossingInfo.reason === 'resolved-only'
         && isNode(originalTarget, N.ComplexSelector)
-        && isNode(originalTarget.value[0], N.Combinator)
+        && isCombinator(originalTarget.value[0])
       );
       if (shouldSkipResolvedOnlySimpleBoundary || shouldSkipRelativePartialBoundary) {
         // Keep local extends on nested/relative value in normal flow.
         // Forcing amp-boundary hoisting here flattens authored nesting unexpectedly.
+        // Relative partial extends (e.g. `> &.item`) still need the ampersand
+        // resolved before matching, but must not mutate the source selector tree.
+        if (shouldSkipRelativePartialBoundary && ampersandCrossingInfo.ampersandNode) {
+          // Match legacy behavior: locations were computed on the unresolved selector
+          // (e.g. `> &.item`) but extension applies to the ampersand-resolved target.
+          // Re-searching on the resolved tree can pick a narrower partial match.
+          target = replaceAmpersandWithItsValue(
+            originalTarget,
+            ampersandCrossingInfo.ampersandNode
+          );
+        }
       } else {
         const hasWholeSelectorLocation = searchResult.locations.some((loc: any) =>
           !loc?.isPartialMatch
@@ -1532,7 +1658,9 @@ export function extendSelector(
     }
   }
 
-  // Special handling for SelectorList targets - extend each matching selector in the list
+  // Special handling for SelectorList targets - extend each matching selector in the list.
+  // Runs AFTER the search + ampersand-boundary checks so combinator/keyset
+  // mismatches short-circuit to NOT_FOUND before we delegate to the list path.
   if (isNode(target, N.SelectorList)) {
     return extendSelectorList(target, find, extendWith, partial, skipAmpersandCheck);
   }
@@ -1664,7 +1792,7 @@ export function extendSelector(
             const sComp = selectorComponents[i];
             const tComp = findComponents[i];
 
-            if (sComp && tComp && !isNode(sComp, N.Combinator) && !isNode(tComp, N.Combinator)) {
+            if (sComp && tComp && !isCombinator(sComp) && !isCombinator(tComp)) {
               // Check if find component partially matches selector component
               if (isNode(sComp, N.CompoundSelector) && isNode(tComp, N.SimpleSelector)) {
                 const sCompSimple = sComp.value.filter((el): el is SimpleSelector => typeof el !== 'string');
@@ -1772,7 +1900,7 @@ export function extendSelector(
             return false;
           }
           const component = target.value[loc.path[0]];
-          return !!component && !isNode(component, N.Combinator);
+          return !!component && !isCombinator(component);
         });
 
         const compoundInnerMatches = searchResult.locations.filter((loc: ExtendLocation) => {
@@ -1845,7 +1973,7 @@ export function extendSelector(
               continue;
             }
             const component = newComponents[componentIndex];
-            if (!component || typeof component === 'string' || isNode(component, N.Combinator)) {
+            if (!component || typeof component === 'string' || isCombinator(component)) {
               continue;
             }
 
@@ -2028,7 +2156,7 @@ export function extendSelector(
       }
       const matchedComponent = target.value[componentIndex];
 
-      if (matchedComponent && typeof matchedComponent !== 'string' && !isNode(matchedComponent, N.Combinator)) {
+      if (matchedComponent && typeof matchedComponent !== 'string' && !isCombinator(matchedComponent)) {
         // Replace the matched component with :is(original, extension)
         const newComponents = [...target.value];
         // If extendWith is a :is() selector, extract its value to avoid nesting
@@ -2123,13 +2251,14 @@ export function extendSelector(
  * @returns Extended SelectorList
  */
 function extendSelectorList(
-  target: SelectorList,
+  target: SelectorListLike,
   find: Selector,
   extendWith: Selector,
   partial: boolean,
   skipAmpersandCheck: boolean,
   preferIsWrapperInPartialMode: boolean = false
-): Selector | ExtendErrorType {
+): SelectorListLike | ExtendErrorType {
+  const listItems = selectorListItems(target);
   const markExtended = (selector: Selector): Selector => {
     selector.addFlag(F_EXTENDED);
     return selector;
@@ -2174,7 +2303,7 @@ function extendSelectorList(
     // Prefix with the same implicit `&` + combinator shape from the template.
     const prefixed = ComplexSelector.create([
       first.derive(),
-      isNode(second, N.Combinator) ? copyComplexComponentForPlacement(second) : Combinator.create(' ').inherit(first),
+      isCombinator(second) ? copyComplexComponentForPlacement(second) : ' ',
       copySelectorForExtend(s)
     ]).inherit(s);
     return prefixed;
@@ -2186,7 +2315,7 @@ function extendSelectorList(
   const orderedMatchFlags: boolean[] = [];
   const newSelectors: Selector[] = [];
 
-  for (const item of target.value) {
+  for (const item of listItems) {
     const selector = selectorListItemForExtend(item);
     const comparison = selectorCompare(selector, find);
     if (!comparison.locations.length || (!comparison.hasWholeMatch && !comparison.hasPartialMatch)) {
@@ -2309,14 +2438,14 @@ function extendSelectorList(
     // See createExtendedSelectorList() for rationale: never include `target` as an adopted child
     // when we also inherit from it.
     const safeArray = processedArray.map(s => (s === target ? copySelectorForExtend(s) : s));
-    return SelectorList.create(safeArray).inherit(target);
+    return finishSelectorListSurface(safeArray, target);
   }
   // Exact-mode OR propagation:
   // If a selector-list contains authored `:is(parent)` sibling branches and only some siblings
   // whole-match `find`, propagate `extendWith` into the shared parent `:is(...)` argument for the
   // non-matching sibling branches in the same group.
   let fullModeSelectors = allSelectors;
-  if (!partial && isNode(find, N.ComplexSelector) && isNode(target, N.SelectorList)) {
+  if (!partial && isNode(find, N.ComplexSelector) && isSelectorListLike(target)) {
     type OrGroupCandidate = {
       idx: number;
       selector: ComplexSelector;
@@ -2341,7 +2470,7 @@ function extendSelectorList(
         if (!isNode(first, N.PseudoSelector) || first.name !== ':is' || first.generated) {
           continue;
         }
-        if (!isNode(second, N.Combinator)) {
+        if (!isCombinator(second)) {
           continue;
         }
         const arg = first.arg;
@@ -2429,7 +2558,7 @@ function extendSelectorList(
       if (!isNode(parentSel, N.PseudoSelector) || (parentSel as PseudoSelector).name !== ':is') {
         continue;
       }
-      if (!isNode(second, N.Combinator)) {
+      if (!isCombinator(second)) {
         continue;
       }
       if (!isNode(third, N.BasicSelector)) {
@@ -2453,7 +2582,7 @@ function extendSelectorList(
       const template = candidates[0]!.sel;
       const first = template.value[0];
       const second = template.value[1];
-      if (!isNode(first, N.Ampersand) || !isNode(second, N.Combinator)) {
+      if (!isNode(first, N.Ampersand) || !isCombinator(second)) {
         throw new TypeError('Expected implicit ampersand factorization template');
       }
       const childBasics = candidates.map((c) => {
@@ -2512,7 +2641,7 @@ function extendSelectorList(
         const first = cs.value[0];
         const second = cs.value[1];
         const third = cs.value[2];
-        if (!isSelectorNode(first) || !isNode(second, N.Combinator) || !isSelectorNode(third)) {
+        if (!isSelectorNode(first) || !isCombinator(second) || !isSelectorNode(third)) {
           continue;
         }
         const groupKey = second.valueOf();
@@ -3264,7 +3393,7 @@ function selectorIsEntirelyImplicitAmpersandLeading(selector: Selector): boolean
     return (
       isNode(first, N.Ampersand)
       && (first as Ampersand).hasFlag(F_IMPLICIT_AMPERSAND)
-      && isNode(second, N.Combinator)
+      && isCombinator(second)
     );
   };
   if (isNode(selector, N.SelectorList)) {
@@ -3370,6 +3499,56 @@ function findAmpersandsInSelector(selector: Selector): Array<{ ampersand: Ampers
   return results;
 }
 
+function copySelectorTreeForExtend(selector: Selector): Selector {
+  const copied = selector.clone((child) => {
+    if (child.canReuseAsLeaf()) {
+      return child.reuseAsLeaf();
+    }
+    if (isSelectorNode(child)) {
+      return copySelectorTreeForExtend(child);
+    }
+    return child.cloneForPlacement({ reuseLeaves: false });
+  });
+  if (!isSelectorNode(copied)) {
+    throw new TypeError('Expected selector copy');
+  }
+  return copied;
+}
+
+function ownSharedSelectorChildren(source: Selector, copy: Selector): void {
+  if (isNode(source, N.ComplexSelector) && isNode(copy, N.ComplexSelector)) {
+    const copyValue = copy.value;
+    const sourceValue = source.value;
+    for (let i = 0; i < copyValue.length; i++) {
+      const part = copyValue[i];
+      if (typeof part === 'string' || !isSelectorNode(part)) {
+        continue;
+      }
+      if (part === sourceValue[i]) {
+        copyValue[i] = copySelectorTreeForExtend(part);
+      } else {
+        ownSharedSelectorChildren(expectSelector(sourceValue[i]), part);
+      }
+    }
+    return;
+  }
+  if (isNode(source, N.CompoundSelector) && isNode(copy, N.CompoundSelector)) {
+    const copyValue = copy.value;
+    const sourceValue = source.value;
+    for (let i = 0; i < copyValue.length; i++) {
+      const part = copyValue[i];
+      if (typeof part === 'string' || !isSelectorNode(part)) {
+        continue;
+      }
+      if (part === sourceValue[i]) {
+        copyValue[i] = copySelectorTreeForExtend(part);
+      } else {
+        ownSharedSelectorChildren(expectSelector(sourceValue[i]), part);
+      }
+    }
+  }
+}
+
 /**
  * Creates a version of the selector with the specified ampersand replaced by its resolved value
  * @param selector - The selector containing the ampersand
@@ -3382,7 +3561,12 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
     return selector;
   }
 
-  const selectorCopy = copySelectorForExtend(selector);
+  const selectorCopy = isNode(selector, N.CompoundSelector) || isNode(selector, N.SelectorList)
+    ? copySelectorTreeForExtend(selector)
+    : copySelectorForExtend(selector);
+  if (!isNode(selector, N.CompoundSelector) && !isNode(selector, N.SelectorList)) {
+    ownSharedSelectorChildren(selector, selectorCopy);
+  }
   let resolvedSelector: Selector = copySelectorForExtend(resolved);
 
   // If the resolved selector is a SelectorList, wrap it in :is() so it can be used as a single
@@ -3423,8 +3607,12 @@ function replaceAmpersandWithItsValue(selector: Selector, ampersand: Ampersand):
  * @returns Selector with ampersand removed
  */
 function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Selector {
-  // Create a copy of the selector
-  const selectorCopy = copySelectorForExtend(selector);
+  const selectorCopy = isNode(selector, N.CompoundSelector) || isNode(selector, N.SelectorList)
+    ? copySelectorTreeForExtend(selector)
+    : copySelectorForExtend(selector);
+  if (!isNode(selector, N.CompoundSelector) && !isNode(selector, N.SelectorList)) {
+    ownSharedSelectorChildren(selector, selectorCopy);
+  }
 
   const ampersandResolvedValue = ampersand.getResolvedSelector()?.valueOf();
   // Find and remove the ampersand node
@@ -3442,7 +3630,7 @@ function replaceAmpersandWithEmpty(selector: Selector, ampersand: Ampersand): Se
           // If we removed a leading ampersand in a complex selector, also remove a following combinator
           // (implicit nesting uses `&` + generated whitespace combinator).
           const next = parentItems[idx];
-          if (isNode(next, N.Combinator) && next.value === ' ') {
+          if (isCombinator(next) && combinatorValue(next) === ' ') {
             parentItems.splice(idx, 1);
           }
         }
@@ -3497,7 +3685,7 @@ function handleAmpersandBoundaryCrossing(
         return copySelectorForExtend(item);
       }
       let start = 1;
-      if (parts[start] && isNode(parts[start], N.Combinator)) {
+      if (parts[start] && isCombinator(parts[start])) {
         start += 1;
       }
       const tail = parts.slice(start).filter(isComplexComponent);
@@ -3525,7 +3713,7 @@ function handleAmpersandBoundaryCrossing(
     // Create the combined selector: :is(parent) :is(inner)
     const combined = ComplexSelector.create([
       parentWrapped,
-      Combinator.create(' '),
+      ' ',
       innerWrapped
     ]).inherit(selector);
 
@@ -3756,6 +3944,91 @@ function validateCompoundSelector(value: any[]): {
   return { isValid: true };
 }
 
+type ExtendTuple = [Selector, Selector, boolean, any, any];
+
+/**
+ * Target-value index over `allExtends`, built once per `applyExtendsToSelector`
+ * pass. `findChainedExtendsWithSkips` otherwise re-scans the ENTIRE extend list
+ * for every (candidate) — O(I) per applied extend × I extends = O(I²).
+ *
+ * A target is "simple" (index-safe) when it is a single simple selector: it can
+ * only match a candidate if that exact selector value appears as one of the
+ * candidate's subtree values (`collectSelectorSubtreeValues` descends into every
+ * simple). So for simple targets, the chaining loop only needs to visit extends
+ * whose target value is actually present in the candidate — a Map lookup instead
+ * of a full-list scan. Compound / complex / list targets can match a SUBSET or a
+ * cross-position span whose whole value never appears as a single subtree value,
+ * so they are NOT index-safe and live in `nonSimple`, checked for every candidate
+ * (rare in practice — most `:extend` targets are a single class/id).
+ */
+interface ExtendTargetIndex {
+  bySimpleTarget: Map<string, ExtendTuple[]>;
+  nonSimple: ExtendTuple[];
+  /** Original position of each tuple in `allExtends`, for stable ordering. */
+  position: Map<ExtendTuple, number>;
+}
+
+/**
+ * The single-simple value of a target if it is index-safe, else undefined.
+ * Index-safe = one position, one simple: a bare SimpleSelector, or a
+ * Compound/Complex/List that reduces to exactly one simple component.
+ */
+function singleSimpleTargetValue(target: Selector): string | undefined {
+  if (isNode(target, N.SelectorList)) {
+    return undefined;
+  }
+  if (isNode(target, N.CompoundSelector)) {
+    const simples = target.value.filter(c => typeof c !== 'string');
+    return simples.length === 1 ? target.valueOf() : undefined;
+  }
+  if (isNode(target, N.ComplexSelector)) {
+    let simple: Selector | undefined;
+    for (const comp of target.value) {
+      if (isCombinator(comp)) {
+        // a combinator ⇒ multi-position ⇒ not index-safe
+        return undefined;
+      }
+      if (typeof comp === 'string') {
+        continue;
+      }
+      if (simple) {
+        return undefined;
+      }
+      simple = comp as Selector;
+    }
+    return simple ? singleSimpleTargetValue(simple) : undefined;
+  }
+  if (isNode(target, N.PseudoSelector)) {
+    // A pseudo target (e.g. :extend(:hover)) can match within a compound as a
+    // subset ⇒ treat as non-simple to be safe.
+    return undefined;
+  }
+  // SimpleSelector (class/id/element/attr) — the canonical index-safe case.
+  return target.valueOf();
+}
+
+function buildExtendTargetIndex(allExtends: ExtendTuple[]): ExtendTargetIndex {
+  const bySimpleTarget = new Map<string, ExtendTuple[]>();
+  const nonSimple: ExtendTuple[] = [];
+  const position = new Map<ExtendTuple, number>();
+  for (let i = 0; i < allExtends.length; i += 1) {
+    const tuple = allExtends[i]!;
+    position.set(tuple, i);
+    const key = singleSimpleTargetValue(tuple[0]);
+    if (key === undefined) {
+      nonSimple.push(tuple);
+    } else {
+      let bucket = bySimpleTarget.get(key);
+      if (!bucket) {
+        bucket = [];
+        bySimpleTarget.set(key, bucket);
+      }
+      bucket.push(tuple);
+    }
+  }
+  return { bySimpleTarget, nonSimple, position };
+}
+
 /**
  * Finds extends that should be processed next on a newly transformed selector.
  * This is part of the iterative extend process: when a selector is transformed
@@ -3781,14 +4054,16 @@ export function findChainedExtends(
   currentTarget: Selector,
   currentSelectorWithExtend: Selector,
   originalSelector: Selector,
-  originalValues?: Set<string>
+  originalValues?: Set<string>,
+  index?: ExtendTargetIndex
 ): Array<[Selector, Selector, boolean, any, any]> {
   return findChainedExtendsWithSkips(
     extendedSelector,
     allExtends,
     new Set([`${currentTarget.valueOf()}|${currentSelectorWithExtend.valueOf()}`]),
     originalSelector,
-    originalValues
+    originalValues,
+    index
   );
 }
 
@@ -3818,7 +4093,7 @@ function collectSelectorSubtreeValues(
 
   if (isNode(selector, N.ComplexSelector)) {
     for (const item of selector.value) {
-      if (isNode(item, N.Combinator)) {
+      if (isCombinator(item)) {
         continue;
       }
       if (isSelectorNode(item)) {
@@ -3866,7 +4141,7 @@ function collectNewSelectorCandidates(
 
   if (isNode(selector, N.ComplexSelector)) {
     for (const item of selector.value) {
-      if (isNode(item, N.Combinator)) {
+      if (isCombinator(item)) {
         continue;
       }
       if (isSelectorNode(item)) {
@@ -3891,34 +4166,65 @@ function findChainedExtendsWithSkips(
   allExtends: Array<[Selector, Selector, boolean, any, any]>,
   skipKeys: Set<string>,
   originalSelector: Selector,
-  originalValues = collectSelectorSubtreeValues(originalSelector)
+  originalValues = collectSelectorSubtreeValues(originalSelector),
+  index?: ExtendTargetIndex
 ): Array<[Selector, Selector, boolean, any, any]> {
-  const chained: Array<[Selector, Selector, boolean, any, any]> = [];
+  const chained: ExtendTuple[] = [];
   const candidates = collectNewSelectorCandidates(extendedSelector, originalValues);
   const queued = new Set<string>();
 
+  const considerTuple = (tuple: ExtendTuple, candidate: Selector): void => {
+    const [otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode] = tuple;
+    const skipKey = `${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
+    if (skipKeys.has(skipKey)) {
+      return;
+    }
+    const chainKey = `${otherPartial ? 1 : 0}|${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
+    if (queued.has(chainKey)) {
+      return;
+    }
+    // `wouldExtendChange` is memoized per pass, so both probes collapse to a
+    // Map hit after their first evaluation.
+    if (wouldExtendChange(originalSelector, otherTarget, otherSelectorWithExtend, otherPartial)) {
+      return;
+    }
+    if (!wouldExtendChange(candidate, otherTarget, otherSelectorWithExtend, otherPartial)) {
+      return;
+    }
+    chained.push([otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
+    queued.add(chainKey);
+  };
+
   for (const candidate of candidates) {
-    for (const [otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode] of allExtends) {
-      const skipKey = `${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
-      if (skipKeys.has(skipKey)) {
-        continue;
+    if (index) {
+      // Only extends whose simple target value actually appears in this
+      // candidate's subtree can match; plus the (rare) non-simple targets.
+      // Gather the relevant tuples, then process them in original `allExtends`
+      // order so chaining order (and thus applied-extend order) is IDENTICAL to
+      // the full-scan path.
+      const candidateValues = collectSelectorSubtreeValues(candidate);
+      const relevant = new Set<ExtendTuple>();
+      for (const value of candidateValues) {
+        const bucket = index.bySimpleTarget.get(value);
+        if (bucket) {
+          for (const tuple of bucket) {
+            relevant.add(tuple);
+          }
+        }
       }
-
-      if (wouldExtendChange(originalSelector, otherTarget, otherSelectorWithExtend, otherPartial)) {
-        continue;
+      for (const tuple of index.nonSimple) {
+        relevant.add(tuple);
       }
-
-      if (!wouldExtendChange(candidate, otherTarget, otherSelectorWithExtend, otherPartial)) {
-        continue;
+      const ordered = [...relevant].sort(
+        (a, b) => (index.position.get(a) ?? 0) - (index.position.get(b) ?? 0)
+      );
+      for (const tuple of ordered) {
+        considerTuple(tuple, candidate);
       }
-
-      const chainKey = `${otherPartial ? 1 : 0}|${otherTarget.valueOf()}|${otherSelectorWithExtend.valueOf()}`;
-      if (queued.has(chainKey)) {
-        continue;
+    } else {
+      for (const tuple of allExtends) {
+        considerTuple(tuple, candidate);
       }
-
-      chained.push([otherTarget, otherSelectorWithExtend, otherPartial, otherExtendRoot, otherExtendNode]);
-      queued.add(chainKey);
     }
   }
 
@@ -3944,6 +4250,8 @@ export function applyExtensionAtLocation(
 /**
  * Recursively applies an extension at a specific path.
  * @param contextSelector - When wrapping inside a compound, the compound that will contain the :is(); used for element/ID conflict validation.
+ * @param enclosingPseudo - The PseudoSelector whose `arg` is `current`, threaded from the descent so composition does not read `current.parent`. Enables shared (non-reparented) selectors for B2.
+ * @param enclosingCompound - The CompoundSelector containing `enclosingPseudo`, threaded from the descent instead of reading `current.parent.parent`.
  */
 function applyExtensionAtPath(
   current: Selector,
@@ -3952,7 +4260,9 @@ function applyExtensionAtPath(
   extendWith: Selector,
   extensionType: 'replace' | 'append' | 'wrap',
   location?: ExtendLocation,
-  contextSelector?: Selector
+  contextSelector?: Selector,
+  enclosingPseudo?: PseudoSelector,
+  enclosingCompound?: CompoundSelector
 ): Selector | ExtendErrorType {
   // When at root compound with a contiguous slice to wrap, replace that slice with :is(matched, extendWith)
   if (path.length === 0 && isNode(current, N.CompoundSelector) && location?.contiguousCompoundRange) {
@@ -4033,12 +4343,12 @@ function applyExtensionAtPath(
         && itemSelector
         && isNode(itemSelector, N.SimpleSelector)
         && isNode(matchedNode, N.SimpleSelector)
-        && isNode(current.parent, N.PseudoSelector)
-        && current.parent.name === ':is'
-        && isNode(current.parent.parent, N.CompoundSelector)
+        && enclosingPseudo !== undefined
+        && enclosingPseudo.name === ':is'
+        && enclosingCompound !== undefined
       ) {
-        const parentCompound = current.parent.parent;
-        const pseudoIndex = parentCompound.value.findIndex(n => n === current.parent);
+        const parentCompound = enclosingCompound;
+        const pseudoIndex = parentCompound.value.findIndex(n => n === enclosingPseudo);
         const trailing = pseudoIndex >= 0 ? parentCompound.value.slice(pseudoIndex + 1) : [];
         // Only force append-to-:is() for pseudo tails like `:is(.a,.b):after`.
         // For structural tails like `.a:is(.b,.c).d`, preserve positional wrap semantics.
@@ -4128,7 +4438,7 @@ function applyExtensionAtPath(
       return current;
     }
     const compoundChild = applyExtensionAtPath(
-      targetChild, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext
+      targetChild, remainingPath, matchedNode, extendWith, extensionType, undefined, childContext, undefined, current
     );
     if (typeof compoundChild === 'string') {
       return compoundChild;
@@ -4190,7 +4500,7 @@ function applyExtensionAtPath(
       return result;
     } else {
       // Navigate deeper into the argument
-      const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined);
+      const newArg = applyExtensionAtPath(arg, remainingPath, matchedNode, extendWith, extensionType, undefined, undefined, current, enclosingCompound);
       if (typeof newArg === 'string') {
         return newArg;
       }

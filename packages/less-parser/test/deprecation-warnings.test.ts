@@ -166,4 +166,23 @@ describe('Deprecation warnings', () => {
       expect(warning).toBeUndefined();
     });
   });
+
+  describe('at-rule-variable', () => {
+    it('should warn for a known at-rule name called as an empty-parens variable', () => {
+      const { errors, warnings } = parser.parse('a { @media(); }');
+      expect(errors.length).toBe(0);
+      const warning = warnings.find(w => w.deprecation === 'at-rule-variable');
+
+      expect(warning).toBeDefined();
+      expect(warning?.message).toContain('Using known at-rule names as variables is deprecated');
+    });
+
+    it('should not warn for a non-at-rule name called as a variable', () => {
+      const { errors, warnings } = parser.parse('a { @foo(); }');
+      expect(errors.length).toBe(0);
+      const warning = warnings.find(w => w.deprecation === 'at-rule-variable');
+
+      expect(warning).toBeUndefined();
+    });
+  });
 });

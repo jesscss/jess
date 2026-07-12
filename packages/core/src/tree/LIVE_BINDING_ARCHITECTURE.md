@@ -7,6 +7,21 @@
 >
 > Status: **Invariants locked by owner (2026-06-29). §3 primitive shape pending
 > the DRY-audit collapse list.**
+>
+> ⚠️ **Active queue: [`../../../../docs/future/core-architecture/CORE-CLEANUP.md`](../../../../docs/future/core-architecture/CORE-CLEANUP.md)**
+> (Focus B). The single-frame migration has largely landed; this doc's invariants
+> now describe CURRENT reality, not just the target. Status of the three original
+> divergences:
+> - **R1 — frame identity: RESOLVED.** Frame identity is stable (single-frame Step 1);
+>   `.scopeFrame` re-points are no longer transient.
+> - **R2 — mixin two-frame split: RESOLVED.** The `Mixin.sourceNode` wrapper frame was
+>   eliminated; a mixin IS its body, one frame per call.
+> - **R3 — `direct-rules-lookup` fallback: confined**, not yet deleted — remains only
+>   for `$while` loops and dynamic/interpolated/explicit-target names. (Full history:
+>   `docs/archive/SINGLE_FRAME_PLAN.md`, `docs/archive/BINDING-LOOKUP-REMAINING.md`.)
+>
+> DO NOT patch closure/scope capture per-path — that is the fragmentation the
+> migration removes. Fix identity (R1) first; see the plan's step ordering.
 
 ## 1. Core principle
 

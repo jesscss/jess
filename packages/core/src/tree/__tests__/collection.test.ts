@@ -12,7 +12,7 @@ describe('Collection', () => {
 
   it('renders collection syntax through toTrimmedString()', () => {
     const node = coll([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
 
     expect(node.toTrimmedString()).toBeString(`
@@ -24,7 +24,7 @@ describe('Collection', () => {
 
   it('renders collection values through render(context)', () => {
     const node = coll([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
 
     expect(node.render(context)).toBeString(`
@@ -37,7 +37,7 @@ describe('Collection', () => {
   it('writes collection output into render buffers', async () => {
     const buffer = createRenderBuffer('segmented');
     const node = coll([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
     let resolveCalls = 0;
     node.resolve = () => {
@@ -59,7 +59,7 @@ describe('Collection', () => {
 
   it('renders collection output directly without public resolve', () => {
     const node = coll([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
     node.resolve = () => {
       throw new Error('Collection direct render should serialize source syntax');
@@ -75,7 +75,7 @@ describe('Collection', () => {
 
   it('resolves collections without touching render state', async () => {
     const node = coll([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
 
     const resolved = await node.resolve(context);

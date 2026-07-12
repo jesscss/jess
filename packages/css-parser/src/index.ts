@@ -9,4 +9,9 @@ export {
   buildLazyTriviaMap,
   type Component, type Spanned
 } from './builders.js';
-export { parseCssFn } from './grammar.js';
+export { cssGrammar } from './grammar.js';
+export { parseCssFn } from './functional-parser.js';
+export {
+  runFunctionalParse, toParseError,
+  type FunctionalParseHost, type RunFunctionalParseOptions, type FunctionalParseResult
+} from './functional-driver.js';

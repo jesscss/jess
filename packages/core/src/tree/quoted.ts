@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
 import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation } from './node.js';
@@ -27,7 +28,7 @@ export interface Quoted extends Node<string | Any | Interpolated, QuotedOptions>
 export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: string | Any | Interpolated;
+  readonly value: string | Any | Interpolated;
 
   readonly quote: '"' | '\'' | undefined;
   readonly escaped: boolean;
@@ -36,7 +37,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return new Quoted(
       value,
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
@@ -67,6 +68,8 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.quote = options?.quote;
     this.escaped = !!options?.escaped;
@@ -75,6 +78,14 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     } else {
       this.addFlag(F_NON_STATIC);
     }
+  }
+
+  override hasStaticName(): boolean {
+    return typeof this.value === 'string' && !this.escaped;
+  }
+
+  protected override ownStaticFlag(): number {
+    return typeof this.value === 'string' && !this.escaped ? F_STATIC : F_NON_STATIC;
   }
 
   override toTrimmedString(options?: PrintOptions) {

@@ -58,6 +58,45 @@ describe('callable special-case helper', () => {
     });
   });
 
+  it('falls back to callSiteRules when the ruleset candidate has no parent', async () => {
+    // A detached ruleset called from a variable has no tree parent, and the
+    // caller has no parent either; `callParent` derefed undefined at `.adopt`.
+    // The call-site Rules is the placement parent.
+    const context = new Context({ leakyRules: true });
+    context.depth = 2;
+
+    const callSiteRules = rules([]);
+    // Candidate ruleset is unparented (as if held in a variable binding).
+    const candidate = ruleset({
+      selector: el('.candidate'),
+      rules: [decl({ name: 'color', value: any('red') })]
+    });
+    // Caller with no parent.
+    const caller = call({ name: ref({ key: '.candidate' }, { type: 'mixin' }) });
+    context.root = rules([]);
+    context.rulesContext = callSiteRules;
+
+    expect(caller.parent).toBeUndefined();
+    expect(candidate.parent).toBeUndefined();
+
+    const result = await evaluateCallableSpecialCaseCandidate({
+      candidate,
+      context,
+      caller,
+      callSiteRules,
+      restrictMixinOutputLookup: true,
+      candidateName: undefined,
+      candidateParams: undefined,
+      candidateGuard: undefined,
+      createCallableRules: createCallableRulesSurface,
+      getRootSourceRules
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.output).toBeDefined();
+    expect(result.output?.toString()).toContain('color: red;');
+  });
+
   it('handles anonymous detached callable-rules through unlocked eval output', async () => {
     const context = new Context({ leakyRules: true });
     context.depth = 2;
@@ -137,7 +176,7 @@ describe('callable special-case helper', () => {
   it('leaves ordinary mixin candidates on the main eval path', async () => {
     const context = new Context({ leakyRules: true });
     const candidate = mixin({
-      name: any('.button'),
+      name: '.button',
       rules: [
         decl({ name: 'color', value: any('red') })
       ]

@@ -38,7 +38,7 @@ describe('callable candidate output helper', () => {
     const context = new Context({ leakyRules: false });
     const sourceRules = rules([decl({ name: 'color', value: any('red') })]);
     const candidate = mixin({
-      name: any('.demo'),
+      name: '.demo',
       rules: sourceRules.rules
     });
     const candidateParent = rules([candidate]);

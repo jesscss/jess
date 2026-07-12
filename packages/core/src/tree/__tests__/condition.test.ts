@@ -1,4 +1,4 @@
-import { any, Bool, bool, call, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Bool, bool, call, Condition, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
@@ -16,7 +16,12 @@ class CountingWriter extends OutputWriter {
 }
 
 class WriteOnlyNode extends Node<string> {
-  declare value: string;
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
   override writeSyntax(options: Parameters<Node['writeSyntax']>[0]): void {
     options.writer.add(this.value);
   }
@@ -299,7 +304,7 @@ describe('Condition', () => {
     it('keeps source condition child containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({
-          name: any('item'),
+          name: 'item',
           value: any('foo')
         })
       ]);
@@ -392,6 +397,69 @@ describe('Condition', () => {
         dimension([1000, 'ms'])
       ]);
       let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('true');
+    });
+
+    // Regression (namespacing-7): a keyword `true`/`false` — e.g. read back from a
+    // namespace mixin lookup `#ns.opts[flag]` where `flag: true` — is a bare
+    // Keyword, not a Bool, but Less treats it as boolean in a bare guard.
+    it('treats a keyword true as a truthy bare guard', async () => {
+      let node = condition([any('true')]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('true');
+    });
+
+    it('treats a keyword false as a falsy bare guard', async () => {
+      let node = condition([any('false')]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('false');
+    });
+
+    it('treats any other keyword as falsy in a bare guard', async () => {
+      let node = condition([any('foo')]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('false');
+    });
+
+    it('compares a keyword true against a Bool as equal', async () => {
+      let node = condition([any('true'), '=', bool(true)]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBe('true');
+    });
+
+    // `Condition.resultPasses` is what a Ruleset uses for a non-Condition guard
+    // whose eval yields a bare value node.
+    it('resultPasses honours a keyword true/false result', () => {
+      expect(Condition.resultPasses(any('true'))).toBe(true);
+      expect(Condition.resultPasses(any('false'))).toBe(false);
+      expect(Condition.resultPasses(bool(true))).toBe(true);
+      expect(Condition.resultPasses(any('foo'))).toBe(false);
+    });
+  });
+
+  describe('clone', () => {
+    it('preserves left/operator/right children (comparison)', () => {
+      const src = condition([num(1), '=', num(2)]);
+      const cloned = src.clone(n => n.clone());
+      expect(cloned).toBeInstanceOf(Condition);
+      expect(cloned.left).toBeInstanceOf(Node);
+      expect(cloned.operator).toBe('=');
+      expect(cloned.right).toBeInstanceOf(Node);
+      expect(cloned.toTrimmedString()).toBe('(1 = 2)');
+    });
+
+    it('preserves a bare (single-operand) condition', () => {
+      const src = condition([bool(true)]);
+      const cloned = src.clone(n => n.clone());
+      expect(cloned.left).toBeInstanceOf(Node);
+      expect(cloned.operator).toBeUndefined();
+      expect(cloned.right).toBeUndefined();
+    });
+
+    it('a placement clone still evaluates (children not dropped)', async () => {
+      const src = condition([num(1), '<', num(2)]);
+      const cloned = src.cloneForPlacement() as Condition;
+      const evald = await cloned.eval(context);
       expect(evald.render(context)).toBe('true');
     });
   });

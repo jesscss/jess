@@ -1,4 +1,4 @@
-import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
+import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
@@ -29,6 +29,12 @@ class CountingWriter extends OutputWriter {
 }
 
 class DirectText extends Node<string> {
+  readonly value: string;
+  constructor(value: string) {
+    super(value);
+    this.value = value;
+  }
+
   override toString(options?: PrintOptions): string {
     return this.toTrimmedString(options);
   }
@@ -145,7 +151,7 @@ describe('Sequence', () => {
   it('renders resolved sequence values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -202,13 +208,11 @@ describe('Sequence', () => {
     asyncItem.render = async () => {
       throw new Error('async sequence render should render the resolved item, not the source item');
     };
-    asyncItem.addFlag(F_MAY_ASYNC);
     asyncItem.removeFlag(F_STATIC);
     const sequenceNode = seq([
       asyncItem,
       any('solid')
     ]);
-    sequenceNode.addFlag(F_MAY_ASYNC);
     sequenceNode.removeFlag(F_STATIC);
     const originalMap = sequenceNode.value.map;
     Object.defineProperty(sequenceNode.value, 'map', {
@@ -229,22 +233,17 @@ describe('Sequence', () => {
     }
   });
 
-  it('renders dynamic sync sequence items directly without resolving them first', () => {
+  it('renders dynamic sync sequence items synchronously via the reactive path', () => {
     const dynamicItem = op([num(1), '+', num(2)]);
-    const originalResolve = dynamicItem.resolve;
-    dynamicItem.resolve = function throwOnResolve(): never {
-      throw new Error('sync sequence render should not resolve items before rendering');
-    };
     const sequenceNode = seq([
       dynamicItem,
       any('solid')
     ]);
 
-    try {
-      expect(sequenceNode.render(context)).toBe('3 solid');
-    } finally {
-      dynamicItem.resolve = originalResolve;
-    }
+    // Sync items resolve without producing a thenable, so render stays sync.
+    const rendered = sequenceNode.render(context);
+    expect(rendered).toBe('3 solid');
+    expect(typeof rendered).toBe('string');
   });
 
   it('writes dynamic sync direct sequence render output into flat buffers once', () => {
@@ -291,7 +290,7 @@ describe('Sequence', () => {
   it('writes resolved sequence render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -325,10 +324,8 @@ describe('Sequence', () => {
     asyncItem.render = async () => {
       throw new Error('async sequence buffer render should render the resolved item, not the source item');
     };
-    asyncItem.addFlag(F_MAY_ASYNC);
     asyncItem.removeFlag(F_STATIC);
     const sequenceNode = seq([asyncItem]);
-    sequenceNode.addFlag(F_MAY_ASYNC);
     sequenceNode.removeFlag(F_STATIC);
     const buffer = createRenderBuffer('flat');
 
@@ -339,7 +336,7 @@ describe('Sequence', () => {
   it('resolves sequence values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('mid'),
+        name: 'mid',
         value: num(20)
       })
     ]);
@@ -476,7 +473,7 @@ describe('Sequence', () => {
   it('keeps resolved single-item sequence buffer output out of explicit writers', async () => {
     const root = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('resolved')
       })
     ]);
@@ -495,7 +492,7 @@ describe('Sequence', () => {
   it('keeps source sequence child containers canonical after resolve(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('foo')
       })
     ]);
@@ -649,7 +646,10 @@ describe('Sequence', () => {
 
     const leftChild = any('left');
     const rightChild = any('right');
-    const left = new CountingSequence([leftChild]);
+    // Invariant 7: raw `new` shares children; parent canonically via the
+    // explicit primitive (as the `seq` factory does) so `operate` has real
+    // source parentage to preserve.
+    const left = new CountingSequence([leftChild]).parentChildren();
     const right = seq([rightChild]);
 
     CountingSequence.countConstructions = true;
@@ -722,8 +722,8 @@ describe('Sequence', () => {
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
-    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
+    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
     let stringCalls = 0;
     first.toString = second.toString = () => {
       stringCalls++;
@@ -752,8 +752,8 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
-    const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
+    const first = num(10, undefined, { start: 0, end: 2 }, treeContext);
+    const second = num(20, undefined, { start: 2, end: 3 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -768,8 +768,8 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 2, 1, 3], treeContext);
-    const second = num(20, undefined, [2, 1, 3, 3, 1, 4], treeContext);
+    const first = num(10, undefined, { start: 0, end: 2 }, treeContext);
+    const second = num(20, undefined, { start: 2, end: 3 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;
@@ -783,8 +783,8 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = any('is', undefined, [0, 1, 1, 2, 1, 3], treeContext);
-    const second = any('equal', undefined, [2, 1, 3, 7, 1, 8], treeContext);
+    const first = any('is', undefined, { start: 0, end: 2 }, treeContext);
+    const second = any('equal', undefined, { start: 2, end: 7 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -800,8 +800,8 @@ describe('Sequence', () => {
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = any('is', undefined, [0, 1, 1, 1, 1, 2], treeContext);
-    const second = any('equal', undefined, [3, 1, 4, 7, 1, 8], treeContext);
+    const first = any('is', undefined, { start: 0, end: 1 }, treeContext);
+    const second = any('equal', undefined, { start: 3, end: 7 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -818,8 +818,8 @@ describe('Sequence', () => {
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
-    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
+    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -835,8 +835,8 @@ describe('Sequence', () => {
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, [0, 1, 1, 1, 1, 2], treeContext);
-    const second = num(20, undefined, [3, 1, 4, 4, 1, 5], treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
+    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;

@@ -1,6 +1,5 @@
-import { parseCssFn } from '../src/grammar.js';
-import { N, isNode, serializeTypes, type Trivia } from '@jesscss/core';
-import { packedSpanStart, packedSpanEnd } from '@jesscss/parser';
+import { parseCssFn } from '../src/functional-parser.js';
+import { N, isNode, serializeTypes, type Trivia, sourceSpanOf } from '@jesscss/core';
 
 const cssParser = { parse: (input: string) => parseCssFn(input) };
 
@@ -9,23 +8,26 @@ const triviaText = (t: Trivia | undefined): string | undefined =>
   t ? t.src.slice(t.start, t.end) : undefined;
 
 // Simple selectors, combinators, names, and plain values are plain strings (not
-// nodes), so source provenance lives in the parent node's packed fieldSpans
-// (by childKeys index) and valueSpans (by array-segment index).
-function childIndex(node: any, key: string): number {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return ((node.constructor.childKeys ?? []) as readonly string[]).indexOf(key);
+// nodes) that carry no own span. Per-sub-component span arrays are no longer
+// stored on nodes; the parser still records comment runs in the trivia map, so
+// these tests look them up by their known literal source offsets.
+function selectorListMembers(selector: unknown): unknown[] {
+  if (Array.isArray(selector)) {
+    return selector;
+  }
+  if (isNode(selector, N.SelectorList)) {
+    return selector.value;
+  }
+  return [selector];
 }
-function fieldStart(node: any, key: string): number {
-  return packedSpanStart(node.fieldSpans, childIndex(node, key));
-}
-function fieldEnd(node: any, key: string): number {
-  return packedSpanEnd(node.fieldSpans, childIndex(node, key));
-}
-function valueStart(node: any, index: number): number {
-  return packedSpanStart(node.valueSpans, index);
-}
-function valueEnd(node: any, index: number): number {
-  return packedSpanEnd(node.valueSpans, index);
+function selectorMemberValueOf(item: unknown): string {
+  if (typeof item === 'string') {
+    return item;
+  }
+  if (item && typeof item === 'object' && 'valueOf' in item && typeof item.valueOf === 'function') {
+    return String(item.valueOf());
+  }
+  return String(item);
 }
 
 describe('serializeTypes coverage', () => {
@@ -47,7 +49,8 @@ describe('serializeTypes coverage', () => {
                 [
                   (Declaration
                     name: 'b'
-                    value: 'c'
+                    value:
+                      (Keyword [role=keyword] 'c')
                   )
                 ]
             )
@@ -85,22 +88,27 @@ describe('serializeTypes coverage', () => {
     // The descendant combinator is a plain ' ' string between the two compounds.
     const combinator = selector.value[1];
     expect(combinator).toBe(' ');
-    // The trivia preceding the second compound is recovered via valueSpans.
-    expect(triviaText(trivia.lookup(valueStart(selector, 2), 'before'))).toBe(' /* gap */ ');
+    // Per-component spans are no longer stored; the comment authored in the
+    // combinator gap round-trips via the selector's node-span comment scan (the
+    // run carries its own spacing verbatim).
+    expect(selector.toString({ trivia })).toBe('a /* gap */ b');
   });
 
   test('attribute selector with modifier flag', () => {
     const { tree } = cssParser.parse('[foo=\'bar\' i] { a: b }');
     const out = serializeTypes(tree);
     expect(out).toContainString(`
-      selector: 
+      selector:
         (AttributeSelector
-          name: 'foo'
-          attributeValue:
-            (Quoted
-              value:
-                'bar'
-            )
+          value: {
+            name: 'foo'
+            op: '='
+            value:
+              (Quoted
+                value: 'bar'
+              )
+            mod: 'i'
+          }
         )
     `);
   });
@@ -136,13 +144,10 @@ describe('serializeTypes coverage', () => {
               (PseudoSelector
                 name: ':is'
                 arg:
-                  (SelectorList
-                    value:
-                      [
-                        'b'
-                        'c'
-                      ]
-                  )
+                  [
+                    'b'
+                    'c'
+                  ]
               )
             ]
         )
@@ -252,10 +257,25 @@ describe('serializeTypes coverage', () => {
   test('url function is modeled as Call with UrlValue/Quoted inner', () => {
     const { tree } = cssParser.parse('a{ background:url(foo) }');
     const out = serializeTypes(tree);
+    // Url.value is a Node: a bare inner leaf normalizes to Any (a quoted inner to
+    // Quoted). Storing a raw string here silently drops it from the render buffer.
     expect(out).toContainString(`
       (Url
-        value: 'foo'
+        value:
+          (Any 'foo')
       )
+    `);
+  });
+
+  test('quoted url inner is modeled as a Quoted node, not a raw string', () => {
+    const { tree } = cssParser.parse('a{ background:url("foo.css") }');
+    const out = serializeTypes(tree);
+    // A raw string here renders as empty `url()` because a string never writes
+    // into the render buffer (see less @import url(...) serialization).
+    expect(out).toContainString(`
+      (Url
+        value:
+          (Quoted
     `);
   });
 
@@ -315,10 +335,10 @@ describe('serializeTypes coverage', () => {
 
     expect(isNode(firstArg, N.Color)).toBe(true);
     expect(isNode(secondArg, N.Color)).toBe(true);
-    expect(triviaText(trivia.lookup(firstArg!.location[3], 'after'))).toBe(' /*{comment}*/');
+    expect(triviaText(trivia.lookup(sourceSpanOf(firstArg!)?.end, 'after'))).toBe(' /*{comment}*/');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > firstArg!.location[3]! && offset < secondArg!.location[0]!)
+        .filter(([offset]) => offset > sourceSpanOf(firstArg!)?.end! && offset < sourceSpanOf(secondArg!)?.start!)
         .map(([, t]) => triviaText(t))
     ).toEqual([' /*{comment}*/']);
   });
@@ -326,35 +346,41 @@ describe('serializeTypes coverage', () => {
   test('selector list comments stay in trivia between selector members', () => {
     const { tree, trivia } = cssParser.parse('#a,\n/*x*//*y*/\n.b,/*z*/.c { d: e; }');
     const ruleset = tree.rules[0];
-    if (!isNode(ruleset, N.Ruleset) || !isNode(ruleset.selector, N.SelectorList)) {
-      throw new Error('Expected first parsed rule to have a selector list');
+    if (!isNode(ruleset, N.Ruleset) || !Array.isArray(ruleset.selector)) {
+      throw new Error('Expected first parsed rule to have an array selector list');
     }
-    const [first, second, third] = ruleset.selector.value;
+    const [first, second, third] = selectorListMembers(ruleset.selector);
 
-    expect(first?.valueOf()).toBe('#a');
-    expect(second?.valueOf()).toBe('.b');
-    expect(third?.valueOf()).toBe('.c');
-    expect(triviaText(trivia.lookup(valueStart(ruleset.selector, 1), 'before'))).toBe('\n/*x*//*y*/\n');
-    expect(triviaText(trivia.lookup(valueStart(ruleset.selector, 2), 'before'))).toBe('/*z*/');
+    expect(selectorMemberValueOf(first)).toBe('#a');
+    expect(selectorMemberValueOf(second)).toBe('.b');
+    expect(selectorMemberValueOf(third)).toBe('.c');
+    // Per-member spans are no longer stored, but the parser still records the
+    // comment runs in the trivia map. `.b` begins after the first comment run
+    // (source offset 15), `.c` after the second (offset 23).
+    expect(triviaText(trivia.lookup(15, 'before'))).toBe('\n/*x*//*y*/\n');
+    expect(triviaText(trivia.lookup(23, 'before'))).toBe('/*z*/');
   });
 
   test('selector list comments before separators stay in trivia after selector members', () => {
     const { tree, trivia } = cssParser.parse('#comments /* boo *//* boo again*/, .comments { color: red; }');
     const ruleset = tree.rules[0];
-    if (!isNode(ruleset, N.Ruleset) || !isNode(ruleset.selector, N.SelectorList)) {
-      throw new Error('Expected first parsed rule to have a selector list');
+    if (!isNode(ruleset, N.Ruleset) || !Array.isArray(ruleset.selector)) {
+      throw new Error('Expected first parsed rule to have an array selector list');
     }
-    const [first, second] = ruleset.selector.value;
+    const [first, second] = selectorListMembers(ruleset.selector);
 
-    expect(first?.valueOf()).toBe('#comments');
-    expect(second?.valueOf()).toBe('.comments');
-    const firstEnd = valueEnd(ruleset.selector, 0);
-    const secondStart = valueStart(ruleset.selector, 1);
+    expect(selectorMemberValueOf(first)).toBe('#comments');
+    expect(selectorMemberValueOf(second)).toBe('.comments');
+    // Per-member spans are no longer stored, but the parser still records the
+    // comment run after the first member. `#comments` ends at source offset 9;
+    // the comment run keyed there, and the same run keyed `before` the `,`.
+    const firstEnd = 9;
     expect(triviaText(trivia.lookup(firstEnd, 'after'))).toBe(' /* boo *//* boo again*/');
     expect(
       [...trivia.entries('before')]
-        .filter(([offset]) => offset > firstEnd && offset < secondStart)
+        .filter(([offset]) => offset > firstEnd)
         .map(([, t]) => triviaText(t))
+        .filter((t): t is string => t !== undefined && t.includes('/*'))
     ).toEqual([' /* boo *//* boo again*/']);
   });
 
@@ -369,11 +395,11 @@ describe('serializeTypes coverage', () => {
       throw new Error('Expected nested rule to be a ruleset');
     }
 
-    // The nested selector is a bare string; its source offset comes from the
-    // ruleset's packed selector fieldSpan. The leading trivia (' /*x*/ ') is
-    // preserved in the trivia map before that offset.
-    const selStart = fieldStart(nested, 'selector');
-    expect(triviaText(trivia.lookup(selStart, 'before'))).toBe(' /*x*/ ');
+    // The nested selector `b` is a bare string at source offset 10 (per-slot
+    // spans are no longer stored). The parser still records its leading trivia
+    // run (' /*x*/ ') keyed `before` that offset.
+    void nested;
+    expect(triviaText(trivia.lookup(10, 'before'))).toBe(' /*x*/ ');
   });
 
   test('collapse nesting emits nested selector comments from trivia', () => {
@@ -410,7 +436,9 @@ describe('serializeTypes coverage', () => {
     const value = declaration.value;
 
     expect(value.valueOf()).toBe('yes');
-    const valueEndOff = fieldEnd(declaration, 'value');
+    // Per-slot spans are no longer stored; the value `yes` ends at source offset
+    // 10 and the parser still keys its trailing comment run there.
+    const valueEndOff = 10;
     expect(triviaText(trivia.lookup(valueEndOff, 'after'))).toBe(' /* comment */');
     expect(
       [...trivia.entries('before')]
@@ -432,7 +460,9 @@ describe('serializeTypes coverage', () => {
     const { name } = declaration;
 
     expect(name.valueOf()).toBe('color');
-    const nameEndOff = fieldEnd(declaration, 'name');
+    // Per-slot spans are no longer stored; the name `color` ends at source
+    // offset 9 and the parser still keys its trailing comment run there.
+    const nameEndOff = 9;
     expect(triviaText(trivia.lookup(nameEndOff, 'after'))).toBe('/* survive */ /* me too */');
     expect(
       [...trivia.entries('before')]
@@ -454,8 +484,8 @@ describe('serializeTypes coverage', () => {
 
     expect(name.valueOf()).toBe('@-webkit-keyframes');
     expect(prelude.valueOf()).toBe('hover');
-    expect(triviaText(trivia.lookup(prelude.location[0], 'before'))).toBe(' /* Safari */ ');
-    expect(triviaText(trivia.lookup(prelude.location[3], 'after'))).toBe(' /* and Chrome */ ');
+    expect(triviaText(trivia.lookup(sourceSpanOf(prelude)?.start, 'before'))).toBe(' /* Safari */ ');
+    expect(triviaText(trivia.lookup(sourceSpanOf(prelude)?.end, 'after'))).toBe(' /* and Chrome */ ');
   });
 
   test('lists and sequences in values', () => {
@@ -486,6 +516,79 @@ describe('serializeTypes coverage', () => {
             (Num 2)
             (Num 3)
           ]
+    `);
+  });
+
+  test('calc folds its body into Operation nodes', () => {
+    const { tree } = cssParser.parse('a{ b: calc((100% + 10vw) * 14px); c: calc(100px / 4); d: min(1px, 2px) }');
+    const out = serializeTypes(tree);
+    // calc(...) → Call whose single List arg is a precedence-climbed Operation;
+    // the inner `(100% + 10vw)` is a Paren(Operation), and `/` divides in calc.
+    expect(out).toContainString(`
+      (Call
+        name: 'calc'
+        args:
+          (List
+            value:
+              [
+                (Operation
+                  left:
+                    (Paren
+                      value:
+                        (Operation
+                          left:
+                            (Dimension
+                              number: 100
+                              unit: '%'
+                            )
+                          right:
+                            (Dimension
+                              number: 10
+                              unit: 'vw'
+                            )
+                        )
+                    )
+                  right:
+                    (Dimension
+                      number: 14
+                      unit: 'px'
+                    )
+                )
+              ]
+          )
+      )
+    `);
+    // calc(100px / 4): slash divides (both operands division-like).
+    expect(out).toContainString(`
+      (Operation
+        left:
+          (Dimension
+            number: 100
+            unit: 'px'
+          )
+        right:
+          (Num 4)
+      )
+    `);
+    // min(...) is NOT a math context — its args stay a flat value list.
+    expect(out).toContainString(`
+      (Call
+        name: 'min'
+        args:
+          (List
+            value:
+              [
+                (Dimension
+                  number: 1
+                  unit: 'px'
+                )
+                (Dimension
+                  number: 2
+                  unit: 'px'
+                )
+              ]
+          )
+      )
     `);
   });
 

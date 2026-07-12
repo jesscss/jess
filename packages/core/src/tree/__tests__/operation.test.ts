@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, call, Call, decl, dimension, List, list, num, op, Operation, type OperationValue, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
+import { any, call, Call, decl, dimension, List, list, num, op, Operation, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -106,7 +106,7 @@ describe('Operation', () => {
   it('renders resolved operation values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -126,7 +126,7 @@ describe('Operation', () => {
   it('writes resolved operation render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -153,7 +153,7 @@ describe('Operation', () => {
   it('renders resolved operation values directly without public resolve', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -175,7 +175,7 @@ describe('Operation', () => {
   it('renders unresolved operation syntax without materializing replacement operands', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -206,7 +206,7 @@ describe('Operation', () => {
   it('keeps preserved operation buffer output out of explicit writers', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -228,7 +228,7 @@ describe('Operation', () => {
   it('writes preserved operation render output to explicit writers once', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -249,7 +249,7 @@ describe('Operation', () => {
   it('resolves operation values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('rhs'),
+        name: 'rhs',
         value: num(20)
       })
     ]);
@@ -270,7 +270,7 @@ describe('Operation', () => {
   it('keeps source operation child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('item'),
+        name: 'item',
         value: any('foo')
       })
     ]);
@@ -284,8 +284,8 @@ describe('Operation', () => {
       '+',
       any('two')
     ]);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const [leftOperand, , rightOperand] = Reflect.get(operationNode, 'value') as OperationValue;
+    const leftOperand = operationNode.left;
+    const rightOperand = operationNode.right;
     const resolved = await operationNode.resolve(context);
 
     expect(resolved.render(context)).toBe('one, foo, two');
@@ -297,7 +297,7 @@ describe('Operation', () => {
   it('preserves slash-list operands instead of forcing math on outer operations', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -319,8 +319,8 @@ describe('Operation', () => {
       '*',
       num(2)
     ]);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const [leftOperand, , rightOperand] = Reflect.get(resolvedOperation, 'value') as OperationValue;
+    const leftOperand = resolvedOperation.left;
+    const rightOperand = resolvedOperation.right;
 
     const resolved = await resolvedOperation.resolve(resolveContext);
     expect(resolveContext.printState.writer).toBeUndefined();
@@ -333,7 +333,7 @@ describe('Operation', () => {
   it('owns unchanged source operands when materializing preserved operations', async () => {
     const node = rules([
       vardecl({
-        name: any('div-op'),
+        name: 'div-op',
         value: list([dimension([10, 'px']), num(2)], { sep: '/' })
       })
     ]);
@@ -352,10 +352,11 @@ describe('Operation', () => {
       throw new Error('Expected Operation result');
     }
     expect(resolved.toTrimmedString()).toBe('2em * 10px / 2');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const resolvedValue = Reflect.get(resolved, 'value') as OperationValue;
-    expect(resolvedValue[0]).not.toBe(leftOperand);
-    expect(resolvedValue[0]?.toTrimmedString()).toBe('2em');
+    // Reparent-free placement: the unchanged operand is SHARED into the
+    // materialized operation (same object), not cloned. Its canonical parent
+    // stays the source operation — placement never reparents a shared node.
+    expect(resolved.left).toBe(leftOperand);
+    expect(resolved.left?.toTrimmedString()).toBe('2em');
     expect(leftOperand.parent).toBe(operationNode);
     expect(operationNode.parent).toBeUndefined();
     expect(evald.parent).toBeUndefined();
@@ -395,10 +396,10 @@ describe('Operation', () => {
       throw new Error('Expected calc fallback Operation argument');
     }
     expect(calcArg).not.toBe(operationNode);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const calcArgValue = Reflect.get(calcArg, 'value') as OperationValue;
-    expect(calcArgValue[0]).not.toBe(leftOperand);
-    expect(calcArgValue[2]).not.toBe(rightOperand);
+    // Reparent-free placement: unchanged operands are SHARED into the calc
+    // fallback operation (same objects), not cloned.
+    expect(calcArg.left).toBe(leftOperand);
+    expect(calcArg.right).toBe(rightOperand);
     // Source operands stay owned by the canonical operation, unchanged — the
     // calc fallback materializes copies. (`evaluated` flag assertions removed:
     // it is being deleted as a clone-era relic; see LIVE_BINDING §2.7.)
@@ -409,15 +410,15 @@ describe('Operation', () => {
   it('normalizes slash-list variable refs inside calc while preserving direct calc arithmetic', async () => {
     const node = rules([
       vardecl({
-        name: any('val'),
+        name: 'val',
         value: dimension([10, 'px'])
       }),
       vardecl({
-        name: any('sum'),
+        name: 'sum',
         value: op([dimension([10, 'px']), '+', dimension([20, 'px'])])
       }),
       vardecl({
-        name: any('offset'),
+        name: 'offset',
         value: paren(op([
           ref('val', { type: 'variable' }),
           '+',
@@ -425,7 +426,7 @@ describe('Operation', () => {
         ]))
       }),
       vardecl({
-        name: any('var'),
+        name: 'var',
         value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
       })
     ]);
@@ -478,11 +479,11 @@ describe('Operation', () => {
   it('reduces calc arithmetic on the evaluated tree output path', async () => {
     const root = rules([
       vardecl({
-        name: any('sum'),
+        name: 'sum',
         value: op([dimension([10, 'px']), '+', dimension([20, 'px'])])
       }),
       vardecl({
-        name: any('var'),
+        name: 'var',
         value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
       }),
       ruleset({
@@ -552,5 +553,55 @@ describe('Operation', () => {
     expect(css).toContain('min-height: 15vh;');
     expect(css).toContain('root: calc(100% - 30px);');
     expect(css).toContain('height: calc(50% + (25vh - 20px));');
+  });
+
+  // Repro: `calc(50% + (@var - 20px))` where `@var` is a preserved slash-list
+  // (`50vh / 2`). Under the default `parens-division` mode the inner subtraction
+  // doesn't collapse, so the Paren survives eval. The outer `+` must preserve it,
+  // not throw "Cannot operate on Paren".
+  it('preserves a surviving Paren operand instead of operating on it', () => {
+    // `(50vh / 2 - 20px)` — the `-` has a preserved slash-list operand, so the
+    // inner Operation stays unevaluated and the Paren is not reduced to a value.
+    const slashList = list([dimension([50, 'vh']), num(2)], { sep: '/' });
+    const inner = op([slashList, '-', dimension([20, 'px'])]);
+    const operation = op([dimension([50, '%']), '+', paren(inner)]);
+
+    const context = new Context();
+
+    const resolved = operation.resolve(context);
+    expect(resolved).toBeInstanceOf(Operation);
+    if (!(resolved instanceof Operation)) {
+      throw new Error('Expected Operation result');
+    }
+    expect(resolved.toTrimmedString()).toBe('50% + (50vh / 2 - 20px)');
+  });
+
+  // Two-united `*` behaves per unitMode: preserve → calc fallback (composable),
+  // strict → throws (must NOT be swallowed), loose → folds to the left unit.
+  describe('two-united multiplication across unitMode', () => {
+    const mul = () => op([dimension([4, 'px']), '*', dimension([3, 'px'])]);
+
+    it('preserve mode yields a composable calc() fallback', async () => {
+      const context = new Context();
+      context.opts.unitMode = 'preserve';
+      const out = await mul().eval(context);
+      expect(out.render(context)).toBe('calc(4px * 3px)');
+      // and composing it further nests into a single flat calc
+      const composed = await op([out, '+', num(1)]).eval(context);
+      expect(composed.render(context)).toBe('calc(4px * 3px + 1)');
+    });
+
+    it('strict mode still throws on the unit misuse', () => {
+      const context = new Context();
+      context.opts.unitMode = 'strict';
+      expect(() => mul().eval(context)).toThrow(TypeError);
+    });
+
+    it('loose mode folds to the left unit', async () => {
+      const context = new Context();
+      context.opts.unitMode = 'loose';
+      const out = await mul().eval(context);
+      expect(out.render(context)).toBe('12px');
+    });
   });
 });

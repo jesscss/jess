@@ -1,9 +1,8 @@
 import type { Context } from '../../context.js';
-import { Bool } from '../bool.js';
 import { Condition } from '../condition.js';
 import type { Node } from '../node.js';
-import { F_STATIC } from '../node.js';
 import type { Rules } from '../rules.js';
+import { isConstantGuard } from './callable-guard-constant.js';
 import {
   CALLABLE_DEFAULT_NONE,
   type CallableDefaultGroup,
@@ -85,7 +84,7 @@ export function prepareCallableGuardState({
   const guard: Node | undefined = candidateGuard;
   const usesPreboundCallerGuardOuterRules = Boolean(
     guard
-    && !guard.hasFlag(F_STATIC)
+    && !isConstantGuard(guard)
     && !candidateParams
     && paramBindingsLength === 0
   );
@@ -121,7 +120,7 @@ export function ensureCallableGuardOuterRules({
 }: EnsureCallableGuardOuterRulesOptions): Rules | undefined {
   if (
     !guard
-    || guard.hasFlag(F_STATIC)
+    || isConstantGuard(guard)
     || usesPreboundCallerGuardOuterRules
     || usesPreboundParamGuardOuterRules
   ) {
@@ -170,7 +169,7 @@ export async function evaluateCallableGuard({
         candidateGuard,
         beforeEval: (probeGuard) => {
           if (
-            !probeGuard.hasFlag(F_STATIC)
+            !isConstantGuard(probeGuard)
             && !usesPreboundCallerGuardOuterRules
             && !usesPreboundParamGuardOuterRules
           ) {
@@ -202,7 +201,7 @@ export async function evaluateCallableGuard({
     }
 
     if (
-      !guard.hasFlag(F_STATIC)
+      !isConstantGuard(guard)
       && !usesPreboundCallerGuardOuterRules
       && !usesPreboundParamGuardOuterRules
     ) {
@@ -223,8 +222,11 @@ export async function evaluateCallableGuard({
     if (guard instanceof Condition) {
       passes = await guard.evaluateBoolean(context);
     } else {
+      // A bare (non-Condition) guard body — `when ((@value))`, `when (#ns[flag])` —
+      // resolves to a Bool or a keyword `true`/`false`; Less honours both, so use
+      // the canonical truth check rather than a strict `instanceof Bool`.
       const resolvedGuard = await guard.eval(context);
-      passes = resolvedGuard instanceof Bool && resolvedGuard.value === true;
+      passes = Condition.resultPasses(resolvedGuard);
     }
     return {
       passes,

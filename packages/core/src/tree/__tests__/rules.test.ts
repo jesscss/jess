@@ -24,6 +24,7 @@ import {
   type Selector,
   atrule
 } from '../index.js';
+import type { MixinOptions } from '../mixin.js';
 import { Context, TreeContext } from '../../context.js';
 import type { DeclarationFindOptions } from '../util/lookup-utils.js';
 import { isNode } from '../util/is-node.js';
@@ -90,11 +91,9 @@ class WholeBufferCountingWriter extends OutputWriter {
 
 describe('Rules', () => {
   beforeAll(() => {
-    Node.prototype.fullRender = true;
   });
 
   afterAll(() => {
-    Node.prototype.fullRender = false;
   });
 
   let getProp = getPropWithContext.bind(context, context);
@@ -118,6 +117,19 @@ describe('Rules', () => {
     expect(node.rules[0]).toBe(child);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((node.constructor as typeof Node).childKeys).toEqual(['rules']);
+  });
+
+  it('marks the evaluated root output as evaluated for render/serialize callers', async () => {
+    const node = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+
+    expect(node.evaluated).toBe(false);
+
+    const evald = await node.eval(context);
+
+    expect(evald.evaluated).toBe(true);
   });
 
   it.skip('assigns position linearly for nested rules', async () => {
@@ -262,7 +274,7 @@ describe('Rules', () => {
 
   it('drops empty derived scope frames while preserving fallback frames', () => {
     const source = rules([
-      decl({ name: any('color'), value: any('red') })
+      decl({ name: 'color', value: any('red') })
     ]);
     const emptyFrame = source.getScopeFrame();
     expect(emptyFrame.rulesNode).toBe(source);
@@ -303,8 +315,8 @@ describe('Rules', () => {
     const first = node.render(context);
     const second = node.render(context);
 
-    expect(first).toBe('color: red;');
-    expect(second).toBe('color: red;');
+    expect(first).toBe('color: red;\n');
+    expect(second).toBe('color: red;\n');
     expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 
@@ -422,7 +434,7 @@ describe('Rules', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrule({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css')),
         rules: []
       })
@@ -452,7 +464,7 @@ describe('Rules', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrule({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css')),
         rules: []
       })
@@ -473,7 +485,7 @@ describe('Rules', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrule({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css')),
         rules: []
       })
@@ -492,7 +504,7 @@ describe('Rules', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrule({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css')),
         rules: []
       })
@@ -519,8 +531,8 @@ describe('Rules', () => {
 
     try {
       const root = rules([
-        vardecl({ name: any('tone'), value: any('red') }),
-        decl({ name: any('color'), value: ref({ key: 'tone' }, { type: 'variable' }) })
+        vardecl({ name: 'tone', value: any('red') }),
+        decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
       ]);
       const canonicalDecl = root.rules[1];
 
@@ -598,7 +610,7 @@ describe('Rules', () => {
     const charset = any('@charset "utf-8";', { role: 'charset' });
     let charsetSawActiveWriter = false;
     const importRule = atrule({
-      name: any('@import', { role: 'atkeyword' }),
+      name: '@import',
       prelude: quoted(any('theme.css')),
       rules: []
     });
@@ -785,16 +797,16 @@ describe('Rules', () => {
 
       it('findAnyDeclaration picks VarDeclaration or Declaration by source order', async () => {
         let node = rules([
-          vardecl({ name: any('n'), value: any('from-var') }),
-          decl({ name: any('n'), value: any('from-decl') })
+          vardecl({ name: 'n', value: any('from-var') }),
+          decl({ name: 'n', value: any('from-decl') })
         ]);
         node = await node.eval(context);
         expect(isNode(getDeclEither(node, 'n'), N.Declaration)).toBe(true);
         expect(isNode(getDeclEither(node, 'n'), N.VarDeclaration)).toBe(false);
 
         let node2 = rules([
-          decl({ name: any('m'), value: any('from-decl') }),
-          vardecl({ name: any('m'), value: any('from-var') })
+          decl({ name: 'm', value: any('from-decl') }),
+          vardecl({ name: 'm', value: any('from-var') })
         ]);
         node2 = await node2.eval(context);
         expect(isNode(getDeclEither(node2, 'm'), N.VarDeclaration)).toBe(true);
@@ -1418,11 +1430,11 @@ describe('Rules', () => {
           // Mixin definition that uses explicit live-binding semantics.
           // This makes the mixin resolve the variable at call time, not definition time.
           mixin({
-            name: any('my-mixin'),
-            rules: rules([
+            name: 'my-mixin',
+            rules: [
               decl({ name: 'color', value: ref('color', { type: 'variable', resolution: 'live' }) })
-            ], { rulesVisibility: { VarDeclaration: 'optional' } })
-          }),
+            ]
+          }, { rulesVisibility: { VarDeclaration: 'optional' } } satisfies MixinOptions),
 
           // .box uses the variable directly and includes the mixin (both should be red)
           ruleset({
@@ -2281,11 +2293,11 @@ describe('Rules', () => {
 
       it('keeps property setDefined on declaration occurrence insertion fallback', () => {
         const assignment = decl(
-          { name: any('color'), value: any('blue') },
+          { name: 'color', value: any('blue') },
           { setDefined: true }
         );
         const node = rules([
-          decl({ name: any('color'), value: any('red') }),
+          decl({ name: 'color', value: any('red') }),
           assignment
         ]);
 

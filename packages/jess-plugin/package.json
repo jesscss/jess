@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/parser": "workspace:*",
     "chevrotain": "^12.0.0"
   },
   "devDependencies": {},

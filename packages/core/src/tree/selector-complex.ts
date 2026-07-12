@@ -1,22 +1,24 @@
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import { type Combinator } from './combinator.js';
 import { type Ampersand } from './ampersand.js';
 import {
   Node,
   defineType,
-  F_MAY_ASYNC,
+  F_AMPERSAND,
   type NodeLocation,
   type NodeOptions
 } from './node.js';
 import type { Context } from '../context.js';
 import { createPublicNil, Nil } from './nil.js';
 import { isNode } from './util/is-node.js';
+import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
-import { consumeTriviaBetween, consumeTriviaBetweenOffsets, emitTriviaTokens } from './util/trivia.js';
+import { consumeTriviaBetween, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
@@ -83,19 +85,30 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   ): ComplexSelector {
     const ownedValue = new Array<ComplexSelectorComponent>(value.length);
     let hoistToRoot = false;
+    let hasAmpersand = false;
     for (let i = 0; i < value.length; i++) {
       const component = value[i]!;
       ownedValue[i] = this.isSourceComponent(component, sourceValue) ? this.ownComponent(component) : component;
       if (typeof component !== 'string' && component.hoistToRoot) {
         hoistToRoot = true;
       }
+      // Bubble F_AMPERSAND from a resolved `&` component (see selector-compound
+      // withComponents): composeSelector keys on the flag to substitute `&` once
+      // instead of re-prepending the parent, so a nested `& ...` complex selector
+      // does not duplicate the ancestor.
+      if (typeof component !== 'string' && component.hasFlag(F_AMPERSAND)) {
+        hasAmpersand = true;
+      }
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
     const node = this instanceof RelativeSelector
-      ? new RelativeSelector(ownedValue, this._options ? { ...this._options } : undefined, this.location)
-      : new ComplexSelector(ownedValue, this._options ? { ...this._options } : undefined, this.location);
+      ? new RelativeSelector(ownedValue, this._options ? { ...this._options } : undefined, sourceSpanOf(this))
+      : new ComplexSelector(ownedValue, this._options ? { ...this._options } : undefined, sourceSpanOf(this));
     if (hoistToRoot) {
       node.hoistToRoot = true;
+    }
+    if (hasAmpersand) {
+      node.addFlag(F_AMPERSAND);
     }
     return node.inherit(this);
   }
@@ -134,6 +147,14 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let length = value.length;
     let isFirstSelector = true;
     const saved = savePrintState(options, ['ampersandFirst']);
+    // String components carry no own source span, so authored inter-component
+    // whitespace is dropped (normalized). COMMENTS that fall inside this
+    // selector's span still round-trip: pull them, in source order, and place
+    // one at each descendant-combinator gap between string components.
+    const spanComments = options.trivia
+      ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
+      : [];
+    let spanCommentCursor = 0;
     const emitComponent = (component: ComplexSelectorComponent) => {
       if (typeof component === 'string') {
         w.add(component);
@@ -150,11 +171,11 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     };
     for (let i = 0; i < length; i++) {
       let component = value[i]!;
-      if (!(isNode(component, N.Combinator) || (typeof component === 'string' && isStringCombinator(component)))) {
+      if (!(isCombinator(component) || (typeof component === 'string' && isStringCombinator(component)))) {
         options.ampersandFirst = isFirstSelector;
         isFirstSelector = false;
       }
-      if (isNode(component, N.Combinator) || (typeof component === 'string' && isStringCombinator(component))) {
+      if (isCombinator(component) || (typeof component === 'string' && isStringCombinator(component))) {
         if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
@@ -168,28 +189,25 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         } else {
           const prev = value[i - 1];
           const next = value[i + 1];
-          const spans = this.valueSpans;
           let tokens: ReturnType<typeof consumeTriviaBetween>;
           if (options.trivia && prev instanceof Node && next instanceof Node) {
             tokens = consumeTriviaBetween(options.trivia, prev, next, options);
-          } else if (options.trivia && spans) {
-            // String components: recover surrounding offsets from valueSpans
-            // (prev component end, next component start).
-            tokens = consumeTriviaBetweenOffsets(
-              options.trivia, spans[(i - 1) * 3 + 1], spans[(i + 1) * 3], options
-            );
           }
           if (typeof component === 'string') {
-            // String descendant combinator: the captured trivia already carries
-            // the exact whitespace/comments; emit it verbatim, or a single space
-            // when no trivia was recorded.
-            if (tokens) {
-              emitTriviaTokens(tokens, options);
+            // String descendant combinator: whitespace is normalized to a single
+            // space, but a comment authored in this gap round-trips verbatim (its
+            // run carries its own surrounding spacing). Take the next in-span
+            // comment run; if none, emit a single space.
+            const commentRun = spanCommentCursor < spanComments.length
+              ? spanComments[spanCommentCursor]
+              : undefined;
+            if (commentRun) {
+              spanCommentCursor = emitNextSpanComment(spanComments, spanCommentCursor, options);
             } else {
               w.add(' ', this);
             }
           } else {
-            const coStart = component.location[0];
+            const coStart = spanStartOf(component);
             const spaceBeforeTrivia = coStart !== undefined
               && tokens?.start !== undefined
               && coStart < tokens.start;
@@ -237,43 +255,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return value;
   }
 
-  protected override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const { value } = this;
-    let keySet = library.getBitset();
-    let visibleKeySet = library.getBitset();
-    let requiredKeySet = library.getBitset();
-    for (const component of value) {
-      if (typeof component === 'string') {
-        const componentKeySet = library.getBitset([component]);
-        keySet = keySet.or(componentKeySet);
-        if (!isStringCombinator(component)) {
-          visibleKeySet = visibleKeySet.or(componentKeySet);
-        }
-        requiredKeySet = requiredKeySet.or(componentKeySet);
-        continue;
-      }
-      if (isNode(component, N.Combinator)) {
-        component.keySetLibrary ??= library;
-        keySet = keySet.or(component.keySet);
-        requiredKeySet = requiredKeySet.or(component.requiredKeySet);
-        continue;
-      }
-      if (component instanceof Selector) {
-        component.keySetLibrary ??= library;
-        keySet = keySet.or(component.keySet);
-        visibleKeySet = visibleKeySet.or(component.visibleKeySet);
-        requiredKeySet = requiredKeySet.or(component.requiredKeySet);
-      }
-    }
-    this._keySet = keySet;
-    this._visibleKeySet = visibleKeySet;
-    this._requiredKeySet = requiredKeySet;
-  }
-
   override toTrimmedString(options?: PrintOptions): string {
     return this.renderComplexSyntax(options);
   }
@@ -283,9 +264,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
    */
   override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeComponents(context, this.evaluateComponentsSync(context, false), true);
-    }
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
       ? (evaluatedValue as Promise<Array<Node | string>>).then(value => this.finalizeComponents(context, value, true))
@@ -294,35 +272,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeComponents(context, this.evaluateComponentsSync(context, true), false);
-    }
     const resolvedValue = this.evaluateComponents(context, true);
     return isThenable(resolvedValue)
       ? (resolvedValue as Promise<Array<Node | string>>).then(value => this.finalizeComponents(context, value, false))
       : this.finalizeComponents(context, resolvedValue as Array<Node | string>, false);
-  }
-
-  private evaluateComponentsSync(context: Context, resolve: boolean): Array<Node | string> {
-    const currentValue = this.value;
-    const evaluatedValue = new Array<Node | string>(currentValue.length);
-    for (let i = 0; i < currentValue.length; i++) {
-      const component = currentValue[i]!;
-      if (typeof component === 'string') {
-        evaluatedValue[i] = component;
-        continue;
-      }
-      const out = resolve ? component.resolve(context) : component.eval(context);
-      if (!(out instanceof Node)) {
-        if (out !== null && typeof out === 'object') {
-          throw new TypeError('Expected sync complex selector evaluation to return a node');
-        }
-        evaluatedValue[i] = component;
-        continue;
-      }
-      evaluatedValue[i] = this.isAllowedEvaluatedComponent(out) ? out : component;
-    }
-    return evaluatedValue;
   }
 
   private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Node | string>> {
@@ -431,7 +384,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         unresolvedAmpersandCount++;
       } else if (
         typeof part === 'string'
-        || (!isNode(part, N.Combinator) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand))
+        || (!isCombinator(part) && !isNode(part, N.Nil) && !isNode(part, N.Ampersand))
       ) {
         hasOtherSelectorParts = true;
       }
@@ -464,8 +417,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
         ctx: file ? { file } : undefined,
         filePath: file?.fullPath,
-        line: amp.location?.[1],
-        column: amp.location?.[2],
+
         meta: { selector: selectorText }
       })));
     }
@@ -475,18 +427,18 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let outIndex = 0;
     for (let i = 0; i < value.length; i++) {
       const part = value[i]!;
-      if (isNode(part, N.Combinator) || (typeof part === 'string' && isStringCombinator(part))) {
+      if (isCombinator(part) || (typeof part === 'string' && isStringCombinator(part))) {
         const prev = outIndex > 0 ? value[outIndex - 1] : undefined;
         let next: Node | string | undefined;
         for (let j = i + 1; j < value.length; j++) {
           const candidate = value[j]!;
-          if (!(isNode(candidate, N.Combinator) || (typeof candidate === 'string' && isStringCombinator(candidate)))) {
+          if (!(isCombinator(candidate) || (typeof candidate === 'string' && isStringCombinator(candidate)))) {
             next = candidate;
             break;
           }
         }
         if (i === 0) {
-          if (next && !(isNode(next, N.Combinator) || (typeof next === 'string' && isStringCombinator(next)))) {
+          if (next && !(isCombinator(next) || (typeof next === 'string' && isStringCombinator(next)))) {
             value[outIndex++] = part;
           }
           continue;
@@ -494,8 +446,8 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (
           prev
           && next
-          && !(isNode(prev, N.Combinator) || (typeof prev === 'string' && isStringCombinator(prev)))
-          && !(isNode(next, N.Combinator) || (typeof next === 'string' && isStringCombinator(next)))
+          && !(isCombinator(prev) || (typeof prev === 'string' && isStringCombinator(prev)))
+          && !(isCombinator(next) || (typeof next === 'string' && isStringCombinator(next)))
         ) {
           value[outIndex++] = part;
         }
@@ -545,7 +497,7 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.sel([', this.location)
+  //   out.add('$J.sel([', sourceSpanOf(this))
   //   const length = this.value.length - 1
   //   this.value.forEach((node, i) => {
   //     node.toModule(context, out)

@@ -2,6 +2,7 @@
 import type { Selector } from '../selector.js';
 import type { Rules } from '../rules.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import { Node } from '../node.js';
@@ -56,14 +57,14 @@ export function getOrderedSelectorKeys(selector: Selector | Nil | undefined): st
     if (!node || isNode(node, N.Nil)) {
       return;
     }
+    if (isCombinator(node)) {
+      return;
+    }
     if (isStringCompoundSelectorComponent(node)) {
       addKey(node);
       return;
     }
     if (!foundBasic && isNode(node, N.Ampersand)) {
-      return;
-    }
-    if (isNode(node, N.Combinator)) {
       return;
     }
     if (isNode(node, N.BasicSelector)) {
@@ -115,4 +116,17 @@ export type CallableFindOptions = {
   context?: Context;
   /** For mixin-ruleset calls with args, namespace containers may be rulesets but terminal hits must be mixins. */
   terminalMixinOnly?: boolean;
+  /**
+   * Ruleset-only terminal match: collect ONLY plain `Ruleset` candidates, dropping
+   * `Mixin`s. Used by the Jess bracket-capture call `*[.foo]()` (distinct from the
+   * dot mixin-ruleset call `*.foo()`, which stays both). Filters terminal hits only;
+   * namespace containers are unaffected.
+   */
+  rulesetsOnly?: boolean;
+  /**
+   * The lookup is an emitting mixin-ruleset CALL (`#ns > .m()`): every same-named
+   * namespace on the path contributes its descendant output. Unset for bare
+   * value/index lookups, which keep override (last-wins) namespace semantics.
+   */
+  mixinCall?: boolean;
 };

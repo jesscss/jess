@@ -1,4 +1,4 @@
-import { Any, Declaration, Node } from '@jesscss/core';
+import { Declaration, Interpolated, Node } from '@jesscss/core';
 import { createFromAdapter } from '../transform/adapter.js';
 import { toLessNode } from '../transform/to-less.js';
 import { fromLessNode } from '../transform/from-less.js';
@@ -8,9 +8,7 @@ export const transformDeclarationToLess = createFromAdapter<Declaration>({
     name: {
       get: d => d.name,
       set: (d, value) => {
-        const name = value instanceof Any ? value : new Any(String(value), { role: 'property' });
-        d.adopt(name);
-        d.name = name;
+        d.name = value instanceof Interpolated ? value : String(value);
       }
     },
     value: {

@@ -1,4 +1,4 @@
-import { Node, F_VISIBLE, defineType, type NodeLocation, type NodeOptions } from './node.js';
+import { Node, F_ALLOW_ROOT, F_VISIBLE, defineType, type NodeLocation, type NodeOptions } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
@@ -21,15 +21,15 @@ export interface ExtendList extends Node<Extend[], NodeOptions> {
 export class ExtendList extends Node<Extend[], NodeOptions> {
   static override childKeys = ['value'] as const;
 
-  declare readonly value: Extend[];
-
-  override allowRoot = true;
-  override allowRuleRoot = true;
+  readonly value: Extend[];
 
   constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.removeFlag(F_VISIBLE);
+    this.addFlag(F_ALLOW_ROOT);
   }
 
   /** @internal */

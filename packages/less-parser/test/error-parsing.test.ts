@@ -47,8 +47,7 @@ describe('should throw parsing errors', () => {
     .forEach((file) => {
       it(`${file}`, () => {
         const result = fs.readFileSync(path.join(testData, file));
-        const { lexerResult, errors } = lessParser.parse(result.toString());
-        expect(lexerResult.errors.length).toBe(0);
+        const { errors } = lessParser.parse(result.toString());
         expect(errors.length).toBe(1);
       });
     });

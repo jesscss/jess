@@ -2,7 +2,7 @@ import { CssParserChevrotain as CssParser } from '@jesscss/css-parser';
 import { Parser as LessParser } from '@jesscss/less-parser';
 import { Parser as ScssParser } from '@jesscss/scss-parser';
 import type { IParseResult, Rules, Node } from '@jesscss/core';
-import { getErrorFromParser, toDiagnostic, getValues, isNode } from '@jesscss/core';
+import { getErrorFromParser, toDiagnostic, isNode } from '@jesscss/core';
 import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -58,6 +58,7 @@ type JessIndex = {
 };
 
 function nodeField(node: object, key: string): unknown {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return (node as Record<string, unknown>)[key];
 }
 
@@ -90,11 +91,8 @@ function buildJessIndex(root: Node): JessIndex {
       out.push({ node, start: span.start, end: span.end });
     }
 
-    const value = nodeField(node, 'data');
-    for (const child of getValues(value)) {
-      if (isNode(child)) {
-        stack.push(child);
-      }
+    for (const child of node.walk()) {
+      stack.push(child);
     }
   }
 
@@ -142,6 +140,7 @@ function getJessLangFromLanguageId(languageId: string): JessLang {
 
 function parseWithJess(text: string, lang: JessLang): IParseResult<Rules> {
   if (lang === 'less') {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return lessParser.parse(text) as IParseResult<Rules>;
   }
   if (lang === 'scss') {
@@ -1597,11 +1596,8 @@ export function createEngine(): JessLanguageServiceEngine {
             continue;
           }
 
-          const value = nodeField(node, 'data');
-          for (const child of getValues(value)) {
-            if (isNode(child)) {
-              stack.push(child);
-            }
+          for (const child of node.walk()) {
+            stack.push(child);
           }
         }
 

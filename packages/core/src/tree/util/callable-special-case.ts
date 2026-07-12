@@ -1,6 +1,6 @@
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { Context } from '../../context.js';
-import { F_MAY_ASYNC, type Node } from '../node.js';
+import { type Node } from '../node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { List } from '../list.js';
@@ -46,21 +46,24 @@ export async function evaluateCallableSpecialCaseCandidate({
       return { handled: true };
     }
 
-    // When the ruleset was constructed with a Rules wrapper, use it as sourceRules
-    // so children's parent pointers (which point to the wrapper) are preserved.
-    const passedWrapper = candidate._passedRulesWrapper;
-    const sourceRules = passedWrapper instanceof Rules ? passedWrapper : getRootSourceRules(candidate);
+    // The Ruleset IS its own canonical body now (the `_passedRulesWrapper`
+    // duplicate frame was eliminated); its children parent to the Ruleset, so
+    // the candidate itself is the source rules for the callable surface.
+    const sourceRules = getRootSourceRules(candidate);
     let rules = createCallableRules(sourceRules);
-    const callParent = (caller?.parent as Node | undefined) ?? candidate.parent!;
+    // A detached ruleset called from a variable has no tree parent (neither the
+    // caller nor the candidate is parented); the call-site Rules is its natural
+    // placement parent — same fallback the non-Ruleset branch below uses.
+    const callParent = (caller?.parent as Node | undefined) ?? candidate.parent ?? callSiteRules;
+    if (!callParent) {
+      throw new TypeError('Callable special-case setup requires a caller, candidate, or call-site parent');
+    }
     let needsCallerPlacementDuringEval = false;
     for (let i = 0; i < sourceRules.rules.length; i++) {
       if (isNode(sourceRules.rules[i], N.Ruleset | N.AtRule)) {
         needsCallerPlacementDuringEval = true;
         break;
       }
-    }
-    if (!needsCallerPlacementDuringEval) {
-      rules.addFlag(F_MAY_ASYNC);
     }
     if (needsCallerPlacementDuringEval) {
       callParent.adopt(rules);

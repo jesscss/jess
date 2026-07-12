@@ -166,7 +166,7 @@ type OptionalLocation = LocationInfo | undefined;
 export function makePrivateTempVarDecl(parser: ScssRecursiveParser, name: string, value: Node, location?: OptionalLocation): VarDeclaration {
   const decl = new VarDeclaration(
     {
-      name: new Any(name, { role: 'property' }, location, parser.context),
+      name: name,
       value
     },
     undefined,
@@ -286,9 +286,7 @@ export function desugarNamespacedCall(parser: ScssRecursiveParser, call: Call): 
     return call;
   }
   const ref = makeNamespacedReference(parser, parts, 'function');
-  const location = Array.isArray(call.location) && call.location.length === 6
-    ? call.location
-    : undefined;
+  const location = Array.isArray(call.location) && call.location;
   return new Call({ name: ref, args }, call.options, location, parser.context);
 }
 

@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, F_VISIBLE, defineType, type LocationInfo, type NodeOptions } from './node.js';
+import { Node, F_STATIC, defineType, type LocationInfo, type NodeOptions } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
@@ -13,7 +13,7 @@ export interface Bool extends Node<boolean> {
 export class Bool extends Node<boolean> {
   static override childKeys = null;
 
-  declare readonly value: boolean;
+  readonly value: boolean;
 
   constructor(
     value: boolean,
@@ -22,8 +22,14 @@ export class Bool extends Node<boolean> {
     treeContext?: Context['treeContext']
   ) {
     super(value, options, location);
+    // Invariant 7: each node owns its value; the base stores nothing.
+    this.value = value;
     this._treeContext = treeContext;
     this.addFlag(F_STATIC);
+  }
+
+  protected override ownStaticFlag(): number {
+    return F_STATIC;
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
@@ -47,9 +53,6 @@ export class Bool extends Node<boolean> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
-    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
-      return '';
-    }
     const out = this.value ? 'true' : 'false';
     if (isRenderBuffer(bufferOrOptions)) {
       return writeRenderText(bufferOrOptions, out);

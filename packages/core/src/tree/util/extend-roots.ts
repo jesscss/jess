@@ -1,16 +1,25 @@
 import type { Context } from '../../context.js';
 import { WARN, toDiagnostic } from '../../jess-error.js';
 import { ComplexSelector } from '../selector-complex.js';
+import { BasicSelector } from '../selector-basic.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
-import type { Selector } from '../selector.js';
-import { SelectorList } from '../selector-list.js';
+import { Selector, type SelectorLike } from '../selector.js';
+import {
+  SelectorList,
+  isSelectorListLike,
+  selectorListItems,
+  finishSelectorListSurface,
+  selectorSurfaceValueOf,
+  type SelectorListItem
+} from '../selector-list.js';
 import { PseudoSelector } from '../selector-pseudo.js';
 import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
 import { isNode } from './is-node.js';
+import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
-import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './extend-walk.js';
+import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch, beginExtendMatchPass, endExtendMatchPass } from './extend-walk.js';
 import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
@@ -22,10 +31,7 @@ type RootExtendInstruction = ExtendInstruction & {
 };
 
 function isSelectorValue(value: unknown): value is Selector {
-  return !!value
-    && typeof value === 'object'
-    && 'isSelector' in value
-    && value.isSelector === true;
+  return isNode(value, N.Selector);
 }
 
 function isRulesValue(value: unknown): value is Rules {
@@ -36,11 +42,47 @@ function isRulesetValue(value: unknown): value is Ruleset {
   return isNode(value, N.Ruleset);
 }
 
-function selectorOrUndefined(value: string | Selector | Nil | undefined): Selector | undefined {
-  if (typeof value === 'string' || value instanceof Nil) {
+function selectorOrUndefined(value: SelectorLike | Nil | undefined): SelectorLike | undefined {
+  if (value === undefined || value instanceof Nil) {
     return undefined;
   }
   return value;
+}
+
+/**
+ * Collapse single-item wrapper selectors to their atomic inner selector — the
+ * same normalization `SelectorList.eval` performs. Under copy-on-write the
+ * canonical ruleset selector is NOT eval-collapsed (it stays e.g. a single-item
+ * `SelectorList`), but the extend matcher reads it via the extend node's parent
+ * chain and needs the collapsed form (a bare `SelectorList[.b]` won't match a
+ * `.b` target, and it dedups away the inner matchable item). Read-only: shares.
+ */
+function collapseWrappedSelector(sel: SelectorLike): SelectorLike {
+  if (typeof sel === 'string' || Array.isArray(sel)) {
+    if (Array.isArray(sel) && sel.length === 1) {
+      return collapseWrappedSelector(sel[0]!);
+    }
+    return sel;
+  }
+  let current: Selector = sel;
+  for (;;) {
+    if (current.hasFlag(F_AMPERSAND)) {
+      return current;
+    }
+    const value: unknown = (current as { value?: unknown }).value;
+    if (
+      (isNode(current, N.SelectorList) || isNode(current, N.ComplexSelector) || isNode(current, N.CompoundSelector))
+      && Array.isArray(value)
+      && value.length === 1
+      && typeof value[0] !== 'string'
+      && !isCombinator(value[0])
+      && isSelectorValue(value[0])
+    ) {
+      current = value[0];
+      continue;
+    }
+    return current;
+  }
 }
 
 function selectorListItemForRootExtend(item: SelectorList['value'][number]): Selector {
@@ -57,11 +99,9 @@ function setOwnSelectorOption(ruleset: Ruleset, selector: Selector): void {
 }
 
 function hasExplicitExtendSelector(node: Node | undefined): boolean {
-  const value: unknown = node && 'value' in node ? node.value : undefined;
-  return !!value
-    && typeof value === 'object'
-    && 'selector' in value
-    && !!value.selector;
+  // Extend stores its authored replaceWith override on the `selector` field (its
+  // base `value` is undefined per invariant 7), so read the field directly.
+  return !!node && 'selector' in node && !!(node as { selector?: unknown }).selector;
 }
 
 /**
@@ -104,16 +144,16 @@ function getParentSelector(ruleset: Ruleset): Selector | undefined {
       return undefined;
     }
     // If the parent selector is just an Ampersand, keep walking up
-    if (isNode(sel, N.Ampersand)) {
+    if (typeof sel !== 'string' && !Array.isArray(sel) && isNode(sel, N.Ampersand)) {
       current = parentRuleset;
       continue;
     }
-    return sel;
+    return asExtendSelectorNode(sel);
   }
 }
 
 /** Snapshot of eval'd value before any extend modifications */
-let preExtendSelectors = new WeakMap<Ruleset, Selector>();
+let preExtendSelectors = new WeakMap<Ruleset, SelectorLike>();
 
 function withSelectorBitLibrary<T extends Selector>(selector: T, ...sources: Array<Selector | undefined>): T {
   if (selector.keySetLibrary) {
@@ -133,14 +173,45 @@ function withSelectorBitLibrary<T extends Selector>(selector: T, ...sources: Arr
  * Used for classification and application where we want to see prior updates
  * (supports extend chaining).
  */
-function getLocalSelector(ruleset: Ruleset): Selector | undefined {
-  return selectorOrUndefined(ruleset.selector);
+function getLocalSelector(ruleset: Ruleset): SelectorLike | undefined {
+  const sel = selectorOrUndefined(ruleset.selector);
+  return sel ? collapseWrappedSelector(sel) : sel;
 }
 
-function assignLocalSelector(ruleset: Ruleset, selector: Selector): void {
-  ruleset.adopt(selector);
+export function asExtendSelectorNode(value: SelectorLike): Selector {
+  if (typeof value === 'string') {
+    return new BasicSelector(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 1) {
+      const item = value[0]!;
+      return typeof item === 'string' ? new BasicSelector(item) : item;
+    }
+    return SelectorList.create(
+      value.map(item => selectorListItemForRootExtend(item))
+    );
+  }
+  // Materialize any string-backed components of a legacy SelectorList node.
+  // Factory/parser-delivered lists may carry raw strings (e.g. `sellist(['.child'])`);
+  // those strings are dropped by the node-only placement copy downstream, leaving an
+  // empty appended slot. Turning them into nodes up front keeps the selector intact.
+  if (isNode(value, N.SelectorList) && value.value.some(item => typeof item === 'string')) {
+    return SelectorList.create(
+      value.value.map(item => selectorListItemForRootExtend(item))
+    ).inherit(value);
+  }
+  return value;
+}
+
+function assignLocalSelector(ruleset: Ruleset, selector: SelectorLike): void {
+  if (typeof selector !== 'string' && !Array.isArray(selector)) {
+    ruleset.adopt(selector);
+    ruleset.selector = selector;
+    ruleset.invalidateSelectorValueCache(selector);
+    return;
+  }
   ruleset.selector = selector;
-  ruleset.invalidateSelectorValueCache(selector);
+  ruleset.invalidateSelectorValueCache(undefined);
 }
 
 /**
@@ -148,8 +219,9 @@ function assignLocalSelector(ruleset: Ruleset, selector: Selector): void {
  * Used for parent lookups in composed forms so we don't propagate extend
  * additions through parent chains.
  */
-function getLocalSelectorPreExtend(ruleset: Ruleset): Selector | undefined {
-  return selectorOrUndefined(preExtendSelectors.get(ruleset) ?? ruleset.selector);
+function getLocalSelectorPreExtend(ruleset: Ruleset): SelectorLike | undefined {
+  const sel = selectorOrUndefined(preExtendSelectors.get(ruleset) ?? ruleset.selector);
+  return sel ? collapseWrappedSelector(sel) : sel;
 }
 
 /**
@@ -192,15 +264,29 @@ function composeExtendWithRelativeToTarget(
   }
   // Walk up from extending ruleset, collecting local value, until we
   // reach a ruleset that is also an ancestor of the target (or root).
-  const targetAncestors = targetRuleset
-    ? new Set<Ruleset>([targetRuleset, ...getRulesetAncestors(targetRuleset)])
-    : new Set<Ruleset>();
-  const pathLocals: Selector[] = [extendingLocal];
+  // Copy-on-write eval clones target and extender into separate frame surfaces,
+  // so the SAME source `.attributes` is a different Ruleset instance on each
+  // chain — instance identity would never match. Compare by pre-extend local
+  // selector text, which is stable across those surface copies.
+  const targetAncestorKeys = new Set<string>();
+  if (targetRuleset) {
+    for (const anc of [targetRuleset, ...getRulesetAncestors(targetRuleset)]) {
+      const local = getLocalSelectorPreExtend(anc);
+      if (local) {
+        targetAncestorKeys.add(selectorSurfaceValueOf(local));
+      }
+    }
+  }
+  const isTargetAncestor = (rs: Ruleset): boolean => {
+    const local = getLocalSelectorPreExtend(rs);
+    return !!local && targetAncestorKeys.has(selectorSurfaceValueOf(local));
+  };
+  const pathLocals: Selector[] = [asExtendSelectorNode(extendingLocal)];
   let current: Ruleset | undefined = getParentRuleset(extendingRuleset);
-  while (current && !targetAncestors.has(current)) {
+  while (current && !isTargetAncestor(current)) {
     const local = getLocalSelectorPreExtend(current);
     if (local) {
-      pathLocals.unshift(local);
+      pathLocals.unshift(asExtendSelectorNode(local));
     }
     current = getParentRuleset(current);
   }
@@ -208,8 +294,8 @@ function composeExtendWithRelativeToTarget(
   let result: Selector = pathLocals[0]!;
   for (let i = 1; i < pathLocals.length; i++) {
     let child: Selector = pathLocals[i]!;
-    // Wrap child SelectorList in :is() to avoid distribution
-    if (isNode(child, N.SelectorList) && !child.hasFlag(F_AMPERSAND)) {
+    // Wrap child selector list in :is() to avoid distribution
+    if (isSelectorListLike(child) && !child.hasFlag(F_AMPERSAND)) {
       const childIs = PseudoSelector.create({ name: ':is', arg: copySelectorForExtend(child) });
       childIs.generated = true;
       if (!isSelectorValue(childIs)) {
@@ -523,7 +609,8 @@ function isInstructionVisibleForRoot(
     extendRoot?: Rules;
     fromReferenceScope: boolean;
   },
-  getCachedVisibleRoots?: (root: Rules) => Set<Rules>
+  getCachedVisibleRoots?: (root: Rules) => Set<Rules>,
+  isSameOrDescendant?: (rulesetRoot: Rules, extendRoot: Rules) => boolean
 ): boolean {
   if (!instruction.extendRoot) {
     return false;
@@ -537,7 +624,10 @@ function isInstructionVisibleForRoot(
   if (instruction.extendRoot === rootRules) {
     return true;
   }
-  if (context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot)) {
+  const sameOrDescendant = isSameOrDescendant
+    ? isSameOrDescendant(rootRules, instruction.extendRoot)
+    : context.extendRoots.isSameOrDescendantRoot(rootRules, instruction.extendRoot);
+  if (sameOrDescendant) {
     return true;
   }
   const visibleRoots = getCachedVisibleRoots
@@ -547,7 +637,27 @@ function isInstructionVisibleForRoot(
 }
 
 export function processExtends(context: Context): void {
+  // Ruleset registration only happens during a root's registration prep, which
+  // runs on its FIRST eval. A re-eval of an already-prepared root (render's
+  // evalForRender path) registers nothing, so the per-root set is empty. Without
+  // registered rulesets there is nothing to search or extend; bail before the
+  // warning pass would fire spurious "extend target not found" diagnostics and
+  // before any selector state is touched.
+  if (rulesetsByRoot.size === 0) {
+    return;
+  }
   try {
+    // No extends gathered this eval → skip the whole pre-extend selector
+    // snapshot walk over every registered ruleset. (The instructions list
+    // below would be empty anyway; bail before paying for the walk.)
+    if (!context.extends.length) {
+      return;
+    }
+    // Install the pass-scoped matcher memo. The extend set is immutable for the
+    // whole pass, so the invariant (target, find, extendWith, partial, parent)
+    // match relation is cacheable — collapsing the O(I²) re-matching done by
+    // chained-extend discovery + classify. Torn down in the finally below.
+    beginExtendMatchPass();
     // Snapshot eval'd value before any extend modifications.
     // This ensures getEffectiveSelector composes with original value,
     // not ones already modified by earlier extends in this pass.
@@ -618,12 +728,34 @@ export function processExtends(context: Context): void {
       return cached;
     };
 
+    // The extend-root graph (childrenRoots/layerName/isProtected) is fully built
+    // during eval and STABLE for the whole processExtends pass, so
+    // isSameOrDescendantRoot(rootRules, extendRoot) is invariant here. It is the
+    // O(R × I × depth) driver — a recursive descendant walk run once per
+    // (root × extend-instruction) pair. Memoize it per (extendRoot, rootRules)
+    // for this pass. Pass-scoped: the cache is discarded when processExtends
+    // returns, so no cross-render staleness is possible.
+    const sameOrDescendantCache = new Map<Rules, Map<Rules, boolean>>();
+    const getCachedSameOrDescendant = (rulesetRoot: Rules, extendRoot: Rules): boolean => {
+      let byRuleset = sameOrDescendantCache.get(extendRoot);
+      if (!byRuleset) {
+        byRuleset = new Map<Rules, boolean>();
+        sameOrDescendantCache.set(extendRoot, byRuleset);
+      }
+      let cached = byRuleset.get(rulesetRoot);
+      if (cached === undefined) {
+        cached = context.extendRoots.isSameOrDescendantRoot(rulesetRoot, extendRoot);
+        byRuleset.set(rulesetRoot, cached);
+      }
+      return cached;
+    };
+
     for (const [rootRules, rulesetSet] of rulesetsByRoot) {
       if (!rootRules) {
         continue;
       }
       const visibleExtends = instructions.filter(instruction =>
-        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots)
+        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots, getCachedSameOrDescendant)
       );
       if (!visibleExtends.length) {
         continue;
@@ -631,16 +763,21 @@ export function processExtends(context: Context): void {
       for (const ruleset of rulesetSet) {
         // For classification: use pre-extend snapshot (original form).
         // For application: use current selector (for chaining).
-        const selector = getLocalSelector(ruleset);
-        const currentSelector = selectorOrUndefined(ruleset.selector);
+        const selectorLike = getLocalSelector(ruleset);
+        const currentSelectorLike = selectorOrUndefined(ruleset.selector);
         const parentSel = getParentSelector(ruleset);
-        if (!selector || isNode(selector, N.Nil)) {
+        if (
+          !selectorLike
+          || (typeof selectorLike !== 'string' && !Array.isArray(selectorLike) && selectorLike instanceof Nil)
+        ) {
           ruleset.removeFlag(F_EXTENDED);
           continue;
         }
+        const selector = asExtendSelectorNode(selectorLike);
+        const selectorText = selectorSurfaceValueOf(selectorLike);
         selector.keySetLibrary ??= context.selectorBits;
-        if (currentSelector) {
-          currentSelector.keySetLibrary ??= context.selectorBits;
+        if (currentSelectorLike && typeof currentSelectorLike !== 'string' && !Array.isArray(currentSelectorLike)) {
+          currentSelectorLike.keySetLibrary ??= context.selectorBits;
         }
         if (parentSel) {
           parentSel.keySetLibrary ??= context.selectorBits;
@@ -762,14 +899,14 @@ export function processExtends(context: Context): void {
           // matched by an extend or newly added by one. Keeping the two
           // concerns separate lets the reference-mode compose filter
           // distinguish "original, untouched" from "added by extend".
-          if (selector instanceof SelectorList) {
-            for (const item of selector.value) {
+          if (isSelectorListLike(selectorLike)) {
+            for (const item of selectorListItems(selectorLike)) {
               if (typeof item !== 'string') {
                 item.addFlag(F_VISIBLE);
               }
             }
-          } else {
-            selector.addFlag(F_VISIBLE);
+          } else if (typeof selectorLike !== 'string') {
+            selectorLike.addFlag(F_VISIBLE);
           }
         } else {
           ruleset.removeFlag(F_EXTENDED);
@@ -778,9 +915,9 @@ export function processExtends(context: Context): void {
         // The composed (parent+child) form IS the thing being extended as a whole.
         // Build a SelectorList: [composedForm, ...crossingExtendWithsComposed].
         if (hasCrossingMatch && parentSel) {
-          // Wrap child SelectorList in :is() so composition doesn't distribute.
-          let childForCompose: Selector = selector;
-          if (isNode(selector, N.SelectorList) && !selector.hasFlag(F_AMPERSAND)) {
+          // Wrap child selector list in :is() so composition doesn't distribute.
+          let childForCompose: SelectorLike = selectorLike;
+          if (isSelectorListLike(selectorLike) && !selector.hasFlag(F_AMPERSAND)) {
             const childIs = PseudoSelector.create({ name: ':is', arg: copySelectorForExtend(selector) });
             childIs.generated = true;
             if (!isSelectorValue(childIs)) {
@@ -788,12 +925,18 @@ export function processExtends(context: Context): void {
             }
             childForCompose = withSelectorBitLibrary(childIs, selector, parentSel);
           }
-          const composed = withSelectorBitLibrary(
-            (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentSel),
-            childForCompose,
-            parentSel
-          );
-          const items: Selector[] = [composed];
+          const composedSurface = (Ruleset as typeof Ruleset).composeSelector(childForCompose, parentSel);
+          // composeSelector can return a bare string when the child is a
+          // string-backed leaf (e.g. a nested `.ext9`). A string carries no
+          // bit-library slot to seed, so only thread the library into node output.
+          const composed = typeof composedSurface === 'string'
+            ? composedSurface
+            : withSelectorBitLibrary(
+                composedSurface,
+                asExtendSelectorNode(childForCompose),
+                parentSel
+              );
+          const items: SelectorListItem[] = [composed];
           for (const inst of crossingInstructions) {
             // For crossing matches, the extendWith must be the fully-composed
             // form of the extending ruleset (e.g. .footer-nav under .footer → .footer .footer-nav)
@@ -808,22 +951,28 @@ export function processExtends(context: Context): void {
             }
             items.push(copySelectorForExtend(extendWithComposed ?? inst.extendWith));
           }
-          const newSelector = items.length === 1
-            ? composed
-            : SelectorList.create(items).inherit(selector);
-          if (!isSelectorValue(newSelector)) {
+          const inheritFrom = isSelectorListLike(selectorLike) ? selectorLike : selector;
+          const newSelectorSurface = items.length === 1
+            ? items[0]!
+            : finishSelectorListSurface(items, inheritFrom);
+          if (
+            typeof newSelectorSurface !== 'string'
+            && !Array.isArray(newSelectorSurface)
+            && !isSelectorValue(newSelectorSurface)
+          ) {
             throw new TypeError('Expected crossing selector output');
           }
-          assignLocalSelector(ruleset, newSelector);
-          ruleset._composedSelector = newSelector;
+          assignLocalSelector(ruleset, newSelectorSurface);
+          if (typeof newSelectorSurface !== 'string' && !Array.isArray(newSelectorSurface)) {
+            newSelectorSurface.hoistToRoot = true;
+          }
           ruleset.hoistToRoot = true;
-          newSelector.hoistToRoot = true;
           continue;
         }
         const ownSelector = getOwnSelectorOption(ruleset);
         const hasResolvedNestedSelector = Boolean(
           ownSelector
-          && ownSelector.valueOf() !== selector.valueOf()
+          && ownSelector.valueOf() !== selectorText
         );
         const hasOnlyPartialExtends = localApplicableExtends.length > 0
           && localApplicableExtends.every(instruction => instruction.partial);
@@ -938,7 +1087,7 @@ export function processExtends(context: Context): void {
             }
           }
         }
-        const applyInput = currentSelector ?? selector;
+        const applyInput = asExtendSelectorNode(currentSelectorLike ?? selectorLike);
         const newSelector = applyExtendsToSelector(
           applyInput,
           localApplicableExtends,
@@ -961,7 +1110,6 @@ export function processExtends(context: Context): void {
             }
           }
           assignLocalSelector(ruleset, newSelector);
-          ruleset._composedSelector = newSelector;
           if (newSelector.hoistToRoot) {
             ruleset.hoistToRoot = true;
           }
@@ -977,9 +1125,10 @@ export function processExtends(context: Context): void {
         continue;
       }
       const target = instruction.target.valueOf();
-      const targetLocation = instruction.target.location;
-      const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
-      const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
+      // Line/col are no longer stored on nodes (only offsets); the diagnostic path
+      // derives them from the node/offset + source.
+      const targetLine: number | undefined = undefined;
+      const targetColumn: number | undefined = undefined;
       const targetFile = instruction.target.sourceRoot?._treeContext?.file;
       const targetFilePath = targetFile?.fullPath;
       const blockedProtectedRootExists = Array.from(rulesetsByRoot.keys()).some((root) => {
@@ -994,8 +1143,11 @@ export function processExtends(context: Context): void {
           return false;
         }
         return Array.from(rulesets).some((ruleset) => {
-          const sel = selectorOrUndefined(ruleset.selector);
-          return !!sel && wouldInstructionChangeSel(sel, instruction);
+          const selLike = selectorOrUndefined(ruleset.selector);
+          // Parser-delivered selectors may be string/array-backed. The extend
+          // engine's placement copy calls Node methods, so materialize to a
+          // Selector node first (mirrors the main classification path above).
+          return !!selLike && wouldInstructionChangeSel(asExtendSelectorNode(selLike), instruction);
         });
       });
       const diagnostic = (
@@ -1018,6 +1170,7 @@ export function processExtends(context: Context): void {
       context.warnings.push(toDiagnostic(diagnostic));
     }
   } finally {
+    endExtendMatchPass();
     rulesetsByRoot.clear();
   }
 }

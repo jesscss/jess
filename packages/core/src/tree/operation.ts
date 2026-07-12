@@ -1,3 +1,4 @@
+import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context } from '../context.js';
 import type { Operator } from './util/calculate.js';
@@ -5,7 +6,9 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type FinalPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { Call } from './call.js';
+import { Dimension } from './dimension.js';
+import { Color } from './color.js';
+import { Call, isCalcCall } from './call.js';
 import { list } from './list.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
@@ -18,9 +21,9 @@ import {
 export type { Operator };
 /** Operation is always a tuple */
 export type OperationValue = [
-  left: Node,
+  left: string | Node,
   op: Operator,
-  right: Node
+  right: string | Node
 ];
 
 type OperationRenderResult =
@@ -30,6 +33,30 @@ type OperationRenderResult =
     right: Node;
   };
 
+/** `1px`, `.5em`, `-3`, `10%` — a numeric value terminal with an optional unit. */
+const NUMERIC_KEYWORD_RE = /^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]*)$/i;
+
+/**
+ * A parser value terminal like `1px` can arrive as a `Keyword`/`Any` string
+ * node. Recast a numeric-text keyword operand to an operable Dimension/Color so
+ * arithmetic works; leave true keywords untouched.
+ */
+function recastNumericOperand(node: Node): Node {
+  if (isNode(node, N.Any)) {
+    const value = (node as { value?: unknown }).value;
+    if (typeof value === 'string') {
+      if (value.startsWith('#')) {
+        return new Color(value).inherit(node);
+      }
+      const match = NUMERIC_KEYWORD_RE.exec(value);
+      if (match) {
+        return new Dimension({ number: parseFloat(match[1]!), unit: match[2] }).inherit(node);
+      }
+    }
+  }
+  return node;
+}
+
 /**
  * A math operation OR a value with a slash. CSS is ambiguous
  * in syntax about which is which, so we just classify `value / value`
@@ -38,21 +65,59 @@ type OperationRenderResult =
 export class Operation extends Node<OperationValue> {
   static override childKeys = ['left', 'right'] as const;
 
-  readonly left: Node;
+  readonly left: string | Node;
   readonly operator: Operator;
-  readonly right: Node;
+  readonly right: string | Node;
 
   private static isPreservedSlashList(node: Node): boolean {
     return isNode(node, N.List) && (node as Node & { options?: { sep?: string } }).options?.sep === '/';
   }
 
+  // A Paren operand that survives eval (e.g. `(25vh - 20px)`, incompatible
+  // units under calc/preserve) is not a single operable terminal — its inner
+  // expression stays parenthesized on output. Treat it like a nested Operation:
+  // preserve the operation rather than trying to operate on the Paren.
+  private static isUnoperable(node: Node): boolean {
+    // A preserved `calc(...)` Call (produced by createCalcFallback when
+    // `operate()` throws on incompatible units) is not a single operable
+    // terminal either. Recognizing it here routes `calc(X) op Y` through the
+    // compose path so it nests into a calc rather than stringifying to an Any.
+    return isNode(node, N.Operation) || isNode(node, N.Paren) || isCalcCall(node);
+  }
+
+  // A preserved calc holds a single inner value as its only arg (`calc(l op r)`
+  // or, for an explicit `calc(@x)` wrapping an already-preserved calc,
+  // `calc((l op r))`). CSS flattens nested calc, so when this operand is such a
+  // calc we splice its inner value directly into the composing operation —
+  // yielding one flat `calc(...)` instead of `calc(calc(...) op Y)` (which
+  // renders with a redundant paren and, when the calc Call stayed as the
+  // operand, mis-serialized the wrapping operation).
+  //
+  // A bare inner Operation is spliced in directly. A Paren-wrapped inner
+  // expression keeps its Paren (precedence-safe) — `calc((a - b)) + 1`
+  // composes to `calc((a - b) + 1)`, never dropping the paren and changing
+  // meaning. A nested calc Call is unwrapped recursively.
+  private static unwrapCalcOperand(node: Node): Node {
+    if (isCalcCall(node)) {
+      const args = (node as Call).args;
+      if (args && args.value.length === 1) {
+        const inner = args.value[0]!;
+        if (isNode(inner, N.Operation)) {
+          return inner;
+        }
+        if (isNode(inner, N.Paren) || isCalcCall(inner)) {
+          return Operation.unwrapCalcOperand(inner);
+        }
+      }
+    }
+    return node;
+  }
+
   private withOperands(left: Node, right: Node): Operation {
-    const finalLeft = left === this.left ? left.cloneForPlacement({ reuseLeaves: false }) : left;
-    const finalRight = right === this.right ? right.cloneForPlacement({ reuseLeaves: false }) : right;
     const node = new Operation(
-      [finalLeft, this.operator, finalRight],
+      [left, this.operator, right],
       this._options ? { ...this._options } : undefined,
-      this.location,
+      sourceSpanOf(this),
       this._treeContext
     );
     return node.inherit(this);
@@ -79,21 +144,56 @@ export class Operation extends Node<OperationValue> {
     this.operator = value[1];
     this.right = value[2];
     this._treeContext = treeContext;
-    // Operations are always non-static, but can inherit may_async from children
+    // Operations are always non-static, but inherit may_async from their
+    // operands so an operation wrapping an async child (e.g. a nested `calc()`
+    // Call) is itself scheduled on the async path.
     this.addFlags(F_VISIBLE, F_NON_STATIC);
+    if (this.left instanceof Node) {
+      this.propagateFlagsFrom(this.left);
+    }
+    if (this.right instanceof Node) {
+      this.propagateFlagsFrom(this.right);
+    }
+  }
+
+  protected override ownStaticFlag(): number {
+    return F_NON_STATIC;
+  }
+
+  // Operation's value is a positional `[left, op, right]` tuple, so the base's
+  // childKeys object-rebuild doesn't fit — own the clone (invariant 7).
+  override clone(cloneFn?: (n: Node) => Node): this {
+    const left = cloneFn && this.left instanceof Node ? cloneFn(this.left) : this.left;
+    const right = cloneFn && this.right instanceof Node ? cloneFn(this.right) : this.right;
+    const node = new Operation(
+      [left, this.operator, right],
+      this._options ? { ...this._options } : undefined,
+      sourceSpanOf(this),
+      this._treeContext
+    );
+    node.inherit(this);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    return node as this;
   }
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
     const { left, operator: op, right } = this;
+    // String operands are adjacent already-final terminals (e.g. `U+??????`
+    // unicode-range segments) — serialize verbatim with no math spacing.
+    const terminal = typeof left === 'string' || typeof right === 'string';
     const leftMark = w.mark();
-    left.writeSyntax(options);
+    if (typeof left === 'string') {
+      w.add(left, this);
+    } else {
+      left.writeSyntax(options);
+    }
     w.trimEndSince(leftMark);
-    w.add(` ${op} `, this);
-    if (options.trivia) {
+    w.add(terminal ? op : ` ${op} `, this);
+    if (typeof right !== 'string' && options.trivia) {
       emitTriviaTokens(
-        consumeTrivia(options.trivia, right.location[0], 'before', options),
+        consumeTrivia(options.trivia, spanStartOf(right), 'before', options),
         options,
         { skipLeadingWhitespace: true }
       );
@@ -101,7 +201,11 @@ export class Operation extends Node<OperationValue> {
     const saved = options.suppressBoundaryTrivia;
     options.suppressBoundaryTrivia = 'pre';
     try {
-      right.writeSyntax(options);
+      if (typeof right === 'string') {
+        w.add(right, this);
+      } else {
+        right.writeSyntax(options);
+      }
     } finally {
       options.suppressBoundaryTrivia = saved;
     }
@@ -126,8 +230,13 @@ export class Operation extends Node<OperationValue> {
 
   private evaluateRenderOperands(context: Context): MaybePromise<OperationRenderResult> {
     const { left, operator: op, right } = this;
+    if (typeof left === 'string' || typeof right === 'string') {
+      return this;
+    }
     const maybeLeft = left.eval(context);
-    const finalize = (l: Node, r: Node): MaybePromise<OperationRenderResult> => {
+    const finalize = (rawL: Node, rawR: Node): MaybePromise<OperationRenderResult> => {
+      const l = recastNumericOperand(rawL);
+      const r = recastNumericOperand(rawR);
       const renderOperands = (): OperationRenderResult => {
         return l === left && r === right
           ? this
@@ -137,7 +246,13 @@ export class Operation extends Node<OperationValue> {
         return renderOperands();
       }
       if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
+        if (isCalcCall(l) || isCalcCall(r)) {
+          return this.createCalcFallback(
+            Operation.unwrapCalcOperand(l),
+            Operation.unwrapCalcOperand(r)
+          );
+        }
+        if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           return renderOperands();
         }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
@@ -232,8 +347,19 @@ export class Operation extends Node<OperationValue> {
   private evaluateOperands(context: Context): MaybePromise<Node> {
     let n = this;
     const { left, operator: op, right } = n;
+    // A string operand is an already-final terminal (e.g. a `U+??????`
+    // unicode-range segment). Math never applies — keep the operation as
+    // authored so it serializes verbatim.
+    if (typeof left === 'string' || typeof right === 'string') {
+      return n;
+    }
     const maybeLeft = left.eval(context);
-    const finalize = (l: Node, r: Node): MaybePromise<Node> => {
+    const finalize = (rawL: Node, rawR: Node): MaybePromise<Node> => {
+      // The parser may deliver a numeric value terminal (`1px`) as a Keyword.
+      // Recast numeric-text keyword operands to their operable value node so
+      // math applies instead of throwing "Cannot operate on Keyword".
+      const l = recastNumericOperand(rawL);
+      const r = recastNumericOperand(rawR);
       if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
         if (l === left && r === right) {
           return n;
@@ -241,9 +367,19 @@ export class Operation extends Node<OperationValue> {
         return n.withOperands(l, r);
       }
       if (context.shouldOperate(op, l, r)) {
-        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
+        // A preserved `calc(...)` operand must compose INTO a calc — nest and
+        // flatten to a single `calc(l op r)`, not a bare operation with a calc
+        // operand (which would stringify to an Any on the next operation).
+        if (isCalcCall(l) || isCalcCall(r)) {
+          return n.createCalcFallback(
+            Operation.unwrapCalcOperand(l),
+            Operation.unwrapCalcOperand(r)
+          );
+        }
+        if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           // Preserve composite expressions such as `10px / 2 * 2` when a nested
-          // operation intentionally remains unevaluated under current math mode.
+          // operation intentionally remains unevaluated under current math mode,
+          // or a surviving Paren operand like `(25vh - 20px)`.
           if (l === left && r === right) {
             return n;
           }

@@ -4,8 +4,9 @@ import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { resolveLessTestDataRoot } from '../test-utils.js';
 
-const testData = path.dirname(require.resolve('@less/test-data'));
+const testData = resolveLessTestDataRoot();
 
 // Test color functions without nesting collapsing
 const colorCompiler = new Compiler({

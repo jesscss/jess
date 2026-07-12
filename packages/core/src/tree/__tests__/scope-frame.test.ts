@@ -288,7 +288,7 @@ describe('ScopeFrame variable facade', () => {
 
   it('separates unconsumed callable candidates from child-surface uncertainty', () => {
     const namespace = mixin({
-      name: any('.namespace'),
+      name: '.namespace',
       rules: [decl({ name: 'color', value: any('blue') })]
     });
     const frame = buildScopeFrame(

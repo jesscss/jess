@@ -42,7 +42,7 @@ describe('Less.js Visitor Integration', () => {
     }
 
     function parseWithSource(source: string) {
-      return parser.parse(source, 'stylesheet', {
+      return parser.parse(source, 'Stylesheet', {
         context: new TreeContext({
           file: {
             name: 'input.less',

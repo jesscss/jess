@@ -149,8 +149,8 @@ describe('Compiler reuse', () => {
           name: 'pre-render-visitor-test',
           postEvalVisitor: {
             declaration(node: Declaration) {
-              if (node.value.name.valueOf() === 'color') {
-                node.set('value', new Any('blue', { role: 'keyword' }));
+              if (node.name.valueOf() === 'color') {
+                node.value = new Any('blue', { role: 'keyword' });
               }
             }
           }
@@ -172,8 +172,8 @@ describe('Compiler reuse', () => {
           name: 'pre-render-visitor-test',
           preRenderVisitor: {
             declaration(node: Declaration) {
-              if (node.value.name.valueOf() === 'color') {
-                node.set('value', new Any('green', { role: 'keyword' }));
+              if (node.name.valueOf() === 'color') {
+                node.value = new Any('green', { role: 'keyword' });
               }
             }
           }
@@ -195,8 +195,8 @@ describe('Compiler reuse', () => {
           name: 'before-eval-visitor-test',
           beforeEvalVisitor: {
             varDeclaration(node: VarDeclaration) {
-              if (node.value.name.valueOf() === 'tone') {
-                node.set('value', new Any('blue', { role: 'keyword' }));
+              if (node.name.valueOf() === 'tone') {
+                node.value = new Any('blue', { role: 'keyword' });
               }
             }
           }
@@ -283,18 +283,29 @@ describe('Compiler reuse', () => {
     }
   });
 
-  it('public render APIs render evaluated root rules', async () => {
+  it('public render APIs drive root eval through render', async () => {
+    // D3: `render()` is the sole eval driver. The root enters `render()`
+    // UNEVALUATED (no separate pre-pass eval) and render evaluates it — so it is
+    // evaluated by the time the render call resolves.
     const source = '.a { color: red; }';
     const testFile = path.join(tempDir, 'evaluated-render-root.less');
     fs.writeFileSync(testFile, source);
     const originalRender = Rules.prototype.render;
-    const renderStates: boolean[] = [];
+    const entryStates: boolean[] = [];
+    const exitStates: boolean[] = [];
     Rules.prototype.render = function renderForCounting(
       this: Rules,
       ...args: Parameters<typeof originalRender>
     ): ReturnType<typeof originalRender> {
-      renderStates.push(this.evaluated);
-      return originalRender.apply(this, args);
+      const self = this;
+      entryStates.push(self.evaluated);
+      const result = originalRender.apply(self, args);
+      // Record the evaluated state once render settles (public render APIs are
+      // async here). Promise.resolve unifies the sync/async return without a cast.
+      void Promise.resolve(result).then(() => {
+        exitStates.push(self.evaluated);
+      });
+      return result;
     };
 
     try {
@@ -318,7 +329,10 @@ describe('Compiler reuse', () => {
         extension: '.less'
       });
 
-      expect(renderStates).toEqual([true, true, true]);
+      // One root render() per public API call: it entered unevaluated (no
+      // separate pre-pass eval) and render drove eval to completion.
+      expect(entryStates).toEqual([false, false, false]);
+      expect(exitStates).toEqual([true, true, true]);
     } finally {
       Rules.prototype.render = originalRender;
     }

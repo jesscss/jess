@@ -1,3 +1,4 @@
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, Any, Bool, call, list, nil, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
@@ -117,7 +118,7 @@ describe('Paren', () => {
   it('renders resolved paren values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -139,7 +140,7 @@ describe('Paren', () => {
   it('writes resolved paren render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -162,7 +163,7 @@ describe('Paren', () => {
   it('writes resolved wrapped paren output to explicit writers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -178,7 +179,7 @@ describe('Paren', () => {
   it('renders resolved Any paren values without child render transport', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -198,7 +199,7 @@ describe('Paren', () => {
   it('keeps resolved wrapped paren buffer output out of explicit writers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -216,7 +217,7 @@ describe('Paren', () => {
   it('streams resolved wrapped child output into render buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: list([num(1), num(2)])
       })
     ]);
@@ -241,6 +242,22 @@ describe('Paren', () => {
     expect(buffer.parts).toEqual(['~()']);
     expect(writer.marks).toBe(0);
     expect(writer.reads).toBe(0);
+  });
+
+  it('an escaped Paren around a comma-List EVALUATES to the STRIPPED inner list', async () => {
+    // This is what makes the Less `;`-arg lowering safe: `~(1, 2)` binds IDENTICALLY
+    // to the bare list `1, 2` — the escaped wrapper is representational only, so at
+    // eval it returns the inner value STRIPPED (paren.ts §escaped). So `mixin(~(1, 2))`
+    // and a `1, 2` comma-list arg produce the same evaluated value. (The unevaluated
+    // node still round-trips as `~(1, 2)` for source fidelity.)
+    const escapedWrapped = paren(list([num(1), num(2)], { sep: ',' }), { escaped: true });
+
+    const evaluated = await escapedWrapped.eval(context);
+    expect(evaluated.type).toBe('List');
+    expect(evaluated.toTrimmedString()).toBe('1, 2');
+    // …and the escaped wrapper is gone (no `~`/parens in the evaluated value).
+    expect(evaluated.toTrimmedString()).not.toContain('~');
+    expect(evaluated.toTrimmedString()).not.toContain('(');
   });
 
   it('renders nil paren syntax without writer readback when trivia is inactive', () => {
@@ -275,7 +292,7 @@ describe('Paren', () => {
   it('renders dynamic paren values without materializing a replacement paren', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -364,9 +381,9 @@ describe('Paren', () => {
   it('streams paren values without capture scaffolding', () => {
     const writer = new CountingWriter();
     const value = any('foo');
-    value._location = [4, 1, 5, 6, 1, 7];
+    setSourceSpan(value, { start: 4, end: 6 });
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], run(' /*x*/')]])
+      before: new Map([[sourceSpanOf(value)?.start, run(' /*x*/')]])
     }) satisfies TriviaMap;
 
     expect(paren(value).toTrimmedString({ trivia, writer })).toBe('(/*x*/foo)');
@@ -388,7 +405,7 @@ describe('Paren', () => {
   it('resolves paren values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -422,7 +439,7 @@ describe('Paren', () => {
   it('keeps source paren child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);

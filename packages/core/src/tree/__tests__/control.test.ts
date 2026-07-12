@@ -1,5 +1,7 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import {
   Any,
+  Interpolated,
   Block,
   Call,
   Condition,
@@ -60,7 +62,7 @@ class WholeBufferCountingWriter extends OutputWriter {
 
 function makePattern(bindingNames: string[], kind: 'block' | 'list' | 'sequence' | 'single' = 'block') {
   const vars = bindingNames.map(name => new VarDeclaration({
-    name: new Any(name, { role: 'property' }),
+    name,
     value: new Nil()
   }, { paramVar: true }));
   if (kind === 'single') {
@@ -91,8 +93,7 @@ function makeLoop(
   return new For({
     pattern: normalizedPattern,
     iterable: { kind: 'node', value: iterable },
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    rules: loopRules as unknown as Node[]
+    rules: loopRules.rules
   });
 }
 
@@ -130,11 +131,10 @@ describe('Control Nodes', () => {
     const treeContext = new TreeContext();
     const branchRules = rules([]);
     const ifRule = new If({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      condition: bool(true), rules: branchRules as unknown as Node[]
+      condition: bool(true), rules: branchRules.rules
     }, undefined, undefined, treeContext);
     const forRule = new For({
-      pattern: { kind: 'single', value: vardecl({ name: any('item'), value: any('') }, { paramVar: true }) },
+      pattern: { kind: 'single', value: vardecl({ name: 'item', value: any('') }, { paramVar: true }) },
       iterable: { kind: 'node', value: list([any('a')]) },
       rules: []
     }, undefined, undefined, treeContext);
@@ -257,26 +257,16 @@ describe('Control Nodes', () => {
   it('writes evaluated $if output into render buffers without public resolve/eval wrapper', async () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
+    // New model: the branch body (`selectedRules`) is unwrapped + discarded (no
+    // `_passedRulesWrapper`); the selected branch renders via its own body surface,
+    // so the render path writes to the buffer without touching node.resolve/evalNode.
     const selectedRules = rules([decl({ name: 'color', value: any('blue') })]);
-    const originalSelectedRender = selectedRules.render;
-    let selectedRulesRenderCalls = 0;
-    let selectedRulesRenderBuffer: unknown;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    selectedRules.render = function countSelectedRulesRender(
-      this: typeof selectedRules,
-      ...args: Parameters<typeof originalSelectedRender>
-    ): ReturnType<typeof originalSelectedRender> {
-      selectedRulesRenderCalls++;
-      selectedRulesRenderBuffer = args[1];
-      return originalSelectedRender.apply(this, args);
-    } as typeof selectedRules.render;
     const node = new If({
       condition: bool(false),
       rules: [decl({ name: 'color', value: any('red') })],
       else: new If({
         condition: bool(true),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        rules: selectedRules as unknown as Node[],
+        rules: selectedRules.rules,
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         else: rules([decl({ name: 'color', value: any('green') })]) as unknown as Rules
       })
@@ -290,8 +280,6 @@ describe('Control Nodes', () => {
 
     await expect(node.render(context, buffer)).resolves.toBe('color: blue;');
     expect(buffer.parts).toEqual(['color: blue;']);
-    expect(selectedRulesRenderCalls).toBe(1);
-    expect(selectedRulesRenderBuffer).toBe(buffer);
   });
 
   it('evaluates $if output through root render', async () => {
@@ -321,7 +309,7 @@ describe('Control Nodes', () => {
     if (!(resolved instanceof Rules)) {
       throw new Error('Expected unmatched $if output to be Rules');
     }
-    expect(resolved.location).toHaveLength(0);
+    expect(sourceSpanOf(resolved)).toBeUndefined();
     expect(resolved._treeContext).toBeUndefined();
     expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.parent).toBeUndefined();
@@ -403,8 +391,8 @@ describe('Control Nodes', () => {
   });
 
   it('writes $for source header children without public toString transport', () => {
-    const firstPattern = vardecl({ name: any('first'), value: new Nil() }, { paramVar: true });
-    const secondPattern = vardecl({ name: any('second'), value: new Nil() }, { paramVar: true });
+    const firstPattern = vardecl({ name: 'first', value: new Nil() }, { paramVar: true });
+    const secondPattern = vardecl({ name: 'second', value: new Nil() }, { paramVar: true });
     const start = any('1');
     const end = any('5');
     const step = any('2');
@@ -582,7 +570,7 @@ describe('Control Nodes', () => {
     if (!(resolved instanceof Rules)) {
       throw new Error('Expected false $while output to be Rules');
     }
-    expect(resolved.location).toHaveLength(0);
+    expect(sourceSpanOf(resolved)).toBeUndefined();
     expect(resolved._treeContext).toBeUndefined();
     expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
@@ -663,6 +651,11 @@ describe('Control Nodes', () => {
     `);
   });
 
+  // $while shares its body (thin surface). A self-referential counter (`i: i+1` +
+  // `tick: @i`) resolves correctly: the body vardecl shadows the incoming state `i`,
+  // `tick` reads the shadow (new value), and the state slot — anchored on the state
+  // surface, not the body vardecl — stays readable through the recursion guard so the
+  // vardecl's RHS `@i` reads the previous value. See syncWhileState in control.ts.
   it('keeps native loop render aligned with eval serialization for stateful loops', async () => {
     const makeRoot = () => rules([
       vardecl({ name: 'i', value: num(0) }),
@@ -695,10 +688,13 @@ describe('Control Nodes', () => {
     const evald = await makeRoot().eval(new Context());
 
     expect(renderCss.trim()).toBe(evald.toTrimmedString().trim());
+    // i: 0→1→2→3 with condition i<3 emits tick 1,2,3. The third tick is now the
+    // correct `3` (was a stale `2` from a state-sync lag on the uncovered $while
+    // iteration frame — fixed by Stage 3's covered frame).
     expect(renderCss).toBeString(`
       tick: 1;
       tick: 2;
-      tick: 2;
+      tick: 3;
       item: a;
       item: b;
     `);
@@ -795,8 +791,7 @@ describe('Control Nodes', () => {
           }),
           args: list([])
         }),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        rules: loopRules as unknown as Node[]
+        rules: loopRules.rules
       });
 
       const css = await Promise.resolve(node.render(context, buffer));
@@ -804,7 +799,9 @@ describe('Control Nodes', () => {
       expect(css).toContain('tick: yes');
       expect(calls).toBe(3);
       expect(clonedLoopRules).toBe(0);
-      expect(loopRules.parent).toBe(node);
+      // New model: the passed `rules([...])` wrapper is unwrapped + discarded, so
+      // the While owns its body children directly (node.rules === loopRules.rules).
+      expect(node.rules).toBe(loopRules.rules);
     } finally {
       Rules.prototype.clone = originalClone;
     }
@@ -884,8 +881,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: loopRules as unknown as Node[]
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -894,8 +890,11 @@ describe('Control Nodes', () => {
       tick: yes;
       tick: yes;
     `);
+    // $while COPIES per iteration (it carries mutable state across iterations, so the
+    // body is isolated), so the SOURCE child is not prepared — only its per-iteration
+    // copies are. The While OWNS its body children (parent === node, not the wrapper).
     expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('reuses dynamic direct $while body children while re-evaluating each iteration', async () => {
@@ -909,7 +908,7 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([
-      vardecl({ name: any('tick'), value: call({
+      vardecl({ name: 'tick', value: call({
         name: new JsFunction({
           name: 'next-tick',
           fn: () => any(String(calls))
@@ -926,8 +925,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: loopRules as unknown as Node[]
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -936,8 +934,11 @@ describe('Control Nodes', () => {
       tick: 1;
       tick: 2;
     `);
-    expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    // $while SHARES its body (thin surface); a non-self-referential dynamic body is
+    // re-evaluated correctly per iteration — the source child IS evaluated each
+    // iteration (2), owned by the While node.
+    expect(sourcePrepCalls).toBe(2);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('updates dynamic-name $while body mutations without preparing the body surface', async () => {
@@ -972,8 +973,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: loopRules as unknown as Node[]
+      rules: loopRules.rules
     });
 
     const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
@@ -982,8 +982,11 @@ describe('Control Nodes', () => {
       tick: 1;
       tick: 2;
     `);
-    expect(sourcePrepCalls).toBe(0);
-    expect(tickDecl.parent).toBe(loopRules);
+    // $while SHARES its body (thin surface); a non-self-referential dynamic body is
+    // re-evaluated correctly per iteration — the source child IS evaluated each
+    // iteration (2), owned by the While node.
+    expect(sourcePrepCalls).toBe(2);
+    expect(tickDecl.parent).toBe(node);
   });
 
   it('keeps canonical $while body children parented to the source wrapper', async () => {
@@ -1000,8 +1003,7 @@ describe('Control Nodes', () => {
         }),
         args: list([])
       }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: renderRules as unknown as Node[]
+      rules: renderRules.rules
     });
 
     const rendered = await Promise.resolve(renderNode.render(renderContext, renderBuffer));
@@ -1011,25 +1013,25 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(renderCalls).toBe(3);
-    expect(renderDecl.parent).toBe(renderRules);
+    // New model: the While OWNS its body children (the passed wrapper is discarded);
+    // iteration surfaces share them, so the canonical child stays parented to the node.
+    expect(renderDecl.parent).toBe(renderNode);
 
     const evalContext = new Context();
     const evalDecl = decl({ name: 'tick', value: any('yes') });
     const evalRules = rules([evalDecl]);
     let evalCalls = 0;
-    const evalRoot = rules([
-      new While({
-        condition: call({
-          name: new JsFunction({
-            name: 'keep-going-eval',
-            fn: () => bool(++evalCalls <= 2)
-          }),
-          args: list([])
+    const evalWhile = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going-eval',
+          fn: () => bool(++evalCalls <= 2)
         }),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        rules: evalRules as unknown as Node[]
-      })
-    ]);
+        args: list([])
+      }),
+      rules: evalRules.rules
+    });
+    const evalRoot = rules([evalWhile]);
 
     const evald = await evalRoot.eval(evalContext);
 
@@ -1038,7 +1040,7 @@ describe('Control Nodes', () => {
       tick: yes;
     `);
     expect(evalCalls).toBe(3);
-    expect(evalDecl.parent).toBe(evalRules);
+    expect(evalDecl.parent).toBe(evalWhile);
   });
 
   it('throws when $while exceeds its iteration guard', async () => {
@@ -1056,10 +1058,12 @@ describe('Control Nodes', () => {
   it('adopts $while condition and rules as children', () => {
     const condition = bool(true);
     const decl1 = decl({ name: 'color', value: any('red') });
+    // Invariant 7: raw `new While` shares; canonical parenting is the explicit
+    // `parentChildren()` primitive (what the `while()` factory calls).
     const node = new While({
       condition,
       rules: [decl1]
-    });
+    }).parentChildren();
 
     expect(condition.parent).toBe(node);
     expect(decl1.parent).toBe(node);
@@ -1207,7 +1211,7 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.rules).toEqual([]);
-    expect(loopOutput.location).toHaveLength(0);
+    expect(sourceSpanOf(loopOutput)).toBeUndefined();
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
     expect(await renderNodeToString(root, new Context())).toBe('');
@@ -1245,12 +1249,14 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([]), loopRules);
+    const root = rules([loop]);
 
     await expect(renderNodeToString(root, context)).resolves.toBe('');
 
+    // Empty iterable → zero iterations → the shared body is never evaluated.
     expect(sourcePrepCalls).toBe(0);
-    expect(itemDecl.parent).toBe(loopRules);
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {
@@ -1333,13 +1339,17 @@ describe('Control Nodes', () => {
       const loopRules = rules([
         itemDecl
       ]);
-      const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+      const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules);
+      const root = rules([loop]);
 
       const css = await renderNodeToString(root, context);
 
       expect(css).toContain('item: a');
       expect(clonedLoopRules).toBe(0);
-      expect(itemDecl.parent).toBe(loopRules);
+      // New model: the loop OWNS its body (no `_passedRulesWrapper`); the passed
+      // `loopRules` wrapper is unwrapped and the child parents to the loop node.
+      // Iteration surfaces SHARE the body children (no per-iteration Rules.clone).
+      expect(itemDecl.parent).toBe(loop);
     } finally {
       Rules.prototype.clone = originalClone;
     }
@@ -1361,7 +1371,7 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.rules).toHaveLength(2);
-    expect(loopOutput.location).toHaveLength(0);
+    expect(sourceSpanOf(loopOutput)).toBeUndefined();
     expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput._scopeFrame).toBeUndefined();
     const css = await renderNodeToString(root, new Context());
@@ -1394,7 +1404,9 @@ describe('Control Nodes', () => {
 
   it('preserves function bindings on runtime $for iteration surfaces', async () => {
     const context = new Context();
-    const loopRules = rules([
+    // The For node IS its own body container now; the function binding belongs on it,
+    // not on a separate rules() wrapper (which is discarded to its child array).
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), rules([
       decl({
         name: 'color',
         value: call({
@@ -1402,12 +1414,12 @@ describe('Control Nodes', () => {
           args: list([])
         })
       })
-    ]);
-    loopRules.setFunctionBinding('make-blue', new JsFunction({
+    ]));
+    loop.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+    const root = rules([loop]);
 
     await expect(renderNodeToString(root, context)).resolves.toContain('color: blue');
   });
@@ -1515,13 +1527,16 @@ describe('Control Nodes', () => {
     const context = new Context();
     const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(itemDecl.parent).toBe(loopRules);
+    // New model: the loop OWNS its body children (the passed wrapper is discarded);
+    // iteration surfaces share them, so the canonical child stays parented to the loop.
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('reuses childless source-free scalar leaves in $for per-iteration body copies', async () => {
@@ -1568,15 +1583,20 @@ describe('Control Nodes', () => {
       colorDecl,
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('color: red');
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(0);
-    expect(colorDecl.parent).toBe(loopRules);
+    // New model: iteration surfaces SHARE the body children (no per-iteration
+    // copies), so the source child IS the node evaluated each iteration — prepared
+    // once per iteration (2 here), idempotently (rendering the loop twice is
+    // stable). The child is owned by the loop node, not the discarded wrapper.
+    expect(sourcePrepCalls).toBe(2);
+    expect(colorDecl.parent).toBe(loop);
   });
 
   it('reuses dynamic direct $for body children while re-evaluating each iteration', async () => {
@@ -1589,14 +1609,17 @@ describe('Control Nodes', () => {
       return originalPrepareRegistration(renderContext);
     };
     const loopRules = rules([itemDecl]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const loop = makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules);
+    const root = rules([loop]);
 
     const css = await renderNodeToString(root, context);
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(0);
-    expect(itemDecl.parent).toBe(loopRules);
+    // New model: the dynamic body child is SHARED and re-evaluated once per
+    // iteration (2), producing the per-iteration value. Owned by the loop node.
+    expect(sourcePrepCalls).toBe(2);
+    expect(itemDecl.parent).toBe(loop);
   });
 
   it('keeps $for live bindings visible while evaluating nested generated rulesets', async () => {
@@ -1694,8 +1717,7 @@ describe('Control Nodes', () => {
     });
     const ifNode = new If({
       condition: new Any('true', { role: 'any' }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: privateRules as unknown as Node[]
+      rules: privateRules.rules
     });
     const singlePattern = makePattern(['value'], 'single');
     if (!(singlePattern instanceof VarDeclaration)) {
@@ -1704,27 +1726,11 @@ describe('Control Nodes', () => {
     const forNode = new For({
       pattern: { kind: 'single', value: singlePattern },
       iterable: { kind: 'node', value: list([new Any('a')]) },
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: rules([], {
-        rulesVisibility: {
-          Declaration: 'private',
-          Ruleset: 'private',
-          VarDeclaration: 'private',
-          Mixin: 'private'
-        }
-      }) as unknown as Node[]
+      rules: []
     });
     const whileNode = new While({
       condition: new Any('true', { role: 'any' }),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      rules: rules([], {
-        rulesVisibility: {
-          Declaration: 'private',
-          Ruleset: 'private',
-          VarDeclaration: 'private',
-          Mixin: 'private'
-        }
-      }) as unknown as Node[]
+      rules: []
     });
     expect(ifNode.options.rulesVisibility.Declaration).toBe('public');
     expect(ifNode.options.rulesVisibility.Ruleset).toBe('public');
@@ -1754,13 +1760,13 @@ describe('Control Nodes', () => {
             ref({ key: 'prefix' }, { type: 'variable' }),
             ref({ key: 'index' }, { type: 'variable' })
           ]
-        }, { role: 'property' as const }) as unknown as Any<'property'>,
+        }, { role: 'property' as const }) as unknown as Interpolated<'property'>,
         value: ref({ key: 'value' }, { type: 'variable' })
       })
     ]);
 
     const loopMixin = mixin({
-      name: any('.loop'),
+      name: '.loop',
       params: list([
         any('prefix', { role: 'property' })
       ]),
@@ -1770,15 +1776,15 @@ describe('Control Nodes', () => {
             kind: 'tuple',
             values: [
               new VarDeclaration({
-                name: new Any('value', { role: 'property' }),
+                name: 'value',
                 value: new Nil()
               }, { paramVar: true }),
               new VarDeclaration({
-                name: new Any('key', { role: 'property' }),
+                name: 'key',
                 value: new Nil()
               }, { paramVar: true }),
               new VarDeclaration({
-                name: new Any('index', { role: 'property' }),
+                name: 'index',
                 value: new Nil()
               }, { paramVar: true })
             ]
@@ -1787,8 +1793,7 @@ describe('Control Nodes', () => {
             kind: 'node',
             value: list([new Any('one'), new Any('two')])
           },
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          rules: loopRules as unknown as Node[]
+          rules: loopRules.rules
         })
       ]
     });
@@ -1828,5 +1833,38 @@ describe('Control Nodes', () => {
         b-2: two;
       }
     `);
+  });
+
+  it('materializes a binding cell for a var-declaration whose value is a flat segment array', async () => {
+    // Regression for the Less each() cluster. The Less parser assembles a
+    // multi-part variable value (`@sizes: small 1, large 2`) as a FLAT segment
+    // array — [Keyword(small), Num(1), Keyword(','), Keyword(large), Num(2)] —
+    // not a single List Node. Referencing that variable (here as an each()/$for
+    // iterable) must still resolve: the binding cell must materialize the array
+    // into a Node instead of leaving the cell value-less (which threw
+    // "Binding cell has no value").
+    const context = new Context();
+    const sizes = vardecl({
+      name: 'sizes',
+      value: [new Any('small'), num(1), new Any(','), new Any('large'), num(2)]
+    });
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([
+      sizes,
+      makeLoop(
+        makePattern(['value', 'key']),
+        ref({ key: 'sizes' }, { type: 'variable' }),
+        loopRules
+      )
+    ]);
+    context.root = root;
+
+    const css = await renderNodeToString(root, context);
+
+    // Two comma-separated iterations, each a space-list value.
+    expect(css).toContain('item: small 1');
+    expect(css).toContain('item: large 2');
   });
 });

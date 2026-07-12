@@ -1,17 +1,19 @@
+import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   defineType,
-  F_MAY_ASYNC,
+  F_AMPERSAND,
   type NodeLocation,
   type NodeOptions
 } from './node.js';
 import type { Context } from '../context.js';
+import type { Trivia } from '../types/index.js';
 import { createPublicNil, Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
-import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import { consumeTrivia, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
 import { ownCollapsedSourceChild } from './util/own-collapsed-source-child.js';
 
 /**
@@ -27,25 +29,22 @@ function emitCompoundPart(
   part: CompoundSelectorComponent,
   options: ReturnType<typeof getPrintOptions>,
   emitLeadingTrivia: boolean,
-  stringPartStart?: number
+  spanComments: readonly Trivia[],
+  cursor: { i: number }
 ): void {
   if (typeof part === 'string') {
-    // String parts carry no own location; their source offset (for trivia
-    // lookup between adjacent simple selectors, e.g. comments) comes from the
-    // owning CompoundSelector's valueSpans, passed in as stringPartStart.
-    if (emitLeadingTrivia && options.trivia && typeof stringPartStart === 'number' && stringPartStart >= 0) {
-      emitTriviaTokens(
-        consumeTrivia(options.trivia, stringPartStart, 'before', options),
-        options,
-        { skipLeadingWhitespace: true }
-      );
+    // String parts carry no own location; a comment authored before this part
+    // (between adjacent simple selectors) round-trips via the owning
+    // CompoundSelector's in-span comment runs.
+    if (emitLeadingTrivia && options.trivia && cursor.i < spanComments.length) {
+      cursor.i = emitNextSpanComment(spanComments, cursor.i, options);
     }
     options.writer.add(part);
     return;
   }
   if (emitLeadingTrivia && options.trivia) {
     emitTriviaTokens(
-      consumeTrivia(options.trivia, part.location[0], 'before', options),
+      consumeTrivia(options.trivia, spanStartOf(part), 'before', options),
       options,
       { skipLeadingWhitespace: true }
     );
@@ -98,11 +97,21 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   ): this {
     const ownedValue = new Array<CompoundSelectorComponent>(value.length);
     let hoistToRoot = false;
+    let hasAmpersand = false;
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
       ownedValue[i] = this.isSourceSelector(item, sourceValue) ? this.ownSelector(item) : item;
       if (typeof item !== 'string' && item.hoistToRoot) {
         hoistToRoot = true;
+      }
+      // Bubble F_AMPERSAND from a resolved `&` component: a compound like
+      // `&.foo-xxx` whose `&` resolved (via its container) to the parent still
+      // CONTAINS the `&` node. composeSelector keys on this flag to substitute `&`
+      // (once) rather than prepend the parent again — without it, a nested `&`
+      // selector re-composes and duplicates the ancestor. The eval-time rebuild
+      // here missed the bubble that `adopt` performs (node-base F_AMPERSAND).
+      if (typeof item !== 'string' && item.hasFlag(F_AMPERSAND)) {
+        hasAmpersand = true;
       }
     }
     // Own unchanged source children; evaluated clones may carry runtime state.
@@ -110,10 +119,13 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
     const node = new CompoundSelector(
       ownedValue,
       this._options ? { ...this._options } : undefined,
-      this.location
+      sourceSpanOf(this)
     ).inherit(this) as this;
     if (hoistToRoot) {
       node.hoistToRoot = true;
+    }
+    if (hasAmpersand) {
+      node.addFlag(F_AMPERSAND);
     }
     return node.inherit(this);
   }
@@ -147,12 +159,18 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
     const value = this.value;
-    const spans = this.valueSpans;  // packed [start,end,flags] per component
+    // Simple-selector parts carry no own source span; a comment authored between
+    // two of them (e.g. `.a/*c*/.b`) still round-trips via the in-span comment
+    // runs. Compound parts are adjacent (no whitespace between them), so only
+    // comments are relevant here.
+    const spanComments = printOptions.trivia
+      ? commentRunsWithinSpan(printOptions.trivia, spanStartOf(this), spanEndOf(this))
+      : [];
+    const cursor = { i: 0 };
     const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
       printOptions.ampersandFirst = (i === 0);
-      const stringPartStart = spans ? spans[i * 3] : undefined;
-      emitCompoundPart(value[i]!, printOptions, i > 0, stringPartStart);
+      emitCompoundPart(value[i]!, printOptions, i > 0, spanComments, cursor);
     }
     restorePrintState(printOptions, saved);
   }
@@ -166,33 +184,6 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
     const mark = w.mark();
     this.writeSyntax(printOptions);
     return w.getSince(mark);
-  }
-
-  protected override computeKeySets(): void {
-    if (this._keySet && this._visibleKeySet && this._requiredKeySet) {
-      return;
-    }
-    const library = this._requireKeySetLibrary();
-    const value = this.value;
-    let keySet = library.getBitset();
-    let visibleKeySet = library.getBitset();
-    let requiredKeySet = library.getBitset();
-    for (const selector of value) {
-      if (typeof selector === 'string') {
-        const selectorKeySet = library.getBitset([selector]);
-        keySet = keySet.or(selectorKeySet);
-        visibleKeySet = visibleKeySet.or(selectorKeySet);
-        requiredKeySet = requiredKeySet.or(selectorKeySet);
-        continue;
-      }
-      selector.keySetLibrary ??= library;
-      keySet = keySet.or(selector.keySet);
-      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
-      requiredKeySet = requiredKeySet.or(selector.requiredKeySet);
-    }
-    this._keySet = keySet;
-    this._visibleKeySet = visibleKeySet;
-    this._requiredKeySet = requiredKeySet;
   }
 
   override valueOf() {
@@ -231,9 +222,11 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeComponents(this.evaluateComponentsSync(context, false), true);
-    }
+    // A component's asyncness can depend on runtime var resolution (an
+    // interpolated selector `@{v}` whose var resolves via an async plugin-js
+    // value), which `F_MAY_ASYNC` cannot statically predict. `evaluateComponents`
+    // stays sync-fast when nothing is async and only promotes to a promise when a
+    // component actually evaluates async, so route through it unconditionally.
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
       ? (evaluatedValue as Promise<Array<Selector | Nil | string>>).then(value => this.finalizeComponents(value, true))
@@ -242,35 +235,10 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this.finalizeComponents(this.evaluateComponentsSync(context, true), false);
-    }
     const resolvedValue = this.evaluateComponents(context, true);
     return isThenable(resolvedValue)
       ? (resolvedValue as Promise<Array<Selector | Nil | string>>).then(value => this.finalizeComponents(value, false))
       : this.finalizeComponents(resolvedValue as Array<Selector | Nil | string>, false);
-  }
-
-  private evaluateComponentsSync(context: Context, resolve: boolean): Array<Selector | Nil | string> {
-    const currentValue = this.value;
-    const evaluatedValue = new Array<Selector | Nil | string>(currentValue.length);
-    for (let i = 0; i < currentValue.length; i++) {
-      const item = currentValue[i]!;
-      if (typeof item === 'string') {
-        evaluatedValue[i] = item;
-        continue;
-      }
-      const out = resolve ? item.resolve(context) : item.eval(context);
-      if (!(out instanceof Node)) {
-        if (out !== null && typeof out === 'object') {
-          throw new TypeError('Expected sync compound selector evaluation to return a node');
-        }
-        evaluatedValue[i] = item;
-        continue;
-      }
-      evaluatedValue[i] = out instanceof Selector || out instanceof Nil ? out : item;
-    }
-    return evaluatedValue;
   }
 
   private evaluateComponents(context: Context, resolve: boolean): MaybePromise<Array<Selector | Nil | string>> {
@@ -378,7 +346,7 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.sel([', this.location)
+  //   out.add('$J.sel([', sourceSpanOf(this))
   //   const length = this.value.length - 1
   //   this.value.forEach((node, i) => {
   //     node.toModule(context, out)

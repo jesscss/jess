@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node, type PlacementCloneOptions } from './node.js';
 import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
@@ -8,6 +9,7 @@ import { BasicSelector } from './selector-basic.js';
 import { CompoundSelector } from './selector-compound.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { isNode } from './util/is-node.js';
+import { isCombinator } from './util/combinator.js';
 import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
@@ -306,12 +308,17 @@ function createAmpersandWithSelectorContainer(
       selectorContainer
     },
     source.options,
-    source.location.length === 0 ? undefined : source.location
+    sourceSpanOf(source)
   ).inherit(source);
 }
 
 function ownSelectorForAppend(selector: Selector): Selector {
-  const owned = selector.cloneForPlacement({ reuseLeaves: false });
+  // Shared-source sibling in a `&`-append: the appended part is freshly built,
+  // but the OTHER parts are shared source selectors copied only to dodge the
+  // reparent into the new Compound/Complex container. Share them frozen (B3):
+  // the new top-level wrapper is still allocated, but child containers stay at
+  // their canonical parent and `inherit`/`adopt` skips the reparent.
+  const owned = selector.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
   if (!(owned instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
@@ -334,7 +341,7 @@ function expectComplexAppendComponent(node: Node): ComplexSelectorComponent {
     isNode(node, N.SimpleSelector)
     || isNode(node, N.CompoundSelector)
     || isNode(node, N.ComplexSelector)
-    || isNode(node, N.Combinator)
+    || isCombinator(node)
   ) {
     return node;
   }
@@ -345,14 +352,15 @@ function ownComplexComponentForAppend(component: ComplexSelectorComponent): Comp
   if (typeof component === 'string') {
     return component;
   }
-  return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false }));
+  // Shared-source complex component (see ownSelectorForAppend): share frozen.
+  return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false, shareChildren: true }));
 }
 
 function createBasicSelectorLike(selector: SimpleSelector, value: string): BasicSelector {
   const node = new BasicSelector(
     value,
     { ...selector.options },
-    selector.location.length === 0 ? undefined : selector.location
+    sourceSpanOf(selector)
   );
   return node.inherit(selector);
 }
@@ -388,7 +396,7 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   if (isNode(selector, N.ComplexSelector)) {
     for (let i = selector.value.length - 1; i >= 0; i--) {
       const component = selector.value[i]!;
-      if (isNode(component, N.Combinator)) {
+      if (isCombinator(component)) {
         continue;
       }
       if (typeof component === 'string') {
@@ -491,51 +499,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     this.addFlag(F_AMPERSAND);
   }
 
-  override computeKeySets(): void {
-    let library = this.keySetLibrary;
-    if (!library) {
-      library = this._requireKeySetLibrary();
-    }
-    const stored = this._storedSelector;
-    const current = this._selectorContainer?.selector;
-    /** Ampersands don't participate to the visible key set */
-    if (!this._visibleKeySet) {
-      this._visibleKeySet = library.getBitset();
-    }
-    if (!this._requiredKeySet) {
-      this._requiredKeySet = library.getBitset();
-    }
-    if (!current || typeof current === 'string' || isNode(current, N.Nil)) {
-      if (!this._keySet) {
-        this._keySet = library.getBitset();
-      }
-      return;
-    }
-    if ((current as Selector).isSelector && !(current as Selector).keySetLibrary) {
-      (current as Selector).keySetLibrary = library;
-    }
-    if (!this._keySet || stored !== current) {
-      this._keySet = current.keySet;
-    }
-  }
-
-  override getKeySet(context?: Context) {
-    if (!context) {
-      return this.keySet;
-    }
-
-    const current = this._selectorContainer?.selector;
-    if (!current || typeof current === 'string' || isNode(current, N.Nil)) {
-      const library = this.keySetLibrary;
-      if (!library) {
-        return this._requireKeySetLibrary().getBitset();
-      }
-      return library.getBitset();
-    }
-
-    return current.getKeySet(context);
-  }
-
   /**
    * Returns the raw stored container selector (without any `:is()` wrapping).
    * Used by extend-walk to peek at the container parent for "within-ampersand"
@@ -552,13 +515,28 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * Returns the current selector from the selector container (live when container is ruleset value).
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
+  // The raw container selector used for key-set analysis: only a concrete parent
+  // Selector contributes keys (a bare `&`, a string, or Nil contributes none).
+  // Unlike getResolvedSelector this does NOT wrap a list in `:is()` — key-set
+  // computation unions the list's keys directly. Used by SelectorAnalysis.
+  getKeySetContainerSelector(): Selector | undefined {
+    const current = this._selectorContainer?.selector;
+    return current && typeof current !== 'string' && !isNode(current, N.Nil)
+      ? current
+      : undefined;
+  }
+
   getResolvedSelector(): Selector | Nil | undefined {
     const rawSelector = this._selectorContainer?.selector;
     const selector: Selector | Nil | undefined = typeof rawSelector === 'string'
       ? new BasicSelector(rawSelector)
       : rawSelector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      const arg = selector.cloneForPlacement();
+      // Wrapping the container SelectorList in a generated `:is()`: the list's
+      // child selectors are shared SOURCE nodes, wrapped (not owned) — share them
+      // frozen (B3) so the wrapper's `inherit`/`adopt` skips the reparent and the
+      // source container is never mutated.
+      const arg = selector.cloneForPlacement({ shareChildren: true });
       if (!(arg instanceof Selector)) {
         throw new TypeError('Expected selector copy');
       }
@@ -668,8 +646,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
           ctx: file ? { file } : undefined,
           filePath: file?.fullPath,
-          line: amp.location?.[1],
-          column: amp.location?.[2],
+
           meta: { selector: selectorText }
         })));
       }
@@ -696,7 +673,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         selectorContainer: this._selectorContainer
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length === 0 ? undefined : this.location
+      sourceSpanOf(this)
     ).inherit(this);
     if (this._storedSelector) {
       node._storedSelector = this._storedSelector;
@@ -712,7 +689,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
 
   /** @todo - move to ToModuleVisitor */
   // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.amp()', this.location)
+  //   out.add('$J.amp()', sourceSpanOf(this))
   // }
 }
 

@@ -1,6 +1,7 @@
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
+import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
+import { decl, spaced, coll, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, Ruleset, Declaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any, mixin } from '../index.js';
 import { Context } from '../../context.js';
-import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+import { INTERPOLATION_PLACEHOLDER, Interpolated } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
@@ -42,13 +43,13 @@ describe('Declaration', () => {
   it('preserves parser tree context on Declaration and VarDeclaration construction', () => {
     const treeContext = new Context().treeContext;
     const declaration = new Declaration(
-      { name: any('color', { role: 'property' }), value: any('red') },
+      { name: 'color', value: any('red') },
       undefined,
       undefined,
       treeContext
     );
     const varDeclaration = new VarDeclaration(
-      { name: any('color', { role: 'property' }), value: any('red') },
+      { name: 'color', value: any('red') },
       undefined,
       undefined,
       treeContext
@@ -64,7 +65,7 @@ describe('Declaration', () => {
   });
 
   it('uses direct fields as the declaration source of truth', () => {
-    const name = any('color');
+    const name = 'color';
     const value = any('red');
     const important = any('!important', { role: 'flag' });
     const node = decl({ name, value, important });
@@ -73,7 +74,10 @@ describe('Declaration', () => {
     expect(node.value).toBe(value);
     expect(node.important).toBe(important);
     expect(node.value).not.toHaveProperty('name');
-    expect([...node.walk()]).toEqual([name, value, important]);
+    // The name is a bare string, not a walkable child node, so walk() yields only
+    // the node-valued fields (value, important). The string name stays the direct
+    // `node.name` field asserted above.
+    expect([...node.walk()]).toEqual([value, important]);
   });
 
   it('does not allocate options when serializing a default declaration', () => {
@@ -86,7 +90,7 @@ describe('Declaration', () => {
   it('streams non-custom declaration syntax without capture scaffolding', () => {
     const writer = new CountingWriter();
     const rule = decl({
-      name: any('color'),
+      name: 'color',
       value: any('red'),
       important: any('!important', { role: 'flag' })
     });
@@ -96,16 +100,25 @@ describe('Declaration', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('keeps the important flag on a Collection-valued declaration', () => {
+    const value = coll([decl({ name: 'a', value: any('b') })]);
+    const rule = decl({
+      name: 'x',
+      value,
+      important: any('!important', { role: 'flag' })
+    });
+
+    expect(rule.toTrimmedString()).toMatch(/ !important$/);
+  });
+
   it('writes non-custom declaration children without public string transport', () => {
-    const name = any('color');
+    const name = 'color';
     const value = any('red');
     const important = any('!important', { role: 'flag' });
     const rule = decl({ name, value, important });
     let publicStringCalls = 0;
-    name.toTrimmedString = () => {
-      publicStringCalls++;
-      return 'wrong-name';
-    };
+    // The name is a bare string, so there is no name node whose public
+    // toTrimmedString could be invoked — only the value/important nodes are spied.
     value.toTrimmedString = () => {
       publicStringCalls++;
       return 'wrong-value';
@@ -122,7 +135,7 @@ describe('Declaration', () => {
   it('writes non-custom declaration syntax without outer string readback', () => {
     const writer = new CountingWriter();
     const rule = decl({
-      name: any('color'),
+      name: 'color',
       value: any('red'),
       important: any('!important', { role: 'flag' })
     });
@@ -138,7 +151,7 @@ describe('Declaration', () => {
   it('captures declaration source syntax without the outer declaration readback', () => {
     const writer = new CountingWriter();
     const rule = decl({
-      name: any('color'),
+      name: 'color',
       value: any('red'),
       important: any('!important', { role: 'flag' })
     });
@@ -151,14 +164,14 @@ describe('Declaration', () => {
 
   it('renders resolved declarations through render(context)', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
 
     const rendered = decl({
-      name: any('color'),
+      name: 'color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     }).render(context);
 
@@ -167,14 +180,14 @@ describe('Declaration', () => {
 
   it('does not let boolean important skip semantic value evaluation', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
 
     const rendered = decl({
-      name: any('color'),
+      name: 'color',
       value: ref({ key: 'tone' }, { type: 'variable' }),
       important: false
     }).render(context);
@@ -182,9 +195,43 @@ describe('Declaration', () => {
     expect(rendered).toBe('color: red');
   });
 
+  it('carries a string important flag through eval into serialized output', async () => {
+    const root = rules([
+      vardecl({ name: 'tone', value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: 'color',
+      value: ref({ key: 'tone' }, { type: 'variable' }),
+      important: '!important'
+    });
+    const resolved = await Promise.resolve(node.eval(context));
+    expect(resolved.toTrimmedString()).toBe('color: red !important');
+  });
+
+  it('carries a string important flag through eval on a Collection value', async () => {
+    const root = rules([
+      vardecl({ name: 'tone', value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const node = decl({
+      name: 'margin',
+      value: coll([spaced([any('0'), ref({ key: 'tone' }, { type: 'variable' })])]),
+      important: '!important'
+    });
+    const resolved = await Promise.resolve(node.eval(context));
+    expect(resolved.toTrimmedString()).toMatch(/ !important$/);
+  });
+
   it('writes resolved declaration output into segmented buffers', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
@@ -193,7 +240,7 @@ describe('Declaration', () => {
     const writer = new CountingWriter();
     context.printState.writer = writer;
     const node = decl({
-      name: any('color'),
+      name: 'color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
     const originalResolve = node.resolve;
@@ -215,14 +262,14 @@ describe('Declaration', () => {
 
   it('writes resolved declaration buffers without cold string helper transport', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
     const buffer = createRenderBuffer('segmented');
     const node = decl({
-      name: any('color'),
+      name: 'color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
     Reflect.set(node, 'declValueTrimmedString', () => {
@@ -235,13 +282,13 @@ describe('Declaration', () => {
 
   it('renders resolved declaration output directly without public resolve', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
     const node = decl({
-      name: any('color'),
+      name: 'color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
     node.resolve = () => {
@@ -254,13 +301,13 @@ describe('Declaration', () => {
 
   it('renders declaration output without materializing a prepared declaration surface', async () => {
     const root = rules([
-      vardecl({ name: any('brand'), value: any('red') })
+      vardecl({ name: 'brand', value: any('red') })
     ]);
     await root.prepareRegistration(context);
     context.root = root;
     context.rulesContext = root;
     const node = decl({
-      name: any('color'),
+      name: 'color',
       value: ref({ key: 'brand' }, { type: 'variable' })
     });
     const originalWithParts = Reflect.get(node, 'withParts');
@@ -280,27 +327,18 @@ describe('Declaration', () => {
 
   it('renders declaration output without copying source-backed registration parts', async () => {
     const root = rules([
-      vardecl({ name: any('brand'), value: any('red') })
+      vardecl({ name: 'brand', value: any('red') })
     ]);
     await root.prepareRegistration(context);
     context.root = root;
     context.rulesContext = root;
-    const sourceName = any('color');
     const sourceValue = ref({ key: 'brand' }, { type: 'variable' });
     const node = decl({
-      name: sourceName,
+      name: 'color',
       value: sourceValue
     });
-    const originalNameCopy = sourceName.cloneForPlacement;
     const originalValueCopy = sourceValue.cloneForPlacement;
     let sourcePartCopies = 0;
-    sourceName.cloneForPlacement = function copyNameForCounting(
-      this: typeof sourceName,
-      ...args: Parameters<typeof originalNameCopy>
-    ): ReturnType<typeof originalNameCopy> {
-      sourcePartCopies++;
-      return originalNameCopy.apply(this, args);
-    };
     sourceValue.cloneForPlacement = function copyValueForCounting(
       this: typeof sourceValue,
       ...args: Parameters<typeof originalValueCopy>
@@ -312,18 +350,16 @@ describe('Declaration', () => {
     try {
       await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red');
       expect(sourcePartCopies).toBe(0);
-      expect(sourceName.parent).toBe(node);
       expect(sourceValue.parent).toBe(node);
       expect(node.registrationPrepared).toBe(false);
     } finally {
-      sourceName.cloneForPlacement = originalNameCopy;
       sourceValue.cloneForPlacement = originalValueCopy;
     }
   });
 
   it('renders assignment families without reparenting authored declaration values', async () => {
     const makePrior = (assign: AssignmentType | '+:') => decl({
-      name: any('background-color'),
+      name: 'background-color',
       value: any('red')
     }, {
       assign: assign === AssignmentType.CondAssign ? undefined : assign
@@ -346,7 +382,7 @@ describe('Declaration', () => {
 
       const value = any('blue');
       const sourceDeclaration = decl({
-        name: any('background-color'),
+        name: 'background-color',
         value
       }, { assign });
       Any.prototype.cloneForPlacement = function copyForCounting(
@@ -383,7 +419,7 @@ describe('Declaration', () => {
 
     try {
       const value = ref({ key: 'missing' }, { type: 'variable', fallbackValue: new Nil() });
-      const node = decl({ name: any('color'), value });
+      const node = decl({ name: 'color', value });
       const buffer = createRenderBuffer('segmented');
 
       expect(node.render(context)).toBe('');
@@ -397,14 +433,14 @@ describe('Declaration', () => {
 
   it('keeps toTrimmedString canonical even when a render context is present', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
 
     const node = decl({
-      name: any('color'),
+      name: 'color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
 
@@ -414,14 +450,14 @@ describe('Declaration', () => {
 
   it('resolves declarations without touching render state', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
 
     const node = decl({
-      name: any('color'),
+      name: 'color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
     const sourceValue = node.value;
@@ -436,13 +472,13 @@ describe('Declaration', () => {
 
   it('evaluates declaration values without deriving a lazy eval mutation surface', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
 
-    const sourceName = any('color');
+    const sourceName = 'color';
     const sourceValue = ref({ key: 'tone' }, { type: 'variable' });
     const node = decl({
       name: sourceName,
@@ -463,7 +499,6 @@ describe('Declaration', () => {
     expect(output.toTrimmedString()).toBe('color: red');
     expect(output).not.toBe(node);
     expect(deriveCalls).toBe(0);
-    expect(sourceName.parent).toBe(node);
     expect(sourceValue.parent).toBe(node);
   });
 
@@ -476,7 +511,7 @@ describe('Declaration', () => {
       return originalPrepareRegistration(renderContext);
     };
     const node = decl({
-      name: any('src'),
+      name: 'src',
       value
     }, { assign: AssignmentType.MergeSequence });
 
@@ -490,7 +525,7 @@ describe('Declaration', () => {
 
   it('normalizes assignment registration without deriving a declaration surface', async () => {
     const node = decl({
-      name: any('src'),
+      name: 'src',
       value: any('one')
     }, { assign: AssignmentType.MergeSequence });
     const originalDerive = Reflect.get(node, 'derive');
@@ -512,7 +547,7 @@ describe('Declaration', () => {
 
   it('reuses source-free scalar leaves when deriving interpolated declaration names', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
@@ -533,13 +568,15 @@ describe('Declaration', () => {
     try {
       const sourceNameLeaf = any('color');
       const node = decl({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         name: interpolated({
           source: `border-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [sourceNameLeaf]
-        }),
+        }) as Interpolated<'property'>,
         value: ref({ key: 'tone' }, { type: 'variable' })
       });
-      const sourceName = node.name;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const sourceName = node.name as Interpolated;
       const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('border-color: red');
@@ -553,14 +590,14 @@ describe('Declaration', () => {
 
   it('resolves custom declarations without touching render state', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
 
     const node = customdecl({
-      name: any('--color'),
+      name: '--color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
 
@@ -574,14 +611,14 @@ describe('Declaration', () => {
 
   it('writes resolved custom declaration output into segmented buffers', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
     const buffer = createRenderBuffer('segmented');
     const node = customdecl({
-      name: any('--color'),
+      name: '--color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
     const originalResolve = node.resolve;
@@ -601,14 +638,14 @@ describe('Declaration', () => {
 
   it('writes resolved custom declaration buffers without cold string helper transport', async () => {
     const root = rules([
-      vardecl({ name: any('tone'), value: any('red') })
+      vardecl({ name: 'tone', value: any('red') })
     ]);
     const evald = await root.eval(context);
     context.root = evald;
     context.rulesContext = evald;
     const buffer = createRenderBuffer('segmented');
     const node = customdecl({
-      name: any('--color'),
+      name: '--color',
       value: ref({ key: 'tone' }, { type: 'variable' })
     });
     Reflect.set(node, 'declValueTrimmedString', () => {
@@ -622,7 +659,7 @@ describe('Declaration', () => {
   it('renders indexed references inside custom property values through render(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('tone'),
+        name: 'tone',
         value: any('red')
       })
     ]);
@@ -631,7 +668,7 @@ describe('Declaration', () => {
     context.rulesContext = evald;
 
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: ref({ key: 'tone' }, { type: 'index' })
     });
 
@@ -642,7 +679,7 @@ describe('Declaration', () => {
   it('renders interpolated custom property values through render(context)', async () => {
     const root = rules([
       vardecl({
-        name: any('tone'),
+        name: 'tone',
         value: any('red')
       })
     ]);
@@ -655,7 +692,7 @@ describe('Declaration', () => {
       replacements: [ref({ key: 'tone' }, { type: 'variable' })]
     });
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value
     });
 
@@ -669,11 +706,11 @@ describe('Declaration', () => {
   it('keeps custom property value spacing raw after evaluation', async () => {
     const root = rules([
       vardecl({
-        name: any('commentText'),
+        name: 'commentText',
         value: any('/* // Not commented out // */')
       }),
       decl({
-        name: any('--comment'),
+        name: '--comment',
         value: ref({ key: 'commentText' }, { type: 'variable' })
       })
     ]);
@@ -685,7 +722,7 @@ describe('Declaration', () => {
 
   it('does not insert custom property value spacing around adjacent comments', () => {
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: any('a/* kept raw */b')
     });
 
@@ -695,7 +732,7 @@ describe('Declaration', () => {
 
   it('preserves authored custom property value leading space', () => {
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: any(' red')
     });
 
@@ -708,20 +745,20 @@ describe('Declaration', () => {
       source: INTERPOLATION_PLACEHOLDER,
       replacements: [ref({ key: 'string_w_comment' }, { type: 'variable' })]
     });
-    interpolatedValue._location = [50, 1, 51, 72, 1, 73];
+    setSourceSpan(interpolatedValue, { start: 50, end: 72 });
     const value = new Sequence([interpolatedValue]);
-    value._location = interpolatedValue.location;
+    setSourceSpan(value, sourceSpanOf(interpolatedValue));
     const trivia = createTriviaMap({
-      before: new Map([[interpolatedValue.location[0], run(' ')]])
+      before: new Map([[sourceSpanOf(interpolatedValue)?.start, run(' ')]])
     }) satisfies TriviaMap;
     context = new Context({ trivia });
     const node = rules([
       vardecl({
-        name: any('string_w_comment'),
+        name: 'string_w_comment',
         value: any('/* // Not commented out // */')
       }),
       customdecl({
-        name: any('--comment'),
+        name: '--comment',
         value
       })
     ]);
@@ -733,7 +770,7 @@ describe('Declaration', () => {
 
   it('preserves generic calls in custom property values during render(context)', () => {
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: call({
         name: 'if',
         args: new List([
@@ -757,7 +794,7 @@ describe('Declaration', () => {
     context.rulesContext = root;
 
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: call({
         name: ref('rgba', { type: 'function', fallbackValue: true }),
         args: new List([num(0), num(30), num(0), num(238)])
@@ -790,7 +827,7 @@ describe('Declaration', () => {
     secondArg.writeSyntax = countArgSyntax(secondArg);
     thirdArg.writeSyntax = countArgSyntax(thirdArg);
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: call({
         name: ref('rgba', { type: 'function', fallbackValue: true }),
         args: new List([firstArg, secondArg, thirdArg])
@@ -810,7 +847,7 @@ describe('Declaration', () => {
   it('streams custom declaration values without capture scaffolding', () => {
     const writer = new CountingWriter();
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: call({
         name: 'if',
         args: new List([
@@ -828,7 +865,7 @@ describe('Declaration', () => {
   it('writes raw custom property scalar values without value mark/readback normalization', () => {
     const writer = new CountingWriter();
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: any(' red /* kept raw */')
     });
 
@@ -842,7 +879,7 @@ describe('Declaration', () => {
   it('keeps trailing-line-break custom property values on the normalization boundary', () => {
     const writer = new CountingWriter();
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: any('red\n  ')
     });
 
@@ -855,7 +892,7 @@ describe('Declaration', () => {
   it('normalizes custom property trailing declaration newlines with horizontal whitespace by scan', () => {
     const writer = new CountingWriter();
     const node = decl({
-      name: any('--custom'),
+      name: '--custom',
       value: any('red \t\r\f\n\t \r\f')
     });
 
@@ -868,7 +905,7 @@ describe('Declaration', () => {
   it('serializes important declarations with one space before !important', async () => {
     const node = rules([
       decl({
-        name: any('color'),
+        name: 'color',
         value: any('red'),
         important: any('!important', { role: 'flag' })
       })
@@ -894,9 +931,9 @@ describe('Declaration', () => {
 
     try {
       const important = any('!important', { role: 'flag' });
-      important._location = [12, 1, 13, 21, 1, 22];
+      setSourceSpan(important, { start: 12, end: 21 });
       const node = decl({
-        name: any('color'),
+        name: 'color',
         value: any('red'),
         important
       });
@@ -913,13 +950,13 @@ describe('Declaration', () => {
 
   it('serializes comment trivia between declaration values and semicolons', () => {
     const value = any('yes');
-    value._location = [7, 1, 8, 9, 1, 10];
-    const node = decl({ name: any('b'), value });
-    node._location = [4, 1, 5, 25, 1, 26];
+    setSourceSpan(value, { start: 7, end: 9 });
+    const node = decl({ name: 'b', value });
+    setSourceSpan(node, { start: 4, end: 25 });
     const shared = run(' /* comment */');
     const trivia = createTriviaMap({
       before: new Map([[23, shared]]),
-      after: new Map([[value.location[3], shared]])
+      after: new Map([[sourceSpanOf(value)?.end, shared]])
     }) satisfies TriviaMap;
 
     expect(rules([node]).toString({ trivia })).toBeString(`
@@ -928,13 +965,21 @@ describe('Declaration', () => {
   });
 
   it('serializes comment trivia between declaration names and separators', () => {
-    const name = any('color', { role: 'property' });
-    name._location = [4, 1, 5, 8, 1, 9];
-    const node = decl({ name, value: any('grey') });
-    const shared = run('/* survive */ /* me too */');
+    // "color/* survive */ /* me too */: grey" — the name is a bare STRING with no
+    // own span. The comment between the name and the `:` round-trips via the
+    // declaration's node-level span (per-slot fieldSpans are no longer stored):
+    // any comment run inside [decl.start, value.start) is emitted. Authored
+    // whitespace in that gap is normalized away — only the comments survive.
+    const src = 'color/* survive */ /* me too */: grey';
+    const name = 'color';
+    const value = any('grey');
+    setSourceSpan(value, { start: 33, end: 37 }); // "grey"
+    const node = decl({ name, value });
+    setSourceSpan(node, { start: 0, end: 37 });
+    const shared = makeTrivia(src, 5, 31); // "/* survive */ /* me too */"
     const trivia = createTriviaMap({
-      before: new Map([[35, shared]]),
-      after: new Map([[name.location[3], shared]])
+      before: new Map([[31, shared]]),
+      after: new Map([[5, shared]])
     }) satisfies TriviaMap;
 
     expect(node.toString({ trivia })).toBe('color/* survive */ /* me too */: grey');
@@ -943,11 +988,11 @@ describe('Declaration', () => {
   it('does not keep an empty leading item when += normalization has no prior declaration', async () => {
     const node = rules([
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('red')
       }, { assign: '+:' }),
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('foo')
       }, { assign: '+:' })
     ]);
@@ -960,11 +1005,11 @@ describe('Declaration', () => {
   it('normalizes merged declaration placeholders without recopying scalar leaves', async () => {
     const node = rules([
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('red')
       }, { assign: '+:' }),
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('foo')
       }, { assign: '+:' })
     ]);
@@ -991,7 +1036,7 @@ describe('Declaration', () => {
 
   it('renders merged declaration lists without a temporary list surface', () => {
     const node = decl({
-      name: any('background-color'),
+      name: 'background-color',
       value: new List([
         new Nil(),
         any('red'),
@@ -1018,7 +1063,7 @@ describe('Declaration', () => {
 
   it('renders merged declaration sequences without a temporary sequence surface', () => {
     const node = decl({
-      name: any('background-color'),
+      name: 'background-color',
       value: spaced([
         new Nil(),
         any('red'),
@@ -1046,7 +1091,7 @@ describe('Declaration', () => {
   it('renders merged declaration lists without an extra list-value readback window', () => {
     const writer = new CountingWriter();
     const node = decl({
-      name: any('background-color'),
+      name: 'background-color',
       value: new List([
         new Nil(),
         any('red'),
@@ -1063,7 +1108,7 @@ describe('Declaration', () => {
   it('renders merged declaration sequences without an extra space-value readback window', () => {
     const writer = new CountingWriter();
     const node = decl({
-      name: any('background-color'),
+      name: 'background-color',
       value: spaced([
         new Nil(),
         any('red'),
@@ -1080,7 +1125,7 @@ describe('Declaration', () => {
   it('renders assignment merges without evaluating temporary sequence containers', async () => {
     const root = rules([
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('red')
       }, { assign: '+_:' })
     ]);
@@ -1089,7 +1134,7 @@ describe('Declaration', () => {
     context.root = prior;
     context.rulesContext = prior;
     const node = decl({
-      name: any('background-color'),
+      name: 'background-color',
       value: any('blue')
     }, { assign: '+_:' });
     const originalSequenceEvalNode = Sequence.prototype.evalNode;
@@ -1115,7 +1160,7 @@ describe('Declaration', () => {
   it('renders assignment item state with contextual important through buffers', async () => {
     const root = rules([
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('red')
       }, { assign: '+:' })
     ]);
@@ -1124,7 +1169,7 @@ describe('Declaration', () => {
     context.rulesContext = root;
     context.pushImportantSource();
     const node = decl({
-      name: any('background-color'),
+      name: 'background-color',
       value: any('blue')
     }, { assign: '+:' });
     const buffer = createRenderBuffer('segmented');
@@ -1138,7 +1183,7 @@ describe('Declaration', () => {
   it('renders assignment merge adapter state without stale value transport', async () => {
     const root = rules([
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('red')
       }, { assign: '+:' })
     ]);
@@ -1146,7 +1191,7 @@ describe('Declaration', () => {
     context.root = root;
     context.rulesContext = root;
     const node = decl({
-      name: any('background-color'),
+      name: 'background-color',
       value: any('blue')
     }, { assign: '+:' });
     type WriteDeclarationValueSyntax = (
@@ -1183,7 +1228,7 @@ describe('Declaration', () => {
   it('keeps custom property assignment render state raw through buffers', async () => {
     const root = rules([
       decl({
-        name: any('--tokens'),
+        name: '--tokens',
         value: any('red')
       }, { assign: '+:' })
     ]);
@@ -1191,7 +1236,7 @@ describe('Declaration', () => {
     context.root = root;
     context.rulesContext = root;
     const node = decl({
-      name: any('--tokens'),
+      name: '--tokens',
       value: any('blue')
     }, { assign: '+:' });
     const buffer = createRenderBuffer('segmented');
@@ -1203,7 +1248,7 @@ describe('Declaration', () => {
 
   it('renders contextual important flags without materializing a flag node', () => {
     const node = decl({
-      name: any('color'),
+      name: 'color',
       value: any('red')
     });
     context.pushImportantSource();
@@ -1280,11 +1325,11 @@ describe('Declaration', () => {
   it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {
     const node = rules([
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('red')
       }, { assign: '+:' }),
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('foo')
       }, { assign: '+:' })
     ]);
@@ -1299,15 +1344,15 @@ describe('Declaration', () => {
   it('resolves merged declaration lookups without duplicating or keeping empty placeholders', async () => {
     const node = rules([
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('red')
       }, { assign: '+:' }),
       decl({
-        name: any('background-color'),
+        name: 'background-color',
         value: any('foo')
       }, { assign: '+:' }),
       decl({
-        name: any('background'),
+        name: 'background',
         value: ref({ key: 'background-color' }, { type: 'declaration' })
       })
     ]);
@@ -1322,16 +1367,16 @@ describe('Declaration', () => {
     const node = rules([
       rules([
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: any('red')
         }, { assign: '+:' }),
         decl({
-          name: any('background-color'),
+          name: 'background-color',
           value: any('foo')
         }, { assign: '+:' }),
         rules([
           decl({
-            name: any('background'),
+            name: 'background',
             value: ref({ key: 'background-color' }, { type: 'declaration' })
           })
         ])
@@ -1351,19 +1396,19 @@ describe('Declaration', () => {
   it('does not pull a prior plain declaration into Less-style property merge chains', async () => {
     const node = rules([
       decl({
-        name: any('src'),
+        name: 'src',
         value: any('base')
       }),
       decl({
-        name: any('src'),
+        name: 'src',
         value: any('one')
       }, { assign: AssignmentType.MergeList }),
       decl({
-        name: any('src'),
+        name: 'src',
         value: any('two')
       }, { assign: AssignmentType.MergeSequence }),
       decl({
-        name: any('src'),
+        name: 'src',
         value: any('three')
       }, { assign: AssignmentType.MergeList })
     ]);
@@ -1378,19 +1423,19 @@ describe('Declaration', () => {
     const node = rules([
       rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: any('one')
         }, { assign: AssignmentType.MergeList })
       ]),
       rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: any('two')
         }, { assign: AssignmentType.MergeList })
       ]),
       rules([
         decl({
-          name: any('src'),
+          name: 'src',
           value: any('three')
         }, { assign: AssignmentType.MergeList })
       ])
@@ -1419,10 +1464,10 @@ describe('Declaration', () => {
   it('continues a property merge chain after a mixin emits the first declaration', async () => {
     const node = rules([
       mixin({
-        name: any('.shadow-base'),
+        name: '.shadow-base',
         rules: [
           decl({
-            name: any('box-shadow'),
+            name: 'box-shadow',
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)')
           }, { assign: AssignmentType.Add })
         ]
@@ -1434,7 +1479,7 @@ describe('Declaration', () => {
             name: ref({ key: '.shadow-base' }, { type: 'mixin' })
           }),
           decl({
-            name: any('box-shadow'),
+            name: 'box-shadow',
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
         ]
@@ -1452,10 +1497,10 @@ describe('Declaration', () => {
     const important = any('!important', { role: 'flag' });
     const node = rules([
       mixin({
-        name: any('.shadow-base'),
+        name: '.shadow-base',
         rules: [
           decl({
-            name: any('box-shadow'),
+            name: 'box-shadow',
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)'),
             important
           }, { assign: AssignmentType.Add })
@@ -1468,7 +1513,7 @@ describe('Declaration', () => {
             name: ref({ key: '.shadow-base' }, { type: 'mixin' })
           }),
           decl({
-            name: any('box-shadow'),
+            name: 'box-shadow',
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
         ]
@@ -1499,7 +1544,7 @@ describe('Declaration', () => {
         selector: el('.shadow-base'),
         rules: [
           decl({
-            name: any('box-shadow'),
+            name: 'box-shadow',
             value: any('0 1px 3px rgba(0, 0, 0, 0.12)')
           }, { assign: AssignmentType.Add })
         ]
@@ -1511,7 +1556,7 @@ describe('Declaration', () => {
             name: ref({ key: '.shadow-base' }, { type: 'mixin-ruleset' })
           }),
           decl({
-            name: any('box-shadow'),
+            name: 'box-shadow',
             value: any('0 4px 6px rgba(0, 0, 0, 0.1)')
           }, { assign: AssignmentType.Add })
         ]
@@ -1523,7 +1568,7 @@ describe('Declaration', () => {
             name: ref({ key: '.shadow-elevated' }, { type: 'mixin-ruleset' })
           }),
           decl({
-            name: any('box-shadow'),
+            name: 'box-shadow',
             value: any('0 10px 20px rgba(0, 0, 0, 0.15)')
           }, { assign: AssignmentType.Add })
         ]
@@ -1547,11 +1592,11 @@ describe('Declaration', () => {
     const sourceValue = list([any('blue'), any('green')]);
     const node = rules([
       decl({
-        name: any('src'),
+        name: 'src',
         value: any('red')
       }),
       decl({
-        name: any('src'),
+        name: 'src',
         value: sourceValue
       }, { assign: AssignmentType.Add })
     ]);
@@ -1584,11 +1629,11 @@ describe('Declaration', () => {
     const sourceValue = spaced([any('blue'), any('green')]);
     const node = rules([
       decl({
-        name: any('src'),
+        name: 'src',
         value: any('red')
       }, { assign: AssignmentType.MergeSequence }),
       decl({
-        name: any('src'),
+        name: 'src',
         value: sourceValue
       }, { assign: AssignmentType.MergeSequence })
     ]);
@@ -1618,9 +1663,9 @@ describe('Declaration', () => {
 
   it('preserves authored multiline declaration values with a minimum continuation indent', async () => {
     const node = rules([
-      decl({ name: any('background'), value: any('the,\n              great,\n              wall') }),
-      decl({ name: any('color'), value: any('\nwhite') }),
-      decl({ name: any('background-position'), value: any('45\n-23') })
+      decl({ name: 'background', value: any('the,\n              great,\n              wall') }),
+      decl({ name: 'color', value: any('\nwhite') }),
+      decl({ name: 'background-position', value: any('45\n-23') })
     ]);
 
     expect(await renderNodeToString(node, context)).toBeString(`
@@ -1635,14 +1680,13 @@ describe('Declaration', () => {
   });
 
   it('does not treat boundary trivia before a value as authored multiline value text', () => {
-    const name = any('color', { role: 'property' });
-    name._location = [0, 1, 1, 5, 1, 6];
+    const name = 'color';
     const value = any('white');
-    value._location = [8, 2, 1, 12, 2, 6];
+    setSourceSpan(value, { start: 8, end: 12 });
     const node = decl({ name, value });
-    node._location = [0, 1, 1, 12, 2, 6];
+    setSourceSpan(node, { start: 0, end: 12 });
     const trivia = createTriviaMap({
-      before: new Map([[value.location[0], run('\n')]])
+      before: new Map([[sourceSpanOf(value)?.start, run('\n')]])
     }) satisfies TriviaMap;
 
     expect(node.toTrimmedString({ trivia })).toBe('color: white');
@@ -1655,12 +1699,12 @@ describe('Declaration', () => {
         selector: el('nav'),
         rules: [
           atrule({
-            name: any('@starting-style', { role: 'atkeyword' }),
+            name: '@starting-style',
             rules: [
-              decl({ name: any('padding'), value: any('10px') }, { assign: AssignmentType.MergeSequence }),
-              decl({ name: any('padding'), value: any('8px') }, { assign: AssignmentType.MergeSequence }),
-              decl({ name: any('padding'), value: any('6px') }, { assign: AssignmentType.MergeSequence }),
-              decl({ name: any('padding'), value: any('4px') }, { assign: AssignmentType.MergeSequence })
+              decl({ name: 'padding', value: any('10px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: 'padding', value: any('8px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: 'padding', value: any('6px') }, { assign: AssignmentType.MergeSequence }),
+              decl({ name: 'padding', value: any('4px') }, { assign: AssignmentType.MergeSequence })
             ]
           })
         ]
@@ -1683,13 +1727,13 @@ describe('Declaration', () => {
         selector: el('aside'),
         rules: [
           atrule({
-            name: any('@starting-style', { role: 'atkeyword' }),
+            name: '@starting-style',
             rules: [
               forNode({
                 pattern: {
                   kind: 'single',
                   value: new VarDeclaration({
-                    name: any('value', { role: 'property' }),
+                    name: 'value',
                     value: any('_')
                   })
                 },
@@ -1703,7 +1747,7 @@ describe('Declaration', () => {
                   ])
                 },
                 rules: [
-                  decl({ name: any('padding'), value: ref('value', { type: 'variable' }) }, { assign: AssignmentType.MergeSequence })
+                  decl({ name: 'padding', value: ref('value', { type: 'variable' }) }, { assign: AssignmentType.MergeSequence })
                 ]
               })
             ]
@@ -1728,15 +1772,15 @@ describe('Declaration', () => {
         selector: el('aside'),
         rules: [
           atrule({
-            name: any('@starting-style', { role: 'atkeyword' }),
+            name: '@starting-style',
             rules: [
               forNode({
                 pattern: {
                   kind: 'tuple',
                   values: [
-                    new VarDeclaration({ name: any('value', { role: 'property' }), value: any('_') }),
-                    new VarDeclaration({ name: any('key', { role: 'property' }), value: any('_') }),
-                    new VarDeclaration({ name: any('index', { role: 'property' }), value: any('_') })
+                    new VarDeclaration({ name: 'value', value: any('_') }),
+                    new VarDeclaration({ name: 'key', value: any('_') }),
+                    new VarDeclaration({ name: 'index', value: any('_') })
                   ]
                 },
                 iterable: {
@@ -1750,7 +1794,7 @@ describe('Declaration', () => {
                 },
                 rules: [
                   decl({
-                    name: any('padding'),
+                    name: 'padding',
                     value: op([ref('value', { type: 'variable' }), '*', dimension([10, 'px'])])
                   }, { assign: AssignmentType.MergeSequence })
                 ]

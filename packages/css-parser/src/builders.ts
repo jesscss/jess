@@ -11,11 +11,20 @@
 import type { Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import {
-  createPackedFieldSpans,
-  setPackedFieldSpan,
-  createPackedSegmentSpans,
-  setPackedSegmentSpan
-} from '@jesscss/parser';
+  fieldSpansOf,
+  setFieldSpans as setNodeFieldSpans,
+  valueSpansOf,
+  setValueSpans as setNodeValueSpans,
+  sourceSpanOf,
+  setSourceSpan,
+  spanStartOf,
+  type SourceSpan
+} from '@jesscss/core';
+
+/** Source span of a rawChild: a jess node's provenance span, else a CST item's own `.span`. */
+function rawChildSpan(rc: unknown): Span | undefined {
+  return sourceSpanOf(rc as object) ?? (rc as { span?: Span }).span;
+}
 
 import {
   Node,
@@ -23,17 +32,15 @@ import {
   type TriviaMap,
   type Trivia,
   makeTrivia,
-  nil,
   Rules, Ruleset,
   Comment,
   type Selector,
-  BasicSelector, CompoundSelector, type CompoundSelectorComponent,
+  CompoundSelector, type CompoundSelectorComponent,
   ComplexSelector, type ComplexSelectorValue,
-  Combinator,
-  SelectorList,
   Declaration, CustomDeclaration,
   Any, Dimension, Num, Color, ColorFormat,
   Sequence, List,
+  Operation,
   Call, Paren, Url,
   Quoted,
   QueryCondition, Keyword,
@@ -95,7 +102,7 @@ type Child = JessNode | CSTLeaf | CSTError;
 // ---------------------------------------------------------------------------
 
 function spanToLocation(span: Span): LocationInfo {
-  return [span.start, 0, 0, span.end, 0, 0];
+  return { start: span.start, end: span.end };
 }
 
 function nodeChildren(children: ReadonlyArray<Child>): JessNode[] {
@@ -134,23 +141,140 @@ export function spannedComponents(rawChildren: ReadonlyArray<{ _tag: string }>):
   for (const rc of rawChildren as Array<{ _tag: string; value?: string; span?: Span }>) {
     if (rc._tag === 'leaf' && rc.span) {
       out.push({ comp: rc.value ?? '', span: rc.span });
-    } else if (rc._tag === 'node' && (rc as unknown as JessNode).span) {
-      out.push({ comp: rc as unknown as JessNode, span: (rc as unknown as JessNode).span });
+    } else if (rc._tag === 'node') {
+      const sp = rawChildSpan(rc);
+      if (sp) {
+        out.push({ comp: rc as unknown as JessNode, span: sp });
+      }
     }
   }
   return out;
 }
 
-export function setFieldSpan(node: JessNode, fieldIndex: number, fieldCount: number, span: Span) {
-  const n = node as unknown as { fieldSpans?: number[] };
-  n.fieldSpans ??= createPackedFieldSpans(fieldCount);
-  setPackedFieldSpan(n.fieldSpans, fieldIndex, span.start, span.end);
+function firstRawNodeSpan(rawChildren: ReadonlyArray<{ _tag: string }>): Span | undefined {
+  for (const rc of rawChildren as Array<{ _tag: string; span?: Span }>) {
+    if (rc._tag === 'node') {
+      const sp = rawChildSpan(rc);
+      if (sp) {
+        return sp;
+      }
+    }
+  }
+  return undefined;
 }
 
-export function setValueSpans(node: JessNode, spans: ReadonlyArray<Span>) {
-  const packed = createPackedSegmentSpans(spans.length);
-  spans.forEach((s, i) => setPackedSegmentSpan(packed, i, s.start, s.end));
-  (node as unknown as { valueSpans?: number[] }).valueSpans = packed;
+/** Member source spans for parser-delivered selector-list arrays (plain arrays carry no spans). */
+const selectorListSpans = new WeakMap<object, Span[]>();
+
+function readPseudoArg(children: ReadonlyArray<Child>, pseudoName: string): {
+  arg: Node | string | unknown[] | undefined;
+  memberSpans?: Span[];
+  valueSpans?: (SourceSpan | undefined)[];
+} {
+  const keepStructured = SELECTOR_PSEUDOS.has(pseudoName.toLowerCase());
+  for (const ch of children) {
+    if (ch._tag === 'leaf') {
+      continue;
+    }
+    if (Array.isArray(ch)) {
+      return { arg: ch, memberSpans: selectorListSpans.get(ch) };
+    }
+    if (ch._tag === 'node') {
+      const node = ch as unknown as JessNode & { value?: unknown };
+      if (Array.isArray(node.value) && selectorListSpans.has(node.value)) {
+        return { arg: node.value, memberSpans: selectorListSpans.get(node.value) };
+      }
+      if (!keepStructured && Array.isArray(node.value)) {
+        return { arg: node.value, valueSpans: valueSpansOf(node) };
+      }
+      return { arg: node };
+    }
+  }
+  return { arg: undefined };
+}
+
+function readRulesetSelector(children: ReadonlyArray<Child>): string | Selector {
+  const first = children[0];
+  if (first === undefined) {
+    return '';
+  }
+  // Collapsed selector-list / basic-selector builds land as bare strings or arrays.
+  if (typeof first === 'string' || Array.isArray(first)) {
+    return first as unknown as string | Selector;
+  }
+  if (first._tag === 'node') {
+    return first as unknown as string | Selector;
+  }
+  return (nodeChildren(children)[0] ?? '') as string | Selector;
+}
+
+function selectorListMemberSpans(rawChildren: ReadonlyArray<{ _tag: string }>): Span[] | undefined {
+  const listNode = rawChildren.find(rc => rc._tag === 'node') as {
+    rawChildren?: Array<{ _tag: string; span?: Span }>;
+    children?: Array<{ _tag: string; span?: Span }>;
+  } | undefined;
+  const inner = listNode?.rawChildren ?? listNode?.children;
+  if (!inner?.length) {
+    return undefined;
+  }
+  const items = spannedComponents(inner).filter(i => i.comp !== ',');
+  if (items.length < 2) {
+    return undefined;
+  }
+  return items.map(i => i.span);
+}
+
+export function selectorListSpansFor(value: unknown): Span[] | undefined {
+  return value && typeof value === 'object' ? selectorListSpans.get(value) : undefined;
+}
+
+/**
+ * True if `src[start,end)` MAY contain a comment (`/*` or `//`). A deliberate
+ * SUPERSET of "contains a real comment": a `//` inside a url/string yields a
+ * harmless false-positive (an unnecessary stamp), but any real comment — which
+ * always begins `/*` or `//` — is never missed. Per-slot spans exist SOLELY to
+ * place comments in a node's sub-component gaps, so when no comment can be in
+ * the node's span the stamp is provably unread and is skipped — the overwhelming
+ * comment-free common case pays nothing (no WeakMap write, no packed array).
+ */
+function spanMayContainComment(src: string, start: number, end: number): boolean {
+  const limit = Math.min(end, src.length) - 1;
+  for (let i = Math.max(0, start); i < limit; i++) {
+    if (src.charCodeAt(i) === 47 /* '/' */) {
+      const next = src.charCodeAt(i + 1);
+      if (next === 42 /* '*' */ || next === 47 /* '/' */) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function setFieldSpan(node: JessNode, fieldIndex: number, _fieldCount: number, span: Span, src?: string) {
+  if (src !== undefined) {
+    // Field comments live in gaps adjacent to a field (e.g. a trailing
+    // `a: yes /* c */`), so gate on the whole node's span, not just this field.
+    const nodeSpan = sourceSpanOf(node);
+    const start = nodeSpan ? nodeSpan.start : span.start;
+    const end = nodeSpan ? nodeSpan.end : span.end;
+    if (!spanMayContainComment(src, start, end)) {
+      return;
+    }
+  }
+  const spans: (SourceSpan | undefined)[] = (fieldSpansOf(node) ?? []).slice();
+  spans[fieldIndex] = { start: span.start, end: span.end };
+  setNodeFieldSpans(node, spans);
+}
+
+export function setValueSpans(node: JessNode, spans: ReadonlyArray<Span>, src?: string) {
+  if (src !== undefined && spans.length > 0) {
+    // Inter-member comments lie between the first member's start and the last
+    // member's end — the only region the per-slot value spans are read for.
+    if (!spanMayContainComment(src, spans[0]!.start, spans[spans.length - 1]!.end)) {
+      return;
+    }
+  }
+  setNodeValueSpans(node, spans.map(s => ({ start: s.start, end: s.end })));
 }
 
 export function fieldIndexOf(node: JessNode, key: string): { index: number; count: number } {
@@ -170,6 +294,7 @@ export function fieldIndexOf(node: JessNode, key: string): { index: number; coun
 export function buildLazyTriviaMap(log: number[], src: string): TriviaMap {
   let before: Map<number, Trivia> | undefined;
   let after: Map<number, Trivia> | undefined;
+  let sortedComments: readonly Trivia[] | undefined;
 
   const build = () => {
     before = new Map<number, Trivia>();
@@ -205,6 +330,24 @@ export function buildLazyTriviaMap(log: number[], src: string): TriviaMap {
         build();
       }
       return (direction === 'before' ? before! : after!).has(offset);
+    },
+    commentRuns() {
+      if (sortedComments === undefined) {
+        if (!after) {
+          build();
+        }
+        // Mirror the `after`-index source set of the per-node scan; runs are
+        // unique per `after` offset, so no cross-offset dedupe is needed here.
+        const runs: Trivia[] = [];
+        for (const run of after!.values()) {
+          if (run.hasComment) {
+            runs.push(run);
+          }
+        }
+        runs.sort((a, b) => a.start - b.start);
+        sortedComments = runs;
+      }
+      return sortedComments;
     }
   };
 }
@@ -252,6 +395,18 @@ export class CssParser {
   protected _strictEOF = false;
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
   protected _errors: Array<{ message: string; offset?: number }> = [];
+  /**
+   * Source ranges of comments lifted to standalone `Comment` nodes (see
+   * `_maybeEmitComment`). These comments round-trip through the tree, so the
+   * render-time trivia view must NOT also emit them (that would double-print).
+   * Inline comments — never lifted — stay in trivia and are placed by the
+   * serializers. Recorded per parse; read via `getLiftedCommentRanges()`.
+   */
+  protected _liftedCommentRanges: Array<[number, number]> = [];
+
+  getLiftedCommentRanges(): ReadonlyArray<readonly [number, number]> {
+    return this._liftedCommentRanges;
+  }
 
   protected _warn(message: string, deprecation?: string) {
     this._warnings.push(deprecation ? { message, deprecation } : { message });
@@ -296,6 +451,7 @@ export class CssParser {
       case 'Color':             return this._buildColor(leafText(children), loc);
       case 'Url':               return this._buildUrl(children, loc);
       case 'Call':              return this._buildCall(rawChildren, loc);
+      case 'Operation':         return this._buildOperation(children, loc, true) as unknown as JessNode;
       case 'Paren':             return this._buildParen(rawChildren, loc);
       case 'SquareParen':       return this._buildSquareParen(rawChildren, loc);
       case 'Quoted':            return this._buildQuoted(children, loc);
@@ -344,22 +500,27 @@ export class CssParser {
     orderedRuleNodes: JessNode[],
     bodyStart: number,
     bodyEnd: number,
-    loc: LocationInfo
+    loc: LocationInfo,
+    atRoot = false
   ): JessNode[] {
     const src = this._source;
     const out: JessNode[] = [];
     let gapStart = bodyStart;
     for (const rule of orderedRuleNodes) {
-      const nextStart = rule.location[0];
+      const nextStart = sourceSpanOf(rule)?.start;
       if (typeof nextStart === 'number' && nextStart >= gapStart) {
-        out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, loc));
-        const nextEnd = rule.location[3];
+        // A same-line comment ahead of a nested ruleset is recovered from the
+        // trivia map at serialize time — but ONLY inside another rule's body.
+        // At the stylesheet root, eval drops that trivia, so lift there instead.
+        const followingIsNestedRule = !atRoot && (rule as { type?: string }).type === 'Ruleset';
+        out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, followingIsNestedRule, loc));
+        const nextEnd = sourceSpanOf(rule)?.end;
         gapStart = typeof nextEnd === 'number' ? nextEnd : nextStart;
       }
       out.push(rule);
     }
     // Trailing gap (after the last node): no following node → always standalone.
-    out.push(...this._scanStandaloneComments(src, gapStart, bodyEnd, undefined, loc));
+    out.push(...this._scanStandaloneComments(src, gapStart, bodyEnd, undefined, false, loc));
     return out;
   }
 
@@ -374,6 +535,7 @@ export class CssParser {
     gapStart: number,
     gapEnd: number,
     followingStart: number | undefined,
+    followingIsNestedRule: boolean,
     loc: LocationInfo
   ): JessNode[] {
     const comments: JessNode[] = [];
@@ -387,7 +549,7 @@ export class CssParser {
           j++;
         }
         const end = Math.min(j + 2, gapEnd);
-        this._maybeEmitComment(src, i, end, followingStart, comments, loc);
+        this._maybeEmitComment(src, i, end, followingStart, followingIsNestedRule, comments, loc);
         i = end;
         continue;
       }
@@ -397,7 +559,7 @@ export class CssParser {
         while (j < gapEnd && src.charCodeAt(j) !== 10 && src.charCodeAt(j) !== 13) {
           j++;
         }
-        this._maybeEmitComment(src, i, j, followingStart, comments, loc);
+        this._maybeEmitComment(src, i, j, followingStart, followingIsNestedRule, comments, loc);
         i = j;
         continue;
       }
@@ -418,30 +580,47 @@ export class CssParser {
     start: number,
     end: number,
     followingStart: number | undefined,
+    followingIsNestedRule: boolean,
     out: JessNode[],
     loc: LocationInfo
   ) {
-    if (followingStart !== undefined && this._lineOf(src, end - 1) === this._lineOf(src, followingStart)) {
+    // A comment on the same source line as the FOLLOWING node stays inline (trivia)
+    // ONLY when that node is a nested ruleset/selector: its leading trivia is
+    // recovered from the position-indexed trivia map at serialize time (`a { /*x*/
+    // b {…} }`). Same-line comments ahead of a DECLARATION are lifted to `Comment`
+    // nodes instead, so they survive eval — which transforms the tree and drops the
+    // trivia map (`#x { /* c *​/ prop: val }`).
+    if (followingIsNestedRule && followingStart !== undefined && this._sameLine(src, end - 1, followingStart)) {
       return;
     }
+    this._liftedCommentRanges.push([start, end]);
     out.push(new Comment(src.slice(start, end), undefined, loc) as unknown as JessNode);
   }
 
-  /** 1-based line number of `offset` within `src` (counts preceding newlines). */
-  private _lineOf(src: string, offset: number): number {
-    let line = 1;
-    const bound = Math.min(offset, src.length);
-    for (let i = 0; i < bound; i++) {
+  /**
+   * Whether offsets `a` and `b` sit on the same source line — true iff no `\n`
+   * lies between them. Scans only the (small) span between the two offsets, NOT
+   * from the start of the source: the previous absolute-line-number form was
+   * O(offset) per call and O(n²) across a comment-dense file.
+   */
+  private _sameLine(src: string, a: number, b: number): boolean {
+    const lo = Math.min(a, b);
+    const hi = Math.min(Math.max(a, b), src.length);
+    for (let i = lo; i < hi; i++) {
       if (src.charCodeAt(i) === 10 /* \n */) {
-        line++;
+        return false;
       }
     }
-    return line;
+    return true;
   }
 
   protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
     const nodes = nodeChildren(children);
-    const lifted = this._liftStandaloneComments(nodes, loc[0], loc[3], loc);
+    // The Stylesheet node's span ends at the last consumed statement, so trailing
+    // trivia (a comment on the last line) sits past `loc.end`. Scan to the true
+    // source end so a trailing standalone comment is lifted like any other.
+    const bodyEnd = Math.max(loc.end, this._source.length);
+    const lifted = this._liftStandaloneComments(nodes, loc.start, bodyEnd, loc, true);
     return new Rules(lifted, undefined, loc);
   }
 
@@ -450,22 +629,46 @@ export class CssParser {
     rawChildren: ReadonlyArray<{ _tag: string }>,
     loc: LocationInfo
   ) {
+    const selector = readRulesetSelector(children);
     const sel = spannedComponents(rawChildren)[0];
-    const selector = (sel?.comp ?? '') as string | Selector;
+    const selectorSpan = sel?.span ?? firstRawNodeSpan(rawChildren);
     const rawRules = nodeChildren(children.slice(1));
-    const braceIdx = this._source.indexOf('{', sel ? sel.span.end : loc[0]);
-    const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc[0];
-    const closeIdx = this._source.lastIndexOf('}', loc[3] - 1);
-    const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc[3];
+    const braceIdx = this._source.indexOf('{', selectorSpan ? selectorSpan.end : loc.start);
+    const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc.start;
+    const closeIdx = this._source.lastIndexOf('}', loc.end - 1);
+    const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc.end;
     const rules = this._liftStandaloneComments(rawRules, bodyStart, bodyEnd, loc);
     const node = new Ruleset({ selector, rules }, undefined, loc);
-    if (sel) {
+    if (selectorSpan) {
       const { index, count } = fieldIndexOf(node as unknown as JessNode, 'selector');
       if (index >= 0) {
-        setFieldSpan(node as unknown as JessNode, index, count, sel.span);
+        setFieldSpan(node as unknown as JessNode, index, count, selectorSpan, this._source);
+      }
+    }
+    if (Array.isArray(selector)) {
+      const memberSpans = selectorListSpans.get(selector) ?? selectorListMemberSpans(rawChildren);
+      if (memberSpans && memberSpans.length === selector.length) {
+        setValueSpans(node as unknown as JessNode, memberSpans, this._source);
       }
     }
     return node;
+  }
+
+  // ── Selector-node construction seams ───────────────────────────────────────
+  // `SelectorList` and `BasicSelector` are slated for removal: a selector list
+  // becomes a plain array, and a basic selector becomes a bare string. Every
+  // functional-builder construction routes through these two helpers so that
+  // migration is a one-line change here instead of ~20 scattered edits.
+  protected _makeSelectorList(items: unknown, _loc: LocationInfo): (Selector | string)[] {
+    return items as (Selector | string)[];
+  }
+
+  protected _makeBasicSelector(value: string, _loc: LocationInfo): string {
+    return value;
+  }
+
+  protected _valueKeyword(text: string, loc: LocationInfo): Keyword {
+    return new Keyword(text, undefined, loc);
   }
 
   protected _buildSelectorList(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
@@ -473,12 +676,9 @@ export class CssParser {
     if (items.length === 1) {
       return items[0]!.comp as unknown as JessNode;
     }
-    const node = new SelectorList(
-      items.map(i => i.comp) as unknown as (Selector | string)[],
-      undefined, loc
-    );
-    setValueSpans(node as unknown as JessNode, items.map(i => i.span));
-    return node;
+    const list = this._makeSelectorList(items.map(i => i.comp), loc) as object;
+    selectorListSpans.set(list, items.map(i => i.span));
+    return list as unknown as JessNode;
   }
 
   protected _buildComplexSelector(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
@@ -490,7 +690,7 @@ export class CssParser {
       items.map(i => i.comp) as unknown as ComplexSelectorValue,
       undefined, loc
     );
-    setValueSpans(node as unknown as JessNode, items.map(i => i.span));
+    setValueSpans(node as unknown as JessNode, items.map(i => i.span), this._source);
     return node;
   }
 
@@ -518,7 +718,7 @@ export class CssParser {
           undefined,
           spanToLocation({ start, end })
         );
-        setValueSpans(compound as unknown as JessNode, group.map(g => g.span));
+        setValueSpans(compound as unknown as JessNode, group.map(g => g.span), this._source);
         parts.push(compound as unknown as JessNode);
         partSpans.push({ start, end });
       }
@@ -527,20 +727,21 @@ export class CssParser {
 
     let prevEnd = span.start;
     for (const rc of rawChildren as Array<{ _tag: string; value?: string; span?: Span }>) {
-      if ((rc._tag !== 'leaf' && rc._tag !== 'node') || !rc.span) {
+      const rcSpan = rawChildSpan(rc);
+      if ((rc._tag !== 'leaf' && rc._tag !== 'node') || !rcSpan) {
         continue;
       }
-      if (group.length > 0 && hasWhitespaceOutsideComments(this._source, prevEnd, rc.span.start)) {
+      if (group.length > 0 && hasWhitespaceOutsideComments(this._source, prevEnd, rcSpan.start)) {
         const prevSpanEnd = group[group.length - 1]!.span.end;
         flush();
         parts.push(' ');
-        partSpans.push({ start: prevSpanEnd, end: rc.span.start });
+        partSpans.push({ start: prevSpanEnd, end: rcSpan.start });
       }
       group.push({
         comp: rc._tag === 'leaf' ? (rc.value ?? '') : (rc as unknown as JessNode),
-        span: rc.span
+        span: rcSpan
       });
-      prevEnd = rc.span.end;
+      prevEnd = rcSpan.end;
     }
     flush();
 
@@ -548,7 +749,7 @@ export class CssParser {
       return parts[0]! as unknown as JessNode;
     }
     const node = new ComplexSelector(parts as unknown as ComplexSelectorValue, undefined, loc);
-    setValueSpans(node as unknown as JessNode, partSpans);
+    setValueSpans(node as unknown as JessNode, partSpans, this._source);
     return node;
   }
 
@@ -580,19 +781,16 @@ export class CssParser {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const prefix = ls[0]?.value ?? ':';
     const pseudoName = ls[1]?.value ?? '';
-    const argNode = nodeChildren(children)[0] as Node | undefined;
-    let arg = argNode;
-    let argValueSpans: number[] | undefined;
-    if (argNode && !SELECTOR_PSEUDOS.has(pseudoName.toLowerCase())) {
-      const v = (argNode as unknown as { value?: unknown }).value;
-      if (Array.isArray(v)) {
-        arg = v as unknown as Node;
-        argValueSpans = (argNode as unknown as { valueSpans?: number[] }).valueSpans;
-      }
-    }
-    const node = new PseudoSelector({ name: prefix + pseudoName, arg }, undefined, loc);
-    if (argValueSpans) {
-      (node as unknown as { valueSpans?: number[] }).valueSpans = argValueSpans;
+    const { arg, memberSpans, valueSpans } = readPseudoArg(children, pseudoName);
+    const node = new PseudoSelector(
+      { name: prefix + pseudoName, arg: arg as Node | undefined },
+      undefined,
+      loc
+    );
+    if (memberSpans) {
+      setValueSpans(node as unknown as JessNode, memberSpans, this._source);
+    } else if (valueSpans) {
+      setNodeValueSpans(node, valueSpans);
     }
     return node;
   }
@@ -603,28 +801,44 @@ export class CssParser {
     const name = (typeof nameItem?.comp === 'string' ? nameItem.comp : '') || '';
     const colonIdx = items.findIndex(i => i.comp === ':');
     let end = items.length;
+    let bangIdx = -1;
     for (let i = colonIdx + 1; i < items.length; i++) {
       const c = items[i]!.comp;
-      if (c === '!' || c === 'important' || c === ';') {
+      if (c === '!') {
+        end = i;
+        bangIdx = i;
+        break;
+      }
+      if (c === 'important' || c === ';') {
         end = i;
         break;
       }
     }
     const valueItems = items.slice(colonIdx + 1, end);
     const { value, span: valueSpan } = this._assembleValue(valueItems, loc);
-    const hasImportant = items.some(i => i.comp === '!');
+    // `important` is the verbatim source text (`!important`, `! important`, …),
+    // not a boolean — the declaration stores the string it will re-emit.
+    let important: string | undefined;
+    if (bangIdx >= 0) {
+      const bang = items[bangIdx]!;
+      const kw = items[bangIdx + 1];
+      const impEnd = kw && typeof kw.comp === 'string' && kw.comp.toLowerCase() === 'important'
+        ? kw.span.end
+        : bang.span.end;
+      important = this._source.slice(bang.span.start, impEnd);
+    }
     const node = new Declaration(
-      { name, value, important: hasImportant || undefined },
+      { name, value, important },
       undefined, loc
     );
     const jn = node as unknown as JessNode;
     const { index: nameIdx, count } = fieldIndexOf(jn, 'name');
     if (nameItem && nameIdx >= 0) {
-      setFieldSpan(jn, nameIdx, count, nameItem.span);
+      setFieldSpan(jn, nameIdx, count, nameItem.span, this._source);
     }
     const valueIdx = fieldIndexOf(jn, 'value').index;
     if (valueSpan && valueIdx >= 0) {
-      setFieldSpan(jn, valueIdx, count, valueSpan);
+      setFieldSpan(jn, valueIdx, count, valueSpan, this._source);
     }
     return node;
   }
@@ -632,7 +846,7 @@ export class CssParser {
   protected _assembleValue(items: Spanned[], loc: LocationInfo): { value: Component; span: Span | undefined } {
     const content = items.filter(i => i.comp !== ',');
     if (content.length === 0) {
-      return { value: new Any('', {}, loc), span: undefined };
+      return { value: '', span: undefined };
     }
     const span: Span = {
       start: content[0]!.span.start,
@@ -646,23 +860,39 @@ export class CssParser {
         segments.at(-1)!.push(it);
       }
     }
-    const segValues = segments.map(seg => this._assembleSegment(seg, loc));
+    const filledSegments = segments.filter(seg => seg.length > 0);
+    const segValues = filledSegments.map(seg => this._assembleSegment(seg, loc));
     if (segValues.length === 1) {
       return { value: segValues[0]!, span };
     }
-    const listValues = segValues.map((v) => {
-      if (!Array.isArray(v)) {
-        return v;
+    const listValues = segValues.map((v, i) => {
+      const seg = filledSegments[i]!;
+      const segSpan: Span = { start: seg[0]!.span.start, end: seg[seg.length - 1]!.span.end };
+      if (Array.isArray(v)) {
+        const mapped = v.map(c => typeof c === 'string' ? this._valueKeyword(c, loc) as unknown as Component : c);
+        // Stamp the segment span on the raw space-group array so the coerced
+        // `Sequence` (see `coerceValueNode`) inherits it — lets the List serializer
+        // recover authored inter-item whitespace (e.g. a newline after a comma in a
+        // multi-token `box-shadow` value) from the trivia map via `spanStartOf`.
+        if (spanStartOf(mapped as unknown as object) === undefined) {
+          setSourceSpan(mapped as unknown as Node, segSpan);
+        }
+        return mapped as unknown as Component;
       }
-      const parts = (v as Component[]).map(c =>
-        typeof c === 'string' ? (new Any(c, { role: 'ident' }, loc) as unknown as Component) : c);
-      return new Sequence(parts as unknown as Node[], undefined, loc) as unknown as Component;
+      if (typeof v === 'string') {
+        // Give the item its own segment span so the serializer can recover the
+        // authored inter-item whitespace from the trivia map (keyed by offset).
+        return this._valueKeyword(v, spanToLocation(segSpan)) as unknown as Component;
+      }
+      // A single-node segment (e.g. a comma item that is one Keyword/Call) keeps
+      // whatever span it already carries; stamp the segment span only when it has
+      // none, so inter-item trivia lookup (`spanStartOf(item)`) resolves.
+      if (spanStartOf(v as unknown as object) === undefined) {
+        setSourceSpan(v as unknown as Node, segSpan);
+      }
+      return v;
     });
     const list = new List(listValues as unknown as Node[], undefined, loc);
-    setValueSpans(list as unknown as JessNode, segments.map(seg => ({
-      start: seg[0]!.span.start,
-      end: seg[seg.length - 1]!.span.end
-    })));
     return { value: list as unknown as Component, span };
   }
 
@@ -670,11 +900,39 @@ export class CssParser {
     if (seg.length === 1) {
       return seg[0]!.comp;
     }
-    const grouped = this._groupSlashes(seg.map(s => s.comp), loc);
+    // Adjacent value tokens in a space-separated segment (`with default`,
+    // `solid red`) drop their separating whitespace when collected. The render
+    // path concatenates segment components verbatim, so re-thread the actual
+    // inter-token source text between string components to preserve spacing.
+    // Node components already own their trivia; only bare-string neighbours need
+    // the gap. `decl()`-built values pass contiguous segments (no source spans)
+    // and are left untouched.
+    const spaced = this._interleaveSegmentGaps(seg);
+    const grouped = this._groupSlashes(spaced, loc);
     if (grouped.length === 1) {
       return grouped[0]!;
     }
     return grouped as unknown as Component;
+  }
+
+  private _interleaveSegmentGaps(seg: Spanned[]): Component[] {
+    const out: Component[] = [seg[0]!.comp];
+    for (let i = 1; i < seg.length; i++) {
+      const prev = seg[i - 1]!;
+      const cur = seg[i]!;
+      // Node components render their own leading trivia; only bare-string tokens
+      // (`with` / `default`, keywords the parser kept as raw strings) lose the
+      // separating whitespace and need it re-threaded from the source.
+      if (typeof cur.comp !== 'string') {
+        out.push(cur.comp);
+        continue;
+      }
+      const gap = cur.span.start > prev.span.end
+        ? this._source.slice(prev.span.end, cur.span.start)
+        : '';
+      out.push(gap ? `${gap}${cur.comp}` : cur.comp);
+    }
+    return out;
   }
 
   protected _groupSlashes(comps: Component[], loc: LocationInfo): Component[] {
@@ -682,7 +940,7 @@ export class CssParser {
       return comps;
     }
     const asNode = (c: Component): Component =>
-      typeof c === 'string' ? (new Any(c, { role: 'ident' }, loc) as unknown as Component) : c;
+      typeof c === 'string' ? (this._valueKeyword(c, loc) as unknown as Component) : c;
     const out: Component[] = [];
     let i = 0;
     while (i < comps.length) {
@@ -703,6 +961,65 @@ export class CssParser {
       }
     }
     return out;
+  }
+
+  /**
+   * Fold one precedence level's flat `operand op operand …` children (from the
+   * grammar's Product / Sum rules) into a left-associative Operation chain. A
+   * Product level only ever carries `* / %`, a Sum level only `+ -`, so this single
+   * left-fold serves both. `/` divides only when `slashEnabled` and both operands
+   * are division-like (port of expressionProduct's shouldParseSlashDivision); else
+   * it accumulates into a slash-List. `slashEnabled` is true in a math context
+   * (in-parens / calc); a top-level Operation passes false unless `mathMode:always`.
+   */
+  protected _buildOperation(
+    children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
+    loc: LocationInfo,
+    slashEnabled: boolean
+  ): JessNode {
+    const asOperand = (c: unknown): unknown =>
+      c && typeof c === 'object' && (c as { _tag?: string })._tag === 'leaf'
+        ? this._valueKeyword((c as CSTLeaf).value, loc)
+        : c;
+    const opOf = (c: unknown): string =>
+      c && typeof c === 'object' && (c as { _tag?: string })._tag === 'leaf'
+        ? (c as CSTLeaf).value.trim()
+        : '';
+    let left: unknown = asOperand(children[0]);
+    for (let i = 1; i + 1 < children.length; i += 2) {
+      const op = opOf(children[i]);
+      const right = asOperand(children[i + 1]);
+      if (op === '/' && !(slashEnabled && this._isDivisionLike(left) && this._isDivisionLike(right))) {
+        const leftList = left as { type?: string; value?: unknown[]; options?: { sep?: string } };
+        left = leftList && leftList.type === 'List' && leftList.options?.sep === '/'
+          ? new List([...leftList.value!, right] as unknown as Node[], { sep: '/' }, loc) as unknown as JessNode
+          : new List([left, right] as unknown as Node[], { sep: '/' }, loc) as unknown as JessNode;
+      } else {
+        left = new Operation(
+          [left, op, right] as unknown as ConstructorParameters<typeof Operation>[0],
+          undefined, loc
+        ) as unknown as JessNode;
+      }
+    }
+    return left as JessNode;
+  }
+
+  /**
+   * Operands a `/` can divide (isDivisionLikeNode, values.ts). A Paren/Expression
+   * defers to its inner value. Anything else keeps `/` as a slash-list separator.
+   */
+  protected _isDivisionLike(node: unknown): boolean {
+    if (!node || typeof node !== 'object') {
+      return false;
+    }
+    const t = (node as { type?: string }).type;
+    if (t && ['Color', 'Dimension', 'Num', 'Reference', 'Call', 'Operation', 'Negative', 'Expression'].includes(t)) {
+      return true;
+    }
+    if (t === 'Paren' || t === 'Expression') {
+      return this._isDivisionLike((node as { value?: unknown }).value);
+    }
+    return false;
   }
 
   protected _buildCustomDeclaration(children: ReadonlyArray<Child>, loc: LocationInfo) {
@@ -733,24 +1050,38 @@ export class CssParser {
     if (innerNode) {
       return new Url(innerNode as Node, undefined, loc);
     }
+    // Leaf-only path (e.g. the Less grammar tokenizes the inner as string leaves):
+    // Url.value is a Node, so wrap a bare/quoted string leaf in the matching node
+    // instead of storing a raw string (which never writes into the render buffer).
     const inner = ls
       .filter(l => !/^url\($/i.test(l.value) && l.value !== ')')
       .map(l => l.value).join('').trim();
-    return new Url(inner as unknown as Node, undefined, loc);
+    const quote = inner[0];
+    const innerValue = (quote === '"' || quote === '\'') && inner.at(-1) === quote
+      ? new Quoted(inner.slice(1, -1), { quote }, loc)
+      : new Any(inner, {}, loc);
+    return new Url(innerValue as unknown as Node, undefined, loc);
   }
 
-  protected _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode | string {
+  protected _buildCall(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo): JessNode {
     const items = spannedComponents(rawChildren);
     const name = typeof items[0]?.comp === 'string' ? items[0]!.comp : '';
     if (!items.some(it => it.comp === '(')) {
-      return name;
+      return this._valueKeyword(name, loc) as unknown as JessNode;
     }
-    const args = this._assembleArgs(this._betweenParens(items), loc);
+    const inner = this._betweenParens(items);
+    // Arithmetic (calc bodies, nested groups) is folded into Operation nodes by the
+    // grammar's math rules in both the CSS and Less grammars, so `inner` already
+    // carries the built expression — no builder-side precedence fold is needed.
+    const args = this._assembleArgs(inner, loc);
     return new Call({ name, args: args as unknown as List<Node> }, undefined, loc);
   }
 
   protected _buildParen(rawChildren: ReadonlyArray<{ _tag: string }>, loc: LocationInfo) {
     const inner = this._betweenParens(spannedComponents(rawChildren));
+    // Arithmetic inside the paren is already folded into an Operation node by the
+    // grammar (calcParen / Less mathSum), so `inner` carries the built expression —
+    // assemble directly.
     const { value } = this._assembleValue(inner, loc);
     return new Paren(value as unknown as Node, undefined, loc);
   }
@@ -792,7 +1123,15 @@ export class CssParser {
           semiSegs.at(-1)!.push(it);
         }
       }
-      const parts = semiSegs.filter(s => s.length > 0).map(s => this._assembleArgs(s, loc));
+      const parts = semiSegs.filter(s => s.length > 0).map((s) => {
+        const arg = this._assembleArgs(s, loc);
+        const items = (arg as List<Node>).value;
+        const sep = (arg as List<Node>).options?.sep;
+        if (!sep && items?.length === 1) {
+          return items[0]!;
+        }
+        return arg;
+      });
       return new List(parts as unknown as Node[], { sep: ';' } as any, loc);
     }
     const segments: Spanned[][] = [[]];
@@ -807,8 +1146,7 @@ export class CssParser {
     const values = nonEmpty.map((seg) => {
       const assembled = this._assembleSegment(seg, loc);
       if (Array.isArray(assembled)) {
-        const parts = (assembled as Component[]).map(c => this._argComponent(c, loc));
-        return new Sequence(parts as unknown as Node[], undefined, loc) as unknown as Component;
+        return (assembled as Component[]).map(c => this._argComponent(c, loc));
       }
       return this._argComponent(assembled, loc);
     });
@@ -817,7 +1155,7 @@ export class CssParser {
       setValueSpans(list as unknown as JessNode, nonEmpty.map(seg => ({
         start: seg[0]!.span.start,
         end: seg[seg.length - 1]!.span.end
-      })));
+      })), this._source);
     }
     return list;
   }
@@ -825,14 +1163,19 @@ export class CssParser {
   protected _argComponent(comp: Component, loc: LocationInfo): Component {
     const colored = this._colorize(comp, loc);
     if (typeof colored === 'string') {
-      return new Any(colored, { role: 'ident' }, loc) as unknown as Component;
+      return this._valueKeyword(colored, loc) as unknown as Component;
     }
     return colored;
   }
 
   protected _colorize(comp: Component, loc: LocationInfo): Component {
-    if (typeof comp === 'string' && CSS_COLOR_NAMES.has(comp.toLowerCase())) {
-      return new Color({ node: comp }, {}, loc) as unknown as Component;
+    const text = typeof comp === 'string'
+      ? comp
+      : comp instanceof Keyword
+        ? comp.valueOf()
+        : undefined;
+    if (text && CSS_COLOR_NAMES.has(text.toLowerCase())) {
+      return new Color({ node: text }, {}, loc) as unknown as Component;
     }
     return comp;
   }
@@ -845,33 +1188,54 @@ export class CssParser {
   protected _buildAtRuleBlock(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode | string {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const name = ls[0]?.value ?? '';
-    const preludeText = ls.slice(1)
-      .find(l => l.value !== '{' && l.value !== '}')
-      ?.value.trim();
+    // The prelude is the single scanTo leaf between the at-keyword and `{`.
+    const preludeLeaf = ls[1] && ls[1].value !== '{' && ls[1].value !== '}' ? ls[1] : undefined;
+    const preludeText = preludeLeaf?.value.trim();
+    // Give the prelude its own span (not the whole at-rule's loc) so before/after
+    // trivia lookups anchor to the prelude edges. Trailing trivia is already
+    // excluded from the leaf by the atPrelude sentinel.
+    const preludeLoc = preludeLeaf?.span ? spanToLocation(preludeLeaf.span) : loc;
     const preludeNode = preludeText
       ? new List(
-        preludeText.split(/[ \t\n\r\f]+/).map(tok => new Any(tok, { role: 'ident' }, loc)),
-        undefined, loc
+        preludeText.split(/[ \t\n\r\f]+/).map(tok => new Any(tok, { role: 'ident' }, preludeLoc)),
+        undefined, preludeLoc
       )
       : undefined;
-    return new AtRule(
+    const node = new AtRule(
       { name, prelude: preludeNode, rules: nodeChildren(children) },
       undefined, loc
     );
+    // A string at-rule name has no span of its own; record it in fieldSpans (name
+    // = childKey slot 0) so name-boundary trivia can be anchored during printing.
+    this._setNameFieldSpan(node as unknown as JessNode, ls[0]?.span);
+    return node;
   }
 
   protected _buildAtRuleStatement(children: ReadonlyArray<Child>, loc: LocationInfo): JessNode | string {
     const ls = children.filter((c): c is CSTLeaf => c._tag === 'leaf');
     const name = ls[0]?.value ?? '';
     if (name.toLowerCase() === '@charset') {
-      const text = this._source.slice(loc[0], loc[3]);
+      const text = this._source.slice(loc.start, loc.end);
       return new Any(text, { role: 'charset' }, loc);
     }
     const preludeText = ls.slice(1).filter(l => l.value !== ';').map(l => l.value).join('').trim();
-    return new AtRuleStatement(
+    const node = new AtRuleStatement(
       { name, prelude: preludeText ? new Any(preludeText, {}, loc) : undefined },
       undefined, loc
     );
+    this._setNameFieldSpan(node as unknown as JessNode, ls[0]?.span);
+    return node;
+  }
+
+  /** Record the `name` slot's source span in fieldSpans (name = childKey 0). */
+  private _setNameFieldSpan(node: JessNode, span: Span | undefined): void {
+    if (!span) {
+      return;
+    }
+    const { index, count } = fieldIndexOf(node, 'name');
+    if (index >= 0) {
+      setFieldSpan(node, index, count, span, this._source);
+    }
   }
 
   /**

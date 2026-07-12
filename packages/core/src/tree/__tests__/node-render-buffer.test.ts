@@ -51,7 +51,6 @@ import {
   range,
   ref,
   rest,
-  rawrules,
   rules,
   ruleset,
   seq,
@@ -64,7 +63,7 @@ import {
   whileNode
 } from '../index.js';
 import { extendList } from '../extend-list.js';
-import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
+import { F_NON_STATIC, Node } from '../node-base.js';
 import { MixinCollection } from '../util/callable-collection.js';
 import { callableRulesEntry } from '../util/callable-entry.js';
 import { OutputWriter, getPrintOptions, type PrintOptions } from '../util/print.js';
@@ -106,7 +105,7 @@ class AsyncValueNode extends Node<string> {
     private readonly resolved: Node = any(value)
   ) {
     super(value);
-    this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
+    this.addFlag(F_NON_STATIC);
   }
 
   override eval(_context: Context) {
@@ -248,7 +247,7 @@ describe('renderNodeToBuffer', () => {
     context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
     context.topImports = [
       atrulestatement({
-        name: any('@import', { role: 'atkeyword' }),
+        name: '@import',
         prelude: quoted(any('theme.css'))
       })
     ];
@@ -314,8 +313,8 @@ describe('renderNodeToBuffer', () => {
   it('keeps direct render and flat-buffer render aligned across node surfaces', async () => {
     const context = new Context();
     const root = rules([
-      vardecl({ name: any('asset'), value: quoted('image.png') }),
-      vardecl({ name: any('brand'), value: any('red') })
+      vardecl({ name: 'asset', value: quoted('image.png') }),
+      vardecl({ name: 'brand', value: any('red') })
     ]);
     const evaldRoot = await root.eval(context);
     context.root = evaldRoot;
@@ -357,7 +356,7 @@ describe('renderNodeToBuffer', () => {
       {
         surface: 'AtRule',
         node: atrule({
-          name: any('@media', { role: 'atkeyword' }),
+          name: '@media',
           prelude: any('screen'),
           rules: [decl({ name: 'color', value: any('red') })]
         }),
@@ -421,18 +420,15 @@ describe('renderNodeToBuffer', () => {
       { surface: 'QueryCondition', node: query([any('(min-width:'), dimension([10, 'px']), any(')')]) },
       { surface: 'Block', node: block(seq([any('red'), any('blue')]), { type: 'square' }) },
       { surface: 'Collection', node: coll([decl({ name: 'color', value: any('red') })]) },
-      { surface: 'RawRules', node: rawrules([decl({ name: 'color', value: any('red') })]) },
       { surface: 'JsImport', node: js({ path: quoted('tools.js') }, { namespace: 'tools' }), expected: '@-use "tools.js" as tools;' },
       { surface: 'Ampersand', node: amp({ appendValue: '-item' }), expected: '', expectedParts: [] }
     ];
 
-    expect(cases).toHaveLength(19);
-
     for (const item of cases) {
       const context = new Context();
       const root = rules([
-        vardecl({ name: any('brand'), value: any('red') }),
-        vardecl({ name: any('class-name'), value: any('active') })
+        vardecl({ name: 'brand', value: any('red') }),
+        vardecl({ name: 'class-name', value: any('active') })
       ]);
       const evaldRoot = await root.eval(context);
       context.root = evaldRoot;
@@ -484,7 +480,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Anonymous', node: new Anonymous('legacy-anon'), expected: 'legacy-anon' },
       { surface: 'Keyword', node: keyword('auto'), expected: 'auto' },
       { surface: 'Num', node: num(7), expected: '7' },
-      { surface: 'CustomDeclaration', node: customdecl({ name: any('--gap'), value: any('0') }) },
+      { surface: 'CustomDeclaration', node: customdecl({ name: '--gap', value: any('0') }) },
       { surface: 'SpacedSequenceHelper', node: spaced([any('span'), any('2')]), expected: 'span 2' },
       { surface: 'Extend', node: extend({ target: el('.target') }), expected: '', expectedParts: [] },
       { surface: 'ExtendList', node: extendList([extend({ target: el('.target') })]), expectedParts: [] },
@@ -495,12 +491,12 @@ describe('renderNodeToBuffer', () => {
       { surface: 'JsFunction', node: jsfunc({ name: 'make-red', fn: () => 'red' }), expectedParts: [] },
       {
         surface: 'Mixin',
-        node: mixin({ name: any('.paint'), rules: [decl({ name: 'color', value: any('red') })] }),
+        node: mixin({ name: '.paint', rules: [decl({ name: 'color', value: any('red') })] }),
         expectedParts: []
       },
       {
         surface: 'Func',
-        node: fn({ name: any('paint'), body: rules([decl({ name: 'return', value: any('red') })]) }),
+        node: fn({ name: 'paint', body: rules([decl({ name: 'return', value: any('red') })]) }),
         expectedParts: []
       },
       {

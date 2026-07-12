@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { F_VISIBLE, Node, defineType, type LocationInfo } from './node.js';
 import { Condition } from './condition.js';
 import { List } from './list.js';
@@ -7,8 +8,9 @@ import { Interpolated } from './interpolated.js';
 import type { Context } from '../context.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf, copyNodesForOwnership } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
+import { renderInvisibleEffect, type RenderBuffer } from './util/render-buffer.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -25,13 +27,13 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    *
    * @todo - Should anonymous mixins have a different class type?
    */
-  name?: Any<Name> | Interpolated<Name>;
+  name?: string | Interpolated<Name>;
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
    * and an implicit `return`
    */
-  rules: Rules | Node[];
+  rules: Node[];
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
@@ -97,14 +99,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     ) {
       options = { ...options, hasDefault: true };
     }
-    // Accept either a bare Node array or a Rules container node (unwrapped to
-    // its child array) — factories like `mixin({ rules: rules([...]) })` pass the
-    // latter, while the parser passes the array directly.
-    const rulesValue = value.rules instanceof Rules ? value.rules.rules : value.rules;
-    if (!Array.isArray(rulesValue)) {
-      throw new TypeError('Mixin requires rules to be a Node array.');
-    }
-    super(rulesValue, options, location, treeContext);
+    super(value.rules, options, location, treeContext);
     this.name = value.name;
     this.params = value.params;
     this.guard = value.guard;
@@ -123,44 +118,30 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
       this.adopt(value.guard);
     }
     this.removeFlag(F_VISIBLE);
-    // When a Rules wrapper was passed, record it as sourceNode so that
-    // createCallableRulesSurface propagates it to the eval surface.
-    // This lets _storePreparedRegistrationNode recognize children as
-    // "reused source children" (node.parent === sourceRulesOf(surface))
-    // and skip re-adopting them, preserving the wrapper as their parent.
-    if (value.rules instanceof Rules) {
-      this.sourceNode = value.rules;
-      this.adopt(value.rules);
-      const wrapperRules = value.rules.rules;
-      for (let i = 0; i < wrapperRules.length; i++) {
-        const child = wrapperRules[i]!;
-        if (child instanceof Node) {
-          child.parent = value.rules;
-        }
-      }
-    }
+    // R2 SINGLE-FRAME: the Mixin IS its own canonical body. Body children are
+    // parented to the Mixin by the `mixin()` factory's parentChildren (childKeys
+    // includes 'rules'); the Mixin's own scope frame is the single body-decl
+    // frame. (Formerly a factory-passed `rules([...])` wrapper was recorded as
+    // `sourceNode` and the children re-parented to it — a DUPLICATE body frame
+    // that the parser path never created, and that split params (per-call
+    // surface) from body decls. Eliminated.)
   }
 
   // Mixin owns registration prep and marks `registrationPrepared` directly.
 
   private ownName(value: NonNullable<MixinValue['name']>): NonNullable<MixinValue['name']> {
+    if (typeof value === 'string') {
+      return value;
+    }
     const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
-    if (owned instanceof Interpolated || owned instanceof Any) {
+    if (owned instanceof Interpolated) {
       return owned;
     }
     throw new TypeError('Expected mixin name copy');
   }
 
   private ownRules(value: Node[]): Node[] {
-    const owned = new Array<Node>(value.length);
-    for (let i = 0; i < value.length; i++) {
-      const copied = copyWithReusableLeaves(value[i]!);
-      if (!(copied instanceof Node)) {
-        throw new TypeError('Expected mixin rule copy to remain a node');
-      }
-      owned[i] = copied;
-    }
-    return owned;
+    return copyNodesForOwnership(value, copyWithReusableLeaves);
   }
 
   private ownParams(value: List<Node> | undefined): List<Node> | undefined {
@@ -190,7 +171,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
 
   private withParts(value: MixinValue): Mixin {
     const ownedName = value.name === undefined ? undefined : this.ownName(value.name);
-    const ownedRules = this.ownRules(Array.isArray(value.rules) ? value.rules : value.rules.rules);
+    const ownedRules = this.ownRules(value.rules);
     const derived: MixinValue = {
       rules: ownedRules
     };
@@ -206,7 +187,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     return new Mixin(
       derived,
       this._options ? { ...this._options } : undefined,
-      this.location.length === 6 ? this.location : undefined,
+      sourceSpanOf(this),
       this.sourceRoot?._treeContext
     ).inherit(this);
   }
@@ -242,7 +223,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
       if (!name) {
         return (this._keySet = new Set());
       }
-      keySet = this._keySet = new Set([name.valueOf()]);
+      keySet = this._keySet = new Set([typeof name === 'string' ? name : name.valueOf()]);
     }
     return keySet;
   }
@@ -255,11 +236,23 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     return w.getSince(mark);
   }
 
+  // Static-by-type invisibility: a mixin definition is never CSS output. The
+  // no-op render keeps the base render() gate off the common hot path (D.1 §2).
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
+  }
+
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer;
     const { name, params, guard } = this;
     if (name) {
-      name.writeSyntax(options);
+      if (typeof name === 'string') {
+        w.add(name, this);
+      } else {
+        name.writeSyntax(options);
+      }
     } else {
       w.add('@', this);
     }
@@ -289,7 +282,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     if (this.registrationPrepared) {
       return this;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+
     return this._prepareMixinRegistration(context) as MaybePromise<this>;
   }
 
@@ -336,18 +329,18 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
           if (!(key instanceof Any)) {
             throw new TypeError('Expected evaluated mixin name');
           }
-          return this.createPreparedNameMixin(node, key as Any<'name'>);
+          return this.createPreparedNameMixin(node, String(key.valueOf()));
         });
       }
       if (!(maybeKey instanceof Any)) {
         throw new TypeError('Expected evaluated mixin name');
       }
-      return this.createPreparedNameMixin(node, maybeKey as Any<'name'>);
+      return this.createPreparedNameMixin(node, String(maybeKey.valueOf()));
     }
     return node;
   }
 
-  private createPreparedNameMixin(node: Mixin, key: Any<'name'>): Mixin {
+  private createPreparedNameMixin(node: Mixin, key: string): Mixin {
     const value: MixinValue = {
       name: key,
       rules: node.rules
@@ -361,7 +354,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     const out = new Mixin(
       value,
       node.options,
-      node.location.length ? node.location : undefined,
+      sourceSpanOf(node),
       node.sourceRoot?._treeContext
     ).inherit(node);
     out.registrationPrepared = node.registrationPrepared;
@@ -369,12 +362,27 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
-  override evalNode() {
+  override evalNode(context?: Context): MaybePromise<this> {
+    // A mixin definition is a lazy template — evalNode returns self without
+    // walking the body. But callers that DO evaluate a mixin body rely on the
+    // narrow §2.7 eval-state signal to distinguish evaluated from cold. Rules.evalNode
+    // is bypassed here, so stamp it directly. See rules.ts callable-descendant gate.
+    this._bodyEvaluated = true;
+    // A `reference:true` import inside a namespace-mixin body must still become a
+    // reachable callable descendant when the body itself is evaluated directly
+    // (namespace descent) — the lazy self-return above never walks the body, so
+    // resolve just the reference-import lane. No-op unless the body carries one.
+    if (context !== undefined) {
+      const resolved = this.resolveBodyReferenceImports(context);
+      if (isThenable(resolved)) {
+        return (resolved as Promise<Rules>).then(() => this);
+      }
+    }
     return this;
   }
 
-  override resolve(_context: Context): this {
-    return this.evalNode();
+  override resolve(context: Context): MaybePromise<this> {
+    return this.evalNode(context);
   }
 
   // override async evalNode(context: Context): Promise<Rules | Expression> {
@@ -394,7 +402,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   //   const { name, args, value } = this
   //   const nm = name.value
   //   if (context.depth === 0) {
-  //     out.add(`export let ${nm}`, this.location)
+  //     out.add(`export let ${nm}`, sourceSpanOf(this))
   //     context.exports.add(nm)
   //   } else {
   //     if (context.depth !== 1) {

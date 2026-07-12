@@ -1,6 +1,7 @@
 import { amp, compound, el, rules, ruleset, sel, pseudo, co, sellist, type Selector } from '../../index.js';
 import { Context } from '../../../context.js';
 import { matchSelectors, selectorCompare } from '../selector-match-core.js';
+import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../selector-analysis.js';
 
 describe('BitSets and selectors', () => {
   let context: Context;
@@ -11,53 +12,53 @@ describe('BitSets and selectors', () => {
   it('fast rejects simple selectors', async () => {
     let selector = el('.foo');
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
 
   it('fast rejects compound selectors with simples', async () => {
     let selector = compound([el('.foo'), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
   });
 
   it('fast rejects complex selectors with simples', async () => {
     let selector = sel([el('.foo'), co(' '), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
     // visibleKeySet excludes combinators
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
   });
 
   it('fast rejects complex selectors with compounds', async () => {
     let selector = sel([compound([el('a'), el('.foo')]), co(' '), el('.bar')]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
     // visibleKeySet excludes combinators
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
   });
 
   test('fast rejects :is selectors with simple selectors', async () => {
     let selector = sel([pseudo({ name: ':is', arg: el('.foo') })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
     // :is(.foo) with a single arg (not a SelectorList) — keys ARE required
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
 
   test(':is with selector list excludes alternatives from requiredKeySet', async () => {
     let selector = sel([pseudo({ name: ':is', arg: sellist([el('.foo'), el('.bar')]) })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.visibleKeySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     // :is() alternatives are not required
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset())).toBe(true);
   });
 
   test(':is with selector list in complex selector keeps non-:is keys in requiredKeySet', async () => {
@@ -68,49 +69,49 @@ describe('BitSets and selectors', () => {
       el('.c')
     ]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.a', '.b', ' ', '.c']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.a', '.b', ' ', '.c']))).toBe(true);
     // requiredKeySet has only the non-:is parts
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset([' ', '.c']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset([' ', '.c']))).toBe(true);
   });
 
   test('deep :is with selector list excludes alternatives from requiredKeySet', async () => {
     const inner = sel([pseudo({ name: ':is', arg: sellist([el('.foo'), el('.bar')]) })]);
     let selector = sel([pseudo({ name: ':is', arg: inner })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset())).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset())).toBe(true);
   });
 
   test(':is with compound arg includes compound keys in requiredKeySet', async () => {
     // :is(.a.b) — single compound, not a SelectorList
     let selector = pseudo({ name: ':is', arg: compound([el('.a'), el('.b')]) });
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.a', '.b']))).toBe(true);
   });
 
   test(':is with complex arg includes complex keys in requiredKeySet', async () => {
     // :is(.a > .b) — single complex selector, not a SelectorList
     let selector = pseudo({ name: ':is', arg: sel([el('.a'), co('>'), el('.b')]) });
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['.a', '>', '.b']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['.a', '>', '.b']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.a', '>', '.b']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.a', '>', '.b']))).toBe(true);
   });
 
   test('complex selector with :is(compound) includes all keys in requiredKeySet', async () => {
     // foo > :is(.a.b) — :is has compound arg, all keys required
     let selector = sel([el('foo'), co('>'), pseudo({ name: ':is', arg: compound([el('.a'), el('.b')]) })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
   });
 
   test('complex selector with :is(SelectorList) excludes alternatives from requiredKeySet', async () => {
     // foo > :is(.a, .b) — :is has SelectorList arg, alternatives excluded
     let selector = sel([el('foo'), co('>'), pseudo({ name: ':is', arg: sellist([el('.a'), el('.b')]) })]);
     await selector.eval(context);
-    expect(selector.keySet.equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
-    expect(selector.requiredKeySet.equals(context.selectorBits.getBitset(['foo', '>']))).toBe(true);
+    expect(keySetOf(selector).equals(context.selectorBits.getBitset(['foo', '>', '.a', '.b']))).toBe(true);
+    expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['foo', '>']))).toBe(true);
   });
 });
 

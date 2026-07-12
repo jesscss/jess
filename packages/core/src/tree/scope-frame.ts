@@ -14,10 +14,11 @@
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/future/core-architecture/PERFORMANCE-HANDOFF.md
+ * @see docs/archive/PERFORMANCE-HANDOFF.md
  */
 
-import { F_STATIC, Node } from './node.js';
+import { Node } from './node.js';
+import { Interpolated } from './interpolated.js';
 import type { VarDeclaration } from './declaration-var.js';
 import type { CallableLookupEntry } from './util/callable-entry.js';
 
@@ -38,6 +39,13 @@ export interface BindingCell {
   rulesContext?: object;
   readonly?: boolean;
   live?: boolean;
+  /**
+   * Leaky Less mode: a mixin-call output declaration injected into the caller
+   * frame. Unlike ordinary current bindings, a leak binding is source-order
+   * gated at read time (a reader before the emitting call must not see it), so
+   * the lookup only accepts it when the reader's `leakStart` is past the call.
+   */
+  leak?: boolean;
 }
 
 export function getBindingCellValue(cell: BindingCell): Node {
@@ -65,9 +73,14 @@ export interface BindingEntry {
 
 export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
   const declValue = decl.value;
+  // A parser may deliver a multi-part value as a flat segment array (or a bare
+  // string) rather than a single Node — e.g. Less `@sizes: small 1, large 2`.
+  // Coalesce it to its structured node lazily on first read so the cell always
+  // materializes a value instead of staying value-less.
   return {
     cell: {
       value: declValue instanceof Node ? declValue : undefined,
+      prepareValue: declValue instanceof Node ? undefined : () => decl.valueNode(),
       sourceNode: decl,
       readonly: decl.options?.readonly
     },
@@ -254,6 +267,28 @@ export interface ScopeFrame {
   hasReferenceImports: boolean;
 }
 
+/**
+ * Shared empty-bindings sentinel. Used as the initial value of a frame's
+ * `currentBindingsByName` / `liveSlotsByName` when the frame has no bindings,
+ * so the common empty-frame case (a static ruleset with only property
+ * declarations) allocates zero per-frame binding Maps.
+ *
+ * INVARIANT: this instance is never mutated. Every READER only calls
+ * `.get()` / `.has()` / iterates / copies via `new Map(x)` — all correct on an
+ * empty Map. Every WRITE path (`setCurrentBindingCell`, `setScopeFrameLiveBinding`,
+ * and the population loops in `buildScopeFrame`) checks `isEmptyBindings` and
+ * swaps in a fresh mutable Map before the first `.set()`, so the sentinel stays
+ * empty and shared. Because it is shared it must NOT be handed to
+ * `declarationBucketsByName`, which is mutated in place by leaky-mode/reference
+ * registration.
+ */
+const EMPTY_BINDINGS: Map<string, BindingCell> = new Map<string, BindingCell>();
+
+/** True when `map` is the shared empty-bindings sentinel. */
+function isEmptyBindings(map: Map<string, BindingCell>): boolean {
+  return map === EMPTY_BINDINGS;
+}
+
 let nextBindingCellLookupIdentity = 1;
 
 export function ensureBindingCellLookupIdentity(cell: BindingCell): number {
@@ -273,10 +308,14 @@ function setCurrentBindingCell(
   cell: BindingCell
 ): void {
   ensureBindingCellLookupIdentity(cell);
-  if (frame.currentBindingsByName.get(name) !== cell) {
+  let map = frame.currentBindingsByName;
+  if (isEmptyBindings(map)) {
+    frame.currentBindingsByName = map = new Map<string, BindingCell>();
+    frame.currentBindingsVersion++;
+  } else if (map.get(name) !== cell) {
     frame.currentBindingsVersion++;
   }
-  frame.currentBindingsByName.set(name, cell);
+  map.set(name, cell);
 }
 
 /**
@@ -308,27 +347,44 @@ export function buildScopeFrame(
   mixinCallableMissCoverageKnown = callableMissCoverageKnown,
   hasReferenceImports = false
 ): ScopeFrame {
-  const declarationBucketsByName = new Map<string, BindingEntry[]>();
-  const currentBindingsByName = new Map<string, BindingCell>();
+  // Step 1 (frame identity): the declaration index is immutable/canonical per
+  // Rules — `varsByName` IS that index. Share it by reference instead of copying
+  // it into a fresh per-frame Map (the registration sites in rules.ts/reference.ts
+  // mutate the shared index; a body decl is canonical, so this is correct and
+  // saves one Map allocation + full copy per frame build). Live-slot-only frames
+  // (varsByName undefined) still get their own empty map.
+  const declarationBucketsByName = varsByName ?? new Map<string, BindingEntry[]>();
+
+  // Bindings maps start at the shared frozen empty sentinel; the common case
+  // (a static ruleset with no vars and no live slots) never allocates one.
+  // Materialize a real mutable Map only on the first write below.
+  let currentBindingsByName: Map<string, BindingCell> = EMPTY_BINDINGS;
 
   if (varsByName) {
     for (const [name, entries] of varsByName) {
       for (let i = 0; i < entries.length; i++) {
         ensureBindingCellLookupIdentity(entries[i]!.cell);
       }
-      declarationBucketsByName.set(name, entries);
       const currentEntry = entries[entries.length - 1];
       if (currentEntry) {
+        if (isEmptyBindings(currentBindingsByName)) {
+          currentBindingsByName = new Map<string, BindingCell>();
+        }
         currentBindingsByName.set(name, currentEntry.cell);
       }
     }
   }
 
-  const liveSlotsByName = liveSlots ?? new Map<string, BindingCell>();
+  // A live-slot-only frame reuses the caller-supplied map by reference; an
+  // absent one stays the frozen empty sentinel (never grown here).
+  const liveSlotsByName: Map<string, BindingCell> = liveSlots ?? EMPTY_BINDINGS;
   let hasLiveBindings = false;
   for (const [name, cell] of liveSlotsByName) {
     ensureBindingCellLookupIdentity(cell);
     cell.live = true;
+    if (isEmptyBindings(currentBindingsByName)) {
+      currentBindingsByName = new Map<string, BindingCell>();
+    }
     currentBindingsByName.set(name, cell);
     hasLiveBindings = true;
   }
@@ -368,6 +424,9 @@ export function setScopeFrameLiveBinding(
 ): void {
   ensureBindingCellLookupIdentity(cell);
   cell.live = true;
+  if (isEmptyBindings(frame.liveSlotsByName)) {
+    frame.liveSlotsByName = new Map<string, BindingCell>();
+  }
   frame.liveSlotsByName.set(name, cell);
   setCurrentBindingCell(frame, name, cell);
   frame.hasLiveBindings = true;
@@ -381,13 +440,56 @@ export function setScopeFrameDeclarationBinding(
   setCurrentBindingCell(frame, name, entry.cell);
 }
 
+/**
+ * Leaky Less mode: a mixin CALL's evaluated output declarations are visible to
+ * LATER siblings in the caller scope. The output declarations live on the output
+ * child Rules, not in the caller frame's binding buckets, so a later sibling's
+ * `full` scope-frame lookup misses them. Register them here at the call's source
+ * index so a later sibling resolves them while an earlier sibling (start-gated,
+ * same frame) still does not — the bucket's source-order index gate enforces
+ * that ordering.
+ */
+export function injectFrameLeakBinding(
+  frame: ScopeFrame,
+  name: string,
+  entry: BindingEntry
+): void {
+  entry.cell.leak = true;
+  let bucket = frame.declarationBucketsByName.get(name);
+  if (!bucket) {
+    frame.declarationBucketsByName.set(name, bucket = []);
+  }
+  bucket.push(entry);
+  setCurrentBindingCell(frame, name, entry.cell);
+}
+
+/**
+ * A leak binding is visible only to readers positioned after the emitting call.
+ * `leakStart` is the reader's own source index; the binding's source node carries
+ * the call index. Non-leak cells are never gated here.
+ */
+function leakBindingVisible(
+  cell: BindingCell,
+  sourceNode: Node | undefined,
+  leakStart: number | undefined
+): boolean {
+  if (!cell.leak) {
+    return true;
+  }
+  if (leakStart === undefined) {
+    return true;
+  }
+  const callIndex = sourceNode?.index;
+  return callIndex !== undefined && callIndex < leakStart;
+}
+
 function pendingDeclarationMayAffectName(
   pendingDeclarationNames: VarDeclaration[],
   name: string
 ): boolean {
   for (let i = 0; i < pendingDeclarationNames.length; i++) {
     const declName = pendingDeclarationNames[i]!.name;
-    if (declName instanceof Node && !declName.hasFlag(F_STATIC)) {
+    if (declName instanceof Interpolated) {
       return true;
     }
     if (`${declName.valueOf()}` === name) {
@@ -426,6 +528,7 @@ export function lookupScopeFrameVariable(
   name: string,
   options?: {
     start?: number;
+    leakStart?: number;
     filter?: (node: Node) => boolean;
     blockedSource?: (node: Node) => boolean;
     includeLive?: boolean;
@@ -438,14 +541,30 @@ export function lookupScopeFrameVariable(
 ): ScopeFrameVariableLookupResult {
   let f = frame;
   let start = options?.start;
+  let leakStart = options?.leakStart;
   const searchParents = options?.searchParents !== false;
   const includeFallbackFrames = options?.includeFallbackFrames !== false;
-  let fallbackFrame = includeFallbackFrames ? frame?.fallbackFrame : undefined;
+  // Every frame in the parent walk can carry its own import fallback (an inner
+  // mixin-body frame AND the root that holds the `@import`ed decls). Queue each
+  // one — an inner frame's fallback must not shadow an outer frame's, so a single
+  // first-wins slot dropped every import fallback above the innermost placement.
+  const fallbackQueue: ScopeFrame[] = [];
+  if (includeFallbackFrames && frame?.fallbackFrame) {
+    fallbackQueue.push(frame.fallbackFrame);
+  }
   let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
     while (f) {
       if (visitedFallbackFrames?.has(f)) {
-        return { kind: 'miss' };
+        // Already searched this frame on an earlier fallback/parent walk. Stop
+        // walking THIS branch's parents, but keep consulting remaining fallback
+        // frames — a later fallback (e.g. an earlier top-level `@import`) may
+        // still hold the symbol. A nested import's placement frame lexically
+        // parents back to the import site, so its parent walk re-enters an
+        // already-visited frame; aborting the whole search here would drop every
+        // fallback queued past it. The fallback chain is finite and acyclic, so
+        // breaking (not returning) still terminates.
+        break;
       }
       visitedFallbackFrames?.add(f);
       const currentCell = f.currentBindingsByName.get(name);
@@ -470,6 +589,7 @@ export function lookupScopeFrameVariable(
           && options?.includeDeclarations !== false
           && f.declarationsCovered
           && currentCell.sourceNode
+          && leakBindingVisible(currentCell, currentCell.sourceNode, leakStart)
         ) {
           if (
             !options?.blockedSource?.(currentCell.sourceNode)
@@ -541,6 +661,9 @@ export function lookupScopeFrameVariable(
           ) {
             continue;
           }
+          if (!leakBindingVisible(entry.cell, entry.sourceNode, leakStart)) {
+            continue;
+          }
           if (!options?.filter || options.filter(entry.sourceNode)) {
             return {
               kind: 'declaration',
@@ -556,20 +679,42 @@ export function lookupScopeFrameVariable(
       if (!searchParents) {
         return { kind: 'miss' };
       }
-      if (includeFallbackFrames) {
-        fallbackFrame ??= f.fallbackFrame;
+      if (includeFallbackFrames && f.fallbackFrame) {
+        fallbackQueue.push(f.fallbackFrame);
       }
       start = undefined;
+      // A leak binding on the parent frame is source-order gated against where
+      // THIS frame's subtree is anchored in the parent, not the reader's inner
+      // index — a descendant reader is structurally after a parent-level call
+      // iff its enclosing block sits after that call.
+      if (leakStart !== undefined) {
+        const rulesNode = f.rulesNode as { index?: number } | undefined;
+        leakStart = rulesNode?.index;
+      }
       f = f.parent;
     }
 
-    if (!fallbackFrame) {
+    // Dequeue the next unvisited fallback head. A head already searched (its
+    // chain cycled back, or two frames shared a fallback) is skipped, not spun
+    // on — the `visitedFallbackFrames` set makes each parent walk total. When the
+    // queue drains, the symbol is genuinely absent.
+    let nextFallback: ScopeFrame | undefined;
+    while (fallbackQueue.length > 0) {
+      const candidate = fallbackQueue.shift()!;
+      if (!visitedFallbackFrames?.has(candidate)) {
+        nextFallback = candidate;
+        break;
+      }
+    }
+    if (!nextFallback) {
       return { kind: 'miss' };
     }
 
-    f = fallbackFrame;
+    f = nextFallback;
     visitedFallbackFrames ??= new Set();
-    fallbackFrame = fallbackFrame.fallbackFrame;
+    if (nextFallback.fallbackFrame) {
+      fallbackQueue.push(nextFallback.fallbackFrame);
+    }
     start = undefined;
   }
 }

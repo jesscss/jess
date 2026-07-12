@@ -8,7 +8,6 @@
   "exports": {
     ".": {
       "types": "./lib/index-public.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
@@ -27,6 +26,7 @@
     "@jesscss/patch-css": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
     "@jesscss/plugin-node-modules": "workspace:*",
+    "@jesscss/plugin-scss": "workspace:*",
     "linecraft": "0.2.6",
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
@@ -44,7 +44,7 @@
     "prepublishOnly": "pnpm build && pnpm test",
     "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
     "build": "pnpm compile && pnpm api-extractor",
-    "compile": "tsdown --tsconfig tsconfig.build.json",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "api-extractor": "api-extractor run --local --config ./api-extractor.json",
     "verify:api": "api-extractor run --config ./api-extractor.json",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",

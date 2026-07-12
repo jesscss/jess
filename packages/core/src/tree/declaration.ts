@@ -1,6 +1,9 @@
+import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
+  F_ALLOW_ROOT,
   F_STATIC,
+  F_NON_STATIC,
   defineType,
   type LocationInfo
 } from './node.js';
@@ -8,7 +11,7 @@ import { isNode } from './util/is-node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
-import { Any, any, type AnyRole } from './any.js';
+import { Any, any, keyword, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
 import { List } from './list.js';
 import { Sequence, spaced } from './sequence.js';
@@ -18,6 +21,7 @@ import type { Call } from './call.js';
 import {
   OutputWriter,
   type PrintOptions,
+  type FinalPrintOptions,
   getPrintOptions,
   prepareRenderPrintState,
   savePrintState,
@@ -29,19 +33,35 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { consumeTrivia, emitCommentTriviaAfterNode, emitTriviaTokens } from './util/trivia.js';
+import { consumeTrivia, emitCommentTriviaAfterNode, emitCommentTriviaAfterOffset, emitCommentTriviaBetweenNodes, emitTriviaTokens, commentRunsWithinSpan, emitNextSpanComment } from './util/trivia.js';
+import { fieldSpanAt } from './util/provenance.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function isIdentifierChar(value: string | undefined): boolean {
+  return Boolean(value && /[A-Za-z0-9_-]/u.test(value));
+}
+
 export const enum AssignmentType {
   Default = ':',
-  Add = '+:',              // similar to += in JS, but merges lists / sequences / collections
+  // `+:` — used for the Less PROPERTY merge on a plain `Declaration`
+  // (`background +: …`; the comma-merge `List` path, guarded by
+  // `this.type === 'Declaration'`). The Jess VARIABLE `$foo +: v` operator was
+  // REMOVED — the jess-parser no longer emits `Add` for a `VarDeclaration`;
+  // variable compound-add is written explicitly (`$foo: $foo + v`). The non-
+  // Declaration `else` branch of `case AssignmentType.Add` (a `+` Operation) stays
+  // for any other caller that constructs a var-typed `Add`. See NOTES for the
+  // deferred property-merge `legacyMerge` design.
+  Add = '+:',
   // Subtract = '-:',      // math subtraction, like -= in JS
   // Multiply = '*:',      // math multiplication, like *= in JS
   // Divide = '/:',        // math division, like /= in JS
   CondAssign = '?:',       // assign only when no value is already defined
+  // Note: `$foo := bar` (global/non-shadowing assign) is NOT an AssignmentType —
+  // it's core's `setDefined` option on the VarDeclaration (`:=` is synthesized in
+  // serialization from `setDefined && assign === ':'`).
   // CondAdd = '?+:',      // add if defined, otherwise assign
   // CondSubtract = '?-:', // subtract if defined, otherwise assign
   // CondMultiply = '?*:', // multiply if defined, otherwise assign
@@ -50,6 +70,36 @@ export const enum AssignmentType {
   /** Legacy Less flags */
   MergeList = '&,:',    // merge into a list if another prop exists with this flag
   MergeSequence = '&_:' // merge into a sequence if another prop exists with this flag
+}
+
+/**
+ * Jess name-glued assignment operators — conditional-assign `$foo?:` and
+ * merge-assign `$list+:`. These render with the operator glued to the name (no
+ * leading space), matching the canonical authored form. Distinct from the Less
+ * forms (`:=` setDefined, `&,:` / `&_:` merge flags), which keep their spacing.
+ */
+function isJessGluedAssign(assign: string): boolean {
+  return assign === AssignmentType.CondAssign || assign === AssignmentType.Add;
+}
+
+/**
+ * A declaration carries a MERGE indicator when its assignment merges into a
+ * sibling of the same property (`+:` / `&,:` / `&_:`) or was produced by merge
+ * normalization. Such a declaration needs structural COALESCING during the
+ * eval-order pass (`Rules._coalesceMergedDeclarations`) before it is renderable,
+ * so it is NOT directly renderable and must not carry `F_STATIC`.
+ */
+export function declarationOptionsMerge(options: DeclarationOptions | undefined): boolean {
+  if (options === undefined) {
+    return false;
+  }
+  if (options.normalizedFromAssign !== undefined) {
+    return true;
+  }
+  const assign = options.assign;
+  return assign === AssignmentType.Add
+    || assign === AssignmentType.MergeList
+    || assign === AssignmentType.MergeSequence;
 }
 
 export type DeclarationOptions = {
@@ -65,13 +115,24 @@ export type DeclarationOptions = {
    */
   readonly?: boolean;
   /**
-   * Instead of implicitly declaring or overriding,
-   * requires a variable to previously be explicitly
-   * declared within scope.
+   * Instead of implicitly declaring or overriding, requires a variable to
+   * previously be explicitly declared within scope, and assigns THAT binding
+   * (the global / top one) — Sass `!global` semantics.
    *
-   * Used by SCSS (!global) and Jess's (^$foo:)
+   * Used by SCSS `!global`. NOT Jess `:=` — that is `nearestOuter` (below), a
+   * distinct nearest-enclosing-binding intent. (`setDefined` still renders `:=`.)
    */
   setDefined?: boolean;
+
+  /**
+   * Jess `$foo := bar` — NEAREST-OUTER non-shadowing assignment: reassign the
+   * nearest enclosing scope that already defines `$foo` (JS-block style), NOT the
+   * global/top binding. DISTINCT from `setDefined` (Sass `!global`). Renders `:=`.
+   *
+   * @todo eval — nearest-outer scope-walk + reassignment is NOT implemented; `:=`
+   * currently has no eval effect (preferable to wrong `!global` eval).
+   */
+  nearestOuter?: boolean;
 
   /** Used by SCSS (!default) and Jess (?:) */
   // setIfUndefined?: boolean
@@ -83,22 +144,27 @@ export type DeclarationOptions = {
    */
   throwIfDefined?: boolean;
 };
-/** Should be Any<'property'> | Interpolated<'property'> */
-type NameValue<T extends AnyRole = 'property'> = Any<T> | Interpolated<T>;
-type DeclarationValueSegment = Node | string;
-
+/** Declaration / VarDeclaration names are plain strings or interpolated templates. */
 export type DeclarationValue<T extends AnyRole = 'property'> = {
-  name: NameValue<T> | string;
+  name: string | Interpolated<T>;
   value: Node | string | DeclarationValueSegment[];
   /** The actual string representation of important, if it exists */
   important?: Any<'flag'> | string | boolean;
 };
 
+type DeclarationValueSegment = Node | string;
+
+export type DeclarationName<T extends AnyRole = 'property'> = string | Interpolated<T>;
+
+export function declarationNameKey(name: DeclarationName): string {
+  return typeof name === 'string' ? name : String(name.valueOf());
+}
+
 type DeclarationEvalState = {
   output: Node;
   name?: DeclarationValue['name'];
-  value?: Node;
-  important?: Any<'flag'>;
+  value?: DeclarationValue['value'];
+  important?: DeclarationValue['important'];
   nil: boolean;
 };
 
@@ -112,28 +178,24 @@ type DeclarationRenderState = {
   value: DeclarationValue['value'];
   customInterpolatedValue?: CustomInterpolatedRenderValue;
   mergeAdapter?: DeclarationMergeAdapterState;
-  important?: Any<'flag'>;
+  important?: DeclarationValue['important'];
   importantText?: string;
   normalizedFromAssign?: AssignmentType;
   output?: Node;
   nil: boolean;
 };
 
-function sameConcreteLocation(left: readonly unknown[], right: readonly unknown[] | undefined): boolean {
-  if (!right || left.length === 0 || left.length !== right.length) {
-    return false;
-  }
-  for (let i = 0; i < left.length; i++) {
-    if (left[i] !== right[i]) {
-      return false;
-    }
-  }
-  return true;
+function sameConcreteLocation(
+  left: { start: number; end: number } | undefined,
+  right: { start: number; end: number } | undefined
+): boolean {
+  return left !== undefined && right !== undefined
+    && left.start === right.start && left.end === right.end;
 }
 
 export function finalizeContextualImportantState(
   context: Context,
-  important: Any<'flag'> | undefined
+  important: DeclarationValue['important']
 ): { importantText?: string } {
   const importantText = context.hasImportantSource && !important
     ? '!important'
@@ -146,8 +208,8 @@ export function finalizeContextualImportantState(
 
 export function finalizeContextualImportantPublicState(
   context: Context,
-  important: Any<'flag'> | undefined
-): { important?: Any<'flag'>; importantText?: string } {
+  important: DeclarationValue['important']
+): { important?: DeclarationValue['important']; importantText?: string } {
   if (!context.hasImportantSource) {
     return important ? { important } : {};
   }
@@ -220,15 +282,15 @@ export function createDeclarationMergeAdapterState(
 
 type DeclarationValueState<T extends Declaration = Declaration> = {
   source: T;
-  value: Node;
-  important?: Any<'flag'>;
+  value: DeclarationValue['value'];
+  important?: DeclarationValue['important'];
   changed: boolean;
 };
 
 type DeclarationRegistrationState = {
   name: DeclarationValue['name'];
   value: DeclarationValue['value'];
-  important?: Any<'flag'>;
+  important?: DeclarationValue['important'];
   normalizedFromAssign?: AssignmentType;
   renderOnly?: boolean;
   renderAssignment?: {
@@ -285,7 +347,7 @@ const emitLeadingTriviaForSingleInterpolatedCustomValue = (
   if (!trivia || trivia === true) {
     return;
   }
-  emitTriviaTokens(consumeTrivia(trivia, source.location[0], 'before', options), options);
+  emitTriviaTokens(consumeTrivia(trivia, spanStartOf(source), 'before', options), options);
 };
 
 const inheritCustomInterpolatedValuePlacement = (sourceValue: Node, evaluatedValue: Node): Node => {
@@ -295,13 +357,18 @@ const inheritCustomInterpolatedValuePlacement = (sourceValue: Node, evaluatedVal
 
 const emitLeadingTriviaForCustomValue = (
   value: Node,
-  options: ReturnType<typeof getPrintOptions>
+  options: ReturnType<typeof getPrintOptions>,
+  fallbackSpanStart?: number
 ): void => {
   const trivia = options.trivia ?? value.sourceRoot?._treeContext?.opts?.trivia;
   if (!trivia || trivia === true) {
     return;
   }
-  emitTriviaTokens(consumeTrivia(trivia, value.location[0], 'before', options), options);
+  // Evaluated values (e.g. an rgba() Call) are re-created without a source span,
+  // so fall back to the authored value's original span start — the offset the
+  // leading-whitespace run (the space after `:`) is keyed on.
+  const offset = spanStartOf(value) ?? fallbackSpanStart;
+  emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
 };
 
 const shouldResolveCustomPropertyValue = (node: Node): boolean => {
@@ -351,7 +418,7 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (!isNode(node, N.Sequence | N.List)) {
     return false;
   }
-  if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
+  if (sourceSpanOf(node) !== undefined || !node.hasFlag(F_STATIC)) {
     return false;
   }
   const children = node instanceof Sequence ? node.value : node instanceof List ? node.value : [];
@@ -377,12 +444,12 @@ const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCal
 
 const stringifyDetached = (node: Node, options: PrintOptions): string => {
   const printOptions = getPrintOptions(options);
-  const writer = new OutputWriter();
-  node.writeSyntax({
-    ...printOptions,
-    writer
-  });
-  return writer.toString();
+  const writer = printOptions.writer;
+  const mark = writer.mark();
+  node.writeSyntax(printOptions);
+  const frag = writer.getSince(mark);
+  writer.restore(mark);
+  return frag;
 };
 
 const isHorizontalWhitespace = (code: number): boolean => (
@@ -488,7 +555,7 @@ const maybeDirectSyntheticDeclarationLeafText = (node: DeclarationValue['value']
   ) {
     return undefined;
   }
-  if (node._location !== undefined) {
+  if (sourceSpanOf(node) !== undefined) {
     return undefined;
   }
   return maybeTrimmedScalarText(node);
@@ -545,7 +612,38 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   name: DeclarationValue['name'];
   important: DeclarationValue['important'];
 
-  override allowRuleRoot = true;
+  /**
+   * Emit a comment authored between a bare-string `name` and the `:`/assign.
+   *
+   * The string name carries no own span, so instead of a per-slot offset we scan
+   * this declaration's own span for comment runs that fall before the value
+   * begins — authored whitespace there is normalized away, only the comment
+   * round-trips.
+   */
+  private _emitNameBoundaryComment(options: FinalPrintOptions): void {
+    if (!options.trivia) {
+      return;
+    }
+    const value = this.value;
+    // Upper bound of the name→`:` gap. Prefer the per-slot `value` fieldSpan
+    // start: the value *node*'s own span can be over-broad (a coerced List gets
+    // stamped with the whole declaration span, so its start collides with the
+    // name and the gap collapses to empty). The fieldSpan pins the authored
+    // value start. Fall back to the node's span start when no fieldSpan exists.
+    const valueStart = this._valueFieldSpanStart()
+      ?? (value instanceof Node ? spanStartOf(value) : undefined);
+    const runs = commentRunsWithinSpan(options.trivia, spanStartOf(this), valueStart);
+    if (runs.length > 0) {
+      emitNextSpanComment(runs, 0, options);
+    }
+  }
+
+  /** Start offset of the `value` field's per-slot span, or `undefined` when unset. */
+  private _valueFieldSpanStart(): number | undefined {
+    const valueIdx = (this.constructor as unknown as { childKeys?: readonly string[] })
+      .childKeys?.indexOf('value') ?? -1;
+    return valueIdx >= 0 ? fieldSpanAt(this, valueIdx)?.start : undefined;
+  }
 
   constructor(
     value: DeclarationValue,
@@ -554,12 +652,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     treeContext?: Context['treeContext']
   ) {
     super();
-    this._location = location;
+    setSourceSpan(this, location);
     this._options = options;
-    this.name = this._processNodes(value.name);
-    this.value = this._processNodes(value.value);
-    this.important = this._processNodes(value.important);
+    // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
+    this.name = value.name;
+    this.value = value.value;
+    this.important = value.important;
     this._treeContext = treeContext;
+    // Declarations (and Custom/VarDeclaration subclasses) are valid statements.
+    this.addFlag(F_ALLOW_ROOT);
+    // A merge declaration (`+:` / `&,:` / `&_:` or normalized-from-assign) needs
+    // structural coalescing during eval before it is renderable, so it is never
+    // render-direct. Mark it non-static up front: F_NON_STATIC is sticky, so no
+    // later static child can bubble F_STATIC onto this decl (or its container).
+    if (declarationOptionsMerge(options)) {
+      this.addFlag(F_NON_STATIC);
+    }
   }
 
   override* walk(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
@@ -603,7 +711,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return node.reuseAsLeaf();
     }
     const copy = node.cloneForPlacement();
-    if (!(copy instanceof Any) && !(copy instanceof Interpolated)) {
+    if (!(copy instanceof Interpolated)) {
       throw new TypeError('Copied declaration name must remain a declaration name');
     }
     copy.frozen = true;
@@ -631,23 +739,62 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : node.cloneForPlacement();
   }
 
-  private materializeValueForSemantics(value: DeclarationValue['value']): Node {
+  /**
+   * Coerce a parser-delivered value (Node | string | array) into a single Node
+   * for the assignment-composition machinery (List/Sequence/Operation/Reference
+   * inputs), which is structurally node-only. Bare idents become Keyword (never
+   * Any); a space-separated array becomes a Sequence, matching the surrounding
+   * merge composition. Plain declarations never reach here — only explicit Less
+   * assignment operators (`+:`, `?:`, `+_:`, `+,:`).
+   */
+  private toAssignmentInputNode(value: DeclarationValue['value']): Node {
     if (value instanceof Node) {
       return value;
     }
     if (typeof value === 'string') {
-      return any(value);
+      return keyword(value);
     }
     if (value.length === 1) {
       const only = value[0]!;
-      return typeof only === 'string' ? any(only) : only;
+      return typeof only === 'string' ? keyword(only) : only;
     }
     const nodes = new Array<Node>(value.length);
     for (let i = 0; i < value.length; i++) {
       const item = value[i]!;
-      nodes[i] = typeof item === 'string' ? any(item) : item;
+      nodes[i] = typeof item === 'string' ? keyword(item) : item;
     }
     return spaced(nodes);
+  }
+
+  /**
+   * The declaration value as a single Node. Most values already are a Node; a
+   * bare string becomes a Keyword and a flat parser segment array is coalesced
+   * into its structured form — a comma `List` of space `Sequence`s — matching
+   * the authored `a b, c d` shape. Used where the value must be evaluated as a
+   * node (variable binding, iteration source), not just serialized as text.
+   */
+  valueNode(): Node {
+    const value = this.value;
+    if (value instanceof Node) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      return keyword(value);
+    }
+    const groups: Node[][] = [[]];
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]!;
+      const node = typeof item === 'string' ? keyword(item) : item;
+      if (`${node.valueOf()}` === ',') {
+        groups.push([]);
+        continue;
+      }
+      groups[groups.length - 1]!.push(node);
+    }
+    const items = groups.map(group => (
+      group.length === 1 ? group[0]! : spaced(group)
+    ));
+    return items.length === 1 ? items[0]! : new List(items, { sep: ',' }).parentChildren();
   }
 
   private ownRenderAssignmentInput(node: Node): Node {
@@ -688,7 +835,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const node = new Ctor(
       value,
       this._options ? { ...this._options } : undefined,
-      this._location?.length ? this._location : undefined,
+      sourceSpanOf(this),
       this._treeContext
     );
     return this.applyDerivedMetadata(node);
@@ -722,7 +869,67 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return node;
   }
 
-  private formatNonCustomValue(valOut: string, _options: PrintOptions) {
+  /**
+   * The authored column of this declaration's property (0-based). Continuation
+   * lines in a multi-line value carry their source-absolute indentation; the
+   * leaf serializer re-bases them relative to the property line, so subtract the
+   * property's own authored indent first to keep the relationship stable no
+   * matter what depth the declaration renders at.
+   */
+  private authoredPropertyIndent(options: PrintOptions): number {
+    const start = spanStartOf(this);
+    if (start === undefined) {
+      return 0;
+    }
+    // The source text lives on the trivia runs (the render context is not
+    // file-bearing). Any run keyed near this declaration carries the full `src`.
+    const trivia = options.trivia ?? undefined;
+    const src = trivia?.lookup(start, 'before')?.src
+      ?? trivia?.entries('before').next().value?.[1]?.src;
+    if (typeof src !== 'string') {
+      return 0;
+    }
+    const lineStart = src.lastIndexOf('\n', start - 1) + 1;
+    return start - lineStart;
+  }
+
+  /**
+   * True when the authored value began on the line after `:` (its leading trivia
+   * run carries a newline). less.js preserves that break — e.g. a multi-line
+   * `grid-template-areas` keeps its first string on its own line.
+   */
+  private valueLeadsWithNewline(value: DeclarationValue['value'], options: PrintOptions): boolean {
+    const trivia = options.trivia ?? undefined;
+    if (!trivia) {
+      return false;
+    }
+    // Descend to the value's first authored token: a List/Sequence carries the
+    // whole declaration-value span, so its own span start would pick up the
+    // declaration's leading trivia instead of the value's.
+    let first: Node | string | undefined = Array.isArray(value) ? value[0] : value;
+    while (first instanceof List || first instanceof Sequence) {
+      first = first.value[0];
+    }
+    const start = first instanceof Node ? spanStartOf(first) : undefined;
+    // Only trust the value's leading trivia when the value token is authored
+    // inside this declaration. A resolved value (e.g. a variable lookup) carries
+    // its definition-site span, whose leading trivia belongs to another line.
+    const declStart = spanStartOf(this);
+    const declEnd = spanEndOf(this);
+    if (
+      start === undefined
+      || declStart === undefined
+      || declEnd === undefined
+      || start < declStart
+      || start > declEnd
+    ) {
+      return false;
+    }
+    const run = trivia.lookup(start, 'before');
+    return run !== undefined && /[\r\n]/.test(run.src.slice(run.start, run.end));
+  }
+
+  private formatNonCustomValue(valOut: string, _options: PrintOptions, leadNewline = false) {
     const trimmedEnd = valOut.replace(/\s+$/g, '');
     if (!trimmedEnd.includes('\n')) {
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
@@ -732,13 +939,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     // only the minimum continuation indent rather than emulating historical
     // Less fixture cases that collapsed some unindented continuations.
     const continuationIndent = '  ';
+    const propertyIndent = this.authoredPropertyIndent(_options);
     const lines = trimmedEnd.split('\n');
     let out = '';
     const [firstLine = '', ...restLines] = lines;
     const firstContent = firstLine.replace(/^[ \t]+/g, '').trimEnd();
 
     if (firstContent) {
-      out = ` ${firstContent}`;
+      // A value authored on the line after `:` keeps that break; its first token
+      // sits at the continuation indent (the leaf adds the property indent back).
+      out = leadNewline ? `\n${continuationIndent}${firstContent}` : ` ${firstContent}`;
     }
 
     for (const line of restLines) {
@@ -750,8 +960,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const lineIndent = line.match(/^[ \t]*/)?.[0].length ?? 0;
       const content = line.replace(/^[ \t]+/g, '').trimEnd();
       const isClosingLine = /^[}\])]([,;])?$/.test(content);
+      // Continuations are re-based relative to the property line (subtract its
+      // authored indent), then floored at the minimum continuation indent. The
+      // leaf serializer adds the render-time property indent back on top.
+      const relativeIndent = Math.max(0, lineIndent - propertyIndent);
       const normalizedIndent = ' '.repeat(
-        isClosingLine ? lineIndent : Math.max(continuationIndent.length, lineIndent)
+        isClosingLine ? lineIndent : Math.max(continuationIndent.length, relativeIndent)
       );
       out += `\n${normalizedIndent}${content}`;
     }
@@ -796,6 +1010,55 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return w.getSince(position);
   }
 
+  /**
+   * Separator between two adjacent terms of a flat declaration value array.
+   *
+   * Two array shapes reach here: verbatim string fragments (whitespace baked
+   * into the strings, e.g. `['calc(', '100%', ' - ', '1px', ')']`) which must
+   * be concatenated exactly; and string-normalized value terms from the parser
+   * (e.g. `[2px, "solid", white]`) whose inter-term whitespace lives in the
+   * trivia map. So: emit authored trivia before a source-backed term when we
+   * have it, and otherwise insert a space ONLY when omitting it would fuse two
+   * identifier-like tokens. Never add an unconditional separator — that would
+   * corrupt verbatim fragments.
+   */
+  private emitValueTermSeparator(
+    prev: Node | string,
+    node: Node | string,
+    options: ReturnType<typeof getPrintOptions>
+  ): void {
+    const w = options.writer!;
+    if (options.trivia && node instanceof Node) {
+      if (prev instanceof Node) {
+        emitCommentTriviaBetweenNodes(prev, node, options);
+      }
+      const leadingTrivia = consumeTrivia(options.trivia, spanStartOf(node), 'before', options);
+      if (leadingTrivia) {
+        emitTriviaTokens(leadingTrivia, options);
+        return;
+      }
+    }
+    // Two adjacent value nodes (neither a verbatim string fragment) are
+    // space-separated by construction — the boundary whitespace lives in
+    // neither term, so emit it here regardless of the surrounding chars
+    // (e.g. `"A" "B"`, `"x" counter(page)`, `1px 2px`).
+    if (prev instanceof Node && node instanceof Node) {
+      if (w.lastChar() !== ' ') {
+        w.queueSpacer(' ');
+      }
+      return;
+    }
+    // Merge guard: a space only when the previous output ends identifier-like
+    // and the next term would begin identifier-like, keeping tokens distinct.
+    // A following value Node (e.g. the Quoted in `is "theme1"`) is a real,
+    // space-separated term — its leading whitespace lived in neither side, and a
+    // quote can never token-merge with a preceding identifier — so include the
+    // quote characters in the predicate to keep that authored space.
+    if (isIdentifierChar(w.lastChar())) {
+      w.queueSpacer(' ', nextText => /^[A-Za-z0-9_.#'"-]/u.test(nextText));
+    }
+  }
+
   private writeDeclarationFieldValueSyntax(
     value: DeclarationValue['value'],
     options: ReturnType<typeof getPrintOptions>
@@ -806,13 +1069,18 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return;
     }
     if (Array.isArray(value)) {
+      let prev: Node | string | undefined;
       for (let i = 0; i < value.length; i++) {
         const item = value[i]!;
+        if (prev !== undefined) {
+          this.emitValueTermSeparator(prev, item, options);
+        }
         if (typeof item === 'string') {
           w.add(item, this);
         } else {
           item.writeSyntax(options);
         }
+        prev = item;
       }
       return;
     }
@@ -837,13 +1105,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       customInterpolatedSource
       && getSingleInterpolatedDeclarationValue(value) === customInterpolatedSource
     );
-    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
-    // setDefined uses `:=` with default spacing rules.
+    const { assign = ':', normalizedFromAssign, setDefined, nearestOuter } = this._options ?? {};
+    // `:=` renders for both Sass `!global` (setDefined) and Jess nearest-outer
+    // (nearestOuter) — same surface, distinct semantics — with default spacing.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
       ? AssignmentType.Default
       : assign;
-    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
-    let a = effAssign === ':' ? ':' : ` ${effAssign}`;
+    const effAssign = ((setDefined || nearestOuter) && printedAssign === ':') ? ':=' : printedAssign;
+    // Jess name-glued assignment ops (`$foo?:`, `$list+:`) render with NO space
+    // before the operator — the canonical authored form. `:` and the Less forms
+    // (`:=`, `&,:`, `&_:`) keep their existing spacing.
+    let a = effAssign === ':'
+      ? ':'
+      : isJessGluedAssign(effAssign) ? effAssign : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
     const nameText = nodeValueText(name);
     if (typeof name === 'string') {
@@ -857,6 +1131,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
     if (name instanceof Node) {
       emitCommentTriviaAfterNode(name, options);
+    } else {
+      // String name: emit any comment authored between the name and the
+      // `:`/assign (scanned from this declaration's span, before the value).
+      this._emitNameBoundaryComment(options);
     }
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
@@ -864,6 +1142,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (isCustomProperty) {
       const saved = savePrintState(options, ['inCustom']);
       options.inCustom = true;
+      // Authored start of the value (before eval re-created it span-less), used
+      // to recover the leading-whitespace trivia keyed on that source offset.
+      const originalValueSpanStart = this.value instanceof Node
+        ? spanStartOf(this.value)
+        : undefined;
       // Preserve custom value text, but normalize boundary artifacts:
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
@@ -878,11 +1161,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         && !needsCustomTrailingNewlineTrim(customValueText)
       ) {
         if (value instanceof Node) {
-          emitLeadingTriviaForCustomValue(value, options);
+          emitLeadingTriviaForCustomValue(value, options, originalValueSpanStart);
         }
         this.writeDeclarationFieldValueSyntax(value, options);
       } else if (fallbackOut !== undefined) {
-        const leading = customValueText === undefined ? '' : leadingHorizontalWhitespace(customValueText);
+        // Emit the authored leading whitespace from trivia (the value node keeps
+        // its source span here), falling back to the captured text's leading
+        // whitespace when no trivia is available (synthetic values).
+        const mark = w.mark();
+        if (value instanceof Node) {
+          emitLeadingTriviaForCustomValue(value, options, originalValueSpanStart);
+        }
+        const emittedLeading = w.getSince(mark).length > 0;
+        const leading = emittedLeading || customValueText === undefined
+          ? ''
+          : leadingHorizontalWhitespace(customValueText);
         w.add(`${leading}${fallbackOut}`, value);
       } else if (hasCustomInterpolatedRender) {
         const valueMark = w.mark();
@@ -901,7 +1194,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } else {
         const valueMark = w.mark();
         if (value instanceof Node) {
-          emitLeadingTriviaForCustomValue(value, options);
+          emitLeadingTriviaForCustomValue(value, options, originalValueSpanStart);
         }
         this.writeDeclarationFieldValueSyntax(value, options);
         w.replaceSince(valueMark, (valueOut) => {
@@ -919,33 +1212,40 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         this.renderCommaValueSyntax(mergeAdapter.value, options);
       } else {
         const valueMark = w.mark();
+        // The value's own leading whitespace is decided by `valueLeadsWithNewline`
+        // (guarded to authored, in-declaration spans) and re-materialized by
+        // `formatNonCustomValue`. Suppress the value node's boundary `before`
+        // trivia so a relocated value (e.g. a variable lookup) cannot bleed its
+        // definition-site leading newline into this declaration.
+        const leadNewline = this.valueLeadsWithNewline(value, options);
+        const savedBoundary = savePrintState(options, ['suppressBoundaryTrivia']);
+        options.suppressBoundaryTrivia = 'pre';
         this.writeDeclarationFieldValueSyntax(value, options);
-        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
+        restorePrintState(options, savedBoundary);
+        w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options, leadNewline), value);
       }
-      if (!(value instanceof Node) || !isNode(value, N.Collection)) {
-        if (important || importantText) {
-          w.add(' ');
-          if (important) {
-            if (important === true) {
-              w.add('!important', this);
-            } else if (typeof important === 'string') {
-              w.add(important, this);
-            } else if (typeof important === 'boolean') {
-              // False is accepted as an API convenience for no important flag.
-            } else {
-              const importantText = maybeTrimmedScalarText(important);
-              if (importantText !== undefined) {
-                w.add(importantText, important);
-              } else {
-                const importantMark = w.mark();
-                important.writeSyntax(options);
-                w.trimStartSince(importantMark);
-                w.trimEndSince(importantMark);
-              }
-            }
+      if (important || importantText) {
+        w.add(' ');
+        if (important) {
+          if (important === true) {
+            w.add('!important', this);
+          } else if (typeof important === 'string') {
+            w.add(important, this);
+          } else if (typeof important === 'boolean') {
+            // False is accepted as an API convenience for no important flag.
           } else {
-            w.add(importantText!, value);
+            const importantText = maybeTrimmedScalarText(important);
+            if (importantText !== undefined) {
+              w.add(importantText, important);
+            } else {
+              const importantMark = w.mark();
+              important.writeSyntax(options);
+              w.trimStartSince(importantMark);
+              w.trimEndSince(importantMark);
+            }
           }
+        } else {
+          w.add(importantText!, value);
         }
       }
     }
@@ -953,8 +1253,20 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const triviaSource = important ?? value;
       if (triviaSource instanceof Node) {
         emitCommentTriviaAfterNode(triviaSource, options);
+      } else if (!important && typeof value === 'string') {
+        // Bare-string keyword value (`a: yes /* comment */`) carries no node
+        // identity, so recover its authored end from the per-slot `value`
+        // fieldSpan and emit any comment run keyed after it.
+        emitCommentTriviaAfterOffset(options.trivia, this._valueFieldSpanEnd(), options);
       }
     }
+  }
+
+  /** End offset of the `value` field's per-slot span, or `undefined` when unset. */
+  private _valueFieldSpanEnd(): number | undefined {
+    const valueIdx = (this.constructor as unknown as { childKeys?: readonly string[] })
+      .childKeys?.indexOf('value') ?? -1;
+    return valueIdx >= 0 ? fieldSpanAt(this, valueIdx)?.end : undefined;
   }
 
   private renderSpaceValueSyntax(value: Node[], options: PrintOptions): void {
@@ -993,18 +1305,27 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (nameText === undefined || valueText === undefined || nameText.startsWith('--')) {
       return false;
     }
+    // A bare-string value with a per-slot fieldSpan may carry an authored
+    // trailing comment (`a: yes /* comment */`); that lives in the trivia map,
+    // which this synthetic fast path does not consult — defer to the full path.
+    if (options.trivia && typeof this.value === 'string' && this._valueFieldSpanEnd() !== undefined) {
+      return false;
+    }
     const importantText = this.important === undefined
       ? undefined
       : maybeDirectSyntheticDeclarationLeafText(this.important);
     if (this.important !== undefined && importantText === undefined) {
       return false;
     }
-    const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
+    const { assign = ':', normalizedFromAssign, setDefined, nearestOuter } = this._options ?? {};
     const printedAssign = normalizedFromAssign ? AssignmentType.Default : assign;
-    const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
+    const effAssign = ((setDefined || nearestOuter) && printedAssign === ':') ? ':=' : printedAssign;
     const w = options.writer!;
     w.add(nameText, this.name instanceof Node ? this.name : this);
-    w.add(effAssign === ':' ? ': ' : ` ${effAssign} `);
+    // Jess name-glued ops (`$foo?:`, `$list+:`) omit the leading space.
+    w.add(effAssign === ':'
+      ? ': '
+      : isJessGluedAssign(effAssign) ? `${effAssign} ` : ` ${effAssign} `);
     w.add(valueText, this.value instanceof Node ? this.value : this);
     if (importantText !== undefined) {
       w.add(` ${importantText}`, this.important instanceof Node ? this.important : this);
@@ -1043,14 +1364,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (this.type !== 'Declaration') {
       const state = this.evalPreparedState(context);
-      return isThenable(state)
-        ? (state as Promise<DeclarationEvalState>).then(resolved => this.renderEvaluatedDeclaration(context, resolved, bufferOrOptions, options))
-        : this.renderEvaluatedDeclaration(context, state as DeclarationEvalState, bufferOrOptions, options);
+      return isThenable<DeclarationEvalState>(state)
+        ? state.then((resolved: DeclarationEvalState) => this.renderEvaluatedDeclaration(context, resolved, bufferOrOptions, options))
+        : this.renderEvaluatedDeclaration(context, state, bufferOrOptions, options);
     }
     const state = this.evalRenderState(context);
-    return isThenable(state)
-      ? (state as Promise<DeclarationRenderState>).then(resolved => this.renderDeclarationRenderState(context, resolved, bufferOrOptions, options))
-      : this.renderDeclarationRenderState(context, state as DeclarationRenderState, bufferOrOptions, options);
+    return isThenable<DeclarationRenderState>(state)
+      ? state.then((resolved: DeclarationRenderState) => this.renderDeclarationRenderState(context, resolved, bufferOrOptions, options))
+      : this.renderDeclarationRenderState(context, state, bufferOrOptions, options);
   }
 
   private renderEvaluatedDeclaration(
@@ -1102,8 +1423,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string {
-    if (state.nil) {
-      const output = state.output ?? this.materializeValueForSemantics(state.value);
+    if (state.nil && state.output) {
+      const output = state.output;
       return isRenderBuffer(bufferOrOptions)
         ? output.render(context, bufferOrOptions, options)
         : output.render(context, bufferOrOptions);
@@ -1134,16 +1455,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override resolve(context: Context): MaybePromise<Node> {
     const state = this.evalPreparedState(context);
-    return isThenable(state)
-      ? (state as Promise<DeclarationEvalState>).then(resolved => resolved.output)
-      : (state as DeclarationEvalState).output;
+    return isThenable<DeclarationEvalState>(state)
+      ? state.then((resolved: DeclarationEvalState) => resolved.output)
+      : state.output;
   }
 
   private evalRenderState(context: Context): MaybePromise<DeclarationRenderState> {
     const state = this._prepareDeclarationRegistrationState(context, { ownParts: false });
-    return isThenable(state)
-      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.evalRegistrationRenderState(context, resolved))
-      : this.evalRegistrationRenderState(context, state as DeclarationRegistrationState);
+    return isThenable<DeclarationRegistrationState>(state)
+      ? state.then((resolved: DeclarationRegistrationState) => this.evalRegistrationRenderState(context, resolved))
+      : this.evalRegistrationRenderState(context, state);
   }
 
   private evalRegistrationRenderState(
@@ -1163,15 +1484,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       let chain: Promise<void> | undefined;
       const evaluateItem = (item: Node): MaybePromise<void> => {
         const out = item.eval(context);
-        if (isThenable(out)) {
-          return (out as Promise<Node>).then((node) => {
+        if (isThenable<Node>(out)) {
+          return out.then((node: Node) => {
             if (!(node instanceof Nil)) {
               evaluated.push(node);
             }
           });
         }
         if (!(out instanceof Nil)) {
-          evaluated.push(out as Node);
+          evaluated.push(out);
         }
       };
       for (const item of state.renderAssignment?.items ?? []) {
@@ -1180,8 +1501,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           continue;
         }
         const out = evaluateItem(item);
-        if (isThenable(out)) {
-          chain = out as Promise<void>;
+        if (isThenable<void>(out)) {
+          chain = out;
         }
       }
       return chain ? chain.then(() => evaluated) : evaluated;
@@ -1215,19 +1536,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           ? this.evalCustomInterpolatedRenderValue(context, customInterpolatedValue)
           : state.renderAssignment
             ? evaluateRenderAssignment()
-            : this.materializeValueForSemantics(state.value).eval(context);
+            : state.value instanceof Node
+              ? state.value.eval(context)
+              : state.value;
       } finally {
         if (!isThenable(maybeValue!)) {
           context.inCustom = previousInCustom;
         }
       }
-      if (isThenable(maybeValue)) {
-        return (maybeValue as Promise<DeclarationRenderValue>).then(
-          (value) => {
+      if (isThenable<DeclarationRenderValue>(maybeValue)) {
+        return maybeValue.then(
+          (value: DeclarationRenderValue) => {
             context.inCustom = previousInCustom;
             return value;
           },
-          (error) => {
+          (error: unknown) => {
             context.inCustom = previousInCustom;
             throw error;
           }
@@ -1309,12 +1632,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     let chain: Promise<void> | undefined;
     const evaluateReplacement = (replacement: Node, index: number): MaybePromise<void> => {
       const out = replacement.eval(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node>).then((evaluated) => {
+      if (isThenable<Node>(out)) {
+        return out.then((evaluated: Node) => {
           replacements[index] = evaluated;
         });
       }
-      replacements[index] = out as Node;
+      replacements[index] = out;
     };
     for (let index = 0; index < replacements.length; index++) {
       const replacement = replacements[index]!;
@@ -1323,8 +1646,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         continue;
       }
       const out = evaluateReplacement(replacement, index);
-      if (isThenable(out)) {
-        chain = out as Promise<void>;
+      if (isThenable<void>(out)) {
+        chain = out;
       }
     }
     const finish = (): CustomInterpolatedRenderValue => ({
@@ -1386,21 +1709,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return {
         output,
         name: declOutput?.name,
-        value: declOutput?.value instanceof Node ? declOutput.value : undefined,
-        important: declOutput?.important instanceof Any ? declOutput.important : undefined,
+        value: declOutput?.value,
+        important: declOutput?.important,
         nil: output instanceof Nil
       };
     };
-    return isThenable(valueState)
-      ? (valueState as Promise<DeclarationValueState<this> | Nil>).then(finish)
-      : finish(valueState as DeclarationValueState<this> | Nil);
+    return isThenable<DeclarationValueState<this> | Nil>(valueState)
+      ? valueState.then(finish)
+      : finish(valueState);
   }
 
   private evalPreparedValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
     const node = this.prepareRegistration(context);
-    return isThenable(node)
-      ? (node as Promise<this>).then(prepared => prepared.evalValueState(context))
-      : (node as this).evalValueState(context);
+    return isThenable<this>(node)
+      ? node.then((prepared: this) => prepared.evalValueState(context))
+      : node.evalValueState(context);
   }
 
   override prepareRegistration(
@@ -1408,43 +1731,35 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     options: DeclarationRegistrationOptions = {}
   ): MaybePromise<this> {
     const state = this._prepareDeclarationRegistrationState(context, options);
-    return isThenable(state)
-      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.materializeRegistrationState(resolved, options))
-      : this.materializeRegistrationState(state as DeclarationRegistrationState, options);
+    return isThenable<DeclarationRegistrationState>(state)
+      ? state.then((resolved: DeclarationRegistrationState) => this.materializeRegistrationState(resolved, options))
+      : this.materializeRegistrationState(state, options);
   }
 
   private createRegistrationState(
     options: DeclarationRegistrationOptions = {}
   ): DeclarationRegistrationState {
     if (options.reuseCanonical === true) {
-      const imp = this.important;
       return {
         name: this.name,
         value: this.value,
-        important: imp instanceof Any ? imp : imp === true ? any('!important', { role: 'flag' }) : undefined
+        important: this.important
       };
     }
-    const importantCopy = this.copyImportantForDerived(this.important);
     return {
       name: this.copyNameForDerived(this.name),
       value: isDeferredDeclarationValue(this.value)
         ? this.value
         : this.copyValueForDerived(this.value),
-      important: importantCopy instanceof Any ? importantCopy : undefined
+      important: this.copyImportantForDerived(this.important)
     };
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
-    const imp = this.important;
-    const important = imp instanceof Any
-      ? imp
-      : imp === true
-        ? any('!important', { role: 'flag' })
-        : undefined;
     return {
       name: this.name,
       value: this.value,
-      important,
+      important: this.important,
       renderOnly: true
     };
   }
@@ -1466,37 +1781,45 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   private _prepareDeclarationNameIdentity(
     state: DeclarationRegistrationState,
     context: Context
-  ): MaybePromise<Any<'property'>> {
+  ): MaybePromise<string> {
     const { name } = state;
     if (name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          state.name = key;
-          return key;
+          if (!(key instanceof Any)) {
+            throw new TypeError('Expected evaluated declaration name');
+          }
+          const resolved = String(key.valueOf());
+          state.name = resolved;
+          return resolved;
         });
       }
-      state.name = maybeKey;
-      return maybeKey;
+      if (!(maybeKey instanceof Any)) {
+        throw new TypeError('Expected evaluated declaration name');
+      }
+      const resolved = String(maybeKey.valueOf());
+      state.name = resolved;
+      return resolved;
     }
     if (typeof name === 'string') {
-      return any(name, { role: 'property' });
+      return name;
     }
-    return name;
+    throw new TypeError('Declaration name must be a string or Interpolated');
   }
 
   private _finishDeclarationRegistrationPrep(
     state: DeclarationRegistrationState,
-    name: Any<'property'>
+    name: string
   ): DeclarationRegistrationState {
-    if (!state.renderOnly) {
-      state.value = this.materializeValueForSemantics(state.value);
-    }
+    // Value is consumed as delivered by the parser (Node | string | array); no
+    // lazy string->node materialization. Only assignment composition (below)
+    // coerces to a Node where structurally required.
     this._normalizeAssignmentValue(state, name);
     return state;
   }
 
-  private _normalizeAssignmentValue(state: DeclarationRegistrationState, key: Any<'property'>): void {
+  private _normalizeAssignmentValue(state: DeclarationRegistrationState, key: string): void {
     let { value } = state;
     const setValue = (newValue: Node) => {
       state.value = newValue;
@@ -1518,8 +1841,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const normalizedAssign = assign;
       const referenceKey = state.renderOnly ? this.copyNameForDerived(key) : key;
       const inputValue = state.renderOnly
-        ? this.ownRenderAssignmentInput(this.materializeValueForSemantics(value))
-        : this.materializeValueForSemantics(value);
+        ? this.ownRenderAssignmentInput(this.toAssignmentInputNode(value))
+        : this.toAssignmentInputNode(value);
       /** Reference type */
       let type: 'declaration' | 'variable' =
         this.type === 'VarDeclaration' ? 'variable' : 'declaration';
@@ -1541,8 +1864,8 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 && n !== this
                 && source !== (outputNode?.sourceNode ?? outputNode)
                 && source !== (this.sourceNode ?? this)
-                && !sameConcreteLocation(n.location, outputNode?.location)
-                && !sameConcreteLocation(n.location, this.location);
+                && !sameConcreteLocation(sourceSpanOf(n), outputNode?.location)
+                && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
             },
             requiredDeclarationAssignments: [
               AssignmentType.MergeList,
@@ -1551,6 +1874,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               '+_:'
             ]
           }, undefined, this.sourceRoot?._treeContext);
+          // Positional bound for the prior-value lookup: eval-time nodes don't
+          // parent (invariant 7), so carry the referring decl's index directly.
+          ref.index = this.index;
           state.bindOutput = (node: Declaration) => {
             outputNode = node;
             excludedDeclarations[1] = node;
@@ -1592,10 +1918,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   && n !== this
                   && source !== (outputNode?.sourceNode ?? outputNode)
                   && source !== (this.sourceNode ?? this)
-                  && !sameConcreteLocation(n.location, outputNode?.location)
-                  && !sameConcreteLocation(n.location, this.location);
+                  && !sameConcreteLocation(sourceSpanOf(n), outputNode?.location)
+                  && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
               }
             }, undefined, this.sourceRoot?._treeContext);
+            // The merge ref reads the PRIOR value of this property. Its lookup
+            // start comes from `getLookupStartIndex(ref)`, which walks the parent
+            // chain — but eval-time nodes don't parent (invariant 7), so carry the
+            // referring declaration's source index directly for the positional bound.
+            ref.index = this.index;
             state.bindOutput = (node: Declaration) => {
               outputNode = node;
               excludedDeclarations[1] = node;
@@ -1678,33 +2009,30 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
-    if (typeof this.value === 'string' || Array.isArray(this.value)) {
-      throw new TypeError('String-backed declaration values must be hydrated before evaluation');
-    }
     if (this.hasFlag(F_STATIC)) {
       return {
         source: this,
-        value: this.value instanceof Node ? this.value : this.materializeValueForSemantics(this.value),
-        important: this.important instanceof Any ? this.important : undefined,
+        value: this.value,
+        important: this.important,
         changed: false
       };
     }
     {
       let node = this;
-      const nodeValue = node.value instanceof Node ? node.value : this.materializeValueForSemantics(node.value);
+      const nodeValue = node.value;
       const state: DeclarationValueState<this> = {
         source: node,
         value: nodeValue,
-        important: node.important instanceof Any ? node.important : undefined,
+        important: node.important,
         changed: false
       };
-      const setVal = (newValue: Node) => {
+      const setVal = (newValue: DeclarationValue['value']) => {
         if (state.value !== newValue) {
           state.value = newValue;
           state.changed = true;
         }
       };
-      const setImportant = (important: Any<'flag'>) => {
+      const setImportant = (important: DeclarationValue['important']) => {
         if (state.important !== important) {
           state.important = important;
           state.changed = true;
@@ -1732,15 +2060,85 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         for (let i = 0; i < mergedItems.length; i++) {
           outputItems[i] = this.ownMergedAssignmentOutputItem(mergedItems[i]!);
         }
-        setVal(new List(outputItems));
+        // Eval-time derived container: SHARE the items (no reparent), but crawl
+        // them to bubble child flags (F_STATIC/F_NON_STATIC/…) so the merged value
+        // is classified correctly — a raw `new List` derives none on its own.
+        const merged = new List(outputItems);
+        for (let i = 0; i < outputItems.length; i++) {
+          merged.propagateFlagsFrom(outputItems[i]!);
+        }
+        setVal(merged);
       };
         /** Registration prep already stabilized the name; eval handles the value. */
       if (node.type === 'VarDeclaration') {
         return state;
       }
       const { name, value: value } = node;
+      if (Array.isArray(value)) {
+        // A flat value array mixes verbatim string fragments (kept as-is) with
+        // typed value nodes that must be evaluated so e.g. a fallback function
+        // Call prints its CSS form rather than its `$name?(...)` source sigil.
+        const finalize = (evaluated: Array<Node | string>, changed: boolean) => {
+          if (changed) {
+            setVal(evaluated);
+          }
+          const importantState = finalizeContextualImportantPublicState(context, state.important);
+          if (importantState.important && importantState.important !== state.important) {
+            setImportant(importantState.important);
+          }
+          return state;
+        };
+        const out: Array<Node | string> = new Array(value.length);
+        let changed = false;
+        for (let i = 0; i < value.length; i++) {
+          const item = value[i]!;
+          if (typeof item === 'string') {
+            out[i] = item;
+            continue;
+          }
+          const evald = item.eval(context);
+          if (isThenable(evald)) {
+            return (async () => {
+              let resolved = await evald;
+              if (!(resolved instanceof Node)) {
+                resolved = item;
+              } else if (resolved !== item) {
+                resolved.inherit(item);
+                changed = true;
+              }
+              out[i] = resolved;
+              for (let j = i + 1; j < value.length; j++) {
+                const next = value[j]!;
+                if (typeof next === 'string') {
+                  out[j] = next;
+                  continue;
+                }
+                let nextEvald = await next.eval(context);
+                if (!(nextEvald instanceof Node)) {
+                  nextEvald = next;
+                } else if (nextEvald !== next) {
+                  nextEvald.inherit(next);
+                  changed = true;
+                }
+                out[j] = nextEvald;
+              }
+              return finalize(out, changed);
+            })();
+          }
+          if (!(evald instanceof Node)) {
+            out[i] = item;
+            continue;
+          }
+          if (evald !== item) {
+            evald.inherit(item);
+            changed = true;
+          }
+          out[i] = evald;
+        }
+        return finalize(out, changed);
+      }
       if (value instanceof Node) {
-        const isCustomProperty = name.valueOf().startsWith('--');
+        const isCustomProperty = declarationNameKey(name).startsWith('--');
         if (isCustomProperty) {
           if (!shouldResolveCustomPropertyValue(value)) {
             return state;
@@ -1804,9 +2202,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
     const state = this.evalValueState(context);
-    return isThenable(state)
-      ? (state as Promise<DeclarationValueState<this> | Nil>).then(resolved => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
-      : state instanceof Nil ? state : this.materializeValueState(state as DeclarationValueState<this>);
+    return isThenable<DeclarationValueState<this> | Nil>(state)
+      ? state.then((resolved: DeclarationValueState<this> | Nil) => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
+      : state instanceof Nil ? state : this.materializeValueState(state);
   }
 
   /** @todo - move to visitors */
@@ -1822,7 +2220,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const loc = this.location
+  //   const loc = sourceSpanOf(this)
   //   out.add('$J.decl({\n', loc)
   //   context.indent++
   //   out.add(`  name: `)
@@ -1846,4 +2244,4 @@ export const decl = (
   value: DeclarationValue,
   options?: DeclarationOptions,
   location?: LocationInfo
-) => new Declaration(value, options, location);
+) => new Declaration(value, options, location).parentChildren();

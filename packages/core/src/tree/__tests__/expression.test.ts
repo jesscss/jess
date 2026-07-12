@@ -31,7 +31,7 @@ describe('Expression', () => {
   it('renders resolved expression values through render(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -57,7 +57,7 @@ describe('Expression', () => {
   it('writes resolved expression render output into flat buffers', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -92,7 +92,7 @@ describe('Expression', () => {
   it('renders list children directly without evaluating the expression wrapper', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -132,7 +132,7 @@ describe('Expression', () => {
   it('resolves expression values without touching render state', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);
@@ -149,7 +149,7 @@ describe('Expression', () => {
   it('keeps source expression child containers canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
-        name: any('value'),
+        name: 'value',
         value: any('foo')
       })
     ]);

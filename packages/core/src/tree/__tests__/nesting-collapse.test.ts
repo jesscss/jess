@@ -1,3 +1,4 @@
+import { sourceSpanOf } from '../util/provenance.js';
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule, atrulestatement,
   compound, type SimpleSelector, type Selector, amp, co
@@ -130,16 +131,16 @@ describe('CSS Nesting Collapse', () => {
       rules: [
         decl({ name: 'case', value: spaced([el('2')]) })
       ]
-    }, undefined, [0, 1, 1, 20, 1, 21]);
+    }, undefined, { start: 0, end: 20 });
     const second = ruleset({
       selector: sel([el('.same')]),
       rules: [
         decl({ name: 'case', value: spaced([el('3')]) })
       ]
-    }, undefined, [34, 2, 1, 54, 2, 21]);
+    }, undefined, { start: 34, end: 54 });
     const trivia = createTriviaMap({
-      before: new Map([[second.location[0], boundaryTrivia]]),
-      after: new Map([[first.location[3], boundaryTrivia]])
+      before: new Map([[sourceSpanOf(second)?.start, boundaryTrivia]]),
+      after: new Map([[sourceSpanOf(first)?.end, boundaryTrivia]])
     });
     const node = rules([first, second]);
 
@@ -422,7 +423,7 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               ruleset({
@@ -463,7 +464,7 @@ describe('CSS Nesting Collapse', () => {
         selector: parentSelector,
         rules: [
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               decl({ name: 'color', value: spaced([el('red')]) })
@@ -496,7 +497,7 @@ describe('CSS Nesting Collapse', () => {
         selector: sel([el('.parent')]),
         rules: [
           atrulestatement({
-            name: any('@property'),
+            name: '@property',
             prelude: any('--brand-color')
           })
         ]
@@ -540,7 +541,7 @@ describe('CSS Nesting Collapse', () => {
       decl({ name: 'color', value: spaced([el('red')]) })
     ], {
       referenceMode: true
-    }, [10, 1, 11, 20, 1, 21]);
+    }, { start: 10, end: 20 });
     const trivia = createTriviaMap({
       before: new Map([[10, run('/* keep */')]])
     });
@@ -649,7 +650,7 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@supports'),
+            name: '@supports',
             prelude: any('(display: grid)'),
             rules: [
               ruleset({
@@ -685,12 +686,12 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               decl({ name: 'font-size', value: spaced([el('14px')]) }),
               atrule({
-                name: any('@media'),
+                name: '@media',
                 prelude: any('(max-width: 480px)'),
                 rules: [
                   ruleset({
@@ -733,7 +734,7 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               decl({ name: 'font-size', value: spaced([el('14px')]) }),
@@ -782,7 +783,7 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'color', value: spaced([el('red')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               ruleset({
@@ -794,7 +795,7 @@ describe('CSS Nesting Collapse', () => {
             ]
           }),
           atrule({
-            name: any('@supports'),
+            name: '@supports',
             prelude: any('(display: flex)'),
             rules: [
               ruleset({
@@ -835,12 +836,12 @@ describe('CSS Nesting Collapse', () => {
         rules: [
           decl({ name: 'padding', value: spaced([el('20px')]) }),
           atrule({
-            name: any('@media'),
+            name: '@media',
             prelude: any('(max-width: 768px)'),
             rules: [
               decl({ name: 'padding', value: spaced([el('10px')]) }),
               atrule({
-                name: any('@supports'),
+                name: '@supports',
                 prelude: any('(display: grid)'),
                 rules: [
                   ruleset({
@@ -880,6 +881,87 @@ describe('CSS Nesting Collapse', () => {
         }
         .container .mobile-item {
           margin: 5px;
+        }
+      }`
+    );
+  });
+
+  // Regression: string-normalized selectors (strings-not-nodes model) through an
+  // at-rule bubble. `getHoistedParent`/`renderHoistedParentHeader` used to call
+  // `parent.selector.writeSyntax` unconditionally — a string selector has no such
+  // method, throwing `parent.selector.writeSyntax is not a function`.
+  it('hoists a string-selector parent through a bubbled at-rule', async () => {
+    const node = rules([
+      ruleset({
+        selector: '.wrapper',
+        rules: [
+          atrule({
+            name: '@media',
+            prelude: '(max-width: 600px)',
+            rules: [
+              ruleset({
+                selector: '.mobile-only',
+                rules: [
+                  decl({ name: 'display', value: any('block') })
+                ]
+              })
+            ]
+          })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      @media (max-width: 600px) {
+        .wrapper .mobile-only {
+          display: block;
+        }
+      }`
+    );
+  });
+
+  // Regression: a nested string selector under an at-rule must keep its own header.
+  // `writeHeaderSelector` returned an empty comparable header for a string selector
+  // in the `withoutComments` (comparable) path, so `.child` coalesced into the
+  // `.container` frame instead of emitting `.container .child`.
+  it('keeps a nested string selector as its own frame under an at-rule', async () => {
+    const node = rules([
+      ruleset({
+        selector: '.container',
+        rules: [
+          atrule({
+            name: '@media',
+            prelude: 'screen',
+            rules: [
+              ruleset({
+                selector: sel([amp()]),
+                rules: [
+                  decl({ name: 'color', value: any('red') })
+                ]
+              }),
+              ruleset({
+                selector: '.child',
+                rules: [
+                  decl({ name: 'color', value: any('blue') })
+                ]
+              })
+            ]
+          })
+        ]
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
+
+    expect(css).toBeString(`
+      @media screen {
+        .container {
+          color: red;
+        }
+        .container .child {
+          color: blue;
         }
       }`
     );

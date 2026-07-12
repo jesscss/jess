@@ -1,3 +1,4 @@
+import { sourceSpanOf } from './util/provenance.js';
 import { defineType, Node, type LocationInfo } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -39,12 +40,15 @@ function findAttributeVarDeclaration(rules: Rules, key: string): VarDeclaration 
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  static override childKeys = ['name', 'attributeValue'] as const;
-
-  readonly name: AttributeSelectorValue['name'];
-  readonly op: string | undefined;
-  readonly attributeValue: Node | undefined;
-  readonly mod: string | undefined;
+  // Exception to the "separate field values" rule: the `{name, op, value, mod}`
+  // record is a normalization decomposition, so the whole object IS this node's
+  // canonical `value` (stored + typed by the Selector base, childKeys=['value']).
+  // The base walks it for parenting/clone; parts are exposed as getters so call
+  // sites keep reading `this.name` / `this.attributeValue`.
+  get name(): AttributeSelectorValue['name'] { return this.value.name; }
+  get op(): string | undefined { return this.value.op; }
+  get attributeValue(): Node | undefined { return this.value.value; }
+  get mod(): string | undefined { return this.value.mod; }
 
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
     const value = this.attributeValue;
@@ -188,7 +192,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
       undefined,
       // NodeLocation (LocationInfo | []) is compatible with LocationInfo; [] case won't match LocationInfo | 0
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      this.location as LocationInfo | 0
+      sourceSpanOf(this) as LocationInfo | 0
     );
     node.inherit(this);
     return node;
@@ -282,12 +286,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     location?: LocationInfo | 0,
     treeContext?: Context['treeContext']
   ) {
-    // `0` is a legacy no-op location sentinel; convert to undefined for base class
+    // `0` is a legacy no-op location sentinel; convert to undefined for base class.
+    // The Selector base stores `this.value = value`; we only add treeContext.
     super(value, options, location === 0 ? undefined : location);
-    this.name = value.name;
-    this.op = value.op;
-    this.attributeValue = value.value;
-    this.mod = value.mod;
     this._treeContext = treeContext;
   }
 }
