@@ -46,6 +46,16 @@ function queryTermAttachesToPrev(prev: Node, node: Node): boolean {
   return text !== '' && FUNCTION_NAME_RE.test(text) && !QUERY_KEYWORDS.has(text);
 }
 
+/**
+ * A `@container` prelude whose first term is a container name always writes a
+ * space between that name (index 0) and the following `<container-query>` group
+ * (index 1) — the name is not a function token, so it does not glue.
+ * @see https://drafts.csswg.org/css-conditional-5/#container-condition
+ */
+function leadingSpaceBefore(qc: QueryCondition, i: number): boolean {
+  return i === 1 && qc.hasLeadingContainerName;
+}
+
 function getKnownQueryConditionSourceText(node: Node | string): string | undefined {
   if (typeof node === 'string') {
     return node;
@@ -74,7 +84,7 @@ function getKnownQueryConditionSourceText(node: Node | string): string | undefin
       if (text === undefined) {
         return undefined;
       }
-      if (i > 0 && !queryTermAttachesToPrev(qc.value[i - 1]!, term)) {
+      if (i > 0 && (leadingSpaceBefore(qc, i) || !queryTermAttachesToPrev(qc.value[i - 1]!, term))) {
         out += ' ';
       }
       out += text;
@@ -140,6 +150,17 @@ function getKnownQueryConditionSourceText(node: Node | string): string | undefin
  */
 export class QueryCondition extends Sequence {
   static override childKeys = ['value'] as const;
+
+  /**
+   * True when this query condition's first term is a `@container` container
+   * name (`@container sidebar (…)`). The serializer keeps a space between the
+   * name and the following query group rather than gluing it as a query
+   * function token. Survives eval because the flag rides `_options`, which
+   * `Sequence.withValue` copies onto the evaluated node.
+   */
+  get hasLeadingContainerName(): boolean {
+    return this._options?.leadingContainerName === true;
+  }
 
   /**
    * Fast-path only node classes whose source syntax writer is known to be
@@ -232,7 +253,10 @@ export class QueryCondition extends Sequence {
     );
   }
 
-  private attachesToPrevTerm(prev: Node | undefined, node: Node): boolean {
+  private attachesToPrevTerm(prev: Node | undefined, node: Node, i?: number): boolean {
+    if (i === 1 && this.hasLeadingContainerName) {
+      return false;
+    }
     return prev !== undefined && queryTermAttachesToPrev(prev, node);
   }
 
@@ -245,7 +269,7 @@ export class QueryCondition extends Sequence {
     }
 
     for (let i = 0; i < length; i++) {
-      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!)) {
+      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!, i)) {
         w.add(' ');
       }
       const saved = options.suppressBoundaryTrivia;
@@ -275,7 +299,7 @@ export class QueryCondition extends Sequence {
 
     let out = '';
     for (let i = 0; i < length; i++) {
-      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!)) {
+      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!, i)) {
         w.add(' ');
         out += ' ';
       }
@@ -374,7 +398,7 @@ export class QueryCondition extends Sequence {
     const w = options.writer;
     const length = value.length;
     for (let i = start; i < length; i++) {
-      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!)) {
+      if (i > 0 && !this.attachesToPrevTerm(value[i - 1], value[i]!, i)) {
         w.add(' ');
         out += ' ';
       }

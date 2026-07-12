@@ -276,8 +276,21 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
       sequence(literal(':'), g.valueList),
       sequence(mfComparison, g.value, optional(sequence(mfComparison, g.value)))
     ))));
+  // A `<query-in-parens>` may also be a query function: `style(<style-query>)`,
+  // `scroll-state(<scroll-state-query>)`, or `<general-enclosed>` — any
+  // `<function-token>` (an identifier glued to `(`, with no whitespace)
+  // wrapping arbitrary balanced content. The no-whitespace glue is what
+  // distinguishes it from a container name (`sidebar (…)`, whitespace-separated).
+  // @see https://drafts.csswg.org/css-conditional-5/#typedef-query-in-parens
+  const queryFunctionToken = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?=\()/);
+  const queryFunctionBody = scanTo(literal(')'), { skip: [balanced('(', ')'), singleStr, doubleStr] });
+  const QueryFunction = node(
+    sequence(queryFunctionToken, literal('('), queryFunctionBody, expect(literal(')'), ')')));
   const QueryInParens = node(
-    sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')')));
+    choice(
+      g.QueryFunction,
+      sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')'))
+    ));
   const QueryCondition = node(
     choice(
       sequence(regex(/not(?![-\w])/i), g.QueryInParens),
@@ -288,7 +301,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   return {
     rw,
     Quoted, Num, Color, Paren, CalcCall,
-    QueryFeature, QueryInParens, QueryCondition, queryPrelude,
+    QueryFeature, QueryFunction, QueryInParens, QueryCondition, queryPrelude,
     Stylesheet, Ruleset, SelectorList, ComplexSelector, CompoundSelector, BasicSelector, simpleSelector,
     AttributeSelector, PseudoSelector, pseudoArg,
     Declaration, CustomDeclaration, declarationList,
