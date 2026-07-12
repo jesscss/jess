@@ -1523,7 +1523,7 @@ describe('Call', () => {
     }
   });
 
-  it('marks declarations important by replacing owned declaration slots', () => {
+  it('marks declarations important, replacing top-level slots in place and nested rules on a copy', () => {
     const topDeclaration = decl({ name: 'color', value: any('red') });
     const nestedDeclaration = decl({ name: 'background', value: any('blue') });
     const nestedRuleset = ruleset({
@@ -1535,16 +1535,29 @@ describe('Call', () => {
 
     expect(rule.makeImportant(root)).toBe(root);
 
+    // Top-level declarations are replaced in place on `root` (which is the call's
+    // own fresh output surface).
     const topReplacement = root.rules[0];
-    const nestedReplacement = nestedRuleset.rules[0];
     expect(topReplacement).not.toBe(topDeclaration);
-    expect(nestedReplacement).not.toBe(nestedDeclaration);
     expect(isNode(topReplacement, N.Declaration)).toBe(true);
-    expect(isNode(nestedReplacement, N.Declaration)).toBe(true);
     expect(topDeclaration.important).toBeUndefined();
-    expect(nestedDeclaration.important).toBeUndefined();
     expect(topReplacement?.parent).toBe(root);
-    expect(nestedReplacement?.parent).toBe(nestedRuleset);
+
+    // A NESTED rule is made important on a COPY, never the shared canonical node —
+    // so the original `nestedRuleset` (which a mixin-call output can reuse across
+    // later calls) is left untouched, preventing an `!important` leak.
+    const nestedCopy = root.rules[1];
+    expect(nestedCopy).not.toBe(nestedRuleset);
+    expect(isNode(nestedCopy, N.Ruleset)).toBe(true);
+    expect(nestedCopy?.parent).toBe(root);
+    expect(nestedRuleset.rules[0]).toBe(nestedDeclaration);
+    expect(nestedDeclaration.important).toBeUndefined();
+
+    const nestedReplacement = isNode(nestedCopy, N.Ruleset) ? nestedCopy.rules[0] : undefined;
+    expect(nestedReplacement).not.toBe(nestedDeclaration);
+    expect(isNode(nestedReplacement, N.Declaration)).toBe(true);
+    expect(nestedReplacement?.parent).toBe(nestedCopy);
+
     expect(root.toTrimmedString()).toBeString(`
       color: red !important;
       .nested {

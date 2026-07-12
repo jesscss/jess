@@ -65,6 +65,54 @@ describe('Less ruleset mixin merge regressions', () => {
     expect(css).not.toContain('skew(30deg) skew(30deg)');
   });
 
+  // `!important` on ANY member of a merge chain propagates to the whole combined
+  // value (Less oracle), even though jess anchors the combined value at the LAST
+  // occurrence. A first- or middle-member `!important` must NOT be dropped just
+  // because the anchor (last member) carries none.
+  it('propagates !important from a MIDDLE merge member to the whole value (comma)', async () => {
+    const css = await compiler.renderString(
+      `.r {\n  background+: a;\n  background+: b !important;\n  background+: c;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    expect(css).toContain('background: a, b, c !important;');
+  });
+
+  it('propagates !important from the FIRST merge member to the whole value (comma)', async () => {
+    const css = await compiler.renderString(
+      `.r {\n  background+: a !important;\n  background+: b;\n  background+: c;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    expect(css).toContain('background: a, b, c !important;');
+  });
+
+  it('propagates !important from a MIDDLE merge member to the whole value (space)', async () => {
+    const css = await compiler.renderString(
+      `.r {\n  transform+_: a;\n  transform+_: b !important;\n  transform+_: c;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    expect(css).toContain('transform: a b c !important;');
+  });
+
+  it('does not add !important to a merge chain when no member carries it', async () => {
+    const css = await compiler.renderString(
+      `.r {\n  background+: a;\n  background+: b;\n  background+: c;\n}`,
+      { language: 'less', suppressWarnings: true }
+    );
+    expect(css).toContain('background: a, b, c;');
+    expect(css).not.toContain('!important');
+  });
+
+  // A mixin called with `!important` must not leak that `!important` into a LATER
+  // call of the same nested mixin (the makeImportant copy-on-recurse fix).
+  it('does not leak !important from an important mixin call into a later plain call', async () => {
+    const css = await compiler.renderString(
+      `.m() {\n  .n() { margin: 5px; }\n  .n();\n}\n.a { .m() !important; }\n.b { .m(); }`,
+      { language: 'less', suppressWarnings: true }
+    );
+    expect(css).toContain('.a {\n  margin: 5px !important;\n}');
+    expect(css).toContain('.b {\n  margin: 5px;\n}');
+  });
+
   // A `$prop` read of a merged property must see the FULL coalesced value (the
   // anchor's combined chain), not the last merge sibling's own truncated value.
   it('a $ref to a merged property yields the full coalesced value (space)', async () => {

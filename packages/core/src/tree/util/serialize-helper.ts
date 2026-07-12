@@ -258,7 +258,14 @@ export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): Ma
     }
     const withMergedValue = (resolved: Node | Nil | undefined): string => {
       if (isNode(resolved, N.Declaration)) {
-        const anchorDecl = resolved.deriveWithParts({ value: mergeEntry.value });
+        // The anchor is the LAST merged member; its own `important` is correct only
+        // when `!important` sat on that last member. When the plan propagated a
+        // `!important` from an earlier (first/middle) chain member, override the
+        // anchor's `important` so it is not dropped (`a; b !important; c` →
+        // `a, b, c !important`).
+        const anchorDecl = mergeEntry.important !== undefined
+          ? resolved.deriveWithParts({ value: mergeEntry.value, important: mergeEntry.important })
+          : resolved.deriveWithParts({ value: mergeEntry.value });
         // Print the anchor as a plain `prop: value` (not `prop+: …`). `withParts`
         // copies options into a fresh transient, so recording that this declaration
         // was NORMALIZED from a merge assign (`normalizedFromAssign`) — which the
