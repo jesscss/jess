@@ -38,6 +38,15 @@ export type SequenceOptions = {
   // spaced: boolean
   /** Used with custom properties */
   preserveWhitespace?: boolean;
+  /**
+   * A `@container` prelude query whose FIRST term is a container name
+   * (`@container sidebar (min-width: 700px)`). The container name is separated
+   * from the following `<container-query>` by whitespace, so the serializer must
+   * NOT glue it to a following parenthesized group the way it glues a query
+   * function token (`size(…)`, `style(…)`, `scroll-state(…)`).
+   * @see https://drafts.csswg.org/css-conditional-5/#container-condition
+   */
+  leadingContainerName?: boolean;
 };
 
 function isIdentifierChar(value: string | undefined): boolean {

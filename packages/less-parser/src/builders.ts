@@ -2527,6 +2527,13 @@ export class LessGrammar extends CssParser {
           return new Expression(op as unknown as Node, { parens: true } as any, loc) as unknown as JessNode;
         }
       }
+      // A `<ratio>` feature value (`aspect-ratio: 3/2`) serializes with spaces
+      // around the slash (`3 / 2`) — the slash is a ratio separator, not a
+      // division to evaluate. @see https://drafts.csswg.org/css-values-4/#ratios
+      const ratio = /^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/.exec(propVal);
+      if (ratio) {
+        return this._lessKeyword(`${ratio[1]} / ${ratio[2]}`, loc) as unknown as JessNode;
+      }
       return this._lessKeyword(propVal, loc) as unknown as JessNode;
     };
 
@@ -2590,16 +2597,35 @@ export class LessGrammar extends CssParser {
       if (colonIdx > 0 && !/[><=!]/.test(trimmed.slice(0, colonIdx))) {
         const propName = trimmed.slice(0, colonIdx).trim();
         const propVal = trimmed.slice(colonIdx + 1).trim();
-        const nameNode = propName;
         // The value may be a bare `@var` (→ indexed Reference, matching
         // atRulePreludeBareVariableAs:'index'), a `@var[key]` accessor, a `~"…"`
         // escaped string, or a parenthesized math expression — all evaluated so
         // the prelude renders computed values (Less 4.x parity).
         const valueNode = buildFeatureValue(propVal);
-        const decl = new Declaration({ name: nameNode as any, value: valueNode as any }, undefined, loc);
+        // A custom-property style query — `@container style(--responsive: true)`.
+        // Less normalizes the feature to `name: value` (single space after the
+        // colon), NOT the verbatim custom-property spacing a `Declaration` would
+        // preserve, so model it as a query condition (`--name:` keyword + value).
+        // @see https://drafts.csswg.org/css-conditional-5/#style-container
+        if (propName.startsWith('--')) {
+          const qc = new QueryCondition(
+            [this._lessKeyword(`${propName}:`, loc), valueNode] as any, undefined, loc);
+          return new Paren(qc as any, undefined, loc) as unknown as JessNode;
+        }
+        const decl = new Declaration({ name: propName as any, value: valueNode as any }, undefined, loc);
         return new Paren(decl as any, undefined, loc) as unknown as JessNode;
       }
-      const words = trimmed.split(/\s+/).filter(Boolean).map(w => buildWord(w));
+      // Normalize interior whitespace of a range/comparison query so it renders
+      // canonically regardless of author spacing: no space after `(` or before
+      // `)`, and a single space around a comparison operator even when it is
+      // glued to an operand (`( width< 500px)` → `(width < 500px)`).
+      // @see https://drafts.csswg.org/mediaqueries-5/#mq-range-context
+      const normalized = trimmed
+        .replace(/\(\s+/g, '(')
+        .replace(/\s+\)/g, ')')
+        .replace(/\s*(<=|>=|!=|[<>=])\s*/g, ' $1 ')
+        .trim();
+      const words = normalized.split(/\s+/).filter(Boolean).map(w => buildWord(w));
       const qc = new QueryCondition(words as any, undefined, loc);
       return new Paren(qc as any, undefined, loc) as unknown as JessNode;
     };
@@ -2756,7 +2782,20 @@ export class LessGrammar extends CssParser {
         return new Expression(base as unknown as Node, undefined, loc) as unknown as JessNode;
       }
       const tokens = tokenize(t);
-      return new QueryCondition(tokens as any, undefined, loc) as unknown as JessNode;
+      // A leading `<container-name>` — an identifier (or `@var`) separated from
+      // the following `<container-query>` by whitespace (`@container sidebar
+      // (min-width: 700px)`) — is NOT a query function token (`size(…)`), so the
+      // serializer keeps a space before the query group instead of gluing it.
+      // @see https://drafts.csswg.org/css-conditional-5/#container-condition
+      const nameMatch = /^(@?-?[_a-zA-Z\x80-\uffff][-_a-zA-Z0-9\x80-\uffff]*)\s+(?:\(|not(?![-\w]))/i.exec(trimmed);
+      const leadingContainerName = !!nameMatch
+        && tokens.length > 1
+        && !['not', 'and', 'or', 'only'].includes(nameMatch[1]!.replace(/^@/, '').toLowerCase());
+      return new QueryCondition(
+        tokens as any,
+        leadingContainerName ? { leadingContainerName: true } : undefined,
+        loc
+      ) as unknown as JessNode;
     };
 
     const commaItems = splitCommas(text);
