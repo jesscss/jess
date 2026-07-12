@@ -10,7 +10,7 @@ describe('callable collection helper', () => {
   });
 
   it('preserves the direct callable handoff outside rules.ts', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     context.depth = 2;
 
     const mixinDef = mixin({

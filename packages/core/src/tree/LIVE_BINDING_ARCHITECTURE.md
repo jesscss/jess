@@ -17,8 +17,8 @@
 > - **R2 — mixin two-frame split: RESOLVED.** The `Mixin.sourceNode` wrapper frame was
 >   eliminated; a mixin IS its body, one frame per call.
 > - **R3 — `direct-rules-lookup` fallback: confined**, not yet deleted — remains only
->   for `$while` loops and dynamic/interpolated/explicit-target names. (Full history:
->   `docs/archive/SINGLE_FRAME_PLAN.md`, `docs/archive/BINDING-LOOKUP-REMAINING.md`.)
+>   for `$while` loops and dynamic/interpolated/explicit-target names. Full
+>   history lives in git; current queue lives in `CORE-CLEANUP.md`.
 >
 > DO NOT patch closure/scope capture per-path — that is the fragmentation the
 > migration removes. Fix identity (R1) first; see the plan's step ordering.

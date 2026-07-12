@@ -6,13 +6,14 @@ import type {
   Node,
   Any,
   AtRuleStatement,
-  Selector
+  Selector,
+  Nil
 } from './tree/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
 import type { StylesConfig } from './types.js';
-import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
+import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { isNode } from './tree/util/is-node.js';
@@ -25,6 +26,22 @@ import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
 import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
+
+/**
+ * The single-pass EMIT visitor contract (design §6.1/§6.6). `enter` receives the
+ * RESOLVED output node and either returns VOID (inspect / invisibly-annotate — the
+ * node is emitted unchanged) or returns a NEW node (an output-affecting REPLACE —
+ * a fresh transient serialized in place, never mutating the shared canonical node
+ * in a byte-/reuse-affecting way, §6.4). No `ctx`, no frame — the node is already
+ * resolved. `exit` (optional) fires after the node's children, kept solely for the
+ * `inline-urls` enter/exit proof (§6.6).
+ */
+export type SpineVisitorEnter = (node: Node) => Node | void;
+export type SpineVisitorExit = (node: Node) => void;
+export interface SpineVisitor {
+  enter: SpineVisitorEnter;
+  exit?: SpineVisitorExit;
+}
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
@@ -58,7 +75,10 @@ export interface ContextOptions {
 
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  functionMode?: FunctionMode;
   equalityMode?: EqualityMode;
+  /** See LessOptions.allowOverloadedImport. Enforcement pending its definition. */
+  allowOverloadedImport?: boolean;
   disableScriptModules?: boolean;
   /**
    * @deprecated Use `disableScriptModules` instead.
@@ -74,7 +94,7 @@ export interface ContextOptions {
    *
    * @deprecated - a Less feature
    */
-  leakyRules?: boolean;
+  leakyScope?: boolean;
 
   /**
    * Whether to bubble root-only at-rules (like @font-face, @keyframes)
@@ -105,6 +125,58 @@ export interface ContextOptions {
    * plugin-free parse/eval paths.
    */
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
+}
+
+/**
+ * The flat, fully-resolved option set read on the eval fast path. Every field is
+ * present (no `undefined`), so a read-site is a single property access —
+ * `context.options.equalityMode` — with no `?? treeContext ?? default` chain and
+ * no per-read merge. Resolved once and cached on {@link Context}; recomputed only
+ * when `context.treeContext` switches (see its setter), so crossing into an
+ * imported file is one recompute, not a cost paid on every option read.
+ */
+export interface ResolvedOptions {
+  mathMode: MathMode;
+  unitMode: UnitMode;
+  functionMode: FunctionMode;
+  equalityMode: EqualityMode;
+  leakyScope: boolean;
+  bubbleRootAtRules: boolean;
+}
+
+/**
+ * Ultimate fallbacks — used only when neither the compile config nor the tree
+ * context (plugin/language/file) supplied a value.
+ */
+const OPTION_DEFAULTS: ResolvedOptions = {
+  mathMode: 'parens-division',
+  unitMode: 'preserve',
+  functionMode: 'preserve',
+  equalityMode: 'less',
+  leakyScope: false,
+  bubbleRootAtRules: false
+};
+
+/**
+ * Resolve the option set with a SINGLE precedence: an explicit compile-level
+ * option wins, else the tree context's (plugin/language/file) value, else the
+ * hard default. This is the one place the precedence is defined — it replaces the
+ * three divergent `??` orders that used to live scattered across the read-sites
+ * (`compile ?? tree` in conditions, `tree`-only in lists, `tree ?? compile` for
+ * mathMode).
+ */
+export function resolveOptions(
+  compile: Partial<ResolvedOptions> | undefined,
+  tree: Partial<ResolvedOptions> | undefined
+): ResolvedOptions {
+  return {
+    mathMode: compile?.mathMode ?? tree?.mathMode ?? OPTION_DEFAULTS.mathMode,
+    unitMode: compile?.unitMode ?? tree?.unitMode ?? OPTION_DEFAULTS.unitMode,
+    functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
+    equalityMode: compile?.equalityMode ?? tree?.equalityMode ?? OPTION_DEFAULTS.equalityMode,
+    leakyScope: compile?.leakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.leakyScope,
+    bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules
+  };
 }
 
 export interface TreeContextOptions extends ContextOptions {
@@ -162,14 +234,19 @@ export const generateId = (length = 8) => {
  * Additionally, it sets options that may be
  * unique to the tree, such as the math mode.
  */
-export class TreeContext implements TreeContextOptions {
+export class TreeContext {
+  /** Non-option, per-tree transient data (trivia, lifted-comment ranges, …). */
   opts: Record<string, any>;
-  // changed to `rulesVisiblity` set during parsing
-  leakyRules: boolean | undefined;
-  bubbleRootAtRules: boolean | undefined;
-  mathMode: MathMode | undefined;
-  unitMode: UnitMode | undefined;
-  equalityMode: EqualityMode | undefined;
+
+  /**
+   * The single resolved option set for this tree. Built once at construction
+   * from the file/plugin/language values; when the tree is made active on an
+   * eval {@link Context}, that context folds its compile-level options over this
+   * and shares the resulting object (see Context's `treeContext` setter), so
+   * `context.options` and `treeContext.options` are the SAME object — one place
+   * to read, no per-read merge.
+   */
+  options: ResolvedOptions;
 
   /** @todo - Change how extend works based on this value */
   isModule: boolean | undefined;
@@ -182,30 +259,20 @@ export class TreeContext implements TreeContextOptions {
   plugin?: PluginInterface;
 
   constructor(opts: TreeContextOptions = {}) {
-    /**
-     * Known options are attached to the instance.
-     * Unknown options are assigned to `opts`
-     */
-    let {
-      mathMode,
-      unitMode,
-      equalityMode,
-      isModule,
-      file,
-      plugin,
-      leakyRules,
-      bubbleRootAtRules,
-      ...rest
-    } = opts;
-    this.mathMode = mathMode;
-    this.unitMode = unitMode;
-    this.equalityMode = equalityMode;
+    // Resolve the file-level options once (no compile context yet — the eval
+    // Context folds that in on attach). Structural identity stays on the
+    // instance; every other unknown key is transient `opts` data.
+    this.options = resolveOptions(undefined, opts);
+    const { isModule, file, plugin, ...rest } = opts;
     this.isModule = isModule;
     this.file = file;
     this.plugin = plugin;
-    this.leakyRules = leakyRules;
-    this.bubbleRootAtRules = bubbleRootAtRules;
-    // this.scope = scope ?? new Scope(parentScope)
+    delete rest.mathMode;
+    delete rest.unitMode;
+    delete rest.functionMode;
+    delete rest.equalityMode;
+    delete rest.leakyScope;
+    delete rest.bubbleRootAtRules;
     this.opts = rest;
   }
 }
@@ -233,7 +300,50 @@ export class Context {
   readonly plugins: PluginInterface[];
   readonly opts: ContextOptions;
 
-  treeContext!: TreeContext;
+  private _treeContext!: TreeContext;
+
+  /**
+   * Flat, fully-resolved options for the currently-active tree context — the one
+   * place to read a resolved option (`context.options.unitMode`). Every field is
+   * present, so there is no `??` and no per-read merge. Written only by the
+   * `treeContext` setter (and shared with that tree context); do not assign it
+   * directly. See {@link ResolvedOptions}.
+   */
+  options: ResolvedOptions;
+
+  /**
+   * The active file's tree context. Assigning it (at import entry/exit and
+   * ruleset scope changes) recomputes `options` once and shares the resulting
+   * object with the tree context, so the fast-path reads that follow are plain
+   * field accesses.
+   */
+  get treeContext(): TreeContext {
+    return this._treeContext;
+  }
+
+  set treeContext(tc: TreeContext) {
+    this._treeContext = tc;
+    // Fold the compile-level options over the tree's own, once, and SHARE the
+    // result: `context.options` and `tc.options` become the same object, so eval
+    // (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
+    // hit one resolved set with nothing left to merge. Idempotent on re-entry
+    // (compile ?? already-folded === already-folded).
+    this.options = resolveOptions(this.opts, tc?.options);
+    if (tc) {
+      tc.options = this.options;
+    }
+  }
+
+  /**
+   * Change a compile-level option and refresh the resolved-options cache. Prefer
+   * passing options at construction; this exists for dynamic reconfiguration (and
+   * tests) that need to change an option on a live context — mutating `opts`
+   * directly would leave {@link options} stale.
+   */
+  setOption<K extends keyof ResolvedOptions>(key: K, value: ResolvedOptions[K]): void {
+    this.opts[key] = value;
+    this.options = resolveOptions(this.opts, this._treeContext?.options);
+  }
 
   /**
    * Collected errors during safeParse/safeRender.
@@ -273,8 +383,49 @@ export class Context {
   /** The call that is currently being evaluated */
   caller?: Call;
 
+  /**
+   * Spine mixin-fold sink (cutover P3-precursor, UNIFIED-EVAL-EMIT-DESIGN §2/§3).
+   * When set by the emit-walk spine before it drives a mixin CALL's resolution,
+   * the callable terminal (`evaluateCallableCandidateOutput`) skips the
+   * `rules.eval()` output-tree build and instead hands the emit-walk driver the
+   * guard-passed BOUND SURFACE (shared body children + the wired live-cell param
+   * frame) so it can descend it INLINE to the writer emit-walk already holds — no
+   * output tree, no `mixinOutputSlot`, no `Rules.derive`. Returning `false` from
+   * the sink signals "not a spine-simple shape" so the terminal falls back to the
+   * eval path for THAT candidate (byte-identical transition; the eval terminal
+   * dies in P4). Scoped save/restore around the drive — undefined on the eval path
+   * so the terminal is unchanged there.
+   */
+  spineMixinSurfaceSink?: (boundSurface: Rules, sourceRules: Rules, candidateIsMixin: boolean) => boolean;
+
   /** Extend roots registry for managing extend scoping */
   extendRoots!: ExtendRootRegistry;
+
+  /**
+   * Generic single-pass EMIT visitors (design §6). An ordered, initially-EMPTY
+   * list of `(node) => Node | void` hooks (with an optional `exit`) the spine
+   * fires at each resolved output node's emit moment. The list being empty is
+   * the ZERO-COST common case (§6.5 / §4.0-style gate): the spine checks
+   * `spineVisitors === undefined` and skips all hook machinery. `node` is the
+   * RESOLVED output node — no ctx, no frame (§6, decision table). Native Jess
+   * visitors and the less-compat bridge (registered only when ≥1 real Less
+   * visitor exists — NOT built here) coexist as plain list entries; core owns no
+   * chaining / REMOVE / ABORT / per-type dispatch.
+   *
+   * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §6.
+   */
+  spineVisitors?: SpineVisitor[];
+
+  /**
+   * Append a generic EMIT visitor (design §6.5). Deterministic registration
+   * order; the pass threads each node through `enter` (`shape = enter(shape) ??
+   * shape`) and fires `exit` (if registered) after the node's children. No
+   * auto-registration — the list stays undefined (zero-cost) until a caller
+   * registers.
+   */
+  registerSpineVisitor(enter: SpineVisitorEnter, options?: { exit?: SpineVisitorExit }): void {
+    (this.spineVisitors ??= []).push({ enter, exit: options?.exit });
+  }
 
   /**
    * Depth-first document order of each Ruleset (assigned once per root before eval).
@@ -335,6 +486,17 @@ export class Context {
 
   /** Frames for nested rulesets, used for selector evaluation */
   rulesetFrames: Ruleset[] = [];
+  /**
+   * Spine-mode (P1 §2, ampersand-append fold) resolved-selector side-channel. Maps a
+   * SOURCE ruleset frame node to the CONCRETE selector the spine resolved for it at
+   * ruleset-enter. `Ampersand.evalNode` reads this before the raw `frame.selector` so a
+   * nested append (`.a { &-b { &-c {…} } }` → `.a-b-c`) composes each level against the
+   * RESOLVED parent (`.a-b`), not the raw authored `&-b`. This reproduces the eval
+   * pass, which pushes the resolved OUTPUT node onto `rulesetFrames` — without mutating
+   * the shared canonical source node (the output-affecting-resolution invariant). Set +
+   * cleared per frame push/pop by `serializeSpineFrameContainer`.
+   */
+  spineResolvedFrameSelector: WeakMap<Ruleset, Selector | Nil> | undefined;
   /** Unified frames array for flat rendering when collapseNesting is true */
   frames: (Ruleset | AtRule)[] = [];
 
@@ -453,26 +615,13 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  _leakyRules: boolean | undefined;
-  get leakyRules() {
-    return this._leakyRules ?? this.treeContext?.leakyRules ?? false;
-  }
-
-  _bubbleRootAtRules: boolean | undefined;
-  get bubbleRootAtRules() {
-    return this._bubbleRootAtRules ?? this.treeContext?.bubbleRootAtRules ?? false;
-  }
-
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
+    // Seed resolved options from compile config (no tree context yet); the
+    // treeContext setter recomputes this once a file's context is active.
+    this.options = resolveOptions(opts, undefined);
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
-    if (opts.leakyRules !== undefined) {
-      this._leakyRules = opts.leakyRules;
-    }
-    if (opts.bubbleRootAtRules !== undefined) {
-      this._bubbleRootAtRules = opts.bubbleRootAtRules;
-    }
     if (opts.output?.compress !== undefined) {
       this.printState.compress = opts.output.compress;
     }
@@ -833,9 +982,7 @@ export class Context {
   }
 
   shouldOperate(op: Operator, left: Node, right: Node) {
-    const mathMode = this.treeContext?.mathMode
-      ?? this.opts?.mathMode
-      ?? 'parens-division';
+    const mathMode = this.options.mathMode;
     return shouldOperateWithMathFrames(
       {
         mathMode,

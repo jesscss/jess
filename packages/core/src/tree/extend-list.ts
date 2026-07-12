@@ -23,11 +23,10 @@ export class ExtendList extends Node<Extend[], NodeOptions> {
 
   readonly value: Extend[];
 
-  constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
+  constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
     this.removeFlag(F_VISIBLE);
     this.addFlag(F_ALLOW_ROOT);
   }

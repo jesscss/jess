@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { serializeTypes } from '@jesscss/core';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { functionalIt, trimmedStylesheet } from './parse-helpers.js';
 
 const parser = new Parser();

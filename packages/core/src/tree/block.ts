@@ -33,21 +33,18 @@ export class Block extends Node<Node, BlockOptions> {
     return new Block(
       value,
       this._options ? { ...this._options } : undefined,
-      location,
-      this.sourceRoot?._treeContext
+      location
     ).inherit(this);
   }
 
   constructor(
     value: Node,
     options?: BlockOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
   }
 
   private renderBlockSyntax(value = this.value, rawOptions?: PrintOptions): string {
@@ -124,6 +121,5 @@ type BlockParams = ConstructorParameters<typeof Block>;
 export const block = defineType(Block, 'Block') as (
   value: BlockParams[0],
   options?: BlockParams[1],
-  location?: BlockParams[2],
-  treeContext?: BlockParams[3]
+  location?: BlockParams[2]
 ) => Block;

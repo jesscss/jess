@@ -1,7 +1,7 @@
 > ⚠️ **The active cleanup queue is now [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).** The
 > per-focus trackers this doc references (SINGLE_FRAME_PLAN, NODE-REWRITE-TRACKER,
 > PERFORMANCE-HANDOFF, BINDING-LOOKUP-REMAINING) were consolidated there; their history
-> lives in `docs/archive/`. This doc is kept for its routing/guardrail context.
+> lives in git history. This doc is kept for its routing/guardrail context.
 
 # Core Architecture Handoff
 
@@ -18,16 +18,15 @@ instruction, then record the chosen focus in the final response instead of
 changing this router. Use `FOCII.md` for the goal prompt, boundaries, stop rule,
 and required docs.
 
-- **Binding / lookup:** use `BINDING-LOOKUP-REMAINING.md` for the active queue,
-  remaining scope, progress notes, and completion gates. Use
-  `BINDING-INDEX-PROPOSAL.md` for design intent. This stream owns registryless
+- **Binding / lookup:** use `CORE-CLEANUP.md` for the active queue,
+  remaining scope, progress notes, and completion gates. This stream owns registryless
   lookup, direct crawl/frame lookup, reference handles, live/current binding,
   fallback bridge deletion, and lookup profiles.
-- **Serialization / `writeSyntax`:** use `NODE-REWRITE-TRACKER.md` for the
+- **Serialization / `writeSyntax`:** use `CORE-CLEANUP.md` for the
   active node-family queue, historical row status, serialization contracts, and
   completion gates. This stream owns direct syntax/render emission, cold public
   string wrappers, render readback removal, and node-family row closure.
-- **Performance evidence:** use `PERFORMANCE-HANDOFF.md` for benchmark
+- **Performance evidence:** use `CORE-CLEANUP.md` for benchmark
   protocol, profile history, rejected experiments, and speed claims.
 - **Patch-shape review:** use `AGGRESSIVE-CUTTING-REVIEW.md` before changing
   AST, eval/render, lookup, traversal, copying, inheritance, output writer,
@@ -81,8 +80,7 @@ what blocked immediate continuation, and why stopping was necessary.
 Each active focus tracker should keep at least 15 unchecked sizable tasks
 available unless that focus is genuinely within 15 tasks of completion.
 Reseeding the next queue is closeout work, not a queue item. Completed history
-belongs in git, focused tracker rows, or `PERFORMANCE-HANDOFF.md`, not in this
-router.
+belongs in git or `CORE-CLEANUP.md`, not in this router.
 
 Use sub-agents when available for disjoint evidence or implementation slices.
 Good assignments include one node-family row, one lookup family, focused test
@@ -100,13 +98,33 @@ git diff --check
 pnpm run verify:aggressive-cutting-review
 ```
 
-Then run the chosen focus gates from its tracker. Use
-`PERFORMANCE-HANDOFF.md` before making any speed claim. Use
+Then run the chosen focus gates from `CORE-CLEANUP.md`. Use its benchmark
+protocol before making any speed claim. Use
 `pnpm run verify:baseline -- --changed` when the touched area needs a broader
 fixture gate. The current hook path has previously looped, so commit and push
 with `--no-verify` after the explicit gates pass.
 
 ## Aggressive Cutting Self-Prosecution
+
+- Latest pass: remove abandoned archive/parser/perf trackers and point live
+  guidance at `CORE-CLEANUP.md`.
+- Architecture surface: shrunk. Old tracker files are gone; live routing points
+  at the existing single cleanup tracker. Standalone optimization reports were
+  folded into the tracker summary or removed.
+- Separation/duplication: improved by deleting duplicate historical trackers
+  instead of keeping parallel archive, profiling, and parser-investigation docs.
+- Cumulative node weight: unchanged.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: unchanged.
+- Helper/API surface: unchanged.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [parent/source mutation] is a doc-only false
+  positive from retained historical location-field wording.
+- Evidence: `git diff --check`; stale deleted-doc reference grep found no live
+  references before rerunning this verifier.
+- Verdict: accepted as docs deletion and stale-reference cleanup; no runtime
+  behavior change.
 
 - Latest pass: `defineType` Reflect.construct removal (ponytail B5 slice).
 - Verdict: accepted as an indirection cut on the factory construction path.
@@ -202,9 +220,9 @@ with `--no-verify` after the explicit gates pass.
   identical to the saved baseline.
 
 - Latest pass: denormalized `spanStart`/`spanEnd` offset fields on `Node`.
-- Verdict: accepted as a hot-read/object-avoidance slice under the ponytail core
-  audit (`docs/future/ponytail-core-audit.md` E6), not a measured performance
-  pass. `_location` is now a prototype accessor whose setter syncs two plain
+- Verdict: accepted as a hot-read/object-avoidance slice recorded in
+  `CORE-CLEANUP.md`, not a measured performance pass. `_location` is now a
+  prototype accessor whose setter syncs two plain
   number fields; all hot core location reads (`location[0]`/`location[3]` in
   trivia/serialize/list/sequence/call/selector paths, `canReuseAsLeaf`,
   `canReuseLeaf`, the Parséman `span` getter, base `toString`) read the fields
@@ -2805,12 +2823,12 @@ with `--no-verify` after the explicit gates pass.
   key's direct declaration bucket/cache entries; no render/stringification path
   changed. Review-flagged loops/maps/arrays are the existing per-key cache
   invalidation walk and focused cache-key snapshots. Detailed status remains in
-  `BINDING-LOOKUP-REMAINING.md`.
+  `CORE-CLEANUP.md`.
 - Merge note: latest `origin/dev` also carries serialization work for
   `Operation`, `QueryCondition`, and scalar token-family at-rule header/leaf
   syntax readback cuts, plus Ruleset/Ampersand serialization cuts from the
   latest merge and the child `Rules` wrapper preview-transport cut; keep that
-  progress in `NODE-REWRITE-TRACKER.md` while this worktree continues
+  progress in `CORE-CLEANUP.md` while this worktree continues
   serialization. Review-flagged `CountingWriter`
   constructions, detached `OutputWriter` header string boundaries, custom
   syntax subclass constructions, scalar `any(...)` fixtures, explicit

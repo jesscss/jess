@@ -1135,13 +1135,13 @@ function lookupRulesReferenceTarget(args: {
   const first = performRulesReferenceLookup(args.resolvedTarget, args.lookupContext);
   if (isThenable(first)) {
     return Promise.resolve(first).then((resolved) => {
-      if (isRulesLookupResult(resolved) || !args.context.leakyRules) {
+      if (isRulesLookupResult(resolved) || !args.context.options.leakyScope) {
         return resolved;
       }
       return lookupLeakyRulesReferenceTargets(args);
     });
   }
-  if (first !== undefined || !args.context.leakyRules) {
+  if (first !== undefined || !args.context.options.leakyScope) {
     return first;
   }
   return lookupLeakyRulesReferenceTargets(args);
@@ -1332,7 +1332,7 @@ function rulesLookupHandleCommonEligible(
     && !env.semanticFilter
     && !env.hasTarget
     && !env.isInterpolatedVariable
-    && context.leakyRules !== true
+    && context.options.leakyScope !== true
     && context.searchScope.size === 0
   );
 }
@@ -1648,7 +1648,7 @@ function readSourceStaticRulesLookupHandleBase(
     || handle.terminalMixinOnly !== (referenceNode.options.mixinRulesetCallHasArgs === true)
     || env.hasTarget
     || env.semanticFilter
-    || env.context.leakyRules === true
+    || env.context.options.leakyScope === true
     || env.context.searchScope.size !== 0
     || env.readMode !== undefined
     || env.isInterpolatedVariable
@@ -2500,8 +2500,7 @@ function resolveAmbiguousReferenceTarget(args: {
     const refNode = new Reference(
       targetKey,
       { type: 'mixin-ruleset' },
-      undefined,
-      referenceNode.sourceRoot?._treeContext
+      undefined
     );
     referenceNode.adopt(refNode);
     return refNode.eval(context);
@@ -2909,7 +2908,7 @@ function finalizeScopeFrameVariableBindingResult(
   const shouldUseDefinitionRulesContext = isNode(bindingSource, N.VarDeclaration) && (
     bindingSource.options?.paramVar
     || (
-      context.leakyRules !== true
+      context.options.leakyScope !== true
       && isNode(bindingValue, N.Rules | N.Collection)
     )
     || ownerFrameRetainsParams
@@ -3691,14 +3690,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
   constructor(
     value: ReferenceValue | string,
     options?: ReferenceOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     if (typeof value === 'string') {
       value = { key: value };
     }
     super(value, options, location);
-    this._treeContext = treeContext;
     this.key = value.key;
     if (value.target !== undefined) {
       (this as { target?: ReferenceValue['target'] }).target = value.target;

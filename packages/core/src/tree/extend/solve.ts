@@ -45,7 +45,7 @@
 import type { Rules } from '../rules.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
-import { extendByIndexOwn, UNSUPPORTED, type UnsupportedResult } from './extend-index.js';
+import { extendByIndexOwn, findRejectTokens, subjectPresentTokens, UNSUPPORTED, type UnsupportedResult } from './extend-index.js';
 import type { ExtendPlan, PlanInstruction, TargetBucket } from './plan.js';
 
 /**
@@ -153,11 +153,35 @@ function solveSubject(
     changed = false;
     rounds++;
     const branchValue = String(current.valueOf());
+    // CHEAP SOUND PRE-REJECT: a plain-token find can only match a subject that textually carries
+    // all its tokens. Computing the subject's present-token set ONCE per branch value lets the
+    // inner loop skip the (dominant) majority of fans whose target token is absent — without
+    // paying the full matcher's per-fan selector re-parse. `undefined` (non-plain subject) disables
+    // the filter (always run the matcher), preserving byte-identical output. Attacks the O(subjects²)
+    // fire explosion that the coarse root-scope reachability leaves in a flat document.
+    const subjectTokens = subjectPresentTokens(current);
     for (const bucket of reachableBuckets) {
       for (const fan of bucket.fans) {
         const key = fireKey(branchValue, fan);
         if (fired.has(key)) {
           continue;
+        }
+        if (subjectTokens !== undefined) {
+          const need = findRejectTokens(fan.target);
+          if (need !== undefined) {
+            let missing = false;
+            for (const t of need) {
+              if (!subjectTokens.has(t)) {
+                missing = true;
+                break;
+              }
+            }
+            if (missing) {
+              // Definitely NOT_FOUND in the current value. Leave UNFIRED (like the matcher's
+              // NOT_FOUND) so a later chained change re-opens it — the transitive-closure re-enqueue.
+              continue;
+            }
+          }
         }
         const result: Selector | Selector[] | 'NOT_FOUND' | UnsupportedResult =
           extendByIndexOwn(current, fan.target, fan.extendWith, fan.partial);

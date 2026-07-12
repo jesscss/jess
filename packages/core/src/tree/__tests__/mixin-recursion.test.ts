@@ -64,7 +64,7 @@ async function expectRejects<T>(
 describe('Mixin Recursion Detection', () => {
   beforeEach(() => {
     context = new Context({
-      leakyRules: true,
+      leakyScope: true,
       output: { collapseNesting: true }
     });
     context.depth = 2;

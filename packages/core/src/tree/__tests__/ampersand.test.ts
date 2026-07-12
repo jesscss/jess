@@ -554,6 +554,30 @@ describe('Ampersand', () => {
     expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
   });
 
+  it('rejects a merge template glued onto a single comma-value parent (interpolated list)', async () => {
+    // The parent is ONE BasicSelector whose text carries commas — the shape an
+    // interpolated `@{list}` = `~'a, b'` produces (a genuine multi-selector parent
+    // arrives as a SelectorList and DOES distribute; see the test above). Less 4.x
+    // split it; Less 5 rejects it as an invalid merge template.
+    const node = rules([
+      ruleset({
+        selector: el('apple, satsuma, banana, pear'),
+        rules: [
+          ruleset({
+            selector: sel([amp('.fruit-quoted-&')]),
+            rules: [decl({ name: 'content', value: any('"Quoted"') })]
+          })
+        ]
+      })
+    ]);
+    context = new Context({ output: { collapseNesting: true } });
+    await expect(async () => await node.eval(context))
+      .rejects
+      .toThrow('Invalid ampersand merge template');
+    // …and it's recorded on context so the compiler surfaces it past selector prep.
+    expect(context.errors.some(e => e.code === 'selector/invalid-ampersand-merge')).toBe(true);
+  });
+
   it('derives complex selector-list merge templates with hoist and selector metadata', async () => {
     const sourceSelector = sellist([
       sel([el('.one'), co('>'), el('.child')]),

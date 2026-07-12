@@ -1,6 +1,6 @@
 import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
 import { color, dimension, num, op } from '../index.js';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { type Operator } from '../util/calculate.js';
 import { OutputWriter } from '../util/print.js';
@@ -54,15 +54,6 @@ describe('Dimension', () => {
       let rule = num(10);
       expect(rule.number).toBe(10);
       expect(rule.toString()).toBe('10');
-    });
-
-    it('preserves parser tree context on numeric constructors', () => {
-      const treeContext = new TreeContext();
-      const sized = dimension([10, 'px'], undefined, undefined, treeContext);
-      const unitless = num(10, undefined, undefined, treeContext);
-
-      expect(sized._treeContext).toBe(treeContext);
-      expect(unitless._treeContext).toBe(treeContext);
     });
 
     it('renders dimension syntax through toTrimmedString()', () => {
@@ -230,7 +221,7 @@ describe('Dimension', () => {
     it('should cancel units in strict mode', async () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'px']);
-      context.opts.unitMode = 'strict';
+      context.setOption('unitMode', 'strict');
       await expect(renderOperate(left, right, '/', context)).resolves.toBe('5');
     });
   });
@@ -258,7 +249,7 @@ describe('Dimension', () => {
 
   describe('strict mode', () => {
     beforeEach(() => {
-      context.opts.unitMode = 'strict';
+      context.setOption('unitMode', 'strict');
     });
     it('should throw when adding incompatible units', () => {
       let left = dimension([10, 'px']);
@@ -289,7 +280,7 @@ describe('Dimension', () => {
 
   describe('preserve mode', () => {
     beforeEach(() => {
-      context.opts.unitMode = 'preserve';
+      context.setOption('unitMode', 'preserve');
     });
     // In preserve mode, `operate()` does NOT fuse operands into a fabricated
     // compound-unit Dimension. It throws TypeError so the caller (Operation)

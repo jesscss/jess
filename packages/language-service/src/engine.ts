@@ -1,6 +1,6 @@
-import { CssParserChevrotain as CssParser } from '@jesscss/css-parser';
-import { Parser as LessParser } from '@jesscss/less-parser';
-import { Parser as ScssParser } from '@jesscss/scss-parser';
+import { CssParserChevrotain as CssParser } from '@jesscss/css-parser/jess';
+import { Parser as LessParser } from '@jesscss/less-parser/jess';
+import { Parser as ScssParser } from '@jesscss/scss-parser/jess';
 import type { IParseResult, Rules, Node } from '@jesscss/core';
 import { getErrorFromParser, toDiagnostic, isNode } from '@jesscss/core';
 import { createRequire } from 'node:module';
@@ -350,6 +350,12 @@ type ChevTok = {
   endColumn?: number;
   tokenType?: { name?: string; CATEGORIES?: Array<{ name?: string }> };
 };
+
+function isChevTok(value: unknown): value is ChevTok {
+  return typeof value === 'object'
+    && value !== null
+    && typeof nodeField(value, 'image') === 'string';
+}
 
 function tokenTypeFromChevrotain(tok: ChevTok, lang: JessLang): SemanticTokenType | null {
   const name = String(tok?.tokenType?.name ?? '');
@@ -2183,7 +2189,7 @@ export function createEngine(): JessLanguageServiceEngine {
       const pending: Pending[] = [];
 
       // Chevrotain uses 1-based line/column.
-      const tokens = parse.lexerResult.tokens as ChevTok[];
+      const tokens = parse.lexerResult.tokens.filter(isChevTok);
       const index = tracked.index;
       const varRefTokens = new WeakSet<object>();
 

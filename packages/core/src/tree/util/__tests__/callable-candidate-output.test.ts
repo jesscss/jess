@@ -35,7 +35,7 @@ describe('callable candidate output helper', () => {
   });
 
   it('evaluates candidate rules and attaches mixin output placement state', async () => {
-    const context = new Context({ leakyRules: false });
+    const context = new Context({ leakyScope: false });
     const sourceRules = rules([decl({ name: 'color', value: any('red') })]);
     const candidate = mixin({
       name: '.demo',

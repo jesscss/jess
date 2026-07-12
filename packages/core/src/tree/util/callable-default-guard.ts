@@ -227,7 +227,8 @@ export async function executeCallableDefaultCandidates<
         candidateIndex: candidate.candidateIndex,
         rules: candidate.rules,
         sourceRules: candidate.sourceRules,
-        restrictMixinOutputLookup
+        restrictMixinOutputLookup,
+        allowSpineFold: false
       });
       if (newRules) {
         outputs.push(newRules);

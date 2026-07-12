@@ -101,8 +101,7 @@ export class Color extends Node<ColorData, ColorOptions> {
   constructor(
     value: ColorData | string | ColorValues,
     options?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[1],
-    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2],
-    treeContext?: Context['treeContext']
+    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2]
   ) {
     let colorData: ColorData;
     let colorOptions: ColorOptions = options ?? {};
@@ -151,7 +150,6 @@ export class Color extends Node<ColorData, ColorOptions> {
     // Keep value focused on channels/node; rendering intent is held in options.
     colorData.format = undefined;
     super(colorData, colorOptions, location);
-    this._treeContext = treeContext;
     this.node = colorData.node;
     this._rgbChannels = colorData.rgb;
     this._hslChannels = colorData.hsl;
@@ -642,7 +640,7 @@ export class Color extends Node<ColorData, ColorOptions> {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const bVal = isNode(b, N.Dimension) ? b.number : (b as unknown as { number: number }).number;
       const bUnit = isNode(b, N.Dimension) ? b.unit : '';
-      const unitMode = context?.opts?.unitMode ?? 'preserve';
+      const unitMode = context?.options.unitMode ?? 'preserve';
       const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
       if (bUnit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${b}" to a color`);

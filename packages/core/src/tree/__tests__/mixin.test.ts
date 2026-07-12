@@ -104,7 +104,7 @@ describe('Mixin', () => {
   beforeEach(() => {
     context = new Context({
       /** This is the default Less behavior */
-      leakyRules: true
+      leakyScope: true
     });
     context.depth = 2;
   });
@@ -6358,7 +6358,7 @@ describe('Mixin', () => {
     });
 
     it('restores caller rulesContext when static guard evaluation throws', async () => {
-      context = new Context({ leakyRules: false });
+      context = new Context({ leakyScope: false });
       const savedRulesContext = rules([]);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const guard = bool(true) as unknown as Condition;
@@ -6389,7 +6389,7 @@ describe('Mixin', () => {
     });
 
     it('evaluates dynamic guards from source without stamping guard state', async () => {
-      context = new Context({ leakyRules: false });
+      context = new Context({ leakyScope: false });
       const guard = condition([
         expr(ref({ key: 'mode' }, { type: 'variable' })),
         '=',
@@ -6434,7 +6434,7 @@ describe('Mixin', () => {
       };
 
       try {
-        context = new Context({ leakyRules: false });
+        context = new Context({ leakyScope: false });
         const root = rules([
           mixin({
             name: '.guarded',
@@ -6466,7 +6466,7 @@ describe('Mixin', () => {
     });
 
     it('evaluates dynamic mixin guards against caller scope while params still resolve from live slots', async () => {
-      context = new Context({ leakyRules: false });
+      context = new Context({ leakyScope: false });
       const mixinDef = mixin({
         name: '.theme-mixin',
         params: list([
@@ -6523,7 +6523,7 @@ describe('Mixin', () => {
     });
 
     it('evaluates no-param mixin guards against caller scope', async () => {
-      context = new Context({ leakyRules: false });
+      context = new Context({ leakyScope: false });
       const mixinDef = mixin({
         name: '.scope-guarded',
         guard: condition([
@@ -6563,7 +6563,7 @@ describe('Mixin', () => {
     });
 
     it('does not let non-leaky no-param mixin bodies read caller scope after guard selection', async () => {
-      context = new Context({ leakyRules: false });
+      context = new Context({ leakyScope: false });
       const mixinDef = mixin({
         name: '.scope-guarded-body',
         guard: condition([
@@ -6596,7 +6596,7 @@ describe('Mixin', () => {
     });
 
     it('keeps no-param guard lookup isolated from mixin body vars with the same name', async () => {
-      context = new Context({ leakyRules: false });
+      context = new Context({ leakyScope: false });
       const mixinDef = mixin({
         name: '.scope-guarded-body-shadow',
         guard: condition([
@@ -6637,7 +6637,7 @@ describe('Mixin', () => {
     });
 
     it('evaluates default guards against caller scope without leaking param bindings into sibling output', async () => {
-      context = new Context({ leakyRules: false });
+      context = new Context({ leakyScope: false });
       const darkDefault = mixin({
         name: '.guarded-default',
         params: list([
@@ -6732,7 +6732,7 @@ describe('Mixin', () => {
       };
 
       try {
-        context = new Context({ leakyRules: false });
+        context = new Context({ leakyScope: false });
         const root = rules([
           mixin({
             name: '.guarded-default',
@@ -6768,7 +6768,7 @@ describe('Mixin', () => {
     });
 
     it('evaluates no-param default guards against caller scope', async () => {
-      context = new Context({ leakyRules: false });
+      context = new Context({ leakyScope: false });
       const darkDefault = mixin({
         name: '.scope-default',
         guard: condition([
@@ -7194,7 +7194,7 @@ describe('Mixin', () => {
 
     it('keeps pseudo selector args isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const dynamicPseudoArg = interpolated({
@@ -7251,7 +7251,7 @@ describe('Mixin', () => {
 
     it('keeps calc-wrapped operation operands isolated across repeated mixin calls', async () => {
       context = new Context({
-        leakyRules: true,
+        leakyScope: true,
         unitMode: 'preserve'
       });
 
@@ -7301,7 +7301,7 @@ describe('Mixin', () => {
 
     it('keeps interpolated selector replacements isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const dynamicClass = interpolated({
@@ -7353,7 +7353,7 @@ describe('Mixin', () => {
 
     it('keeps compound selector components isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const dynamicClass = interpolated({
@@ -7408,7 +7408,7 @@ describe('Mixin', () => {
 
     it('keeps complex selector components isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const dynamicClass = interpolated({
@@ -7464,7 +7464,7 @@ describe('Mixin', () => {
 
     it('keeps selector-list items isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const dynamicClass = interpolated({
@@ -7526,7 +7526,7 @@ describe('Mixin', () => {
 
     it('keeps paren values isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const dynamicValue = interpolated({
@@ -7576,7 +7576,7 @@ describe('Mixin', () => {
 
     it('keeps quoted values isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const node = rules([
@@ -7622,7 +7622,7 @@ describe('Mixin', () => {
 
     it('keeps sequence values isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const node = rules([
@@ -7667,7 +7667,7 @@ describe('Mixin', () => {
 
     it('keeps declaration values isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const node = rules([
@@ -7712,7 +7712,7 @@ describe('Mixin', () => {
 
     it('keeps interpolated declaration names isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const dynamicName = interpolated({
@@ -7792,7 +7792,7 @@ describe('Mixin', () => {
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const dynamicMixinName = interpolated({
@@ -7849,7 +7849,7 @@ describe('Mixin', () => {
 
     it('keeps ampersand append selectors isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const node = rules([
@@ -7893,7 +7893,7 @@ describe('Mixin', () => {
 
     it('keeps bare ampersand selectors isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: true },
-        leakyRules: true
+        leakyScope: true
       });
 
       const node = rules([
@@ -7937,7 +7937,7 @@ describe('Mixin', () => {
 
     it('keeps at-rule preludes isolated across repeated mixin calls', async () => {
       context = new Context({ output: { collapseNesting: false },
-        leakyRules: true
+        leakyScope: true
       });
 
       const node = rules([

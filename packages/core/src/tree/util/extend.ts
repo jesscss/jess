@@ -148,14 +148,6 @@ import {
 import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
 
 const { isArray } = Array;
-let extendOrderMap: WeakMap<Selector, number> | null = null;
-/** Fallback for clones: value inside :is() may be clones, so WeakMap lookup fails. Key by valueOf() string. */
-let extendOrderByValueOf: Map<string, number> | null = null;
-
-export function setExtendOrderMap(map: WeakMap<Selector, number> | null, orderByValueOf?: Map<string, number> | null): void {
-  extendOrderMap = map;
-  extendOrderByValueOf = orderByValueOf ?? null;
-}
 
 /** Selector surface accepted by the extend matcher (node or parser-delivered list array). */
 type ExtendSelectorSurface = Selector | SelectorListItem[];
@@ -229,10 +221,6 @@ function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType)
  * match the location-based extend implementation.
  */
 function canUseWalkAndConsumeForExtend(target: Selector, find: Selector): boolean {
-  // Walk-and-consume doesn't handle extendOrderMap (dead code, but guard anyway)
-  if (extendOrderMap) {
-    return false;
-  }
   // ComplexSelector find is supported by the walk for diagnostics (wouldExtendChange)
   // but not yet for the actual extend application — the downstream createProcessedSelector
   // chain produces subtly different output. Restrict to Simple/Compound find for now.
@@ -838,49 +826,9 @@ export function createProcessedSelector(value: Selector | Selector[], root?: boo
           flattened.push(sel);
         }
       }
-      // Preserve document order when merging multiple :is() from different extends (e.g. :is(.clearfix,.foo):after + :is(.clearfix,.bar):after → :is(.clearfix,.foo,.bar):after). Only sort when at least two items have document order so we don't reorder single :is() unwraps (e.g. .replace, .c).
-      if (extendOrderMap && flattened.length >= 2 && extendOrderByValueOf) {
-        const orderMap = extendOrderMap;
-        const orderByValue = extendOrderByValueOf;
-        const NO_ORDER = 999999;
-        const orderFor = (s: Selector): number => {
-          const fromMap = orderMap.get(s);
-          if (fromMap !== undefined) {
-            return fromMap;
-          }
-          const key = String(typeof s.valueOf === 'function' ? s.valueOf() : '').trim();
-          let order = orderByValue.get(key);
-          if (order === undefined && key) {
-            const lastPart = key.split(/\s+/).pop();
-            if (lastPart) {
-              order = orderByValue.get(lastPart);
-            }
-          }
-          return order ?? NO_ORDER;
-        };
-        // Pre-compute order keys once — calling orderFor inside the comparator causes
-        // repeated valueOf()/split() on every comparison step (O(N log N) × valueOf cost).
-        const withKeys = flattened.map(s => ({ s, o: orderFor(s) }));
-        const hasOrder = withKeys.filter(x => x.o !== NO_ORDER);
-        if (hasOrder.length >= 2) {
-          withKeys.sort((a, b) => {
-            if (a.o === NO_ORDER && b.o === NO_ORDER) {
-              return 0;
-            }
-            if (a.o === NO_ORDER) {
-              return -1;
-            }
-            if (b.o === NO_ORDER) {
-              return 1;
-            }
-            return a.o - b.o;
-          });
-          flattened.length = 0;
-          for (const x of withKeys) {
-            flattened.push(x.s);
-          }
-        }
-      }
+      // Extend is list-append (target-first, no sort) — merged `:is()` items keep their feed
+      // order (design §4.3). The former document-order re-sort here was dead (`extendOrderMap`
+      // has no callers, always null) and is removed with the OQ-D scaffolding.
       push(sameArrayItems(flattened, el.value) ? el : SelectorList.create(flattened).inherit(el));
     } else if (isNode(el, N.CompoundSelector)) {
       // CRITICAL: Compound value can have duplicate value (e.g., .v.w.v)
@@ -1189,112 +1137,9 @@ function createExtendedSelectorList(
     extractedSelectors.push(...extractSelectorsFromIs(selector));
   }
 
-  if (extendOrderMap && extractedSelectors.length > 1) {
-    const orderMap = extendOrderMap;
-    const orderByValue = extendOrderByValueOf;
-    // Preserve ruleset-owner-first: when inheritFrom is the ruleset's selector (single-selector full match),
-    // keep it first so we get [.e, .d], [.z, .x, .y] etc. Otherwise extendOrderMap would sort all value
-    // by extend index and put .d before .e (wrong), because .e is also an extend source elsewhere.
-    const inheritVal = inheritFrom && typeof inheritFrom.valueOf === 'function' ? inheritFrom.valueOf() : undefined;
-    const ownerFirst =
-      inheritVal !== undefined
-      && extractedSelectors.some(s => (s.valueOf?.() ?? '') === inheritVal);
-    if (ownerFirst && inheritVal !== undefined) {
-      const first = extractedSelectors.find(s => (s.valueOf?.() ?? '') === inheritVal)!;
-      const rest = extractedSelectors.filter(s => (s.valueOf?.() ?? '') !== inheritVal);
-      // Wrap/append case: only preserve input order when we're truly appending one selector.
-      // When rest has 2+ items we must sort by document order (e.g. [.clearfix, .bar, .foo] → [.clearfix, .foo, .bar]).
-      const isAppendOne =
-        rest.length === 1
-        && value.length >= 2
-        && (() => {
-          const lastInput = value[value.length - 1];
-          const fromLast = extractSelectorsFromIs(lastInput!);
-          return fromLast.length === 1 && fromLast[0] === rest[rest.length - 1];
-        })();
-      let restSorted: Selector[];
-      if (isAppendOne) {
-        restSorted = rest;
-      } else {
-        const orderFor = (s: Selector): number => {
-          const fromMap = orderMap.get(s);
-          if (fromMap !== undefined) {
-            return fromMap;
-          }
-          const key = String(typeof s.valueOf === 'function' ? s.valueOf() : '').trim();
-          let order = orderByValue?.get(key);
-          if (order === undefined && key && orderByValue) {
-            const lastPart = key.split(/\s+/).pop();
-            if (lastPart) {
-              order = orderByValue.get(lastPart);
-            }
-          }
-          return order ?? 999999;
-        };
-        const NO_ORDER = 999999;
-        const mapped = rest.map((s, i) => ({ selector: s, order: orderFor(s), origIndex: i }));
-        restSorted = mapped
-          .sort((a, b) => {
-            if (a.order === NO_ORDER && b.order === NO_ORDER) {
-              return a.origIndex - b.origIndex;
-            }
-            if (a.order === NO_ORDER) {
-              return -1;
-            }
-            if (b.order === NO_ORDER) {
-              return 1;
-            }
-            return a.order - b.order || a.origIndex - b.origIndex;
-          })
-          .map(x => x.selector);
-      }
-      extractedSelectors.length = 0;
-      extractedSelectors.push(first, ...restSorted);
-    } else {
-      // Only preserve input order when we're truly appending one selector (original + one new).
-      // When we have 3+ items we must sort by document order (e.g. [.clearfix, .bar, .foo] → [.clearfix, .foo, .bar]).
-      const isAppendOneElse =
-        extractedSelectors.length === 2
-        && value.length >= 2
-        && (() => {
-          const lastInput = value[value.length - 1];
-          const fromLast = extractSelectorsFromIs(lastInput!);
-          return fromLast.length === 1 && fromLast[0] === extractedSelectors[extractedSelectors.length - 1];
-        })();
-      if (isAppendOneElse) {
-        // Preserve input order (already doc order from wrap path)
-      } else {
-        const withOrder: Array<{ selector: Selector; order: number }> = [];
-        const withoutOrder: Selector[] = [];
-        const orderForElse = (selector: Selector): number | undefined => {
-          const fromWeak = orderMap.get(selector);
-          if (fromWeak !== undefined) {
-            return fromWeak;
-          }
-          const key = String(typeof selector.valueOf === 'function' ? selector.valueOf() : '').trim();
-          let order = orderByValue?.get(key);
-          if (order === undefined && key && orderByValue) {
-            const lastPart = key.split(/\s+/).pop();
-            if (lastPart) {
-              order = orderByValue.get(lastPart);
-            }
-          }
-          return order;
-        };
-        for (const selector of extractedSelectors) {
-          const order = orderForElse(selector);
-          if (order !== undefined) {
-            withOrder.push({ selector, order });
-          } else {
-            withoutOrder.push(selector);
-          }
-        }
-        withOrder.sort((a, b) => a.order - b.order);
-        extractedSelectors.length = 0;
-        extractedSelectors.push(...withoutOrder, ...withOrder.map(item => item.selector));
-      }
-    }
-  }
+  // The former document-order re-sort of extracted `:is()` selectors here was dead
+  // (`extendOrderMap` has no callers, always null) — removed with the OQ-D scaffolding.
+  // Extend is list-append (target-first, no sort, design 4.3); extraction order is kept.
   // createProcessedSelector may return a single selector if only one item, so ensure it's an array
   const processed = createProcessedSelector(extractedSelectors, true);
   if (typeof processed === 'string') {
@@ -4564,8 +4409,9 @@ function applyExtension(
           undefined
         );
       }
-      // Same rule as everywhere: extend = append extendWith at end of list. Reuse createExtendedSelectorList
-      // so order (extendOrderMap) and flattening apply; then wrap that list in :is().
+      // Same rule as everywhere: extend = append extendWith at end of list (target-first, no
+      // sort — design §4.3). Reuse createExtendedSelectorList so flattening applies; then wrap
+      // that list in :is().
       // Works for both single selector (current → [current, extendWith]) and already-extended :is()
       // (e.g. :is(.clearfix, .foo) + .bar → :is(.clearfix, .foo, .bar)) without branching on :is().
       const wrapExisting = extractSelectorsFromIs(current);

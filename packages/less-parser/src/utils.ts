@@ -20,13 +20,12 @@ export const createInterpolatedReference = (
 ): Reference => {
   const isProperty = prefix === '$';
   const key = isProperty
-    ? new Quoted(varName, { quote: '\'' }, location, context)
+    ? new Quoted(varName, { quote: '\'' }, location)
     : varName;
   return new Reference(
     { key },
     { type: isProperty ? 'index' : 'variable', role: 'ident' },
-    location,
-    context
+    location
   );
 };
 
@@ -46,7 +45,7 @@ export const getInterpolatedNode = (
     replacements.push(createInterpolatedReference(prefix ?? '', varName ?? '', location, context));
   }
 
-  return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
+  return new Interpolated({ source, replacements }, { role: 'ident' }, location);
 };
 
 export const normalizeMixinReferenceKey = (selector: Selector): { key: string | string[]; rawKey: Selector } => {
@@ -129,7 +128,7 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
       replacements.push(ref); // Add to end to maintain order
     }
 
-    return new Interpolated({ source, replacements }, { role: 'ident' }, location, context);
+    return new Interpolated({ source, replacements }, { role: 'ident' }, location);
   }
 
   // If no interpolation found, check for @id-@num variable variables
@@ -152,7 +151,7 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
   const endResult = getInterpolatedOrString(end, location, context);
   if (typeof endResult === 'string') {
     const endKey = type === 'index'
-      ? new Quoted(endResult, { quote: '\'' }, location, context)
+      ? new Quoted(endResult, { quote: '\'' }, location)
       : endResult;
     return new Interpolated({
       source: start + INTERPOLATION_PLACEHOLDER,
@@ -160,8 +159,7 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
         new Reference(
           { key: endKey },
           { type, role: 'ident' },
-          location,
-          context
+          location
         )
       ]
     }, { role: 'ident' });
@@ -174,7 +172,7 @@ export const getInterpolatedOrString = (name: string, location?: any, context?: 
      */
     return new Interpolated({
       source: start + INTERPOLATION_PLACEHOLDER,
-      replacements: [type === 'index' ? new Quoted(endResult, { quote: '\'' }, location, context) : endResult]
+      replacements: [type === 'index' ? new Quoted(endResult, { quote: '\'' }, location) : endResult]
     }, { role: 'ident' });
   }
 };

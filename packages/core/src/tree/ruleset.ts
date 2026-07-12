@@ -674,6 +674,28 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   isHoisted(options: PrintOptions) {
+    // Spine mode (P1 §2, ampersand-append fold): the eval pass sets `hoistToRoot`
+    // on the OUTPUT ruleset node when its resolved selector is hoist-marked
+    // (`_finishRulesetSelectorPrep`: `if (sel.hoistToRoot) node.hoistToRoot = true`,
+    // set by `Ampersand.evalNode`'s append path). The spine has no output node — the
+    // resolved selector lives on the render-local override (`options.spineSelector`).
+    // Read the override's `hoistToRoot` here so an append ruleset (`&-modifier` →
+    // `.a-modifier`) places at ROOT through the KEPT hoist path, exactly like the eval
+    // pass — output-invisible (read from the override, no canonical-node mutation).
+    if (this.hoistToRoot === undefined && options.spineSelectorNode === this) {
+      const resolved = options.spineSelector;
+      if (resolved !== undefined && !(resolved instanceof Nil) && resolved.hoistToRoot === true) {
+        return true;
+      }
+    }
+    // #4a expanded-mode `&`-crossing hoist: a nested subject whose crossing extend contribution
+    // makes its header the full root-composed projection must RELOCATE to root even under
+    // `collapseNesting:false`. `spineExtendHoisted` is the strict crossing subset (installed by
+    // `composeSpineSubjectHeaders`'s expanded-crossing branch), so relocate its block to root the
+    // same way collapse flattens all nesting. A non-crossing nested subject is not in the set.
+    if (this.hoistToRoot === undefined && options.spineExtendHoisted?.has(this)) {
+      return true;
+    }
     return this.hoistToRoot ?? options.collapseNesting ?? false;
   }
 
@@ -825,6 +847,22 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    // Spine mode (P1 §2): render this ruleset by descending its SOURCE body under
+    // the live value-frame — NO eval() call, NO output tree. The container
+    // serializer (`serializeRulesContainer`, kept per §7) composes the header and
+    // collapse from the structural stack; its leaf emission resolves values live
+    // against the frame it pushes (see serialize-helper spineMode). This REPLACES
+    // the eval→serialize two-walk for a ruleset on the wired path.
+    const spinePrintOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    if (spinePrintOptions?.spineMode === true && !(this.selector instanceof Nil)) {
+      // Serialize through the CURRENT print state (carrying spineMode + the live
+      // composedSelectorStack), not a fresh one — the caller already prepared it.
+      const spineOptions = getPrintOptions(spinePrintOptions);
+      const rendered = serializeRulesContainer(this, spineOptions);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderText(bufferOrOptions, rendered)
+        : rendered;
+    }
     const finishNilSelectorBodyRender = (rendered: string): string => {
       if (rendered.endsWith('\n')) {
         return rendered;
@@ -1431,10 +1469,40 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    * children wrap the group in `:is()` (`.a { #x, #y { .z {…} } }` →
    * `:is(.a #x, .a #y) .z`). Returns `undefined` when there is nothing to push.
    */
+  /**
+   * The selector this ruleset's HEADER composes from. In spine mode (P1 §2) an
+   * interpolated selector is resolved (`selector.eval`) against the live frame at
+   * ruleset-enter and handed back via `options.spineSelector` — so the header
+   * (and extend, OQ-A) sees the CONCRETE selector, not the raw `@{…}` form.
+   * Falls through to the authored `this.selector` when there is no override.
+   */
+  private effectiveHeaderSelector(options: FinalPrintOptions) {
+    // P3 §4.3: an extend SUBJECT's header is its composed multi-branch Or-set (authored own
+    // form + document-order-sorted extend contributions), overriding the authored selector.
+    // Checked first — a subject reached via extend takes its final header from the projection.
+    const extendHeader = options.spineExtendHeaders?.get(this);
+    if (extendHeader !== undefined) {
+      return extendHeader;
+    }
+    if (options.spineSelectorNode === this && options.spineSelector !== undefined) {
+      return options.spineSelector;
+    }
+    return this.selector;
+  }
+
   composePushedSelector(options: FinalPrintOptions): Selector | undefined {
-    const sel = this.selector;
+    const sel = this.effectiveHeaderSelector(options);
     if (!sel || sel instanceof Nil) {
       return undefined;
+    }
+    // P3 §4.3 hoist: a HOISTED extend subject's override is ALREADY the full root-composed
+    // projection (`.header .header-nav, .footer .footer-nav`). Emit/push it VERBATIM — skip the
+    // parent-frame compose that would double `.header`. Strictly gated to `spineExtendHoisted`
+    // (a non-hoisted nested subject still composes normally), which is the crossing subset in BOTH
+    // modes — so the verbatim skip is sound regardless of `collapseNesting` (#4a: under expanded the
+    // crossing subject is diverted to the same composed-hoist projection and RELOCATED to root).
+    if (options.spineExtendHoisted?.has(this) && sel instanceof Selector) {
+      return sel;
     }
     if (!Array.isArray(sel)) {
       return this.composeHeaderSelector(
@@ -1566,7 +1634,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   private writeHeaderSelector(options: FinalPrintOptions, withoutComments: boolean): boolean {
-    const { selector } = this;
+    const selector = this.effectiveHeaderSelector(options);
 
     if (typeof selector === 'string') {
       if (options.referenceMode === true) {
@@ -1646,6 +1714,22 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       } finally {
         options.trivia = savedTrivia;
       }
+      return options.writer.position() !== position;
+    }
+    // P3 §4.3 hoist: a HOISTED extend subject's override is ALREADY the full root-composed
+    // projection — emit it VERBATIM (skip `composeHeaderSelector`, which would prepend the
+    // parent frame and double `.header`). Strictly gated to `spineExtendHoisted` (the crossing
+    // subset in BOTH modes) — so the verbatim skip is sound regardless of `collapseNesting` (#4a:
+    // under expanded the crossing subject is diverted to the same composed-hoist projection and
+    // RELOCATED to root). A non-hoisted subject falls through to normal composition below.
+    if (
+      options.spineExtendHoisted?.has(this)
+      && renderSelector instanceof Selector
+      && !(renderSelector instanceof Nil)
+    ) {
+      const position = options.writer.position();
+      renderSelector.writeSyntax(options);
+      options.writer.trimEndSince(position);
       return options.writer.position() !== position;
     }
     const canReferenceFilter = !(renderSelector instanceof Nil)
@@ -1819,7 +1903,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return;
     }
     node.options.rulesVisibility ??= {};
-    if (context.leakyRules) {
+    if (context.options.leakyScope) {
       node.options.rulesVisibility.Mixin = 'public';
       node.options.rulesVisibility.VarDeclaration = 'optional';
     } else {

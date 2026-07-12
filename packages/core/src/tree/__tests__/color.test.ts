@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Dimension, Num, Node } from '../index.js';
 import { Call, List } from '../index.js';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
 
@@ -22,13 +22,6 @@ class CountingWriter extends OutputWriter {
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
-    it('preserves parser tree context on construction', () => {
-      const treeContext = new TreeContext();
-      const color = new Color('#ff0000', undefined, undefined, treeContext);
-
-      expect(color._treeContext).toBe(treeContext);
-    });
-
     it('should create color from RGB values', () => {
       const color = new Color({
         format: ColorFormat.RGB,

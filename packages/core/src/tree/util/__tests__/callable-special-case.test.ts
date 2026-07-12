@@ -12,7 +12,7 @@ import { evaluateCallableSpecialCaseCandidate } from '../callable-special-case.j
 
 describe('callable special-case helper', () => {
   it('handles ruleset candidates through ruleset-placement output', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     context.depth = 2;
 
     const callerRules = rules([]);
@@ -62,7 +62,7 @@ describe('callable special-case helper', () => {
     // A detached ruleset called from a variable has no tree parent, and the
     // caller has no parent either; `callParent` derefed undefined at `.adopt`.
     // The call-site Rules is the placement parent.
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     context.depth = 2;
 
     const callSiteRules = rules([]);
@@ -98,7 +98,7 @@ describe('callable special-case helper', () => {
   });
 
   it('handles anonymous detached callable-rules through unlocked eval output', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     context.depth = 2;
 
     const detachedBody = rules([
@@ -144,7 +144,7 @@ describe('callable special-case helper', () => {
   });
 
   it('uses call-site rules for parentless anonymous callable-rules output', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     context.depth = 2;
 
     const detachedBody = rules([
@@ -174,7 +174,7 @@ describe('callable special-case helper', () => {
   });
 
   it('leaves ordinary mixin candidates on the main eval path', async () => {
-    const context = new Context({ leakyRules: true });
+    const context = new Context({ leakyScope: true });
     const candidate = mixin({
       name: '.button',
       rules: [

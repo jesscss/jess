@@ -21,13 +21,11 @@ export class BasicSelector extends SimpleSelector<string> {
   constructor(
     value: string,
     options?: ConstructorParameters<typeof SimpleSelector<string>>[1],
-    location?: ConstructorParameters<typeof SimpleSelector<string>>[2],
-    treeContext?: Context['treeContext']
+    location?: ConstructorParameters<typeof SimpleSelector<string>>[2]
   ) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
-    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }
 

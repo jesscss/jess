@@ -46,11 +46,19 @@ interface Rendered {
 }
 
 async function render(src: string, collapseNesting = false): Promise<Rendered> {
-  const context = new Context({ output: { collapseNesting }, leakyRules: true });
+  const context = new Context({ output: { collapseNesting }, leakyScope: true });
   const parser = new Parser();
   const { tree } = parser.parse(src);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  const css = String(await renderNodeToString(tree as unknown as RenderBufferNode, context, { context }));
+  // Force the EVAL path (identity `preSerializeRoot` pins off the single-pass spine): this
+  // suite validates PLAN's reproduction of the EVAL-path gather, so it needs the eval-path
+  // `context.extends` + `extendRoots` populated. The spine (P3) folds extend into the pass
+  // and does NOT populate those eval artifacts — a separate, spine-native path.
+  const css = String(await renderNodeToString(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    tree as unknown as RenderBufferNode,
+    context,
+    { context, preSerializeRoot: (r: Rules) => r }
+  ));
   return { css, context };
 }
 

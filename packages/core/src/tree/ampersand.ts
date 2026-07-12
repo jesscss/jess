@@ -14,7 +14,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
-import { WARN, toDiagnostic } from '../jess-error.js';
+import { ERR, WARN, toDiagnostic, JessError } from '../jess-error.js';
 
 export type AmpersandValue = {
   /**
@@ -212,7 +212,23 @@ function selectorListValueForAmpersand(value: SelectorList['value']): Selector[]
   return selectors;
 }
 
-function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
+/**
+ * A single selector whose text carries top-level commas can only have come from
+ * interpolating a comma-list value (`@{list}` = `~'a, b'`) — a genuine multi-
+ * selector parent arrives as a `SelectorList` node, handled above. Less 4.x split
+ * such an interpolated value and glued `&` onto each part; Less 5 rejects it as an
+ * invalid merge template (the golden prints the parent comma-joined, no spaces).
+ * @see tests-error/eval/ampersand-merge-template-invalid.less
+ */
+function assertNotCommaMergeTemplate(selectorText: string, appendValue: string): void {
+  const parts = splitTopLevelCommas(selectorText);
+  if (parts.length > 1) {
+    const parent = parts.map(part => part.trim()).join(',');
+    throw ERR.invalidAmpersandMerge({ meta: { template: appendValue, parent } });
+  }
+}
+
+function getAmpersandTemplateReplacements(baseSelector: Selector, appendValue: string): Selector[] {
   if (
     isNode(baseSelector, N.PseudoSelector)
     && baseSelector.name === ':is'
@@ -226,27 +242,17 @@ function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   }
   const exactBasicText = getExactBasicSelectorText(baseSelector);
   if (exactBasicText !== undefined) {
-    if (!exactBasicText.includes(',')) {
-      return [baseSelector];
+    if (exactBasicText.includes(',')) {
+      assertNotCommaMergeTemplate(exactBasicText, appendValue);
     }
-    const parts = splitTopLevelCommas(exactBasicText);
-    const value = new Array<Selector>(parts.length);
-    for (let i = 0; i < parts.length; i++) {
-      value[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
-    }
-    return value;
+    return [baseSelector];
   }
   if (isNode(baseSelector, N.SimpleSelector)) {
     const selectorText = baseSelector.toTrimmedString();
-    if (!selectorText.includes(',')) {
-      return [baseSelector];
+    if (selectorText.includes(',')) {
+      assertNotCommaMergeTemplate(selectorText, appendValue);
     }
-    const parts = splitTopLevelCommas(selectorText);
-    const value = new Array<Selector>(parts.length);
-    for (let i = 0; i < parts.length; i++) {
-      value[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
-    }
-    return value;
+    return [baseSelector];
   }
   return [baseSelector];
 }
@@ -259,7 +265,7 @@ function mergeAmpersandTemplateSelector(
   if (appendValue === undefined) {
     return baseSelector;
   }
-  const replacements = getAmpersandTemplateReplacements(baseSelector);
+  const replacements = getAmpersandTemplateReplacements(baseSelector, appendValue);
   const merged = new Array<Selector>(replacements.length);
   for (let i = 0; i < replacements.length; i++) {
     const item = replacements[i]!;
@@ -475,8 +481,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   constructor(
     value?: AmpersandValue | string,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     let finalValue: AmpersandValue = {};
     if (typeof value === 'string') {
@@ -493,7 +498,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       }
     }
     this.appendValue = finalValue.appendValue;
-    this._treeContext = treeContext;
 
     // Set the F_AMPERSAND flag so it bubbles up to parent value
     this.addFlag(F_AMPERSAND);
@@ -592,9 +596,17 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
     if (appendValue !== undefined || this.hoistToRoot) {
-      // Use the stored selector if available, otherwise fall back to frame selector
+      // Use the stored selector if available, otherwise fall back to frame selector.
+      // In spine mode the parent frame's `frame.selector` is the RAW authored selector
+      // (a nested `&-b`), so prefer the spine-resolved concrete selector for the frame
+      // (`.a-b`) when present — nested append (`.a { &-b { &-c {…} } }` → `.a-b-c`)
+      // must append against the RESOLVED parent, not the raw `&-b` (which would throw
+      // `Cannot append`). The eval pass gets this for free by pushing the resolved
+      // OUTPUT node; the spine uses the `spineResolvedFrameSelector` side-channel to
+      // avoid mutating the shared canonical source node.
       let frame = atIndex(context.rulesetFrames, -1);
-      let selectorRaw = storedSelector ?? frame?.selector;
+      const resolvedFrameSelector = frame ? context.spineResolvedFrameSelector?.get(frame) : undefined;
+      let selectorRaw = storedSelector ?? resolvedFrameSelector ?? frame?.selector;
       if (!selectorRaw) {
         return createPublicNil();
       }
@@ -602,10 +614,24 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
         if (placement.templateMerge) {
-          if (isNode(selector, N.SelectorList)) {
-            selector = mergeAmpersandTemplateSelectorList(selector, placement);
-          } else {
-            selector = mergeAmpersandTemplateSelector(selector, placement);
+          try {
+            if (isNode(selector, N.SelectorList)) {
+              selector = mergeAmpersandTemplateSelectorList(selector, placement);
+            } else {
+              selector = mergeAmpersandTemplateSelector(selector, placement);
+            }
+          } catch (error) {
+            // A hard merge error (e.g. an invalid comma-list parent) fires during
+            // selector-identity prep, whose catch treats throws as "defer to eval".
+            // Record it on context so renderToResult surfaces it, then rethrow so
+            // direct-eval callers still see the throw.
+            if (error instanceof JessError) {
+              const diagnostic = toDiagnostic(error);
+              if ('errors' in diagnostic) {
+                context.errors.push(diagnostic);
+              }
+            }
+            throw error;
           }
         } else {
           const result = appendSelector(selector, appendValue);

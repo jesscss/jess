@@ -76,18 +76,8 @@ describe('corpus/extend', () => {
       )`);
   });
 
-  it('`$extend *[.notice];` → Extend whose target is a SelectorCapture', () => {
-    expectAstContains('.danger { $extend *[.notice]; }', `
-      (Extend
-        target:
-          (SelectorCapture
-            selector:
-              (BasicSelector '.notice')
-          )
-      )`);
-  });
-
-  it('capture-target extend round-trips to `$extend *[.notice];`', () => {
-    expect(extendSyntax('$extend *[.notice];')).toBe('$extend *[.notice];');
-  });
+  // NOTE: `$extend *[.notice]` is NOT valid — the extend target position accepts a
+  // selector directly (`$extend .notice`), so the `*[…]` value-capture form is not an
+  // extend target. (SelectorCapture remains valid in VALUE position — see
+  // 10-selector-capture.test.ts.)
 });

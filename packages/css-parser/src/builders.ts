@@ -8,7 +8,7 @@
  */
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 
-import type { Span } from 'parseman';
+import { triviaEntries, type FieldMap, type Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
 import {
   fieldSpansOf,
@@ -96,6 +96,8 @@ const SELECTOR_PSEUDOS = new Set([
 
 type JessNode = Node<any, any>;
 type Child = JessNode | CSTLeaf | CSTError;
+type FieldValue = string | undefined;
+const TRIVIA_WHITESPACE_KIND = 0;
 
 // ---------------------------------------------------------------------------
 // AST helpers
@@ -114,6 +116,21 @@ function leafText(children: ReadonlyArray<Child>): string {
     .filter((c): c is CSTLeaf => c._tag === 'leaf')
     .map(l => l.value)
     .join('');
+}
+
+function fieldString(fields: FieldMap | undefined, name: string): FieldValue {
+  const value = fields?.[name];
+  const capture = Array.isArray(value) ? value[0] : value;
+  return typeof capture?.value === 'string' ? capture.value : undefined;
+}
+
+function hasWhitespaceTriviaAt(triviaLog: readonly number[], rawIndex: number): boolean {
+  for (let i = 0; i + 3 < triviaLog.length; i += 4) {
+    if (triviaLog[i + 2] === rawIndex && triviaLog[i + 3] === TRIVIA_WHITESPACE_KIND) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export type Component = string | JessNode;
@@ -291,7 +308,7 @@ export function fieldIndexOf(node: JessNode, key: string): { index: number; coun
  * log = [runStart_0, runEnd_0, ...] — two numbers per run.
  * The before/after Maps are built lazily on first lookup.
  */
-export function buildLazyTriviaMap(log: number[], src: string): TriviaMap {
+export function buildLazyTriviaMap(log: number[], src: string, labels?: readonly string[]): TriviaMap {
   let before: Map<number, Trivia> | undefined;
   let after: Map<number, Trivia> | undefined;
   let sortedComments: readonly Trivia[] | undefined;
@@ -299,10 +316,17 @@ export function buildLazyTriviaMap(log: number[], src: string): TriviaMap {
   const build = () => {
     before = new Map<number, Trivia>();
     after = new Map<number, Trivia>();
-    for (let i = 0; i < log.length; i += 2) {
-      const run = makeTrivia(src, log[i]!, log[i + 1]!);
-      after.set(log[i]!, run);
-      before.set(log[i + 1]!, run);
+    const entries = triviaEntries(log, labels);
+    for (let i = 0; i < entries.length; i++) {
+      const start = entries.start(i);
+      let end = entries.end(i);
+      while (i + 1 < entries.length && entries.start(i + 1) === end) {
+        i++;
+        end = entries.end(i);
+      }
+      const run = makeTrivia(src, start, end);
+      after.set(start, run);
+      before.set(end, run);
     }
   };
 
@@ -363,28 +387,6 @@ export type CssParseResult<T extends Node = Node> = {
 // Helpers used by builders
 // ---------------------------------------------------------------------------
 
-/** True if [start, end) in src contains whitespace outside a block comment. */
-// AUDIT - Massive code smell. Either Parseman has a big API gap or we're doing something dumb.
-function hasWhitespaceOutsideComments(src: string, start: number, end: number): boolean {
-  let i = start;
-  while (i < end) {
-    const c = src.charCodeAt(i);
-    if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12) {
-      return true;
-    }
-    if (c === 47 && i + 1 < end && src.charCodeAt(i + 1) === 42) {
-      i += 2;
-      while (i + 1 < end && !(src.charCodeAt(i) === 42 && src.charCodeAt(i + 1) === 47)) {
-        i++;
-      }
-      i += 2;
-      continue;
-    }
-    i++;
-  }
-  return false;
-}
-
 // ---------------------------------------------------------------------------
 // CssParser — builder methods only (no grammar rules, no Parser base).
 // Subclassed by BuilderHost in grammar-fn.ts to provide an instance for mk().
@@ -393,6 +395,15 @@ function hasWhitespaceOutsideComments(src: string, start: number, end: number): 
 export class CssParser {
   protected _source = '';
   protected _strictEOF = false;
+  /**
+   * Provided by the functional host (see `commentOnlyTriviaForNode` on
+   * FunctionalParseHost): true for node types whose captured `triviaLog` is
+   * comment-only, so the comment lift can read it directly instead of re-scanning
+   * source. Absent (css/less/scss that haven't opted in) → re-scan. This is the
+   * signal that the `triviaLog` handed to `_buildStylesheet`/`_buildRuleset` is a
+   * comment-only log rather than empty/uncaptured.
+   */
+  commentOnlyTriviaForNode?(type: string): boolean;
   protected _warnings: Array<{ message: string; deprecation?: string }> = [];
   protected _errors: Array<{ message: string; offset?: number }> = [];
   /**
@@ -424,25 +435,30 @@ export class CssParser {
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
     state: unknown,
-    rawChildren: ReadonlyArray<{ _tag: string }>
+    rawChildren: ReadonlyArray<{ _tag: string }>,
+    fields?: FieldMap,
+    triviaLog: readonly number[] = []
   ) {
-    return this._dispatchBuild(type, span, children, rawChildren);
+    return this._dispatchBuild(type, span, children, rawChildren, fields, triviaLog);
   }
 
   protected _dispatchBuild(
     type: string,
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
-    rawChildren: ReadonlyArray<{ _tag: string }>
+    rawChildren: ReadonlyArray<{ _tag: string }>,
+    fields?: FieldMap,
+    triviaLog: readonly number[] = []
   ) {
     const loc = spanToLocation(span);
     switch (type) {
-      case 'Stylesheet':        return this._buildStylesheet(children, loc);
-      case 'Ruleset':           return this._buildRuleset(children, rawChildren, loc) as unknown as JessNode;
+      case 'Stylesheet':        return this._buildStylesheet(children, loc, triviaLog);
+      case 'Ruleset':           return this._buildRuleset(children, rawChildren, loc, triviaLog) as unknown as JessNode;
       case 'SelectorList':      return this._buildSelectorList(rawChildren, loc);
       case 'ComplexSelector':   return this._buildComplexSelector(rawChildren, loc);
-      case 'CompoundSelector':  return this._buildCompoundSelector(rawChildren, span);
-      case 'AttributeSelector': return this._buildAttributeSelector(children, loc);
+      case 'CompoundSelector':  return this._buildCompoundSelector(rawChildren, span, triviaLog);
+      case 'BasicSelector':     return this._makeBasicSelector(leafText(children), loc);
+      case 'AttributeSelector': return this._buildAttributeSelector(children, loc, fields);
       case 'PseudoSelector':    return this._buildPseudoSelector(children, loc);
       case 'Declaration':       return this._buildDeclaration(rawChildren, loc);
       case 'CustomDeclaration': return this._buildCustomDeclaration(children, loc);
@@ -501,10 +517,41 @@ export class CssParser {
     bodyStart: number,
     bodyEnd: number,
     loc: LocationInfo,
-    atRoot = false
+    atRoot = false,
+    commentLog?: readonly number[]
   ): JessNode[] {
     const src = this._source;
     const out: JessNode[] = [];
+    // `commentLog` OPTS IN to reading standalone comments from parseman's
+    // comment-only per-node trivia log (flat [start, end, insertIdx, kind] × N, in
+    // source order) instead of re-scanning `src` char-by-char. When undefined (the
+    // default — less/scss and any caller that hasn't enabled comment-only capture)
+    // every gap uses the source scan, exactly as before. The one gap the log can't
+    // cover is the TRAILING gap after the last node: run() consumes trailing trivia
+    // with a throwaway ctx, so it never reaches the log — that gap always re-scans.
+    const useLog = commentLog !== undefined;
+    const STRIDE = 4;
+    let ci = 0;
+    const emitGap = (
+      gapStart: number,
+      gapEnd: number,
+      followingStart: number | undefined,
+      followingIsNestedRule: boolean
+    ) => {
+      if (!useLog) {
+        out.push(...this._scanStandaloneComments(src, gapStart, gapEnd, followingStart, followingIsNestedRule, loc));
+        return;
+      }
+      while (ci < commentLog!.length && commentLog![ci]! < gapStart) {
+        ci += STRIDE;
+      }
+      while (ci < commentLog!.length && commentLog![ci]! < gapEnd) {
+        const start = commentLog![ci]!;
+        const end = commentLog![ci + 1]!;
+        ci += STRIDE;
+        this._maybeEmitComment(src, start, end, followingStart, followingIsNestedRule, out, loc);
+      }
+    };
     let gapStart = bodyStart;
     for (const rule of orderedRuleNodes) {
       const nextStart = sourceSpanOf(rule)?.start;
@@ -513,13 +560,14 @@ export class CssParser {
         // trivia map at serialize time — but ONLY inside another rule's body.
         // At the stylesheet root, eval drops that trivia, so lift there instead.
         const followingIsNestedRule = !atRoot && (rule as { type?: string }).type === 'Ruleset';
-        out.push(...this._scanStandaloneComments(src, gapStart, nextStart, nextStart, followingIsNestedRule, loc));
+        emitGap(gapStart, nextStart, nextStart, followingIsNestedRule);
         const nextEnd = sourceSpanOf(rule)?.end;
         gapStart = typeof nextEnd === 'number' ? nextEnd : nextStart;
       }
       out.push(rule);
     }
     // Trailing gap (after the last node): no following node → always standalone.
+    // Always source-scanned (not in the per-node log; see above).
     out.push(...this._scanStandaloneComments(src, gapStart, bodyEnd, undefined, false, loc));
     return out;
   }
@@ -614,20 +662,24 @@ export class CssParser {
     return true;
   }
 
-  protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildStylesheet(children: ReadonlyArray<Child>, loc: LocationInfo, triviaLog?: readonly number[]) {
     const nodes = nodeChildren(children);
     // The Stylesheet node's span ends at the last consumed statement, so trailing
     // trivia (a comment on the last line) sits past `loc.end`. Scan to the true
     // source end so a trailing standalone comment is lifted like any other.
     const bodyEnd = Math.max(loc.end, this._source.length);
-    const lifted = this._liftStandaloneComments(nodes, loc.start, bodyEnd, loc, true);
+    // Use the log only when the host declared Stylesheet capture comment-only;
+    // otherwise `triviaLog` is empty/uncaptured (less/scss) → re-scan source.
+    const commentLog = this.commentOnlyTriviaForNode?.('Stylesheet') ? triviaLog : undefined;
+    const lifted = this._liftStandaloneComments(nodes, loc.start, bodyEnd, loc, true, commentLog);
     return new Rules(lifted, undefined, loc);
   }
 
   protected _buildRuleset(
     children: ReadonlyArray<Child>,
     rawChildren: ReadonlyArray<{ _tag: string }>,
-    loc: LocationInfo
+    loc: LocationInfo,
+    triviaLog?: readonly number[]
   ) {
     const selector = readRulesetSelector(children);
     const sel = spannedComponents(rawChildren)[0];
@@ -637,7 +689,10 @@ export class CssParser {
     const bodyStart = braceIdx >= 0 ? braceIdx + 1 : loc.start;
     const closeIdx = this._source.lastIndexOf('}', loc.end - 1);
     const bodyEnd = closeIdx >= bodyStart ? closeIdx : loc.end;
-    const rules = this._liftStandaloneComments(rawRules, bodyStart, bodyEnd, loc);
+    // Use the log only when the host declared Ruleset capture comment-only;
+    // otherwise `triviaLog` is empty/uncaptured (less/scss) → re-scan source.
+    const commentLog = this.commentOnlyTriviaForNode?.('Ruleset') ? triviaLog : undefined;
+    const rules = this._liftStandaloneComments(rawRules, bodyStart, bodyEnd, loc, false, commentLog);
     const node = new Ruleset({ selector, rules }, undefined, loc);
     if (selectorSpan) {
       const { index, count } = fieldIndexOf(node as unknown as JessNode, 'selector');
@@ -696,7 +751,8 @@ export class CssParser {
 
   protected _buildCompoundSelector(
     rawChildren: ReadonlyArray<{ _tag: string }>,
-    span: Span
+    span: Span,
+    triviaLog: readonly number[] = []
   ) {
     const loc = spanToLocation(span);
     const parts: Component[] = [];
@@ -725,13 +781,13 @@ export class CssParser {
       group = [];
     };
 
-    let prevEnd = span.start;
-    for (const rc of rawChildren as Array<{ _tag: string; value?: string; span?: Span }>) {
+    for (let rawIndex = 0; rawIndex < rawChildren.length; rawIndex++) {
+      const rc = rawChildren[rawIndex] as { _tag: string; value?: string; span?: Span };
       const rcSpan = rawChildSpan(rc);
       if ((rc._tag !== 'leaf' && rc._tag !== 'node') || !rcSpan) {
         continue;
       }
-      if (group.length > 0 && hasWhitespaceOutsideComments(this._source, prevEnd, rcSpan.start)) {
+      if (group.length > 0 && hasWhitespaceTriviaAt(triviaLog, rawIndex)) {
         const prevSpanEnd = group[group.length - 1]!.span.end;
         flush();
         parts.push(' ');
@@ -741,7 +797,6 @@ export class CssParser {
         comp: rc._tag === 'leaf' ? (rc.value ?? '') : (rc as unknown as JessNode),
         span: rcSpan
       });
-      prevEnd = rcSpan.end;
     }
     flush();
 
@@ -753,19 +808,19 @@ export class CssParser {
     return node;
   }
 
-  protected _buildAttributeSelector(children: ReadonlyArray<Child>, loc: LocationInfo) {
+  protected _buildAttributeSelector(children: ReadonlyArray<Child>, loc: LocationInfo, fields?: FieldMap) {
     const ls = children
       .filter((c): c is CSTLeaf => c._tag === 'leaf')
       .filter(l => l.value !== '[' && l.value !== ']');
-    const name = ls[0]?.value ?? '';
-    const opRe = /^[*~|^$]?=$/;
-    const opIdx = ls.findIndex(l => opRe.test(l.value));
-    const rawValue = opIdx >= 0 ? ls[opIdx + 1]?.value : undefined;
+    const name = fieldString(fields, 'name') ?? ls[0]?.value ?? '';
+    const op = fieldString(fields, 'op') ?? (ls.length >= 3 ? ls[1]?.value : undefined);
+    const rawValue = fieldString(fields, 'value') ?? (op ? ls[2]?.value : undefined);
+    const mod = fieldString(fields, 'mod') ?? (op ? ls[3]?.value : undefined);
     const attrNode: AttributeSelectorValue = {
       name,
-      ...(opIdx >= 0 ? { op: ls[opIdx]!.value } : {}),
+      ...(op ? { op } : {}),
       ...(rawValue !== undefined ? { value: this._attrValueNode(rawValue, loc) } : {}),
-      ...(opIdx >= 0 && ls[opIdx + 2] ? { mod: ls[opIdx + 2]!.value } : {})
+      ...(mod ? { mod } : {})
     };
     return new AttributeSelector(attrNode, undefined, loc);
   }

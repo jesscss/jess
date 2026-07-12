@@ -117,8 +117,7 @@ export class Operation extends Node<OperationValue> {
     const node = new Operation(
       [left, this.operator, right],
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this._treeContext
+      sourceSpanOf(this)
     );
     return node.inherit(this);
   }
@@ -128,22 +127,19 @@ export class Operation extends Node<OperationValue> {
     return (new Call(
       { name: 'calc', args: list([operationNode]) },
       undefined,
-      undefined,
-      this.sourceRoot?._treeContext
+      undefined
     )).inherit(this);
   }
 
   constructor(
     value: OperationValue,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
     this.left = value[0];
     this.operator = value[1];
     this.right = value[2];
-    this._treeContext = treeContext;
     // Operations are always non-static, but inherit may_async from their
     // operands so an operation wrapping an async child (e.g. a nested `calc()`
     // Call) is itself scheduled on the async path.
@@ -168,8 +164,7 @@ export class Operation extends Node<OperationValue> {
     const node = new Operation(
       [left, this.operator, right],
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this._treeContext
+      sourceSpanOf(this)
     );
     node.inherit(this);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -255,7 +250,7 @@ export class Operation extends Node<OperationValue> {
         if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
           return renderOperands();
         }
-        const unitMode = context?.opts?.unitMode ?? 'preserve';
+        const unitMode = context?.options.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
         if (isPreserveMode && isNode(l, N.Dimension) && isNode(r, N.Dimension)) {
           try {
@@ -385,7 +380,7 @@ export class Operation extends Node<OperationValue> {
           }
           return n.withOperands(l, r);
         }
-        const unitMode = context?.opts?.unitMode ?? 'preserve';
+        const unitMode = context?.options.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
 
         // In preserve mode, catch unit errors and return calc() call

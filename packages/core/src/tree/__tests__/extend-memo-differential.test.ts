@@ -29,7 +29,7 @@ import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer
 import { setExtendMatchMemoEnabled } from '../util/extend-walk.js';
 
 async function renderLess(source: string, collapseNesting: boolean): Promise<string> {
-  const context = new Context({ output: { collapseNesting }, leakyRules: true });
+  const context = new Context({ output: { collapseNesting }, leakyScope: true });
   const parser = new Parser();
   const { tree } = parser.parse(source);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

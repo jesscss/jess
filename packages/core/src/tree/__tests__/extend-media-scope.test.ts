@@ -16,7 +16,7 @@ import { renderNodeToString, type RenderBufferNode } from '../util/render-buffer
  * so `.b` stays unextended and `.a` gets its own rule inside the media block.
  */
 async function render(source: string): Promise<string> {
-  const context = new Context({ output: { collapseNesting: true }, leakyRules: true });
+  const context = new Context({ output: { collapseNesting: true }, leakyScope: true });
   const parser = new Parser();
   const { tree } = parser.parse(source);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

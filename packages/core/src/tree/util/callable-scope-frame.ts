@@ -10,7 +10,7 @@ type WireCallableScopeFramesOptions = {
   parentFrame?: ScopeFrame;
   liveSlots?: Map<string, BindingCell>;
   usesPreboundParamGuardOuterRules?: boolean;
-  leakyRules?: boolean;
+  leakyScope?: boolean;
   definedInImportedSurface?: boolean;
 };
 
@@ -22,7 +22,7 @@ export function wireCallableScopeFrames({
   parentFrame,
   liveSlots,
   usesPreboundParamGuardOuterRules = false,
-  leakyRules = false,
+  leakyScope = false,
   definedInImportedSurface = false
 }: WireCallableScopeFramesOptions): void {
   if (liveSlots) {
@@ -72,7 +72,7 @@ export function wireCallableScopeFrames({
     return;
   }
 
-  if (leakyRules && parentFrame) {
+  if (leakyScope && parentFrame) {
     assignMixinOutputFallbackFrame(rules, parentFrame);
     return;
   }

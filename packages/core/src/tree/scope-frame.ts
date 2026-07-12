@@ -14,7 +14,7 @@
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/archive/PERFORMANCE-HANDOFF.md
+ * @see docs/future/core-architecture/CORE-CLEANUP.md
  */
 
 import { Node } from './node.js';
@@ -415,6 +415,40 @@ export function copyScopeFrameLiveBindingSlots(
   frame: ScopeFrame | undefined
 ): Map<string, BindingCell> {
   return new Map(frame?.liveSlotsByName);
+}
+
+/**
+ * Link an inline-import's own scope frame as `frame`'s fallback, preserving any
+ * earlier sibling imports already chained on `frame.fallbackFrame`. A nested
+ * import (an imported file that itself `@import`s) already points its own
+ * fallbackFrame at its inner import, so the earlier siblings must be threaded
+ * past that internal chain — appended at the TAIL of the import frame's fallback
+ * chain — rather than skipped. The tail walk stops if it would revisit `frame`,
+ * `importFrame`, or the chain head, so no cycle is ever formed. Fallbacks are
+ * consulted only AFTER the primary scope chain, so an enclosing declaration always
+ * wins. Shared by the eval path (`linkInlineImportFallbackFrames`) and the spine
+ * import fold (`wireSpineImports`, IMPORTS increment 2).
+ */
+export function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): void {
+  if (importFrame === frame || importFrame === frame.fallbackFrame) {
+    return;
+  }
+  const chain = frame.fallbackFrame;
+  let tail: ScopeFrame = importFrame;
+  const seen = new Set<ScopeFrame>([importFrame]);
+  while (
+    tail.fallbackFrame !== undefined
+    && tail.fallbackFrame !== chain
+    && tail.fallbackFrame !== frame
+    && !seen.has(tail.fallbackFrame)
+  ) {
+    tail = tail.fallbackFrame;
+    seen.add(tail);
+  }
+  if (tail.fallbackFrame === undefined) {
+    tail.fallbackFrame = chain;
+  }
+  frame.fallbackFrame = importFrame;
 }
 
 export function setScopeFrameLiveBinding(

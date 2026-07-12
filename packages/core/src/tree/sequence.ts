@@ -49,10 +49,8 @@ function hasNonWhitespaceTrivia(run: ReturnType<NonNullable<PrintOptions['trivia
 }
 
 function sequenceNodeTrivia(node: Node): PrintOptions['trivia'] | undefined {
-  const sourceTrivia = node.sourceRoot?._treeContext?.opts?.trivia;
-  return sourceTrivia && sourceTrivia !== true
-    ? sourceTrivia
-    : node._treeContext?.opts?.trivia;
+  // Context resolves via the node's sourceRoot (`_treeContext` is Rules-only).
+  return node.sourceRoot?._treeContext?.opts?.trivia;
 }
 
 function emitRenderedSequenceNodeMaybe(
@@ -97,7 +95,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   readonly value: Node[];
   readonly preserveWhitespace: boolean | undefined;
 
-  constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
+  constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation) {
     super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
@@ -174,7 +172,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   override compare(other: Node) {
     if (other instanceof Sequence) {
-      const equalityMode = this.sourceRoot?._treeContext?.equalityMode ?? 'coerce';
+      const equalityMode = this.sourceRoot?._treeContext?.options.equalityMode ?? 'less';
       const result = compareNodeArray(this.value, other.value, equalityMode);
       return result;
     }

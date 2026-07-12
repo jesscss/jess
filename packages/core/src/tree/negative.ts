@@ -26,14 +26,13 @@ export class Negative extends Node<Node> {
     this.value.writeSyntax(options);
   }
 
-  constructor(value: NodeArrayItem, options?: NodeOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
+  constructor(value: NodeArrayItem, options?: NodeOptions, location?: LocationInfo) {
     // A parser space-group arrives as a raw string/array; normalize to the
     // canonical node form so negation stays node-only.
     const node = value == null || value instanceof Node ? value : coerceValueNode(value);
     super(node, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = node;
-    this._treeContext = treeContext;
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }

@@ -40,25 +40,6 @@ describe('Declaration', () => {
     context = new Context();
   });
 
-  it('preserves parser tree context on Declaration and VarDeclaration construction', () => {
-    const treeContext = new Context().treeContext;
-    const declaration = new Declaration(
-      { name: 'color', value: any('red') },
-      undefined,
-      undefined,
-      treeContext
-    );
-    const varDeclaration = new VarDeclaration(
-      { name: 'color', value: any('red') },
-      undefined,
-      undefined,
-      treeContext
-    );
-
-    expect(declaration.sourceRoot?._treeContext).toBe(treeContext);
-    expect(varDeclaration.sourceRoot?._treeContext).toBe(treeContext);
-  });
-
   it('should serialize to CSS', () => {
     let rule = decl({ name: 'color', value: color('#eee') });
     expect(rule.toTrimmedString()).toBe('color: #eee');
@@ -1693,7 +1674,7 @@ describe('Declaration', () => {
   });
 
   it('does not re-merge sequence assignments during post-eval coalescing in nested at-rules', async () => {
-    context = new Context({ collapseNesting: true, leakyRules: true });
+    context = new Context({ collapseNesting: true, leakyScope: true });
     const node = rules([
       ruleset({
         selector: el('nav'),
@@ -1721,7 +1702,7 @@ describe('Declaration', () => {
   });
 
   it('coalesces sequence assignments emitted through nested $for output rules', async () => {
-    context = new Context({ collapseNesting: true, leakyRules: true });
+    context = new Context({ collapseNesting: true, leakyScope: true });
     const node = rules([
       ruleset({
         selector: el('aside'),
@@ -1766,7 +1747,7 @@ describe('Declaration', () => {
   });
 
   it('coalesces sequence assignments emitted through tuple-pattern each()-style loops', async () => {
-    context = new Context({ collapseNesting: true, leakyRules: true });
+    context = new Context({ collapseNesting: true, leakyScope: true });
     const node = rules([
       ruleset({
         selector: el('aside'),

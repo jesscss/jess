@@ -1,4 +1,4 @@
-import { setSourceSpan, spanStartOf, sourceSpanOf } from './util/provenance.js';
+import { setSourceSpan, spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
 import {
   Node,
   defineType,
@@ -11,6 +11,7 @@ import {
   F_MERGE_SUPPRESSED
 } from './node.js';
 import { Context } from '../context.js';
+import { ERR } from '../jess-error.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type Ruleset } from './ruleset.js';
@@ -33,6 +34,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
+import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableImport, isSpineFoldableImportBody, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 import { VarDeclaration } from './declaration-var.js';
@@ -47,12 +49,13 @@ import {
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
-import type { StyleImport } from './import-style.js';
+import type { StyleImport, SpineImportResolution } from './import-style.js';
 import {
   buildScopeFrame,
   copyScopeFrameLiveBindingSlots,
   createVarDeclarationBindingEntry,
   injectFrameLeakBinding,
+  linkImportFallbackFrame,
   lookupScopeFrameCallable,
   lookupScopeFrameVariable,
   setScopeFrameDeclarationBinding,
@@ -66,7 +69,8 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText
+  writeRenderText,
+  writeRenderTextResult
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
 import type { Func } from './function.js';
@@ -139,6 +143,17 @@ type UncoveredCallableResult =
   | typeof UNCOVERED_CALLABLE_UNSUPPORTED;
 
 /**
+ * A variable-declaration that is an ASSIGNMENT to an existing binding, not a new
+ * binding: `setDefined` (Sass `!global`) or `nearestOuter` (Jess `:=`). Neither
+ * contributes a declaration/binding surface — they resolve and overwrite an
+ * existing cell — so both are skipped everywhere a declaration would be indexed
+ * as a fresh binding.
+ */
+function isBindingReassignment(node: Node): boolean {
+  return node.options?.setDefined === true || node.options?.nearestOuter === true;
+}
+
+/**
  * Evaluate a setDefined assignment's right-hand side. The value is left lazy
  * when there is no eval context (registration-time assignment): it is a value
  * node that the binding cell holds and reads dereference later.
@@ -171,42 +186,6 @@ function isImportAtRule(node: Node): node is AtRule {
 function importInlinesMembersToParent(rules: Rules): boolean {
   return rules.options.importBoundary === false
     || rules.options.inlinesMembersToParent === true;
-}
-
-// Link an inline-import's own scope frame as `frame`'s fallback, preserving any
-// earlier sibling imports already chained on `frame.fallbackFrame`. A nested
-// import (an imported file that itself `@import`s) already points its own
-// fallbackFrame at its inner import, so the earlier siblings must be threaded
-// past that internal chain — appended at the TAIL of the import frame's fallback
-// chain — rather than skipped. Skipping (the old `=== undefined` guard) dropped
-// every earlier top-level import the moment a later import was itself nested.
-// The tail walk stops if it would revisit `frame`, `importFrame`, or the chain
-// head, so no cycle is ever formed. Fallbacks are consulted only AFTER the
-// primary scope chain, so an enclosing declaration always wins.
-function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): void {
-  if (importFrame === frame || importFrame === frame.fallbackFrame) {
-    return;
-  }
-  const chain = frame.fallbackFrame;
-  let tail: ScopeFrame = importFrame;
-  // Walk to the tail of importFrame's own fallback chain. The `seen` guard makes
-  // this loop total even if a prior link left a cycle in the chain (which would
-  // otherwise never hit the `=== chain/frame` stops) — we simply stop rather
-  // than append into a cycle.
-  const seen = new Set<ScopeFrame>([importFrame]);
-  while (
-    tail.fallbackFrame !== undefined
-    && tail.fallbackFrame !== chain
-    && tail.fallbackFrame !== frame
-    && !seen.has(tail.fallbackFrame)
-  ) {
-    tail = tail.fallbackFrame;
-    seen.add(tail);
-  }
-  if (tail.fallbackFrame === undefined) {
-    tail.fallbackFrame = chain;
-  }
-  frame.fallbackFrame = importFrame;
 }
 
 // Walk a frame's lexical parent chain to detect any per-call live-binding scope
@@ -566,7 +545,7 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
+    if (isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration) && !isBindingReassignment(node)) {
       return true;
     }
     const child = childRulesOf(node);
@@ -581,7 +560,7 @@ function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (isNode(node, N.VarDeclaration) && !node.options?.setDefined) {
+    if (isNode(node, N.VarDeclaration) && !isBindingReassignment(node)) {
       return true;
     }
     const child = childRulesOf(node);
@@ -1034,6 +1013,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   readonly rules: Node[];
 
+  /**
+   * The per-source-tree context (file, options, source-map state). A Rules-only
+   * field: every node's authoritative context resolves via
+   * `sourceRoot?._treeContext`, and only Rules nodes are a `sourceRoot`, so the
+   * ~39k non-Rules nodes no longer carry this slot. Set in the ctor and
+   * maintained by `inherit`/`detachTrivia` (both Rules-guarded on the base).
+   */
+  _treeContext: TreeContext | undefined;
+
   /** Fast map: var name -> ordered static VarDeclaration binding entries in this scope. */
   get varsByName(): Map<string, BindingEntry[]> | undefined {
     return this._lookup?.varsByName;
@@ -1362,6 +1350,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // lookup caches hold resolved callables/frames that can also retain
     // back-refs; they are derived, non-tree data, so drop them too.
     const json = super.toJSON();
+    // `_treeContext` (context → sourceTrees → nodes) is a Rules-only back-ref;
+    // drop it here to keep `JSON.stringify` cycle-safe.
+    delete json._treeContext;
     delete json._scopeFrame;
     // The cold lookup fields now live on `_lookup` (a nested struct). Drop the raw
     // struct and re-emit only the non-cyclic, non-cache subset at top level so the
@@ -1613,7 +1604,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (!isNode(node, N.VarDeclaration)) {
         continue;
       }
-      if (node.options?.setDefined) {
+      if (isBindingReassignment(node)) {
         continue;
       }
       if (!this._hasStaticName(node)) {
@@ -1711,7 +1702,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const node = value[i]!;
         if (
           isNode(node, N.VarDeclaration)
-          && !node.options?.setDefined
+          && !isBindingReassignment(node)
           && !this._hasStaticName(node)
         ) {
           return true;
@@ -2340,7 +2331,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           continue;
         }
         if (
-          !changedVariable.options?.setDefined
+          !isBindingReassignment(changedVariable)
           && isPublicRulesEntry(entry, 'VarDeclaration')
           && canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration' })
           && canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration' })
@@ -4444,6 +4435,110 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return this._emitRulesBody(options, 'render');
   }
 
+  /**
+   * Fold a root-level spine-foldable `@import` (IMPORTS increment 1). Drives
+   * `StyleImport.resolveForSpine` (which queues a CSS-passthrough import to the
+   * top-of-doc emitter, or `getTree`s a Less import's parsed body as an import-site
+   * placement), then:
+   *   - `css` → emit nothing inline (queued),
+   *   - `fold` + spine-simple body → descend each imported child INLINE via the
+   *     enclosing `emitNode`, with `context.rulesContext` pinned to the placement
+   *     frame so an imported leaf resolves up the import chain (§2 frame thread),
+   *   - `fold` + non-simple body → the byte-identical eval fall-back: render the
+   *     import node the eval way (`render` → `evalNode`) and emit its output.
+   */
+  private _emitSpineImportFold(
+    importNode: StyleImport,
+    options: FinalPrintOptions,
+    context: Context,
+    emitNode: (n: Node) => MaybePromise<void>
+  ): MaybePromise<void> {
+    const w = options.writer!;
+    const foldBody = (body: Rules, multiple: boolean, reference: boolean): MaybePromise<void> => {
+      assignSpineChildIndices(body);
+      const savedRulesContext = context.rulesContext;
+      context.rulesContext = body;
+      const restore = <T>(value: T): T => {
+        context.rulesContext = savedRulesContext;
+        return value;
+      };
+      // A `(reference)` import descends the placement AS A CHILD `Rules` (increment 5),
+      // NOT by splicing its children: the `isChildRules` emit branch reads the
+      // placement's own `options.referenceMode` (set in `_foldLessImportForSpine`) and
+      // gates output via the container serializer's `renderEnabled` — a plain
+      // ruleset/decl emits nothing, while an EXTEND-reached selector still emits.
+      // Scope registration already ran (wire pass), so consumers resolve regardless.
+      // A non-reference import splices its children directly (ordering + dedup + frame
+      // exactly as increments 1–4).
+      const emitReference = (): MaybePromise<void> => emitNode(body);
+      const children = body.rules;
+      const emitChild = (i: number): MaybePromise<void> => {
+        for (let idx = i; idx < children.length; idx++) {
+          const step = emitNode(children[idx]!);
+          if (isThenable(step)) {
+            return step.then(() => emitChild(idx + 1));
+          }
+        }
+        return undefined;
+      };
+      // A `multiple` import's body descends inside a MULTIPLE scope, so its NESTED
+      // imports also re-emit (no `once` dedup) — mirrors `inMultipleImportScope`.
+      try {
+        const step = withSpineMultipleScope(options, multiple, () => reference ? emitReference() : emitChild(0));
+        return isThenable(step)
+          ? step.then(restore, (error: unknown) => { restore(undefined); throw error; })
+          : restore(step);
+      } catch (error) {
+        restore(undefined);
+        throw error;
+      }
+    };
+    const evalFallback = (): MaybePromise<void> => {
+      // Byte-identical eval terminal for a non-simple imported body: render the
+      // import node the eval way and splice its output text at this position.
+      const position = w.position();
+      const rendered = importNode.render(context, getPrintOptions(options));
+      const finishRendered = (text: string): void => {
+        if (w.position() === position && text) {
+          w.add(text, importNode);
+        }
+      };
+      return isThenable(rendered) ? rendered.then(finishRendered) : finishRendered(rendered);
+    };
+    // Reuse the placement the wire pass already resolved + registered + frame-linked
+    // (IMPORTS increment 2/3), so the import is resolved once and its OUTPUT descends
+    // against the SAME scope its consumers see. Every foldable import (root + nested)
+    // is pre-wired, so `cached` is expected; the fresh-resolve below is a defensive
+    // fallback for a lone import the wire pass didn't reach (no dedup — it is its own
+    // only occurrence).
+    const cached = options.spineImportPlacements?.get(importNode);
+    if (cached) {
+      if (cached.kind === 'css') {
+        return undefined;
+      }
+      // DEDUP (increment 4): a `dedupe` re-import's scope is already registered/linked
+      // by the wire pass; emit NO output (Less `once`). Otherwise fold its body.
+      if (cached.dedupe) {
+        return undefined;
+      }
+      return isSpineFoldableImportBody(cached.body) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback();
+    }
+    const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
+      if (resolved.kind === 'css') {
+        return undefined;
+      }
+      // Consult the once-dedup ledger even on the fresh path (a not-pre-wired import,
+      // e.g. one nested INSIDE another imported file): a re-import of an already-emitted
+      // path is scope-only. `multiple`/`once:false` always emits.
+      if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
+        return undefined;
+      }
+      return isSpineFoldableImportBody(resolved.body) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
+    };
+    const resolution = importNode.resolveForSpine(context);
+    return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);
+  }
+
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
   private _emitRulesBody(options: FinalPrintOptions, mode: 'render', exclude?: Set<Node>): MaybePromise<void>;
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source' | 'render', exclude?: Set<Node>): MaybePromise<void> {
@@ -4563,6 +4658,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (exclude?.has(n) || !n.visible) {
         emitLeadingBlockCommentForNode(n);
         return;
+      }
+      // Spine import-fold at the ROOT body (cutover IMPORTS increment 1,
+      // UNIFIED-EVAL-EMIT-DESIGN §2/§4.0). A root-level `@import` reaches this leaf
+      // branch (not the container serializer's `runSpineImportExpansion`), so fold
+      // it HERE: resolve, then either drop (CSS-passthrough → queued top-of-doc) or
+      // descend the parsed imported body's children INLINE by re-`emitNode`-ing each
+      // with `context.rulesContext` pointed at the import-site placement frame — the
+      // same shared-body/frame-thread discipline `spineFrame` applies nested. No
+      // `rules.eval()`, no output tree (ratchet: `Rules.derive` = 0). A non-simple
+      // imported body falls through to the eval terminal below (byte-identical).
+      if (mode === 'render' && context && options.spineMode && isSpineFoldableImport(n)) {
+        return this._emitSpineImportFold(n as unknown as StyleImport, options, context, emitNode);
       }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {
@@ -4793,8 +4900,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // the old separate eval pre-pass existed — so no second eval is needed.
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     const preSerializeRoot = sourceWasRoot ? printOptions?.preSerializeRoot : undefined;
+    // Single-pass spine (P1): a spine-eligible root is rendered by ONE downward
+    // descent of the source tree with the live value-frame threaded — no eval
+    // pass, no `state.output` tree, no separate serialize walk. This REPLACES
+    // the two-walk below for that shape; the eval→output-tree→serialize path is
+    // not entered for it. (`preSerializeRoot` is a post-eval visitor hook — a
+    // spine-eligible leaf-only root has no such consumer here; P2 folds the
+    // visitor hook into the pass generically.)
+    if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
+      const prepared = prepareRenderPrintState(context, printOptions);
+      const rendered = renderRootViaSpine(this, context, prepared);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderTextResult(bufferOrOptions, rendered)
+        : rendered;
+    }
     const serialize = (state: RulesRenderState): MaybePromise<string> => {
-      checkValidNodes(state.output?.rules, context);
+      checkValidNodes(state.output?.rules, context, sourceWasRoot);
       return isRenderBuffer(bufferOrOptions)
         ? writeRulesStateRenderOutput(bufferOrOptions, state, context, options)
         : renderRulesStateToString(state, context, bufferOrOptions);
@@ -5033,6 +5154,70 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // Note: Imported child Rules still contribute their own rules/rulesets after
       // evaluation completes, when the surrounding tree/root context is available.
     } else if (isNode(node, N.Declaration)) {
+      /**
+       * `nearestOuter` (Jess `:=`) reassigns the nearest lexically-enclosing
+       * scope that ALREADY binds the name, writing its runtime cell — a JS-block
+       * `let`-reassignment walking OUTWARD (nearest-first). It NEVER creates a new
+       * binding in the current scope (that is the contrast with `@x: v`), and a
+       * name that no enclosing scope binds is a hard compile error (one error,
+       * stop). Distinct from `setDefined` (Sass `!global`); shares the frame walk
+       * because `lookupScopeFrameVariable` already returns the first (nearest)
+       * hit up the parent chain. This fires only on a `:=` node, so the common
+       * variable path pays nothing.
+       */
+      if (node.options?.nearestOuter && isNode(node, N.VarDeclaration)) {
+        const key = node.name.toString();
+        // `:=` on a name no enclosing scope binds is a hard compile error, with
+        // this node's source location. One error, stop.
+        const unbound = (): never => {
+          throw ERR.nameNotFound({
+            ctx: context?.treeContext?.file ? { file: context.treeContext.file } : undefined,
+            node: { spanStart: spanStartOf(node), spanEnd: spanEndOf(node) },
+            meta: { symbol: key }
+          });
+        };
+        const frame = this._scopeFrame;
+        if (frame) {
+          const variableHit = lookupScopeFrameVariable(frame, key, {
+            bailOnPendingDeclarations: true,
+            // Exclude the `:=` node's own binding: the nearest enclosing target
+            // must be a PRIOR binding, never the assignment itself.
+            blockedSource: source => source === node,
+            filter: source => source !== node,
+            includeAssignmentTargets: true,
+            searchParents: true
+          });
+          if (variableHit.kind === 'live' || variableHit.kind === 'declaration') {
+            if (variableHit.readonly || variableHit.cell.readonly) {
+              throw new ReferenceError(`"${key}" is readonly`);
+            }
+            variableHit.cell.value = evalSetDefinedAssignedValue(node, context);
+            return;
+          }
+          if (variableHit.kind === 'miss') {
+            unbound();
+          }
+          // kind === 'uncovered': the frame can't statically model this surface
+          // (optional / dynamic targets). Fall to the occurrence crawl below,
+          // which walks parents (searchParents: true) and writes the found cell.
+        }
+        const resultOccurrence = findWritableSetDefinedDeclarationOccurrence(
+          this,
+          key,
+          true,
+          // Exclude the `:=` node's own VarDeclaration: it must resolve to a PRIOR
+          // enclosing binding, never itself (the crawl would otherwise match the
+          // assignment node and fabricate a same-scope binding).
+          { searchParents: true, excludedDeclarations: [node] }
+        );
+        const result = resultOccurrence?.node;
+        const owner = result?.parent;
+        if (result && isNode(result, N.VarDeclaration) && isNode(owner, N.Rules)) {
+          owner.writeSetDefinedBindingCell(key, result, evalSetDefinedAssignedValue(node, context));
+          return;
+        }
+        unbound();
+      }
       /**
        * setDefined assigns through the resolved variable binding. Static
        * VarDeclaration writes stay in place; the fallback below still handles
@@ -5596,7 +5781,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (node.type === 'StyleImport') {
         return false;
       }
-      if ((isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) && !node.options?.setDefined) {
+      if ((isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) && !isBindingReassignment(node)) {
         if (!this._hasStaticName(node)) {
           return false;
         }
@@ -5988,7 +6173,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const treeContext = context.treeContext;
     // Only switch treeContext if the rules have one AND it's different
     // Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
-    // and we don't want to lose leakyRules and other settings
+    // and we don't want to lose leakyScope and other settings
     // IMPORTANT: Check the explicit tree context, not treeContext (getter that lazily creates).
     const rulesTreeContext = rules._treeContext;
     if (rulesTreeContext && (!treeContext || treeContext !== rulesTreeContext)) {
@@ -6092,7 +6277,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             rulesVisibility: result.options.rulesVisibility,
             readonly: result.options.readonly
           }, context);
-          if (context.leakyRules && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
+          if (context.options.leakyScope && isNode(rule, N.Call) && result.options.mixinOutputSlot) {
             out.injectLeakyMixinOutputBindings(result, idx);
           }
           if (result.hoistToRoot) {
@@ -6701,7 +6886,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           const currentDecl = currentRules[j]!;
           if (
             isNode(currentDecl, N.VarDeclaration)
-            && !currentDecl.options?.setDefined
+            && !isBindingReassignment(currentDecl)
             && String(currentDecl.name.valueOf()) === key
           ) {
             throw new ReferenceError(`"${key}" is readonly`);
@@ -7016,7 +7201,7 @@ export const rules = defineType(Rules, 'Rules');
  * A capture whose selector has no plain basic key (e.g. `*`, `:hover`) yields `[]`.
  */
 export function resolveRulesetBySelector(
-  selector: Selector | undefined,
+  selector: Selector | string | undefined,
   scope: Rules
 ): Ruleset[] {
   const keys = getOrderedSelectorKeys(selector);

@@ -1,7 +1,7 @@
 /**
  * Functional SCSS grammar — the macro-compiled counterpart to the class-based
  * ScssGrammar. This file is JUST the grammar: `scssGrammar = compose([lessGrammar,
- * <SCSS delta>])`. Every rule is a structural `node(type, parser)` that builds via
+ * <SCSS delta>])`. Most returned rules are structural `node(parser)` entries that build via
  * the injected `ctx.build` host. The host + parse entry (`parseScssFn`,
  * `ScssParser`) live in ./functional-parser.ts; the shared driver in
  * @jesscss/css-parser.
@@ -9,9 +9,9 @@
 import {
   rules, compose,
   node, regex, literal, sequence, choice, optional, parser, noTrivia, trivia,
-  many, expect, sepBy, oneOrMore, scanTo, balanced
+  many, expect, sepBy, oneOrMore, scanTo, balanced, label
 } from 'parseman' with { type: 'macro' };
-import { lessGrammar } from '@jesscss/less-parser';
+import { lessGrammar } from '@jesscss/less-parser/grammar';
 
 // ---------------------------------------------------------------------------
 // Grammar — SCSS = Less + the SCSS delta. `compose` fuses the imported compiled
@@ -31,9 +31,9 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const ws = regex(/[ \t\n\r\f]+/);
   const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
   const lineComment = regex(/\/\/[^\n\r]*/);
-  const rw = trivia(oneOrMore(choice(ws, comment, lineComment)));
+  const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
 
-  const VarDeclaration = node('VarDeclaration',
+  const VarDeclaration = node(
     parser({ trivia: rw }, sequence(
       scssVar,
       literal(':'),
@@ -43,7 +43,7 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     )));
 
   // SCSS references are bare `$var` (no Less accessor-chain syntax).
-  const Reference = node('Reference',
+  const Reference = node(
     noTrivia(scssVar));
 
   // ── Interpolation (#{…}) ───────────────────────────────────────────────────
@@ -55,42 +55,42 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|#\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|#\{[^}]*\})*/);
   const important = sequence(literal('!'), literal('important'));
 
-  const ScssInterpBare = node('ScssInterpBare',
-    parser({ trivia: rw }, sequence(literal('#'), literal('{'), g.valueSequence, expect(literal('}'), '}'))));
+  const ScssInterpBare = node(
+    sequence(literal('#'), literal('{'), g.valueSequence, expect(literal('}'), '}')));
 
-  const InterpValue = node('InterpValue',
-    parser({ trivia: rw }, scssInterpKey));
+  const InterpValue = node(
+    scssInterpKey);
 
   // ── Sass map literals + module-qualified idents ────────────────────────────
   const dotName = regex(/\.-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const ScssMapPair = node('ScssMapPair',
-    parser({ trivia: rw }, sequence(g.value, literal(':'), g.valueSequence)));
+    sequence(g.value, literal(':'), g.valueSequence));
   // A Sass map literal REQUIRES at least one `key: value` pair. `expect(')')`
   // recovers in place (zero-width success), so if this rule matched an empty or
   // pairless `(…)` it would swallow every parenthesized value before the value
   // paren rule is tried. Requiring a real pair (the `:` is a soft `literal`) lets a
   // non-map paren like `(15px/30px)` or `(1 + 2)` fail here and fall through.
-  const ScssMapLiteral = node('ScssMapLiteral',
+  const ScssMapLiteral = node(
     parser({ trivia: rw }, sequence(
       literal('('),
       ScssMapPair,
       many(sequence(literal(','), ScssMapPair)),
       optional(literal(',')),
-      expect(literal(')'), ')')
+      expect(literal(')'))
     )));
   const scssHashName = regex(/#-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const ScssIdentValue = node('ScssIdentValue',
-    parser({ trivia: rw }, sequence(
+  const ScssIdentValue = node(
+    sequence(
       plainIdent,
       optional(choice(
         sequence(
           literal('.'), literal('\\'), choice(scssHashName, dotName),
-          literal('('), optional(g.ScssCallArgsInner), expect(literal(')'), ')')
+          literal('('), optional(g.ScssCallArgsInner), expect(literal(')'))
         ),
         sequence(literal('.'), scssVar),
-        sequence(dotName, literal('('), optional(g.ScssCallArgsInner), expect(literal(')'), ')'))
+        sequence(dotName, literal('('), optional(g.ScssCallArgsInner), expect(literal(')')))
       ))
-    )));
+    ));
 
   // Value-position paren. Unlike Less's strict single-expression `Paren`, SCSS
   // allows space/comma-separated value lists inside parens (e.g.
@@ -98,17 +98,17 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   // decide: an isolated arithmetic form (`(15px/30px)`, `(1 + 2)`) becomes an
   // `Expression(Operation)`; anything else stays a grouped `Paren`.
   const ScssValueParen = node('Paren',
-    parser({ trivia: rw }, sequence(literal('('), g.permissiveParenBody)));
+    sequence(literal('('), g.permissiveParenBody));
 
   // Sass allows trailing commas in comma-separated lists (Less v5 rejects them).
-  const valueList = parser({ trivia: rw }, sequence(
+  const valueList = sequence(
     g.valueSequence,
     many(sequence(literal(','), g.valueSequence)),
     optional(literal(','))
-  ));
+  );
   const callArgSeq = choice(g.AnonymousMixinDefinition, g.DetachedRuleset, g.valueSequence);
   const callArgList = choice(g.AnonymousMixinDefinition, g.DetachedRuleset, valueList);
-  const functionCallArgs = parser({ trivia: rw }, sequence(
+  const functionCallArgs = sequence(
     optional(sequence(
       callArgSeq,
       many(sequence(literal(','), callArgSeq)),
@@ -116,10 +116,10 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       many(sequence(literal(';'), optional(callArgList)))
     )),
     literal(')')
-  ));
+  );
   const fnIdent = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
-  const Call = node('Call',
-    parser({ trivia: rw }, sequence(fnIdent, literal('('), functionCallArgs)));
+  const Call = node(
+    sequence(fnIdent, literal('('), functionCallArgs));
 
   const value = choice(
     ScssInterpBare, InterpValue, g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor,
@@ -129,42 +129,42 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
 
   const staticSeg = regex(/[-_a-zA-Z0-9]+/);
   const nameSegment = choice(staticSeg, ScssInterpBare);
-  const ScssInterpolatedName = node('ScssInterpolatedName',
-    parser({ trivia: rw }, oneOrMore(nameSegment)));
+  const ScssInterpolatedName = node(
+    oneOrMore(nameSegment));
 
-  const InterpolatedSelector = node('InterpolatedSelector',
-    parser({ trivia: rw }, sequence(
+  const InterpolatedSelector = node(
+    sequence(
       optional(regex(/[.#]/)),
       oneOrMore(nameSegment)
-    )));
+    ));
 
-  const CustomDeclaration = node('CustomDeclaration',
-    parser({ trivia: rw }, sequence(
+  const CustomDeclaration = node(
+    sequence(
       choice(scssCustomPropInterp, customProp),
       literal(':'),
       choice(g.customCurlyBlock, g.customValue, g.cpValue),
       optional(literal(';'))
-    )));
+    ));
 
   // A nested prop (`size: 1rem`) is built AS a `Declaration` (structural node →
   // ctx.build('Declaration')); `_buildScssNestedProps` filters children for
   // Declaration nodes. The rule's own name stays local (`many(ScssNestedDecl)`).
   const ScssNestedDecl = node('Declaration',
-    parser({ trivia: rw }, sequence(
+    sequence(
       scssDeclPropName,
       literal(':'),
       g.valueList,
       optional(literal(';'))
-    )));
+    ));
 
-  const ScssNestedProps = node('ScssNestedProps',
-    parser({ trivia: rw }, sequence(
+  const ScssNestedProps = node(
+    sequence(
       literal('{'),
       many(ScssNestedDecl),
-      expect(literal('}'), '}')
-    )));
+      expect(literal('}'))
+    ));
 
-  const Declaration = node('Declaration',
+  const Declaration = node(
     parser({ trivia: rw }, sequence(
       scssDeclPropName,
       optional(choice(literal('+_'), literal('+'))),
@@ -193,39 +193,39 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   // A single comparison operand. Specific value rules first; `anyValue` last —
   // it stops at whitespace so it cannot swallow a spaced ` == ` / `and` / `{`.
   const condOperand = choice(g.Reference, g.Dimension, g.Num, g.Color, g.NamedColor, g.Quoted, g.Call, g.Paren, g.anyValue);
-  const ScssComparison = node('ScssComparison',
+  const ScssComparison = node(
     parser({ trivia: rw }, sequence(condOperand, optional(sequence(scssCompareOp, condOperand)))));
   // `(` condOr `)` (Paren-wrapped) OR a bare comparison.
-  const ScssCondInParens = node('ScssCondInParens',
-    parser({ trivia: rw }, choice(
+  const ScssCondInParens = node(
+    choice(
       sequence(literal('('), g.ScssCondOr, literal(')')),
       g.ScssComparison
-    )));
+    ));
   // A term: optional `not`, then a paren-group or a comparison.
-  const ScssCondTerm = node('ScssCondTerm',
-    parser({ trivia: rw }, sequence(optional(kwNot), g.ScssCondInParens)));
+  const ScssCondTerm = node(
+    sequence(optional(kwNot), g.ScssCondInParens));
   // 'and' chain (left-associative).
-  const ScssCondAnd = node('ScssCondAnd',
-    parser({ trivia: rw }, sequence(g.ScssCondTerm, many(sequence(kwAnd, g.ScssCondTerm)))));
+  const ScssCondAnd = node(
+    sequence(g.ScssCondTerm, many(sequence(kwAnd, g.ScssCondTerm))));
   // 'or' / ',' chain (left-associative). `,` is allowed in @if (legacy syntax).
-  const ScssCondOr = node('ScssCondOr',
-    parser({ trivia: rw }, sequence(g.ScssCondAnd, many(sequence(choice(kwOr, literal(',')), g.ScssCondAnd)))));
+  const ScssCondOr = node(
+    sequence(g.ScssCondAnd, many(sequence(choice(kwOr, literal(',')), g.ScssCondAnd))));
 
   // A `{ … }` block body → Rules (statements come from atRuleBody).
-  const ScssRules = node('ScssRules',
+  const ScssRules = node(
     parser({ trivia: rw }, sequence(literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
 
   const ifKw = regex(/@if(?![-\w])/i);
   const elseKw = regex(/@else(?![-\w])/i);
   const ifWord = regex(/if(?![-\w])/i);
-  const ScssIf = node('ScssIf',
-    parser({ trivia: rw }, sequence(
+  const ScssIf = node(
+    sequence(
       ifKw, g.ScssCondOr, g.ScssRules,
       many(sequence(elseKw, choice(
         sequence(ifWord, g.ScssCondOr, g.ScssRules),
         g.ScssRules
       )))
-    )));
+    ));
 
   // ── Control flow: @each / @for / @while ────────────────────────────────────
   // Faithful ports of scssEachAtRule / scssForAtRule / scssWhileAtRule
@@ -238,17 +238,17 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const forKw = regex(/@for(?![-\w])/i);
   const whileKw = regex(/@while(?![-\w])/i);
 
-  const ScssEach = node('ScssEach',
-    parser({ trivia: rw }, sequence(
+  const ScssEach = node(
+    sequence(
       eachKw,
       sepBy(scssVar, literal(',')),
       inKw,
       g.valueSequence,
       g.ScssRules
-    )));
+    ));
 
-  const ScssFor = node('ScssFor',
-    parser({ trivia: rw }, sequence(
+  const ScssFor = node(
+    sequence(
       forKw,
       scssVar,
       fromKw,
@@ -256,10 +256,10 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
       choice(forThrough, forTo),
       g.topSum,
       g.ScssRules
-    )));
+    ));
 
-  const ScssWhile = node('ScssWhile',
-    parser({ trivia: rw }, sequence(whileKw, g.ScssCondOr, g.ScssRules)));
+  const ScssWhile = node(
+    sequence(whileKw, g.ScssCondOr, g.ScssRules));
 
   // ── Mixins: @mixin / @include / @content ───────────────────────────────────
   // Faithful ports of scssMixinAtRule / scssIncludeAtRule / scssContentAtRule.
@@ -269,81 +269,81 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const usingKw = regex(/\busing\b/);
 
   // SCSS call/mixin argument: `$x: val`, `val...`, or a plain value.
-  const ScssCallArg = node('ScssCallArg',
-    parser({ trivia: rw }, choice(
+  const ScssCallArg = node(
+    choice(
       sequence(scssVar, literal(':'), g.valueSequence),
       sequence(g.value, literal('...')),
       sequence(g.valueSequence, literal('...')),
       g.valueSequence
-    )));
-  const ScssCallArgsInner = node('ScssCallArgsInner',
+    ));
+  const ScssCallArgsInner = node(
     parser({ trivia: rw }, optional(sequence(
       g.ScssCallArg,
       many(sequence(literal(','), optional(g.ScssCallArg)))
     ))));
   const optionalCallParens = optional(sequence(
-    literal('('), g.ScssCallArgsInner, expect(literal(')'), ')')
+    literal('('), g.ScssCallArgsInner, expect(literal(')'))
   ));
 
   // Mixin parameter: `...$rest`, `$rest...`, `$a: default`, or bare `$a`.
-  const ScssMixinParam = node('ScssMixinParam',
-    parser({ trivia: rw }, choice(
+  const ScssMixinParam = node(
+    choice(
       sequence(literal('...'), scssVar),
       sequence(scssVar, literal('...')),
       sequence(scssVar, optional(sequence(literal(':'), g.valueSequence)))
-    )));
-  const ScssMixinParams = node('ScssMixinParams',
-    parser({ trivia: rw }, sequence(
+    ));
+  const ScssMixinParams = node(
+    sequence(
       literal('('),
       optional(sequence(
         g.ScssMixinParam,
         many(sequence(literal(','), optional(g.ScssMixinParam)))
       )),
-      expect(literal(')'), ')')
-    )));
+      expect(literal(')'))
+    ));
 
   // Mixin/include name: `foo`, module-qualified `ns.foo`, or `foo-#{$bar}`.
   const scssMixinIdent = choice(ScssInterpolatedName, plainIdent);
-  const ScssMixinName = node('ScssMixinName',
-    parser({ trivia: rw }, choice(
+  const ScssMixinName = node(
+    choice(
       sequence(plainIdent, literal('.'), plainIdent),
       ScssInterpolatedName,
       plainIdent
-    )));
+    ));
 
-  const ScssDeclBody = node('ScssDeclBody',
-    parser({ trivia: rw }, sequence(literal('{'), g.declarationList, expect(literal('}'), '}'))));
+  const ScssDeclBody = node(
+    sequence(literal('{'), g.declarationList, expect(literal('}'), '}')));
 
-  const ScssMixin = node('ScssMixin',
-    parser({ trivia: rw }, sequence(
+  const ScssMixin = node(
+    sequence(
       mixinKw, scssMixinIdent, optional(g.ScssMixinParams), g.ScssDeclBody
-    )));
+    ));
 
-  const ScssIncludeUsing = node('ScssIncludeUsing',
-    parser({ trivia: rw }, sequence(
-      usingKw, literal('('), sepBy(scssVar, literal(',')), expect(literal(')'), ')')
-    )));
+  const ScssIncludeUsing = node(
+    sequence(
+      usingKw, literal('('), sepBy(scssVar, literal(',')), expect(literal(')'))
+    ));
 
-  const ScssInclude = node('ScssInclude',
-    parser({ trivia: rw }, sequence(
+  const ScssInclude = node(
+    sequence(
       includeKw, g.ScssMixinName, optionalCallParens,
       optional(g.ScssIncludeUsing), optional(g.ScssRules), optional(literal(';'))
-    )));
+    ));
 
-  const ScssContent = node('ScssContent',
-    parser({ trivia: rw }, sequence(contentKw, optionalCallParens, optional(literal(';')))));
+  const ScssContent = node(
+    sequence(contentKw, optionalCallParens, optional(literal(';'))));
 
   // ── @function / @return ─────────────────────────────────────────────────────
   const functionKw = regex(/@function(?![-\w])/i);
   const returnKw = regex(/@return(?![-\w])/i);
 
-  const ScssFunction = node('ScssFunction',
-    parser({ trivia: rw }, sequence(
+  const ScssFunction = node(
+    sequence(
       functionKw, scssMixinIdent, optional(g.ScssMixinParams), g.ScssDeclBody
-    )));
+    ));
 
-  const ScssReturn = node('ScssReturn',
-    parser({ trivia: rw }, sequence(returnKw, g.valueList, expect(literal(';'), ';'))));
+  const ScssReturn = node(
+    sequence(returnKw, g.valueList, expect(literal(';'), ';')));
 
   // ── @use / @forward / @import / @extend ───────────────────────────────────
   // Faithful ports of scssUseAtRule / scssForwardAtRule / importAtRule /
@@ -364,56 +364,56 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const extendOptional = regex(/!optional\b/);
   const importKw = regex(/@import(?![-\w])/i);
 
-  const ScssWithConfigEntry = node('ScssWithConfigEntry',
-    parser({ trivia: rw }, sequence(
+  const ScssWithConfigEntry = node(
+    sequence(
       scssVar, literal(':'), g.valueSequence,
       optional(choice(literal('!default'), literal('!global')))
-    )));
-  const ScssWithConfig = node('ScssWithConfig',
-    parser({ trivia: rw }, sequence(
+    ));
+  const ScssWithConfig = node(
+    sequence(
       literal('('),
       optional(sepBy(ScssWithConfigEntry, literal(','))),
-      expect(literal(')'), ')')
-    )));
+      expect(literal(')'))
+    ));
 
-  const ScssUseAs = node('ScssUseAs',
-    parser({ trivia: rw }, sequence(kwAs, choice(literal('*'), plainIdent))));
+  const ScssUseAs = node(
+    sequence(kwAs, choice(literal('*'), plainIdent)));
 
-  const ScssUse = node('ScssUse',
-    parser({ trivia: rw }, sequence(
+  const ScssUse = node(
+    sequence(
       useKw, g.Quoted,
       optional(ScssUseAs),
       optional(sequence(kwWith, ScssWithConfig)),
-      expect(literal(';'), ';')
-    )));
+      expect(literal(';'))
+    ));
 
   const forwardExtra = optional(scanTo(
     choice(sequence(kwWith, literal('(')), literal(';')),
     { skip: scanSkip }
   ));
-  const ScssForward = node('ScssForward',
-    parser({ trivia: rw }, sequence(
+  const ScssForward = node(
+    sequence(
       forwardKw, g.Quoted,
       forwardExtra,
       optional(sequence(kwWith, ScssWithConfig)),
-      expect(literal(';'), ';')
-    )));
+      expect(literal(';'))
+    ));
 
   const scssPlaceholder = regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const ScssPlaceholderSelector = node('ScssPlaceholderSelector',
+  const ScssPlaceholderSelector = node(
     scssPlaceholder);
   const scssExtendComplex = choice(ScssPlaceholderSelector, g.ComplexSelector);
-  const ScssExtendTarget = node('ScssExtendTarget',
-    parser({ trivia: rw }, sequence(
+  const ScssExtendTarget = node(
+    sequence(
       scssExtendComplex,
       many(sequence(literal(','), scssExtendComplex))
-    )));
-  const ScssExtend = node('ScssExtend',
-    parser({ trivia: rw }, sequence(
+    ));
+  const ScssExtend = node(
+    sequence(
       extendKw, ScssExtendTarget,
       optional(extendOptional),
-      expect(literal(';'), ';')
-    )));
+      expect(literal(';'))
+    ));
 
   const importOptionsParen = sequence(
     literal('('),
@@ -421,17 +421,17 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     literal(')')
   );
   const importPostlude = scanTo(choice(literal(','), literal(';')), { skip: scanSkip });
-  const ScssImportItem = node('ScssImportItem',
-    parser({ trivia: rw }, sequence(
+  const ScssImportItem = node(
+    sequence(
       expect(choice(g.Url, g.Quoted), 'import path'),
       optional(importPostlude)
-    )));
+    ));
   const ImportAtRuleStatement = node('ScssImportAtRule',
     parser({ trivia: rw }, sequence(
       importKw,
       optional(importOptionsParen),
       sepBy(ScssImportItem, literal(',')),
-      expect(literal(';'), ';')
+      expect(literal(';'))
     )));
 
   const atRootKw = regex(/@at-root(?![-\w])/i);
@@ -439,36 +439,36 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
   const warnKw = regex(/@warn(?![-\w])/i);
   const errorKw = regex(/@error(?![-\w])/i);
 
-  const ScssDiagnostic = node('ScssDiagnostic',
+  const ScssDiagnostic = node(
     parser({ trivia: rw }, sequence(
       choice(debugKw, warnKw, errorKw),
       g.valueSequence,
-      expect(literal(';'), ';')
+      expect(literal(';'))
     )));
 
-  const ScssAtRootFilter = node('ScssAtRootFilter',
-    parser({ trivia: rw }, sequence(
+  const ScssAtRootFilter = node(
+    sequence(
       atRootKw,
       literal('('),
       g.valueSequence,
       literal(')'),
       ScssRules
-    )));
+    ));
 
-  const ScssAtRootSelector = node('ScssAtRootSelector',
-    parser({ trivia: rw }, sequence(
+  const ScssAtRootSelector = node(
+    sequence(
       atRootKw,
       g.SelectorList,
       ScssDeclBody
-    )));
+    ));
 
-  const ScssAtRootPlain = node('ScssAtRootPlain',
-    parser({ trivia: rw }, sequence(atRootKw, ScssRules)));
+  const ScssAtRootPlain = node(
+    sequence(atRootKw, ScssRules));
 
   // ── SCSS at-rule prelude interpolation (segments) ────────────────────────
   const scssPreludeText = regex(/(?:[^{#]|#(?!\{))+/);
   const scssPreludeSegment = choice(ScssInterpBare, scssPreludeText);
-  const scssPermissivePrelude = parser({ trivia: rw }, oneOrMore(scssPreludeSegment));
+  const scssPermissivePrelude = oneOrMore(scssPreludeSegment);
 
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
@@ -481,47 +481,47 @@ export const scssGrammar = compose([lessGrammar, rules((g: any) => {
     ScssDiagnostic,
     ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain
   );
-  const declarationList = parser({ trivia: rw }, many(choice(
+  const declarationList = many(choice(
     scssStatement, g.ScssExtend, Declaration, CustomDeclaration, g.blockItem
-  )));
-  const atRuleBody = parser({ trivia: rw }, many(choice(scssStatement, g.blockItem)));
+  ));
+  const atRuleBody = many(choice(scssStatement, g.blockItem));
 
-  const ScssPlaceholderRuleset = node('ScssPlaceholderRuleset',
+  const ScssPlaceholderRuleset = node(
     parser({ trivia: rw }, sequence(
       ScssPlaceholderSelector,
       optional(g.Guard),
       literal('{'),
       declarationList,
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
-  const QueryAtRuleBlock = node('QueryAtRuleBlock',
+  const QueryAtRuleBlock = node(
     parser({ trivia: rw }, sequence(
       queryAtKeyword,
       scssPermissivePrelude,
-      expect(literal('{'), '{'),
+      expect(literal('{')),
       atRuleBody,
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
   const scopeKw = regex(/@scope(?![-\w])/i);
-  const ScssScopeBlock = node('ScssScopeBlock',
+  const ScssScopeBlock = node(
     parser({ trivia: rw }, sequence(
       scopeKw,
       scssPermissivePrelude,
       literal('{'),
       atRuleBody,
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
   const layerKw = regex(/@layer(?![-\w])/i);
-  const ScssLayerBlock = node('ScssLayerBlock',
+  const ScssLayerBlock = node(
     parser({ trivia: rw }, sequence(
       layerKw,
       optional(ScssInterpolatedName),
       literal('{'),
       atRuleBody,
-      expect(literal('}'), '}')
+      expect(literal('}'))
     )));
-  const Stylesheet = node('Stylesheet',
+  const Stylesheet = node(
     parser({ trivia: rw }, many(choice(
       scssStatement, ScssPlaceholderRuleset, ScssScopeBlock, ScssLayerBlock, g.stylesheetItem
     ))));

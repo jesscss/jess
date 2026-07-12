@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import { any, decl, el, extend, ExtendFlag, rules, ruleset, sel, sellist, Node } from '../index.js';
 import { Extend } from '../extend.js';
 import { ExtendList, extendList } from '../extend-list.js';
@@ -54,12 +54,10 @@ describe('Extend render', () => {
     expect(node.render(context)).toBe('');
   });
 
-  it('preserves parser tree context on extend lists', () => {
-    const treeContext = new TreeContext();
+  it('stores extend children on the value field with childKeys [value]', () => {
     const child = extend({ target: el('.base') });
-    const node = new ExtendList([child], undefined, undefined, treeContext);
+    const node = new ExtendList([child], undefined, undefined);
 
-    expect(node._treeContext).toBe(treeContext);
     expect(node.value).toEqual([child]);
     expect(ExtendList.childKeys).toEqual(['value']);
   });

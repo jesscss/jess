@@ -81,11 +81,9 @@ export class Extend extends Node<ExtendValue> {
   constructor(
     value: ExtendValue,
     options?: NodeOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.selector = value.selector;
     this.target = value.target;
     this.namespace = value.namespace;
@@ -126,6 +124,8 @@ export class Extend extends Node<ExtendValue> {
     options.suppressBoundaryTrivia = 'pre';
     if (isSelectorListLike(target)) {
       emitSelectorListLike(target, options, true);
+    } else if (typeof target === 'string') {
+      w.add(target, this);
     } else {
       target.writeSyntax(options);
     }
@@ -154,10 +154,53 @@ export class Extend extends Node<ExtendValue> {
     // The parser delivers simple targets as bare strings (e.g. `.button`) per the
     // strings-not-nodes model; materialize to a Selector node so the record stays
     // node-shaped for the matching engine and the bit-library attach below.
-    const target = asExtendSelectorNode(this.target);
-    attachSelectorBitLibrary(target, selectorBits);
+    const targetNode = asExtendSelectorNode(this.target);
 
     const currentFrame = context.rulesetFrames.at(-1);
+
+    // OQ-A (design §9): a target with INTERPOLATION (`:extend([data=@{attr}])`, `:extend(.@{name})`)
+    // must resolve against the LIVE frame BEFORE matching — otherwise the raw `@{…}` target matches
+    // nothing and the extend silently no-ops. Resolve it here (frame live during the effect); a
+    // fully-literal target skips the eval entirely (the common case). Interpolation is carried by an
+    // `InterpolatedSelector`/`Interpolated` node (its `valueOf` is a `%%` placeholder, NOT `@{…}`),
+    // so detect it by node type via a walk — a text-pattern check would miss it.
+    const isInterpNode = (n: { type?: string }): boolean =>
+      n.type === 'InterpolatedSelector' || n.type === 'Interpolated';
+    const targetHasInterpolation =
+      isInterpNode(targetNode)
+      // Attribute-value interpolation (`[data=@{name}]`) is carried as a RAW `@{…}` token in an
+      // `AttributeSelector` value string (not an interpolation NODE), so also match the text.
+      || /[@$]\{/.test(String(targetNode.valueOf()))
+      || (() => {
+        for (const descendant of targetNode.walk(true)) {
+          if (isInterpNode(descendant)) {
+            return true;
+          }
+        }
+        return false;
+      })();
+    const targetMaybe: MaybePromise<Selector | Nil> = targetHasInterpolation
+      ? targetNode.eval(context)
+      : targetNode;
+    const continueWithTarget = (resolvedTarget: Selector | Nil): MaybePromise<void> => {
+      const target = resolvedTarget instanceof Nil ? targetNode : resolvedTarget;
+      attachSelectorBitLibrary(target, selectorBits);
+      return this._runEffectWithTarget(context, target, selector, flag, currentFrame);
+    };
+    return isThenable(targetMaybe)
+      ? targetMaybe.then(continueWithTarget)
+      : continueWithTarget(targetMaybe);
+  }
+
+  /** @internal Continuation of `runEffect` once the (possibly interpolated) target is resolved. */
+  private _runEffectWithTarget(
+    context: Context,
+    target: Selector,
+    selectorArg: Selector | SelectorListItem[] | undefined,
+    flag: ExtendFlag | undefined,
+    currentFrame: Ruleset | undefined
+  ): MaybePromise<void> {
+    let selector = selectorArg;
 
     // If selector is undefined, convert it to ampersand so it resolves to the ruleset's selector
     // If selector is already set to a non-ampersand (e.g., from a bubbled extend), keep it as-is

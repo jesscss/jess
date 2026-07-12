@@ -19,11 +19,20 @@ import { el, compound } from '../../index.js';
 import { projectSubject, emitSubjectHeader } from '../emit.js';
 
 async function render(src: string, collapseNesting: boolean): Promise<string> {
-  const context = new Context({ output: { collapseNesting }, leakyRules: true });
+  const context = new Context({ output: { collapseNesting }, leakyScope: true });
   const parser = new Parser();
   const { tree } = parser.parse(src);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return await renderNodeToString(tree as unknown as RenderBufferNode, context, { context });
+  // Force the EVAL path (identity `preSerializeRoot`): this probe pins the EVAL-engine bug for
+  // the shapes the spine does NOT yet route (this fixture's `&.sidebar4` nested-amp extender +
+  // `.box` nesting exceed the P3 increment-2 gate, so it stays on eval — where the bare-fragment
+  // bug persists). The spine's FIX for the simpler nested shape is proven separately (the
+  // jess spine-extend ratchet + the EMIT unit test below).
+  return await renderNodeToString(
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+    tree as unknown as RenderBufferNode,
+    context,
+    { context, preSerializeRoot: r => r }
+  );
 }
 
 const EXTEND_NEST = `
@@ -34,9 +43,12 @@ const EXTEND_NEST = `
 `;
 
 describe('EMIT fixes the current-engine nested-extender bug (extend-nest)', () => {
-  it('current engine emits the BARE fragment .sidebar3 (the bug)', async () => {
+  it('the EVAL engine still emits the BARE fragment .sidebar3 (bug persists on the eval path)', async () => {
+    // The eval-path render (forced above) still exhibits the nested-extender bug: `.sidebar3`
+    // bare, NOT the composed `.type1 .sidebar3`. The SPINE fixes this for the simpler nested
+    // shape (proven by the jess `spine-extend` ratchet); this fixture stays on eval (its
+    // `&.sidebar4` nested-amp extender exceeds the P3 increment-2 gate), so the bug persists here.
     const out = await render(EXTEND_NEST, true);
-    // The live engine's `.sidebar` Or-set contains the bare `.sidebar3`, NOT `.type1 .sidebar3`.
     const header = out.slice(0, out.indexOf('{')).replace(/\s+/g, ' ').trim();
     expect(header).toBe('.sidebar, .sidebar2, .sidebar3, .type2.sidebar4');
     // Confirm the composed form is ABSENT from the extended subject's header (the defect).

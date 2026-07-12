@@ -39,11 +39,9 @@ export class Range extends Node<RangeValue, RangeOptions> {
   constructor(
     value: RangeValue,
     options?: RangeOptions,
-    location?: ConstructorParameters<typeof Node<RangeValue, RangeOptions>>[2],
-    treeContext?: Context['treeContext']
+    location?: ConstructorParameters<typeof Node<RangeValue, RangeOptions>>[2]
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.start = value.start;
     this.end = value.end;
     this.step = value.step;
@@ -163,6 +161,5 @@ type RangeParams = ConstructorParameters<typeof Range>;
 export const range = defineType(Range, 'Range', 'range') as (
   value: RangeParams[0],
   options?: RangeParams[1],
-  location?: RangeParams[2],
-  treeContext?: RangeParams[3]
+  location?: RangeParams[2]
 ) => Range;

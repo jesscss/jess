@@ -1,11 +1,12 @@
 import { spanStartOf, spanEndOf, sourceSpanOf } from './util/provenance.js';
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, type NodeLocation } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_SEMI_SET, F_SEMI_VALUE, type NodeLocation } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { coerceNodeArray } from './util/evaluate-node-array.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
+import { WARN, toDiagnostic } from '../jess-error.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -81,10 +82,6 @@ function isTriviaMap(value: unknown): value is NonNullable<PrintOptions['trivia'
 function sourceTriviaForNode(node: Node): PrintOptions['trivia'] | undefined {
   const trivia = node.sourceRoot?._treeContext?.opts?.trivia;
   return isTriviaMap(trivia) ? trivia : undefined;
-}
-
-function createImportantFlag(): Any<'flag'> {
-  return new Any<'flag'>('!important', { role: 'flag' });
 }
 
 function startsWithWhitespace(text: string): boolean {
@@ -183,8 +180,7 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
         mixinRulesetCall: true,
         mixinRulesetCallHasArgs: hasArgs || undefined
       },
-      sourceSpanOf(name),
-      name.sourceRoot?._treeContext
+      sourceSpanOf(name)
     );
   }
   return name;
@@ -563,8 +559,6 @@ export class Call extends Node<CallValue, CallOptions> {
    */
   _evaluatedCallOutput = false;
 
-  override _requiredSemi = true;
-
   private createEvalState(): CallEvalState {
     const preservesRulesLikeVariableTarget = isNode(this.name, N.Reference) && this.name.options?.type === 'variable';
     let name = this.name;
@@ -583,8 +577,7 @@ export class Call extends Node<CallValue, CallOptions> {
           ...name.options,
           preserveRulesLike: true
         },
-        sourceSpanOf(name),
-        name.sourceRoot?._treeContext
+        sourceSpanOf(name)
       );
     }
     name = withMixinRulesetCallArgsHint(name, this.args);
@@ -629,6 +622,17 @@ export class Call extends Node<CallValue, CallOptions> {
       }
     );
     return state.source.markCallOutput(new Any(rendered, { role: 'any' }));
+  }
+
+  /** Warn that a matched registered function was left as-is (functionMode 'preserve'). */
+  private warnUnresolvedFunction(context: Context, name: Node | string | unknown, error: unknown): void {
+    const fnName = isNode(name, N.Reference) ? String(name.key.valueOf()) : String(name);
+    const file = this.sourceRoot?._treeContext?.file;
+    context.warnings.push(toDiagnostic(WARN.unresolvedFunction({
+      ctx: file ? { file } : undefined,
+      filePath: file?.fullPath,
+      meta: { name: fnName, reason: String((error as { message?: unknown })?.message ?? error).split('\n')[0] }
+    })));
   }
 
   private async evalArgNodes(
@@ -856,10 +860,11 @@ export class Call extends Node<CallValue, CallOptions> {
               : await callWithContext(context, fn);
             return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
-            const unitMode = context?.opts?.unitMode ?? 'loose';
-            if (unitMode === 'strict') {
+            const functionMode = context?.options.functionMode ?? 'preserve';
+            if (functionMode === 'error') {
               throw error;
             }
+            this.warnUnresolvedFunction(context, this.name, error);
             const fallbackName = isNode(this.name, N.Reference) && this.name.options.fallbackValue === true
               ? String(this.name.key)
               : stringifyValueOf(fn);
@@ -1425,10 +1430,11 @@ export class Call extends Node<CallValue, CallOptions> {
                 if (
                   isMetadataFunction
                   || !this.options?.silentFail
-                  || (context?.opts?.unitMode ?? 'loose') === 'strict'
+                  || (context?.options.functionMode ?? 'preserve') === 'error'
                 ) {
                   throw error;
                 }
+                this.warnUnresolvedFunction(context, this.name, error);
                 const fallbackName = isNode(this.name, N.Reference) && this.name.options.fallbackValue === true
                   ? String(this.name.key)
                   : stringifyValueOf(fn);
@@ -1556,16 +1562,15 @@ export class Call extends Node<CallValue, CallOptions> {
   constructor(
     value: CallValue,
     options?: CallOptions,
-    location?: NodeLocation,
-    treeContext?: Context['treeContext']
+    location?: NodeLocation
   ) {
     super(value, options, location);
-    this._treeContext = treeContext;
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
-    // Function calls are always non-static
-    this.addFlags(F_VISIBLE, F_NON_STATIC);
+    // Function calls are always non-static, and always require a semi
+    // separator (was `_requiredSemi = true`; now the F_SEMI_* bits).
+    this.addFlags(F_VISIBLE, F_NON_STATIC, F_SEMI_SET, F_SEMI_VALUE);
   }
 
   protected override ownStaticFlag(): number {
@@ -1750,7 +1755,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
-    const important = createImportantFlag();
+    const important = '!important';
     for (let index = 0; index < rules.rules.length; index++) {
       const rule = rules.rules[index]!;
       if (isNode(rule, N.Declaration)) {
@@ -1920,8 +1925,6 @@ export class Call extends Node<CallValue, CallOptions> {
             markImportant
           });
         } catch (e) {
-          const unitMode = context?.opts?.unitMode ?? 'loose';
-          const shouldRethrowForMode = unitMode === 'strict';
           if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
             if (this.parent?.type === 'SelectorCapture') {
               return this.markCallOutput(new Any(stringifyValueOf(n), { role: 'ident' }));
@@ -1931,9 +1934,16 @@ export class Call extends Node<CallValue, CallOptions> {
             }
             throw e;
           }
-          if (!this._options?.silentFail || shouldRethrowForMode) {
+          // A registered function matched (isExtendedFn) but couldn't produce a
+          // value. `functionMode: 'error'` throws it; the default 'preserve'
+          // renders the call as-is (like an unknown CSS function) and warns —
+          // but only for an optional (fallback) reference, i.e. a bare/global
+          // call. A non-fallback reference (explicit import) always throws.
+          const functionMode = context?.options.functionMode ?? 'preserve';
+          if (!this._options?.silentFail || functionMode === 'error') {
             throw e;
           }
+          this.warnUnresolvedFunction(context, name, e);
           return this.evalOptionalFallbackCallSyntax(context, state, name, n);
         }
       });
@@ -1973,8 +1983,7 @@ export class Call extends Node<CallValue, CallOptions> {
             const node = new Call(
               { name: 'calc', args: list([innerArgs.value[0]!]), contentNode: state.contentNode },
               { silentFail: false },
-              sourceSpanOf(this),
-              this.sourceRoot?._treeContext
+              sourceSpanOf(this)
             );
             return this.markCallOutput(node);
           }
@@ -1997,8 +2006,7 @@ export class Call extends Node<CallValue, CallOptions> {
         this._options
           ? { ...this._options, silentFail: false }
           : { silentFail: false },
-        sourceSpanOf(this),
-        this.sourceRoot?._treeContext
+        sourceSpanOf(this)
       );
       return this.markCallOutput(node);
     };

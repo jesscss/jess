@@ -1,6 +1,6 @@
-import type { EqualityMode, MathMode, UnitMode } from './modes.js';
+import type { EqualityMode, FunctionMode, MathMode, UnitMode } from './modes.js';
 
-export type { EqualityMode, MathMode, UnitMode };
+export type { EqualityMode, FunctionMode, MathMode, UnitMode };
 export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 /**
@@ -135,10 +135,19 @@ export interface LessOptions {
   unitMode?: UnitMode;
 
   /**
-   * How to handle equality/coercion in guards and comparisons.
-   * - 'coerce': Less-compatible coercion behavior
-   * - 'strict': type-strict behavior
-   * @default 'coerce'
+   * How an optional/global function call that matched a registered function but
+   * couldn't be evaluated is handled: `preserve` renders it as-is (+ warning),
+   * `error` throws. Mirrors {@link unitMode}.
+   * @default 'preserve'
+   */
+  functionMode?: FunctionMode;
+
+  /**
+   * Guard-comparison dialect (verified vs Less 4.6.3 + Dart Sass):
+   * - 'less': Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
+   * - 'sass': Dart Sass equality (unit-strict; quote-insensitive strings)
+   * - 'exact': no coercion — same node type required
+   * @default 'less' (Less plugin) / 'sass' (SCSS plugin)
    */
   equalityMode?: EqualityMode;
 
@@ -222,6 +231,24 @@ export interface LessOptions {
   quiet?: boolean;
 
   /**
+   * Convenience preset. When `true`, sets the strict bundle for any of these left
+   * `undefined` (individual options always win): `unitMode: 'strict'`,
+   * `equalityMode: 'exact'` (the no-coercion dialect), `leakyScope: false`,
+   * `allowOverloadedImport: false`. Modeled after `tsconfig` `strict` — it only
+   * sets semantic options, it is not itself a mode.
+   * @default false
+   */
+  strict?: boolean;
+
+  /**
+   * Whether re-importing a file/namespace may contribute *overloaded* (duplicated,
+   * additively-merged) definitions rather than being de-duplicated like Less's
+   * `@import (once)`. `strict` sets this to `false`.
+   * @default true
+   */
+  allowOverloadedImport?: boolean;
+
+  /**
    * @deprecated This is legacy Less behavior.
    *
    * Controls whether mixins and detached rulesets "leak" their inner rules.
@@ -232,7 +259,7 @@ export interface LessOptions {
    * - Both mixins and detached rulesets: Mixin and VarDeclaration nodes are 'private'
    * @default true
    */
-  leakyRules?: boolean;
+  leakyScope?: boolean;
 
   /**
    * Whether to collapse nested selectors (Less 1.x-4.x style flattening)

@@ -11,12 +11,13 @@ import { isNode } from './util/is-node.js';
 import { Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
-import { Any, any, keyword, type AnyRole } from './any.js';
+import { Any, keyword, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
 import { List } from './list.js';
 import { Sequence, spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
+import { makeJessError } from '../jess-error.js';
 import type { Call } from './call.js';
 import {
   OutputWriter,
@@ -219,7 +220,7 @@ export function finalizeContextualImportantPublicState(
   }
   return sourceImportant && sourceImportant !== true
     ? { important: sourceImportant }
-    : { important: any('!important', { role: 'flag' }) };
+    : { important: '!important' };
 }
 
 export function collectDeclarationMergeAdapterItems(
@@ -648,8 +649,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   constructor(
     value: DeclarationValue,
     options?: Opts,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super();
     setSourceSpan(this, location);
@@ -658,7 +658,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     this.name = value.name;
     this.value = value.value;
     this.important = value.important;
-    this._treeContext = treeContext;
     // Declarations (and Custom/VarDeclaration subclasses) are valid statements.
     this.addFlag(F_ALLOW_ROOT);
     // A merge declaration (`+:` / `&,:` / `&_:` or normalized-from-assign) needs
@@ -829,14 +828,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const Ctor = this.constructor as unknown as new (
       value: DeclarationValue,
       options?: Opts,
-      location?: LocationInfo,
-      treeContext?: Context['treeContext']
+      location?: LocationInfo
     ) => this;
     const node = new Ctor(
       value,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this._treeContext
+      sourceSpanOf(this)
     );
     return this.applyDerivedMetadata(node);
   }
@@ -1873,7 +1870,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               '+,:',
               '+_:'
             ]
-          }, undefined, this.sourceRoot?._treeContext);
+          }, undefined);
           // Positional bound for the prior-value lookup: eval-time nodes don't
           // parent (invariant 7), so carry the referring decl's index directly.
           ref.index = this.index;
@@ -1921,7 +1918,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   && !sameConcreteLocation(sourceSpanOf(n), outputNode?.location)
                   && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
               }
-            }, undefined, this.sourceRoot?._treeContext);
+            }, undefined);
             // The merge ref reads the PRIOR value of this property. Its lookup
             // start comes from `getLookupStartIndex(ref)`, which walks the parent
             // chain — but eval-time nodes don't parent (invariant 7), so carry the
@@ -1943,7 +1940,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           } else {
             setValue(
               new Operation([
-                new Reference({ key: referenceKey }, { type }, undefined, this.sourceRoot?._treeContext),
+                new Reference({ key: referenceKey }, { type }, undefined),
                 '+',
                 inputValue
               ])
@@ -1956,7 +1953,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             new Reference({ key: referenceKey }, {
               type,
               fallbackValue: inputValue
-            }, undefined, this.sourceRoot?._treeContext)
+            }, undefined)
           );
           break;
         }
@@ -2202,9 +2199,48 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
     const state = this.evalValueState(context);
+    const finalize = (resolved: DeclarationValueState<this> | Nil): this | Nil => {
+      if (resolved instanceof Nil) {
+        return resolved;
+      }
+      const out = this.materializeValueState(resolved);
+      out.assertNotDetachedRuleset();
+      return out;
+    };
     return isThenable<DeclarationValueState<this> | Nil>(state)
-      ? state.then((resolved: DeclarationValueState<this> | Nil) => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
-      : state instanceof Nil ? state : this.materializeValueState(state);
+      ? state.then(finalize)
+      : finalize(state);
+  }
+
+  /**
+   * A detached ruleset used as a property value (`a: @dr;`) is invalid — Less:
+   * "Rulesets cannot be evaluated on a property". A detached ruleset resolves to a
+   * `Mixin` (uncalled, the `@dr: { … }` body) or a `Rules` (a called output); a
+   * value `Collection` (a Rules subtype that legitimately groups value parts) is
+   * NOT flagged. Only regular property declarations are checked — a VarDeclaration
+   * `@x: { … }` is a valid detached-ruleset *definition*.
+   */
+  private assertNotDetachedRuleset(): void {
+    if (this.type !== 'Declaration') {
+      return;
+    }
+    let v: unknown = this.value;
+    if (isNode(v, N.List) || isNode(v, N.Sequence)) {
+      const items = (v as { value?: unknown[] }).value;
+      if (Array.isArray(items) && items.length === 1) {
+        v = items[0];
+      }
+    }
+    const t = (v as { type?: string } | null)?.type;
+    if (t === 'Mixin' || t === 'Rules') {
+      throw makeJessError({
+        code: 'eval/ruleset-on-property',
+        phase: 'eval',
+        ctx: this.sourceRoot?._treeContext,
+        node: this,
+        meta: { what: String(this.name?.valueOf?.() ?? this.name ?? 'property') }
+      });
+    }
   }
 
   /** @todo - move to visitors */

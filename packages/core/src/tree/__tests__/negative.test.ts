@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import {
   any,
   Any,
@@ -50,13 +50,6 @@ describe('Negative', () => {
 
   it('renders negative syntax through toTrimmedString()', () => {
     expect(negative(num(10)).toTrimmedString()).toBe('-10');
-  });
-
-  it('preserves parser tree context on construction', () => {
-    const treeContext = new TreeContext();
-    const node = new Negative(num(10), undefined, undefined, treeContext);
-
-    expect(node._treeContext).toBe(treeContext);
   });
 
   it('stores the negative child on a constructor-owned direct field', () => {
@@ -216,7 +209,7 @@ describe('Negative', () => {
   });
 
   it('negates a dimension on the public operation boundary', async () => {
-    context.opts.unitMode = 'preserve';
+    context.setOption('unitMode', 'preserve');
     const value = dimension({ number: 10, unit: 'px' });
     const negativeNode = negative(value);
 

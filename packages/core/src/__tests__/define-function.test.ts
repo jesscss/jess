@@ -514,13 +514,12 @@ describe('defineFunction', () => {
         constructor(
           value: string,
           options?: ConstructorParameters<typeof Any<AnyRole>>[1],
-          location?: ConstructorParameters<typeof Any<AnyRole>>[2],
-          treeContext?: ConstructorParameters<typeof Any<AnyRole>>[3]
+          location?: ConstructorParameters<typeof Any<AnyRole>>[2]
         ) {
           if (CopyBomb.copyShouldThrow) {
             throw new Error('unexpected raw arg copy');
           }
-          super(value, options, location, treeContext);
+          super(value, options, location);
         }
       }
 

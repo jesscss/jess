@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { serializeTypes, isNode, N } from '@jesscss/core';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { assertValidTree } from './assert-valid-tree.js';
 
 const parser = new Parser();

@@ -4,7 +4,7 @@
 // grammar (dollar exprs, @-compose/@-from, etc.). Un-skip as task #7 lands.
 import { describe, it, expect } from 'vitest';
 import { serializeTypes, isNode, N, VarDeclaration, Reference, Mixin, Call, If, StyleImport, JsImport, Collection } from '@jesscss/core';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 import { assertValidTree } from './assert-valid-tree.js';
 
 const parser = new Parser();

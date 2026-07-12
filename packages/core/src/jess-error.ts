@@ -26,6 +26,8 @@ export type JessErrorCode =
   | 'eval/bad-call-arity'
   | 'eval/type-mismatch'
   | 'eval/invalid-statement'
+  | 'eval/property-in-root'
+  | 'eval/ruleset-on-property'
   | 'extend/protected-boundary'
   | 'extend/not-found'
   | 'extend/not-accessible'
@@ -33,7 +35,9 @@ export type JessErrorCode =
   | 'eval/deprecated'
   | 'resolve/unused-variable'
   | 'selector/duplicate'
-  | 'selector/parentless-ampersand';
+  | 'selector/parentless-ampersand'
+  | 'selector/invalid-ampersand-merge'
+  | 'function/unresolved';
 
 /**
  * Normalized error format for all phases (lexing, parsing, evaluation).
@@ -218,6 +222,18 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
   }],
 
+  ['eval/property-in-root', {
+    summary: 'Properties must be inside selector blocks. They cannot be in the root',
+    reason: 'The property "${what}" was evaluated at the root — most often a mixin or detached ruleset call that dropped its declarations into the top level.',
+    fix: 'Put the property inside a selector block (e.g. call the mixin/detached ruleset from within a ruleset).'
+  }],
+
+  ['eval/ruleset-on-property', {
+    summary: 'Rulesets cannot be evaluated on a property',
+    reason: 'The value of "${what}" evaluated to a detached ruleset; a detached ruleset can only be called (e.g. `@dr();` inside a block), not used as a property value.',
+    fix: 'Call the detached ruleset in statement position instead of assigning it to a property.'
+  }],
+
   // Extend
   ['extend/protected-boundary', {
     summary: 'Extend blocked by protected boundary',
@@ -262,6 +278,16 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Parentless ampersand ignored',
     reason: 'Selector "${selector}" uses "&" without an available parent selector in this context.',
     fix: 'Move the selector under a real parent selector, or remove the stray "&".'
+  }],
+  ['selector/invalid-ampersand-merge', {
+    summary: 'Invalid ampersand merge template',
+    reason: 'Cannot glue merge template "${template}" onto the comma-separated parent selector "${parent}".',
+    fix: 'A comma list from an interpolated value can\'t be an "&"-merge parent; split the rule or drop the interpolation.'
+  }],
+  ['function/unresolved', {
+    summary: 'Function "${name}" left as-is',
+    reason: '"${name}" matched a registered function but could not be evaluated: ${reason}',
+    fix: 'Fix the arguments, or set functionMode: \'error\' to make this fail.'
   }]
 ]);
 
@@ -701,6 +727,10 @@ export const ERR = {
     return makeJessError({ code: 'extend/not-accessible', phase: 'extend', ...args });
   },
 
+  invalidAmpersandMerge(args: Common & { meta: { template: string; parent: string } }) {
+    return makeJessError({ code: 'selector/invalid-ampersand-merge', phase: 'eval', ...args });
+  },
+
   // Plugin
   pluginUnsupported(args: Common & { meta: { plugin: string; feature: string } }) {
     return makeJessError({ code: 'plugin/unsupported-feature', phase: 'plugin', ...args });
@@ -727,6 +757,10 @@ export const WARN = {
 
   parentlessAmpersand(args: Common & { meta: { selector: string } }) {
     return makeJessError({ severity: 'warn', code: 'selector/parentless-ampersand', phase: 'eval', ...args });
+  },
+
+  unresolvedFunction(args: Common & { meta: { name: string; reason: string } }) {
+    return makeJessError({ severity: 'warn', code: 'function/unresolved', phase: 'eval', ...args });
   },
 
   extendNotFound(args: Common & { meta: { target: string } }) {

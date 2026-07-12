@@ -287,7 +287,14 @@ describe('Compiler reuse', () => {
     // D3: `render()` is the sole eval driver. The root enters `render()`
     // UNEVALUATED (no separate pre-pass eval) and render evaluates it — so it is
     // evaluated by the time the render call resolves.
-    const source = '.a { color: red; }';
+    //
+    // NOTE (cutover P2): a spine-ELIGIBLE root is rendered by the single-pass
+    // spine WITHOUT any `eval` (that is the wire-in — no eval pass, no output
+    // tree; `evaluated` stays false), so this D3 eval-driver contract is now
+    // exercised with a root the spine does NOT cover. An `:extend` selector keeps
+    // the root on the eval path (extend application is P3), so render still drives
+    // eval to completion exactly as the pre-pass used to.
+    const source = '.base { color: red; }\n.a:extend(.base) { font-weight: bold; }';
     const testFile = path.join(tempDir, 'evaluated-render-root.less');
     fs.writeFileSync(testFile, source);
     const originalRender = Rules.prototype.render;

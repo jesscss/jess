@@ -84,7 +84,7 @@ describe('EMIT projection — the full Or-branch set (extend-nest.css:1-4)', () 
     expect(proj.hoistToRoot).toBe(false);
   });
 
-  it('orders branches by document order, not insertion order', () => {
+  it('appends: target-own LEADS, contributions follow in feed order (no sort)', () => {
     const proj = projectSubject({
       path: [el('.sidebar')],
       order: 5,
@@ -93,8 +93,10 @@ describe('EMIT projection — the full Or-branch set (extend-nest.css:1-4)', () 
         { path: [el('.early')], order: 1 }
       ]
     });
-    // subject.order=5 sits between .early(1) and .late(9).
-    expect(emitSubjectHeader(proj)).toBe('.early,.sidebar,.late');
+    // Extend is LIST-APPEND: `.sidebar` (the target's own form) always leads its own rule;
+    // contributions follow in the order fed (`.late` then `.early`). `order` does NOT sort the
+    // set — a before-authored extender does NOT float ahead of the target (the fixed bug).
+    expect(emitSubjectHeader(proj)).toBe('.sidebar,.late,.early');
   });
 });
 

@@ -1,8 +1,7 @@
 import { spanStartOf, spanEndOf } from '../util/provenance.js';
 import { amp, any, attr, co, compound, ComplexSelector, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
-import { Context, TreeContext } from '../../context.js';
+import { Context } from '../../context.js';
 import { keySetOf, visibleKeySetOf, requiredKeySetOf } from '../util/selector-analysis.js';
-import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -20,8 +19,6 @@ class CountingWriter extends OutputWriter {
     return super.getSince(mark);
   }
 }
-
-const run = (text: string) => makeTrivia(text, 0, text.length);
 
 let context: Context;
 
@@ -156,13 +153,8 @@ describe('Complex selector', () => {
     });
 
     test('does not consume reordered source trivia between generated selector parts', () => {
-      const trivia = createTriviaMap({
-        before: new Map([[0, run('\n')]]),
-        after: new Map([[26, run('\n')]])
-      });
-      const treeContext = new TreeContext({ trivia });
-      const parent = el('.top', undefined, { start: 0, end: 3 }, treeContext);
-      const nested = el('.inside', undefined, { start: 20, end: 26 }, treeContext);
+      const parent = el('.top', undefined, { start: 0, end: 3 });
+      const nested = el('.inside', undefined, { start: 20, end: 26 });
 
       const rendered = sel([
         nested,

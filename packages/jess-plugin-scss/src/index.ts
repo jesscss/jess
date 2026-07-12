@@ -12,7 +12,7 @@ import {
   extractRelevantLines,
   type Rules
 } from '@jesscss/core';
-import { Parser } from '@jesscss/scss-parser';
+import { Parser } from '@jesscss/scss-parser/jess';
 import path from 'node:path';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 import type { EqualityMode, UnitMode } from '@jesscss/core';
@@ -51,7 +51,7 @@ export class ScssPlugin extends AbstractPlugin {
   constructor(public opts: ScssPluginOptions = {}) {
     super();
     this.unitMode = opts.unitMode ?? 'preserve';
-    this.equalityMode = opts.equalityMode ?? 'strict';
+    this.equalityMode = opts.equalityMode ?? 'sass';
     this.parser = new Parser();
   }
 

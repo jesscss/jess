@@ -1,4 +1,4 @@
-import { Node, Sequence, any, list, nil, num, op, ref, rules, seq, F_STATIC, type Rules as RulesClass, vardecl } from '../index.js';
+import { Node, Rules as RulesClass, Sequence, any, list, nil, num, op, ref, rules, seq, F_STATIC, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
@@ -722,15 +722,19 @@ describe('Sequence', () => {
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
-    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 });
+    const second = num(20, undefined, { start: 3, end: 4 });
     let stringCalls = 0;
     first.toString = second.toString = () => {
       stringCalls++;
       return '';
     };
 
-    expect(seq([first, second]).toTrimmedString({ trivia })).toBe('10  20');
+    // The source-boundary trivia guard resolves each node's tree context via its
+    // sourceRoot, so the sequence must be parented under the source-tree Rules.
+    const rule = seq([first, second]);
+    new RulesClass([rule], undefined, undefined, treeContext).parentChildren();
+    expect(rule.toTrimmedString({ trivia })).toBe('10  20');
     expect(stringCalls).toBe(0);
   });
 
@@ -752,8 +756,8 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, { start: 0, end: 2 }, treeContext);
-    const second = num(20, undefined, { start: 2, end: 3 }, treeContext);
+    const first = num(10, undefined, { start: 0, end: 2 });
+    const second = num(20, undefined, { start: 2, end: 3 });
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -768,8 +772,8 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, { start: 0, end: 2 }, treeContext);
-    const second = num(20, undefined, { start: 2, end: 3 }, treeContext);
+    const first = num(10, undefined, { start: 0, end: 2 });
+    const second = num(20, undefined, { start: 2, end: 3 });
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;
@@ -783,8 +787,8 @@ describe('Sequence', () => {
       after: new Map()
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = any('is', undefined, { start: 0, end: 2 }, treeContext);
-    const second = any('equal', undefined, { start: 2, end: 7 }, treeContext);
+    const first = any('is', undefined, { start: 0, end: 2 });
+    const second = any('equal', undefined, { start: 2, end: 7 });
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -800,8 +804,8 @@ describe('Sequence', () => {
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = any('is', undefined, { start: 0, end: 1 }, treeContext);
-    const second = any('equal', undefined, { start: 3, end: 7 }, treeContext);
+    const first = any('is', undefined, { start: 0, end: 1 });
+    const second = any('equal', undefined, { start: 3, end: 7 });
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -818,8 +822,8 @@ describe('Sequence', () => {
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
-    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 });
+    const second = num(20, undefined, { start: 3, end: 4 });
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
 
@@ -835,8 +839,8 @@ describe('Sequence', () => {
       after: new Map([[1, whitespace]])
     }) satisfies TriviaMap;
     const treeContext = new TreeContext({ trivia });
-    const first = num(10, undefined, { start: 0, end: 1 }, treeContext);
-    const second = num(20, undefined, { start: 3, end: 4 }, treeContext);
+    const first = num(10, undefined, { start: 0, end: 1 });
+    const second = num(20, undefined, { start: 3, end: 4 });
     const rule = seq([first, second]);
     rules([rule], undefined, undefined, treeContext);
     context.opts.trivia = trivia;

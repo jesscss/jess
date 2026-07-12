@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { url, quoted, ref, rules, vardecl, any, Rules as RulesClass, Url } from '../index.js';
-import { Context, TreeContext } from '../../context.js';
-import { createTriviaMap, makeTrivia } from '../util/trivia.js';
+import { Context } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -23,9 +22,6 @@ async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<voi
   context.root = evald;
   context.rulesContext = evald;
 }
-
-// A trivia run is now a source range; build one whose text is exactly `text`.
-const run = (text: string) => makeTrivia(text, 0, text.length);
 
 describe('url', () => {
   let context: Context;
@@ -122,13 +118,8 @@ describe('url', () => {
   });
 
   it('does not render pure source whitespace inside url syntax', () => {
-    const trivia = createTriviaMap({
-      before: new Map([[4, run(' ')]]),
-      after: new Map()
-    });
-    const treeContext = new TreeContext({ trivia });
-    const value = quoted('image.png', undefined, { start: 4, end: 14 }, treeContext);
-    const node = url(value, undefined, { start: 0, end: 15 }, treeContext);
+    const value = quoted('image.png', undefined, { start: 4, end: 14 });
+    const node = url(value, undefined, { start: 0, end: 15 });
 
     expect(node.render(context)).toBe('url("image.png")');
   });

@@ -1,5 +1,4 @@
 import {
-  type TreeContext,
   type Context
 } from '../context.js';
 import type { TriviaMap } from '../types/index.js';
@@ -301,6 +300,17 @@ export const F_MERGE_SUPPRESSED = 0b10000000000000000;
 export { F_HAS_VALUESPANS, F_HAS_FIELDSPANS };
 
 /**
+ * `requiredSemi` is a tri-state (`undefined` | `true` | `false`) backing the
+ * `requiredSemi` getter — folds into TWO bits exactly like `hoistToRoot`:
+ * `F_SEMI_SET` marks "a value was assigned", `F_SEMI_VALUE` carries that value.
+ * Saves one own property on every node (the field was `declare`, so only the
+ * assigned instances — Call and parser-touched nodes — actually paid a slot,
+ * but the flag path removes even that). Bits 19/20.
+ */
+export const F_SEMI_SET = 0b10000000000000000000;
+export const F_SEMI_VALUE = 0b100000000000000000000;
+
+/**
  * Flags a node bubbles up from its child nodes (see `propagateFlagsFrom`). A
  * faithful copy (`clone()`) PRESERVES these from its source — same structure ⇒
  * same flags — rather than recomputing them from children (that is eval-path
@@ -449,8 +459,6 @@ export abstract class Node<
     return sourceRootOf(this);
   }
 
-  _treeContext: TreeContext | undefined;
-
   protected _options: O & AllNodeOptions | undefined;
   get options(): O & AllNodeOptions {
     return (this._options ??= createNodeOptions());
@@ -548,16 +556,25 @@ export abstract class Node<
   /**
    * If the node must have a semi separator before
    * the next node when in a declaration list or main
-   * rules list. Backed by `_requiredSemi`; exposed as a getter so
-   * subclasses (e.g. Declaration) can override with computed logic.
+   * rules list. Tri-state backed by the `F_SEMI_SET`/`F_SEMI_VALUE` flag bits
+   * rather than a per-instance field; exposed as a getter so subclasses (e.g.
+   * Declaration) can override with computed logic.
    */
-  declare _requiredSemi: boolean | undefined;
   get requiredSemi(): boolean | undefined {
-    return this._requiredSemi;
+    if ((this.flags & F_SEMI_SET) === 0) {
+      return undefined;
+    }
+    return (this.flags & F_SEMI_VALUE) !== 0;
   }
 
   set requiredSemi(value: boolean | undefined) {
-    this._requiredSemi = value;
+    if (value === undefined) {
+      this.flags &= ~(F_SEMI_SET | F_SEMI_VALUE);
+    } else if (value) {
+      this.flags |= F_SEMI_SET | F_SEMI_VALUE;
+    } else {
+      this.flags = (this.flags | F_SEMI_SET) & ~F_SEMI_VALUE;
+    }
   }
 
   /**
@@ -628,16 +645,15 @@ export abstract class Node<
   toJSON(): Record<string, unknown> {
     // Drop the internal back-references that would make `JSON.stringify(node)`
     // cycle: `sourceNode` (a node is its own source), `parent` (points up the
-    // tree), `_sourceRoot` (points at the root `Rules`), and `_treeContext`
-    // (context → sourceTrees → nodes). `JSON.stringify` honors `toJSON()`, so
-    // excluding them keeps stringify cycle-safe without per-instance
-    // non-enumerable defs. Subclasses with their OWN back-refs (e.g. `Rules`
-    // `_scopeFrame`) must extend this via `super.toJSON()` and delete theirs.
-    const { sourceNode, parent, _sourceRoot, _treeContext, ...rest } = this;
+    // tree), and `_sourceRoot` (points at the root `Rules`). `JSON.stringify`
+    // honors `toJSON()`, so excluding them keeps stringify cycle-safe without
+    // per-instance non-enumerable defs. Subclasses with their OWN back-refs
+    // (e.g. `Rules` `_treeContext`/`_scopeFrame`) must extend this via
+    // `super.toJSON()` and delete theirs.
+    const { sourceNode, parent, _sourceRoot, ...rest } = this;
     void sourceNode;
     void parent;
     void _sourceRoot;
-    void _treeContext;
     return rest;
   }
 
@@ -1353,7 +1369,7 @@ export abstract class Node<
   detachTrivia(deep?: boolean): this {
     this._sourceRoot = undefined;
     if (isRulesNode(this)) {
-      this._treeContext = undefined;
+      (this as Rules)._treeContext = undefined;
     }
     setSourceSpan(this, undefined);
     if (deep) {
@@ -1492,7 +1508,7 @@ export abstract class Node<
     }
     this._sourceRoot ??= node.sourceRoot;
     if (isRulesNode(this)) {
-      this._treeContext ??= node.sourceRoot?._treeContext;
+      (this as Rules)._treeContext ??= node.sourceRoot?._treeContext;
     }
     /** Copy state exactly (not OR, to preserve removed flags) */
     // Only sync F_VISIBLE flag, preserve all other flags

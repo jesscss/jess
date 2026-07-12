@@ -9,7 +9,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { indent, normalizeIndent, serializeRulesContainer } from './util/serialize-helper.js';
-import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
+import { isRenderBuffer, prepareBufferPrintState, writeRenderText, writeRenderTextResult, type RenderBuffer } from './util/render-buffer.js';
 import { Interpolated } from './interpolated.js';
 import { Nil } from './nil.js';
 import {
@@ -792,7 +792,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       return this.hoistToRoot;
     }
     if (
-      opts.context?.bubbleRootAtRules
+      opts.context?.options.bubbleRootAtRules
       && this.isRootOnly()
       && this.hasRulesetAncestor()
     ) {
@@ -903,7 +903,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         }
       }
     }
-    const hasHoistedRulesetParent = context.bubbleRootAtRules
+    const hasHoistedRulesetParent = context.options.bubbleRootAtRules
       && this.isRootOnly()
       && hasRulesetFrame;
     const bodyRules = createAtRuleBodyEvalSurface(this, context);
@@ -1035,6 +1035,20 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    // Spine mode (P1 §4/§7): render this at-rule by descending its SOURCE body
+    // under the live value-frame — NO eval() pass, NO output tree. The container
+    // serializer (`serializeRulesContainer`, kept per §7) resolves the prelude at
+    // ruleset-enter (in `serializeSpineFrameAtRule`) and reuses the composed/hoist
+    // machinery already on the walk. This REPLACES the eval→serialize two-walk for
+    // an at-rule on the wired path.
+    const spinePrintOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
+    if (spinePrintOptions?.spineMode === true && this.rules.length > 0) {
+      const spineOptions = getPrintOptions(spinePrintOptions);
+      const rendered = serializeRulesContainer(this, spineOptions);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderTextResult(bufferOrOptions, rendered)
+        : rendered;
+    }
     const node = this._evalForAtRuleRender(context);
     return isThenable(node)
       ? node.then(resolved => this.renderEvaluatedValue(resolved, context, bufferOrOptions, options))
@@ -1583,7 +1597,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         break;
       }
     }
-    const hasHoistedRulesetParent = context.bubbleRootAtRules
+    const hasHoistedRulesetParent = context.options.bubbleRootAtRules
       && this.isRootOnly()
       && hasRulesetFrame;
     const record = {

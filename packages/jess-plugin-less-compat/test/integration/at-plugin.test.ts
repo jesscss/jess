@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { Parser } from '@jesscss/less-parser';
+import { Parser } from '@jesscss/less-parser/jess';
 import { isNode, N } from '@jesscss/core';
 import { lessCompatPlugin } from '../../src/index.js';
 import type { Visitor } from '@jesscss/core';
@@ -137,7 +137,7 @@ describe('@plugin directive processing', () => {
       fix: 'Use "@use / @-use" instead.',
       note: 'In .less files compiled through the Less CLI compatibility path, migrate script integration to @use / @-use.'
     });
-    expect((pluginDirective as unknown as { visible?: unknown }).visible).toBe(false);
+    expect(pluginDirective.visible).toBe(false);
   });
 
   it('does not fall back to Node execution for local file-based @plugin when plugin-js is unavailable', async () => {
@@ -223,7 +223,7 @@ describe('@plugin directive processing', () => {
       throw new Error('Expected parsed @plugin directive');
     }
     expect(pluginInstalled).toBe(true);
-    expect((pluginDirective as unknown as { visible?: unknown }).visible).toBe(false);
+    expect(pluginDirective.visible).toBe(false);
   });
 
   it('should process @plugin before other nodes (before-eval behavior)', () => {

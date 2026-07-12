@@ -14,13 +14,11 @@ export class JsFunction extends Node<Fn> {
   constructor(
     value: { name: string; fn: Fn } | Fn,
     options?: NodeOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     const fn = typeof value === 'function' ? value : value.fn;
 
     super(fn, options, location);
-    this._treeContext = treeContext;
     this.fn = fn;
     this.name = typeof value === 'function' ? undefined : value.name;
   }

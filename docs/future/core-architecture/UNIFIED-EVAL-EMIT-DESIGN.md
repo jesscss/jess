@@ -168,6 +168,22 @@ The unified walk owns BOTH stacks and threads them together:
   (it was pushed on the way down, not reconstructed on the way back), the value is correct by
   construction — no re-resolution, no shadowing/closure/guard divergence.
 
+**ASYNC DISCIPLINE — sync by default, async only on a genuine thenable (owner).** Resolving a leaf is
+NOT uniformly async. The vast majority of values (a `calc()`/`Operation` over dimensions/literals/sync
+references) resolve fully synchronously; they MUST stay on a pure sync path — faster AND deterministic.
+A leaf goes async ONLY when its subtree actually produces a promise (an async import result, an async
+JS function, a reference resolving to an async value) — never merely because of its node *shape*. The
+mechanism is the reactive **attempt-sync / `isThenable`-bail** pattern already in the tree from the
+F_MAY_ASYNC deletion (`evaluateSelectorsRest`-style twins): run sync, and continue on the async
+continuation only if a real thenable surfaces. **Reactive is the RATIFIED, MEASURED answer — do NOT
+re-introduce a static async-determination walk.** That walk IS what `F_MAY_ASYNC` was, and it was
+deleted (Phase A1) precisely because determining async-ness up front required the `propagateFlagsFrom`
+bubble and bought nothing: same-build A/B measured the reactive path neutral-to-FASTER (dynamic
+132→122ms) even in the conservative case that still paid the bubble. So: no pre-scan/flag to decide
+async-ness; just attempt sync and react to a real thenable. Equally, **do NOT blanket-`MaybePromise` the
+emit/serializer, and do NOT lean on `awaitable-pipe` as a default wrapper** — it awaits speculatively
+even when nothing is async (slower, less deterministic). Async cost is paid only when async genuinely happens.
+
 The key difference from B1s: B1s tried to re-enter the resolving frame *after* eval had popped it.
 The unified pass **never pops it until the subtree is fully emitted** — resolve-and-emit are the
 same downward step, so the frame is never gone when the leaf needs it.
@@ -322,7 +338,11 @@ position is reached.*
 - `origin` → `F_EXTENDED`/`F_EXTEND_TARGET`/neither drives the reference-compose filter UNCHANGED
   (B2). These are the per-branch flags A0 flagged as the one placement-varying case — they live on
   the branch, never on the shared source selector.
-- `order` → sort OR-branches by document order (B3).
+- `order` → **extend is LIST-APPEND: the target's own selector LEADS, extenders are APPENDED in
+  feed (document) order. There is NO sort** (corrected, owner 2026-07-08 — see OQ-D). The earlier
+  "sort OR-branches by document order" was a mischaracterization: append semantics have nothing to
+  sort, and sorting the target-own form among the contributions floated a before-authored extender
+  ahead of the target (`.b, .a` instead of `.a, .b`) — a bug, now fixed in `projectSubject`.
 - `visible` → reference-keep (B2); `generated` → `:is()` unwrap (B4).
 
 **OQ-5 (own vs composed) resolves to (a) — folds into (B) placement, NO new field.** The extender's
@@ -1076,13 +1096,17 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   already-resolved selector. "Vars are resolved early" (owner) is exactly the mechanism: the
   value-dependent part is discharged during the eval descent BEFORE the selector participates in extend,
   which is WHY the extend layer is cleanly decoupled from the value-frame — no staged sub-pass, no
-  entanglement. **Concrete consequence (bug to fix in the cutover):** jess currently captures the extend
-  TARGET unresolved — it pushes the raw `[data="@{attr}"]` at `extend.ts:341` before interpolation runs,
-  so `:extend([data=@{attr}])` silently no-ops today. The fix is bounded: resolve the target's
-  interpolation at capture time (frame live) so the instruction carries the concrete target. (Fixing
-  this is also what makes interpolated extend targets actually work. When building it, use Less 4.x only
-  to affirm BEHAVIOR — does the interpolated target extend, what does it match — NOT output shape: Jess
-  emits `:is()` and supports nesting, so the SHAPE is the v5/alpha form, not 4.x's expansion.)
+  entanglement. **Concrete consequence — FIXED (2026-07-08, P3):** jess captured the extend TARGET
+  unresolved, so a SELECTOR-level interpolated target (`:extend(.@{name})`) silently no-op'd.
+  `Extend.runEffect` now resolves an interpolation-bearing target against the LIVE frame at capture
+  (`extend.ts`): it detects interpolation by node type (`InterpolatedSelector`/`Interpolated`) OR a raw
+  `@{`/`${` token (attribute-value interpolation), evals the target when present, and carries the
+  concrete resolved target into the instruction. A literal target skips the eval (byte-unchanged). This
+  is an EVAL-PATH fix (the byte-identical fallback); no corpus fixture exercises an interpolated target,
+  so it is pinned by a jess ratchet. **RESIDUAL:** attribute-VALUE interpolation (`[data=@{name}]` —
+  the `@{…}` is a raw token INSIDE the `AttributeSelector` value string) does not yet resolve/match —
+  a distinct attribute-selector-value interpolation shape (with a pre-existing `[data=\n"foo"]`
+  formatting quirk), tracked separately from the selector-level target fix.
 
 - **OQ-B — RESOLVED (§4.4).** The flush discipline is SETTLED: (1) decls resolve against the live
   frame and stream as bytes into a per-subject buffer during descent — only the rule HEADER is deferred
@@ -1127,39 +1151,31 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   plugin needs it, so it is not built. The common cases (per-node inspect/replace, custom-function value
   resolution, `rtl`/`inline-urls`/`dls`) are fully served.
 
-- **OQ-D — RESOLVED-WITH-CAVEAT (owner 2026-07-08): the branch SET is confluent; the sibling ORDER
-  is NOT, and the design's canonicalizing sort is NOT yet wired — the cutover must build it.**
-  Settled empirically by a differential over the extend corpus driving `applyExtendsToSelector`
-  (`extend.ts:334` — the exact code OQ-D names; its per-subject loop selects the `applyBatchedExtend`
-  fast-path vs the sequential `tryExtendSelector` purely by the ADJACENCY of same-target non-partial
-  instructions at `extend.ts:391-402`, so permuting the instruction list IS the sound batched-vs-
-  sequential-vs-shuffled knob). Test (standing invariant, test-only, bundle-excluded):
-  `packages/core/src/tree/extend/__tests__/oqd-confluence-differential.test.ts`. Findings, precise:
-  1. **The branch SET is confluent.** Over ALL permutations of every corpus subject's instruction
-     list — including adjacency-clustered (forces the batch path) and interleaved (forces sequential)
-     — the produced set of comma-branches is byte-identical. `applyBatchedExtend` == sequential ==
-     any order at the SET level. This half of OQ-4's claim holds and is now pinned.
-  2. **The comma-SIBLING ORDER is apply-order-sensitive** (COUNTEREXAMPLE found: `.base←.x` then
-     `.base←.y` interleaved with `.other←.q` yields `.base,.other,.x,.y,.q` in one order and
-     `.base,.other,.q,.x,.y` in another — same set, different order). So order IS load-bearing for
-     sibling ordering.
-  3. **Production is deterministic ANYWAY — but by a document-order FEED, not the design's sort.**
-     The render path never permutes: `processExtends` (`extend-roots.ts:686`) builds instructions via
-     `context.extends.flatMap(...)`, and `context.extends` is populated during eval in DOCUMENT order
-     (`extend.ts:341`, tuple carries `docOrder`); the per-subject list is a document-order-preserving
-     `filter` (`extend-roots.ts:757`). Today's sibling order == authored document order.
-  4. **The design's confluence MECHANISM (EMIT sorts OR-branches by document `order`, §4.4/B3) is NOT
-     installed.** `setExtendOrderMap` (`extend.ts:155`) — the only entry that would populate the
-     value→documentOrder map the sort branches read (`extend.ts:842`, `:1192`, guard at `:233`) — has
-     ZERO callers repo-wide, so `extendOrderMap` is always null and those sort branches are dead.
-  **Consequence:** OQ-D's premise ("EMIT's document-order sort pins output, so SOLVE may fire in any
-  order") is **a cutover DELIVERABLE, not an existing fact.** SOLVE may fire in any order for the SET
-  (safe today), but to fire in any order AND match today's byte output it must EMIT-sort siblings by
-  document order — the currently-dead `extendOrderMap` machinery must be wired into the fold. Until
-  then the document-order feed is the load-bearing pin. **Fully settleable from the current engine?**
-  YES for the verdict (confluent set + order-sensitive siblings + missing sort, all proven now); the
-  FIX (wire the sort) lands in the cutover. The test's negative assertion (`a !== b` on raw order)
-  flips to `a === b` when the sort is built — it is the guard that the cutover actually did so.
+- **OQ-D — CORRECTED (owner 2026-07-08): extend is LIST-APPEND (target leads, no sort). The
+  "document-order sort deliverable" was mis-scoped scaffolding around a bug and is RETIRED.**
+  The earlier verdict ("sibling order is apply-order-sensitive; the cutover must WIRE an EMIT
+  document-order sort") mischaracterized the semantics. Extend semantics = **append the extender
+  to the target's list**: the target's own selector unconditionally LEADS its own rule, extenders
+  follow in feed (document) order. There is nothing to sort.
+  1. **The branch SET is confluent** — unchanged, still true and pinned.
+  2. **Sibling ORDER = feed (document) order, target-first — deterministic, not a "missing sort".**
+     Production feeds instructions in document order (`context.extends` populated in doc order,
+     `extend.ts:341`; per-subject list a doc-order-preserving `filter`), so output order is pinned
+     there. Permuting the feed permutes the siblings (same set) — expected, not a bug.
+  3. **The `projectSubject` "sort" was a BUG, now fixed.** `emit.ts` put the target-own form into an
+     `ordered` array tagged with `subject.order`, then sorted it AMONG the contributions — floating a
+     before-authored extender ahead of the target (`.b, .a`). Fixed to `[composeTargetOwn(path),
+     ...contributions]` with NO sort (target leads, contributions append). Verified: all ratified
+     fixtures still pass (each authors target-first, so sort and append coincided — which is exactly
+     why the bug hid), and a before-target extender now yields `.a, .b`.
+  4. **The dead `setExtendOrderMap`/`extendOrderMap` path is DELETED.** It had zero callers
+     (`extendOrderMap` always null), was scaffolding for the non-existent sort, and its two
+     always-false-guarded sort branches (`extend.ts` `createExtendedSelectorList` + the `:is()`
+     extraction merge) are removed. Less code.
+  **Consequence:** OQ-D fully resolved from the current engine — no cutover deliverable. The
+  confluence test (`oqd-confluence-differential.test.ts`) is rewritten to assert append semantics
+  (set confluent + target-first + feed-order siblings), replacing the former "sort not yet wired"
+  negative assertion.
 
 - **OQ-E — RESOLVED (owner 2026-07-08): graft depth is bounded — fire-once + value-dedup terminate,
   no depth guard is required for correctness.** Settled by analysis confirmed with a direct probe on

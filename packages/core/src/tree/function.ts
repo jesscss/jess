@@ -44,14 +44,12 @@ export class Func extends Node<FuncValue, FuncOptions> {
   constructor(
     value: FuncValue,
     options?: FuncOptions,
-    location?: LocationInfo,
-    treeContext?: Context['treeContext']
+    location?: LocationInfo
   ) {
     super(value, options, location);
     this.name = value.name;
     this.params = value.params;
     this.body = value.body;
-    this._treeContext = treeContext;
     // Like mixins/functions in source languages: not emitted directly.
     this.removeFlag(F_VISIBLE);
   }

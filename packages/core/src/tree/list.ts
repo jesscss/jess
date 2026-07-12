@@ -224,7 +224,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   readonly value: T[];
   readonly sep: ListOptions['sep'];
 
-  constructor(value: NodeArrayItem[], options?: ListOptions, location?: NodeLocation, _treeContext?: Context['treeContext']) {
+  constructor(value: NodeArrayItem[], options?: ListOptions, location?: NodeLocation) {
     super(value as T[], options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value as T[];
@@ -255,8 +255,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return new List<Node>(
       values,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this),
-      this.sourceRoot?._treeContext
+      sourceSpanOf(this)
     ).inherit(this);
   }
 
@@ -308,7 +307,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override compare(other: Node) {
     if (other instanceof List) {
-      const equalityMode = this.sourceRoot?._treeContext?.equalityMode ?? 'coerce';
+      const equalityMode = this.sourceRoot?._treeContext?.options.equalityMode ?? 'less';
       const result = compareNodeArray(this.value, other.value, equalityMode);
       return result;
     }

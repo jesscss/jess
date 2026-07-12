@@ -25,10 +25,10 @@ import {
   regex,
   literal
 } from 'parseman';
-import type { Span } from 'parseman';
+import type { FieldMap, Span } from 'parseman';
 import type { CSTLeaf, CSTError } from 'parseman';
-import { LessGrammar } from '@jesscss/less-parser';
-import { spannedComponents } from '@jesscss/css-parser';
+import { LessGrammar } from '@jesscss/less-parser/jess';
+import { spannedComponents } from '@jesscss/css-parser/jess';
 
 import {
   type Node,
@@ -158,7 +158,9 @@ export class ScssGrammar extends LessGrammar {
     span: Span,
     children: ReadonlyArray<JessNode | CSTLeaf | CSTError>,
     _state: unknown,
-    _rawChildren: ReadonlyArray<{ _tag: string }>
+    _rawChildren: ReadonlyArray<{ _tag: string }>,
+    fields?: FieldMap,
+    triviaLog: readonly number[] = []
   ): JessNode {
     const loc = spanToLocation(span);
     switch (type) {
@@ -191,9 +193,9 @@ export class ScssGrammar extends LessGrammar {
       case 'InterpValue':       return this._buildScssInterpValue(_rawChildren, loc);
       case 'InterpolatedSelector': return this._buildScssInterpolatedSelector(children, loc);
       case 'Declaration':       return this._buildScssDeclaration(children, loc, () =>
-        super.buildNode(type, span, children, _state, _rawChildren));
+        super.buildNode(type, span, children, _state, _rawChildren, fields, triviaLog));
       case 'CustomDeclaration': return this._buildScssCustomDeclaration(children, loc, () =>
-        super.buildNode(type, span, children, _state, _rawChildren));
+        super.buildNode(type, span, children, _state, _rawChildren, fields, triviaLog));
       case 'Quoted':            return this._buildQuoted(children, loc);
       case 'ScssMapPair':       return this._buildScssMapPair(children, loc);
       case 'ScssMapLiteral':    return this._buildScssMapLiteral(children, loc);
@@ -219,7 +221,7 @@ export class ScssGrammar extends LessGrammar {
       case 'Call':              return this._buildCall(_rawChildren, loc);
       case 'SquareParen':       return this._buildSquareParen(_rawChildren, loc);
       case 'Paren':             return this._buildScssParen(_rawChildren, loc);
-      default:                  return super.buildNode(type, span, children, _state, _rawChildren);
+      default:                  return super.buildNode(type, span, children, _state, _rawChildren, fields, triviaLog);
     }
   }
 

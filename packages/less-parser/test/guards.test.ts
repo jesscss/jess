@@ -1,5 +1,5 @@
 import { Bool, Context, serializeTypes } from '@jesscss/core';
-import { Parser } from '../src/index.js';
+import { Parser } from '../src/jess.js';
 
 const parser = new Parser();
 const parse = parser.parse;
@@ -75,8 +75,8 @@ describe('comparison operand: escaped value', () => {
     const out = serializeTypes(tree, { showOptions: true });
     expect(out).toContainString('(Condition');
     expect(out).toContainString('escaped: true');
-    expect(out).toContainString("value: 'theme1'");
-    expect(out).toContainString("key: 'str'");
+    expect(out).toContainString('value: \'theme1\'');
+    expect(out).toContainString('key: \'str\'');
     expect(out).not.toContainString('(Sequence');
   });
 });
@@ -140,7 +140,7 @@ describe('guardDefault', () => {
   it('evaluates parsed default() guards without using public Bool rendering', async () => {
     const { errors, tree } = parse(`
       .mixin() when (default()) { color: green; }
-      .mixin();
+      .a { .mixin(); }
     `, 'Stylesheet');
     const context = new Context();
     const originalToTrimmedString = Bool.prototype.toTrimmedString;
@@ -169,7 +169,7 @@ describe('guardDefault', () => {
       .mixin() when (default()) { color: green; }
       .mixin() { color: blue; }
       .mixin() when not (default()) { color: red; }
-      .mixin();
+      .a { .mixin(); }
     `, 'Stylesheet');
     const context = new Context();
     const originalToTrimmedString = Bool.prototype.toTrimmedString;
