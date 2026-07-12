@@ -66,64 +66,158 @@ const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // ── Root ──────────────────────────────────────────────────────────────────
-  // No catch-all arm: a run of input that matches no rule simply stops `many`,
-  // leaving unconsumed input the driver reports as one syntax error. Required
-  // closers below are wrapped in expect() so a missing one is reported (and
-  // recovered) by parseman rather than aborting the whole parse.
-  // Top-level at-rule blocks use the STRICT body variants (`*Top`): a bare
-  // declaration directly inside a top-level `@media`/`@supports` has no owning
-  // qualified rule and is a real error. Nested at-rule blocks (reached via a
-  // ruleset's declarationList) use the lenient variants that DO allow declarations.
-  const Stylesheet = node(
-    many(choice(g.QueryAtRuleBlockTop, g.AtRuleBlockTop, g.ImportStatement, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset)));
+  // Two structural FRAMES model the CSS "two starting points" (CSS Syntax):
+  //   • Frame 1 — `stylesheetBody`: a run of qualified rules + at-rules, NO bare
+  //     declarations, and its selectors carry NO `&` (a top-level `&` has no
+  //     parent to reference). Used by the root Stylesheet, `@layer`, and the
+  //     conditional-group at-rules when NOT nested.
+  //   • Frame 2 — `declarationList`: declarations INTERLEAVED with nested rules
+  //     and at-rules (CSS Nesting); its selectors DO include `&`. Used by every
+  //     style rule's `{ }` and by conditional-group at-rules when nested.
+  // The `&` split is purely STRUCTURAL (a duplicated selector chain), never a
+  // context gate — top-level `&` is rejected and nested `&` accepted with O(1)
+  // dispatch and no `withCtx`, which keeps the grammar compose-safe.
+  // No catch-all arm: input that matches no rule simply stops `many`, leaving
+  // unconsumed input the driver reports as one syntax error; required closers are
+  // wrapped in expect() so a missing one is reported (and recovered) by parseman.
+  /**
+   * The stylesheet root: frame-1 content (qualified rules + at-rules, no bare
+   * declarations).
+   * @see https://www.w3.org/TR/css-syntax-3/#parse-stylesheet
+   */
+  const Stylesheet = node(g.stylesheetBody);
+  /**
+   * Frame 1 — the top-level content model: conditional-group / known / unknown
+   * at-rules and qualified rules. NO bare declarations (a declaration at the root
+   * has no owning rule). Referenced by the root Stylesheet and every frame-1
+   * at-rule body (`@layer`, top-level `@media` …).
+   * @see https://www.w3.org/TR/css-syntax-3/#consume-list-of-rules
+   */
+  const stylesheetBody = many(choice(
+    g.QueryAtRuleBlockTop, g.AtRuleBlockTop, g.ImportStatement, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset));
 
   // ── Rulesets ───────────────────────────────────────────────────────────────
+  /**
+   * A frame-1 qualified rule: a selector list (NO `&`) + a frame-2 body. A
+   * top-level rule's `{ }` is a nested context, so its body is `declarationList`.
+   * @see https://www.w3.org/TR/css-syntax-3/#qualified-rule
+   */
   const Ruleset = node(
     sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}')));
+  /**
+   * A frame-2 (nested) qualified rule: a `-Nested` selector list (WITH `&`) + a
+   * frame-2 body. Built as `Ruleset` so the AST/CST is identical to a top-level
+   * rule — only the selector chain differs.
+   * @see https://www.w3.org/TR/css-nesting-1/#syntax
+   */
+  const NestedRuleset = node('Ruleset',
+    sequence(g.SelectorListNested, literal('{'), g.declarationList, expect(literal('}'), '}')));
 
-  // ── Selectors ──────────────────────────────────────────────────────────────
+  // ── Selectors (frame 1 — no `&`) ─────────────────────────────────────────────
+  /**
+   * A comma-separated list of complex selectors.
+   * @see https://www.w3.org/TR/selectors-4/#selector-list
+   */
   const SelectorList = node(
     sequence(g.ComplexSelector, many(sequence(literal(','), g.ComplexSelector))));
+  /**
+   * Compound selectors joined by combinators (descendant is the implicit
+   * whitespace combinator).
+   * @see https://www.w3.org/TR/selectors-4/#complex
+   */
   const ComplexSelector = node(
     sequence(g.CompoundSelector, many(sequence(optional(combinator), g.CompoundSelector))));
+  /**
+   * A run of simple selectors with no combinator between them.
+   * @see https://www.w3.org/TR/selectors-4/#compound
+   */
   const CompoundSelector = node(
     oneOrMore(g.simpleSelector));
   /**
-   * `&` is the CSS nesting selector (the parent reference).
-   * @see https://www.w3.org/TR/css-nesting-1/#nest-selector
+   * A class / id / type / universal simple selector (`.a`, `#a`, `div`, `*`).
+   * @see https://www.w3.org/TR/selectors-4/#simple
    */
   const BasicSelector = node(basicSel);
-  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.BasicSelector);
+  /**
+   * Frame-1 simple selector — attribute / pseudo / basic. NO `&`: the nesting
+   * selector is only meaningful inside a rule (frame 2).
+   * @see https://www.w3.org/TR/selectors-4/#simple
+   */
+  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, g.BasicSelector);
 
+  // ── Selectors (frame 2 — the `-Nested` chain, WITH `&`) ──────────────────────
+  // Structural duplicate of the frame-1 chain whose only difference is the extra
+  // `&` arm in `simpleSelectorNested`. Each level is built under the SAME node
+  // type as its frame-1 twin, so a nested rule's CST is indistinguishable from a
+  // top-level one. This is what makes `&` acceptance depth-based (structural)
+  // instead of gated.
+  /**
+   * Frame-2 simple selector — attribute / pseudo / `&` / basic. `&` is the CSS
+   * nesting selector (the parent reference), valid only inside a rule body.
+   * @see https://www.w3.org/TR/css-nesting-1/#nest-selector
+   */
+  const simpleSelectorNested = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.BasicSelector);
+  /**
+   * Frame-2 compound selector (built as `CompoundSelector`).
+   * @see https://www.w3.org/TR/selectors-4/#compound
+   */
+  const CompoundSelectorNested = node('CompoundSelector',
+    oneOrMore(g.simpleSelectorNested));
+  /**
+   * Frame-2 complex selector (built as `ComplexSelector`).
+   * @see https://www.w3.org/TR/selectors-4/#complex
+   */
+  const ComplexSelectorNested = node('ComplexSelector',
+    sequence(g.CompoundSelectorNested, many(sequence(optional(combinator), g.CompoundSelectorNested))));
+  /**
+   * Frame-2 selector list (built as `SelectorList`).
+   * @see https://www.w3.org/TR/selectors-4/#selector-list
+   */
+  const SelectorListNested = node('SelectorList',
+    sequence(g.ComplexSelectorNested, many(sequence(literal(','), g.ComplexSelectorNested))));
+
+  /**
+   * An attribute selector `[name]` / `[name op value mod]`.
+   * @see https://www.w3.org/TR/selectors-4/#attribute-selectors
+   */
   const AttributeSelector = node(
     sequence(
       literal('['), field('name', ident),
       optional(sequence(field('op', attrOp), field('value', choice(singleStr, doubleStr, ident)), optional(field('mod', attrMod)))),
       literal(']')
     ));
+  /**
+   * A pseudo-class / pseudo-element selector, with an optional `( … )` argument.
+   * @see https://www.w3.org/TR/selectors-4/#pseudo-classes
+   */
   const PseudoSelector = node(
     sequence(pseudoColon, ident, optional(sequence(literal('('), g.pseudoArg, literal(')')))));
-  // `:nth-child(An+B of S)` — the `of <selector-list>` form. Without consuming the
-  // `of S`, `nth` would match just `An+B` and the choice would commit, leaving the
-  // outer `)` to fail. The last arm scans to `)` for arbitrary args, skipping
-  // balanced ()/[], strings, and comments so an inner `)` doesn't close it early.
-  // @see https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo
+  /**
+   * Pseudo argument. `:nth-child(An+B of S)` — the `of <selector-list>` form:
+   * without consuming the `of S`, `nth` would match just `An+B` and the choice
+   * would commit, leaving the outer `)` to fail. Selector arguments use the
+   * frame-2 (`-Nested`) list so `&` is accepted inside `:is(&)` / `:not(&)`
+   * (functional pseudos are nesting contexts). The last arm scans to `)` for
+   * arbitrary args, skipping balanced ()/[], strings, and comments so an inner
+   * `)` doesn't close it early.
+   * @see https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo
+   */
   const pseudoArg = choice(
-    sequence(nth, optional(sequence(regex(/of(?![-\w])/i), g.SelectorList))),
-    g.SelectorList,
+    sequence(nth, optional(sequence(regex(/of(?![-\w])/i), g.SelectorListNested))),
+    g.SelectorListNested,
     scanTo(literal(')'), { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr, comment] })
   );
 
   // ── Declarations ─────────────────────────────────────────────────────────
   /**
-   * A rule body. With CSS Nesting it interleaves declarations with nested
-   * rulesets and nested at-rules, not just declarations.
+   * Frame 2 — a rule body. With CSS Nesting it interleaves declarations with
+   * nested rulesets (`NestedRuleset`, `&`-aware) and nested at-rules, plus empty
+   * `;` statements. The `&`-aware `NestedRuleset` is what distinguishes this from
+   * frame 1. Less/Scss/Jess override this rule wholesale with their own body.
    * @see https://www.w3.org/TR/css-nesting-1/#syntax
    */
-  // A ruleset body is a nested context, so its at-rule blocks are the lenient
-  // variants (bare declarations are allowed — they apply to the enclosing selector).
   const declarationList = many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
+    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Declaration, g.CustomDeclaration, g.NestedRuleset, literal(';')
   ));
 
   /**
@@ -164,8 +258,20 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     ));
 
   // ── Values ───────────────────────────────────────────────────────────────
+  /**
+   * A comma-separated list of value sequences (a declaration's full value).
+   * @see https://www.w3.org/TR/css-values-4/#component-whitespace
+   */
   const valueList = sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence)));
+  /**
+   * A whitespace-separated sequence of values.
+   * @see https://www.w3.org/TR/css-values-4/#component-whitespace
+   */
   const valueSequence = oneOrMore(g.value);
+  /**
+   * A single value component.
+   * @see https://www.w3.org/TR/css-values-4/#component-types
+   */
   const value = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue);
   // ── Math expressions ───────────────────────────────────────────────────────
   // CSS does arithmetic ONLY inside `calc()` (and the parens nested in it), so these
@@ -181,35 +287,54 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const sumOp = regex(/[-+](?![0-9.])|(?<=\S)[-+](?=[0-9.])/);
   // A math operand is a value whose nested parens fold (calcParen), unlike the
   // general permissive `Paren`. Everything else matches the ordinary value set.
+  /** A math-context parenthesized sub-expression (folds). @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const calcParen = node('Paren', sequence(literal('('), g.mathSum, expect(literal(')'))));
   const calcValue = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, calcParen, g.Quoted, g.anyValue);
+  /** A `* / %` product level (left-assoc), folded into an Operation. @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const mathProduct = node('Operation',
     sequence(calcValue, many(sequence(prodOp, calcValue))), undefined, { collapse: true });
+  /** A `+ -` sum level (left-assoc), folded into an Operation. @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const mathSum = node('Operation',
     sequence(g.mathProduct, many(sequence(sumOp, g.mathProduct))), undefined, { collapse: true });
 
-  // unit collapsed to one regex (Dimension still reads number + unit as two leaves).
+  /**
+   * A dimension — a number immediately followed by a unit or `%` (`10px`, `50%`).
+   * @see https://www.w3.org/TR/css-values-4/#dimensions
+   */
   const Dimension = node(sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/)));
-  // `Num` and `Color` now come from the shared `numericRules` fragment, spread into
-  // the return object below (identical to the Less grammar's definitions).
+  /**
+   * A `url()` value with an optional quoted or unquoted body.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/url_function
+   */
   const Url = node(
     sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')')));
-  // Generic function-call args stay a PERMISSIVE value list — `rgb(255 0 0)`,
-  // `min(1px, 2px)` are space / comma lists, not math expressions.
+  /**
+   * A function-call argument list — a PERMISSIVE value list (`rgb(255 0 0)`,
+   * `min(1px, 2px)` are space / comma lists, not math expressions).
+   * @see https://www.w3.org/TR/css-values-4/#functional-notation
+   */
   const parenBody = sequence(optional(g.valueList), literal(')'));
-  // Call OR bare ident, parsing the ident exactly once: take the call-args tail
-  // only when '(' follows. _buildCall returns a Call node when args are present,
-  // otherwise the bare ident string (bubbling identically to the old anyValue
-  // ident arm). This removes the per-bare-ident "parse ident, backtrack on '('".
+  /**
+   * A function call OR a bare ident, parsing the ident exactly once: the call-args
+   * tail is taken only when `(` follows. `_buildCall` returns a Call node when args
+   * are present, otherwise the bare ident string.
+   * @see https://www.w3.org/TR/css-values-4/#functional-notation
+   */
   const Call = node(sequence(ident, optional(sequence(literal('('), g.parenBody))));
-  // `calc(…)` body is ONE math expression (folded in the grammar) — the only place
-  // plain CSS folds operators. Matched before the generic `Call` so `calc(` routes
-  // here; other math functions (min/max/clamp) stay generic Calls with list args.
+  /**
+   * `calc(…)` body — ONE math expression (the only place plain CSS folds
+   * operators). Matched before the generic `Call` so `calc(` routes here.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/calc
+   */
   const calcBody = sequence(g.mathSum, expect(literal(')')));
   // `CalcCall` (calc(…)) and the general value-position `Paren` come from the shared
   // `parenRules` fragment (spread below) — they defer to g.calcBody / g.parenBody here.
   // `Quoted` likewise comes from the `stringRules` fragment.
-  // Non-ident value tokens only; ident-led values are handled by Call above.
+  /**
+   * A catch-all value token — non-ident value tokens only (ident-led values are
+   * handled by `Call`). Keeps unmodeled value syntax structurally representable.
+   * @see https://www.w3.org/TR/css-syntax-3/#component-value
+   */
   const anyValue = anyValueTok;
 
   // ── At-rule query preludes (@media / @container / @supports) ────────────────
@@ -219,14 +344,24 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // reads `g.queryPrelude` from the fragment.
   // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
   const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
-  // Nested variant: body is the lenient `atRuleBody` (declarations allowed — they
-  // belong to the enclosing style rule).
+  /**
+   * A conditional-group at-rule with a structured query prelude, NESTED inside a
+   * style rule: the group is TRANSPARENT, so its body is the ambient frame 2
+   * (`declarationList` — declarations apply to the enclosing rule, plus nested
+   * rules/at-rules).
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_conditional_rules
+   */
   const QueryAtRuleBlock = node(
-    sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
-  // Top-level variant: identical, but the body is the STRICT `atRuleBodyStrict`
-  // (no bare declarations). Built as a `QueryAtRuleBlock` so the AST/CST is unchanged.
+    sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')));
+  /**
+   * The TOP-LEVEL conditional-group at-rule: same transparency, but the ambient
+   * frame is frame 1 (`stylesheetBody`) — a bare declaration at the root has no
+   * owning rule, so it is rejected/recovered. Built as `QueryAtRuleBlock` so the
+   * AST/CST is unchanged.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_conditional_rules
+   */
   const QueryAtRuleBlockTop = node('QueryAtRuleBlock',
-    sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.atRuleBodyStrict, expect(literal('}'), '}')));
+    sequence(queryAtKeyword, g.queryPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')));
 
   // ── At-rules ───────────────────────────────────────────────────────────────
   /**
@@ -254,67 +389,105 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const notDelim = not(choice(literal('{'), literal(';')));
   const reqQueryPrelude = expect(sequence(notDelim, atPreludeScan), 'query');
   const reqImportPrelude = expect(sequence(notDelim, atPreludeScan), 'import path');
-  // Known block at-rules (besides the @media/@container/@supports queries) get a
-  // STRUCTURED body — garbage inside is a real error. Unknown at-rules have an
-  // OPAQUE block (the UA owns its meaning), so their body is scanned over and
-  // never errors. @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
-  // media/container/supports are included so a non-paren-query prelude
-  // (`@media screen { … }`) still gets a structured (erroring) body rather than
-  // falling through to the opaque unknown-at-rule rule.
-  // media/container/supports reaching AtRuleBlock (rather than the structured
-  // QueryAtRuleBlock) means a NON-paren query such as `@media screen`. These still
-  // REQUIRE a query — an empty query (`@media {}`, `@supports { … }`) is a real
-  // error — so they take a `reqPrelude` arm. The remaining known block at-rules
-  // (`@layer {}`, `@page {}`, `@font-face {}` …) legitimately allow an empty
-  // prelude, so they keep the optional `atPrelude`.
+  // Known block at-rules are dispatched to a SHAPE-appropriate body per spec
+  // (rather than one grab-bag): conditional-group + `@layer` + `@starting-style`
+  // are transparent (ambient frame); the descriptor family is declarations-only;
+  // `@scope` is frame 2. `@keyframes`/`@page`/`@font-feature-values` keep the
+  // frame-2 body for now (Phase 2 will specialize their real content models).
+  // Names inside a body are never a parse error — an unknown descriptor/property
+  // name still parses (shape only) and the language service judges it.
+
+  // A NON-paren conditional-group query (`@media screen { … }`) reaches here
+  // rather than the structured QueryAtRuleBlock. These still REQUIRE a query — an
+  // empty query (`@media {}`) is a real error — so they take a `reqQueryPrelude`
+  // arm. Their body is the ambient frame (transparent), like QueryAtRuleBlock.
   const queryFallbackAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
-  const knownBlockAtKeyword = regex(/@(?:layer|scope|page|font-face|font-feature-values|counter-style|property|(?:-[a-z]+-)?keyframes|document|color-profile|font-palette-values|position-try|starting-style)(?![-\w])/i);
-  // Nested variant (lenient body).
+  // `@starting-style` is transparent (no prelude), like the conditional group.
+  const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
+  // `@layer <name> { }` block form (the `@layer a, b;` statement form is an
+  // AtRuleStatement). Transparent — holds a stylesheet body / nested rules.
+  const layerAtKeyword = regex(/@layer(?![-\w])/i);
+  // `@scope (start) to (end) { }` — its block holds style rules AND bare
+  // declarations that apply to the scope root, i.e. a frame-2 body.
+  const scopeAtKeyword = regex(/@scope(?![-\w])/i);
+  // Descriptor-list at-rules: their body is DECLARATIONS ONLY — no rules, no
+  // nested at-rules. Any ident descriptor name is accepted (shape only).
+  const descriptorAtKeyword = regex(/@(?:font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition)(?![-\w])/i);
+  // TODO(Phase 2): @keyframes / @page / @font-feature-values have their own
+  // content models (keyframe-selector blocks / page + margin at-rules / feature
+  // blocks). Until then they take the frame-2 body so valid content such as
+  // `@keyframes k { from {} }` and `@page :left { margin: 0 }` still parses.
+  const phase2AtKeyword = regex(/@(?:(?:-[a-z]+-)?keyframes|page|font-feature-values|document)(?![-\w])/i);
+
+  /**
+   * Descriptor-list body — `<ident>: <value>;` declarations ONLY. A ruleset or
+   * nested at-rule does not match here, so `@font-face { .foo {} }` recovers as a
+   * parseError (structural garbage) while any descriptor NAME parses (LS-judged).
+   * @see https://www.w3.org/TR/css-syntax-3/#consume-declaration
+   */
+  const descriptorBody = many(choice(g.Declaration, g.CustomDeclaration, literal(';')));
+
+  // Shared known-block arms whose body is frame-INDEPENDENT (same nested vs top).
+  const descriptorBlock = sequence(descriptorAtKeyword, atPrelude, literal('{'), g.descriptorBody, expect(literal('}'), '}'));
+  const scopeBlock = sequence(scopeAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}'));
+  const phase2Block = sequence(phase2AtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}'));
+  const sharedKnownArms = choice(descriptorBlock, scopeBlock, phase2Block);
+
+  /**
+   * A known block at-rule reached from a frame-2 (nested) body. The transparent
+   * arms (conditional group, `@starting-style`, `@layer`) use the ambient frame 2
+   * (`declarationList`); the descriptor / `@scope` / phase-2 arms use their own
+   * fixed body.
+   * @see https://www.w3.org/TR/css-syntax-3/#at-rule
+   */
   const AtRuleBlock = node(choice(
-    sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')),
-    sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
-  // Top-level variant. ONLY the query at-rules (@media/@container/@supports) get the
-  // STRICT body — their content is style rules, so a bare declaration at the root has
-  // no owning qualified rule. The descriptor/other known block at-rules (@font-face,
-  // @page, @property, @counter-style, @layer, @keyframes …) legitimately contain
-  // declarations (descriptors) or rules directly, so they keep the lenient body even
-  // at top level (unchanged from the original grammar). Built as `AtRuleBlock`.
+    sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sequence(startingStyleAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sequence(layerAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sharedKnownArms));
+  /**
+   * A known block at-rule reached from frame 1 (top level). Identical to
+   * `AtRuleBlock` except the transparent arms use frame 1 (`stylesheetBody`) —
+   * a bare declaration in a top-level conditional group / `@layer` has no owning
+   * rule and is rejected/recovered. Built as `AtRuleBlock`.
+   * @see https://www.w3.org/TR/css-syntax-3/#at-rule
+   */
   const AtRuleBlockTop = node('AtRuleBlock', choice(
-    sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.atRuleBodyStrict, expect(literal('}'), '}')),
-    sequence(knownBlockAtKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}'))));
+    sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sequence(startingStyleAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sequence(layerAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sharedKnownArms));
+  /**
+   * An UNKNOWN at-rule block — one of only two lenient/opaque spots: the UA owns
+   * its meaning, so the body is scanned over (balanced `{}`) and never errors.
+   * @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
+   */
   const opaqueAtBody = scanTo(literal('}'), { skip: [balanced('{', '}'), singleStr, doubleStr, comment] });
   const UnknownAtRuleBlock = node(
     sequence(atKeyword, atPrelude, literal('{'), opaqueAtBody, literal('}')));
+  /**
+   * A statement at-rule — `@name <prelude> ;` with no block (`@charset`,
+   * `@namespace`, `@layer a, b;` …).
+   * @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
+   */
   const AtRuleStatement = node(
     sequence(atKeyword, atPrelude, literal(';')));
-  // `@import` REQUIRES a prelude (a path). `@import ;` is a real error. Ordered
-  // before the generic AtRuleStatement so `@import "x.css";` routes here; the
-  // missing-prelude case is reported by `reqPrelude` and recovers in place so the
-  // trailing `;` still closes the statement. Built as an ordinary AtRuleStatement.
+  /**
+   * `@import` — REQUIRES a prelude (a path); `@import ;` is a real error. Ordered
+   * before the generic AtRuleStatement so `@import "x.css";` routes here; the
+   * missing-prelude case is reported by `reqImportPrelude` and recovers in place
+   * so the trailing `;` still closes the statement. Built as an AtRuleStatement.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@import
+   */
   const importAtKeyword = regex(/@import(?![-\w])/i);
   const ImportStatement = node('AtRuleStatement',
     sequence(importAtKeyword, reqImportPrelude, literal(';')));
-  // Body of a known at-rule block. No catch-all: unparseable content stops `many`,
-  // and the block's expect('}') reports a syntax error at that point.
-  //
-  // LENIENT body (nested at-rule, reached from a ruleset's declarationList): a bare
-  // declaration is valid because it applies to the enclosing qualified rule (CSS
-  // Nesting). Its own nested at-rules stay lenient (still owned by that rule).
-  const atRuleBody = many(choice(
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, g.Declaration, g.CustomDeclaration, literal(';')
-  ));
-  // STRICT body (top-level at-rule): NO bare declarations — a `@media { color: red }`
-  // at the root has no owning qualified rule, so a lone declaration is a real error.
-  // A `Ruleset` inside re-enters the lenient path via its declarationList (crossing a
-  // style-rule boundary), and nested at-rules stay strict (`*Top`).
-  const atRuleBodyStrict = many(choice(
-    g.QueryAtRuleBlockTop, g.AtRuleBlockTop, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset, literal(';')
-  ));
 
   // ── Value leaves & sub-grammars ────────────────────────────────────────────
   // `Quoted`, `Num`/`Color`, value-position `Paren`/`calc()`, and the
   // `@media`/`@container`/`@supports` condition grammar. Less and Scss inherit
   // these verbatim through `compose([cssGrammar, …])`.
+  /** A quoted string value. @see https://www.w3.org/TR/css-values-4/#strings */
   const Quoted = node(choice(singleStr, doubleStr));
   // bare number; the not()-lookahead is folded into the regex → one match, one leaf.
   const numTok = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)(?![a-zA-Z\u0080-\uffff%])/);
@@ -322,13 +495,22 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // 7-digit run (`#fffff`) can't partial-match — the trailing lookahead then
   // rejects it, making it a parse error (matches Less).
   const colorHex = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
+  /** A bare number value. @see https://www.w3.org/TR/css-values-4/#numbers */
   const Num = node(numTok);
+  /** A hex color (`#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa`). @see https://www.w3.org/TR/css-color-4/#hex-notation */
   const Color = node(colorHex);
+  /** A value-position parenthesized group (permissive; NOT a math context). @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const Paren = node(sequence(literal('('), g.parenBody));
+  /** `calc(…)` — the CSS math function. @see https://developer.mozilla.org/en-US/docs/Web/CSS/calc */
   const CalcCall = node('Call', sequence(regex(/calc(?=\()/i), literal('('), g.calcBody));
   const mfComparison = regex(/<=|>=|[<>=]/);
   // Optional leading container name — an ident that is NOT a query keyword.
   const containerName = regex(/(?!(?:not|and|or|only)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+  /**
+   * A media/container feature test — `name`, `name: value`, or a range form
+   * (`width >= 600px`, `400px < width < 700px`).
+   * @see https://www.w3.org/TR/mediaqueries-5/#mq-features
+   */
   const QueryFeature = node(
     sequence(ident, optional(choice(
       sequence(literal(':'), g.valueList),
@@ -342,30 +524,50 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // @see https://drafts.csswg.org/css-conditional-5/#typedef-query-in-parens
   const queryFunctionToken = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?=\()/);
   const queryFunctionBody = scanTo(literal(')'), { skip: [balanced('(', ')'), singleStr, doubleStr] });
+  /**
+   * A query function — `style(<style-query>)`, `scroll-state(…)`, or a
+   * `<general-enclosed>` function token wrapping balanced content.
+   * @see https://drafts.csswg.org/css-conditional-5/#typedef-query-in-parens
+   */
   const QueryFunction = node(
     sequence(queryFunctionToken, literal('('), queryFunctionBody, expect(literal(')'), ')')));
+  /**
+   * A `<query-in-parens>` — a parenthesized condition/feature or a query function.
+   * @see https://drafts.csswg.org/css-conditional-5/#typedef-query-in-parens
+   */
   const QueryInParens = node(
     choice(
       g.QueryFunction,
       sequence(literal('('), choice(g.QueryCondition, g.QueryFeature), literal(')'))
     ));
+  /**
+   * A query condition — `not (…)` or `(…) [and|or (…)]*`.
+   * @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
+   */
   const QueryCondition = node(
     choice(
       sequence(regex(/not(?![-\w])/i), g.QueryInParens),
       sequence(g.QueryInParens, many(sequence(regex(/(?:and|or)(?![-\w])/i), g.QueryInParens)))
     ));
+  /**
+   * A conditional-group prelude — an optional container name + a comma list of
+   * query conditions.
+   * @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
+   */
   const queryPrelude = sequence(optional(containerName), g.QueryCondition, many(sequence(literal(','), g.QueryCondition)));
 
   return {
     rw,
     Quoted, Num, Color, Paren, CalcCall,
     QueryFeature, QueryFunction, QueryInParens, QueryCondition, queryPrelude,
-    Stylesheet, Ruleset, SelectorList, ComplexSelector, CompoundSelector, BasicSelector, simpleSelector,
+    Stylesheet, stylesheetBody, Ruleset, NestedRuleset,
+    SelectorList, ComplexSelector, CompoundSelector, BasicSelector, simpleSelector,
+    SelectorListNested, ComplexSelectorNested, CompoundSelectorNested, simpleSelectorNested,
     AttributeSelector, PseudoSelector, pseudoArg,
-    Declaration, CustomDeclaration, declarationList,
+    Declaration, CustomDeclaration, declarationList, descriptorBody,
     valueList, valueSequence, value, parenBody, mathProduct, mathSum, calcBody,
     Dimension, Url, Call, anyValue,
-    AtRuleBlock, AtRuleBlockTop, AtRuleStatement, ImportStatement, atRuleBody, atRuleBodyStrict,
+    AtRuleBlock, AtRuleBlockTop, AtRuleStatement, ImportStatement,
     QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock
   };
 });
