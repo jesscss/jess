@@ -153,7 +153,7 @@ function applySpineVisitorsEnter(
  * an `Object.assign` restore after (sync AND async) puts the original writer + frame
  * refs back — containing any nested scratch serialization.
  */
-function evalIsolatingSpinePrintState<T>(
+export function evalIsolatingSpinePrintState<T>(
   context: NonNullable<FinalPrintOptions['context']>,
   run: () => MaybePromise<T>
 ): MaybePromise<T> {
@@ -2072,9 +2072,27 @@ function serializeSpineFrameContainer(
     return '';
   }
   if (guard instanceof Node) {
-    const guardResult = guard instanceof Condition
-      ? guard.evaluateBoolean(context)
-      : guard.eval(context);
+    // ISOLATE the guard eval's print-state. A `when` guard whose operands render
+    // nested values — a function/plugin call (`isnumber(@fs)`), or a local var read
+    // whose binding is itself a call (`@fs-unit: get-unit(@fs)`) — drives those
+    // renders through `prepareRenderPrintState`, which RESETS `context.printState`
+    // IN PLACE (fresh writer + frame arrays). In the single-pass spine render
+    // `context.printState` IS the live emit state, so the reset swaps the live
+    // writer/frames MID-DESCENT: the guard still computes the right verdict, but the
+    // subsequent PASSING body descent writes leaf text into the swapped (discarded)
+    // writer and its output is LOST — a silently DROPPED block (bootstrap RFS
+    // `#font-size`: the compound `not(isnumber(@fs)) or (not(@fs-unit = px) and
+    // not(@fs-unit = rem))` guard passed yet dropped the whole `font-size` block,
+    // cascading into dropped later siblings). Both the `Condition` fold
+    // (`evaluateBoolean`, which evals each operand) and a non-`Condition` guard's
+    // full `Node.eval` (a parenthesized compound parses as a `Paren`) hit this, so
+    // isolate BOTH — exactly as the value-leaf resolves do
+    // (`evalIsolatingSpinePrintState`), leaving the live writer/frames byte-identical
+    // for the body descent. A simple guard with no rendering operand pays only a
+    // shallow snapshot.
+    const guardResult = evalIsolatingSpinePrintState(context, () =>
+      guard instanceof Condition ? guard.evaluateBoolean(context) : guard.eval(context)
+    );
     const decideGuard = (result: boolean | Node): MaybePromise<string> => {
       if (!Condition.resultPasses(result)) {
         return '';

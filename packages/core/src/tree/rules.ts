@@ -50,7 +50,8 @@ import {
   withSpineMergePlan,
   resolveSpineLeafText,
   resolveSpineStatementCallNode,
-  serializeSpineStatementCallNode
+  serializeSpineStatementCallNode,
+  evalIsolatingSpinePrintState
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
@@ -4621,8 +4622,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const evalFallback = (): MaybePromise<void> => {
       // Byte-identical eval terminal for a non-simple imported body: render the
       // import node the eval way and splice its output text at this position.
+      // ISOLATE its print-state: `importNode.render` → `evalForRender` →
+      // `prepareRenderPrintState` RESETS `context.printState` IN PLACE (fresh writer +
+      // frame arrays); in the single-pass spine render that IS the live emit state, so
+      // an un-isolated fallback swaps the live writer/frames and every LATER sibling
+      // writes into the discarded writer and is LOST (bootstrap: an imported body with
+      // a DETACHED-RULESET-arg mixin call — `a { #hover({…}) }` in `_reboot` — is not
+      // spine-foldable and lands here; its render silently dropped the entire following
+      // `_grid` import). The render returns its own string (spliced into `w` below), so
+      // isolate exactly as the value-leaf / guard resolves do.
       const position = w.position();
-      const rendered = importNode.render(context, getPrintOptions(options));
+      const rendered = evalIsolatingSpinePrintState(context, () => importNode.render(context, getPrintOptions(options)));
       const finishRendered = (text: string): void => {
         if (w.position() === position && text) {
           w.add(text, importNode);
@@ -4662,6 +4672,77 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     };
     const resolution = importNode.resolveForSpine(context);
     return withRestore(isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution));
+  }
+
+  /**
+   * Fold a `$for`/`each` (`For`) loop reached by the ROOT / import-splice emitter
+   * (`emitNode`) into per-iteration bound-body surfaces — the emitter-side analogue
+   * of the CONTAINER descent's `runSpineForExpansion` (`serialize-helper`). Drive
+   * `For.spineIterationSurfaces` (one surface per iteration, each holding COPIES of
+   * the loop body under a fresh scope frame carrying the iteration's
+   * `@value`/`@key`/counter bindings), then re-`emitNode` each surface's children
+   * with `context.rulesContext` PINNED to that surface's frame so a body reference
+   * OR a nested ruleset's interpolated selector (`.alert-@{color}`) resolves the loop
+   * variable against the live iteration frame — across the async settle of the
+   * surface build (`spineIterationSurfaces` evals the iterable). Pin is re-asserted
+   * synchronously immediately before each child's `emitNode` (which enters the child
+   * container serializer and captures `context.rulesContext` before any await), and
+   * restored on every exit edge (sync + async). The surface build is wrapped in
+   * `evalIsolatingSpinePrintState` so its value evals leave the live emit print-state
+   * byte-identical (mirrors the container fold).
+   */
+  private _emitSpineForFold(
+    forNode: Node,
+    context: Context,
+    emitNode: (n: Node) => MaybePromise<void>
+  ): MaybePromise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to For; only For exposes spineIterationSurfaces.
+    const iterable = forNode as unknown as { spineIterationSurfaces(ctx: Context): Promise<Rules[]> };
+    const surfacesResult = evalIsolatingSpinePrintState(context, () => iterable.spineIterationSurfaces(context));
+    const applySurfaces = (surfaces: Rules[]): MaybePromise<void> => {
+      const emitSurface = (s: number): MaybePromise<void> => {
+        for (let si = s; si < surfaces.length; si++) {
+          const surface = surfaces[si]!;
+          const children = surface.rules;
+          const emitChild = (c: number): MaybePromise<void> => {
+            for (let ci = c; ci < children.length; ci++) {
+              const savedRulesContext = context.rulesContext;
+              context.rulesContext = surface;
+              let step: MaybePromise<void>;
+              try {
+                step = emitNode(children[ci]!);
+              } catch (error) {
+                context.rulesContext = savedRulesContext;
+                throw error;
+              }
+              if (isThenable(step)) {
+                const nextIndex = ci + 1;
+                return step.then(
+                  () => {
+                    context.rulesContext = savedRulesContext;
+                    return emitChild(nextIndex);
+                  },
+                  (error: unknown) => {
+                    context.rulesContext = savedRulesContext;
+                    throw error;
+                  }
+                );
+              }
+              context.rulesContext = savedRulesContext;
+            }
+            return undefined;
+          };
+          const surfaceStep = emitChild(0);
+          if (isThenable(surfaceStep)) {
+            const nextSurface = si + 1;
+            return surfaceStep.then(() => emitSurface(nextSurface));
+          }
+        }
+        return undefined;
+      };
+      return emitSurface(0);
+    };
+    return isThenable(surfacesResult) ? surfacesResult.then(applySurfaces) : applySurfaces(surfacesResult);
   }
 
   private _emitRulesBody(options: FinalPrintOptions, mode: 'source', exclude?: Set<Node>): void;
@@ -4807,6 +4888,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         queueTopImport(context, n as unknown as AtRuleStatement);
         return;
       }
+      // LOOP fold at the ROOT / IMPORT-SPLICE emitter (cutover LOOP increment 1,
+      // ROOT parity). A `$for`/`each` (`For`) node reaching THIS emitter — a root-
+      // direct loop, or a loop inside an imported body spliced here via
+      // `_emitSpineImportFold` — must expand into its per-iteration bound surfaces
+      // exactly as the CONTAINER descent does (`serializeRulesContainerInternal` →
+      // `runSpineForExpansion`). Without this it falls to the `isChildRules` branch
+      // below, which emits the loop body ONCE, UNBOUND — a nested ruleset's
+      // interpolated selector (`.alert-@{color}`) then resolves the loop variable
+      // against a frame that never bound it (`'color' is not defined`). Route it
+      // through the shared iteration-surface fold: each surface's children re-enter
+      // `emitNode` with `context.rulesContext` pinned to that surface's live frame,
+      // so a body reference / interpolated selector resolves the iteration binding.
+      if (mode === 'render' && context && options.spineMode && n.type === 'For') {
+        return this._emitSpineForFold(n, context, emitNode);
+      }
       const isContainer = n.type === 'Ruleset' || n.type === 'AtRule' || n.type === 'Rules';
       if (isContainer && n.type === 'Rules') {
         emitLeadingBlockCommentForNode(n);
@@ -4878,8 +4974,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         options.depth = depth;
         options.referenceMode = referenceMode;
         options.referenceRenderEnabled = referenceRenderEnabled;
+        // A container child that routes to EVAL render (`n.render` → `evalForRender`
+        // → `prepareRenderPrintState`) RESETS `context.printState` IN PLACE (fresh
+        // writer + frame arrays). In the single-pass spine render `context.printState`
+        // IS the live emit state, so an un-isolated eval render swaps the live
+        // writer/frame-arrays and every LATER sibling then writes into the discarded
+        // writer and is LOST (bootstrap: `a { #hover({…}) }` — a mixin call with a
+        // DETACHED-RULESET arg is deferred to eval; its render dropped the entire
+        // following `_grid` block). `n.render` returns its OWN rendered string
+        // (spliced into `w` below), so isolate its print-state side effect exactly as
+        // the value-leaf / guard resolves do (`evalIsolatingSpinePrintState`), leaving
+        // the live writer/frames byte-identical for the next sibling. The
+        // `serializeRulesContainerInline` (spine) branch never resets print-state.
         const rule = mode === 'render' && context
-          ? n.render(context, getPrintOptions(options))
+          ? (options.spineMode
+              ? evalIsolatingSpinePrintState(context, () => n.render(context, getPrintOptions(options)))
+              : n.render(context, getPrintOptions(options)))
           : serializeRulesContainerInline(n, getPrintOptions(options));
         const finishRule = (resolvedRule: string): void => {
           if (w.position() === position && resolvedRule) {
