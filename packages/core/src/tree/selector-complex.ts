@@ -12,14 +12,16 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
-import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { getField, setField } from './util/field-helpers.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
 // type SelectorValue = Component[]
 export type ComplexSelectorValue = ComplexSelectorComponent[];
+
+export type ComplexSelectorChildData = { value: ComplexSelectorValue };
 
 /**
  * Selectors with combinators.
@@ -34,43 +36,49 @@ export interface ComplexSelector {
   type: 'ComplexSelector';
   shortType: 'sel';
 }
-export class ComplexSelector extends Selector<ComplexSelectorValue> {
-  get length() {
-    return this.data.length;
+export class ComplexSelector extends Selector<ComplexSelectorValue, any, ComplexSelectorChildData> {
+  static override childKeys = ['value'] as const;
+
+  /** @internal */ value!: ComplexSelectorValue;
+
+  constructor(value: ComplexSelectorValue, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Selector) {
+        this.adopt(child);
+      }
+    }
   }
 
-  /**
-   * Essentially, a#id.class === a.class#id as being identical selectors,
-   * so we normalize groups and combinators
-   *
-   */
+  get length() {
+    return this.value.length;
+  }
+
   override valueOf() {
-    if (!Array.isArray(this.data)) {
-      this.setData([this.data as unknown as ComplexSelectorComponent]);
-    }
-    return (this._valueOf ??= this.data.map(n => n.valueOf()).join(''));
+    const value = Array.isArray(this.value)
+      ? this.value
+      : [this.value as unknown as ComplexSelectorComponent];
+    return (this._valueOf ??= value.map(n => n.valueOf()).join(''));
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { data } = this;
-    let length = data.length;
+    const value = this.get('value', options.context);
+    let length = value.length;
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
-      let component = data[i]!;
+      let component = value[i]!;
       /** Add some combinator spacing */
       if (isNode(component, N.Combinator)) {
         /** Skip spacing if the previous node is a Nil */
-        if (isNode(data[i - 1], N.Nil)) {
+        if (isNode(value[i - 1], N.Nil)) {
           continue;
         }
-        let co = component.data;
+        let co = component.value;
         if (co !== ' ') {
-          // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
-          // pre spacing (default to single space when no explicit pre)
           let out = w.capture(() => component.toString(options));
-          /** Namespace combinator traditionally written without spacing */
           if (out !== '|') {
             w.add(` ${out.trim()} `, component);
           } else {
@@ -92,31 +100,46 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return pipe(
       () => {
         const selector = super.evalNode(context) as ComplexSelector;
-        const { data } = selector;
-        const maybe = serialForEach(Array.from(getEntries(data)), ([sel, i]) => {
-          const out = sel.eval(context);
+        const value = [...selector.get('value', context)];
+        let changed = false;
+        const maybe = serialForEach(value.map((_, i) => i), (i: number) => {
+          const out = value[i]!.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
-              selector.setData(i, res as ComplexSelectorComponent);
+              if (res !== value[i]) {
+                value[i] = res as ComplexSelectorComponent;
+                changed = true;
+              }
               return undefined;
             });
           }
-          selector.setData(i, out as ComplexSelectorComponent);
+          if ((out as ComplexSelectorComponent) !== value[i]) {
+            value[i] = out as ComplexSelectorComponent;
+            changed = true;
+          }
           return undefined;
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => {
+            if (changed) {
+              setField(selector, 'value', value, context);
+            }
             return selector;
           });
+        }
+        if (changed) {
+          setField(selector, 'value', value, context);
         }
         return selector;
       },
       (selector) => {
-        const { data } = selector;
-        if (data.length === 1) {
-          const only = data[0]!.inherit(selector);
-          if (selector.hoistToRoot) {
-            (only as any).hoistToRoot = true;
+        const value = selector.get('value', context);
+        if (value.length === 1) {
+          const originalOnly = value[0]!;
+          const only = originalOnly.clone(false, undefined, context);
+          only.inherit(selector);
+          if (getField<boolean | undefined>(selector, 'hoistToRoot', context) || only.hoistToRoot) {
+            setField(only, 'hoistToRoot', true, context);
           }
           return only;
         }
@@ -124,104 +147,6 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       }
     );
   }
-  // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
-  //   let selector: ComplexSelector = this.maybeClone(context)
-  //   let elements = [...selector.value] as ComplexSelectorValue
-  //   selector.value = elements
-
-  //   let collapseNesting = context.opts.collapseNesting
-  //   if (collapseNesting) {
-  //     let hasAmp = elements.find(el => el instanceof Ampersand)
-  //     /**
-  //      * Try to evaluate all selectors as if they are prepended by `&`
-  //      */
-  //     if (!hasAmp && context.rulesetFrames.length > 0) {
-  //       if (elements[0] instanceof Combinator) {
-  //         elements.unshift(new Ampersand())
-  //       } else {
-  //         elements.unshift(new Ampersand(), new Combinator(' '))
-  //       }
-  //     }
-  //   }
-
-  //   for (let [sel, i] of getEntries(selector.value)) {
-  //     selector.value[i] = await sel.eval(context) as ComplexSelectorComponent
-  //   }
-
-  //   let cleanElements = (elements: Array<Selector | Combinator | Nil>): ComplexSelectorValue => {
-  //     let elementsLength = elements.length
-  //     for (let i = 0; i < elementsLength; i++) {
-  //       let value = elements[i]!
-
-  //       if (
-  //         i === 0
-  //         && (
-  //           (
-  //             value instanceof ComplexSelector
-  //             && value.value.length === 0
-  //           )
-  //           || value instanceof Nil
-  //           || (collapseNesting && (value instanceof Ampersand || value instanceof Combinator))
-  //         )
-  //       ) {
-  //         elements.shift()
-  //         elementsLength -= 1
-  //         i -= 1
-  //       /**
-  //        * @note The following two can occur because of evaluation of `&`
-  //        */
-  //       } else if (value instanceof ComplexSelector) {
-  //         elements = elements.slice(0, i).concat(value.value).concat(elements.slice(i + 1))
-  //         elementsLength += value.value.length - 1
-  //       } else if (isNode(value, 'SelectorList') && elementsLength > 1) {
-  //         /**
-  //          * Wrap returned lists with :is(), if
-  //          * there are more elements in the sequence
-  //          */
-  //         elements[i] = new PseudoSelector({
-  //           name: ':is',
-  //           arg: value
-  //         })
-  //       }
-  //     }
-  //     return elements as ComplexSelectorValue
-  //     // This can/should only happen with compound selectors
-  //     // elements.sort((a, b) => {
-  //     //   const aVal = a instanceof BasicSelector && a.isTag ? -1 : 0
-  //     //   const bVal = b instanceof BasicSelector && b.isTag ? -1 : 0
-  //     //   return aVal - bVal
-  //     // })
-  //   }
-
-  //   /** @todo - Selector lists can have basic selectors */
-  //   if (isNode(selector, 'SelectorList')) {
-  //     selector.value.forEach(sel => { (sel).value = cleanElements(sel.value) })
-  //   } else {
-  //     selector.value = cleanElements(selector.value)
-  //   }
-
-  //   if (elements.length === 0) {
-  //     return new Nil()
-  //   }
-  //   return selector
-  // }
-
-  /** @todo move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   this.data.forEach(node => node.toCSS(context, out))
-  // }
-
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.sel([', this.location)
-  //   const length = this.data.length - 1
-  //   this.data.forEach((node, i) => {
-  //     node.toModule(context, out)
-  //     if (i < length) {
-  //       out.add(', ')
-  //     }
-  //   })
-  //   out.add('])')
-  // }
 }
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>;

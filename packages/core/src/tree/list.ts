@@ -1,9 +1,11 @@
 import { type Context } from '../context.js';
-import { defineType, Node } from './node.js';
+import { defineType, F_MAY_ASYNC, Node } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import { LIST_ITEM_TRIM } from './util/regex.js';
+import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { setField } from './util/field-helpers.js';
 
 export type ListOptions = {
   /**
@@ -15,7 +17,9 @@ export type ListOptions = {
   sep?: ',' | ';' | '/';
 };
 
-export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
+export type ListChildData<T extends Node = Node> = { value: T[] };
+
+export interface List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
   type: 'List';
   shortType: 'list';
   eval(context: Context): Promise<this>;
@@ -28,26 +32,49 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or .sel, #id.class, [attr]
  * or one / two / three
  */
-export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  get length() {
-    return this.data.length;
+export class List<T extends Node = Node> extends Node<T[], ListOptions, ListChildData<T>> {
+  static override childKeys = ['value'] as const;
+
+  /** @internal */ value!: T[];
+
+  constructor(value: T[], options?: ListOptions, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    for (const child of value) {
+      if (child instanceof Node) {
+        this.adopt(child);
+      }
+    }
   }
 
+  // NOTE: `length` intentionally remains canonical for now.
+  // Unlike render/eval surfaces, it has no Context channel, so making it
+  // state-aware would require a broader API change rather than a node-local patch.
+  get length() {
+    return this.value.length;
+  }
+
+  // NOTE: iteration intentionally remains canonical for now for the same reason as
+  // `length`: there is no explicit Context channel on the iterator protocol.
   * [Symbol.iterator]() {
-    yield* this.data.entries();
+    yield* this.value.entries();
   }
 
   private _valueOf: string | undefined;
 
+  // NOTE: `valueOf()` intentionally remains canonical for now.
+  // It is a cached observer on the canonical list instance, and it has no
+  // Context parameter. Making it state-aware here would make the cache
+  // ambiguous across concurrent sessions that see different patched `value`s.
   override valueOf() {
-    return (this._valueOf ??= this.data.map(v => v.valueOf()).join(';'));
+    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let value = this.data;
+    let value = this.get('value', options.context);
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
@@ -72,9 +99,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   override compare(other: Node) {
+    // NOTE: `compare()` intentionally remains canonical for now.
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
-      const result = compareNodeArray([...this.data], [...other.data], equalityMode);
+      const result = compareNodeArray([...this.value], [...other.value], equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -90,61 +118,118 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
+    const ownItems = this.get('value', context);
+    const nextItems = b instanceof List ? b.get('value', context) : [b as T];
     let newList = this.maybeClone(context);
-    if (b instanceof List) {
-      newList.push(...b.data);
-    } else {
-      /** @todo - do we need to verify the list type? */
-      newList.push(b as T);
-    }
+    setField(newList, 'value', [...ownItems, ...nextItems], context);
     return newList;
   }
 
-  /** @todo? Lists should collapse nested lists? */
-  // override async evalNode(context: Context): Promise<List<T>>
+  override preEval(context: Context): MaybePromise<Node> {
+    if (this._isPreEvaluated(context)) {
+      return this;
+    }
 
-  /** @todo move to ToCssVisitor */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add('', this.location)
-  //   const length = this.data.length - 1
-  //   const pre = context.pre
-  //   const cast = context.cast
-  //   this.data.forEach((node, i) => {
-  //     const val = cast(node)
-  //     val.toCSS(context, out)
+    const node = this.maybeClone(context);
+    node._setPreEvaluated(true, context);
+    const value = node.get('value', context);
+    const nextValue = value.slice();
 
-  //     if (i < length) {
-  //       if (context.inSelector) {
-  //         out.add(`,\n${pre}`)
-  //       } else {
-  //         out.add(', ')
-  //       }
-  //     }
-  //   })
-  // }
+    if (!node.hasFlag(F_MAY_ASYNC)) {
+      let changed = false;
+      for (let i = 0; i < nextValue.length; i++) {
+        const child = nextValue[i]!;
+        const result = child.preEval(context) as T;
+        if (result !== child) {
+          nextValue[i] = result;
+          changed = true;
+        }
+      }
+      if (changed) {
+        setField(node, 'value', nextValue, context);
+      }
+      return node;
+    }
 
-  /** @todo move to ToModuleVisitor */
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.list([\n', this.location)
-  //   context.indent++
-  //   let pre = context.pre
-  //   const length = this.data.length - 1
-  //   this.data.forEach((node, i) => {
-  //     out.add(pre)
-  //     if (node instanceof Node) {
-  //       node.toModule(context, out)
-  //     } else {
-  //       out.add(JSON.stringify(node))
-  //     }
-  //     if (i < length) {
-  //       out.add(',\n')
-  //     }
-  //   })
-  //   context.indent--
-  //   pre = context.pre
-  //   out.add(`\n${pre}])`)
-  //   return out
-  // }
+    let changed = false;
+    const out = serialForEach(nextValue, (child, i) => {
+      const result = child.preEval(context);
+      if (isThenable(result)) {
+        return (result as Promise<T>).then((resolved) => {
+          if (resolved !== child) {
+            nextValue[i] = resolved;
+            changed = true;
+          }
+        });
+      }
+      if (result !== child) {
+        nextValue[i] = result as T;
+        changed = true;
+      }
+    });
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => {
+        if (changed) {
+          setField(node, 'value', nextValue, context);
+        }
+        return node;
+      });
+    }
+    if (changed) {
+      setField(node, 'value', nextValue, context);
+    }
+    return node;
+  }
+
+  protected override evalNode(context: Context): MaybePromise<Node> {
+    const value = this.get('value', context);
+    const nextValue = value.slice();
+
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      let changed = false;
+      for (let i = 0; i < nextValue.length; i++) {
+        const child = nextValue[i]!;
+        const result = child.eval(context) as T;
+        if (result !== child) {
+          nextValue[i] = result;
+          changed = true;
+        }
+      }
+      if (changed) {
+        setField(this, 'value', nextValue, context);
+      }
+      return this;
+    }
+
+    let changed = false;
+    const out = serialForEach(nextValue, (child, i) => {
+      const result = child.eval(context);
+      if (isThenable(result)) {
+        return (result as Promise<T>).then((resolved) => {
+          if (resolved !== child) {
+            nextValue[i] = resolved;
+            changed = true;
+          }
+        });
+      }
+      if (result !== child) {
+        nextValue[i] = result as T;
+        changed = true;
+      }
+    });
+    if (isThenable(out)) {
+      return (out as Promise<void>).then(() => {
+        if (changed) {
+          setField(this, 'value', nextValue, context);
+        }
+        return this;
+      });
+    }
+    if (changed) {
+      setField(this, 'value', nextValue, context);
+    }
+    return this;
+  }
 }
 
 type Params = ConstructorParameters<typeof List>;

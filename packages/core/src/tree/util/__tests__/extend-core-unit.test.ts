@@ -918,3 +918,24 @@ describe('tryExtendSelector', () => {
     expect(serialize(result.value)).toBe('div > :where(.a.x > .y, .z, .k)');
   });
 });
+
+describe('extend-exact: SelectorList target with SelectorList parent (cross-nesting)', () => {
+  // Models:
+  //   .replace.replace, .c.replace + .replace { .replace, .c { prop: ... } }
+  //   .rep_ace:extend(.replace.replace .replace) {}
+  //
+  // Expected: :is(.replace.replace, .c.replace + .replace) :is(.replace, .c), .rep_ace
+  const parent = () => sellist([
+    compound([el('.replace'), el('.replace')]),
+    sel([compound([el('.c'), el('.replace')]), co('+'), compound([el('.replace')])])
+  ]);
+  const target = () => sellist([el('.replace'), el('.c')]);
+  const find = () => sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]);
+
+  it('produces :is(outer) :is(inner), .rep_ace for exact extend crossing nested SelectorList', () => {
+    const result = tryExtendSelector(target(), find(), el('.rep_ace'), false, parent());
+
+    expect(result.error).toBeUndefined();
+    expect(serialize(result.value)).toBe(':is(.replace.replace, .c.replace + .replace) :is(.replace, .c), .rep_ace');
+  });
+});

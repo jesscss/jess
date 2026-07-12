@@ -52,7 +52,7 @@ export function tryStep<TIn, R>(
         if (isThenable(out)) {
           return out.catch((e: unknown) => {
             try {
-              options.onError?.(e, input as TIn | undefined);
+              options.onError?.(e, input);
             } catch (onErrorThrown) {
               // Swallow onError errors and continue to fallback
             }
@@ -60,13 +60,14 @@ export function tryStep<TIn, R>(
               return Promise.reject(e);
             }
             const fb = options.fallback;
-            return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input as TIn | undefined) : fb;
-          }) as MaybePromise<R | undefined>;
+
+            return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input) : fb;
+          });
         }
         return out;
       } catch (e) {
         try {
-          options.onError?.(e, input as TIn | undefined);
+          options.onError?.(e, input);
         } catch (onErrorThrown) {
           // Swallow onError errors and continue to fallback
         }
@@ -74,21 +75,12 @@ export function tryStep<TIn, R>(
           throw e;
         }
         const fb = options.fallback;
-        return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input as TIn | undefined) : fb;
+        return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input) : fb;
       }
     };
-    // Cast to match overload return types
-    // Overloads say () => MaybePromise<R>, but implementation accepts optional input for fallback/onError
-    // At runtime, JavaScript allows calling () => A with an argument, so this works
-    // TypeScript sees () => MaybePromise<R> to match pipe's first overload
-    if (options.rethrow === true) {
-      // Type assertion: TypeScript sees () => MaybePromise<R>, runtime accepts optional input
-      return resultFn as unknown as () => MaybePromise<R>;
-    }
-    return resultFn as unknown as () => MaybePromise<R | undefined>;
+    return resultFn as (input: TIn) => MaybePromise<R | undefined>;
   }
   // Original implementation for functions that take input
-  const inputFn = fn as (input: TIn) => MaybePromise<R>;
   return (input: TIn) => {
     try {
       const out = fn(input);
@@ -103,7 +95,7 @@ export function tryStep<TIn, R>(
             return Promise.reject(e);
           }
           const fb = options.fallback;
-          return typeof fb === 'function' ? (fb as (e: unknown, i: TIn) => R)(e, input) : fb;
+          return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input) : fb;
         });
       }
       return out;
@@ -117,19 +109,19 @@ export function tryStep<TIn, R>(
         throw e;
       }
       const fb = options.fallback;
-      return typeof fb === 'function' ? (fb as (e: unknown, i: TIn) => R)(e, input) : fb;
+      return typeof fb === 'function' ? (fb as (e: unknown, i: TIn | undefined) => R)(e, input) : fb;
     }
   };
 }
 
 export function guard<T>(
   predicate: (value: T) => MaybePromise<boolean>,
-  errorFactory: (value: T) => unknown = (v) => new Error('ensure failed')
+  errorFactory: (value: T) => unknown = v => new Error('ensure failed')
 ): (value: T) => MaybePromise<T> {
   return (value: T) => {
     const ok = predicate(value);
     if (isThenable(ok)) {
-      return ok.then(passed => {
+      return ok.then((passed) => {
         if (!passed) {
           throw errorFactory(value);
         }
@@ -142,5 +134,3 @@ export function guard<T>(
     return value;
   };
 }
-
-

@@ -1,4 +1,4 @@
-import { List, Dimension, Context, Num, Quoted } from '@jesscss/core';
+import { Any, Bool, List, Dimension, Context, Num, Quoted, Paren } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 import setNth from '../list/set-nth.js';
 import append from '../list/append.js';
@@ -56,6 +56,15 @@ describe('Sass advanced list functions', () => {
       const value = new Num(99);
       expect(() => setNth(list, n, value)).toThrow('List index 5 is out of bounds');
     });
+
+    it('preserves bracketed list wrappers', () => {
+      const list = new Paren(new List([new Num(10), new Num(20)]), { delimiter: 'square' });
+      const result = setNth(list, new Dimension({ number: 2 }), new Num(99));
+      expect(result).toBeInstanceOf(Paren);
+      const inner = (result as Paren).value as List;
+      expect(inner.length).toBe(2);
+      expect((inner.data[1] as Num).valueOf()).toBe(99);
+    });
   });
 
   describe('append()', () => {
@@ -89,6 +98,18 @@ describe('Sass advanced list functions', () => {
       const separator = new Quoted('auto', { quote: undefined });
       const result = append(list, value, separator);
       expect(result.options?.sep).toBe('/');
+    });
+
+    it('accepts scalar inputs as one-item lists', () => {
+      const result = append(new Any('solo'), new Num(3));
+      expect(result).toBeInstanceOf(List);
+      expect((result as List).length).toBe(2);
+    });
+
+    it('preserves bracketed list wrappers', () => {
+      const list = new Paren(new List([new Num(1)]), { delimiter: 'square' });
+      const result = append(list, new Num(2));
+      expect(result).toBeInstanceOf(Paren);
     });
   });
 
@@ -124,6 +145,17 @@ describe('Sass advanced list functions', () => {
       const separator = new Quoted('auto', { quote: undefined });
       const result = join(list1, list2, separator);
       expect(result.options?.sep).toBe(',');
+    });
+
+    it('accepts scalar inputs as one-item lists', () => {
+      const result = join(new Any('a'), new Any('b'));
+      expect(result).toBeInstanceOf(List);
+      expect((result as List).length).toBe(2);
+    });
+
+    it('supports explicit bracketed output', () => {
+      const result = join(new List([new Num(1)]), new List([new Num(2)]), undefined, new Bool(true));
+      expect(result).toBeInstanceOf(Paren);
     });
   });
 
@@ -173,6 +205,14 @@ describe('Sass advanced list functions', () => {
       const result = zip();
       expect(result).toBeInstanceOf(List);
       expect(result.length).toBe(0);
+    });
+
+    it('accepts scalar inputs as one-item lists', () => {
+      const result = zip(new Any('a'), new Any('b'));
+      expect(result).toBeInstanceOf(List);
+      expect(result.length).toBe(1);
+      const first = result.data[0] as List;
+      expect(first.length).toBe(2);
     });
   });
 });

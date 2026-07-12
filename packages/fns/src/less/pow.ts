@@ -4,8 +4,8 @@ export default defineFunction(
   'pow',
   function(x: Dimension, y: Dimension) {
     return new Dimension({
-      number: Math.pow(x.data.number, y.data.number),
-      unit: x.data.unit
+      number: Math.pow(x.number, y.number),
+      unit: x.unit
     });
   },
   {

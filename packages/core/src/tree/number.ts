@@ -1,5 +1,5 @@
 import {
-  type LocationInfo,
+  type OptionalLocation,
   type NodeOptions,
   type TreeContext,
   defineType,
@@ -21,7 +21,7 @@ export interface Num {
 export class Num extends Dimension {
   // Numbers are static and don't need evaluation
 
-  constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: number | { number: number }, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(isPlainObject(value) ? value as { number: number } : { number: value as number }, options, location, treeContext);
   }
 
@@ -35,8 +35,8 @@ export class Num extends Dimension {
     const result = super.operate(b, op, context);
 
     // If the result is a Dimension and has an empty unit, convert it to a Num
-    if (result instanceof Dimension && !result.data.unit) {
-      return new Num(result.data.number).inherit(this);
+    if (result instanceof Dimension && !result.unit) {
+      return new Num(result.number).inherit(this);
     }
 
     // Otherwise, pass through the result as-is
@@ -49,6 +49,6 @@ defineType(Num, 'Num');
 export const num = (
   value: number,
   options?: NodeOptions,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   treeContext?: TreeContext
 ) => new Num(value, options, location, treeContext);

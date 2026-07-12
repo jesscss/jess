@@ -73,6 +73,23 @@ Compiles to:
 }
 ```
 
+#### Selector Capture
+
+When a variable should hold a selector or selector list, wrap it in `*[ ... ]`:
+
+```less
+@targets: *[.notice, .warning];
+```
+
+This keeps the value selector-aware instead of treating it like a normal value list.
+Use it when the variable will later be consumed as a selector, such as by `:extend(...)`.
+
+Prefer this explicit form over legacy unquoted selector-like values such as:
+
+```less
+@targets: .notice, .warning;
+```
+
 #### URLs
 
 ```less

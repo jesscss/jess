@@ -63,6 +63,46 @@ output:
 }
 ```
 
+### Explicit template forms
+
+Less 5.x also recognizes explicit parent templates:
+
+- `&()` keeps the parent selector, but marks the nested selector as root-hoisted
+- `&('')` suppresses the parent selector entirely
+- a template without another `&` is shorthand for replacing the parent at that slot, so `&-1` and `&(-1)` mean the same thing
+
+```less
+.button {
+  &-primary {
+    font-weight: 700;
+  }
+
+  &() .icon {
+    inline-size: 1em;
+  }
+
+  &('').utility {
+    display: contents;
+  }
+}
+```
+
+Conceptually this produces:
+
+```css
+.button-primary {
+  font-weight: 700;
+}
+
+.button .icon {
+  inline-size: 1em;
+}
+
+.utility {
+  display: contents;
+}
+```
+
 ### Multiple `&`
 
 `&` may appear more than once within a selector. This makes it possible to repeatedly refer to a parent selector without repeating its name.

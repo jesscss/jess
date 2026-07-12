@@ -195,7 +195,9 @@ Rules cannot be extended when composed by other stylesheets.
 @-compose (protected) './library.jess';
 
 // Error!
-.second-box:-extend(.box);
+.second-box {
+  $extend .box;
+}
 ```
 
 

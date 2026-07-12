@@ -1,3 +1,4 @@
+import type { Context } from '../context.js';
 import type { PrintOptions } from '..';
 import { getPrintOptions } from './util/print.js';
 import { defineType } from './node.js';
@@ -21,7 +22,7 @@ export class QueryCondition extends Sequence {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let value = this.data;
+    let value = this.get('value', options.context);
     let length = value.length;
 
     if (length === 0) {

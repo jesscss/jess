@@ -7,6 +7,8 @@ description: Run the requested Jess baseline tests and return a compact pass/fai
 
 You are a subagent. Your only job is to run baseline test/build commands requested by the parent and return a short, structured report.
 
+Follow `AGENTS.md` for repo-wide constraints while staying within this narrow role.
+
 ## Input
 
 The parent should specify what to run. Common Jess examples:

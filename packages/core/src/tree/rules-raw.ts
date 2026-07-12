@@ -1,6 +1,7 @@
 import { defineType } from './node.js';
 import { Rules } from './rules.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { getChildren } from './util/field-helpers.js';
 
 /**
  * A rules container that emits its content verbatim inside braces,
@@ -21,9 +22,12 @@ export class RawRules extends Rules {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const children = options.context
+      ? getChildren(this, options.context)
+      : this.value;
     w.add('{');
     // Emit children using toString to preserve exact whitespace/comments
-    for (const child of this.data) {
+    for (const child of children) {
       child.toString(options);
     }
     w.add('}');
@@ -35,7 +39,10 @@ export class RawRules extends Rules {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (const child of this.data) {
+    const children = options.context
+      ? getChildren(this, options.context)
+      : this.value;
+    for (const child of children) {
       child.toString(options);
     }
     return w.getSince(mark);

@@ -1,6 +1,9 @@
-import { defineType, Node } from './node.js';
+import type { Context } from '../context.js';
+import { defineType, Node, type OptionalLocation, type TreeContext, type NodeOptions } from './node.js';
 import { isNode } from './util/is-node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+
+export type RestChildData = { value: Node | string | undefined };
 
 /**
  * A rest expression (e.g. ...$var). By itself it doesn't do much.
@@ -11,9 +14,21 @@ export interface Rest {
   type: 'Rest';
   shortType: 'rest';
 }
-export class Rest extends Node<Node | string | undefined> {
-  get name(): string {
-    let value = this.data;
+export class Rest extends Node<Node | string | undefined, NodeOptions, RestChildData> {
+  static override childKeys = ['value'] as const;
+
+  /** @internal */ value: Node | string | undefined;
+
+  constructor(value?: Node | string, options?: NodeOptions, location?: OptionalLocation, treeContext?: TreeContext) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    if (this.value instanceof Node) {
+      this.adopt(this.value);
+    }
+  }
+
+  private _getName(context?: Context): string {
+    const value = this.get('value', context);
     if (value) {
       if (isNode(value)) {
         return value.toString();
@@ -23,12 +38,16 @@ export class Rest extends Node<Node | string | undefined> {
     return '';
   }
 
+  get name(): string {
+    return this._getName();
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     w.add('...$');
-    w.add(this.name);
+    w.add(this._getName(options.context));
     return w.getSince(mark);
   }
 }

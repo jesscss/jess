@@ -17,7 +17,7 @@ describe('Sass string functions', () => {
       const str = new Quoted('hello', { quote: '"' });
       const result = unquote(str);
       expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).options?.quote).toBeUndefined();
+      expect((result as Quoted).quote).toBeUndefined();
       expect((result as Quoted).valueOf()).toBe('hello');
     });
 
@@ -25,7 +25,7 @@ describe('Sass string functions', () => {
       const str = new Quoted('hello');
       const result = unquote(str);
       expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).options?.quote).toBeUndefined();
+      expect((result as Quoted).quote).toBeUndefined();
       expect((result as Quoted).valueOf()).toBe('hello');
     });
 
@@ -33,7 +33,7 @@ describe('Sass string functions', () => {
       const str = new Quoted('test', { quote: '"' });
       const result = unquote({ string: str });
       expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).options?.quote).toBeUndefined();
+      expect((result as Quoted).quote).toBeUndefined();
     });
   });
 
@@ -42,7 +42,7 @@ describe('Sass string functions', () => {
       const str = new Quoted('hello');
       const result = quote(str);
       expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
       expect((result as Quoted).valueOf()).toBe('hello');
     });
 
@@ -50,7 +50,7 @@ describe('Sass string functions', () => {
       const str = new Quoted('hello', { quote: '"' });
       const result = quote(str);
       expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
       expect((result as Quoted).valueOf()).toBe('hello');
     });
 
@@ -58,7 +58,7 @@ describe('Sass string functions', () => {
       const str = new Quoted('test');
       const result = quote({ string: str });
       expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
     });
   });
 
@@ -68,7 +68,7 @@ describe('Sass string functions', () => {
       const result = toUpperCase(str);
       expect(result).toBeInstanceOf(Quoted);
       expect((result as Quoted).valueOf()).toBe('HELLO');
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
     });
 
     it('handles mixed case', () => {
@@ -76,13 +76,13 @@ describe('Sass string functions', () => {
       const result = toUpperCase(str);
       expect(result).toBeInstanceOf(Quoted);
       expect((result as Quoted).valueOf()).toBe('HELLO WORLD');
-      expect((result as Quoted).options?.quote).toBeUndefined();
+      expect((result as Quoted).quote).toBeUndefined();
     });
 
     it('preserves quote options', () => {
       const str = new Quoted('test');
       const result = toUpperCase(str);
-      expect((result as Quoted).options?.quote).toBeUndefined();
+      expect((result as Quoted).quote).toBeUndefined();
     });
 
     it('works with object parameters', () => {
@@ -98,7 +98,7 @@ describe('Sass string functions', () => {
       const result = toLowerCase(str);
       expect(result).toBeInstanceOf(Quoted);
       expect((result as Quoted).valueOf()).toBe('hello');
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
     });
 
     it('handles mixed case', () => {
@@ -106,13 +106,13 @@ describe('Sass string functions', () => {
       const result = toLowerCase(str);
       expect(result).toBeInstanceOf(Quoted);
       expect((result as Quoted).valueOf()).toBe('hello world');
-      expect((result as Quoted).options?.quote).toBeUndefined();
+      expect((result as Quoted).quote).toBeUndefined();
     });
 
     it('preserves quote options', () => {
       const str = new Quoted('TEST', { quote: '"' });
       const result = toLowerCase(str);
-      expect((result as Quoted).options?.quote).toBe('"');
+      expect((result as Quoted).quote).toBe('"');
     });
 
     it('works with object parameters', () => {

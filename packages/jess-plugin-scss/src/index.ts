@@ -122,8 +122,8 @@ export class ScssPlugin extends AbstractPlugin {
         }
       }
     } catch (error: unknown) {
-      if (error && typeof error === 'object' && 'severity' in error) {
-        const diagnostic = toDiagnostic(error as JessError);
+      if (error instanceof JessError) {
+        const diagnostic = toDiagnostic(error);
         if ('errors' in diagnostic) {
           errors.push(diagnostic);
         } else {

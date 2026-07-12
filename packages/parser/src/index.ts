@@ -24,5 +24,7 @@ export {
   type ParserConfig,
   type ErrorMessageProvider,
   type ContentAssistSuggestion,
-  type LocationInfo
+  type LocationInfo,
+  type LocationInfoOrEmpty,
+  type OptionalLocation
 } from './types.js';

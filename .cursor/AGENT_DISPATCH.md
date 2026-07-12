@@ -2,6 +2,8 @@
 
 This file defines how to pick agents with minimal context overhead.
 
+All dispatched agents should follow `AGENTS.md` for repo-wide goals and constraints.
+
 ## Precedence
 
 1. If repo-level and user-level behavior disagrees, repo-level wins in this repo.

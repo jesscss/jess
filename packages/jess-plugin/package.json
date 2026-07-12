@@ -20,7 +20,7 @@
   "dependencies": {
     "@jesscss/core": "workspace:*",
     "@jesscss/parser": "workspace:*",
-    "chevrotain": "^11.0.3"
+    "chevrotain": "^12.0.0"
   },
   "devDependencies": {},
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

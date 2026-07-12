@@ -7,7 +7,7 @@ import {
   F_VISIBLE,
   F_STATIC,
   defineType,
-  type LocationInfo,
+  type OptionalLocation,
   type NodeOptions
 } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
@@ -29,10 +29,12 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
+  static override childKeys = null as null;
+
   constructor(
     value?: any,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext) {
     super('', options, location, treeContext);
     this.allowRoot = true;

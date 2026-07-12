@@ -9,6 +9,7 @@ You are a subagent. Implement the parent's requested change exactly, under Jess 
 
 ## Required behavior
 
+- Follow `AGENTS.md` for repo-wide goals and constraints.
 - Respect AST invariants and node safety rules.
 - Keep changes minimal and targeted.
 - Run package-scoped scripts (`cd packages/<pkg>` or `pnpm --filter ...`).

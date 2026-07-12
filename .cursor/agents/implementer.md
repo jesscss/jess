@@ -9,6 +9,7 @@ You are a subagent. Your job is to implement the parent’s requested change **e
 
 ## Required behavior
 
+- Follow `AGENTS.md` for repo-wide goals and constraints.
 - Respect AST invariants and node safety rules.
 - Keep changes minimal and targeted.
 - Prefer package-scoped scripts (`cd packages/<pkg>` or `pnpm --filter ...`).
@@ -24,4 +25,3 @@ You are a subagent. Your job is to implement the parent’s requested change **e
 **How to verify:** (commands)
 **Notes / risks:** (if any)
 ```
-

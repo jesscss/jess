@@ -43,10 +43,8 @@ export function toLessNode(
 
   // Check if already being proxied (prevent recursion)
   // Only return node as-is if there's no cached proxy
-  if ((jessNode as any)[IS_PROXYING_SYMBOL]) {
-    // Return the node as-is to prevent recursion
-    // This should only happen if cache doesn't have it (checked above)
-    return jessNode as any;
+  if ((jessNode as unknown as Record<symbol, unknown>)[IS_PROXYING_SYMBOL]) {
+    return jessNode;
   }
 
   // Get transformer for this node type
@@ -67,24 +65,26 @@ export function toLessNode(
     // typeIndex is handled automatically by the base proxy handler
 
     // For child nodes, convert them lazily
-    if (prop === 'value' && target.data) {
-      // If data is a Node, convert it
-      if (target.data instanceof Node) {
-        return toLessNode(target.data, options);
+    // Use instance field `.value` (the canonical accessor for leaf nodes)
+    if (prop === 'value' && 'value' in target && target.value !== undefined) {
+      const nodeValue = target.value;
+      // If value is a Node, convert it
+      if (nodeValue instanceof Node) {
+        return toLessNode(nodeValue, options);
       }
-      // If data is an array, convert each element
-      if (Array.isArray(target.data)) {
-        return target.data.map((item: any) => {
+      // If value is an array, convert each element
+      if (Array.isArray(nodeValue)) {
+        return nodeValue.map((item: any) => {
           if (item instanceof Node) {
             return toLessNode(item, options);
           }
           return item;
         });
       }
-      // If data is an object, convert nested nodes
-      if (typeof target.data === 'object' && target.data !== null) {
+      // If value is an object, convert nested nodes
+      if (typeof nodeValue === 'object' && nodeValue !== null) {
         const converted: any = {};
-        for (const [key, val] of Object.entries(target.data)) {
+        for (const [key, val] of Object.entries(nodeValue)) {
           if (val instanceof Node) {
             converted[key] = toLessNode(val, options);
           } else if (Array.isArray(val)) {
@@ -154,7 +154,7 @@ export function toLessTree(
     // Rules is a container - we need to find the root ruleset
     // For now, create a synthetic root ruleset
     // TODO: Handle this properly based on how Less structures its root
-    return toLessNode(jessRules as any, options);
+    return toLessNode(jessRules, options);
   }
 
   // Otherwise, convert the node directly

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Any, List, Mixin, Nil, Rules, VarDeclaration, For } from '@jesscss/core';
+import { Any, List, Mixin, Nil, Rules, VarDeclaration, For, Paren } from '@jesscss/core';
 import { each } from '../less/index.js';
 
 function makeMixin(paramNames?: string[]) {
@@ -77,5 +77,15 @@ describe('each', () => {
     const result = await each(list, mixin);
 
     assertTupleBindings(result, ['item', 'name', 'position']);
+  });
+
+  it('preserves a paren-wrapped iterable for For to handle', async () => {
+    const list = new Paren(new List([new Any('a'), new Any('b')]));
+    const mixin = makeMixin();
+
+    const result = await each(list, mixin);
+
+    expect(result).toBeInstanceOf(For);
+    expect(result.data.iterable).toBe(list);
   });
 });

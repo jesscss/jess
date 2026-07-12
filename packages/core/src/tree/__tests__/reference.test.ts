@@ -1,7 +1,8 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, attr, keyword } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { getSourceParent, setField, setParent } from '../util/field-helpers.js';
 
 let context: Context;
 
@@ -47,22 +48,22 @@ describe('reference', () => {
 
     it('should serialize a number index', () => {
       let node = ref({ key: 0 }, { type: 'index' });
-      expect(`${node}`).toBe('[0]');
+      expect(`${node}`).toBe('$[0]');
     });
 
     it('should serialize a string index', () => {
       let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('[foo]');
+      expect(`${node}`).toBe('$[foo]');
     });
 
     it('should serialize a quoted index', () => {
       let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('[foo]');
+      expect(`${node}`).toBe('$[foo]');
     });
 
     it('should serialize a selector index', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
-      expect(`${node}`).toBe('["foo"]');
+      expect(`${node}`).toBe('$["foo"]');
     });
   });
 
@@ -80,7 +81,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         bar: red;
       `);
     });
@@ -97,7 +98,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         foo: red;
         bar: red;
       `);
@@ -116,7 +117,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         bar: red;
       `);
     });
@@ -133,7 +134,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         bar: red;
         foo: red;
       `);
@@ -160,9 +161,182 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         bar: red red;
       `);
+    });
+
+    it('evaluates with a state-patched variable key', async () => {
+      const lookup = ref({ key: 'foo' }, { type: 'variable' });
+      const scope = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        vardecl({
+          name: any('bar'),
+          value: any('blue')
+        }),
+        decl({
+          name: any('color'),
+          value: lookup
+        })
+      ]);
+
+      setField(lookup, 'key', 'bar', context);
+      const preEvald = await scope.preEval(context);
+      context.root = preEvald;
+      context.rulesContext = preEvald;
+
+      const evald = await lookup.eval(context);
+      expect(evald.render(context)).toBe('blue');
+      expect(lookup.get('key')).toBe('foo');
+    });
+
+    it('evaluates with a state-patched target reference', async () => {
+      const target = ref({ key: '.theme-a' }, { type: 'mixin-ruleset' });
+      const lookup = ref({ target, key: 'primary' }, { type: 'property' });
+      const scope = rules([
+        ruleset({
+          selector: el('.theme-a'),
+          rules: rules([
+            decl({ name: any('primary'), value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.theme-b'),
+          rules: rules([
+            decl({ name: any('primary'), value: any('blue') })
+          ])
+        }),
+        decl({
+          name: any('color'),
+          value: lookup
+        })
+      ]);
+
+      setField(
+        lookup,
+        'target',
+        ref({ key: '.theme-b' }, { type: 'mixin-ruleset' }),
+        context
+      );
+      const preEvald = await scope.preEval(context);
+      context.root = preEvald;
+      context.rulesContext = preEvald;
+
+      const evald = await lookup.eval(context);
+      expect(evald.render(context)).toBe('blue');
+      expect(lookup.get('target')).toBe(target);
+    });
+
+    it('should resolve a variable reference with a keyword key inside an attribute selector', async () => {
+      let node = rules([
+        vardecl({
+          name: any('attr-data'),
+          value: quoted('test3')
+        }),
+        ruleset({
+          selector: attr({ name: 'data', op: '=', value: ref({ key: keyword('attr-data') }, { type: 'index' }) }),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ]);
+      let evald = await node.eval(context);
+      expect(evald.render(context)).toBeString(`
+        [data="test3"] {
+          color: red;
+        }
+      `);
+    });
+
+    it('uses the state parent chain to anchor linear variable resolution', async () => {
+      const scope = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('mid'),
+          value: any('keep')
+        }),
+        decl({
+          name: any('host'),
+          value: any('placeholder')
+        }),
+        vardecl({
+          name: any('foo'),
+          value: any('blue')
+        })
+      ]);
+
+      scope.value.forEach((child, index) => {
+        child.index = index;
+      });
+      context.root = scope;
+      context.rulesContext = scope;
+
+      const hostDecl = scope.at(2, context);
+      if (!hostDecl || !isNode(hostDecl)) {
+        throw new Error('Expected host declaration at index 2');
+      }
+
+      const lookup = ref({ key: 'foo' }, { type: 'variable', resolution: 'linear' });
+      setParent(lookup, hostDecl, context);
+
+      const evald = await lookup.eval(context);
+
+      expect(evald.render(context)).toBe('red');
+    });
+
+    it('uses the state parent chain to anchor default variable resolution without rulesContext', async () => {
+      const scope = rules([
+        vardecl({
+          name: any('foo'),
+          value: any('red')
+        }),
+        decl({
+          name: any('host'),
+          value: any('placeholder')
+        })
+      ]);
+
+      context.root = scope;
+
+      const hostDecl = scope.at(1, context);
+      if (!hostDecl || !isNode(hostDecl)) {
+        throw new Error('Expected host declaration at index 1');
+      }
+
+      const lookup = ref({ key: 'foo' }, { type: 'variable' });
+      setParent(lookup, hostDecl, context);
+
+      const evald = await lookup.eval(context);
+
+      expect(evald.render(context)).toBe('red');
+    });
+
+    it('uses the state parent chain for mixin lookup without an explicit target', async () => {
+      const outer = rules([
+        mixin({
+          name: any('feature'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]);
+      const inner = rules([
+        call({ name: ref({ key: 'feature' }, { type: 'mixin' }) })
+      ]);
+
+      context.root = outer;
+      context.rulesContext = inner;
+      setParent(inner, outer, context);
+
+      const evald = await inner.at(0, context)!.eval(context);
+
+      expect(evald.render(context)).toContainString('color: red');
     });
   });
 
@@ -179,6 +353,35 @@ describe('reference', () => {
   });
 
   describe('nested references for mixin-ruleset lookups', () => {
+    it('keeps resolved ruleset sourceParent state-local', async () => {
+      const colors = mixin({
+        name: any('.colors'),
+        rules: rules([
+          decl({ name: 'primary', value: any('cyan') })
+        ])
+      });
+      const theme = ruleset({
+        selector: el('.theme'),
+        rules: rules([colors])
+      });
+      const node = rules([theme]);
+      const themeLookup = ref({ key: '.theme' }, { type: 'mixin-ruleset' });
+      const lookup = ref({
+        target: themeLookup,
+        key: '.colors'
+      }, { type: 'mixin-ruleset' });
+
+      const preEvald = await node.preEval(context);
+      context.root = preEvald;
+      context.rulesContext = preEvald;
+
+      const resolved = await lookup.eval(context);
+
+      expect(resolved.type).toBe('JsFunction');
+      expect(getSourceParent(theme, context)).toBe(themeLookup);
+      expect(theme.sourceParent).toBeUndefined();
+    });
+
     it('should register and resolve escaped class selector via string key', async () => {
       const node = rules([
         ruleset({
@@ -197,7 +400,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .\\123 {
           a: ok;
         }
@@ -225,7 +428,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         #\\31a {
           a: ok;
         }
@@ -255,7 +458,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .a.\\32b {
           a: ok;
         }
@@ -330,7 +533,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .output {
           background: red;
         }
@@ -381,7 +584,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .output {
           background: red;
         }
@@ -432,7 +635,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .output {
           background: red;
         }
@@ -521,7 +724,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.render(context)).toBeString(`
         .output {
           background: cyan;
         }

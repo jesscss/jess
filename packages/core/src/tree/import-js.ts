@@ -1,6 +1,9 @@
 import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
+import type { Context } from '../context.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { setField } from './util/field-helpers.js';
 
 /**
  * Imports of TS/JS ESM modules.
@@ -26,24 +29,56 @@ export type JsImportValue = {
   imports?: JsImportSpecifier[];
 };
 
+export type JsImportChildData = { path: Quoted; imports: JsImportSpecifier[] | undefined };
+
 export interface JsImport {
   type: 'JsImport';
   shortType: 'js';
 }
-export class JsImport extends Node<JsImportValue, JsImportOptions> {
+export class JsImport extends Node<JsImportValue, JsImportOptions, JsImportChildData> {
+  static override childKeys = ['path', 'imports'] as const;
+
+  /** @internal */ path!: Quoted;
+  /** @internal */ imports: JsImportSpecifier[] | undefined;
+
   constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
-    // JS imports are always non-static and may be async
+    this.path = value.path;
+    this.imports = value.imports;
+    if (this.path instanceof Node) {
+      this.adopt(this.path);
+    }
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  override evalNode(context: Context): MaybePromise<JsImport> {
+    const path = this.get('path', context);
+    const finish = (nextPath: Quoted): JsImport => {
+      const out = this.maybeClone(context) as JsImport;
+      if (nextPath !== path) {
+        if (out === this) {
+          setField(this, 'path', nextPath, context);
+        } else {
+          out.setData('path', nextPath);
+        }
+      }
+      return out;
+    };
+    const maybeEvald = path.eval(context);
+    if (isThenable(maybeEvald)) {
+      return (maybeEvald as Promise<Quoted>).then(finish);
+    }
+    return finish(maybeEvald as Quoted);
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { path } = this.data;
+    const context = options.context;
+    const path = this.get('path', context);
     const { namespace } = this.options;
-    const imports = this.data.imports ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
+    const imports = this.get('imports', context) ?? (Array.isArray(this.options.imports) ? this.options.imports : undefined);
 
     w.add('@-from ');
     path.toString(options);

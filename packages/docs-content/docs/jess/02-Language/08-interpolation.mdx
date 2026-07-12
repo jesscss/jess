@@ -14,13 +14,31 @@ Jess has two interpolation forms:
 Use `$[key]` when the interpolation input is a single reference.
 Use `$(...)` when you need an actual expression.
 
+Jess also has explicit selector capture:
+
+- `$*[...]` stores a selector or selector list as a selector-valued variable.
+
 In selector contexts, that single reference may still resolve to a non-identifier selector fragment at runtime.
 
 ## Quick guide: which form to use?
 
 - **Selector/property/mixin names**: use `$[ident]`
+- **Selector-valued variables**: use `$*[...]`
 - **Strings and custom property values**: use `$[ident]` or `$(...)`
 - **Normal values**: use direct references like `$var` unless you need expression behavior
+
+## Selector capture
+
+Use `$*[...]` when the value itself should stay a selector, not just text output.
+
+```scss
+$target: $*[.notice, .warning];
+```
+
+This differs from normal interpolation:
+
+- `$(...)` interpolates an expression into output.
+- `$*[...]` captures parsed selector syntax so selector-aware features can use it later.
 
 ## Interpolation examples
 
@@ -58,32 +76,42 @@ $radius: top-right;
 $theme: dark;
 body {
   --theme-mode: $[theme];
-  custom-color: $['--custom-color'];
   --theme-mode-fallback: $($theme);
+}
+
+.card {
+  border-color: rebeccapurple;
+  box-shadow: 0 0 0 2px $['border-color'];
 }
 ```
 →
 ```css
 body {
   --theme-mode: dark;
-  custom-color: dark;
   --theme-mode-fallback: dark;
+}
+
+.card {
+  border-color: rebeccapurple;
+  box-shadow: 0 0 0 2px rebeccapurple;
 }
 ```
 
 :::info
 
-Note: in normal property values, you can usually just use `$theme`. In custom property values, use interpolation (`$[theme]` or `$(...)`) so intent is explicit.
+Note: in normal property values, you can usually just use `$theme`. In custom property values, use interpolation (`$[theme]` or `$(...)`) so intent is explicit. `$['border-color']` is different: it looks up another declaration value in scope, not a DOM-level custom property.
 
 :::
 
-### 4. :-extend
+### 4. $extend
 ```scss
-$type: $*(.notice); // `*()` can capture a selector
+$type: $*[.notice];
 .notice {
   color: orange;
 }
-.danger:-extend($(type));
+.danger {
+  $extend $type;
+}
 ```
 →
 ```css
@@ -155,8 +183,9 @@ $color-name: "red";
 
 ## TL;DR
 1. Use `$()` for dynamic bits—selectors, property names, and anything clever you want in output.
-2. Don't wrap variables for no reason; use direct variables unless you need interpolation.
-3. Never interpolate numbers if you want to do math with them.
-4. Escape strings with `~""` for clarity when you want to drop quotes from a string.
+2. Use `$*[]` when the variable itself should hold a selector or selector list.
+3. Don't wrap variables for no reason; use direct variables unless you need interpolation.
+4. Never interpolate numbers if you want to do math with them.
+5. Escape strings with `~""` for clarity when you want to drop quotes from a string.
 
 Jess is designed to be simple and clear.

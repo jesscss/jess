@@ -45,7 +45,8 @@ export function createLessProxy(
   propertyMap?: (prop: string | symbol, target: Node) => any
 ): any {
   // Check if already proxied (prevent recursion)
-  if ((jessNode as any)[IS_PROXYING_SYMBOL]) {
+
+  if ((jessNode as unknown as Record<symbol, unknown>)[IS_PROXYING_SYMBOL]) {
     // Return the cached proxy if available
     if (cache && cache.has(jessNode)) {
       return cache.get(jessNode);
@@ -59,8 +60,7 @@ export function createLessProxy(
     return cache.get(jessNode);
   }
 
-  // Mark as being proxied to prevent recursion
-  (jessNode as any)[IS_PROXYING_SYMBOL] = true;
+  (jessNode as unknown as Record<symbol, unknown>)[IS_PROXYING_SYMBOL] = true;
 
   // Create proxy handler
   const handler: ProxyHandler<Node> = {
@@ -74,8 +74,7 @@ export function createLessProxy(
       // Set it automatically based on the node's type
       // Use direct property access to avoid proxy recursion
       if (prop === 'typeIndex') {
-        // Access type directly from the target (not through proxy)
-        const nodeType = (target as any).type;
+        const nodeType = target.type;
         if (nodeType && typeof nodeType === 'string') {
           const lessType = mapJessTypeToLessType(nodeType);
           return getLessTypeIndex(lessType);
@@ -125,18 +124,16 @@ export function createLessProxy(
 
   const proxy = new Proxy(jessNode, handler);
 
-  // Mark as proxy
-  (proxy as any)[LESS_PROXY_SYMBOL] = true;
-  // Store reference to underlying Jess node for reverse lookup
-  (proxy as any)[JESS_NODE_SYMBOL] = jessNode;
+  (proxy as unknown as Record<symbol, unknown>)[LESS_PROXY_SYMBOL] = true;
+
+  (proxy as unknown as Record<symbol, unknown>)[JESS_NODE_SYMBOL] = jessNode;
 
   // Cache if provided
   if (cache) {
     cache.set(jessNode, proxy);
   }
 
-  // Unmark proxying flag after proxy is created
-  delete (jessNode as any)[IS_PROXYING_SYMBOL];
+  delete (jessNode as unknown as Record<symbol, unknown>)[IS_PROXYING_SYMBOL];
 
   return proxy;
 }
@@ -147,8 +144,8 @@ export function createLessProxy(
  * @param obj - The object to check
  * @returns True if the object is a Less proxy
  */
-export function isLessProxy(obj: any): boolean {
-  return obj && typeof obj === 'object' && LESS_PROXY_SYMBOL in obj;
+export function isLessProxy(obj: unknown): obj is Record<string | symbol, unknown> {
+  return !!obj && typeof obj === 'object' && LESS_PROXY_SYMBOL in obj;
 }
 
 /**
@@ -157,10 +154,10 @@ export function isLessProxy(obj: any): boolean {
  * @param proxy - The proxy object
  * @returns The underlying Jess node, or undefined if not a proxy
  */
-export function getJessNodeFromProxy(proxy: any): Node | undefined {
+export function getJessNodeFromProxy(proxy: unknown): Node | undefined {
   if (isLessProxy(proxy)) {
-    // Get the stored reference to the underlying Jess node
-    return (proxy as any)[JESS_NODE_SYMBOL];
+    const stored = proxy[JESS_NODE_SYMBOL];
+    return stored instanceof Node ? stored : undefined;
   }
   return undefined;
 }

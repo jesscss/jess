@@ -95,6 +95,14 @@ Compiles to:
 }
 ```
 
+Less 5.x also makes the parent-template model explicit:
+
+- `&()` keeps the parent selector but hoists the nested selector to root
+- `&('')` drops the parent selector entirely
+- `&(-1)` is equivalent to `&-1`
+
+That gives you a consistent model for suffix composition, root-hoisted parent rendering, and explicit parent suppression.
+
 ### Extend behavior and optional `:is(...)` collapse
 
 `extend` behavior in 5.x is validated against fixture parity, including nested/media-scoped selectors and `all` matching.

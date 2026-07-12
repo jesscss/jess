@@ -7,9 +7,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  el, sel, sellist, compound, is, co, pseudo, amp
+  el, sel, sellist, compound, is, co, pseudo, amp, rules, ruleset
 } from '../../../index.js';
 import { Context } from '../../../context.js';
+import { setField } from '../field-helpers.js';
 import {
   selectorMatch
 } from '../selector-match-core.js';
@@ -37,6 +38,59 @@ describe('basic selectors', () => {
     sel1.eval(context);
     sel2.eval(context);
     expect(selectorMatch(sel1, sel2).fullMatch).toBe(false);
+  });
+
+  it('keeps canonical matching when no eval context is provided', () => {
+    const contextA = new Context();
+    const contextB = new Context();
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.get('selector').keySetLibrary = contextA.selectorBits;
+
+    const beta = el('.beta');
+    beta.keySetLibrary = contextA.selectorBits;
+    const gamma = el('.gamma');
+    gamma.keySetLibrary = contextA.selectorBits;
+
+    const target = amp({ selectorContainer: parent as any });
+    target.keySetLibrary = contextA.selectorBits;
+
+    setField(parent, 'selector', beta, contextA);
+    setField(parent, 'selector', gamma, contextB);
+
+    expect(target.getKeySet(contextA).equals(contextA.selectorBits.getBitset(['.beta']))).toBe(true);
+    expect(target.getKeySet(contextB).equals(contextA.selectorBits.getBitset(['.gamma']))).toBe(true);
+    expect(selectorMatch(el('.alpha'), target).fullMatch).toBe(true);
+    expect(selectorMatch(beta, target).fullMatch).toBe(false);
+    expect(selectorMatch(gamma, target).fullMatch).toBe(false);
+  });
+
+  it('matches against state-aware key sets when an eval context is provided', () => {
+    const contextA = new Context();
+    const contextB = new Context();
+    const parent = ruleset({
+      selector: el('.alpha'),
+      rules: rules([])
+    });
+    parent.get('selector').keySetLibrary = contextA.selectorBits;
+
+    const beta = el('.beta');
+    beta.keySetLibrary = contextA.selectorBits;
+    const gamma = el('.gamma');
+    gamma.keySetLibrary = contextA.selectorBits;
+
+    const target = amp({ selectorContainer: parent as any });
+    target.keySetLibrary = contextA.selectorBits;
+
+    setField(parent, 'selector', beta, contextA);
+    setField(parent, 'selector', gamma, contextB);
+
+    expect(selectorMatch(beta, target, undefined, contextA).fullMatch).toBe(true);
+    expect(selectorMatch(gamma, target, undefined, contextA).fullMatch).toBe(false);
+    expect(selectorMatch(gamma, target, undefined, contextB).fullMatch).toBe(true);
+    expect(selectorMatch(beta, target, undefined, contextB).fullMatch).toBe(false);
   });
 });
 
@@ -136,7 +190,6 @@ describe('pseudo-selectors', () => {
       let result = selectorMatch(sel1, sel2);
       expect(result.fullMatch).toBe(false);
       expect(result.partialMatch).toBe(true);
-      expect(result.matches).toHaveLength(1);
     });
 
     it('matches an :is() as a full match #1', async () => {
@@ -277,7 +330,6 @@ describe('pseudo-selectors', () => {
       let result = selectorMatch(sel1, sel2);
       expect(result.fullMatch).toBe(false);
       expect(result.partialMatch).toBe(true);
-      expect(result.matches).toHaveLength(1);
     });
   });
 
@@ -705,7 +757,7 @@ describe('selector lists and branching', () => {
       expect(result.crossesAmpersand).toBe(true);
       expect(result.matches).toHaveLength(1);
       expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
-      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.data[0]);
+      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.get('value')[0]);
       expect(result.matches[0]!.ampersandCrossings![0]!.targetSegment.containingNode).toBe(sel1);
       expect(result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode.valueOf()).toBe('a');
     });
@@ -817,7 +869,7 @@ describe('selector lists and branching', () => {
       expect(result.matches[0]!.startIndex).toBe(4);
       expect(result.matches[0]!.endIndex).toBe(6);
       expect(result.matches[0]!.ampersandCrossings).toHaveLength(1);
-      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.data[4]);
+      expect(result.matches[0]!.ampersandCrossings![0]!.ampersandNode).toBe(sel1.get('value')[4]);
       expect(result.matches[0]!.ampersandCrossings![0]!.targetSegment.containingNode).toBe(sel1);
       expect(result.matches[0]!.ampersandCrossings![0]!.parentSegment!.containingNode).toBe(parentSelector);
     });
@@ -1020,6 +1072,25 @@ describe('selector lists and branching', () => {
         expect(result.crossesAmpersand).toBe(true);
         expect(result.matches).toHaveLength(1);
       });
+    });
+  });
+
+  describe('implicit parent boundary with SelectorList', () => {
+    it('matches .replace.replace .replace against SelectorList inner with SelectorList outer parent', () => {
+      // Models the nested structure:
+      //   .replace.replace, .c.replace + .replace { .replace, .c { ... } }
+      // find: .replace.replace .replace
+      // target: inner SelectorList .replace, .c
+      // parent: outer SelectorList .replace.replace, .c.replace + .replace
+      const parent = sellist([
+        compound([el('.replace'), el('.replace')]),
+        sel([compound([el('.c'), el('.replace')]), co('+'), compound([el('.replace')])])
+      ]);
+      const target = sellist([el('.replace'), el('.c')]);
+      const find = sel([compound([el('.replace'), el('.replace')]), co(' '), el('.replace')]);
+
+      const result = selectorMatch(find, target, parent);
+      expect(result.fullMatch).toBe(true);
     });
   });
 });

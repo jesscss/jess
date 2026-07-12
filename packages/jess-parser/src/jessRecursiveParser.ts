@@ -1,12 +1,13 @@
-import {
-  type TokenType
-} from '@jesscss/parser';
+import type {
+  TokenType
+} from 'chevrotain';
 
 import {
   ScssRecursiveParser,
   type ScssParserConfig,
   type CombinedTokenMap
 } from '@jesscss/scss-parser';
+import { productions as cssProductions, type Rule } from '@jesscss/css-parser';
 
 import { type JessExtraTokenType } from './jessTokens.js';
 
@@ -28,62 +29,67 @@ export type JessRuleContext = {
   isRoot?: boolean;
   allowComma?: boolean;
   inExtend?: boolean;
+  skipLParen?: boolean;
   [k: string]: object | boolean | string | object[] | number | undefined;
 };
 
 export class JessRecursiveParser extends ScssRecursiveParser {
   declare T: JessTokenMap;
 
+  // ════════════════════════════════════════════════════════════════════
+  // PRODUCTION RULES — registered in the constructor
+  // ════════════════════════════════════════════════════════════════════
+
+  // ── Jess at-rules ─────────────────────────────────────────────────
+  jessComposeAtRule!: Rule;
+  jessFromAtRule!: Rule;
+  jessExportAtRule!: Rule;
+
+  // ── Control flow ──────────────────────────────────────────────────
+  jessComparison!: Rule;
+  jessConditionInParens!: Rule;
+  jessIfStatement!: Rule;
+  jessForStatement!: Rule;
+
+  // ── Mixins ────────────────────────────────────────────────────────
+  jessMixinParams!: Rule;
+  jessGuard!: Rule;
+  jessMixinDefinition!: Rule;
+  jessMixinCall!: Rule;
+
+  // ── Values ────────────────────────────────────────────────────────
+  declare expressionSum: Rule;
+  declare expressionProduct: Rule;
+  declare expressionValue: Rule;
+  jessParenExpression!: Rule;
+  jessCallArgs!: Rule;
+  jessVarWithAccessors!: Rule;
+
+  // ── Root / statements ─────────────────────────────────────────────
+  jessCollection!: Rule;
+  varDeclaration!: Rule;
+  jessExprStatement!: Rule;
+
   constructor(
     T: JessTokenMap,
     config: JessParserConfig = {}
   ) {
-    super(T as any, config);
+    super(T as unknown as CombinedTokenMap, config);
     this.T = T;
-  }
+    type ProductionFactory = (this: JessRecursiveParser, T: JessTokenMap) => Rule;
+    const entries = Object.entries(productions) as Array<[keyof typeof productions, ProductionFactory]>;
 
-  // ════════════════════════════════════════════════════════════════════
-  // PRODUCTION RULES — method declarations
-  // Implementations are assigned via prototype below.
-  // ════════════════════════════════════════════════════════════════════
+    for (const [key, factory] of entries) {
+      const rule = factory.call(this, this.T);
+      if (key in cssProductions) {
+        this.OVERRIDE_RULE(key, rule);
+      } else {
+        this.RULE(key, rule);
+      }
+    }
 
-  // ── Jess at-rules ─────────────────────────────────────────────────
-  declare jessComposeAtRule: typeof productions.jessComposeAtRule;
-  declare jessFromAtRule: typeof productions.jessFromAtRule;
-  declare jessExportAtRule: typeof productions.jessExportAtRule;
-
-  // ── Control flow ──────────────────────────────────────────────────
-  declare jessComparison: typeof productions.jessComparison;
-  declare jessConditionInParens: typeof productions.jessConditionInParens;
-  declare jessIfStatement: typeof productions.jessIfStatement;
-  declare jessForStatement: typeof productions.jessForStatement;
-
-  // ── Mixins ────────────────────────────────────────────────────────
-  declare jessMixinParams: typeof productions.jessMixinParams;
-  declare jessGuard: typeof productions.jessGuard;
-  declare jessMixinDefinition: typeof productions.jessMixinDefinition;
-  declare jessMixinCall: typeof productions.jessMixinCall;
-
-  // ── Values ────────────────────────────────────────────────────────
-  declare jessParenExpression: typeof productions.jessParenExpression;
-  declare jessVarWithAccessors: typeof productions.jessVarWithAccessors;
-
-  // ── Root / statements ─────────────────────────────────────────────
-  declare jessCollection: typeof productions.jessCollection;
-  declare varDeclaration: typeof productions.varDeclaration;
-  declare jessExprStatement: typeof productions.jessExprStatement;
-}
-
-// ── Attach production methods to prototype ────────────────────────────
-const proto = JessRecursiveParser.prototype as any;
-
-for (const [name, fn] of Object.entries(productions)) {
-  if (typeof fn === 'function') {
-    proto[name] = function(this: JessRecursiveParser, ...args: unknown[]) {
-      this.ruleStack.push(name);
-      const result = (fn as Function).apply(this, args);
-      this.ruleStack.pop();
-      return result;
-    };
+    if ((this.constructor as typeof JessRecursiveParser) === JessRecursiveParser) {
+      this.performSelfAnalysis();
+    }
   }
 }

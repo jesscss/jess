@@ -10,6 +10,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
+import { isEvaluated, setField, setEvaluated } from './util/field-helpers.js';
 
 // Placeholder that's very unlikely to appear in user strings
 // but is also easily typeable for tests
@@ -24,7 +25,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
     return true;
   }
   if (replacement.type === 'SelectorCapture') {
-    const arg = (replacement as unknown as { data: Node }).data;
+    const arg = (replacement as unknown as { value: Node }).value;
     return isNode(arg, N.SelectorList) || isNode(arg, N.ComplexSelector);
   }
   const str = String(replacement.valueOf?.() ?? replacement);
@@ -33,7 +34,7 @@ function shouldWrapSelectorInIs(replacement: Node): boolean {
 
 function getIsWrapperArg(replacement: Node): Node {
   if (replacement.type === 'SelectorCapture') {
-    return (replacement as unknown as { data: Node }).data;
+    return (replacement as unknown as { value: Node }).value;
   }
   return replacement;
 }
@@ -51,6 +52,8 @@ export type InterpolatedValue = {
   replacements: Node[];
 };
 
+export type InterpolatedChildData = { source: string; replacements: Node[] };
+
 /**
  * Merge an interface to declare the specific types
  *
@@ -63,7 +66,7 @@ export type InterpolatedValue = {
  */
 export interface Interpolated<
   Role extends AnyRole = AnyRole
-> extends Node<InterpolatedValue, AnyOptions<Role>> {
+> extends Node<InterpolatedValue, AnyOptions<Role>, InterpolatedChildData> {
   type: 'Interpolated';
   shortType: 'interpolated';
   eval(context: Context): MaybePromise<Any<Role>>;
@@ -81,44 +84,42 @@ export interface Interpolated<
  */
 export class Interpolated<
   Role extends AnyRole = AnyRole
-> extends Node<InterpolatedValue, AnyOptions<Role>> {
+> extends Node<InterpolatedValue, AnyOptions<Role>, InterpolatedChildData> {
+  static override childKeys = ['source', 'replacements'] as const;
+
+  /** @internal */ source!: string;
+  /** @internal */ replacements!: Node[];
+
   constructor(value: InterpolatedValue, options?: AnyOptions<Role>, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.source = value.source;
+    this.replacements = value.replacements;
+    for (const r of this.replacements) {
+      if (r instanceof Node) {
+        this.adopt(r);
+      }
+    }
     // Interpolated nodes are always non-static and may be async
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
   }
 
-  get source() {
-    return this.data.source;
-  }
-
-  set source(val: string) {
-    this.setData('source', val);
-  }
-
-  get replacements() {
-    return this.data.replacements;
-  }
-
-  set replacements(val: Node[]) {
-    this.setData('replacements', val);
-  }
-
   override valueOf(): string {
-    return this.data.source;
+    return this.source;
   }
 
-  replace(replacements: Node[], options?: PrintOptions): string {
-    let { source } = this.data;
+  replace(replacements?: Node[], options?: PrintOptions): string {
+    const printOpts = getPrintOptions(options);
+    const context = printOpts.context;
+    const source = this.get('source', context);
+    const activeReplacements = replacements ?? this.get('replacements', context);
     let output = source;
     let i = 0;
-    let printOpts = getPrintOptions(options);
     let w = printOpts!.writer;
     INTERPOLATION_PLACEHOLDER_REGEXP.lastIndex = 0;
     output = output.replace(INTERPOLATION_PLACEHOLDER_REGEXP, () => {
       let replacement: Node | undefined;
       try {
-        replacement = replacements[i++];
+        replacement = activeReplacements[i++];
       } catch (error: unknown) {
         throw error;
       }
@@ -148,7 +149,7 @@ export class Interpolated<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const result = this.replace(this.data.replacements, options);
+    const result = this.replace(undefined, options);
     w.add(result, this);
     return w.getSince(mark);
   }
@@ -157,8 +158,9 @@ export class Interpolated<
    * Can turn simple #id, .class, element or SelectorCapture into a selector.
    * Legacy "list of mixin references" (e.g. @var: .a, .b, .c) is not supported; use *[.a, .b, .c].
    */
-  createSelector() {
-    let { source, replacements } = this.data;
+  createSelector(context?: Context) {
+    const source = this.get('source', context);
+    const replacements = this.get('replacements', context);
     const segments = source.split(INTERPOLATION_PLACEHOLDER);
     const isWholeSelectorInterpolation = (
       replacements.length === 1
@@ -170,17 +172,17 @@ export class Interpolated<
     // Generated :is wrappers are only needed for embedded interpolation fragments.
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
-      if (!replacement.evaluated) {
+      if (context && !isEvaluated(replacement, context)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       if (isNode(replacement, N.Selector)) {
-        return replacement.copy(true).inherit(this) as Selector;
+        return replacement.clone(false).inherit(this) as Selector;
       }
       return new BasicSelector(replacement.toTrimmedString().trim()).inherit(this);
     }
     let output = '';
     for (let [i, replacement] of replacements.entries()) {
-      if (!replacement.evaluated) {
+      if (context && !isEvaluated(replacement, context)) {
         throw new Error('Cannot create selector from un-evaluated interpolated node');
       }
       let part = replacement.toTrimmedString();
@@ -207,10 +209,9 @@ export class Interpolated<
     return new BasicSelector(output).inherit(this);
   }
 
-  createGeneric() {
-    const trimmedString = this.toTrimmedString();
-    let any = new Any<Role>(trimmedString).inherit(this);
-    any.options.role = this.options.role;
+  createGeneric(context?: Context) {
+    const trimmedString = this.toTrimmedString(context ? { context } : undefined);
+    let any = new Any<Role>(trimmedString, { role: this.options.role }).inherit(this);
     return any;
   }
 
@@ -218,19 +219,19 @@ export class Interpolated<
   evalToSelector(context: Context): MaybePromise<Selector> {
     const out = this._evalToInterpolated(context);
     if (isThenable(out)) {
-      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector());
+      return (out as Promise<Interpolated<Role>>).then(node => node.createSelector(context));
     }
-    return (out as Interpolated<Role>).createSelector();
+    return (out as Interpolated<Role>).createSelector(context);
   }
 
   override evalNode(context: Context): MaybePromise<Any> {
     const out = this._evalToInterpolated(context);
     if (isThenable(out)) {
       return (out as Promise<Interpolated<Role>>).then((node) => {
-        return node.createGeneric();
+        return node.createGeneric(context);
       });
     }
-    const result = (out as Interpolated<Role>).createGeneric();
+    const result = (out as Interpolated<Role>).createGeneric(context);
     return result;
   }
 
@@ -241,21 +242,29 @@ export class Interpolated<
    */
   _evalToInterpolated(context: Context): MaybePromise<this> {
     let node = this;
-    let { replacements } = node.data;
+    let replacements = [...node.get('replacements', context)];
+    const markEvaluated = (result: Node): Node => {
+      setEvaluated(result, true, context);
+      return result;
+    };
 
     let maybe = serialForEach(replacements, (n, idx) => {
       const out = n.eval(context);
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
-          replacements[idx] = result;
+          replacements[idx] = markEvaluated(result);
         });
       }
-      replacements[idx] = out as Node;
+      replacements[idx] = markEvaluated(out as Node);
       return undefined;
     });
     if (isThenable(maybe)) {
-      return maybe.then(() => node);
+      return maybe.then(() => {
+        setField(node, 'replacements', replacements, context);
+        return node;
+      });
     }
+    setField(node, 'replacements', replacements, context);
     return node;
   }
 }

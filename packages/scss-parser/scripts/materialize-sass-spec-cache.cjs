@@ -118,7 +118,11 @@ function main() {
     { name: 'map', match: (rel) => rel.includes('/map/') || rel.includes('core_functions/map/') },
     { name: 'mixin', match: (rel) => rel.includes('mixin') || rel.includes('include') || rel.includes('callable') },
     { name: 'control', match: (rel) => rel.includes('/if/') || rel.includes('/for/') || rel.includes('/each/') || rel.includes('/while/') },
-    { name: 'modules', match: (rel) => rel.includes('module') || rel.includes('/use/') || rel.includes('/forward/') }
+    { name: 'modules', match: (rel) => rel.includes('module') || rel.includes('/use/') || rel.includes('/forward/') },
+    { name: 'imports', match: (rel) => rel.includes('/import/') || rel.includes('directives/import/') },
+    { name: 'at-root', match: (rel) => rel.includes('at-root') || rel.includes('/at_root/') },
+    { name: 'interpolation', match: (rel) => rel.includes('interpolation') },
+    { name: 'selectors', match: (rel) => rel.includes('selector') || rel.includes('/nest') || rel.includes('/extend/') }
   ];
 
   const allHrx = walk(specRoot).filter((p) => p.endsWith('.hrx')).sort();
@@ -169,4 +173,3 @@ function main() {
 }
 
 main();
-

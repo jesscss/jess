@@ -48,8 +48,8 @@ export function getExpectedOutputFiles(
   const outputConfig = config.output;
   // Preserve non-output config (compile/language/etc.) so fixture-level styles.config
   // can drive compiler behavior in tests.
-  const { output: ignoredOutput, ...baseConfig } = config as StylesConfig & Record<string, unknown>;
-  void ignoredOutput;
+  const { output: outputIgnored, ...baseConfig } = config;
+  void outputIgnored;
 
   // Extract file name without extension for {name} replacement
   const dir = path.dirname(lessFilePath);

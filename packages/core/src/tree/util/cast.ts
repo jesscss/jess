@@ -44,7 +44,7 @@ function getNodeType(value: any): Node {
   if (typeof value === 'function') {
     // Hmm, the LLM added this, is it needed?
     // Preserve function options (e.g., params metadata from getFunctionFromMixins)
-    const options = (value as any)?.options;
+    const options = (value as Function & { options?: Record<string, unknown> }).options;
     return new JsFunction(value, options);
   }
   if (isPlainObject(value)) {
@@ -84,9 +84,6 @@ export function cast(value: any): Node {
    * If converting from a primitive, then
    * the value should be considered evaluated.
    */
-  if (!isNode(value)) {
-    node.evaluated = true;
-    node.preEvaluated = true;
-  }
+  // Cast from primitive — F_STATIC on Any/Num/etc prevents re-eval.
   return node;
 }

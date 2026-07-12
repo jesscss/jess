@@ -25,8 +25,8 @@ const compatible = defineFunction(
     }
 
     // Check if units are compatible
-    const unit1 = number1.data.unit;
-    const unit2 = number2.data.unit;
+    const unit1 = number1.unit;
+    const unit2 = number2.unit;
 
     // Both unitless = compatible
     if (!unit1 && !unit2) {

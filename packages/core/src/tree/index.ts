@@ -11,11 +11,30 @@
  * Import from node.ts which applies all the prototype patches
  * (nil, operate, treeContext) and re-exports from node-base.ts
  */
-import { Node, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC } from './node.js';
-import { TreeContext } from '../context.js';
+import {
+  Node,
+  type LocationInfo,
+  type LocationInfoOrEmpty,
+  type OptionalLocation,
+  F_VISIBLE,
+  F_MAY_ASYNC,
+  F_STATIC,
+  F_NON_STATIC
+} from './node.js';
+import { type Context, TreeContext } from '../context.js';
 import { compare } from './util/compare.js';
 
-export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC };
+export {
+  Node,
+  TreeContext,
+  type LocationInfo,
+  type LocationInfoOrEmpty,
+  type OptionalLocation,
+  F_VISIBLE,
+  F_MAY_ASYNC,
+  F_STATIC,
+  F_NON_STATIC
+};
 export { N } from './node-type.js';
 
 import { Selector } from './selector.js';
@@ -80,19 +99,19 @@ export * from './url.js';
 import { selectorMatch } from './util/selector-match-core.js';
 
 /** Patch Selector to avoid circularity */
-Selector.prototype.compare = function(other: Node) {
+Selector.prototype.compare = function(other: Node, context?: Context) {
   // Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
   // if the same file is loaded via different specifiers.
-  if (!!other && typeof other === 'object' && (other as any).isSelector === true) {
+  if (!!other && typeof other === 'object' && 'isSelector' in other && other.isSelector === true) {
     const otherSelector = other as unknown as Selector;
-    const forward = selectorMatch(this, otherSelector);
+    const forward = selectorMatch(this, otherSelector, undefined, context);
     if (forward.fullMatch) {
       return 0;
     }
     if (forward.partialMatch) {
       return -1;
     }
-    const backward = selectorMatch(otherSelector, this);
+    const backward = selectorMatch(otherSelector, this, undefined, context);
     if (backward.partialMatch) {
       return 1;
     }

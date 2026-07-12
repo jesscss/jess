@@ -130,6 +130,22 @@ describe('sass-spec smoke (parse-only)', () => {
     {
       name: 'modules',
       match: rel => rel.includes('module') || rel.includes('/use/') || rel.includes('/forward/')
+    },
+    {
+      name: 'imports',
+      match: rel => rel.includes('/import/') || rel.includes('directives/import/')
+    },
+    {
+      name: 'at-root',
+      match: rel => rel.includes('at-root') || rel.includes('/at_root/')
+    },
+    {
+      name: 'interpolation',
+      match: rel => rel.includes('interpolation')
+    },
+    {
+      name: 'selectors',
+      match: rel => rel.includes('selector') || rel.includes('/nest') || rel.includes('/extend/')
     }
   ];
 

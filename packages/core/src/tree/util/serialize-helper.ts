@@ -1,10 +1,14 @@
 import type { AtRule } from '../at-rule.js';
+import type { Declaration } from '../declaration.js';
 import type { Ruleset } from '../ruleset.js';
 import { F_EXTENDED, type Node } from '../node.js';
 import { type FinalPrintOptions, getPrintOptions, OutputWriter } from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
+import { hasExtendedSelector } from './selector-utils.js';
+import { getField } from './field-helpers.js';
+import type { EvalState } from '../../eval-state.js';
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -38,20 +42,6 @@ export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
 
-function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
-  if (node.hasFlag(F_EXTENDED)) {
-    return true;
-  }
-  const selector = node.data.selector;
-  if (!selector || selector instanceof Nil) {
-    return false;
-  }
-  if (isNode(selector, N.SelectorList)) {
-    return selector.data.some(item => item.hasFlag(F_EXTENDED));
-  }
-  return selector.hasFlag(F_EXTENDED);
-}
-
 /**
  * Handles flattening and serializing of at-rules and rulesets
  */
@@ -60,7 +50,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
-  if (node.type === 'Ruleset' && node.data.selector instanceof Nil) {
+  if (
+    node.type === 'Ruleset'
+    && (node as Ruleset).getRenderableSelector(options.collapseNesting, options.context) instanceof Nil
+  ) {
     return '';
   }
   // let header = node.getHeaderString(options);
@@ -70,7 +63,10 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
   const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
   const inReferenceMode = previousReferenceMode;
   const enteringReferenceMode = false;
-  const nodeExtendsReference = node.type === 'Ruleset' && rulesetHasExtendedTopLevelSelector(node as Ruleset);
+  const nodeExtendsReference = node.type === 'Ruleset' && (() => {
+    const ruleset = node as Ruleset;
+    return ruleset.hasFlag(F_EXTENDED) || hasExtendedSelector(ruleset.getRenderableSelector(options.collapseNesting, options.context));
+  })();
   const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
   const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
   options.referenceMode = inReferenceMode;
@@ -83,7 +79,9 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       return '';
     }
   }
-  const rules = node.data.rules;
+  const rules = isNode(node, N.Ruleset)
+    ? (node as Ruleset).get('rules', options.context)
+    : (node as AtRule).get('rules', options.context);
   if (!rules) {
     if (inReferenceMode && !renderEnabled) {
       options.referenceMode = previousReferenceMode;
@@ -98,14 +96,15 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     return w.getSince(mark);
   }
 
-  const rulesToRender = rules.flatRules(true);
+  const positionMap = new WeakMap<Node, EvalState>();
+  const rulesToRender = rules.flatRules(true, options.context, positionMap);
   const declarationOutputCache = new Map<object, string>();
   const skippedDuplicateDeclarations = new Set<object>();
   const seenDeclarationsByProp = new Map<string, Set<string>>();
-  const deferredExpandedChildren: any[] = [];
-  const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
-    const seen = new Set<any>();
-    const queue: any[] = [start];
+  const deferredExpandedChildren: Node[] = [];
+  const sourceChainHas = (start: Node, predicate: (n: Node) => boolean): boolean => {
+    const seen = new Set<Node>();
+    const queue: (Node | undefined)[] = [start];
     while (queue.length > 0) {
       const current = queue.shift();
       if (!current || seen.has(current)) {
@@ -119,7 +118,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     return false;
   };
-  const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
+  const originatesFromCall = (n: Node): boolean => sourceChainHas(n, current => current?.type === 'Call');
   if (rulesToRender.length === 0) {
     options.referenceMode = previousReferenceMode;
     options.referenceRenderEnabled = previousReferenceRenderEnabled;
@@ -133,12 +132,21 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
       continue;
     }
+    // Push per-node position so patched fields are visible during dedup
+    const dedupPos = positionMap.get(node);
+    const dedupCtx = options.context;
+    if (dedupCtx && dedupPos) {
+      dedupCtx.pushState(dedupPos);
+    }
     const declWriter = new OutputWriter();
     const declOptions = getPrintOptions({ ...options, writer: declWriter, depth: options.depth + 1 });
     const declOut = node.toTrimmedString(declOptions);
     declarationOutputCache.set(node, declOut);
-    const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
-    const declProp = node.data.name.valueOf();
+    if (dedupCtx && dedupPos) {
+      dedupCtx.popState();
+    }
+    const declKey = `${declOut}${(node as Declaration).requiresSemi(options.context) ? ';' : ''}`;
+    const declProp = (node as Declaration).get('name', options.context).valueOf();
     let seenValues = seenDeclarationsByProp.get(declProp);
     if (!seenValues) {
       seenValues = new Set<string>();
@@ -177,10 +185,23 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     let n = rulesToRender[idx]!;
     const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
 
+    // Push per-node position from the position map so patched fields resolve
+    const nodePosition = positionMap.get(n);
+    const ctx = options.context;
+    if (ctx && nodePosition) {
+      ctx.pushState(nodePosition);
+    }
+
     if (!n.visible && !n.fullRender) {
+      if (ctx && nodePosition) {
+        ctx.popState();
+      }
       continue;
     }
     if (inReferenceMode && !renderEnabled && !isContainer) {
+      if (ctx && nodePosition) {
+        ctx.popState();
+      }
       continue;
     }
     if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(n)) {
@@ -189,7 +210,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
 
     if (isNode(n, N.Rules)) {
       // Reference-mode Rules preserved by flatRules — serialize with referenceMode cascading
-      const ownRefMode = (n as any).options?.referenceMode === true;
+      const ownRefMode = n.options?.referenceMode === true;
       const childRefMode = inReferenceMode || ownRefMode;
       const entering = !inReferenceMode && ownRefMode;
       const childRenderEnabled = childRefMode
@@ -208,8 +229,8 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     }
     if (isNode(n, N.Ruleset | N.AtRule)) {
       if (node.type === 'Ruleset' && isNode(n, N.Ruleset)) {
-        const parentSelector = String(node.data.selector?.valueOf?.() ?? '');
-        const childSelector = String(n.data.selector?.valueOf?.() ?? '');
+        const parentSelector = String((node as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
+        const childSelector = String((n as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
         const isExpandedDescendant = parentSelector !== '' && (
           childSelector.startsWith(`${parentSelector} `)
           || childSelector.startsWith(`${parentSelector}.`)
@@ -222,7 +243,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
             childSelector === `${parentSelector} ${parentSelector}`
             || childSelector.startsWith(`${parentSelector} ${parentSelector} `)
           );
-        const fromCall = originatesFromCall(n as any);
+        const fromCall = originatesFromCall(n);
         const laterCandidates = rulesToRender.slice(idx + 1);
         const hasLaterExternalNonContainer = laterCandidates.some((later) => {
           if (!later.visible && !later.fullRender) {
@@ -241,7 +262,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
             if (current?.type !== 'Ruleset') {
               return false;
             }
-            const currentSelector = String(current.data?.selector?.valueOf?.() ?? '');
+            const currentSelector = String((current as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '');
             return currentSelector !== '' && currentSelector === childSelector;
           });
           return !ownedByCurrentChild;
@@ -249,7 +270,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
         const hasRepeatedExpandedSelectorAny = rulesToRender.some((other, otherIdx) => {
           return otherIdx !== idx
             && isNode(other, N.Ruleset)
-            && String(other.data.selector?.valueOf?.() ?? '') === childSelector;
+            && String((other as Ruleset).getRenderableSelector(options.collapseNesting, options.context)?.valueOf?.() ?? '') === childSelector;
         });
         if (isExpandedDescendant
           && !isSelfWrappedDescendant
@@ -334,7 +355,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
       const declNormalized = hasEmptyValue && (!pre || pre.trim() === '')
         ? `${idt}${out}`
         : normalizeIndent(declIn, idt, true);
-      if (nn.data.name.valueOf().startsWith('--')) {
+      if ((nn as Declaration).isCustomProperty(options.context)) {
         w.add(idt);
         w.add(out, nn);
       } else {
@@ -355,7 +376,7 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // if (n.requiredSemi && next) {
     //   w.add(';');
     // }
-    if (nn.requiredSemi) {
+    if (isNode(nn, N.Declaration) ? (nn as Declaration).requiresSemi(options.context) : nn.requiredSemi) {
       w.add(';');
     }
 
@@ -369,6 +390,11 @@ export function serializeRulesContainer(node: AtRule | Ruleset, options: FinalPr
     // else {
     //   n.toString({ ...options, depth: options.depth + 1 });
     // }
+
+    // Restore position after this node's serialization
+    if (ctx && nodePosition) {
+      ctx.popState();
+    }
   }
   inFrames.pop();
   frameHeaders.pop();

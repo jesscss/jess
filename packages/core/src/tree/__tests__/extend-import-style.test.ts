@@ -67,7 +67,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -117,7 +117,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -161,7 +161,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .base,
         .child {
@@ -541,7 +541,7 @@ describe('Style import extend behavior', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
       expect(css).toBeString(`
         .child {
           color: red;
@@ -805,7 +805,7 @@ describe('Style import extend behavior', () => {
           :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) {
             color: green;
           }
-          :is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible) .sub {
+          :is(:is(.only-with-visible, .z, .visible) + :is(.only-with-visible, .z, .visible)) .sub {
             color: green;
           }
           "

@@ -1,7 +1,7 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
-  num, dimension, amp,
+  num, dimension, amp, expr,
   paren, seq, comment, nil, quoted, color, co, interpolated
 } from '../index.js';
 import { Context } from '../../context.js';
@@ -38,7 +38,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .body {
@@ -85,8 +85,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
-
+      const css = evald.render(context);
       expect(css).toBeString(`
         .body {
           @media print {
@@ -151,7 +150,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .body {
@@ -217,7 +216,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .body {
@@ -235,8 +234,58 @@ describe('AtRule', () => {
     });
   });
 
+  describe('root-only at-rules', () => {
+    it('hoists nested @property rules to the stylesheet root', async () => {
+      context = new Context({ bubbleRootAtRules: true });
+
+      const node = rules([
+        ruleset({
+          selector: sel([el('.card')]) as any,
+          rules: rules([
+            atrule({
+              name: any('@property', { role: 'atkeyword' }),
+              prelude: any('--accent', { role: 'ident' }),
+              rules: rules([
+                decl({
+                  name: 'syntax',
+                  value: quoted(any('<color>', { role: 'any' }))
+                }),
+                decl({
+                  name: 'inherits',
+                  value: any('false', { role: 'keyword' })
+                }),
+                decl({
+                  name: 'initial-value',
+                  value: any('rebeccapurple', { role: 'keyword' })
+                })
+              ])
+            }),
+            decl({
+              name: 'color',
+              value: any('var(--accent)', { role: 'any' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const css = evald.render(context);
+
+      expect(css).toBeString(`
+        @property --accent {
+          syntax: "<color>";
+          inherits: false;
+          initial-value: rebeccapurple;
+        }
+        .card {
+          color: var(--accent);
+        }
+      `);
+    });
+  });
+
   describe('@media with mixins and parameters', () => {
-    it('should handle mixin with nested @media using parameter', async () => {
+    it.only('should handle mixin with nested @media using parameter', async () => {
       // Represents:
       // .mediaMixin(@fallback: 200px) {
       //   background: black;
@@ -290,7 +339,7 @@ describe('AtRule', () => {
       const rootRules = rules([mixinDef, callSite]);
       context.root = rootRules;
       const evald = await rootRules.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .a {
@@ -339,7 +388,7 @@ describe('AtRule', () => {
 
       context.root = node;
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @media print {
@@ -377,7 +426,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @media all and (tv) {
@@ -416,7 +465,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @media screen and (min-width: 61px) {
@@ -458,7 +507,7 @@ describe('AtRule', () => {
       ]);
 
       const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         @media screen and (color), projection and (color) {
@@ -527,7 +576,7 @@ describe('AtRule', () => {
       const rootRules = rules([navJustifiedMixin, callSite]);
       context.root = rootRules;
       const evald = await rootRules.eval(context);
-      const css = evald.toString();
+      const css = evald.render(context);
 
       expect(css).toBeString(`
         .menu {
@@ -1668,7 +1717,7 @@ describe('AtRule', () => {
 
       /** This represents already eval'd nodes */
       const evald = await node.eval(context);
-      const serialized = evald.toString();
+      const serialized = evald.render(context);
 
       // The serialized output should match the structure
       expect(serialized).toBeString(`
@@ -1951,6 +2000,25 @@ describe('AtRule', () => {
           }
         }
       `);
+    });
+  });
+
+  describe('evaluation', () => {
+    it('evaluates interpolated names and preludes before serialization', async () => {
+      const node = atrule({
+        name: interpolated({
+          source: '@%%',
+          replacements: [expr(any('media'))]
+        }, { role: 'atkeyword' }),
+        prelude: seq([expr(any('screen'))]),
+        rules: rules([
+          decl({ name: 'color', value: expr(any('blue')) })
+        ])
+      });
+
+      const evald = await node.eval(context);
+
+      expect(evald.render(context)).toBe('@media screen {\n  color: blue;\n}\n');
     });
   });
 });

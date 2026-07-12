@@ -1,16 +1,20 @@
-import {
-  type IToken,
-  type TokenType,
-} from '@jesscss/parser';
+import type {
+  IToken,
+  TokenType,
+} from 'chevrotain';
+import { tokenMatcher } from 'chevrotain';
 
 import {
   CssRecursiveParser,
   type CssRecursiveParserConfig,
-  type CssTokenType
+  type CssTokenType,
+  type Rule,
+  productions as cssProductions
 } from '@jesscss/css-parser';
 
 import {
   Reference,
+  type MathMode,
   type Node,
 } from '@jesscss/core';
 
@@ -42,6 +46,20 @@ export type RuleContext = {
   allowComma?: boolean;
   /** Inside an @extend target selector */
   inExtend?: boolean;
+  /** Wrap a parsed outer operation as an Expression when appropriate */
+  wrapInExpression?: boolean;
+  /** Parenthesis math frames; top-most value controls math-in-parens semantics */
+  parenFrames?: boolean[];
+  /** Calc depth counter */
+  calcFrames?: number;
+  /** Seed value for continuing a parsed expression */
+  startValue?: Node;
+  /** Allow slash to parse as division instead of a separator */
+  allowSlashDivision?: boolean;
+  /** Prefer isolated arithmetic parsing for paren groups */
+  preferExpressionInParens?: boolean;
+  /** Reserved for future math-mode alignment with Less */
+  mathMode?: MathMode;
 
   [k: string]: object | boolean | string | object[] | number | undefined;
 };
@@ -62,6 +80,22 @@ export class ScssRecursiveParser extends CssRecursiveParser {
     super(T as any, config);
     this.T = T;
     this.warnings = [];
+    (this as any).skipValidations = true;
+
+    type ProductionFactory = (this: ScssRecursiveParser, T: TokenMap) => Rule;
+    for (const [key, factory] of Object.entries(productions as Record<string, ProductionFactory>)) {
+      if (typeof factory !== 'function') continue;
+      const rule = factory.call(this, this.T);
+      if (key in cssProductions) {
+        this.OVERRIDE_RULE(key, rule);
+      } else {
+        this.RULE(key, rule);
+      }
+    }
+
+    if (this.constructor === ScssRecursiveParser) {
+      this.performSelfAnalysis();
+    }
   }
 
   nextTempVarName(): string {
@@ -107,6 +141,69 @@ export class ScssRecursiveParser extends CssRecursiveParser {
     return super.processValueToken(token, ctx);
   }
 
+  override shouldTryQualifiedRuleInDeclarationList(): boolean {
+    const {
+      Ident,
+      Assign,
+      Colon,
+      LCurly,
+      Comma,
+      LSquare,
+      NthPseudoClass,
+      SelectorPseudoClass,
+      PlainIdent,
+      LegacyPropIdent,
+      CustomProperty
+    } = this.T as TokenMap & Partial<Record<'PlainIdent' | 'LegacyPropIdent' | 'CustomProperty', TokenType>>;
+
+    const isSelectorLikeContinuation = (offset: number): boolean => {
+      const tok = this.LA(offset);
+      return (
+        tokenMatcher(tok, LCurly)
+        || tokenMatcher(tok, Comma)
+        || tokenMatcher(tok, this.T.Combinator)
+        || tokenMatcher(tok, LSquare)
+        || tokenMatcher(tok, Colon)
+        || tokenMatcher(tok, NthPseudoClass)
+        || tokenMatcher(tok, SelectorPseudoClass)
+      );
+    };
+
+    const first = this.LA(1);
+    const firstIsDeclarationName = this.isTypeAt(1, Ident)
+      || (PlainIdent !== undefined && first.tokenType === PlainIdent)
+      || (LegacyPropIdent !== undefined && first.tokenType === LegacyPropIdent)
+      || (CustomProperty !== undefined && first.tokenType === CustomProperty);
+
+    if (!firstIsDeclarationName) {
+      return true;
+    }
+    if (!this.isTypeAt(2, Assign)) {
+      return true;
+    }
+    if (this.hasWS(2)) {
+      return false;
+    }
+
+    const tt3 = this.LA(3).tokenType;
+    if (
+      tt3 === Colon
+      || tt3 === NthPseudoClass
+      || tt3 === SelectorPseudoClass
+    ) {
+      return true;
+    }
+
+    const third = this.LA(3);
+    const thirdIsNameLike = tokenMatcher(third, Ident)
+      || (PlainIdent !== undefined && third.tokenType === PlainIdent);
+    if (!thirdIsNameLike) {
+      return false;
+    }
+
+    return isSelectorLikeContinuation(4);
+  }
+
   // ════════════════════════════════════════════════════════════════════
   // PRODUCTION RULES — method declarations
   // Implementations are assigned via prototype below.
@@ -119,11 +216,18 @@ export class ScssRecursiveParser extends CssRecursiveParser {
   declare scssConditionInParens: typeof productions.scssConditionInParens;
   declare scssConditionInner: typeof productions.scssConditionInner;
   declare scssComparison: typeof productions.scssComparison;
+  expressionSum!: Rule;
+  expressionProduct!: Rule;
+  expressionValue!: Rule;
+  parenValue!: Rule;
   declare scssMapLiteral: typeof productions.scssMapLiteral;
+  declare scssNestedPropertyCollection: typeof productions.scssNestedPropertyCollection;
+  declare scssIdentValue: typeof productions.scssIdentValue;
   declare scssUseAtRule: typeof productions.scssUseAtRule;
   declare scssForwardAtRule: typeof productions.scssForwardAtRule;
   declare scssExtendAtRule: typeof productions.scssExtendAtRule;
   declare scssWithConfig: typeof productions.scssWithConfig;
+  declare scssIncludeUsingParams: typeof productions.scssIncludeUsingParams;
   declare scssContentAtRule: typeof productions.scssContentAtRule;
   declare scssIncludeAtRule: typeof productions.scssIncludeAtRule;
   declare scssIfAtRule: typeof productions.scssIfAtRule;
@@ -148,17 +252,3 @@ export class ScssRecursiveParser extends CssRecursiveParser {
 
 // Register for lazy interpolation parser creation (breaks circular dep)
 registerScssRecursiveParser(ScssRecursiveParser);
-
-// ── Attach production methods to prototype ────────────────────────────
-const proto = ScssRecursiveParser.prototype as any;
-
-for (const [name, fn] of Object.entries(productions)) {
-  if (typeof fn === 'function') {
-    proto[name] = function(this: ScssRecursiveParser, ...args: unknown[]) {
-      this.ruleStack.push(name);
-      const result = (fn as Function).apply(this, args);
-      this.ruleStack.pop();
-      return result;
-    };
-  }
-}

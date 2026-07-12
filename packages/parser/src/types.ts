@@ -1,5 +1,5 @@
 /**
- * @jesscss/parser-runtime — Type definitions
+ * @jesscss/parser — Type definitions
  *
  * Token and error types are inspired by Chevrotain's interfaces but
  * simplified for a hand-coded recursive-descent parser. Category
@@ -19,6 +19,11 @@ export type LocationInfo = [
   endLine: number,
   endColumn: number
 ];
+
+/** Same convention as `@jesscss/core`: full span or empty tuple when unknown. */
+export type LocationInfoOrEmpty = LocationInfo | [];
+
+export type OptionalLocation = LocationInfoOrEmpty | undefined;
 
 // ── Token types ──────────────────────────────────────────────────────
 // Simplified from Chevrotain's token system. We keep compatibility with

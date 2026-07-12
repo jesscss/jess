@@ -17,6 +17,7 @@ import {
 } from '../index.js';
 import { Context } from '../../context.js';
 import { pipe } from '@jesscss/awaitable-pipe';
+import { isEvaluated, isPreEvaluated, setEvaluated, setPreEvaluated } from '../util/field-helpers.js';
 
 function fmt(ms: number) {
   return `${ms.toFixed(3)}ms`;
@@ -60,24 +61,24 @@ function evalStaticLegacy(node: Node, context: Context): any {
 
   return pipe(
     () => {
-      if (!node.preEvaluated) {
+      if (!isPreEvaluated(node, context)) {
         return node.preEval(context);
       }
       return node;
     },
     (preEvald: Node) => {
       preEvaluatedNode = preEvald;
-      preEvaluatedNode.preEvaluated = true;
+      setPreEvaluated(preEvaluatedNode, true, context);
       if (preEvald !== node) {
         preEvaluatedNode.inherit(node);
       }
-      if (!preEvaluatedNode.evaluated) {
+      if (!isEvaluated(preEvaluatedNode, context)) {
         return preEvaluatedNode['evalNode'](context);
       }
       return preEvaluatedNode;
     },
     (evald: Node) => {
-      evald.evaluated = true;
+      setEvaluated(evald, true, context);
       if (preEvaluatedNode !== evald) {
         evald.inherit(preEvaluatedNode);
       }

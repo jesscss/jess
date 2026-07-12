@@ -1,14 +1,17 @@
 import { type Context } from '../context.js';
-import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, Node, type LocationInfo, type OptionalLocation, type TreeContext } from './node.js';
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { Rules } from './rules.js';
 import { type List, list } from './list.js';
 import type { Declaration } from './declaration.js';
+import type { VarDeclaration } from './declaration-var.js';
 import { Mixin } from './mixin.js';
 import { getFunctionFromMixins } from './rules.js';
 import { cast } from './util/cast.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { freezeChildren } from './util/cloning.js';
+import { getParent, setParent } from './util/field-helpers.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -34,44 +37,47 @@ export type FuncOptions = {
   returnName?: string;
 };
 
-export interface Func {
+export type FuncChildData = {
+  name: FuncValue['name'];
+  params: FuncValue['params'];
+  body: Node;
+};
+
+export interface Func extends Node<FuncValue, FuncOptions, FuncChildData> {
   type: 'Func';
   shortType: 'fn';
 }
 
-export class Func extends Node<FuncValue, FuncOptions> {
-  constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo, treeContext?: TreeContext) {
+export class Func extends Node<FuncValue, FuncOptions, FuncChildData> {
+  static override childKeys = ['name', 'params', 'body'] as const;
+
+  /** @internal */ name: FuncValue['name'];
+  /** @internal */ params: FuncValue['params'];
+  /** @internal */ body!: Node;
+
+  constructor(value: FuncValue, options?: FuncOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
-    // Like mixins/functions in source languages: not emitted directly.
+    this.name = value.name;
+    this.params = value.params;
+    this.body = value.body;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.params instanceof Node) {
+      this.adopt(this.params);
+    }
+    if (this.body instanceof Node) {
+      this.adopt(this.body);
+    }
     this.removeFlag(F_VISIBLE);
   }
 
-  get name() {
-    return this.data.name;
-  }
-
-  set name(val: FuncValue['name']) {
-    this.setData('name', val as any);
-  }
-
-  get params() {
-    return this.data.params;
-  }
-
-  set params(val: FuncValue['params']) {
-    this.setData('params', val as any);
-  }
-
-  get body() {
-    return this.data.body;
-  }
-
-  set body(val: FuncValue['body']) {
-    this.setData('body', val);
-  }
-
   get nameKey(): string | undefined {
-    const { name } = this.data;
+    return this.getNameKey();
+  }
+
+  getNameKey(context?: Context): string | undefined {
+    const name = this.get('name', context);
     if (!name) {
       return undefined;
     }
@@ -82,7 +88,10 @@ export class Func extends Node<FuncValue, FuncOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, params, body } = this.data;
+    const context = options.context;
+    const name = this.get('name', context);
+    const params = this.get('params', context);
+    const body = this.get('body', context);
 
     w.add('$function', this);
     w.add(' ');
@@ -108,44 +117,52 @@ export class Func extends Node<FuncValue, FuncOptions> {
    */
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this.options?.returnName ?? 'return';
+    const name = this.get('name', context);
+    const params = this.get('params', context);
 
     // Normalize body to a Rules node so it can be evaluated/scoped consistently.
-    const bodyNode = this.data.body;
+    const bodyNode = this.get('body', context);
+    const detachedParams = params && !params.frozen
+      ? freezeChildren(params) as List<Node>
+      : params;
     const bodyRules = bodyNode instanceof Rules
-      ? bodyNode
-      : Rules.create([bodyNode]);
+      ? ((bodyNode.frozen ? bodyNode : freezeChildren(bodyNode)) as Rules)
+      : Rules.create([bodyNode.frozen ? bodyNode : freezeChildren(bodyNode)]);
 
     // Build a temporary anonymous mixin wrapper to observe the same param binding rules.
     const mixinLike = new Mixin(
-      { rules: bodyRules, params: this.data.params },
+      { rules: bodyRules, params: detachedParams },
       undefined,
       Array.isArray(this.location) && this.location.length === 6 ? (this.location as LocationInfo) : undefined,
       this.treeContext
     );
     // Ensure it participates in the same parent chain as this function definition.
-    if (this.parent) {
-      this.parent.adopt(mixinLike);
+    const parent = getParent(this, context);
+    if (parent) {
+      setParent(mixinLike, parent, context);
     }
 
     const fn = getFunctionFromMixins(mixinLike);
-    const evaluated = await fn.call(context, ...args.data.map(a => cast(a)));
+    const evaluated = await fn.call(context, ...args.get('value', context).map(a => cast(a)));
 
     if (!(evaluated instanceof Rules)) {
-      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
+      throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must evaluate to rules`);
     }
 
-    const decl = evaluated.find('declaration', returnName, 'Declaration', { searchParents: false }) as Declaration | undefined;
+    const decl = evaluated.find('declaration', returnName, 'Declaration', { searchParents: false }) as Declaration | undefined
+      ?? evaluated.find('declaration', returnName, 'VarDeclaration', { searchParents: false }) as VarDeclaration | undefined;
     if (!decl) {
-      throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
+      throw new Error(`Function ${String(name?.valueOf() ?? '<anonymous>')} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    return await decl.data.value.eval(context);
+    const returnValue = (decl as Declaration).get('value', context);
+    return await returnValue.eval(context);
   }
 }
 
 export const fn = defineType(Func, 'Func', 'fn') as (
   value: FuncValue | { name?: string; params?: List<Node>; body: Node },
   options?: FuncOptions,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   treeContext?: TreeContext
 ) => Func;

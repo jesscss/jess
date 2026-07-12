@@ -1,3 +1,4 @@
+import { serializeTypes } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
@@ -104,13 +105,74 @@ describe('mixinReference', () => {
 
 describe('lookupOrCall', () => {
   it('should parse lookup with brackets', () => {
-    const { errors } = parse('color: @var[key]', 'declaration');
+    const { errors, tree } = parse('color: @var[key]', 'declaration');
     expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (Declaration
+          assign: ':'
+        name: 
+          (Any [role=property]
+              role: 'property'
+            'color'
+          )
+        value: 
+          (Reference
+              type: 'property'
+            target: 
+              (Reference
+                  type: 'variable'
+                key: 'var'
+              )
+            key: 'key'
+          )
+      `);
+  });
+
+  it('should preserve namespaced variable lookup shape', () => {
+    const { errors, tree } = parse('color: #ns[@foo]', 'declaration');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (Declaration
+          assign: ':'
+        name: 
+          (Any [role=property]
+              role: 'property'
+            'color'
+          )
+        value: 
+          (Reference
+              type: 'variable'
+            target: 
+              (Reference [role=name]
+                  type: 'mixin-ruleset'
+                  role: 'name'
+                key: '#ns'
+              )
+            key: 'foo'
+          )
+      `);
   });
 
   it('should parse call with parentheses', () => {
-    const { errors } = parse('color: .mixin()', 'declaration');
+    const { errors, tree } = parse('color: .mixin()', 'declaration');
     expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (Declaration
+          assign: ':'
+        name: 
+          (Any [role=property]
+              role: 'property'
+            'color'
+          )
+        value: 
+          (Call
+            name: 
+              (Reference [role=name]
+                  type: 'mixin-ruleset'
+                  role: 'name'
+                key: '.mixin'
+              )
+          )
+      `);
   });
 });
-

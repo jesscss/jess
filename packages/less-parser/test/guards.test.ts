@@ -1,3 +1,4 @@
+import { serializeTypes } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
@@ -7,6 +8,24 @@ describe('guard', () => {
   it('should parse when guard', () => {
     const { errors } = parse('when(@a = white)', 'guard');
     expect(errors.length).toBe(0);
+  });
+
+  it('preserves nested comparison shape for and-joined guards', () => {
+    const { errors, tree } = parse('when((@a = white) and (@b = black))', 'guard');
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      (Condition
+        left: 
+          (Paren
+            (Condition
+              left: 
+                (Reference
+                    type: 'variable'
+                  key: 'a'
+                )
+              right: 
+                (Color
+      `);
   });
 });
 
@@ -52,8 +71,31 @@ describe('guardInParens', () => {
 
 describe('guardDefault', () => {
   it('should parse default guard', () => {
-    const { errors } = parse('.mixin(@a) when (default()) { }', 'mixinOrQualifiedRule');
+    const { errors, tree } = parse('.mixin(@a) when (default()) { }', 'mixinOrQualifiedRule');
     expect(errors.length).toBe(0);
+    expect(tree.options?.hasDefault).toBe(true);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      guard: 
+        (Paren
+          (DefaultGuard 'default()')
+        )
+      `);
+  });
+
+  it('preserves negated default guard as a Condition around DefaultGuard', () => {
+    const { errors, tree } = parse('.mixin(@a) when not (default()) { }', 'mixinOrQualifiedRule');
+    expect(errors.length).toBe(0);
+    expect(tree.options?.hasDefault).toBe(true);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      guard: 
+        (Condition
+            negate: true
+          left: 
+            (Paren
+              (DefaultGuard 'default()')
+            )
+          negate: true
+        )
+      `);
   });
 });
-

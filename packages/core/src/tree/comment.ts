@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, F_STATIC, defineType, type LocationInfo, type TreeContext } from './node.js';
+import { Node, F_VISIBLE, F_STATIC, defineType, type OptionalLocation, type TreeContext } from './node.js';
 
 export type CommentOptions = {
   lineComment?: boolean;
@@ -15,22 +15,22 @@ export interface Comment extends Node<string, CommentOptions> {
  * A comment node
  */
 export class Comment extends Node<string, CommentOptions> {
-  constructor(value: string, options?: CommentOptions, location?: LocationInfo, treeContext?: TreeContext) {
+  static override childKeys = null as null;
+
+  /** @internal */ readonly value!: string;
+  readonly lineComment: boolean;
+
+  constructor(value: string, options?: CommentOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.value = value;
+    this.lineComment = !!options?.lineComment;
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlag(F_STATIC);
-    if (this.options.lineComment || value.startsWith('//')) {
+    if (this.lineComment || value.startsWith('//')) {
       this.removeFlag(F_VISIBLE);
     }
   }
-
-  get value() {
-    return this.data;
-  }
-
-  set value(val: string) {
-    this.setData(val);
-  }
 }
+
 export const comment = defineType(Comment, 'Comment');

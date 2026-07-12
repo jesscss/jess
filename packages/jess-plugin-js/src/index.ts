@@ -302,6 +302,7 @@ export class JsPlugin extends AbstractPlugin {
           }
           let req: BrokerRequest | undefined;
           try {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; validated by field access below
             req = JSON.parse(line) as BrokerRequest;
           } catch {
             socket.write(JSON.stringify({
@@ -370,6 +371,7 @@ export class JsPlugin extends AbstractPlugin {
             continue;
           }
           try {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; validated by field check below
             const parsed = JSON.parse(line) as { type?: string };
             if (parsed.type === 'ready') {
               clearTimeout(timer);
@@ -414,6 +416,7 @@ export class JsPlugin extends AbstractPlugin {
       }
       let parsed: RpcResult | undefined;
       try {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; validated by field checks below
         parsed = JSON.parse(line) as RpcResult;
       } catch {
         continue;
@@ -545,7 +548,8 @@ export class JsPlugin extends AbstractPlugin {
     const modulePath = pathToFileURL(path.resolve(absoluteFilePath)).href;
     const module = await import(modulePath);
     const safeModule: Record<string, any> = {};
-    for (const [key, value] of Object.entries(module as Record<string, any>)) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- dynamic import returns any; entries are validated below
+    for (const [key, value] of Object.entries(module as Record<string, unknown>)) {
       if (typeof value === 'function' || isJsonValue(value)) {
         safeModule[key] = value;
       }

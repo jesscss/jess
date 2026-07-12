@@ -1,12 +1,13 @@
 import { isPlainObject, NodeTraversalCursor } from './util/collections.js';
+import { getField } from './util/field-helpers.js';
 import {
   type TreeContext,
   type Context
 } from '../context.js';
+import { EvalState } from '../eval-state.js';
 import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { Class, AbstractClass, Tagged } from 'type-fest';
-import { getEntriesFromNode, getValues } from './util/collections.js';
 import type { Comment } from './comment.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
@@ -67,6 +68,18 @@ export type LocationInfo = [
   endLine: number,
   endColumn: number
 ];
+
+/**
+ * Values returned by {@link Node.location}: a full six-number span, or `[]` when unknown.
+ * The empty tuple is the lazy default assigned by the `location` getter.
+ */
+export type LocationInfoOrEmpty = LocationInfo | [];
+
+/**
+ * Location argument for node construction and APIs that accept another node's `location`.
+ * Same shape as {@link LocationInfoOrEmpty}, or `undefined` to defer to the empty default.
+ */
+export type OptionalLocation = LocationInfoOrEmpty | undefined;
 
 /**
  * Utility type to mark a node's value as generated
@@ -140,13 +153,11 @@ export const F_EXTEND_TARGET = 0b10000000;
 export const F_DEFAULT = F_VISIBLE;
 
 /** Secondary metadata flags. Keeps a pile of booleans off the instance shape. */
-const M_PRE_EVALUATED = 1 << 0;
-const M_EVALUATED = 1 << 1;
-const M_ALLOW_ROOT = 1 << 2;
-const M_ALLOW_RULE_ROOT = 1 << 3;
-const M_GENERATED = 1 << 4;
-const M_REQUIRED_SEMI = 1 << 5;
-const M_FROZEN = 1 << 6;
+const M_ALLOW_ROOT = 1 << 0;
+const M_ALLOW_RULE_ROOT = 1 << 1;
+const M_GENERATED = 1 << 2;
+const M_REQUIRED_SEMI = 1 << 3;
+const M_FROZEN = 1 << 4;
 
 // Future flags can be added here
 // export const CACHED = 0b1000000;
@@ -173,18 +184,31 @@ type NodeMeta<O extends NodeOptions = NodeOptions> = {
  */
 export abstract class Node<
   Data = NodeValue,
-  O extends NodeOptions = NodeOptions
+  O extends NodeOptions = NodeOptions,
+  ChildData extends Record<string, unknown> = Record<string, unknown>
 > {
-  _location: LocationInfo | [] | undefined;
-  get location() {
+  _location: OptionalLocation;
+  get location(): LocationInfoOrEmpty {
     return (this._location ??= []);
   }
 
-  private _meta: NodeMeta<O> | undefined;
+  protected _meta: NodeMeta<O> | undefined;
   private _metaFlags = 0;
 
   private _getMeta(): NodeMeta<O> {
     return (this._meta ??= {});
+  }
+
+  protected _existingOptions(): (O & AllNodeOptions) | undefined {
+    return this._meta?.options;
+  }
+
+  protected _field(key: string): unknown {
+    return (this as unknown as Record<string, unknown>)[key];
+  }
+
+  protected _setField(key: string, val: unknown): void {
+    (this as unknown as Record<string, unknown>)[key] = val;
   }
 
   /** Assigned in index to avoid circularity */
@@ -234,21 +258,12 @@ export abstract class Node<
   /** Will be copied during inherit */
   state = F_DEFAULT;
 
-  get preEvaluated() {
-    return (this._metaFlags & M_PRE_EVALUATED) !== 0;
-  }
-
-  set preEvaluated(value: boolean) {
-    this._metaFlags = value ? (this._metaFlags | M_PRE_EVALUATED) : (this._metaFlags & ~M_PRE_EVALUATED);
-  }
-
-  get evaluated() {
-    return (this._metaFlags & M_EVALUATED) !== 0;
-  }
-
-  set evaluated(value: boolean) {
-    this._metaFlags = value ? (this._metaFlags | M_EVALUATED) : (this._metaFlags & ~M_EVALUATED);
-  }
+  /**
+   * Carried EvalState from a mixin/function call. Used during serialization
+   * so child nodes resolve patched fields from their call-site state.
+   * Target: replace with subtree stack management during eval.
+   */
+  _carriedState: unknown;
 
   get visible() {
     return this.hasFlag(F_VISIBLE);
@@ -324,6 +339,254 @@ export abstract class Node<
   }
 
   /**
+   * @removal-target — node-copy-reduction
+   * Target: remove entirely. Materialization from sourceNode is a clone.
+   * Callers should read through eval state helpers on the canonical node instead.
+   */
+  materializeCopy(deep?: boolean): this {
+    return this.sourceNode.copy(deep) as this;
+  }
+
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: remove entirely. Internal eval paths should never materialize.
+   * Materialization is only allowed at the final CSS output boundary where
+   * Jess serializes the evaluated tree to a standalone object graph.
+   * All internal consumers should read through eval state helpers.
+   */
+  materializeEvaluatedCopy(ctx?: Context): this {
+    if (!ctx) {
+      return this.clone(true);
+    }
+    const state = ctx.activeState;
+    const Class = this.constructor as Class<this>;
+    const ck = (Class as unknown as typeof Node).childKeys;
+    const materializeValue = (value: unknown): unknown => {
+      if (value instanceof Node) {
+        return value.materializeEvaluatedCopy(ctx);
+      }
+      if (isArray(value)) {
+        return value.map(item => materializeValue(item));
+      }
+      return value;
+    };
+    const getFieldFromView = (key: string): unknown => {
+      const patched = state.peek(this)?._fields?.get(key);
+      if (patched !== undefined) {
+        return patched;
+      }
+      return (this as any)[key];
+    };
+
+    if (ck === null) {
+      const value = materializeValue(getFieldFromView('value'));
+      const options = getFieldFromView('options') ?? this._meta?.options;
+      const newNode = new Class(
+        value as any,
+        options ? { ...(options as Record<string, unknown>) } : undefined,
+        this.location,
+        this.treeContext
+      );
+      newNode.inherit(this);
+      const ns = state.peek(this);
+      if (ns) {
+        const sourceNode = ns._fields?.get('sourceNode') as Node | undefined;
+        if (sourceNode) {
+          newNode.sourceNode = sourceNode;
+        }
+        const sourceParent = ns._fields?.get('sourceParent') as Node | undefined;
+        if (sourceParent !== undefined) {
+          newNode.sourceParent = sourceParent;
+        }
+      }
+      return newNode;
+    }
+
+    let cloneData: any;
+    if (ck!.length === 1) {
+      cloneData = materializeValue(getFieldFromView(ck![0]!));
+    } else {
+      cloneData = {};
+      for (const key of ck!) {
+        cloneData[key!] = materializeValue(getFieldFromView(key!));
+      }
+    }
+
+    const options = getFieldFromView('options') ?? this._meta?.options;
+    const newNode = new Class(
+      cloneData,
+      options ? { ...(options as Record<string, unknown>) } : undefined,
+      this.location,
+      this.treeContext
+    );
+    newNode.inherit(this);
+    const ns = state.peek(this);
+    if (ns) {
+      const sourceNode = ns._fields?.get('sourceNode') as Node | undefined;
+      if (sourceNode) {
+        newNode.sourceNode = sourceNode;
+      }
+      const sourceParent = ns._fields?.get('sourceParent') as Node | undefined;
+      if (sourceParent !== undefined) {
+        newNode.sourceParent = sourceParent;
+      }
+    }
+    return newNode;
+  }
+
+  /**
+   * Create a shallow wrapper node that shares this node's immediate children
+   * without taking ownership of them. This is for wrapper metadata use-cases
+   * where the new node needs copied options/provenance, but the shared top-level
+   * children must stay canonically parented to their existing owner.
+   *
+   * Unlike `clone(false)`, this explicitly restores any immediate child parent
+   * links that were changed during wrapper construction.
+   */
+  cloneDetachedShallowWrapper(ctx?: Context): this {
+    const ck = (this.constructor as typeof Node).childKeys;
+    const sharedChildren: Array<{
+      child: Node;
+      canonicalParent: Node | undefined;
+      stateParent: Node | undefined;
+    }> = [];
+
+    if (Array.isArray(ck)) {
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        if (field instanceof Node) {
+          sharedChildren.push({
+            child: field,
+            canonicalParent: field.parent,
+            stateParent: ctx?.activeState.peek(field)?._fields?.get('parent') as Node | undefined
+          });
+        } else if (isArray(field)) {
+          for (const item of field as unknown[]) {
+            if (item instanceof Node) {
+              sharedChildren.push({
+                child: item,
+                canonicalParent: item.parent,
+                stateParent: ctx?.activeState.peek(item)?._fields?.get('parent') as Node | undefined
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const wrapper = this.clone(false, undefined, ctx);
+
+    for (const { child, canonicalParent, stateParent } of sharedChildren) {
+      (child as any).parent = canonicalParent;
+      if (ctx) {
+        const ns = ctx.activeState.peek(child);
+        if (ns?._fields?.has('parent')) {
+          if (stateParent !== undefined) {
+            ns._fields!.set('parent', stateParent);
+          } else if (ns._fields!.get('parent') === wrapper) {
+            ns._fields!.delete('parent');
+          }
+        }
+      }
+    }
+
+    return wrapper;
+  }
+
+  /**
+   * Create a shallow wrapper node that shares this node's immediate children
+   * while making the wrapper their active parent in the eval state.
+   */
+  cloneLookupSafeShallowWrapper(ctx: Context): this {
+    const ck = (this.constructor as typeof Node).childKeys;
+    const sharedChildren: Array<{
+      child: Node;
+      canonicalParent: Node | undefined;
+    }> = [];
+
+    if (Array.isArray(ck)) {
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        if (field instanceof Node) {
+          sharedChildren.push({
+            child: field,
+            canonicalParent: field.parent
+          });
+        } else if (isArray(field)) {
+          for (const item of field as unknown[]) {
+            if (item instanceof Node) {
+              sharedChildren.push({
+                child: item,
+                canonicalParent: item.parent
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const wrapper = this.clone(false, undefined, ctx);
+
+    for (const { child, canonicalParent } of sharedChildren) {
+      ctx.activeState.get(child).fields.set('parent', wrapper);
+      (child as any).parent = canonicalParent;
+    }
+
+    return wrapper;
+  }
+
+  /**
+   * Create a detached shallow wrapper, then materialize its immediate children
+   * from the active eval state.
+   *
+   * This fills the gap between:
+   * - `cloneDetachedShallowWrapper()`, which preserves child identity but keeps
+   *   state-backed child state on the canonical child objects, and
+   * - `materializeEvaluatedCopy()`, which materializes the whole node tree.
+   *
+   * The wrapper metadata remains local to the new node, canonical child parent
+   * links stay intact, and the returned wrapper owns persistent child nodes that
+   * reflect the current eval state without requiring eval state later.
+   */
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: remove entirely. This deep-materializes mixin output from the
+   * eval state, creating a full object tree per call. Replace with
+   * carrying the EvalState on the output node — downstream reads
+   * resolve through position patches, no materialization needed.
+   */
+  cloneDetachedMaterializedWrapper(ctx: Context): this {
+    const wrapper = this.cloneDetachedShallowWrapper(ctx);
+    const ck = (this.constructor as typeof Node).childKeys;
+
+    if (!Array.isArray(ck)) {
+      return wrapper;
+    }
+
+    const materializeValue = (value: unknown): unknown => {
+      if (value instanceof Node) {
+        return value.materializeEvaluatedCopy(ctx);
+      }
+      if (isArray(value)) {
+        return value.map(item => materializeValue(item));
+      }
+      return value;
+    };
+
+    if (ck.length === 1) {
+      const key = ck[0]!;
+      wrapper.setData(materializeValue((wrapper as any)[key]) as NodeValue);
+      return wrapper;
+    }
+
+    for (const key of ck) {
+      wrapper.setData(key!, materializeValue((wrapper as any)[key!]));
+    }
+
+    return wrapper;
+  }
+
+  /**
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also
@@ -373,12 +636,13 @@ export abstract class Node<
   declare nil: () => Nil;
 
   /**
-   * Keys in the data object that hold child Nodes.
-   * Override per node type for fast iteration.
-   * - `string[]` — object-valued nodes: only these keys are checked
-   * - `null` (default) — use generic iteration (arrays, single values)
+   * Keys of instance fields that hold child Nodes.
+   * Override per node type.
+   * - `undefined` (default) — unmigrated
+   * - `null` — leaf node, no children to iterate/adopt/clone
+   * - `string[]` — names of instance fields holding child Node(s) or Node[]
    */
-  static childNodeKeys: string[] | null = null;
+  static childKeys: readonly string[] | null | undefined = undefined;
 
   /**
    * The internal data of the node.
@@ -387,11 +651,8 @@ export abstract class Node<
   // Note to LLM - STOP removing Readonly to try to fix type errors. Make
   // this a strong readonly contract. Otherwise we will miss type errors
   // for things like code mutating arrays that are assigned to data.
-  readonly data!: Readonly<Data>;
-
-  private static _isOwnPlainObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && (value as any).constructor === Object;
-  }
+  // Uses `declare` to avoid emitting a class field initializer that would
+  // shadow prototype getters on migrated subclasses.
 
   private _adoptValue(value: unknown): void {
     if (value instanceof Node) {
@@ -403,71 +664,6 @@ export abstract class Node<
         const item = value[i];
         if (item instanceof Node) {
           this.adopt(item);
-        }
-      }
-    }
-  }
-
-  private _forEachObjectChild(
-    record: Record<string, unknown>,
-    func: (n: Node, idx?: number) => Node,
-    idxRef: { value: number }
-  ) {
-    const ctor = this.constructor as typeof Node;
-    const fastKeys = ctor.childNodeKeys;
-
-    if (fastKeys) {
-      for (let i = 0; i < fastKeys.length; i++) {
-        const key = fastKeys[i]!;
-        const v = record[key];
-        if (v instanceof Node) {
-          const result = func(v, idxRef.value++);
-          if (result !== v) {
-            record[key] = result;
-            this.adopt(result);
-            this._invalidateValueOf();
-          }
-        } else if (isArray(v)) {
-          for (let j = 0; j < v.length; j++) {
-            const item = v[j];
-            if (!(item instanceof Node)) {
-              continue;
-            }
-            const result = func(item, idxRef.value++);
-            if (result !== item) {
-              v[j] = result;
-              this.adopt(result);
-              this._invalidateValueOf();
-            }
-          }
-        }
-      }
-      return;
-    }
-
-    const keys = Object.keys(record);
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i]!;
-      const v = record[k];
-      if (v instanceof Node) {
-        const result = func(v, idxRef.value++);
-        if (result !== v) {
-          record[k] = result;
-          this.adopt(result);
-          this._invalidateValueOf();
-        }
-      } else if (isArray(v)) {
-        for (let j = 0; j < v.length; j++) {
-          const item = v[j];
-          if (!(item instanceof Node)) {
-            continue;
-          }
-          const result = func(item, idxRef.value++);
-          if (result !== item) {
-            v[j] = result;
-            this.adopt(result);
-            this._invalidateValueOf();
-          }
         }
       }
     }
@@ -486,18 +682,41 @@ export abstract class Node<
   setData(...args: unknown[]): void {
     if (args.length === 1) {
       const val = args[0];
-      (this as unknown as { data: Data }).data = val as Data;
+      const ck = (this.constructor as typeof Node).childKeys;
+      if (Array.isArray(ck) && ck.length === 1 && (Array.isArray(val) || typeof val !== 'object')) {
+        (this as any)[ck[0]!] = val;
+      } else if (Array.isArray(ck) && ck.length > 1 && typeof val === 'object' && val !== null) {
+        for (const key of ck) {
+          if (key! in (val as any)) {
+            (this as any)[key!] = (val as any)[key!];
+          }
+        }
+      } else {
+        (this as any).value = val;
+      }
       this._adoptValue(val);
       this._invalidateValueOf();
       return;
     }
     const key = args[0] as string | number;
     const val = args[1];
-    const prev = (this.data as any)[key];
-    if (prev === val) {
-      return;
+    const ck = (this.constructor as typeof Node).childKeys;
+    // For array-based containers (childKeys=['value']), numeric keys index into
+    // the array field, not the instance itself.
+    if (typeof key === 'number') {
+      const arr = (this as any)[ck![0]!];
+      const prev = arr[key];
+      if (prev === val) {
+        return;
+      }
+      arr[key] = val;
+    } else {
+      const prev = (this as any)[key];
+      if (prev === val) {
+        return;
+      }
+      (this as any)[key] = val;
     }
-    (this.data as any)[key] = val;
     this._adoptValue(val);
     this._invalidateValueOf();
   }
@@ -510,18 +729,35 @@ export abstract class Node<
     if ('_keySet' in self) {
       self._keySet = undefined;
       self._visibleKeySet = undefined;
-      self._canFastReject = undefined;
+      self._requiredKeySet = undefined;
     }
   }
 
-  /** Push items onto an array-valued node. */
-  push(...items: any[]): void {
-    const arr = this.data as unknown as any[];
+  /** Get the array field for array-valued nodes (childKeys=['value'] etc.) */
+  private _getArrayField(): any[] {
+    const ck = (this.constructor as typeof Node).childKeys;
+    return (this as any)[ck![0]!];
+  }
+
+  /** Push items onto an array-valued node.
+   * Pass a Context as the first argument to route parent adoption through the eval state. */
+  push(ctx: Context, ...items: Node[]): void;
+  push(...items: Node[]): void;
+  push(ctxOrFirst: Context | Node, ...rest: Node[]): void {
+    let ctx: Context | undefined;
+    let items: Node[];
+    if (ctxOrFirst instanceof Node) {
+      items = [ctxOrFirst, ...rest];
+    } else {
+      ctx = ctxOrFirst as Context;
+      items = rest;
+    }
+    const arr = this._getArrayField();
     arr.push(...items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item instanceof Node) {
-        this.adopt(item);
+        this.adopt(item, ctx);
       }
     }
     this._invalidateValueOf();
@@ -529,7 +765,7 @@ export abstract class Node<
 
   /** Remove and/or insert items in an array-valued node. */
   splice(start: number, deleteCount: number, ...items: any[]): any[] {
-    const arr = this.data as unknown as any[];
+    const arr = this._getArrayField();
     const removed = arr.splice(start, deleteCount, ...items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -543,7 +779,7 @@ export abstract class Node<
 
   /** Prepend items to an array-valued node. */
   unshift(...items: any[]): void {
-    const arr = this.data as unknown as any[];
+    const arr = this._getArrayField();
     arr.unshift(...items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -593,10 +829,75 @@ export abstract class Node<
     }
   }
 
-  adopt(node: Node) {
-    /** The only place we should do this */
+  // ------------------------------------------------------------------
+  // EvalState-aware eval lifecycle helpers (Stage 8).
+  // Defined here (not in field-helpers.ts) to avoid a circular import:
+  // field-helpers.ts imports Node from this file, so this file cannot
+  // import from field-helpers.ts.  These mirror the public helpers in
+  // field-helpers.ts; both sets delegate to context.activeState.
+  // ------------------------------------------------------------------
+
+  protected _isPreEvaluated(context: Context): boolean {
+    return context.activeState.peek(this)?.preEvaluated ?? false;
+  }
+
+  protected _setPreEvaluated(value: boolean, context: Context): void {
+    context.activeState.get(this).preEvaluated = value;
+  }
+
+  protected _isEvaluated(context: Context): boolean {
+    return context.activeState.peek(this)?.evaluated ?? false;
+  }
+
+  protected _setEvaluated(value: boolean, context: Context): void {
+    context.activeState.get(this).evaluated = value;
+  }
+
+  /**
+   * EvalState-aware flag check. If eval state patches exist, applies
+   * flagsAdd/flagsRemove from the runtime overlay on top of
+   * the canonical flags.
+   */
+  _hasFlag(flag: number, context: Context): boolean {
+    const ns = context.activeState.peek(this);
+    if (ns?._fields) {
+      let flags = this.state;
+      const flagsRemove = ns._fields.get('flagsRemove') as number | undefined;
+      const flagsAdd = ns._fields.get('flagsAdd') as number | undefined;
+      if (flagsRemove) {
+        flags &= ~flagsRemove;
+      }
+      if (flagsAdd) {
+        flags |= flagsAdd;
+      }
+      return (flags & flag) !== 0;
+    }
+    return this.hasFlag(flag);
+  }
+
+  _addFlag(flag: number, context: Context): void {
+    const s = context.activeState.get(this);
+    const cur = (s._fields?.get('flagsAdd') as number | undefined) ?? 0;
+    s.fields.set('flagsAdd', cur | flag);
+    const curRemove = (s._fields?.get('flagsRemove') as number | undefined) ?? 0;
+    s.fields.set('flagsRemove', curRemove & ~flag);
+  }
+
+  _removeFlag(flag: number, context: Context): void {
+    const s = context.activeState.get(this);
+    const cur = (s._fields?.get('flagsRemove') as number | undefined) ?? 0;
+    s.fields.set('flagsRemove', cur | flag);
+    const curAdd = (s._fields?.get('flagsAdd') as number | undefined) ?? 0;
+    s.fields.set('flagsAdd', curAdd & ~flag);
+  }
+
+  adopt(node: Node, ctx?: Context) {
     if (!node.frozen) {
-      (node as any).parent = this;
+      if (ctx) {
+        ctx.activeState.get(node).fields.set('parent', this);
+      } else {
+        (node as any).parent = this;
+      }
     }
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
@@ -612,54 +913,14 @@ export abstract class Node<
     }
   }
 
-  /**
-   * Adopt all child Nodes in the value.
-   * Uses static childNodeKeys when available for fast path.
-   */
-  private _adoptChildren(): void {
-    const value = this.data;
-    if (isArray(value)) {
-      for (let i = 0; i < value.length; i++) {
-        const item = value[i];
-        if (item instanceof Node) {
-          this.adopt(item);
-        }
-      }
-      return;
-    }
-
-    const ctor = this.constructor as typeof Node;
-    const fastKeys = ctor.childNodeKeys;
-    if (fastKeys && Node._isOwnPlainObject(value)) {
-      const record = value as Record<string, unknown>;
-      for (let i = 0; i < fastKeys.length; i++) {
-        this._adoptValue(record[fastKeys[i]!]);
-      }
-      return;
-    }
-
-    if (Node._isOwnPlainObject(value)) {
-      const vals = Object.values(value as Record<string, unknown>);
-      for (let i = 0; i < vals.length; i++) {
-        this._adoptValue(vals[i]);
-      }
-      return;
-    }
-
-    if ((value as any) instanceof Node) {
-      this.adopt(value);
-    }
-  }
-
   constructor(
     value: Data,
     options?: O,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     (this as any).parent = undefined;
-    this.index = undefined as any;
-    (this as unknown as { data: Data }).data = value;
+    this.index = undefined!;
     this._location = location;
     if (options !== undefined || treeContext !== undefined) {
       this._meta = {
@@ -674,7 +935,30 @@ export abstract class Node<
         sourceParent: undefined
       };
     }
-    this._adoptChildren();
+  }
+
+  /**
+   * Type-safe access to child data fields.
+   * Without context: returns canonical (parse-time) value.
+   * With context: returns eval-state-patched value if one exists.
+   *
+   * @example
+   *   url.get('value')        // canonical, typed
+   *   url.get('value', ctx)   // eval-aware, typed
+   *   url.get('name')         // TS error if 'name' not in ChildData
+   */
+  get<K extends keyof ChildData & string>(key: K, ctx?: Context): ChildData[K] {
+    if (ctx) {
+      let state: EvalState | undefined = ctx.activeState;
+      while (state) {
+        const val = state.peek(this)?._fields?.get(key);
+        if (val !== undefined) {
+          return val as ChildData[K];
+        }
+        state = state.parent;
+      }
+    }
+    return (this as unknown as Record<string, unknown>)[key] as ChildData[K];
   }
 
   /**
@@ -728,11 +1012,12 @@ export abstract class Node<
    *
    * Processed nodes must always return a Node.
    */
-  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>) {
+  forEachNode(func: (n: Node, idx?: number) => MaybePromise<Node>, context?: Context) {
     if (!this.hasFlag(F_MAY_ASYNC)) {
-      return this._forEachNodeSync(func as (n: Node, idx?: number) => Node);
+      return this._forEachNodeSync(func as (n: Node, idx?: number) => Node, context);
     }
-    const entries = [...getEntriesFromNode({ data: this.data } as unknown as { data: unknown[] })];
+    const entries = this._collectChildEntries();
+    const state = context?.activeState;
     return serialForEach(entries, ([value, key, collection]: [unknown, string | number, any], idx: number) => {
       if (!(value instanceof Node)) {
         return;
@@ -741,7 +1026,18 @@ export abstract class Node<
       if (isThenable(out)) {
         return (out as Promise<Node>).then((result) => {
           if (result !== value) {
-            collection[key] = result;
+            if (state) {
+              if (typeof key === 'string') {
+                state.get(this).fields.set(key, result);
+              } else {
+                // Array child — replace in the state-overlaid children array
+                const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any).value as Node[])];
+                children[key as number] = result;
+                state.get(this).fields.set('value', children);
+              }
+            } else {
+              collection[key] = result;
+            }
             if (result instanceof Node) {
               this.adopt(result);
             }
@@ -750,43 +1046,75 @@ export abstract class Node<
         });
       }
       if (out !== value) {
-        collection[key] = out as Node;
+        if (state) {
+          if (typeof key === 'string') {
+            state.get(this).fields.set(key, out);
+          } else {
+            const children = [...(state.peek(this)?._fields?.get('value') as Node[] ?? (this as any).value as Node[])];
+            children[key as number] = out as Node;
+            state.get(this).fields.set('value', children);
+          }
+        } else {
+          collection[key] = out as Node;
+        }
         this.adopt(out as Node);
         this._invalidateValueOf();
       }
     });
   }
 
-  private _forEachNodeSync(func: (n: Node, idx?: number) => Node) {
-    const idxRef = { value: 0 };
-    const data = this.data;
-    if (isArray(data)) {
-      for (let i = 0; i < data.length; i++) {
-        const item = data[i];
-        if (!(item instanceof Node)) {
-          continue;
+  private _collectChildEntries(): [unknown, string | number, any][] {
+    const ck = (this.constructor as typeof Node).childKeys;
+    if (!ck) {
+      return [];
+    }
+    const entries: [unknown, string | number, any][] = [];
+    for (const key of ck) {
+      const field = (this as any)[key!];
+      if (isArray(field)) {
+        for (let i = 0; i < field.length; i++) {
+          entries.push([field[i], i, field]);
         }
-        const result = func(item, idxRef.value++);
-        if (result !== item) {
-          data[i] = result;
-          this.adopt(result);
-          this._invalidateValueOf();
-        }
+      } else {
+        entries.push([field, key!, this]);
       }
-      return;
     }
+    return entries;
+  }
 
-    if (Node._isOwnPlainObject(data)) {
-      this._forEachObjectChild(data as Record<string, unknown>, func, idxRef);
-      return;
-    }
+  private _forEachNodeSync(func: (n: Node, idx?: number) => Node, context?: Context) {
+    const ck = (this.constructor as typeof Node).childKeys;
+    const state = context?.activeState;
 
-    if ((data as any) instanceof Node) {
-      const result = func(data, idxRef.value++);
-      if (result !== data) {
-        (this as unknown as { data: Data }).data = result as Data;
-        this.adopt(result);
-        this._invalidateValueOf();
+    if (Array.isArray(ck)) {
+      let idx = 0;
+      for (const key of ck) {
+        const field = (this as any)[key!];
+        if (isArray(field)) {
+          for (let i = 0; i < field.length; i++) {
+            const item = field[i];
+            if (!(item instanceof Node)) {
+              continue;
+            }
+            const result = func(item, idx++);
+            if (result !== item) {
+              field[i] = result;
+              this.adopt(result);
+              this._invalidateValueOf();
+            }
+          }
+        } else if (field instanceof Node) {
+          const result = func(field, idx++);
+          if (result !== field) {
+            if (state) {
+              state.get(this).fields.set(key!, result);
+            } else {
+              (this as any)[key!] = result;
+            }
+            this.adopt(result);
+            this._invalidateValueOf();
+          }
+        }
       }
     }
   }
@@ -897,75 +1225,122 @@ export abstract class Node<
   }
 
   /**
-   * @todo
-   * Write tests that make sure that a maybe clone without preserveOriginalNodes
-   * does not clone the nodes, but a maybeClone with preserveOriginalNodes
-   * does clone the nodes all through the tree.
+   * @removal-target — node-copy-reduction
+   * Target: `return this` unconditionally. Position provides isolation;
+   * eval state and field changes go to EvalState patches.
+   * The clone(deep) fallback exists only because not all eval paths
+   * create a position yet. Once every eval path ensures a position,
+   * this entire method becomes `return this`.
    */
-  maybeClone(context: Context, deep?: boolean, cloneFn?: (n: Node) => Node): this {
-    if (context.preserveOriginalNodes) {
-      return this.clone(deep, cloneFn);
-    }
+  maybeClone(_context: Context, _deep?: boolean, _cloneFn?: (n: Node) => Node): this {
+    // EvalState provides isolation — no clone needed.
     return this;
   }
 
-  clonedEval(context: Context): MaybePromise<Node> {
-    let preserveNodes = context.preserveOriginalNodes;
-    context.preserveOriginalNodes = true;
-    let out = this.eval(context);
-    if (isThenable(out)) {
-      return (out as Promise<Node>).then((result) => {
-        context.preserveOriginalNodes = preserveNodes;
-        return result;
-      });
-    }
-    context.preserveOriginalNodes = preserveNodes;
-    return out;
-  }
-
   /**
-   * Creates a copy of the current node.
-   *
-   * @note - In the Less source, nodes were always cloned before
-   * mutating, which is why I did it here. However... the only
-   * utility for cloning is to preserve the original node,
-   * or (maybe?) to create a copy which is output differently.
-   *
-   * But... considering the high cost of cloning in terms of
-   * object creation, and the low utility of preserving the original
-   * node, I think we should just only clone when we need to.
+   * @removal-target — node-copy-reduction (eval-path callers)
+   * Eval-path callers (maybeClone, mixin body clone, evalNode clone)
+   * should be replaced with EvalState field patches. The clone
+   * method itself survives for non-eval uses (selector composition,
+   * extend application, output serialization boundary) but should
+   * never be called in the eval hot path.
    */
-  clone(deep?: boolean, cloneFn?: (n: Node) => Node): this {
+  clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
     let Class = this.constructor as Class<this>;
-    let originalData = this.data;
-    let newData = { data: originalData as Data };
-    /**
-     * Create new array objects and plain objects
-     */
-    if (isArray(originalData)) {
-      newData.data = [...originalData] as Data;
-    } else if (isPlainObject(originalData)) {
-      newData.data = Object.fromEntries(
-        Object.entries(originalData as Record<string, unknown>).map(([key, value]) =>
-          [key, isArray(value) ? [...value] : value]
-        )
-      ) as Data;
+    const ck = (Class as unknown as typeof Node).childKeys;
+
+    // Leaf node — no children to iterate or deep-clone
+    if (ck === null) {
+      const options = this._meta?.options;
+      const newNode = new Class((this as any).value, options ? { ...options } : undefined, this.location, this.treeContext);
+      newNode.inherit(this);
+      return newNode;
     }
 
-    cloneFn ??= n => n.clone(deep);
+    // Container — build constructor value from childKeys
+    let cloneData: any;
+    if (ck!.length === 1) {
+      const field = (this as any)[ck![0]!];
+      cloneData = isArray(field) ? [...field] : field;
+    } else {
+      cloneData = {};
+      for (const key of ck!) {
+        const field = (this as any)[key!];
+        cloneData[key!] = isArray(field) ? [...field] : field;
+      }
+    }
 
     if (deep) {
-      for (let [value, key, collection] of getEntriesFromNode(newData as { data: unknown[] })) {
-        if (value instanceof Node) {
-          collection[key] = cloneFn(value);
+      cloneFn ??= n => n.clone(deep);
+      if (ck!.length === 1) {
+        if (isArray(cloneData)) {
+          for (let i = 0; i < cloneData.length; i++) {
+            if (cloneData[i] instanceof Node) {
+              cloneData[i] = cloneFn(cloneData[i]);
+            }
+          }
+        } else if (cloneData instanceof Node) {
+          cloneData = cloneFn(cloneData);
+        }
+      } else {
+        for (const key of ck!) {
+          const val = cloneData[key!];
+          if (isArray(val)) {
+            for (let i = 0; i < val.length; i++) {
+              if (val[i] instanceof Node) {
+                val[i] = cloneFn(val[i]);
+              }
+            }
+          } else if (val instanceof Node) {
+            cloneData[key!] = cloneFn(val);
+          }
+        }
+      }
+    }
+
+    // When eval state is active and this is a shallow clone, the constructor will call
+    // adopt() for all child nodes without ctx, which directly mutates their parent fields.
+    // Save the pre-construction parent values so we can restore them after, routing the
+    // new parent assignment through the eval state instead.
+    let priorChildParents: [Node, Node | undefined][] | undefined;
+    if (!deep && ctx) {
+      priorChildParents = [];
+      if (isArray(cloneData)) {
+        for (const item of cloneData as unknown[]) {
+          if (item instanceof Node) {
+            priorChildParents.push([item, item.parent]);
+          }
+        }
+      } else if (cloneData instanceof Node) {
+        priorChildParents.push([cloneData, cloneData.parent]);
+      } else if (cloneData !== null && typeof cloneData === 'object') {
+        for (const key of ck!) {
+          const field = cloneData[key!];
+          if (field instanceof Node) {
+            priorChildParents.push([field, field.parent]);
+          } else if (isArray(field)) {
+            for (const item of field as unknown[]) {
+              if (item instanceof Node) {
+                priorChildParents.push([item, item.parent]);
+              }
+            }
+          }
         }
       }
     }
 
     const options = this._meta?.options;
-    let newNode = new Class(newData.data, options ? { ...options } : undefined, this.location, this.treeContext);
-    newNode.inherit(this);
+    const newNode = new Class(cloneData, options ? { ...options } : undefined, this.location, this.treeContext);
 
+    // Route parent writes through eval state and restore canonical pointers.
+    if (priorChildParents) {
+      for (const [child, priorParent] of priorChildParents) {
+        ctx!.activeState.get(child).fields.set('parent', newNode);
+        (child as any).parent = priorParent;
+      }
+    }
+
+    newNode.inherit(this);
     return newNode;
   }
 
@@ -992,7 +1367,6 @@ export abstract class Node<
     nilish.shortType = 'nil';
     nilish.nodeType = nodeTypeBits['Nil']!;
     nilish.removeFlag(F_VISIBLE);
-    nilish.data = '';
     return nilish;
   }
 
@@ -1037,15 +1411,15 @@ export abstract class Node<
    * @todo - Update preEval / eval to use static evaluation based on flags.
    */
   preEval(context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       let node = this.maybeClone(context);
-      node.preEvaluated = true;
+      node._setPreEvaluated(true, context);
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
       let out: MaybePromise<void>;
       try {
-        out = node.forEachNode(n => n.preEval(context));
+        out = node.forEachNode(n => n.preEval(context), context);
       } catch (error: unknown) {
         throw error;
       }
@@ -1071,7 +1445,7 @@ export abstract class Node<
     }
     let out = this.forEachNode((n: Node) => {
       return n.eval(context);
-    });
+    }, context);
     if (isThenable(out)) {
       return (out as Promise<void>).then(() => {
         return this;
@@ -1081,7 +1455,7 @@ export abstract class Node<
   }
 
   static evalStatic(node: Node, context: Context): MaybePromise<Node> {
-    if (node.hasFlag(F_STATIC) && node.evaluated) {
+    if (node.hasFlag(F_STATIC) && node._isEvaluated(context)) {
       return node;
     }
 
@@ -1093,24 +1467,28 @@ export abstract class Node<
 
     return pipe(
       () => {
-        if (!node.preEvaluated) {
+        if (!node._isPreEvaluated(context)) {
           return node.preEval(context);
         }
         return node;
       },
       (preEvald) => {
         preEvaluatedNode = preEvald;
-        preEvaluatedNode.preEvaluated = true;
+        preEvaluatedNode._setPreEvaluated(true, context);
         if (preEvald !== node) {
           preEvaluatedNode.inherit(node);
         }
-        if (!preEvaluatedNode.evaluated) {
+        if (!preEvaluatedNode._isEvaluated(context)) {
           return preEvaluatedNode.evalNode(context);
         }
         return preEvaluatedNode;
       },
       (evald) => {
-        evald.evaluated = true;
+        if (evald instanceof Node) {
+          evald._setEvaluated(true, context);
+        } else {
+          (evald as Record<string, unknown>).evaluated = true;
+        }
         if (preEvaluatedNode !== evald) {
           evald.inherit(preEvaluatedNode);
         }
@@ -1122,23 +1500,27 @@ export abstract class Node<
   private static _evalStaticSync(node: Node, context: Context): Node {
     let preEvaluatedNode: Node;
 
-    if (!node.preEvaluated) {
+    if (!node._isPreEvaluated(context)) {
       preEvaluatedNode = node.preEval(context) as Node;
     } else {
       preEvaluatedNode = node;
     }
-    preEvaluatedNode.preEvaluated = true;
+    preEvaluatedNode._setPreEvaluated(true, context);
     if (preEvaluatedNode !== node) {
       preEvaluatedNode.inherit(node);
     }
 
     let evald: Node;
-    if (!preEvaluatedNode.evaluated) {
+    if (!preEvaluatedNode._isEvaluated(context)) {
       evald = preEvaluatedNode.evalNode(context) as Node;
     } else {
       evald = preEvaluatedNode;
     }
-    evald.evaluated = true;
+    if (evald instanceof Node) {
+      evald._setEvaluated(true, context);
+    } else {
+      (evald as Record<string, unknown>).evaluated = true;
+    }
     if (preEvaluatedNode !== evald && typeof evald.inherit === 'function') {
       evald.inherit(preEvaluatedNode);
     }
@@ -1193,6 +1575,9 @@ export abstract class Node<
     this.post ||= node.post;
     this.sourceNode = node.sourceNode;
     this.sourceParent ??= node.sourceParent;
+    if (node.hoistToRoot) {
+      this.hoistToRoot = true;
+    }
     // Preserve the generated flag when inheriting; never overwrite true with false
     // (e.g. Ampersand.eval returns PseudoSelector with .generated true, then evalStatic
     // calls PseudoSelector.inherit(Ampersand), which would otherwise overwrite with false)
@@ -1214,16 +1599,27 @@ export abstract class Node<
    * normalization algorithms.
    */
   valueOf(): Primitive {
-    let data = this.data;
-    let type = typeof data;
-    if (primitives.includes(type)) {
-      return data as unknown as Primitive;
+    const ck = (this.constructor as typeof Node).childKeys;
+    if (!ck) {
+      // Leaf node — value is a primitive
+      return (this as any).value as Primitive;
     }
-    let values = [...getValues(data)];
-    if (values.length === 1) {
-      return `${values[0]}`;
+    // Container — collect string values from children
+    const parts: string[] = [];
+    for (const key of ck) {
+      const field = (this as any)[key!];
+      if (isArray(field)) {
+        for (let i = 0; i < field.length; i++) {
+          parts.push(`${field[i]}`);
+        }
+      } else if (field !== undefined) {
+        parts.push(`${field}`);
+      }
     }
-    return values.join('');
+    if (parts.length === 1) {
+      return parts[0]!;
+    }
+    return parts.join('');
   }
 
   processPrePost(key: 'pre' | 'post', defaultVal: string = '', options: PrintOptions) {
@@ -1288,6 +1684,9 @@ export abstract class Node<
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
+    if (options?.suppressComments && this.type === 'Comment') {
+      return '';
+    }
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -1302,6 +1701,17 @@ export abstract class Node<
   }
 
   /**
+   * Serialize the evaluated tree. Requires context so position patches
+   * (the virtual evaluated tree) are resolved during serialization.
+   *
+   * Use this instead of toString() when serializing eval results.
+   * toString() serializes the canonical (parsed) tree without eval state.
+   */
+  render(context: Context, options?: PrintOptions): string {
+    return this.toString({ ...options, context });
+  }
+
+  /**
    * The form of the node without pre/post comments and white-space
    *
    * @note - Internally, this still calls `toString()` on each value,
@@ -1313,14 +1723,39 @@ export abstract class Node<
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    for (let value of getValues(this.data)) {
-      if (value instanceof Node) {
-        value.toString(options);
-      } else {
-        const s = value === undefined ? '' : String(value);
-        if (s) {
-          w.add(s, this);
+    const ck = (this.constructor as typeof Node).childKeys;
+    const ctx = options.context;
+    if (ck) {
+      for (const key of ck) {
+        // Resolve through eval state when context available
+        const field = ctx
+          ? getField(this as Node, key!, ctx)
+          : (this as any)[key!];
+        if (isArray(field)) {
+          for (const item of field) {
+            if (item instanceof Node) {
+              item.toString(options);
+            } else {
+              const s = item === undefined ? '' : String(item);
+              if (s) {
+                w.add(s, this);
+              }
+            }
+          }
+        } else if (field instanceof Node) {
+          field.toString(options);
+        } else {
+          const s = field === undefined ? '' : String(field);
+          if (s) {
+            w.add(s, this);
+          }
         }
+      }
+    } else {
+      // Leaf node — render the primitive value directly
+      const s = String((this as any).value ?? '');
+      if (s) {
+        w.add(s, this);
       }
     }
     return w.getSince(mark);
@@ -1336,8 +1771,10 @@ export abstract class Node<
    * undefined = not comparable
    */
   compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
-    let aVal = this.valueOf();
-    let bVal = b.valueOf();
+    const aValueOf = this as unknown as { valueOf(context?: Context): Primitive };
+    const bValueOf = b as unknown as { valueOf(context?: Context): Primitive };
+    let aVal = context ? aValueOf.valueOf(context) : this.valueOf();
+    let bVal = context ? bValueOf.valueOf(context) : b.valueOf();
     if (aVal === bVal) {
       return 0;
     }

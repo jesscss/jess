@@ -1,11 +1,11 @@
 export type MaybePromise<T> = T | Promise<T>;
 
 export function isThenable(x: unknown): x is Promise<unknown> {
-  return !!x && (typeof x === 'object' || typeof x === 'function') && typeof (x as any).then === 'function';
+  return !!x && (typeof x === 'object' || typeof x === 'function') && 'then' in x && typeof x.then === 'function';
 }
 
 export function isPromise<T = unknown>(x: unknown): x is Promise<T> {
-  return !!x && typeof x === 'object' && typeof (x as any).then === 'function' && typeof (x as any).catch === 'function';
+  return !!x && typeof x === 'object' && 'then' in x && typeof x.then === 'function' && 'catch' in x && typeof x.catch === 'function';
 }
 
 /**
@@ -38,16 +38,14 @@ export function serialReduce<T, A>(items: readonly T[], seed: A, step: (acc: A, 
     const out = step(acc, items[i]!, i);
     if (isThenable(out)) {
       return (async () => {
-        acc = await out as A;
+        acc = await out;
         for (let j = i + 1; j < items.length; j++) {
-          acc = await step(acc, items[j]!, j) as A;
+          acc = await step(acc, items[j]!, j);
         }
         return acc;
       })();
     }
-    acc = out as A;
+    acc = out;
   }
   return acc;
 }
-
-

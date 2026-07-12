@@ -1,8 +1,8 @@
 import { type Context } from '../context.js';
-import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
+import { Node, F_VISIBLE, defineType, type OptionalLocation, type NodeOptions, type TreeContext } from './node.js';
 import { Nil } from './nil.js';
 import { logger } from '../logger.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 
 export type LogLevel = 'debug' | 'warn' | 'error';
 
@@ -11,7 +11,9 @@ export type LogValue = {
   message: Node;
 };
 
-export interface Log extends Node<LogValue, NodeOptions> {
+export type LogChildData = { level: LogLevel; message: Node };
+
+export interface Log extends Node<LogValue, NodeOptions, LogChildData> {
   type: 'Log';
   shortType: 'log';
   eval(context: Context): MaybePromise<Nil>;
@@ -21,38 +23,30 @@ export interface Log extends Node<LogValue, NodeOptions> {
  * A log node for diagnostic at-rules (@debug, @warn, @error).
  * These are compile-time diagnostic directives that should not appear in CSS output.
  */
-export class Log extends Node<LogValue, NodeOptions> {
+export class Log extends Node<LogValue, NodeOptions, LogChildData> {
+  static override childKeys = ['level', 'message'] as const;
+
+  /** @internal */ level!: LogLevel;
+  /** @internal */ message!: Node;
+
   constructor(
     value: LogValue,
     options?: NodeOptions,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     treeContext?: TreeContext
   ) {
     super(value, options, location, treeContext);
+    this.level = value.level;
+    this.message = value.message;
+    if (this.message instanceof Node) {
+      this.adopt(this.message);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
-    // Log nodes should not be visible (they serialize to empty strings)
     this.removeFlag(F_VISIBLE);
   }
 
-  get level() {
-    return this.data.level;
-  }
-
-  set level(val: LogLevel) {
-    this.setData('level', val);
-  }
-
-  get message() {
-    return this.data.message;
-  }
-
-  set message(val: Node) {
-    this.setData('message', val);
-  }
-
   override toTrimmedString() {
-    // Log nodes serialize to empty string since they're not supported in Jess syntax
     return '';
   }
 
@@ -61,25 +55,22 @@ export class Log extends Node<LogValue, NodeOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    // Evaluate the message expression
-    const messageResult = this.data.message.eval(context);
+    const messageResult = this.message.eval(context);
 
-    // Handle async evaluation if needed
-    if (messageResult && typeof (messageResult as any).then === 'function') {
+    if (isThenable(messageResult)) {
       return (messageResult as Promise<Node>).then((evaluatedMessage) => {
         this._logMessage(evaluatedMessage);
         return new Nil();
       });
     }
 
-    // Synchronous evaluation
     this._logMessage(messageResult as Node);
     return new Nil();
   }
 
-  private _logMessage(message: Node): void {
-    const messageStr = String(message);
-    const { level } = this.data;
+  private _logMessage(msg: Node): void {
+    const messageStr = String(msg);
+    const level = this.level;
 
     switch (level) {
       case 'debug':

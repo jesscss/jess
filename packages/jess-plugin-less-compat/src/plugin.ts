@@ -58,7 +58,7 @@ function addToJessRegistry(jessRegistry: any, name: string, func: any): void {
       const convertResult = (r: unknown) =>
         fromLessPluginReturnValue(r, { statementContext });
 
-      return isThenable(result) ? (result as Promise<unknown>).then(convertResult) : convertResult(result);
+      return isThenable(result) ? result.then(convertResult) : convertResult(result);
     };
     Object.assign(wrapped, func);
     jessRegistry.add(name, wrapped);
@@ -284,13 +284,13 @@ export class LessCompatPlugin extends AbstractPlugin {
         },
 
         inherit(): any {
-          const child = createFunctionRegistry() as any;
+          const child = createFunctionRegistry();
           child._base = this;
           return child;
         },
 
         create(base: any): any {
-          const newRegistry = createFunctionRegistry() as any;
+          const newRegistry = createFunctionRegistry();
           newRegistry._base = base;
           return newRegistry;
         }
@@ -401,9 +401,8 @@ export class LessCompatPlugin extends AbstractPlugin {
     this._lessPluginManager = pluginManager;
 
     const loadPluginSource = (fullPath: string, registerPlugin: (plugin: any) => void, targetJessRegistry?: any) => {
-      assertPluginJsPresent();
       const contents = fs.readFileSync(fullPath, 'utf8');
-      const localModule = { exports: {} as any };
+      const localModule: { exports: Record<string, unknown> } = { exports: {} };
       // When loading from an @plugin directive, pass a mock that registers to the Rules containing that @plugin
       const functions = targetJessRegistry != null
         ? createScopedFunctionRegistry(targetJessRegistry)
@@ -637,16 +636,16 @@ export class LessCompatPlugin extends AbstractPlugin {
         // In Less.js, @plugin syntax is: @plugin "plugin-name";
         // Handle both AtRule (modern) and Directive (v2) node types
         if (node && (node.type === 'AtRule' || node.type === 'Directive')) {
-          const atRuleName = node.data?.name;
+          const atRuleName = node.name;
           let nameValue: string | undefined;
 
           // Extract name value (could be string or node)
           if (typeof atRuleName === 'string') {
             nameValue = atRuleName;
-          } else if (atRuleName?.data) {
-            nameValue = atRuleName.data;
-          } else if (atRuleName?.type === 'Any' && atRuleName.data) {
-            nameValue = atRuleName.data;
+          } else if (atRuleName?.value) {
+            nameValue = atRuleName.value;
+          } else if (atRuleName?.type === 'Any' && atRuleName.value) {
+            nameValue = atRuleName.value;
           }
 
           // Check if this is a @plugin directive
@@ -655,7 +654,8 @@ export class LessCompatPlugin extends AbstractPlugin {
           const isPlugin = nameValue === 'plugin' || nameValue === '@plugin';
 
           if (isPlugin) {
-            const pluginDirectiveNode = (getJessNodeFromProxy(node) || node) as object;
+            const rawDirective = getJessNodeFromProxy(node) ?? node;
+            const pluginDirectiveNode: object = typeof rawDirective === 'object' && rawDirective !== null ? rawDirective : {};
             if (processedPluginDirectives.has(pluginDirectiveNode)) {
               return node;
             }
@@ -664,7 +664,7 @@ export class LessCompatPlugin extends AbstractPlugin {
             // Extract plugin path/name and options from prelude
             // Handle both AtRule (value.prelude) and Directive (value.value) structures
             // Less.js syntax: @plugin (options) "path"
-            const prelude = node.data?.prelude || node.data?.value;
+            const prelude = node.prelude || node.value;
             let pluginPath: string | undefined;
             let pluginOptions: string | undefined;
 
@@ -677,13 +677,13 @@ export class LessCompatPlugin extends AbstractPlugin {
                 if (typeof node === 'string') {
                   return node;
                 }
-                if (node.type === 'Quoted' && node.data) {
-                  // Quoted.data can be string | Any | Interpolated
-                  if (typeof node.data === 'string') {
-                    return node.data;
+                if (node.type === 'Quoted' && node.value) {
+                  // Quoted.value can be string | Any | Interpolated
+                  if (typeof node.value === 'string') {
+                    return node.value;
                   }
-                  if (node.data?.data && typeof node.data.data === 'string') {
-                    return node.data.data;
+                  if (node.value?.value && typeof node.value.value === 'string') {
+                    return node.value.value;
                   }
                   // Try valueOf() for Any nodes
                   if (typeof node.valueOf === 'function') {
@@ -693,17 +693,17 @@ export class LessCompatPlugin extends AbstractPlugin {
                     }
                   }
                 }
-                if (node.type === 'Url' && node.data) {
-                  // Url.data can be Quoted, string, or other
-                  if (typeof node.data === 'string') {
-                    return node.data;
+                if (node.type === 'Url' && node.value) {
+                  // Url.value can be Quoted, string, or other
+                  if (typeof node.value === 'string') {
+                    return node.value;
                   }
-                  if (node.data.type === 'Quoted' && node.data.data) {
-                    if (typeof node.data.data === 'string') {
-                      return node.data.data;
+                  if (node.value.type === 'Quoted' && node.value.value) {
+                    if (typeof node.value.value === 'string') {
+                      return node.value.value;
                     }
-                    if (node.data.data?.data && typeof node.data.data.data === 'string') {
-                      return node.data.data.data;
+                    if (node.value.value?.value && typeof node.value.value.value === 'string') {
+                      return node.value.value.value;
                     }
                   }
                   // Try valueOf() for Url nodes
@@ -724,19 +724,19 @@ export class LessCompatPlugin extends AbstractPlugin {
                 pluginPath = prelude;
               } else if (prelude.type === 'Quoted' || prelude.type === 'Url') {
                 pluginPath = extractStringValue(prelude);
-              } else if (prelude.type === 'Sequence' && Array.isArray(prelude.data)) {
+              } else if (prelude.type === 'Sequence' && Array.isArray(prelude.value)) {
                 // Sequence might contain: [options in parens, quoted path]
                 // Look for Quoted or Url (the path) and any preceding options
-                for (let i = 0; i < prelude.data.length; i++) {
-                  const item = prelude.data[i];
+                for (let i = 0; i < prelude.value.length; i++) {
+                  const item = prelude.value[i];
                   if (item && (item.type === 'Quoted' || item.type === 'Url')) {
                     pluginPath = extractStringValue(item);
                     // Check if there's an options node before this (e.g., in parentheses)
                     if (i > 0) {
-                      const prevItem = prelude.data[i - 1];
+                      const prevItem = prelude.value[i - 1];
                       // Options might be in a Paren node or as a string
-                      if (prevItem && prevItem.type === 'Paren' && prevItem.data) {
-                        const optionsValue = prevItem.data.valueOf ? prevItem.data.valueOf() : prevItem.data.toString();
+                      if (prevItem && prevItem.type === 'Paren' && prevItem.value) {
+                        const optionsValue = prevItem.value.valueOf ? prevItem.value.valueOf() : prevItem.value.toString();
                         if (typeof optionsValue === 'string') {
                           pluginOptions = optionsValue.trim();
                         }
@@ -752,9 +752,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                     }
                   }
                 }
-              } else if (prelude.type === 'Expression' && prelude.data) {
+              } else if (prelude.type === 'Expression' && prelude.value) {
                 // Expression might contain options and a Quoted or Url node
-                const values = Array.isArray(prelude.data) ? prelude.data : [prelude.data];
+                const values = Array.isArray(prelude.value) ? prelude.value : [prelude.value];
                 for (let i = 0; i < values.length; i++) {
                   const item = values[i];
                   if (item && (item.type === 'Quoted' || item.type === 'Url')) {
@@ -762,8 +762,8 @@ export class LessCompatPlugin extends AbstractPlugin {
                     // Check for options before the path
                     if (i > 0) {
                       const prevItem = values[i - 1];
-                      if (prevItem && prevItem.type === 'Paren' && prevItem.data) {
-                        const optionsValue = prevItem.data.valueOf ? prevItem.data.valueOf() : prevItem.data.toString();
+                      if (prevItem && prevItem.type === 'Paren' && prevItem.value) {
+                        const optionsValue = prevItem.value.valueOf ? prevItem.value.valueOf() : prevItem.value.toString();
                         if (typeof optionsValue === 'string') {
                           pluginOptions = optionsValue.trim();
                         }
@@ -774,9 +774,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                     }
                   }
                 }
-              } else if (prelude.type === 'List' && prelude.data) {
+              } else if (prelude.type === 'List' && prelude.value) {
                 // List might contain options and path
-                const items = Array.isArray(prelude.data) ? prelude.data : [prelude.data];
+                const items = Array.isArray(prelude.value) ? prelude.value : [prelude.value];
                 for (let i = 0; i < items.length; i++) {
                   const item = items[i];
                   if (item && (item.type === 'Quoted' || item.type === 'Url')) {
@@ -784,8 +784,8 @@ export class LessCompatPlugin extends AbstractPlugin {
                     // Check for options before the path
                     if (i > 0) {
                       const prevItem = items[i - 1];
-                      if (prevItem && prevItem.type === 'Paren' && prevItem.data) {
-                        const optionsValue = prevItem.data.valueOf ? prevItem.data.valueOf() : prevItem.data.toString();
+                      if (prevItem && prevItem.type === 'Paren' && prevItem.value) {
+                        const optionsValue = prevItem.value.valueOf ? prevItem.value.valueOf() : prevItem.value.toString();
                         if (typeof optionsValue === 'string') {
                           pluginOptions = optionsValue.trim();
                         }
@@ -796,9 +796,9 @@ export class LessCompatPlugin extends AbstractPlugin {
                     }
                   }
                 }
-              } else if (prelude.data && typeof prelude.data === 'string') {
+              } else if (prelude.value && typeof prelude.value === 'string') {
                 // Fallback: direct string value
-                pluginPath = prelude.data;
+                pluginPath = prelude.value;
               }
             }
 
@@ -1010,7 +1010,7 @@ export class LessCompatPlugin extends AbstractPlugin {
           // Call atRule() to process @plugin directives and add visitors
           // This must happen before we run Less visitors, so that newly added visitors
           // are available for subsequent nodes
-          const atRuleResult = visitor.atRule(node as any, undefined);
+          const atRuleResult = visitor.atRule(node as import('@jesscss/core').AtRule, undefined);
           // Use the result if atRule() returned a different node (and it's not a symbol)
           if (atRuleResult && typeof atRuleResult !== 'symbol' && atRuleResult !== node) {
             node = atRuleResult;
@@ -1090,7 +1090,7 @@ export class LessCompatPlugin extends AbstractPlugin {
                 // If result is undefined, a replacing visitor wants to remove this node
                 // (Non-replacing visitors can't return undefined - Less.js ignores their return value)
                 if (result === undefined) {
-                  return undefined as any;
+                  return undefined as unknown as Node;
                 }
 
                 // Get next visitor - if new visitors were added during this iteration,

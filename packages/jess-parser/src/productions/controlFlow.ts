@@ -1,4 +1,4 @@
-import type { JessRuleContext as RuleContext } from '../jessRecursiveParser.js';
+import type { JessRuleContext as RuleContext, TokenMap } from '../jessRecursiveParser.js';
 import type { IToken } from '@jesscss/parser';
 import {
   Any,
@@ -16,25 +16,50 @@ type P = any;
 
 /**
  * Comparison: `value op value` → Condition.
- * Handles: `=`, `>`, `<`, `>=`, `<=`
+ * Handles: `=`, `==`, `!=`, `>`, `<`, `>=`, `<=`
  */
-export function jessComparison(this: P, ctx: RuleContext = {}) {
+export function jessComparison(this: P, T: TokenMap) {
   const $ = this;
-  $.startRule();
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
 
-  const left = $.value(ctx) as unknown as Node;
-  const opTok = $.OR([
-    { GATE: () => $.LA(1).tokenType === $.T.GtEq, ALT: () => $.CONSUME($.T.GtEq) },
-    { GATE: () => $.LA(1).tokenType === $.T.LtEq, ALT: () => $.CONSUME($.T.LtEq) },
-    { GATE: () => $.LA(1).tokenType === $.T.Gt,   ALT: () => $.CONSUME($.T.Gt)   },
-    { GATE: () => $.LA(1).tokenType === $.T.Lt,   ALT: () => $.CONSUME($.T.Lt)   },
-    { GATE: () => $.LA(1).tokenType === $.T.Eq,   ALT: () => $.CONSUME($.T.Eq)   }
-  ]) as unknown as IToken;
-  const right = $.value(ctx) as unknown as Node;
+    const left = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
+    let opTok: IToken;
+    if ($.RECORDING_PHASE) {
+      opTok = $.OR([
+        { ALT: () => $.CONSUME($.T.NotEq) },
+        { ALT: () => $.CONSUME($.T.EqEq) },
+        { ALT: () => $.CONSUME($.T.GtEq) },
+        { ALT: () => $.CONSUME($.T.LtEq) },
+        { ALT: () => $.CONSUME($.T.Gt) },
+        { ALT: () => $.CONSUME($.T.Lt) },
+        { ALT: () => $.CONSUME($.T.Eq) }
+      ]) as unknown as IToken;
+    } else if ($.isType($.T.NotEq)) {
+      opTok = $.CONSUME($.T.NotEq) as unknown as IToken;
+    } else if ($.isType($.T.EqEq)) {
+      opTok = $.CONSUME($.T.EqEq) as unknown as IToken;
+    } else if ($.isType($.T.GtEq)) {
+      opTok = $.CONSUME($.T.GtEq) as unknown as IToken;
+    } else if ($.isType($.T.LtEq)) {
+      opTok = $.CONSUME($.T.LtEq) as unknown as IToken;
+    } else if ($.isType($.T.Gt)) {
+      opTok = $.CONSUME($.T.Gt) as unknown as IToken;
+    } else if ($.isType($.T.Lt)) {
+      opTok = $.CONSUME($.T.Lt) as unknown as IToken;
+    } else {
+      opTok = $.CONSUME($.T.Eq) as unknown as IToken;
+    }
+    const right = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
 
-  const loc = $.endRule();
-  const op = opTok.image === '==' ? '=' : opTok.image as Condition['operator'];
-  return new Condition([$.wrap(left, true), op, $.wrap(right)], undefined, loc, $.context);
+    const loc = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    const negate = opTok.tokenType.name === 'NotEq';
+    const op = (opTok.image === '==' || opTok.image === '!=') ? '=' : opTok.image;
+    return new Condition([$.wrap(left, true), op as '=' | '>' | '<' | '>=' | '<=', $.wrap(right)], negate ? { negate: true } : undefined, loc, $.context);
+  };
 }
 
 /** Look-ahead: does `(...)` contain a comparison operator? */
@@ -48,7 +73,9 @@ function looksLikeComparison($: P) {
       return false;
     }
     if (
-      tok.tokenType === $.T.Eq
+      tok.tokenType === $.T.NotEq
+      || tok.tokenType === $.T.EqEq
+      || tok.tokenType === $.T.Eq
       ||   tok.tokenType === $.T.Gt
       ||   tok.tokenType === $.T.Lt
       ||   tok.tokenType === $.T.GtEq
@@ -63,97 +90,114 @@ function looksLikeComparison($: P) {
 /**
  * Condition in parens: `(comparison)` → Condition, or `(expr)` → Condition([expr])
  */
-export function jessConditionInParens(this: P, ctx: RuleContext = {}) {
+export function jessConditionInParens(this: P, T: TokenMap) {
   const $ = this;
-  $.startRule();
-  $.CONSUME($.T.LParen);
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    $.CONSUME($.T.LParen);
 
-  let condNode: Node;
-  if (looksLikeComparison($)) {
-    condNode = $.jessComparison(ctx) as unknown as Node;
-  } else {
-    const expr = $.value(ctx) as unknown as Node;
-    condNode = new Condition([$.wrap(expr, true)], undefined, $.getLocationFromNodes([expr])!, $.context);
-  }
+    let condNode: Node;
+    if (looksLikeComparison($)) {
+      condNode = $.SUBRULE($.jessComparison, { ARGS: [ctx] }) as unknown as Node;
+    } else {
+      const expr = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
+      if ($.RECORDING_PHASE) {
+        $.CONSUME($.T.RParen);
+        $.endRule();
+        return;
+      }
+      condNode = new Condition([$.wrap(expr, true)], undefined, $.getLocationFromNodes([expr])!, $.context);
+    }
 
-  $.CONSUME($.T.RParen);
-  $.endRule();
-  return condNode;
+    $.CONSUME($.T.RParen);
+    $.endRule();
+    return condNode;
+  };
 }
 
 /**
  * `$if (cond) { rules } [$else if (cond) { rules }]* [$else { rules }]`
  */
-export function jessIfStatement(this: P, ctx: RuleContext = {}) {
+export function jessIfStatement(this: P, T: TokenMap) {
   const $ = this;
-  $.startRule();
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
 
-  $.CONSUME($.T.JessIf);
-  const conditions: Node[] = [];
-  const bodies: Rules[] = [];
+    $.CONSUME($.T.JessIf);
+    const conditions: Node[] = [];
+    const bodies: Rules[] = [];
 
-  const firstCond = $.jessConditionInParens(ctx) as unknown as Node;
-  conditions.push(firstCond);
-  $.CONSUME($.T.LCurly);
-  const firstBody = $.atRuleBody({ ...ctx, inner: true }) as unknown as Rules;
-  bodies.push(firstBody);
-  $.CONSUME($.T.RCurly);
+    const firstCond = $.SUBRULE($.jessConditionInParens, { ARGS: [ctx] }) as unknown as Node;
+    conditions.push(firstCond);
+    $.CONSUME($.T.LCurly);
+    const firstBody = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] }) as unknown as Rules;
+    bodies.push(firstBody);
+    $.CONSUME($.T.RCurly);
 
-  let elseBranch: Rules | undefined;
+    let elseBranch: Rules | undefined;
 
-  while ($.LA(1).tokenType === $.T.JessElse) {
-    $.CONSUME($.T.JessElse);
+    while ($.LA(1).tokenType === $.T.JessElse) {
+      $.CONSUME($.T.JessElse);
 
-    if ($.LA(1).tokenType === $.T.JessIf) {
-      // $else if (cond) { ... }
-      $.CONSUME($.T.JessIf);
-      const cond = $.jessConditionInParens(ctx) as unknown as Node;
-      conditions.push(cond);
-      $.CONSUME($.T.LCurly);
-      const body = $.atRuleBody({ ...ctx, inner: true }) as unknown as Rules;
-      bodies.push(body);
-      $.CONSUME($.T.RCurly);
-    } else {
-      // $else { ... }
-      $.CONSUME($.T.LCurly);
-      elseBranch = $.atRuleBody({ ...ctx, inner: true }) as unknown as Rules;
-      $.CONSUME($.T.RCurly);
-      break; // $else must be last
+      if ($.LA(1).tokenType === $.T.JessIf) {
+        // $else if (cond) { ... }
+        $.CONSUME($.T.JessIf);
+        const cond = $.SUBRULE($.jessConditionInParens, { ARGS: [ctx] }) as unknown as Node;
+        conditions.push(cond);
+        $.CONSUME($.T.LCurly);
+        const body = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] }) as unknown as Rules;
+        bodies.push(body);
+        $.CONSUME($.T.RCurly);
+      } else {
+        // $else { ... }
+        $.CONSUME($.T.LCurly);
+        elseBranch = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] }) as unknown as Rules;
+        $.CONSUME($.T.RCurly);
+        break; // $else must be last
+      }
     }
-  }
 
-  const loc = $.endRule();
-  return new If({ conditions, bodies, elseBranch }, undefined, loc, $.context);
+    const loc = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    return new If({ conditions, bodies, elseBranch }, undefined, loc, $.context);
+  };
 }
 
 /**
  * `$for ($var in iterable) { rules }`
  */
-export function jessForStatement(this: P, ctx: RuleContext = {}) {
+export function jessForStatement(this: P, T: TokenMap) {
   const $ = this;
-  $.startRule();
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
 
-  $.CONSUME($.T.JessFor);
-  $.CONSUME($.T.LParen);
+    $.CONSUME($.T.JessFor);
+    $.CONSUME($.T.LParen);
 
-  const loopVarTok = $.CONSUME($.T.DollarVariable) as unknown as IToken;
-  const varLoc = $.getLocationInfo(loopVarTok);
-  const varNameNode = new Any(loopVarTok.image.slice(1), { role: 'property' }, varLoc, $.context);
-  const vars = new VarDeclaration(
-    { name: varNameNode, value: new Nil(undefined, undefined, varLoc, $.context) },
-    undefined,
-    varLoc,
-    $.context
-  );
+    const loopVarTok = $.CONSUME($.T.DollarVariable) as unknown as IToken;
 
-  $.CONSUME($.T.PlainIdent); // 'in'
-  const iterable = $.value(ctx) as unknown as Node;
-  $.CONSUME($.T.RParen);
+    $.CONSUME($.T.PlainIdent); // 'in'
+    const iterable = $.SUBRULE($.value, { ARGS: [ctx] }) as unknown as Node;
+    $.CONSUME($.T.RParen);
 
-  $.CONSUME($.T.LCurly);
-  const rules = $.atRuleBody({ ...ctx, inner: true }) as unknown as Rules;
-  $.CONSUME($.T.RCurly);
+    $.CONSUME($.T.LCurly);
+    const rules = $.SUBRULE($.atRuleBody, { ARGS: [{ ...ctx, inner: true }] }) as unknown as Rules;
+    $.CONSUME($.T.RCurly);
 
-  const loc = $.endRule();
-  return new For({ vars, iterable, rules }, undefined, loc, $.context);
+    const loc = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+    const varLoc = $.getLocationInfo(loopVarTok);
+    const varNameNode = new Any(loopVarTok.image.slice(1), { role: 'property' }, varLoc, $.context);
+    const vars = new VarDeclaration(
+      { name: varNameNode, value: new Nil(undefined, undefined, varLoc, $.context) },
+      undefined,
+      varLoc,
+      $.context
+    );
+    return new For({ vars, iterable, rules }, undefined, loc, $.context);
+  };
 }

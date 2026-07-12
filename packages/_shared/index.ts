@@ -107,6 +107,9 @@ export const invalidLess: string[] = [
   /** `/deep/` combinator not supported (deprecated CSS) */
   'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
 
+  /** Obsolete Less parent selectors `^` / `^^` were removed in Less v5 */
+  'tests-config/compression/legacy/compression.less',
+
   /** Inline JavaScript using backticks is intentionally unsupported */
   'tests-unit/javascript/javascript.less',
   'tests-config/js-type-errors/js-type-error.less',

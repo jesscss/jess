@@ -85,7 +85,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   it('1a. extend-clearfix with nesting – nested &:after inside block', async () => {
     const context = new Context({ collapseNesting: false });
     const evald = await createExtendClearfixAst().eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(
       `.clearfix,
 .foo,
@@ -110,7 +110,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
   it('1b. extend-clearfix without nesting – flat :is(...):after (Less-style)', async () => {
     const context = new Context({ collapseNesting: true });
     const evald = await createExtendClearfixAst().eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(
       `.clearfix,
 .foo,
@@ -169,14 +169,10 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     ]);
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
-    const expected = `.replace.replace,
-.c.replace + .replace {
-  .replace,
-  .c,
-  .rep_ace {
-    prop: copy-paste-replace;
-  }
+    const css = evald.render(context);
+    const expected = `:is(.replace.replace, .c.replace + .replace) :is(.replace, .c),
+.rep_ace {
+  prop: copy-paste-replace;
 }`;
     expect(css.trim()).toBe(expected);
     // Exact extend(.c) must not merge .effected into the first rule (no bare .c there).
@@ -276,7 +272,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     ]);
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(`
 :is(.replace, .rep_ace):is(.replace, .rep_ace),
 .c:is(.replace, .rep_ace) + :is(.replace, .rep_ace) {
@@ -444,7 +440,7 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
       })
     ]);
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(`
 .sidebar,
 .sidebar2,
@@ -632,7 +628,11 @@ describe('Jess all-less fixture replications (extend-less-fixtures)', () => {
     ]);
     const context = new Context({ collapseNesting: false });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
+    /**
+     * @todo - this is wrong / inefficient and a regression.
+     * :is(.bar, .baz) should be grouped
+     */
     expect(css.trim()).toBeString(`
 :is(.foo, .ext1 .ext2, .ext3, .ext4) .bar,
 :is(.foo, .ext1 .ext2, .ext3, .ext4) .baz {
@@ -750,7 +750,7 @@ div:is(.ext5, .ext7),
     ]);
     const context = new Context({ collapseNesting });
     const evald = await root.eval(context);
-    const css = evald.toString({ context });
+    const css = evald.render(context);
     expect(css.trim()).toBeString(`
 .aa,
 .cc {

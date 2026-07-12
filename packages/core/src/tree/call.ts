@@ -1,4 +1,5 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
+import type { Class } from 'type-fest';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation, type TreeContext } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
@@ -7,11 +8,11 @@ import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
+import { evalMixinDirect, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
-import { freezeChildren } from './util/cloning.js';
 import { List, list } from './list.js';
 import type { AtRule } from './at-rule.js';
+import { getField, getParent, mergeDependencies, setField, setDependency, setParent } from './util/field-helpers.js';
 let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
@@ -72,50 +73,153 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
+export type CallChildData = { name: string | Node; args: List<Node> | undefined; contentNode: Node | undefined };
+
 export interface Call {
   type: 'Call';
   shortType: 'call';
 }
 
-export class Call extends Node<CallValue, CallOptions> {
-  constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
+export class Call extends Node<CallValue, CallOptions, CallChildData> {
+  static override childKeys = ['name', 'args', 'contentNode'] as const;
+
+  /** @internal */ name!: string | Node;
+  /** @internal */ args: List<Node> | undefined;
+  /** @internal */ contentNode: Node | undefined;
+
+  override clone(deep?: boolean, cloneFn?: (n: Node) => Node, ctx?: Context): this {
+    const name = this.get('name', ctx);
+    const args = this.get('args', ctx);
+    const contentNode = this.get('contentNode', ctx);
+    const cloneChild = cloneFn ?? ((n: Node) => n.clone(deep, cloneFn, ctx));
+    const cloneData: CallValue = {
+      name: deep && name instanceof Node ? cloneChild(name) : name,
+      args: deep && args instanceof Node ? cloneChild(args) as List<Node> : args,
+      contentNode: deep && contentNode instanceof Node ? cloneChild(contentNode) : contentNode
+    };
+
+    let priorChildParents: Array<[Node, Node | undefined]> | undefined;
+    if (!deep && ctx) {
+      priorChildParents = [];
+      if (cloneData.name instanceof Node) {
+        priorChildParents.push([cloneData.name, cloneData.name.parent]);
+      }
+      if (cloneData.args instanceof Node) {
+        priorChildParents.push([cloneData.args, cloneData.args.parent]);
+      }
+      if (cloneData.contentNode instanceof Node) {
+        priorChildParents.push([cloneData.contentNode, cloneData.contentNode.parent]);
+      }
+    }
+
+    const options = this._meta?.options;
+    const newNode = new (this.constructor as Class<this>)(
+      cloneData,
+      options ? { ...options } : undefined,
+      this.location,
+      this.treeContext
+    );
+
+    if (priorChildParents && ctx) {
+      for (const [child, priorParent] of priorChildParents) {
+        setParent(child, newNode, ctx);
+        (child as unknown as { parent?: Node }).parent = priorParent;
+      }
+    }
+
+    newNode.inherit(this);
+    return newNode;
+  }
+
+  constructor(value: CallValue, options?: CallOptions, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.name = value.name;
+    this.args = value.args;
+    this.contentNode = value.contentNode;
+    if (this.name instanceof Node) {
+      this.adopt(this.name);
+    }
+    if (this.args instanceof Node) {
+      this.adopt(this.args);
+    }
+    if (this.contentNode instanceof Node) {
+      this.adopt(this.contentNode);
+    }
     this.requiredSemi = true;
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
   }
 
-  get name() {
-    return this.data.name;
+  private _getOptions(context?: Context): CallOptions | undefined {
+    return context
+      ? getField<CallOptions | undefined>(this, 'options', context)
+      : this.options;
   }
 
-  set name(val: CallValue['name']) {
-    this.setData('name', val);
+  private _normalizeFallbackArgSpacing(node: Node): void {
+    if (isNode(node, N.Sequence)) {
+      node.get('value').forEach((child, childIndex) => {
+        child.pre = childIndex === 0 ? 0 : 1;
+      });
+      return;
+    }
+    if (isNode(node, N.List)) {
+      node.get('value').forEach((child) => {
+        if (isNode(child, N.Sequence)) {
+          child.get('value').forEach((nested, nestedIndex) => {
+            nested.pre = nestedIndex === 0 ? 0 : 1;
+          });
+        }
+      });
+    }
   }
 
-  get args() {
-    return this.data.args;
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: remove clone(true) on args. Fallback args should be read
+   * from canonical nodes; spacing normalization should be a print concern.
+   */
+  private _materializeFallbackArgs(args: List<Node> | undefined): List<Node> | undefined {
+    if (!args) {
+      return undefined;
+    }
+    const clonedArgs = list(
+      args.get('value').map(arg => arg.clone(true)),
+      args.options ? { ...args.options } : undefined
+    );
+    clonedArgs.get('value').forEach((arg, argIndex) => {
+      // Normalize fallback-call arg spacing to Less-style call serialization.
+      arg.pre = argIndex === 0 ? 0 : 1;
+      this._normalizeFallbackArgSpacing(arg);
+    });
+    return clonedArgs;
   }
 
-  set args(val: CallValue['args']) {
-    this.setData('args', val as any);
-  }
-
-  get contentNode() {
-    return this.data.contentNode;
-  }
-
-  set contentNode(val: CallValue['contentNode']) {
-    this.setData('contentNode', val as any);
+  /**
+   * @removal-target — node-copy-reduction
+   * Target: remove clone(true) on args. Function args should be evaluated
+   * in a position; freezing is a read-only concern that positions handle.
+   */
+  private _materializeFunctionArgs(args: List<Node>, context: Context): List<Node> {
+    return list(
+      args.get('value').map((arg) => {
+        const cloned = arg.clone(true, undefined, context);
+        cloned.frozen = true;
+        return cloned;
+      }),
+      args.options ? { ...args.options } : undefined
+    );
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    const { silentFail } = this.options;
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, contentNode } = this.data;
-    const args = this.data.args;
+    const context = options.context;
+    const { silentFail, markImportant } = this._getOptions(context) ?? {};
+    const name = this.get('name', context);
+    const args = this.get('args', context);
+    const contentNode = this.get('contentNode', context);
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
@@ -126,7 +230,7 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      const normalizedArgs = args.data.filter(Boolean);
+      const normalizedArgs = args.get('value', context).filter(Boolean);
       const last = normalizedArgs.length - 1;
       for (let i = 0; i <= last; i++) {
         const arg = normalizedArgs[i]!;
@@ -139,7 +243,7 @@ export class Call extends Node<CallValue, CallOptions> {
       }
     }
     w.add(')');
-    if (this.options?.markImportant) {
+    if (markImportant) {
       w.add(' !important');
     }
     if (contentNode) {
@@ -152,14 +256,14 @@ export class Call extends Node<CallValue, CallOptions> {
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
     let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
-    for (const rule of rules.data) {
+    for (const rule of rules.value) {
       if (isNode(rule, N.Declaration)) {
         rule.setData('important', important);
       } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
       } else if (isNode(rule, N.AtRule | N.Ruleset)) {
-        if ((rule as AtRule).data.rules) {
-          this.makeImportant((rule as AtRule).data.rules!);
+        if ((rule as AtRule).get('rules')) {
+          this.makeImportant((rule as AtRule).get('rules')!);
         }
       }
     }
@@ -168,21 +272,75 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    let { name } = this.data;
-    let args = this.data.args;
-    let { markImportant } = this.options;
+    let name = this.get('name', context);
+    let args = this.get('args', context);
+    const callOptions = this._getOptions(context) ?? {};
+    let { markImportant } = callOptions;
+    const applyDependencyToResult = <T extends Node>(
+      result: T,
+      nodes?: readonly (Node | undefined)[]
+    ): T => {
+      const dependency = mergeDependencies(
+        nodes ? [result, ...nodes] : [result],
+        context
+      );
+      if (dependency?.dependsOn && dependency.dependsOn.size > 0) {
+        setDependency(result, {
+          dependsOn: new Set(dependency.dependsOn),
+          sourceExpr: this
+        }, context);
+      }
+      return result;
+    };
     const adoptCallWhitespace = <T extends Node>(node: T): T => {
       node.pre = this.pre;
       node.post = this.post;
       node.sourceParent = this;
       return node;
     };
+    /** @removal-target — node-copy-reduction: clone(false) + runtime copy.
+     * Position isolates; downstream reads resolve through eval state helpers. */
+    const cloneLeafDownstreamResult = <T extends Node>(node: T): T => {
+      const clone = node.clone(false, undefined, context) as T;
+      const nodeState = context.activeState.peek(node);
+      if (nodeState?._fields) {
+        const sn = nodeState._fields.get('sourceNode');
+        if (sn) {
+          clone.sourceNode = sn as Node;
+        }
+        if (nodeState._fields.has('sourceParent')) {
+          clone.sourceParent = nodeState._fields.get('sourceParent') as Node | undefined;
+        }
+      }
+      return clone;
+    };
+    /** @removal-target — node-copy-reduction: remove entirely.
+     * No internal materialization; position patches provide isolation. */
+    const materializeDownstreamResult = <T extends Node>(node: T): T => {
+      if (node === node.sourceNode) {
+        const childKeys = (node.constructor as typeof Node).childKeys;
+        if (childKeys === null) {
+          return cloneLeafDownstreamResult(node);
+        }
+        return node.materializeEvaluatedCopy(context) as T;
+      }
+      return node;
+    };
+    /** @removal-target — node-copy-reduction: remove entirely.
+     * Output shaping (pre/post/sourceParent/makeImportant) should go through
+     * position.setField on the result node. No materialization boundary. */
+    const materializeStylesheetFunctionRulesBoundary = <T extends Node>(node: T): T => {
+      if (node === node.sourceNode && isNode(node, N.Rules)) {
+        return node.cloneDetachedMaterializedWrapper(context) as T;
+      }
+      return materializeDownstreamResult(node);
+    };
     const evalArgNodes = async (nodes?: List<Node>) => {
       if (!nodes) {
         return undefined;
       }
       const out: Node[] = [];
-      for (const node of nodes.data) {
+      for (const node of nodes.get('value')) {
         out.push(await node.eval(context) as Node);
       }
       return list(out, nodes.options);
@@ -203,7 +361,7 @@ export class Call extends Node<CallValue, CallOptions> {
     // This handles cases like @alias: .something(foo); @alias();
     if (isNode(n, N.Call)) {
       // Execute the inner Call node (it will handle its own callStack push/pop)
-      const result = await n.eval(context);
+      const result = materializeDownstreamResult(await n.eval(context));
       // Apply markImportant if needed
       if (markImportant && isNode(result, N.Rules)) {
         this.makeImportant(result);
@@ -211,27 +369,49 @@ export class Call extends Node<CallValue, CallOptions> {
       // Always pop the outer call's stack entries
       context.callStack.pop();
       context.parenFrames.pop();
-      return result;
+      return adoptCallWhitespace(result);
     } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
-      n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
+      // Direct mixin invocation — skip getFunctionFromMixins/callWithContext wrapper
+      const originalCaller = context.caller;
+      context.caller = this;
+      try {
+        const result = await evalMixinDirect(context, n as MixinEntry | MixinEntry[], args);
+        // Result is already fully evaluated by the dispatch primitives — no re-eval.
+        if (markImportant && isNode(result, N.Rules)) {
+          this.makeImportant(result);
+        }
+        context.callStack.pop();
+        context.parenFrames.pop();
+        return adoptCallWhitespace(result);
+      } finally {
+        context.caller = originalCaller;
+      }
     } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
       const argNodes = await evalArgNodes(args) ?? list([]);
-      const result = await (n as any).evalCall(context, argNodes);
+      const result = await n.evalCall(context, argNodes);
       context.callStack.pop();
       context.parenFrames.pop();
-      return result;
+      return applyDependencyToResult(
+        adoptCallWhitespace(materializeStylesheetFunctionRulesBoundary(result)),
+        argNodes.get('value')
+      );
     } else if (isNode(n, N.Collection)) {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
-      if (args && args.data.length > 0) {
+      if (args && args.get('value').length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       const Rules = await getRules();
-      let rules = Rules.create([...n.data], n.options);
+      /** @removal-target — node-copy-reduction: clone(true) for Collection unlock.
+       * Detached ruleset children should be referenced through position, not cloned. */
+      let rules = Rules.create(
+        n.value.map(child => child.clone(true, undefined, context)),
+        n.options ? { ...n.options } : undefined
+      );
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
       // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
@@ -244,12 +424,12 @@ export class Call extends Node<CallValue, CallOptions> {
       context.parenFrames.pop();
       // Apply markImportant if needed
       if (markImportant) {
-        this.makeImportant(n as unknown as Rules);
+        this.makeImportant(rules);
       }
       return rules;
     }
 
-    let fn = isNode(n, N.JsFunction) ? n.data : n;
+    let fn = isNode(n, N.JsFunction) ? n.value : n;
     if (typeof fn === 'function') {
       const originalCaller = context.caller;
       context.caller = this;
@@ -257,8 +437,8 @@ export class Call extends Node<CallValue, CallOptions> {
       try {
         /** Freeze args */
         if (args) {
-          const copiedArgs = args.copy(true, freezeChildren);
-          for (const copied of copiedArgs.data) {
+          const copiedArgs = this._materializeFunctionArgs(args, context);
+          for (const copied of copiedArgs.get('value')) {
             // Anchor copied references to this Call so nested property refs
             // (e.g. $list-1) can walk back to call-site Rules.
             // Also anchor copied Mixin callback args to call-site source scope
@@ -272,14 +452,17 @@ export class Call extends Node<CallValue, CallOptions> {
           }
           args = copiedArgs;
         }
-        const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
+        const shouldPassListArgs = Boolean(
+          ('_internal' in fn && fn._internal)
+          || ('options' in fn && typeof fn.options === 'object' && fn.options !== null && 'params' in fn.options && fn.options.params)
+        );
         const fnCallable = fn as (...args: any[]) => any;
         const result = await (
           args
             ? (
                 shouldPassListArgs
                   ? callWithContext(context, fnCallable, args)
-                  : callWithContext(context, fnCallable, ...[...args.data])
+                  : callWithContext(context, fnCallable, ...[...args.get('value')])
               )
             : callWithContext(context, fnCallable)
         );
@@ -290,10 +473,6 @@ export class Call extends Node<CallValue, CallOptions> {
           let evald = result.eval(context);
           if (isThenable(evald)) {
             evald = await evald;
-            if (markImportant && isNode(evald, N.Rules)) {
-              this.makeImportant(evald);
-            }
-            return adoptCallWhitespace(evald);
           }
           if (markImportant && isNode(evald, N.Rules)) {
             this.makeImportant(evald);
@@ -301,50 +480,35 @@ export class Call extends Node<CallValue, CallOptions> {
           return adoptCallWhitespace(evald);
         }
         let castResult = cast(result);
-        if (isNode(castResult, N.Rules) && castResult.data.length === 1) {
-          return adoptCallWhitespace(castResult.data[0]!);
+        if (isNode(castResult, N.Rules) && castResult.value.length === 1) {
+          return adoptCallWhitespace(castResult.value[0]!);
         }
         return adoptCallWhitespace(castResult);
       } catch (e) {
         const unitMode = context?.opts?.unitMode ?? 'loose';
         const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-          if (this.parent?.type === 'SelectorCapture') {
+          if (getParent(this, context)?.type === 'SelectorCapture') {
             return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
           }
           if (isNode(name, N.Reference)) {
-            throw new ReferenceError(`No matching mixins found for '${name.data.key.valueOf()}'`);
+            throw new ReferenceError(`No matching mixins found for '${name.get('key').valueOf()}'`);
           }
           throw e;
         }
-        if (!this.options?.silentFail || shouldRethrowForMode) {
+        if (!callOptions.silentFail || shouldRethrowForMode) {
           throw e;
         }
-        let newCall = this.clone().inherit(this);
+        /** @removal-target — node-copy-reduction: clone for silentFail fallback.
+         * Options/name/args changes should go through position patches. */
+        let newCall = this.clone(false, undefined, context).inherit(this);
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
-        newCall.setData('name', isNode(name, N.Reference) && name.options.fallbackValue === true
-          ? String(name.data.key)
-          : String(n.valueOf()));
-        newCall.setData('args', await evalArgNodes(args));
-        newCall.data.args?.data.forEach((arg, argIndex) => {
-          // Normalize fallback-call arg spacing to Less-style call serialization.
-          arg.pre = argIndex === 0 ? 0 : 1;
-          if (isNode(arg, N.Sequence)) {
-            arg.data.forEach((child, childIndex) => {
-              child.pre = childIndex === 0 ? 0 : 1;
-            });
-          } else if (isNode(arg, N.List)) {
-            arg.data.forEach((child) => {
-              if (isNode(child, N.Sequence)) {
-                child.data.forEach((nested, nestedIndex) => {
-                  nested.pre = nestedIndex === 0 ? 0 : 1;
-                });
-              }
-            });
-          }
-        });
-        return adoptCallWhitespace(newCall);
+        setField(newCall, 'name', isNode(name, N.Reference) && name.options.fallbackValue === true
+          ? String(name.get('key'))
+          : String(n.valueOf()), context);
+        setField(newCall, 'args', this._materializeFallbackArgs(await evalArgNodes(args)), context);
+        return applyDependencyToResult(adoptCallWhitespace(newCall), newCall.args?.get('value'));
       } finally {
         context.caller = originalCaller;
         context.parenFrames.pop();
@@ -363,20 +527,26 @@ export class Call extends Node<CallValue, CallOptions> {
       }
       context.parenFrames.pop();
       context.callStack.pop();
-      const node = this.clone();
+      /** @removal-target — node-copy-reduction: clone for non-mixin call eval.
+       * All field mutations (name, args, options) should go through position. */
+      const needsMaterializedClone = Boolean(callOptions.silentFail);
+      const node = needsMaterializedClone
+        ? this.clone(false, undefined, context)
+        : this.maybeClone(context);
       node.options.silentFail = false;
       if (
         n === 'calc' && evaluatedArgs
       ) {
-        if (isNode(evaluatedArgs.data[0], N.Dimension)) {
-          return evaluatedArgs.data[0]!;
+        const evalArgItems = evaluatedArgs.get('value');
+        if (isNode(evalArgItems[0], N.Dimension)) {
+          return applyDependencyToResult(evalArgItems[0]!, evalArgItems);
         } else if (context.calcFrames !== 0) {
-          return new Paren(evaluatedArgs.data[0]!);
+          return applyDependencyToResult(new Paren(evalArgItems[0]!), evalArgItems);
         }
       }
-      node.setData('name', n);
-      node.setData('args', evaluatedArgs);
-      return adoptCallWhitespace(node);
+      setField(node, 'name', n, context);
+      setField(node, 'args', evaluatedArgs, context);
+      return applyDependencyToResult(adoptCallWhitespace(node), evaluatedArgs?.get('value'));
     };
   }
 }

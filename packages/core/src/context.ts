@@ -7,6 +7,7 @@ import type {
   Any,
   Selector
 } from './tree/index.js';
+import { EvalState } from './eval-state.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
@@ -15,7 +16,7 @@ import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
 import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError, type JessErrorCode } from './jess-error.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
 import { createRequire } from 'node:module';
@@ -238,6 +239,13 @@ export class Context {
    * this also enables call-time variable resolution ($~variable).
    */
   rulesContext!: Rules;
+  /**
+   * Internal transient lookup-scope override.
+   *
+   * Used by direct mixin/function invocation so canonical bodies can evaluate
+   * against a prepared outer scope without changing the public node API.
+   */
+  lookupScope?: Rules;
   /** Entire context root (ultimate root) */
   root!: Rules;
   /** Set so that we can do ruleset selector lookup for extend */
@@ -260,11 +268,11 @@ export class Context {
 
   /**
    * Registered extends with their extend root context
-   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
+   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?, fromReferenceScope?, namespace?]
    *
    * @todo - Probably remove once I fix extends
    */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean]> = [];
+  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean, namespace?: string]> = [];
 
   /**
    * When doing any kind of lookup, the current node and resolved
@@ -437,8 +445,52 @@ export class Context {
   /** A flag set when evaluating conditions */
   isDefault: boolean | undefined;
 
-  /** A flag to clone nodes before mutating */
-  preserveOriginalNodes: boolean | undefined;
+  /**
+   * Root eval state for this evaluation pass.
+   * Lazy — allocated on first access, zero cost if never used.
+   */
+  private _evalState: EvalState | undefined;
+
+  get evalState(): EvalState {
+    return (this._evalState ??= new EvalState());
+  }
+
+  /**
+   * The currently active eval state. Set by pushState/popState during
+   * eval, or by save/restore during registry walks and serialization.
+   * All field reads/writes go through this.
+   */
+  private _activeState: EvalState | undefined;
+
+  get activeState(): EvalState {
+    return this._activeState ?? this.evalState;
+  }
+
+  set activeState(value: EvalState) {
+    this._activeState = value;
+  }
+
+  /** Push a new eval state, saving the current as its parent. */
+  pushState(state: EvalState): void {
+    state.parent = this.activeState;
+    this._activeState = state;
+  }
+
+  /** Pop the current eval state, restoring its parent. */
+  popState(): EvalState | undefined {
+    const popped = this._activeState;
+    this._activeState = popped?.parent;
+    return popped;
+  }
+
+  /** Maps output nodes (mixin/import/loop results) to their call-site EvalState.
+   *  Global lookup — works from any context, any direction. */
+  readonly subtreeMap = new WeakMap<Node, EvalState>();
+
+  /** @deprecated — use activeState directly */
+  resolveField(node: Node, field: string): unknown {
+    return this.activeState.peek(node)?._fields?.get(field);
+  }
 
   _leakyRules: boolean | undefined;
   get leakyRules() {
@@ -628,11 +680,11 @@ export class Context {
     let source: string;
     try {
       source = await sourceGetter.getSource!(resolvedPath);
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw error;
     }
     const parseResult = plugin.safeParse!(resolvedPath, source, {
-      compilerOptions: this.opts as Record<string, any>
+      compilerOptions: this.opts
     });
 
     // Collect normalized errors and warnings from plugin
@@ -644,7 +696,7 @@ export class Context {
       // Throw the first error as a JessError
       const firstError = parseResult.errors[0]!;
       throw new JessError({
-        code: firstError.code as any,
+        code: firstError.code as JessErrorCode,
         phase: firstError.phase,
         severity: 'error',
         ctx: firstError.file ? { file: firstError.file } : undefined,
@@ -692,7 +744,7 @@ export class Context {
       column: 1
     });
     return {
-      node: null as any,
+      node: null as unknown as Rules,
       triedPaths,
       resolvedPath
     };
@@ -720,7 +772,7 @@ export class Context {
 
     const plugin = this.findParserPlugin(type, ext);
     const tree = await plugin.parse!(virtualPath, content, {
-      compilerOptions: this.opts as Record<string, any>
+      compilerOptions: this.opts
     });
 
     if (!tree) {

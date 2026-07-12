@@ -14,7 +14,9 @@ export default tseslint.config([
         projectService: true,
         tsconfigRootDir: import.meta.dirname
       }
+    },
+    rules: {
+      '@typescript-eslint/no-unsafe-type-assertion': 'error'
     }
-
   }
 ]);

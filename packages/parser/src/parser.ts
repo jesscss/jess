@@ -1,5 +1,5 @@
 /**
- * @jesscss/parser-runtime — Hand-written recursive-descent parser
+ * @jesscss/parser — Hand-written recursive-descent parser
  *
  * ## Architecture overview
  *
@@ -65,6 +65,7 @@
  */
 import {
   type LocationInfo,
+  type OptionalLocation,
   type IToken,
   type TokenType,
   type OrAlternative,
@@ -615,6 +616,7 @@ export class RecursiveDescentParser {
       if (this.pos < this.tokens.length) {
         this.pos++;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- error recovery: intentionally returns undefined in place of T
       return undefined as T;
     }
     if (this.speculating) {
@@ -944,7 +946,7 @@ export class RecursiveDescentParser {
   }
 
   /** Build LocationInfo spanning a list of tokens and/or nodes */
-  getLocationFromNodes(nodes: Array<IToken | { location?: LocationInfo | [] }>): LocationInfo | undefined {
+  getLocationFromNodes(nodes: Array<IToken | { location?: OptionalLocation }>): LocationInfo | undefined {
     let startOffset = Infinity;
     let startLine = Infinity;
     let startColumn = Infinity;

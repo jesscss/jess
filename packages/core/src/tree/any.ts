@@ -2,8 +2,8 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
-import type { Context, TreeContext } from '../context.js';
+import { Node, defineType, type OptionalLocation, type NodeOptions, type TreeContext, F_STATIC } from './node-base.js';
+import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
 
@@ -47,23 +47,27 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
-    super(...args);
+  static override childKeys = null as null;
+
+  /** @internal */ readonly value!: string;
+  readonly role: Role | undefined;
+
+  constructor(
+    value: string,
+    options?: AnyOptions<Role>,
+    location?: OptionalLocation,
+    treeContext?: TreeContext
+  ) {
+    super(value, options, location, treeContext);
+    this.value = value;
+    this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
   }
 
-  get value() {
-    return this.data;
-  }
-
-  set value(val: string) {
-    this.setData(val);
-  }
-
   override preEval(context: Context): this | Nil {
-    this.preEvaluated = true;
+    this._setPreEvaluated(true, context);
     // Index should already be assigned by parent Rules
-    if (this.options.role === 'charset') {
+    if (this.role === 'charset') {
       if (!context.currentCharset) {
         /** @todo - Throw error in the future? */
         context.currentCharset = this;
@@ -84,27 +88,24 @@ export class Any<
       return undefined;
     }
     if (other.type === 'Any' || other.type === 'Keyword') {
-      return this.data === String(other.valueOf?.() ?? '') ? 0 : undefined;
+      return this.value === String(other.valueOf?.() ?? '') ? 0 : undefined;
     }
     if (other.type === 'Num' || other.type === 'Dimension') {
-      const text = this.data.trim();
+      const text = this.value.trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherValue = (other as any).data;
-      const otherNumber = otherValue?.number;
-      const otherUnit = otherValue?.unit;
-      if (typeof otherNumber !== 'number') {
+      if (!('number' in other) || typeof other.number !== 'number') {
         return undefined;
       }
-      if (other.type === 'Dimension' && otherUnit) {
+      if (other.type === 'Dimension' && 'unit' in other && other.unit) {
         return undefined;
       }
-      return Number(text) === otherNumber ? 0 : undefined;
+      return Number(text) === other.number ? 0 : undefined;
     }
-    if ((other as any).toString) {
+    if (typeof other.toString === 'function') {
       const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
-      return normalize(this.toString()) === normalize((other as any).toString()) ? 0 : undefined;
+      return normalize(this.toString()) === normalize(other.toString()) ? 0 : undefined;
     }
     return undefined;
   }
@@ -144,7 +145,7 @@ export class Keyword extends Any<'keyword'> {
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,
-    location?: LocationInfo,
+    location?: OptionalLocation,
     context?: TreeContext
   ) {
     // Force role to 'keyword'
@@ -159,7 +160,7 @@ defineType(Keyword, 'Keyword');
 export function keyword(
   value: string,
   options?: Omit<NodeOptions, 'role'>,
-  location?: LocationInfo,
+  location?: OptionalLocation,
   context?: TreeContext
 ): Keyword {
   return new Keyword(value, options, location, context);

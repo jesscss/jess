@@ -21,7 +21,7 @@ describe('Reference role=ident (interpolation slot)', () => {
       })
     ]);
     const evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(evald.render(context)).toBeString(`
       bar: red;
     `);
   });

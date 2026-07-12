@@ -1,4 +1,4 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type LocationInfo } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type OptionalLocation } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { Rules } from './rules.js';
 import { Sequence } from './sequence.js';
@@ -13,6 +13,8 @@ import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Block } from './block.js';
 import { List } from './list.js';
 import type { Mixin } from './mixin.js';
+import { EvalState } from '../eval-state.js';
+import { getChildren, getField, setField, setParent } from './util/field-helpers.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -41,9 +43,9 @@ export type ForValue = {
 
 function getBindingNames(vars: VarDeclaration | VarDeclaration[]): string[] {
   if (Array.isArray(vars)) {
-    return vars.map(v => v.data.name.valueOf());
+    return vars.map(v => v.get('name').valueOf());
   }
-  return [vars.data.name.valueOf()];
+  return [vars.get('name').valueOf()];
 }
 
 function varsToNode(vars: VarDeclaration | VarDeclaration[]): Node {
@@ -53,9 +55,77 @@ function varsToNode(vars: VarDeclaration | VarDeclaration[]): Node {
   return vars;
 }
 
+function sameNodeValue(a: Node | undefined, b: Node | undefined): boolean {
+  const left = String(a?.valueOf?.() ?? '').trim();
+  const right = String(b?.valueOf?.() ?? '').trim();
+  return left === right;
+}
+
+function shouldReuseInPriorScope(node: Node): boolean {
+  if (!isNode(node, N.Declaration)) {
+    return true;
+  }
+  const normalizedFromAssign = node.options.normalizedFromAssign;
+  return (
+    normalizedFromAssign !== AssignmentType.Add
+    && normalizedFromAssign !== AssignmentType.MergeList
+    && normalizedFromAssign !== AssignmentType.MergeSequence
+    && String(node.get('name')) !== 'padding'
+  );
+}
+
+function cloneForPriorScope(node: Node, context: Context): Node {
+  if (isNode(node, N.Rules)) {
+    return node.cloneLookupSafeShallowWrapper(context);
+  }
+  return node.clone(false, undefined, context);
+}
+
+function getControlField<T>(node: Node, key: string, context: Context | undefined, fallback: T): T {
+  if (!context) {
+    return fallback;
+  }
+  const state = context.activeState;
+  const nodeState = state.peek(node);
+  if (nodeState?._fields?.has(key)) {
+    return nodeState._fields.get(key) as T;
+  }
+  const sourceNode = node.sourceNode;
+  if (sourceNode !== node) {
+    const srcState = state.peek(sourceNode);
+    if (srcState?._fields?.has(key)) {
+      return srcState._fields.get(key) as T;
+    }
+  }
+  return getField<T>(node, key, context);
+}
+
+function getControlDeclarationValue(node: Node, context: Context): Node {
+  return getField<Node>(node, 'value', context);
+}
+
+function getControlDeclarationName(node: Node, context: Context): string {
+  return String(getField<Node>(node, 'name', context));
+}
+
+function getControlDeclarationAssignType(node: Node, context: Context): AssignmentType | undefined {
+  const options = getControlField<{ normalizedFromAssign?: AssignmentType } | undefined>(
+    node,
+    'options',
+    context,
+    node.options as { normalizedFromAssign?: AssignmentType } | undefined
+  );
+  return options?.normalizedFromAssign;
+}
+
+function setControlDeclarationValue(node: Node, value: Node, context: Context): void {
+  node.adopt(value, context);
+  setField(node, 'value', value, context);
+}
+
 async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[Node, number | string | Node]> {
   if (isNode(input, N.Expression)) {
-    yield* resolveEntries(await input.data.eval(context), context);
+    yield* resolveEntries(await input.get('value', context).eval(context), context);
     return;
   }
   if (isNode(input, N.Call)) {
@@ -67,19 +137,29 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     yield* resolveEntries(evald, context);
     return;
   }
-  if ((isNode(input, N.Sequence) || isNode(input, N.List)) && Array.isArray(input.data)) {
-    for (let key = 0; key < input.data.length; key++) {
-      const value = input.data[key]!;
-      yield [value, key];
+  if (isNode(input, N.Paren)) {
+    const parenValue = input.get('value', context);
+    if (parenValue instanceof Node) {
+      yield* resolveEntries(parenValue, context);
+      return;
     }
-    return;
+  }
+  if ((isNode(input, N.Sequence) || isNode(input, N.List))) {
+    const items = input.get('value', context);
+    if (Array.isArray(items)) {
+      for (let key = 0; key < items.length; key++) {
+        const value = items[key]!;
+        yield [value, key];
+      }
+      return;
+    }
   }
   if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
-    const rules = isNode(input, N.Rules)
-      ? input.data
+    const rules: readonly Node[] = isNode(input, N.Rules)
+      ? getControlField(input, 'value', context, input.get('value', context) as Node[])
       : isNode(input, N.Ruleset)
-        ? (input.data.rules?.data ?? [])
-        : ((input as Mixin).data.rules?.data ?? []);
+        ? (input.get('rules') ? getControlField(input.get('rules'), 'value', context, input.get('rules').value) : [])
+        : ((input as Mixin).get('rules') ? getControlField((input as Mixin).get('rules'), 'value', context, (input as Mixin).get('rules').value) : []);
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -87,23 +167,27 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
       if (!isNode(rule, N.Declaration)) {
         continue;
       }
-      yield [rule.data.value, rule.data.name];
+      yield [
+        getControlField(rule, 'value', context, rule.get('value')),
+        getControlField(rule, 'name', context, rule.get('name'))
+      ];
     }
     return;
   }
   yield [input, 0];
 }
 
-/** @deprecated Use IfValue directly (conditions/bodies/elseBranch). */
-export type IfBranch = {
-  condition?: Node;
-  rules: Rules;
-};
-
+/** @todo - I don't understand how these are different or why the LLM did this? */
 export type IfValue = {
   conditions: Node[];
   bodies: Rules[];
   elseBranch?: Rules;
+};
+
+export type IfChildData = {
+  conditions: Node[];
+  bodies: Rules[];
+  elseBranch: Rules | undefined;
 };
 
 /**
@@ -112,34 +196,55 @@ export type IfValue = {
  * - `$else if (...) { ... }`
  * - `$else { ... }`
  *
- * This is language-agnostic: it’s the canonical Jess control node.
+ * This is language-agnostic: it's the canonical Jess control node.
  */
-export interface If extends Node<IfValue> {
+export interface If extends Node<IfValue, any, IfChildData> {
   type: 'If';
   shortType: 'if';
 }
-export class If extends Node<IfValue> {
-  // type = 'If' as const;
-  // shortType = 'if' as const;
-  constructor(value: IfValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+export class If extends Node<IfValue, any, IfChildData> {
+  static override childKeys = ['conditions', 'bodies', 'elseBranch'] as const;
+
+  /** @internal */ readonly conditions!: Node[];
+  /** @internal */ readonly bodies!: Rules[];
+  /** @internal */ readonly elseBranch: Rules | undefined;
+
+  constructor(value: IfValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.conditions = value.conditions;
+    this.bodies = value.bodies;
+    this.elseBranch = value.elseBranch;
+    for (const cond of this.conditions) {
+      if (cond instanceof Node) {
+        this.adopt(cond);
+      }
+    }
+    for (const body of this.bodies) {
+      if (body instanceof Node) {
+        this.adopt(body);
+      }
+      makeDirectiveRulesPublic(body);
+    }
+    if (this.elseBranch) {
+      if (this.elseBranch instanceof Node) {
+        this.adopt(this.elseBranch);
+      }
+      makeDirectiveRulesPublic(this.elseBranch);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    for (const body of value.bodies) {
-      makeDirectiveRulesPublic(body);
-    }
-    if (value.elseBranch) {
-      makeDirectiveRulesPublic(value.elseBranch);
-    }
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const context = options.context;
 
-    const { conditions, bodies, elseBranch } = this.data;
+    const conditions = this.get('conditions', context);
+    const bodies = this.get('bodies', context);
+    const elseBranch = this.get('elseBranch', context);
     w.add('$if', this);
     w.add(' (');
     conditions[0]?.toString(options);
@@ -162,35 +267,65 @@ export class If extends Node<IfValue> {
   }
 }
 
-export interface For extends Node<ForValue> {
+export type ForChildData = {
+  vars: VarDeclaration | VarDeclaration[];
+  iterable: Node;
+  rules: Rules;
+};
+
+export interface For extends Node<ForValue, any, ForChildData> {
   type: 'For';
   shortType: 'for';
 }
 /**
  * `$for <header> { ... }`
  */
-export class For extends Node<ForValue> {
-  // type = 'For' as const;
-  // shortType = 'for' as const;
-  constructor(value: ForValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+export class For extends Node<ForValue, any, ForChildData> {
+  static override childKeys = ['vars', 'iterable', 'rules'] as const;
+
+  /** @internal */ readonly vars!: VarDeclaration | VarDeclaration[];
+  /** @internal */ readonly iterable!: Node;
+  /** @internal */ readonly rules!: Rules;
+
+  constructor(value: ForValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.vars = value.vars;
+    this.iterable = value.iterable;
+    this.rules = value.rules;
+    if (Array.isArray(this.vars)) {
+      for (const v of this.vars) {
+        if (v instanceof Node) {
+          this.adopt(v);
+        }
+      }
+    } else if (this.vars instanceof Node) {
+      this.adopt(this.vars);
+    }
+    if (this.iterable instanceof Node) {
+      this.adopt(this.iterable);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(value.rules);
+    makeDirectiveRulesPublic(this.rules);
   }
 
   override preEval(context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
+    if (!this._isPreEvaluated(context)) {
       const node = this.maybeClone(context) as For;
-      node.preEvaluated = true;
+      node._setPreEvaluated(true, context);
       return node;
     }
     return this;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { vars, iterable } = this.data;
+    const vars = this.get('vars', context);
+    const iterable = this.get('iterable', context);
+    const loopTemplate = this.get('rules', context);
     const bindingNames = getBindingNames(vars);
     if (bindingNames.length === 0) {
       throw new Error('Invalid $for header: missing binding variable');
@@ -198,130 +333,155 @@ export class For extends Node<ForValue> {
     const run = async (): Promise<Node> => {
       const accumulatedNodes: Node[] = [];
       let counter = 1;
-      const evaluatedIterable = await iterable.eval(context);
-      for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const loopRules = this.data.rules.clone(true);
-        // Preserve definition-scope parent chain so nested calls/lookups
-        // inside loop bodies resolve the same way as the original rules.
-        loopRules.inherit(this.data.rules);
-        if (accumulatedNodes.length > 0) {
-          // Make prior iteration output visible to current iteration lookups
-          // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
-          const priorScope = new Rules(accumulatedNodes.map(n => n.copy(true)));
-          priorScope.inherit(this.data.rules);
-          priorScope.adopt(loopRules);
-        }
-        const resolvedValue = await value.eval(context);
-        let resolvedKey: Node;
-        if (typeof key === 'number') {
-          resolvedKey = new Num(key + 1);
-        } else if (typeof key === 'string' && key === 'value') {
-          resolvedKey = new Num(counter);
-        } else if (isNode(key)) {
-          resolvedKey = await key.eval(context);
-        } else {
-          resolvedKey = new Any(String(key), { role: 'property' });
-        }
-        const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
-        for (let i = Math.min(bindingNames.length, bindings.length) - 1; i >= 0; i--) {
-          const varDecl = new VarDeclaration({
-            name: new Any(bindingNames[i]!, { role: 'property' }),
-            value: bindings[i]!
-          });
-          loopRules.unshift(varDecl);
-        }
-        counter++;
-        const result = await loopRules.eval(context);
-        if (isNode(result, N.Rules)) {
-          for (const outNode of result.data) {
-            if (isNode(outNode, N.Declaration)) {
-              const normalizedFromAssign = outNode.options.normalizedFromAssign;
-              const outName = String(outNode.data.name);
-              const isMergedAssignment =
-                normalizedFromAssign === AssignmentType.Add
-                || normalizedFromAssign === AssignmentType.MergeList
-                || normalizedFromAssign === AssignmentType.MergeSequence;
-              // Keep manual by-name coalescing narrowly scoped to legacy padding merges.
-              // `index` declarations in plain loop bodies should remain per-iteration.
-              const shouldCoalesceByName = outName === 'padding';
-              if (isMergedAssignment || shouldCoalesceByName) {
-                let firstMatch = -1;
-                for (let i = 0; i < accumulatedNodes.length; i++) {
-                  const prev = accumulatedNodes[i]!;
-                  if (isNode(prev, N.Declaration) && String(prev.data.name) === outName) {
-                    firstMatch = i;
-                    break;
-                  }
-                }
-                if (firstMatch >= 0) {
-                  const prev = accumulatedNodes[firstMatch]!;
-                  if (isNode(prev, N.Declaration)) {
-                    const prevValue = prev.data.value;
-                    const nextValue = outNode.data.value;
-                    if (
-                      normalizedFromAssign === AssignmentType.Add
-                      || normalizedFromAssign === AssignmentType.MergeList
-                    ) {
-                      const prevItems = isNode(prevValue, N.List)
-                        ? prevValue.data
-                        : [prevValue];
-                      const nextItems = isNode(nextValue, N.List)
-                        ? nextValue.data
-                        : [nextValue];
-                      const nextAlreadyIncludesPrev =
-                        nextItems.length >= prevItems.length
-                        && prevItems.every((item, idx) => String(item.valueOf()) === String(nextItems[idx]?.valueOf()));
-                      const mergedItems = nextAlreadyIncludesPrev
-                        ? [...nextItems]
-                        : [...prevItems, ...nextItems];
-                      outNode.setData('value', new List(mergedItems).inherit(outNode.data.value));
-                    } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
-                      const prevItems = isNode(prevValue, N.Sequence)
-                        ? prevValue.data
-                        : [prevValue];
-                      const nextItems = isNode(nextValue, N.Sequence)
-                        ? nextValue.data
-                        : [nextValue];
-                      const nextAlreadyIncludesPrev =
-                        nextItems.length >= prevItems.length
-                        && prevItems.every((item, idx) => String(item.valueOf()) === String(nextItems[idx]?.valueOf()));
-                      const mergedItems = nextAlreadyIncludesPrev
-                        ? [...nextItems]
-                        : [...prevItems, ...nextItems];
-                      outNode.setData('value', new Sequence(mergedItems).inherit(outNode.data.value));
-                    }
-                  }
-                  accumulatedNodes[firstMatch] = outNode;
-                  for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
+      const isolatedState = new EvalState();
+      context.pushState(isolatedState);
+      try {
+        const evaluatedIterable = await iterable.eval(context);
+        for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
+          // Deep clone per iteration — each iteration gets its own children
+          // so field patches don't conflict between iterations.
+          const loopRules = loopTemplate.clone(true, undefined, context);
+          // Preserve definition-scope parent chain so nested calls/lookups
+          // inside loop bodies resolve the same way as the original rules.
+          loopRules.inherit(loopTemplate);
+          if (accumulatedNodes.length > 0) {
+            // Make prior iteration output visible to current iteration lookups
+            // (e.g. `index+: @index`, `padding+_: ...`) without mutating emitted nodes.
+            const priorScope = new Rules(
+              accumulatedNodes
+                .filter(shouldReuseInPriorScope)
+                .map(n => cloneForPriorScope(n, context))
+            );
+            priorScope.inherit(loopTemplate);
+            setParent(loopRules, priorScope, context);
+          }
+          const resolvedValue = await value.eval(context);
+          let resolvedKey: Node;
+          if (typeof key === 'number') {
+            resolvedKey = new Num(key + 1);
+          } else if (typeof key === 'string' && key === 'value') {
+            resolvedKey = new Num(counter);
+          } else if (isNode(key)) {
+            resolvedKey = await key.eval(context);
+          } else {
+            resolvedKey = new Any(String(key), { role: 'property' });
+          }
+          const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
+          for (let i = Math.min(bindingNames.length, bindings.length) - 1; i >= 0; i--) {
+            const varDecl = new VarDeclaration({
+              name: new Any(bindingNames[i]!, { role: 'property' }),
+              value: bindings[i]!
+            });
+            loopRules.unshift(context, varDecl);
+          }
+          counter++;
+          const result = await loopRules.eval(context);
+          if (isNode(result, N.Rules)) {
+            for (const outNode of getChildren(result, context)) {
+              if (isNode(outNode, N.Declaration)) {
+                const normalizedFromAssign = getControlDeclarationAssignType(outNode, context);
+                const outName = getControlDeclarationName(outNode, context);
+                const isMergedAssignment =
+                  normalizedFromAssign === AssignmentType.Add
+                  || normalizedFromAssign === AssignmentType.MergeList
+                  || normalizedFromAssign === AssignmentType.MergeSequence;
+                // Keep manual by-name coalescing narrowly scoped to legacy padding merges.
+                // `index` declarations in plain loop bodies should remain per-iteration.
+                const shouldCoalesceByName = outName === 'padding';
+                if (isMergedAssignment || shouldCoalesceByName) {
+                  let firstMatch = -1;
+                  for (let i = 0; i < accumulatedNodes.length; i++) {
                     const prev = accumulatedNodes[i]!;
-                    if (isNode(prev, N.Declaration) && String(prev.data.name) === outName) {
-                      accumulatedNodes.splice(i, 1);
+                    if (isNode(prev, N.Declaration) && getControlDeclarationName(prev, context) === outName) {
+                      firstMatch = i;
+                      break;
                     }
                   }
-                  continue;
-                }
-                // Keep merged declarations before nested rulesets to avoid split-output
-                // duplicate selectors (e.g. `.each { ... }` then another `.each { ... }`).
-                let firstNestedRuleset = -1;
-                for (let i = 0; i < accumulatedNodes.length; i++) {
-                  if (isNode(accumulatedNodes[i]!, N.Ruleset | N.Rules)) {
-                    firstNestedRuleset = i;
-                    break;
+                  if (firstMatch >= 0) {
+                    const prev = accumulatedNodes[firstMatch]!;
+                    if (isNode(prev, N.Declaration)) {
+                      const prevValue = getControlDeclarationValue(prev, context);
+                      const nextValue = getControlDeclarationValue(outNode, context);
+                      if (
+                        normalizedFromAssign === AssignmentType.Add
+                        || normalizedFromAssign === AssignmentType.MergeList
+                      ) {
+                        const prevItems = isNode(prevValue, N.List)
+                          ? prevValue.get('value')
+                          : [prevValue];
+                        const nextItems = isNode(nextValue, N.List)
+                          ? nextValue.get('value')
+                          : [nextValue];
+                        const nextAlreadyIncludesPrev =
+                          nextItems.length >= prevItems.length
+                          && prevItems.every((item, idx) => sameNodeValue(item, nextItems[idx]));
+                        const mergedItems = nextAlreadyIncludesPrev
+                          ? [...nextItems]
+                          : [...prevItems, ...nextItems];
+                        setControlDeclarationValue(
+                          outNode,
+                          new List(mergedItems).inherit(nextValue),
+                          context
+                        );
+                      } else if (normalizedFromAssign === AssignmentType.MergeSequence) {
+                        const prevItems = isNode(prevValue, N.Sequence)
+                          ? prevValue.get('value')
+                          : [prevValue];
+                        const nextItems = isNode(nextValue, N.Sequence)
+                          ? nextValue.get('value')
+                          : [nextValue];
+                        const nextAlreadyIncludesPrev =
+                          nextItems.length >= prevItems.length
+                          && prevItems.every((item, idx) => sameNodeValue(item, nextItems[idx]));
+                        const mergedItems = nextAlreadyIncludesPrev
+                          ? [...nextItems]
+                          : [...prevItems, ...nextItems];
+                        setControlDeclarationValue(
+                          outNode,
+                          new Sequence(mergedItems).inherit(nextValue),
+                          context
+                        );
+                      }
+                    }
+                    accumulatedNodes[firstMatch] = outNode;
+                    for (let i = accumulatedNodes.length - 1; i > firstMatch; i--) {
+                      const prev = accumulatedNodes[i]!;
+                      if (isNode(prev, N.Declaration) && getControlDeclarationName(prev, context) === outName) {
+                        accumulatedNodes.splice(i, 1);
+                      }
+                    }
+                    continue;
                   }
-                }
-                if (firstNestedRuleset >= 0) {
-                  accumulatedNodes.splice(firstNestedRuleset, 0, outNode);
-                  continue;
+                  // Keep merged declarations before nested rulesets to avoid split-output
+                  // duplicate selectors (e.g. `.each { ... }` then another `.each { ... }`).
+                  let firstNestedRuleset = -1;
+                  for (let i = 0; i < accumulatedNodes.length; i++) {
+                    if (isNode(accumulatedNodes[i]!, N.Ruleset | N.Rules)) {
+                      firstNestedRuleset = i;
+                      break;
+                    }
+                  }
+                  if (firstNestedRuleset >= 0) {
+                    accumulatedNodes.splice(firstNestedRuleset, 0, outNode);
+                    continue;
+                  }
                 }
               }
+              accumulatedNodes.push(outNode);
             }
-            accumulatedNodes.push(outNode);
+          } else {
+            accumulatedNodes.push(result);
           }
-        } else {
-          accumulatedNodes.push(result);
         }
+      } finally {
+        context.popState();
       }
-      return new Rules(accumulatedNodes);
+      const output = new Rules(accumulatedNodes);
+      if (isolatedState.size > 0) {
+        output._carriedState = isolatedState;
+        context.subtreeMap.set(output, isolatedState);
+      }
+      return output;
     };
     return run();
   }
@@ -330,14 +490,15 @@ export class For extends Node<ForValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const context = options.context;
     w.add('$for ', this);
     w.add('(');
-    varsToNode(this.data.vars).toString(options);
+    varsToNode(this.get('vars', context)).toString(options);
     w.add(' of ');
-    this.data.iterable.toString(options);
+    this.get('iterable', context).toString(options);
     w.add(')');
     w.add(' ');
-    this.data.rules.toBraced(options);
+    this.get('rules', context).toBraced(options);
     return w.getSince(mark);
   }
 }
@@ -345,15 +506,31 @@ export class For extends Node<ForValue> {
 /**
  * `$each <header> { ... }`
  */
-export interface Each extends Node<LegacyLoopValue> {
+export type EachChildData = {
+  header: Sequence;
+  rules: Rules;
+};
+
+export interface Each extends Node<LegacyLoopValue, any, EachChildData> {
   type: 'Each';
   shortType: 'each';
 }
-export class Each extends Node<LegacyLoopValue> {
-  // type = 'Each' as const;
-  // shortType = 'each' as const;
-  constructor(value: LegacyLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+export class Each extends Node<LegacyLoopValue, any, EachChildData> {
+  static override childKeys = ['header', 'rules'] as const;
+
+  /** @internal */ readonly header!: Sequence;
+  /** @internal */ readonly rules!: Rules;
+
+  constructor(value: LegacyLoopValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.header = value.header;
+    this.rules = value.rules;
+    if (this.header instanceof Node) {
+      this.adopt(this.header);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
@@ -363,10 +540,11 @@ export class Each extends Node<LegacyLoopValue> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const context = options.context;
     w.add('$each ', this);
-    this.data.header.toString(options);
+    this.get('header', context).toString(options);
     w.add(' ');
-    this.data.rules.toBraced(options);
+    this.get('rules', context).toBraced(options);
     return w.getSince(mark);
   }
 }
@@ -376,30 +554,49 @@ export type WhileValue = {
   rules: Rules;
 };
 
+export type WhileChildData = {
+  condition: Node;
+  rules: Rules;
+};
+
 /**
  * `$while (<condition>) { ... }`
  */
-export interface While {
+export interface While extends Node<WhileValue, any, WhileChildData> {
   type: 'While';
   shortType: 'while';
 }
-export class While extends Node<WhileValue> {
-  constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+export class While extends Node<WhileValue, any, WhileChildData> {
+  static override childKeys = ['condition', 'rules'] as const;
+
+  /** @internal */ readonly condition!: Node;
+  /** @internal */ readonly rules!: Rules;
+
+  constructor(value: WhileValue, options?: any, location?: OptionalLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
+    this.condition = value.condition;
+    this.rules = value.rules;
+    if (this.condition instanceof Node) {
+      this.adopt(this.condition);
+    }
+    if (this.rules instanceof Node) {
+      this.adopt(this.rules);
+    }
     this.allowRoot = true;
     this.allowRuleRoot = true;
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
-    makeDirectiveRulesPublic(value.rules);
+    makeDirectiveRulesPublic(this.rules);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const context = options.context;
     w.add('$while (', this);
-    this.data.condition.toString(options);
+    this.get('condition', context).toString(options);
     w.add(') ');
-    this.data.rules.toBraced(options);
+    this.get('rules', context).toBraced(options);
     return w.getSince(mark);
   }
 }
