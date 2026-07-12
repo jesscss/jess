@@ -1,14 +1,22 @@
 import { defineType, type LocationInfo, type Node } from './node.js';
-import { type TreeContext } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import type { Context } from '../context.js';
 import { Any } from './any.js';
 import { quoted } from './quoted.js';
-import { pipe, isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  type RenderBuffer,
+  writeRenderText
+} from './util/render-buffer.js';
+import type { Rules } from './rules.js';
+import type { VarDeclaration } from './declaration-var.js';
+import { findVariableDeclarationOccurrence } from './util/direct-rules-lookup.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -21,49 +29,26 @@ export type AttributeSelectorValue = {
   mod?: string;
 };
 
+function findAttributeVarDeclaration(rules: Rules, key: string): VarDeclaration | undefined {
+  const found = findVariableDeclarationOccurrence(rules, key)?.node;
+  return isNode(found, N.VarDeclaration) ? found : undefined;
+}
+
 /**
  * An attribute selector
  * @see https://developer.mozilla.org/en-US/docs/Web/CSS/Attribute_selectors
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  private copyForDerived(node: Node): Node {
-    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
-  }
+  static override childKeys = ['name', 'attributeValue'] as const;
 
-  private withResolvedParts(name: string | Node, value: Node | undefined): this {
-    const currentName = this.value.name;
-    const currentValue = this.value.value;
-    const nextName = (
-      typeof name === 'string'
-        ? name
-        : name === currentName
-          ? this.copyForDerived(name)
-          : name
-    );
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        {
-          ...this.value,
-          name: nextName,
-          value: value && value === currentValue ? this.copyForDerived(value) : value
-        },
-        this._options ? { ...this._options } : undefined,
-        this.location,
-        this.treeContext
-      ]
-    );
-    node.inherit(this);
-    return node;
-  }
-
-  private createResolvedValueNode(value: Node): this {
-    return this.withResolvedParts(this.value.name, quoted(String(value.valueOf())));
-  }
+  readonly name: AttributeSelectorValue['name'];
+  readonly op: string | undefined;
+  readonly attributeValue: Node | undefined;
+  readonly mod: string | undefined;
 
   private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
-    const { value } = this.value;
+    const value = this.attributeValue;
     if (value instanceof Any && typeof value.value === 'string') {
       const raw = value.value.trim();
       const m = raw.match(/^@\{([^}]+)\}$/);
@@ -71,10 +56,9 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         const key = m[1]!;
         const rules = this.rulesParent;
         if (rules) {
-          const found = rules.find('declaration', key, 'VarDeclaration');
-          const decl = Array.isArray(found) ? found[0] : found;
-          if (decl && isNode(decl, N.VarDeclaration)) {
-            const out = decl.value.value.resolve(context);
+          const decl = findAttributeVarDeclaration(rules, key);
+          if (decl) {
+            const out = decl.valueNode.resolve(context);
             if (isThenable(out)) {
               return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
             }
@@ -86,11 +70,15 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return value?.resolve(context);
   }
 
-  private renderAttributeSyntax(options?: PrintOptions): string {
+  private renderAttributeParts(
+    name: string | Node,
+    value: Node | undefined,
+    options?: PrintOptions
+  ): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, op, value, mod } = this.value;
+    const { op, mod } = this;
     w.add('[');
     if (typeof name === 'string') {
       w.add(name, this);
@@ -111,54 +99,115 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return w.getSince(mark);
   }
 
-  override evalNode(context: Context): MaybePromise<this> {
-    return pipe(
-      () => super.evalNode(context),
-      () => {
-        const { value } = this.value;
-        // Handle Less interpolation that the parser may have left as a raw token in selectors:
-        //   [data=@{attr-data}]
-        // In Less semantics this should resolve to the variable value and be serialized quoted.
-        if (value instanceof Any && typeof value.value === 'string') {
-          const raw = value.value.trim();
-          const m = raw.match(/^@\{([^}]+)\}$/);
-          if (m) {
-            const key = m[1]!;
-            const rules = this.rulesParent;
-            if (rules) {
-              const found = rules.find('declaration', key, 'VarDeclaration');
-              const decl = Array.isArray(found) ? found[0] : found;
-              if (decl && isNode(decl, N.VarDeclaration)) {
-                const out = decl.value.value.eval(context);
-                if (isThenable(out)) {
-                  return (out as Promise<Node>).then((evaluated) => {
-                    return this.createResolvedValueNode(evaluated);
-                  });
-                }
-                return this.createResolvedValueNode(out as Node);
-              }
-            }
-          }
-        }
-        return this;
-      }
-    );
+  private renderAttributeSyntax(options?: PrintOptions): string {
+    return this.renderAttributeParts(this.name, this.attributeValue, options);
   }
 
-  protected override resolveForRender(context: Context): MaybePromise<this> {
-    const currentName = this.value.name;
-    const currentValue = this.value.value;
+  override evalNode(context: Context): MaybePromise<Node> {
+    const currentName = this.name;
+    const currentValue = this.attributeValue;
+    const name = typeof currentName === 'string' ? currentName : currentName.eval(context);
+    const value = this.evaluateAttributeValue(context);
+    const finalize = (evaluatedName: string | Node, evaluatedValue: Node | undefined): Node => {
+      if (evaluatedName === currentName && evaluatedValue === currentValue) {
+        return this;
+      }
+      return this.createResolvedAttributeSelector(currentName, currentValue, evaluatedName, evaluatedValue);
+    };
+    if (isThenable(name)) {
+      return (name as Promise<string | Node>).then((evaluatedName) => {
+        if (isThenable(value)) {
+          return (value as Promise<Node | undefined>).then(evaluatedValue => finalize(evaluatedName, evaluatedValue));
+        }
+        return finalize(evaluatedName, value as Node | undefined);
+      });
+    }
+    if (isThenable(value)) {
+      return (value as Promise<Node | undefined>).then(evaluatedValue => finalize(name as string | Node, evaluatedValue));
+    }
+    return finalize(name as string | Node, value as Node | undefined);
+  }
+
+  private evaluateAttributeValue(context: Context): MaybePromise<Node | undefined> {
+    const value = this.attributeValue;
+    // Handle Less interpolation that the parser may have left as a raw token in selectors:
+    //   [data=@{attr-data}]
+    // In Less semantics this should resolve to the variable value and be serialized quoted.
+    if (value instanceof Any && typeof value.value === 'string') {
+      const raw = value.value.trim();
+      const m = raw.match(/^@\{([^}]+)\}$/);
+      if (m) {
+        const key = m[1]!;
+        const rules = this.rulesParent;
+        if (rules) {
+          const decl = findAttributeVarDeclaration(rules, key);
+          if (decl) {
+            const out = decl.valueNode.eval(context);
+            if (isThenable(out)) {
+              return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
+            }
+            return quoted(String((out as Node).valueOf()));
+          }
+        }
+      }
+    }
+    return value?.eval(context) as MaybePromise<Node | undefined>;
+  }
+
+  private createResolvedAttributeSelector(
+    currentName: string | Node,
+    currentValue: Node | undefined,
+    resolvedName: string | Node,
+    resolvedValue: Node | undefined
+  ): AttributeSelector {
+    const ownedName = typeof resolvedName === 'string'
+      ? resolvedName
+      : resolvedName === currentName
+        ? canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName)
+        : canReuseLeaf(resolvedName) ? reuseLeaf(resolvedName) : copyWithReusableLeaves(resolvedName);
+    const ownedValue = resolvedValue
+      ? resolvedValue === currentValue
+        ? canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
+        : canReuseLeaf(resolvedValue) ? reuseLeaf(resolvedValue) : copyWithReusableLeaves(resolvedValue)
+      : undefined;
+    const node = new AttributeSelector(
+      {
+        name: ownedName,
+        op: this.op,
+        value: ownedValue,
+        mod: this.mod
+      },
+      this._options,
+      this.location
+    );
+    node.inherit(this);
+    return node;
+  }
+
+  protected override resolveForRender(context: Context): MaybePromise<AttributeSelector> {
+    const currentName = this.name;
+    const currentValue = this.attributeValue;
     const name = typeof currentName === 'string' ? currentName : currentName.resolve(context);
     const value = this.resolveAttributeValue(context);
-    const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): this => {
+    const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): AttributeSelector => {
       if (resolvedName === currentName && resolvedValue === currentValue) {
         return this;
       }
-      return this.withResolvedParts(resolvedName, resolvedValue);
+      return this.createResolvedAttributeSelector(currentName, currentValue, resolvedName, resolvedValue);
     };
-    if (isThenable(name) || isThenable(value)) {
-      return Promise.all([name, value]).then(([resolvedName, resolvedValue]) => {
-        return finalize(resolvedName as string | Node, resolvedValue as Node | undefined);
+    if (isThenable(name)) {
+      return (name as Promise<string | Node>).then((resolvedName) => {
+        if (isThenable(value)) {
+          return (value as Promise<Node | undefined>).then((resolvedValue) => {
+            return finalize(resolvedName, resolvedValue);
+          });
+        }
+        return finalize(resolvedName, value as Node | undefined);
+      });
+    }
+    if (isThenable(value)) {
+      return (value as Promise<Node | undefined>).then((resolvedValue) => {
+        return finalize(name as string | Node, resolvedValue);
       });
     }
     return finalize(name as string | Node, value as Node | undefined);
@@ -168,6 +217,35 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     return this.resolveForRender(context);
   }
 
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
+    const currentName = this.name;
+    const name = typeof currentName === 'string' ? currentName : currentName.resolve(context);
+    const value = this.resolveAttributeValue(context);
+    const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): string => {
+      const prepared = buffer
+        ? prepareBufferPrintState(context, options)
+        : prepareRenderPrintState(context, printOptions);
+      const out = this.renderAttributeParts(resolvedName, resolvedValue, prepared);
+      return buffer ? writeRenderText(buffer, out) : out;
+    };
+    if (isThenable(name)) {
+      return (name as Promise<string | Node>).then((resolvedName) => {
+        if (isThenable(value)) {
+          return (value as Promise<Node | undefined>).then(resolvedValue => finalize(resolvedName, resolvedValue));
+        }
+        return finalize(resolvedName, value as Node | undefined);
+      });
+    }
+    if (isThenable(value)) {
+      return (value as Promise<Node | undefined>).then(resolvedValue => finalize(name as string | Node, resolvedValue));
+    }
+    return finalize(name as string | Node, value as Node | undefined);
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     return this.renderAttributeSyntax(options);
   }
@@ -175,7 +253,7 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
   override valueOf() {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, op, value, mod } = this.value;
+      const { name, op, attributeValue: value, mod } = this;
       /** Attributes are case-insensitive */
       let keyStr = (typeof name === 'string' ? name : name.toTrimmedString()).toLowerCase();
       if (!op) {
@@ -186,12 +264,25 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
     }
     return valueOf;
   }
+
+  constructor(
+    value: AttributeSelectorValue,
+    options?: undefined,
+    location?: LocationInfo | 0,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this.name = value.name;
+    this.op = value.op;
+    this.attributeValue = value.value;
+    this.mod = value.mod;
+    this._treeContext = treeContext;
+  }
 }
 
 /** Not sure why types couldn't be properly inferred */
 export const attr = defineType<AttributeSelectorValue>(AttributeSelector, 'AttributeSelector', 'attr') as (
   value: AttributeSelectorValue,
   options?: undefined,
-  location?: LocationInfo | 0,
-  treeContext?: TreeContext
+  location?: LocationInfo | 0
 ) => AttributeSelector;

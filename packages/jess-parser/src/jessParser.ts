@@ -1,9 +1,9 @@
 import { Lexer, type IRecognitionException } from 'chevrotain';
 import { createLexerDefinition } from '@jesscss/css-parser';
-import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
+import { nil, type Node, type Rules, type IParseResult, type TreeContext } from '@jesscss/core';
 
 import { jessFragments, jessTokens } from './jessTokens.js';
-import { JessRecursiveParser, type JessParserConfig, type TokenMap } from './jessRecursiveParser.js';
+import { JessRecursiveParser, type JessParserConfig } from './jessRecursiveParser.js';
 
 export type JessRules = keyof {
   [K in keyof JessRecursiveParser as JessRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
@@ -28,7 +28,7 @@ export class JessParser {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     });
-    this.parser = new JessRecursiveParser(T as unknown as TokenMap, config);
+    this.parser = new JessRecursiveParser(T, config);
     this.parse = this.parse.bind(this);
   }
 
@@ -44,21 +44,20 @@ export class JessParser {
     }
     parser.context.opts.trivia = undefined;
     parser.input = lexerResult.tokens;
-    const ruleMethod = parser[rule as keyof JessRecursiveParser];
+    const ruleMethod = parser[rule];
     if (typeof ruleMethod !== 'function') {
       throw new Error(`Unknown rule: ${rule}`);
     }
-    const tree = (ruleMethod as (() => Node | undefined)).call(parser);
+    const tree = ruleMethod.call(parser);
     const trivia = (parser as JessRecursiveParser & { trivia: IParseResult['trivia'] }).trivia;
     parser.context.opts.trivia = trivia;
-    if (tree) {
-      tree.treeContext.opts.trivia = trivia;
-    }
+    const resultTree = tree ?? nil();
+    (resultTree.sourceRoot?._treeContext ?? parser.context).opts.trivia = trivia;
 
     const warnings = [...parser.warnings];
 
     return {
-      tree: tree as Node,
+      tree: resultTree,
       lexerResult,
       errors: parser.errors as IRecognitionException[],
       trivia,

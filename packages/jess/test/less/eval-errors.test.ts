@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import lessPlugin from '@jesscss/plugin-less';
 import { Compiler } from '../../src/index.js';
 
-describe.todo('Less ampersand merge template', () => {
+describe('Less ampersand merge template', () => {
   const compiler = new Compiler({
     output: { collapseNesting: true },
     compile: {
@@ -26,7 +26,7 @@ describe.todo('Less ampersand merge template', () => {
     expect(css).toContain('.fruit-quoted-pear');
   });
 
-  it('rejects invalid template joins per item', async () => {
+  it.todo('rejects invalid template joins per item', async () => {
     const lessCode = `
       .one, .two {
         .fruit-& {

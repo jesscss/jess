@@ -17,7 +17,7 @@ type PreludeRule = Rule | string | undefined;
 
 function resolvePreludeRule($: C, preludeRule: PreludeRule): Rule | undefined {
   if (typeof preludeRule === 'string') {
-    const resolved: unknown = Reflect.get($, preludeRule);
+    const resolved = ($ as unknown as Record<string, unknown>)[preludeRule];
     if (typeof resolved === 'function') {
       return resolved as Rule;
     }

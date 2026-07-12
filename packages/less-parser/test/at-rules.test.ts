@@ -109,12 +109,13 @@ describe('mediaInParens', () => {
           )
         prelude: 
           (Expression
-            (Reference
+            node:
+              (Reference
                 type: 'variable'
-              target: 
-                (Call
-                  name: 
-                    (Reference [role=name]
+                target:
+                  (Call
+                    name:
+                      (Reference [role=name]
                         type: 'mixin-ruleset'
                         role: 'name'
                       key:

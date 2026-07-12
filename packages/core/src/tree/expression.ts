@@ -1,7 +1,7 @@
 import type { Context } from '../context.js';
-import { Node, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions, type TreeContext } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions } from './node.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { List } from './list.js';
 import { Sequence } from './sequence.js';
 import {
@@ -21,14 +21,24 @@ export interface Expression extends Node<Node> {
 }
 
 export class Expression extends Node<Node> {
-  constructor(value: Node, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['node'] as const;
+
+  readonly node: Node;
+
+  constructor(
+    value: Node,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
     this.addFlag(F_NON_STATIC);
   }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { value } = this;
-    const out = value.eval(context);
+    const out = this.node.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
       return out as Promise<Node>;
@@ -37,8 +47,7 @@ export class Expression extends Node<Node> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    const { value } = this;
-    const out = value.resolve(context);
+    const out = this.evalNode(context);
     if (isThenable(out)) {
       return out as Promise<Node>;
     }
@@ -48,28 +57,44 @@ export class Expression extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (this.value instanceof List || this.value instanceof Sequence) {
+    if (this.node instanceof List || this.node instanceof Sequence) {
       return isRenderBuffer(bufferOrOptions)
-        ? this.value.render(context, bufferOrOptions, options)
-        : this.value.render(context, bufferOrOptions);
+        ? this.node.render(context, bufferOrOptions, options)
+        : this.node.render(context, bufferOrOptions);
     }
-    return pipe(
-      () => this.evalNode(context),
-      node => isRenderBuffer(bufferOrOptions)
+    if (!this.node.hasFlag(F_MAY_ASYNC)) {
+      const node = this.node.eval(context);
+      if (!(node instanceof Node)) {
+        throw new TypeError('Expected expression value to evaluate to a node');
+      }
+      return isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)
-        : node.render(context, bufferOrOptions)
-    );
+        : node.render(context, bufferOrOptions);
+    }
+    const node = this.evalNode(context);
+    return isThenable(node)
+      ? node.then(renderedNode => isRenderBuffer(bufferOrOptions)
+          ? renderedNode.render(context, bufferOrOptions, options)
+          : renderedNode.render(context, bufferOrOptions))
+      : isRenderBuffer(bufferOrOptions)
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    w.add('$', this);
+    w.add('(');
+    this.node.writeSyntax(options);
+    w.add(')');
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    w.add('$', this);
-    w.add('(');
-    this.value.toString(options);
-    w.add(')');
-    return w.getSince(mark);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    return options.writer.getSince(mark);
   }
 }
 

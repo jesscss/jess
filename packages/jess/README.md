@@ -43,7 +43,7 @@ jess file.jess
 ```
 ### Import from JS
 ```less
-@import { constants } from './constants.js';
+@-use './constants.js' as constants;
 
 .box {
   width: $(constants.WIDTH + 10)px;
@@ -52,7 +52,7 @@ jess file.jess
 
 ### Import from Jess
 ```less
-@import { myWidth } from './stylesheet.jess';
+@-from './stylesheet.jess' import (myWidth);
 
 .box {
   width: $myWidth;

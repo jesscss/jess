@@ -1,3 +1,13 @@
+import type { Context } from '../../context.js';
+import { Bool } from '../bool.js';
+import { Condition } from '../condition.js';
+import type { List } from '../list.js';
+import type { Node } from '../node.js';
+import type { Rules } from '../rules.js';
+import { withRulesContext } from './context.js';
+import { evaluateCallableCandidateOutput } from './callable-candidate-output.js';
+import type { CallSignature } from './recursion-helper.js';
+
 export const CALLABLE_DEFAULT_FALSE_EITHER = -1;
 export const CALLABLE_DEFAULT_NONE = 0;
 export const CALLABLE_DEFAULT_TRUE = 1;
@@ -17,8 +27,68 @@ export type CallableDefaultGroupResolution = {
   defFalseCount: number;
 };
 
+export type CallableDefaultGuardProbeResult = {
+  passWhenDefaultFalse: boolean;
+  passWhenDefaultTrue: boolean;
+  passes: boolean;
+  group: CallableDefaultGroup;
+};
+
 type CallableDefaultGroupCandidate = {
   group: CallableDefaultGroup;
+};
+
+export type PendingCallableDefaultCandidate = {
+  group: CallableDefaultGroup;
+  rules: Rules;
+  sourceRules: Rules;
+  candidateParent?: Node;
+  candidateIndex?: number;
+  params?: CallSignature;
+};
+
+export type CallableDefaultState = {
+  hasDefNoneCandidate: boolean;
+  pendingCandidates: PendingCallableDefaultCandidate[];
+};
+
+type ProbeCallableDefaultGuardOptions = {
+  context: Context;
+  candidateGuard?: Node;
+  beforeEval?: (guard: Node) => void;
+};
+
+type ExecuteCallableDefaultCandidatesOptions<TCandidate extends PendingCallableDefaultCandidate> = {
+  context: Context;
+  hasDefNoneCandidate: boolean;
+  restrictMixinOutputLookup: boolean;
+  candidates: readonly TCandidate[];
+  runCandidate?: (candidate: TCandidate) => Promise<void>;
+};
+
+export type CallableDefaultExecutionResult = {
+  resolution: CallableDefaultGroupResolution;
+  outputs: Rules[];
+};
+
+type RecordCallableDefaultGuardResultOptions = {
+  state: CallableDefaultState;
+  guardResult: {
+    contributesDefNone: boolean;
+    pendingDefaultGroup?: CallableDefaultGroup;
+  };
+  rules: Rules;
+  sourceRules: Rules;
+  candidateParent?: Node;
+  candidateIndex?: number;
+  params?: CallSignature;
+};
+
+type FlushCallableDefaultOutputsOptions = {
+  context: Context;
+  state: CallableDefaultState;
+  restrictMixinOutputLookup: boolean;
+  runCandidate?: (candidate: PendingCallableDefaultCandidate) => Promise<void>;
 };
 
 function finalizeCallableDefaultGroupResolution(
@@ -74,4 +144,149 @@ export function resolveCallableDefaultCandidateGroups(
     }
   }
   return finalizeCallableDefaultGroupResolution(nextHasDefNoneCandidate, defTrueCount, defFalseCount);
+}
+
+export async function probeCallableDefaultGuard({
+  context,
+  candidateGuard,
+  beforeEval
+}: ProbeCallableDefaultGuardOptions): Promise<CallableDefaultGuardProbeResult> {
+  const evalWithDefault = async (isDefaultValue: boolean): Promise<boolean> => {
+    if (!candidateGuard) {
+      return false;
+    }
+    beforeEval?.(candidateGuard);
+    context.isDefault = isDefaultValue;
+    if (candidateGuard instanceof Condition) {
+      return await candidateGuard.evaluateBoolean(context);
+    }
+    const probeResult = await candidateGuard.eval(context);
+    return probeResult instanceof Bool && probeResult.value === true;
+  };
+
+  const originalIsDefault = context.isDefault;
+  try {
+    const passWhenDefaultFalse = await evalWithDefault(false);
+    const passWhenDefaultTrue = await evalWithDefault(true);
+    let passes = false;
+    let group: CallableDefaultGroup = CALLABLE_DEFAULT_FALSE_EITHER;
+    if (passWhenDefaultFalse || passWhenDefaultTrue) {
+      passes = true;
+      if (passWhenDefaultFalse && passWhenDefaultTrue) {
+        group = CALLABLE_DEFAULT_NONE;
+      } else {
+        group = passWhenDefaultTrue ? CALLABLE_DEFAULT_TRUE : CALLABLE_DEFAULT_FALSE;
+      }
+    }
+    return {
+      passWhenDefaultFalse,
+      passWhenDefaultTrue,
+      passes,
+      group
+    };
+  } finally {
+    context.isDefault = originalIsDefault;
+  }
+}
+
+export async function executeCallableDefaultCandidates<
+  TCandidate extends PendingCallableDefaultCandidate
+>({
+  context,
+  hasDefNoneCandidate,
+  restrictMixinOutputLookup,
+  candidates,
+  runCandidate
+}: ExecuteCallableDefaultCandidatesOptions<TCandidate>): Promise<CallableDefaultExecutionResult> {
+  const resolution = resolveCallableDefaultCandidateGroups(hasDefNoneCandidate, candidates);
+  if (resolution.ambiguous) {
+    throw new ReferenceError('Ambiguous use of default() while matching mixins.');
+  }
+
+  const outputs: Rules[] = [];
+  for (const candidate of candidates) {
+    if (candidate.group !== CALLABLE_DEFAULT_NONE && candidate.group !== resolution.defaultResult) {
+      continue;
+    }
+    if (runCandidate) {
+      await runCandidate(candidate);
+      continue;
+    }
+    const candidateParent = candidate.candidateParent;
+    if (!candidateParent) {
+      throw new TypeError('Pending callable default candidate is missing candidateParent');
+    }
+    await withRulesContext(context, candidate.rules, async () => {
+      const newRules = await evaluateCallableCandidateOutput({
+        context,
+        currentCall: context.callStack.at(-1),
+        getParamsSignature: () => candidate.params,
+        candidateParent,
+        candidateIndex: candidate.candidateIndex,
+        rules: candidate.rules,
+        sourceRules: candidate.sourceRules,
+        restrictMixinOutputLookup
+      });
+      if (newRules) {
+        outputs.push(newRules);
+      }
+    });
+  }
+
+  return {
+    resolution,
+    outputs
+  };
+}
+
+export function createCallableDefaultState(): CallableDefaultState {
+  return {
+    hasDefNoneCandidate: false,
+    pendingCandidates: []
+  };
+}
+
+export function recordCallableDefaultGuardResult({
+  state,
+  guardResult,
+  rules,
+  sourceRules,
+  candidateParent,
+  candidateIndex,
+  params
+}: RecordCallableDefaultGuardResultOptions): void {
+  if (guardResult.contributesDefNone) {
+    state.hasDefNoneCandidate = true;
+  }
+  if (guardResult.pendingDefaultGroup === undefined) {
+    return;
+  }
+  state.pendingCandidates.push({
+    candidateParent,
+    candidateIndex,
+    rules,
+    sourceRules,
+    params,
+    group: guardResult.pendingDefaultGroup
+  });
+}
+
+export async function flushCallableDefaultOutputs({
+  context,
+  state,
+  restrictMixinOutputLookup,
+  runCandidate
+}: FlushCallableDefaultOutputsOptions): Promise<CallableDefaultExecutionResult | undefined> {
+  if (state.pendingCandidates.length === 0) {
+    return undefined;
+  }
+  const execution = await executeCallableDefaultCandidates({
+    context,
+    hasDefNoneCandidate: state.hasDefNoneCandidate,
+    restrictMixinOutputLookup,
+    candidates: state.pendingCandidates,
+    runCandidate
+  });
+  state.hasDefNoneCandidate = execution.resolution.hasDefNoneCandidate;
+  return execution;
 }

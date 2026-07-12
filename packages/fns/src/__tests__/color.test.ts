@@ -30,7 +30,7 @@ describe('color', () => {
 
     expect(result).toBeInstanceOf(Color);
     expect(result).not.toBe(inputColor);
-    expect(result.value.node).toBeUndefined();
+    expect(result.node).toBeUndefined();
     expect(String(result)).toBe('#dda0dd');
   });
 

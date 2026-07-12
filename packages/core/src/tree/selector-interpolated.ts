@@ -1,10 +1,10 @@
 import type { Context } from '../context.js';
-import { defineType } from './node.js';
+import { defineType, type NodeLocation, type NodeOptions } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
-import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
-import type { PrintOptions } from './util/print.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 import type { RenderBuffer } from './util/render-buffer.js';
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
@@ -16,26 +16,47 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
  * This allows interpolation to be used in selector contexts
  */
 export class InterpolatedSelector extends SimpleSelector<Interpolated> {
+  static override childKeys = ['node'] as const;
+
+  readonly node: Interpolated;
+
+  constructor(
+    value: Interpolated,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
+  }
+
   get isClass() {
-    return /^\./.test(this.valueOf());
+    return this.valueOf()[0] === '.';
   }
 
   get isId() {
-    return /^#/.test(this.valueOf());
+    return this.valueOf()[0] === '#';
   }
 
   get isTag() {
-    return /^[^.#*]/.test(this.valueOf());
+    const first = this.valueOf()[0];
+    return first !== undefined && first !== '.' && first !== '#' && first !== '*';
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    this.node.writeSyntax(options);
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
     const { selectorBits } = context;
     this.keySetLibrary ??= selectorBits;
-    const out = this.value.evalToSelector(context);
+    const out = this.node.evalToSelector(context);
     if (isThenable(out)) {
-      return (out as Promise<Selector>).then(selector => attachSelectorBitLibrary(selector, selectorBits));
+      return out.then(selector => attachSelectorBitLibrary(selector, selectorBits));
     }
-    return attachSelectorBitLibrary(out as Selector, selectorBits);
+    return attachSelectorBitLibrary(out, selectorBits);
   }
 
   override resolve(context: Context): MaybePromise<Selector> {
@@ -45,24 +66,24 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   private resolveValue(context: Context): MaybePromise<Selector> {
     const { selectorBits } = context;
     this.keySetLibrary ??= selectorBits;
-    const out = this.value.evalToSelector(context, 'resolve');
+    const out = this.node.evalToSelector(context, 'resolve');
     if (isThenable(out)) {
-      return (out as Promise<Selector>).then(selector => attachSelectorBitLibrary(selector, selectorBits));
+      return out.then(selector => attachSelectorBitLibrary(selector, selectorBits));
     }
-    return attachSelectorBitLibrary(out as Selector, selectorBits);
+    return attachSelectorBitLibrary(out, selectorBits);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveValue(context),
-      node => this.renderOutput(context, node, bufferOrOptions, options)
-    );
+    const node = this.resolveValue(context);
+    return isThenable(node)
+      ? node.then(resolved => this.renderOutput(context, resolved, bufferOrOptions, options))
+      : this.renderOutput(context, node, bufferOrOptions, options);
   }
 
   override valueOf(): string {
-    return this.value.valueOf();
+    return this.node.valueOf();
   }
 }
 

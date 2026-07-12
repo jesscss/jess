@@ -47,6 +47,14 @@ describe('url', () => {
     expect(url(quoted('image.png')).toTrimmedString()).toBe('url("image.png")');
   });
 
+  it('stores the url child on a constructor-owned direct field', () => {
+    const value = quoted('image.png');
+    const node = url(value);
+
+    expect(node.node).toBe(value);
+    expect(Url.childKeys).toEqual(['node']);
+  });
+
   it('renders a resolved url value through render(context)', async () => {
     const node = rules([
       vardecl({

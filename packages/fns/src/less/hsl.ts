@@ -1,4 +1,4 @@
-import { Color, ColorFormat, Dimension, defineFunction, type FunctionThis, Any } from '@jesscss/core';
+import { Color, ColorFormat, Dimension, defineFunction, type DefineFunctionOptions, type FunctionThis, Any } from '@jesscss/core';
 import { percentOf, toNumber, splitSequence, normalizeHue } from '@jesscss/core';
 import { parseRelativeColorSyntax, evaluateOriginColor, evaluateHSLChannelReference } from '../util/relative-color.js';
 import { collectRawDimensions } from '../util/raw-color-args.js';
@@ -8,7 +8,7 @@ function hueChannelFromNode(node: unknown, hueValue: number): number | [number, 
   if (!(node instanceof Dimension)) {
     return hueValue;
   }
-  const { unit } = node.value;
+  const { unit } = node;
   return unit ? [hueValue, unit] : hueValue;
 }
 
@@ -30,7 +30,7 @@ function alphaChannelFromNode(node: unknown, alphaValue: number): number | [numb
   if (!(node instanceof Dimension)) {
     return alphaValue;
   }
-  const { number, unit } = node.value;
+  const { number, unit } = node;
   if (unit === '%') {
     const percentValue = Math.max(0, Math.min(100, number));
     return [percentValue, '%'];
@@ -39,11 +39,11 @@ function alphaChannelFromNode(node: unknown, alphaValue: number): number | [numb
 }
 
 function getRawAlphaChannel(rawArgs: any, alphaValue: number, hasExplicitAlpha: boolean): number | [number, string] {
-  if (!hasExplicitAlpha || !rawArgs?.value?.length) {
+  if (!hasExplicitAlpha || !rawArgs?.items?.length) {
     return alphaValue;
   }
   const dimensions: Dimension[] = [];
-  collectRawDimensions(rawArgs.value, dimensions);
+  collectRawDimensions(rawArgs.items, dimensions);
   const lastDimension = dimensions.at(-1);
   if (lastDimension) {
     return alphaChannelFromNode(lastDimension, alphaValue);
@@ -59,9 +59,7 @@ function coerceNumericArg(arg: unknown): number {
   return num;
 }
 
-const hsl = defineFunction(
-  'hsl',
-  async function(this: FunctionThis, ...args: any[]) {
+export async function hslImplementation(this: FunctionThis | undefined, ...args: any[]): Promise<Color> {
     const modernSyntax = Boolean(this?.caller?.options?.modernSyntax);
     // Check for relative color syntax first: hsl(from color h s l)
     if (this?.context && this.rawArgs) {
@@ -194,11 +192,11 @@ const hsl = defineFunction(
           format: ColorFormat.HSL,
           modernSyntax
         });
-        canonicalColor.value.node = undefined;
+        canonicalColor.node = undefined;
         return canonicalColor;
       }
 
-      clampedHslColor.value.node = undefined;
+      clampedHslColor.node = undefined;
       return clampedHslColor;
     } else if (args.length === 1 && args[0] instanceof Color) {
       // [Color] - output the color in HSL format
@@ -207,7 +205,7 @@ const hsl = defineFunction(
     } else if (args.length >= 1 && args.length <= 2 && args[0] instanceof Color) {
       // [Color, Dimension?] - output the color in HSL format and optionally set alpha
       const [inputColor] = args;
-      let alphaChannel = inputColor.value.alpha;
+      let alphaChannel = inputColor._alphaValue;
       if (args[1] !== undefined) {
         // callWithContext can still surface unitless numeric nodes here, so
         // coerce the overload the same way the numeric branches do.
@@ -220,9 +218,10 @@ const hsl = defineFunction(
     } else {
       throw new Error('Invalid arguments for hsl function');
     }
-  },
-  {
-    params: [
+}
+
+export const hslOptions = {
+  params: [
       // [Dimension, Dimension, Dimension, Dimension?] - h, s, l, optional alpha (most common, try first)
       [{
         name: 'h',
@@ -255,8 +254,13 @@ const hsl = defineFunction(
         }
       ]
     ],
-    preprocessParams: [splitSequence()]
-  }
+  preprocessParams: [splitSequence()]
+} satisfies DefineFunctionOptions;
+
+const hsl = defineFunction(
+  'hsl',
+  hslImplementation,
+  hslOptions
 );
 
 export default hsl;

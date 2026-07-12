@@ -41,5 +41,4 @@ Use this skill when debugging failing tests, runtime errors, or unexpected behav
 
 ## References
 
-- Full plan: `.cursor/DEBUGGING_ORCHESTRATION.md`
 - State and session discipline: `.cursor/PROJECT_STATE.md` and `/update-debug-state`

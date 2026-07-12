@@ -18,9 +18,6 @@ Remind the user and yourself to update project state so the next session (or a n
      - `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md`
    - For other areas: create a plan file only when the repo starts tracking that area as active work.
 
-3. **`.cursor/changes.md`** (if there was a significant fix or discovery):
-   - Add a short entry at the top with today's date (see main rules).
-
 ## Prompt the user
 
 After updating (or if you cannot update because of missing info), tell the user:

@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound, Comment } from '../index.js';
+import { mixin, rules, el, decl, any, ref, Node, call, ruleset, compound, Comment, list, condition, expr, op, Declaration, num } from '../index.js';
 import { Context } from '../../context.js';
 import { JessError } from '../../jess-error.js';
 import { renderNodeToString } from '../util/render-buffer.js';
@@ -64,12 +64,77 @@ async function expectRejects<T>(
 describe('Mixin Recursion Detection', () => {
   beforeEach(() => {
     context = new Context({
+      leakyRules: true,
       collapseNesting: true
     });
     context.depth = 2;
   });
 
   describe('nested mixin calls that should succeed', () => {
+    it('renders recursive mixin output without exponential declaration serialization', async () => {
+      const originalToTrimmedString = Declaration.prototype.toTrimmedString;
+      let declarationSerializations = 0;
+      Declaration.prototype.toTrimmedString = function countDeclarationSerialization(
+        this: Declaration,
+        ...args: Parameters<typeof originalToTrimmedString>
+      ): ReturnType<typeof originalToTrimmedString> {
+        declarationSerializations++;
+        return originalToTrimmedString.apply(this, args);
+      };
+
+      try {
+        const recursiveMixin = mixin({
+          name: any('.generate'),
+          params: list([any('i', { role: 'property' })]),
+          guard: condition([
+            expr(ref({ key: 'i' }, { type: 'variable' })),
+            '>',
+            num(0)
+          ]),
+          rules: rules([
+            ruleset({
+              selector: el('.item'),
+              rules: rules([
+                decl({ name: 'width', value: ref({ key: 'i' }, { type: 'variable' }) })
+              ])
+            }),
+            call({
+              name: ref({ key: '.generate' }, { type: 'mixin' }),
+              args: list([
+                op([
+                  ref({ key: 'i' }, { type: 'variable' }),
+                  '-',
+                  num(1)
+                ])
+              ])
+            })
+          ])
+        });
+        const root = rules([
+          recursiveMixin,
+          ruleset({
+            selector: el('.out'),
+            rules: rules([
+              call({
+                name: ref({ key: '.generate' }, { type: 'mixin' }),
+                args: list([num(8)])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context, { context });
+
+        expect(css.match(/\.item/g)).toHaveLength(8);
+        expect(css).toContain('width: 8');
+        expect(css).toContain('width: 1');
+        expect(declarationSerializations).toBeLessThan(80);
+      } finally {
+        Declaration.prototype.toTrimmedString = originalToTrimmedString;
+      }
+    });
+
     it('should be able to call a nested mixin', async () => {
       // .foo {
       //   .bar {

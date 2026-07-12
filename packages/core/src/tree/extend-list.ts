@@ -1,8 +1,8 @@
-import { Node, F_VISIBLE, defineType, type NodeLocation, type NodeOptions, type TreeContext } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { Node, F_VISIBLE, defineType, type NodeLocation, type NodeOptions } from './node.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import type { Extend } from './extend.js';
 import type { Context } from '../context.js';
-import { serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   type RenderBuffer,
   renderInvisibleEffect
@@ -19,21 +19,36 @@ export interface ExtendList extends Node<Extend[]> {
 }
 
 export class ExtendList extends Node<Extend[]> {
+  static override childKeys = ['nodes'] as const;
+
+  readonly nodes: Extend[];
+
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.nodes = value;
     this.removeFlag(F_VISIBLE);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    super.writeSyntax(options);
+    // writeSyntax side effect is already emitted to writer. Add ';'.
+    options.writer.add(';');
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    void super.toTrimmedString(options);
-    // toTrimmedString side effect is already emitted to writer; getSince captures it. Add ';'
-    w.add(';');
+    if (this.nodes.length === 0) {
+      options.writer.add(';', this);
+      return ';';
+    }
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 
@@ -48,7 +63,26 @@ export class ExtendList extends Node<Extend[]> {
   }
 
   private renderExtendEffects(context: Context): MaybePromise<void> {
-    return serialForEach(this.value, node => node.render(context));
+    const nodes = this.nodes;
+    for (let i = 0; i < nodes.length; i++) {
+      const out = nodes[i]!.runEffect(context);
+      if (isThenable(out)) {
+        return this.renderRemainingExtendEffects(context, out, i + 1);
+      }
+    }
+    return undefined;
+  }
+
+  private async renderRemainingExtendEffects(
+    context: Context,
+    pending: Promise<void>,
+    index: number
+  ): Promise<void> {
+    await pending;
+    const nodes = this.nodes;
+    for (let i = index; i < nodes.length; i++) {
+      await nodes[i]!.runEffect(context);
+    }
   }
 }
 

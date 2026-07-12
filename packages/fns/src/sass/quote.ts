@@ -12,7 +12,7 @@ const quote = defineFunction(
   'quote',
   function(string: Quoted): Quoted {
     // If already quoted, return as-is
-    if (string.options?.quote) {
+    if (string.quote) {
       return string;
     }
     // Create new Quoted with quote option (quoted)

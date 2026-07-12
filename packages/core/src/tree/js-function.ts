@@ -1,22 +1,27 @@
 import type { Context } from '../context.js';
-import { Node, defineType, type LocationInfo, type TreeContext, type NodeOptions } from './node.js';
+import { Node, defineType, type LocationInfo, type NodeOptions } from './node.js';
 
 type Fn = (...args: any[]) => any;
 /**
  * A JS function.
  */
 export class JsFunction extends Node<Fn> {
+  static override childKeys = null;
+
+  readonly fn: Fn;
   name?: string | undefined;
 
   constructor(
     value: { name: string; fn: Fn } | Fn,
     options?: NodeOptions,
     location?: LocationInfo,
-    treeContext?: TreeContext
+    treeContext?: Context['treeContext']
   ) {
     const fn = typeof value === 'function' ? value : value.fn;
 
-    super(fn, options, location, treeContext);
+    super(fn, options, location);
+    this._treeContext = treeContext;
+    this.fn = fn;
     this.name = typeof value === 'function' ? undefined : value.name;
   }
 

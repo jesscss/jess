@@ -4,10 +4,11 @@ import { List } from './list.js';
 import { Any, type AnyRole } from './any.js';
 import { Rules } from './rules.js';
 import { Interpolated } from './interpolated.js';
-import type { Context, TreeContext } from '../context.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import type { Context } from '../context.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { callableGuardContainsDefault } from './util/callable-entry.js';
 
 export interface MixinValue<Name extends AnyRole = 'name'> {
   /**
@@ -76,8 +77,28 @@ export type MixinOptions = {
  * @todo - Even though we allow a selector as a name.
  */
 export class Mixin extends Node<MixinValue, MixinOptions> {
-  constructor(value: MixinValue, options?: MixinOptions, location?: LocationInfo, context?: TreeContext) {
-    super(value, options, location, context);
+  static override childKeys = ['name', 'params', 'rules', 'guard'] as const;
+
+  readonly name: MixinValue['name'];
+  readonly rules: Rules;
+  readonly params: MixinValue['params'];
+  readonly guard: MixinValue['guard'];
+
+  constructor(
+    value: MixinValue,
+    options?: MixinOptions,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    if (options?.hasDefault === undefined && value.guard && callableGuardContainsDefault(value.guard)) {
+      options = { ...options, hasDefault: true };
+    }
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.name = value.name;
+    this.rules = value.rules;
+    this.params = value.params;
+    this.guard = value.guard;
     this.removeFlag(F_VISIBLE);
   }
 
@@ -122,16 +143,25 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   }
 
   private deriveMixin(value: MixinValue): Mixin {
+    const ownedName = value.name === undefined ? undefined : this.ownName(value.name);
+    const ownedRules = this.ownRules(value.rules);
+    const derived: MixinValue = {
+      rules: ownedRules
+    };
+    if (value.name !== undefined) {
+      derived.name = ownedName;
+    }
+    if (value.params !== undefined) {
+      derived.params = this.ownParams(value.params);
+    }
+    if (value.guard !== undefined) {
+      derived.guard = this.ownGuard(value.guard);
+    }
     return new Mixin(
-      {
-        ...(value.name !== undefined && { name: this.ownName(value.name) }),
-        rules: this.ownRules(value.rules),
-        ...(value.params !== undefined && { params: this.ownParams(value.params) }),
-        ...(value.guard !== undefined && { guard: this.ownGuard(value.guard) })
-      },
+      derived,
       this._options ? { ...this._options } : undefined,
-      this.location.length ? this.location : undefined,
-      this.treeContext
+      this.location.length === 6 ? this.location : undefined,
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
@@ -140,7 +170,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   get keySet() {
     let keySet = this._keySet;
     if (!keySet) {
-      let { name } = this.value;
+      let { name } = this;
       if (!name) {
         return (this._keySet = new Set());
       }
@@ -152,26 +182,35 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, rules, params, guard } = this.value;
     const mark = w.mark();
-    w.add(name ? `${name}` : '@');
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    const { name, rules, params, guard } = this;
+    if (name) {
+      name.writeSyntax(options);
+    } else {
+      w.add('@', this);
+    }
     if (name || params || guard) {
       w.add('(');
       if (params) {
-        params.toString(options);
+        params.writeSyntax(options);
       }
       w.add(')');
     }
     if (guard) {
       w.add(' when ');
-      w.add(`${guard}`);
+      guard.writeSyntax(options);
     }
     if (name || params || guard) {
       w.add(' ');
     }
     // Emit rules directly into shared writer; do not re-add return value
-    rules.toBraced(options);
-    return w.getSince(mark);
+    rules.writeBraced(options);
   }
 
   override prepareRegistration(context: Context): MaybePromise<Mixin> {
@@ -185,11 +224,16 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     // Mixins should NOT prepare their body rules during initial registration.
     // Body rules are prepared/evaluated when the mixin is called.
     let node: Mixin = this;
-    let { name, rules } = node.value;
+    let { name, rules } = node;
     if (name && name instanceof Interpolated) {
-      node = this.deriveMixin(this.value);
-      name = node.value.name;
-      rules = node.value.rules;
+      node = this.deriveMixin({
+        name: this.name,
+        rules: this.rules,
+        params: this.params,
+        guard: this.guard
+      });
+      name = node.name;
+      rules = node.rules;
     }
     node.registrationPrepared = true;
     this._prepareMixinBodyVisibility(rules, context);
@@ -220,18 +264,36 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
           if (!(key instanceof Any)) {
             throw new TypeError('Expected evaluated mixin name');
           }
-          node.adopt(key);
-          node.value.name = key;
-          return node;
+          return this.createPreparedNameMixin(node, key as Any<'name'>);
         });
       }
       if (!(maybeKey instanceof Any)) {
         throw new TypeError('Expected evaluated mixin name');
       }
-      node.adopt(maybeKey);
-      node.value.name = maybeKey;
+      return this.createPreparedNameMixin(node, maybeKey as Any<'name'>);
     }
     return node;
+  }
+
+  private createPreparedNameMixin(node: Mixin, key: Any<'name'>): Mixin {
+    const value: MixinValue = {
+      name: key,
+      rules: node.rules
+    };
+    if (node.params !== undefined) {
+      value.params = node.params;
+    }
+    if (node.guard !== undefined) {
+      value.guard = node.guard;
+    }
+    const out = new Mixin(
+      value,
+      node.options,
+      node.location.length ? node.location : undefined,
+      node.sourceRoot?._treeContext
+    ).inherit(node);
+    out.registrationPrepared = node.registrationPrepared;
+    return out;
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
@@ -294,6 +356,5 @@ type MixinConstructorParams = ConstructorParameters<typeof Mixin>;
 export const mixin = defineType(Mixin, 'Mixin') as (
   value: MixinValue<AnyRole> | MixinConstructorParams[0],
   options?: MixinConstructorParams[1],
-  location?: MixinConstructorParams[2],
-  treeContext?: MixinConstructorParams[3]
+  location?: MixinConstructorParams[2]
 ) => Mixin;

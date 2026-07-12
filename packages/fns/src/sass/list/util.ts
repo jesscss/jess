@@ -1,4 +1,4 @@
-import { Bool, List, Node, Block, Quoted, coerceListItems } from '@jesscss/core';
+import { Bool, List, Node, Paren, Quoted, coerceListItems } from '@jesscss/core';
 import { getListSeparator, isBracketedList } from '@jesscss/core';
 
 export type SassListSep = ',' | ';' | '/' | undefined;
@@ -71,7 +71,7 @@ export function createSassListResult(
   items: readonly Node[],
   sep: SassListSep,
   bracketed: boolean
-): List | Block;
+): List | Paren;
 export function createSassListResult(
   items: readonly Node[],
   sep: SassListSep,
@@ -81,12 +81,12 @@ export function createSassListResult(
   items: readonly Node[],
   sep: SassListSep,
   bracketed: true
-): Block;
+): Paren;
 export function createSassListResult(
   items: readonly Node[],
   sep: SassListSep,
   bracketed = false
-): List | Block {
+): List | Paren {
   const list = new List([...items], sep === undefined ? undefined : { sep });
-  return bracketed ? new Block(list, { type: 'square' }) : list;
+  return bracketed ? new Paren(list, { delimiter: 'square' }) : list;
 }

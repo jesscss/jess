@@ -6,8 +6,7 @@ import {
   F_IMPLICIT_AMPERSAND,
   F_MAY_ASYNC,
   type NodeLocation,
-  type NodeOptions,
-  type TreeContext
+  type NodeOptions
 } from './node.js';
 import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
@@ -17,13 +16,13 @@ import type { Ruleset } from './ruleset.js';
 import { createPublicNil, Nil } from './nil.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { Combinator } from './combinator.js';
-import { PseudoSelector } from './selector-pseudo.js';
+import { createGeneratedIsPseudo } from './selector-pseudo.js';
 import { SelectorList } from './selector-list.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { copyOwnedWithReusableLeaves } from './util/cloning.js';
+import { copySelectorForPlacement } from './util/selector-utils.js';
 import {
   renderInvisibleEffect,
   type RenderBuffer
@@ -63,53 +62,74 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
-  constructor(value: ExtendValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['selector', 'target'] as const;
+
+  readonly selector: Selector | undefined;
+  readonly target: Selector;
+  readonly namespace: string | undefined;
+  readonly flag: ExtendFlag | undefined;
+
+  constructor(
+    value: ExtendValue,
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.selector = value.selector;
+    this.target = value.target;
+    this.namespace = value.namespace;
+    this.flag = value.flag;
     this.removeFlag(F_VISIBLE);
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
   }
 
   override valueOf() {
-    return `$extend ${this.value.target.valueOf()}`;
+    return `$extend ${this.target.valueOf()}`;
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    let { target, selector, flag, namespace } = this.value;
-    const mark = w.mark();
-    const emitTrimmed = (node: Selector) => {
-      const saved = options.suppressBoundaryTrivia;
-      options.suppressBoundaryTrivia = 'pre';
-      try {
-        node.toString(options);
-      } finally {
-        options.suppressBoundaryTrivia = saved;
-      }
-    };
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    const { target, selector, flag, namespace } = this;
     w.add('$extend');
     if (selector) {
       w.add(' ');
-      emitTrimmed(selector);
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      selector.writeSyntax(options);
+      options.suppressBoundaryTrivia = saved;
       w.add(' ->');
     }
     w.add(' ');
     if (namespace) {
       w.add(`${namespace}|`);
     }
-    emitTrimmed(target);
+    const saved = options.suppressBoundaryTrivia;
+    options.suppressBoundaryTrivia = 'pre';
+    target.writeSyntax(options);
+    options.suppressBoundaryTrivia = saved;
     if (flag === ExtendFlag.Exact) {
       w.add(' !exact');
     }
     w.add(';');
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
     return w.getSince(mark);
   }
 
   // Don't prepare Extend early; evaluate it when the ruleset is in the frame.
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
-  private runExtendEffect(context: Context): MaybePromise<void> {
-    let { selector, target, flag } = this.value;
+  /** @internal Run the invisible extend registration effect without public render/eval materialization. */
+  runEffect(context: Context): MaybePromise<void> {
+    let { selector, target, flag } = this;
     const { selectorBits } = context;
     attachSelectorBitLibrary(target, selectorBits);
 
@@ -146,20 +166,20 @@ export class Extend extends Node<ExtendValue> {
         extendRoot,
         target,
         selector: sel,
-        authoredSelector: this.value.selector,
+        authoredSelector: this.selector,
         flag,
         currentFrame: currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame : undefined
       });
     };
     return isThenable(maybeSel)
-      ? (maybeSel as Promise<Selector | Nil>).then(register)
-      : register(maybeSel as Selector | Nil);
+      ? maybeSel.then(register)
+      : register(maybeSel);
   }
 
   override evalNode(context: Context): MaybePromise<Nil> {
-    const effect = this.runExtendEffect(context);
+    const effect = this.runEffect(context);
     return isThenable(effect)
-      ? (effect as Promise<void>).then(createPublicNil)
+      ? effect.then(createPublicNil)
       : createPublicNil();
   }
 
@@ -170,7 +190,7 @@ export class Extend extends Node<ExtendValue> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
-    return renderInvisibleEffect(this.runExtendEffect(context), bufferOrOptions);
+    return renderInvisibleEffect(this.runEffect(context), bufferOrOptions);
   }
 }
 
@@ -225,11 +245,10 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
         && !(parentSel instanceof Nil)
         && isNode(parentSel, N.SelectorList)
       ) {
-        const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
-          name: ':is',
-          arg: copySelectorForExtendRecord(parentSel, selectorBits)
-        }), selectorBits);
-        parentIs.generated = true;
+        const parentIs = attachSelectorBitLibrary(
+          createGeneratedIsPseudo(copySelectorForExtendRecord(parentSel, selectorBits)),
+          selectorBits
+        );
         resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
           parentIs,
           Combinator.create(' '),
@@ -277,26 +296,16 @@ function copySelectorForExtendRecord(
   selector: Selector,
   library: Selector['keySetLibrary']
 ): Selector {
-  const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isSelectorLike(copied)) {
-    throw new TypeError('Expected selector copy');
-  }
-  return attachSelectorBitLibrary(copied, library ?? selector.keySetLibrary);
-}
-
-function isSelectorLike(value: unknown): value is Selector {
-  return value instanceof Selector
-    || (
-      !!value
-      && typeof value === 'object'
-      && (value as { isSelector?: unknown }).isSelector === true
-    );
+  return copySelectorForPlacement(selector, library ?? selector.keySetLibrary);
 }
 
 function materializeImplicitAmpersands(
   selector: Selector,
   includeNonListImplicit: boolean
 ): Selector {
+  if (!hasMaterializableImplicitAmpersand(selector, includeNonListImplicit)) {
+    return selector;
+  }
   const library = selector.keySetLibrary;
   const copySelector = (node: Selector): Selector => copySelectorForExtendRecord(node, library);
   const materialize = (node: Selector): Selector => {
@@ -318,7 +327,7 @@ function materializeImplicitAmpersands(
     if (isNode(node, N.ComplexSelector)) {
       const complex = node;
       const parts: ComplexSelectorComponent[] = [];
-      for (const part of complex.value) {
+      for (const part of complex.components) {
         if (isNode(part, N.Ampersand)) {
           const amp = part;
           if (amp.hasFlag(F_IMPLICIT_AMPERSAND)) {
@@ -330,7 +339,7 @@ function materializeImplicitAmpersands(
             ) {
               const repl = materialize(copySelector(resolved));
               if (isNode(repl, N.ComplexSelector)) {
-                parts.push(...repl.value.map(item => copySelector(item) as ComplexSelectorComponent));
+                parts.push(...repl.selectors.map(item => copySelector(item) as ComplexSelectorComponent));
               } else {
                 parts.push(copySelector(repl) as ComplexSelectorComponent);
               }
@@ -346,7 +355,7 @@ function materializeImplicitAmpersands(
 
     if (isNode(node, N.SelectorList)) {
       return attachSelectorBitLibrary(
-        SelectorList.create(node.value.map(item => materialize(item as Selector))).inherit(node),
+        SelectorList.create(node.selectors.map(item => materialize(item as Selector))).inherit(node),
         library
       );
     }
@@ -355,6 +364,39 @@ function materializeImplicitAmpersands(
   };
 
   return attachSelectorBitLibrary(materialize(selector), library);
+}
+
+function hasMaterializableImplicitAmpersand(
+  selector: Selector,
+  includeNonListImplicit: boolean
+): boolean {
+  const isMaterializableResolvedSelector = (value: Selector | Nil | undefined): value is Selector => (
+    !!value
+    && !(value instanceof Nil)
+    && (includeNonListImplicit || isNode(value, N.SelectorList))
+  );
+
+  const visit = (node: Selector): boolean => {
+    if (isNode(node, N.Ampersand)) {
+      return node.hasFlag(F_IMPLICIT_AMPERSAND)
+        && isMaterializableResolvedSelector(node.getResolvedSelector());
+    }
+
+    if (isNode(node, N.ComplexSelector)) {
+      return node.components.some(part => (
+        !isNode(part, N.Combinator)
+        && visit(part)
+      ));
+    }
+
+    if (isNode(node, N.SelectorList)) {
+      return node.selectors.some(item => visit(item as Selector));
+    }
+
+    return false;
+  };
+
+  return visit(selector);
 }
 
 /** Document order for extend: prefer parse location startOffset (source order), else assigned map, else push order (length). */

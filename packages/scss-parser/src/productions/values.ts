@@ -79,9 +79,9 @@ function wrapOuterExpressionIfNeeded($: P, node: Node, ctx: RuleContext | undefi
         parenFrames: getParenFrames(ctx),
         calcFrames: getCalcFrames(ctx)
       },
-      node.value[1],
-      node.value[0],
-      node.value[2]
+      node.operator,
+      node.left,
+      node.right
     );
     if (shouldOperate) {
       return new Expression(node, { parens: true }, location ?? (node.location as LocationInfo | undefined), $.context);
@@ -711,9 +711,9 @@ export function parenValue(this: P, T: TokenMap) {
       (ctx.preferExpressionInParens ?? false)
       && isNode(value, N.List)
       && value.options?.sep === '/'
-      && (value as List).value.length === 2
+      && (value as List).items.length === 2
     ) {
-      const [left, right] = (value as List).value;
+      const [left, right] = (value as List).items;
       const exprCtx: RuleContext = {
         ...ctx,
         wrapInExpression: true,
@@ -822,7 +822,7 @@ export function functionCall(this: P, T: TokenMap) {
     const { name, args } = call.value;
 
     if (typeof name === 'string' && name === 'selector.parse') {
-      const argValues = isNode(args, N.List) ? (args as List).value : [];
+      const argValues = isNode(args, N.List) ? (args as List).items : [];
       const firstArg = argValues[0];
       const loc: LocationInfo | undefined = Array.isArray(call.location) && call.location.length === 6
         ? (call.location as LocationInfo)

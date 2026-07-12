@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, Bool, call, list, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
+import { any, Any, Bool, call, list, nil, Node, num, Paren, paren, ref, rules, Rules, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -20,10 +20,22 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -47,6 +59,61 @@ describe('Paren', () => {
 
   it('renders paren syntax through toTrimmedString()', () => {
     expect(paren(any('foo')).toTrimmedString()).toBe('(foo)');
+  });
+
+  it('stores the wrapped child on a constructor-owned direct field', () => {
+    const child = any('foo');
+    const node = paren(child);
+
+    expect(node.node).toBe(child);
+    expect(Paren.childKeys).toEqual(['node']);
+  });
+
+  it('writes empty paren syntax without writer readback', () => {
+    const writer = new CountingWriter();
+    const escapedWriter = new CountingWriter();
+    const squareWriter = new CountingWriter();
+
+    expect(paren().toTrimmedString({ writer })).toBe('()');
+    expect(writer.toString()).toBe('()');
+    expect(writer.reads).toBe(0);
+    expect(paren(undefined, { escaped: true }).toTrimmedString({ writer: escapedWriter })).toBe('~()');
+    expect(escapedWriter.toString()).toBe('~()');
+    expect(escapedWriter.reads).toBe(0);
+    expect(paren(undefined, { delimiter: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[]');
+    expect(squareWriter.toString()).toBe('[]');
+    expect(squareWriter.reads).toBe(0);
+  });
+
+  it('writes nil paren syntax without writer readback when trivia is inactive', () => {
+    const writer = new CountingWriter();
+    const squareWriter = new CountingWriter();
+
+    expect(paren(nil()).toTrimmedString({ writer })).toBe('()');
+    expect(writer.toString()).toBe('()');
+    expect(writer.reads).toBe(0);
+    expect(paren(nil(), { delimiter: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[]');
+    expect(squareWriter.toString()).toBe('[]');
+    expect(squareWriter.reads).toBe(0);
+  });
+
+  it('writes Any paren syntax without writer readback when trivia is inactive', () => {
+    const writer = new CountingWriter();
+    const squareWriter = new CountingWriter();
+    const escapedWriter = new CountingWriter();
+
+    expect(paren(any('foo')).toTrimmedString({ writer })).toBe('(foo)');
+    expect(writer.toString()).toBe('(foo)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(paren(any('foo'), { delimiter: 'square' }).toTrimmedString({ writer: squareWriter })).toBe('[foo]');
+    expect(squareWriter.toString()).toBe('[foo]');
+    expect(squareWriter.marks).toBe(0);
+    expect(squareWriter.reads).toBe(0);
+    expect(paren(any('foo'), { escaped: true }).toTrimmedString({ writer: escapedWriter })).toBe('~(foo)');
+    expect(escapedWriter.toString()).toBe('~(foo)');
+    expect(escapedWriter.marks).toBe(0);
+    expect(escapedWriter.reads).toBe(0);
   });
 
   it('does not allocate options when rendering paren syntax with defaults', () => {
@@ -103,6 +170,119 @@ describe('Paren', () => {
     expect(parenNode.registrationPrepared).toBe(false);
   });
 
+  it('writes resolved wrapped paren output to explicit writers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await evalRoot(node, context);
+    const writer = new CountingWriter();
+
+    expect(paren(ref({ key: 'value' }, { type: 'variable' })).render(context, { writer })).toBe('(foo)');
+    expect(writer.toString()).toBe('(foo)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('renders resolved Any paren values without child render transport', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await evalRoot(node, context);
+    const originalRender = Any.prototype.render;
+    Any.prototype.render = function renderForCounting() {
+      throw new Error('Resolved Any paren output should use direct syntax');
+    };
+
+    try {
+      expect(paren(ref({ key: 'value' }, { type: 'variable' })).render(context)).toBe('(foo)');
+    } finally {
+      Any.prototype.render = originalRender;
+    }
+  });
+
+  it('keeps resolved wrapped paren buffer output out of explicit writers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await evalRoot(node, context);
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(paren(ref({ key: 'value' }, { type: 'variable' })).render(context, buffer, { writer })).toBe('(foo)');
+    expect(buffer.parts).toEqual(['(foo)']);
+    expect(writer.toString()).toBe('');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('streams resolved wrapped child output into render buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: list([num(1), num(2)])
+      })
+    ]);
+    await evalRoot(node, context);
+    const buffer = createRenderBuffer('flat');
+
+    expect(paren(ref({ key: 'value' }, { type: 'variable' })).render(context, buffer))
+      .toBe('(1, 2)');
+    expect(buffer.parts).toEqual(['(', '1, 2', ')']);
+  });
+
+  it('renders empty paren syntax without writer readback', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const parenNode = paren(undefined, { escaped: true });
+
+    expect(parenNode.render(context, { writer })).toBe('~()');
+    expect(writer.toString()).toBe('~()');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(parenNode.render(context, buffer, { writer })).toBe('~()');
+    expect(buffer.parts).toEqual(['~()']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('renders nil paren syntax without writer readback when trivia is inactive', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+    const parenNode = paren(nil(), { delimiter: 'square' });
+
+    expect(parenNode.render(context, { writer })).toBe('[]');
+    expect(writer.toString()).toBe('[]');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(parenNode.render(context, buffer, { writer })).toBe('[]');
+    expect(buffer.parts).toEqual(['[]']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
+  it('renders Any paren syntax without writer readback when trivia is inactive', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(paren(any('foo')).render(context, { writer })).toBe('(foo)');
+    expect(writer.toString()).toBe('(foo)');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(paren(any('foo'), { delimiter: 'square' }).render(context, buffer, { writer })).toBe('[foo]');
+    expect(buffer.parts).toEqual(['[foo]']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+  });
+
   it('renders dynamic paren values without materializing a replacement paren', async () => {
     const node = rules([
       vardecl({
@@ -128,6 +308,24 @@ describe('Paren', () => {
     } finally {
       Object.defineProperty(Paren.prototype, 'withValue', descriptor);
     }
+  });
+
+  it('renders sync paren values without may-async continuation scaffolding', () => {
+    const value = any('foo');
+    const originalResolve = value.resolve;
+    value.resolve = function resolveSyncOnly(
+      this: typeof value,
+      renderContext: Context
+    ) {
+      const out = originalResolve.call(this, renderContext);
+      if (out instanceof Promise) {
+        throw new Error('Paren.render should keep sync values on the sync path');
+      }
+      return out;
+    };
+    const parenNode = paren(value);
+
+    expect(parenNode.render(context)).toBe('(foo)');
   });
 
   it('renders default() values without allocating temporary Bool nodes', async () => {
@@ -189,6 +387,18 @@ describe('Paren', () => {
     expect(writer.captures).toBe(0);
   });
 
+  it('writes paren source children without public toString transport', () => {
+    const value = any('foo');
+    let toStringCalls = 0;
+    value.toString = () => {
+      toStringCalls++;
+      return '';
+    };
+
+    expect(paren(value).toTrimmedString()).toBe('(foo)');
+    expect(toStringCalls).toBe(0);
+  });
+
   it('resolves paren values without touching render state', async () => {
     const node = rules([
       vardecl({
@@ -207,7 +417,7 @@ describe('Paren', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('returns fresh public Bool nodes for default() paren resolve results', async () => {
+  it('returns Bool nodes for default() paren resolve without stamping source state', async () => {
     context.isDefault = true;
     const parenNode = paren(call({ name: 'default' }));
 
@@ -218,10 +428,11 @@ describe('Paren', () => {
     if (!(first instanceof Bool) || !(second instanceof Bool)) {
       throw new Error('Expected Bool results');
     }
-    first.value = false;
 
-    expect(first).not.toBe(second);
+    expect(first.value).toBe(true);
     expect(second.value).toBe(true);
+    expect(parenNode.evaluated).toBe(false);
+    expect(parenNode.registrationPrepared).toBe(false);
   });
 
   it('keeps source paren child containers canonical after resolve(context)', async () => {
@@ -253,5 +464,27 @@ describe('Paren', () => {
 
     expect(resolved.toTrimmedString()).toBe('7, 8, 9');
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('renders escaped semicolon lists as commas without replacement list inheritance', () => {
+    const node = paren(
+      list([num(7), num(8), num(9)], { sep: ';' }),
+      { escaped: true }
+    );
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, 'inherit');
+    if (!descriptor) {
+      throw new Error('Expected Node.inherit for render materialization proof');
+    }
+    Object.defineProperty(Node.prototype, 'inherit', {
+      ...descriptor,
+      value: () => {
+        throw new Error('escaped list render should not materialize a replacement List');
+      }
+    });
+    try {
+      expect(node.render(context)).toBe('7, 8, 9');
+    } finally {
+      Object.defineProperty(Node.prototype, 'inherit', descriptor);
+    }
   });
 });

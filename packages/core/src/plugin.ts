@@ -96,6 +96,11 @@ export interface PluginInterface {
   /** Early visitor(s), called before eval for compatibility with Less-style plugins. */
   beforeEvalVisitor?: PluginVisitor | PluginVisitor[];
   /**
+   * Optional tree-aware early visitor hook. Use this when a compatibility layer
+   * can cheaply prove that a parsed tree needs no early traversal.
+   */
+  beforeEvalVisitorForTree?(tree: Rules, filePath?: string): PluginVisitor | PluginVisitor[] | undefined;
+  /**
    * Visitors that run after eval and immediately before render serialization.
    */
   preRenderVisitor?: PluginVisitor | PluginVisitor[];

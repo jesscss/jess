@@ -2,22 +2,24 @@
  * ScopeFrame.
  *
  * A ScopeFrame is a lightweight runtime object for lexical variable lookup.
- * It carries static declaration buckets, live call-time slots, and unresolved
+ * It carries current bindings, static declaration buckets, and unresolved
  * declaration names without cloning node trees or rewriting parent pointers.
  *
  * Relationship to existing infrastructure:
  *   - declarationBucketsByName is built from Rules.varsByName.
  *     Only static-key VarDeclarations are stored here; dynamic keys
  *     (Interpolated name nodes) go into pendingDeclarationNames.
- *   - liveSlotsByName holds mixin params, @arguments, and loop counters.
+ *   - currentBindingsByName holds the current read path for both live slots
+ *     and the latest static declaration.
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/future/performance/2026-04-13-registry-redesign-handoff.md
+ * @see docs/future/core-architecture/PERFORMANCE-HANDOFF.md
  */
 
-import type { Node } from './node.js';
+import { F_STATIC, Node } from './node.js';
 import type { VarDeclaration } from './declaration-var.js';
+import type { CallableLookupEntry } from './util/callable-entry.js';
 
 /**
  * One live binding slot.  Value is updated in place for loop counters and
@@ -26,9 +28,14 @@ import type { VarDeclaration } from './declaration-var.js';
 export interface BindingCell {
   value?: Node;
   prepareValue?: (value: Node | undefined) => Node;
+  /** Stable identity for cached reference handles; value writes do not change it. */
+  lookupIdentity?: number;
   /** Back-pointer to the canonical AST node, used for recursion detection. */
   sourceNode?: Node;
+  /** Runtime rules frame that owns this live binding. */
+  rulesContext?: object;
   readonly?: boolean;
+  live?: boolean;
 }
 
 export function getBindingCellValue(cell: BindingCell): Node {
@@ -54,6 +61,39 @@ export interface BindingEntry {
   sourceNode: Node;
 }
 
+export type ScopeFrameVariableLookupResult =
+  | {
+    kind: 'live';
+    cell: BindingCell;
+    sourceNode?: Node;
+    frame: ScopeFrame;
+  }
+  | {
+    kind: 'declaration';
+    cell: BindingCell;
+    sourceNode: Node;
+    frame: ScopeFrame;
+  }
+  | {
+    kind: 'miss';
+  }
+  | {
+    kind: 'uncovered';
+  };
+
+export type ScopeFrameCallableLookupResult =
+  | {
+    kind: 'hit';
+    bucket: CallableLookupEntry[];
+  }
+  | {
+    kind: 'miss';
+  }
+  | {
+    kind: 'uncovered';
+    reason: 'frame' | 'key' | 'candidate' | 'child-surface' | 'reference-import';
+  };
+
 /**
  * One scope frame.  Holds all bindings visible at one lexical scope boundary.
  *
@@ -78,10 +118,31 @@ export interface ScopeFrame {
   fallbackFrame?: ScopeFrame | undefined;
 
   /**
-   * Live binding cells: mixin params and loop counters.
-   * O(1) Map.get; populated at call time, not from the AST.
+   * Construction/clone owner for live binding cells: mixin params, configured
+   * import variables, and loop counters. Ordinary reads use
+   * currentBindingsByName so static declarations and live cells share one path.
    */
   liveSlotsByName: Map<string, BindingCell>;
+
+  /**
+   * Current binding cells for ordinary reads.
+   * Static declaration source-order history stays in declarationBucketsByName;
+   * this map is the direct path for "what is the current value of this name?"
+   */
+  currentBindingsByName: Map<string, BindingCell>;
+
+  /**
+   * Bumped when a current binding pointer changes. In-place cell value writes
+   * keep cached handles valid because reference reads still dereference the
+   * live cell.
+   */
+  currentBindingsVersion: number;
+
+  /**
+   * True when this frame owns live cells in liveSlotsByName. This keeps clone
+   * and prep paths from probing the live-slot map as a read-path signal.
+   */
+  hasLiveBindings: boolean;
 
   /**
    * Contextual variable declarations with static (non-interpolated) keys.
@@ -89,6 +150,52 @@ export interface ScopeFrame {
    * Entries are in source order; last entry wins (Less semantics).
    */
   declarationBucketsByName: Map<string, BindingEntry[]>;
+
+  /**
+   * Static callable buckets for this scope.
+   */
+  callableBucketsByName: Map<string, CallableLookupEntry[] | null> | undefined;
+
+  /**
+   * True when declarationBucketsByName represents every static declaration on
+   * this frame's Rules surface. Runtime live-slot-only frames leave this false
+   * so variable lookup can fall back to the older declaration surface instead
+   * of treating an empty bucket as a covered miss.
+   */
+  declarationsCovered: boolean;
+
+  /**
+   * True when callableBucketsByName represents the static callable entries on
+   * this frame's Rules surface. Runtime live-slot-only frames leave this false
+   * so callable lookup can route complex/unmodeled cases to the old path.
+   */
+  callablesCovered: boolean;
+
+  /**
+   * True when a simple static callable miss can stop at this frame. Frames with
+   * child lookup surfaces keep this false until those surfaces are represented
+   * in binding state.
+   */
+  callableMissesCovered: boolean;
+
+  /**
+   * True when callableMissesCovered is a computed frame fact instead of an
+   * unknown value left by cache invalidation.
+   */
+  callableMissCoverageKnown: boolean;
+
+  /**
+   * Same coverage as callableMissesCovered, but for mixin-only lookup. A child
+   * ruleset surface can satisfy mixin-ruleset lookup without satisfying a
+   * Mixin-only call.
+   */
+  mixinCallableMissesCovered: boolean;
+
+  /**
+   * True when mixinCallableMissesCovered is a computed frame fact instead of an
+   * unknown value left by cache invalidation.
+   */
+  mixinCallableMissCoverageKnown: boolean;
 
   /**
    * VarDeclarations whose name is a computed expression (Interpolated,
@@ -104,6 +211,34 @@ export interface ScopeFrame {
 
   /** Back-pointer to the Rules node this frame was built from. */
   rulesNode: object;  // typed as object to avoid a circular import; callers cast
+
+  /** True when reference-import surfaces can contribute callable lookup hits. */
+  hasReferenceImports: boolean;
+}
+
+let nextBindingCellLookupIdentity = 1;
+
+export function ensureBindingCellLookupIdentity(cell: BindingCell): number {
+  if (cell.lookupIdentity !== undefined) {
+    return cell.lookupIdentity;
+  }
+  const identity = nextBindingCellLookupIdentity++;
+  cell.lookupIdentity = identity === 0
+    ? nextBindingCellLookupIdentity++
+    : identity;
+  return cell.lookupIdentity;
+}
+
+function setCurrentBindingCell(
+  frame: ScopeFrame,
+  name: string,
+  cell: BindingCell
+): void {
+  ensureBindingCellLookupIdentity(cell);
+  if (frame.currentBindingsByName.get(name) !== cell) {
+    frame.currentBindingsVersion++;
+  }
+  frame.currentBindingsByName.set(name, cell);
 }
 
 /**
@@ -125,32 +260,112 @@ export function buildScopeFrame(
   rulesNode: object,
   parent: ScopeFrame | undefined,
   liveSlots?: Map<string, BindingCell>,
-  pendingDeclarationNames?: VarDeclaration[]
+  pendingDeclarationNames?: VarDeclaration[],
+  declarationsCovered = varsByName !== undefined,
+  callableEntriesByName?: Map<string, CallableLookupEntry[] | null>,
+  callablesCovered = callableEntriesByName !== undefined,
+  callableMissesCovered = callablesCovered,
+  mixinCallableMissesCovered = callableMissesCovered,
+  callableMissCoverageKnown = callablesCovered,
+  mixinCallableMissCoverageKnown = callableMissCoverageKnown,
+  hasReferenceImports = false
 ): ScopeFrame {
   const declarationBucketsByName = new Map<string, BindingEntry[]>();
+  const currentBindingsByName = new Map<string, BindingCell>();
 
   if (varsByName) {
     for (const [name, decls] of varsByName) {
-      const entries: BindingEntry[] = decls.map(decl => ({
-        cell: {
-          value: decl.value.value,
-          sourceNode: decl,
-          readonly: decl.options?.readonly
-        },
-        sourceNode: decl
-      }));
+      const entries: BindingEntry[] = [];
+      for (let i = 0; i < decls.length; i++) {
+        const decl = decls[i]!;
+        entries[i] = {
+          cell: {
+            value: decl.valueNode,
+            lookupIdentity: nextBindingCellLookupIdentity++,
+            sourceNode: decl,
+            readonly: decl.options?.readonly
+          },
+          sourceNode: decl
+        };
+      }
       declarationBucketsByName.set(name, entries);
+      const currentEntry = entries[entries.length - 1];
+      if (currentEntry) {
+        currentBindingsByName.set(name, currentEntry.cell);
+      }
     }
+  }
+
+  const liveSlotsByName = liveSlots ?? new Map<string, BindingCell>();
+  let hasLiveBindings = false;
+  for (const [name, cell] of liveSlotsByName) {
+    ensureBindingCellLookupIdentity(cell);
+    cell.live = true;
+    currentBindingsByName.set(name, cell);
+    hasLiveBindings = true;
   }
 
   return {
     parent,
     fallbackFrame: undefined,
-    liveSlotsByName: liveSlots ?? new Map(),
+    liveSlotsByName,
+    currentBindingsByName,
+    currentBindingsVersion: 0,
+    hasLiveBindings,
     declarationBucketsByName,
+    callableBucketsByName: callableEntriesByName,
+    declarationsCovered,
+    callablesCovered,
+    callableMissesCovered,
+    callableMissCoverageKnown,
+    mixinCallableMissesCovered,
+    mixinCallableMissCoverageKnown,
     pendingDeclarationNames: pendingDeclarationNames ?? [],
-    rulesNode
+    rulesNode,
+    hasReferenceImports
   };
+}
+
+export function copyScopeFrameLiveBindingSlots(
+  frame: ScopeFrame | undefined
+): Map<string, BindingCell> {
+  return new Map(frame?.liveSlotsByName);
+}
+
+export function setScopeFrameLiveBinding(
+  frame: ScopeFrame,
+  name: string,
+  cell: BindingCell
+): void {
+  ensureBindingCellLookupIdentity(cell);
+  cell.live = true;
+  frame.liveSlotsByName.set(name, cell);
+  setCurrentBindingCell(frame, name, cell);
+  frame.hasLiveBindings = true;
+}
+
+export function setScopeFrameDeclarationBinding(
+  frame: ScopeFrame,
+  name: string,
+  entry: BindingEntry
+): void {
+  setCurrentBindingCell(frame, name, entry.cell);
+}
+
+function pendingDeclarationMayAffectName(
+  pendingDeclarationNames: VarDeclaration[],
+  name: string
+): boolean {
+  for (let i = 0; i < pendingDeclarationNames.length; i++) {
+    const declName = pendingDeclarationNames[i]!.name;
+    if (declName instanceof Node && !declName.hasFlag(F_STATIC)) {
+      return true;
+    }
+    if (`${declName.valueOf()}` === name) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -166,20 +381,194 @@ export function resolveFrameCell(
 ): BindingEntry | undefined {
   let f = frame;
   while (f) {
-    // 1. Live slots (mixin params, @arguments, loop vars)
-    const live = f.liveSlotsByName.get(name);
-    if (live) {
-      return { cell: live, sourceNode: live.sourceNode ?? getBindingCellValue(live) };
+    const cell = f.currentBindingsByName.get(name);
+    if (cell) {
+      const sourceNode = cell.sourceNode ?? getBindingCellValue(cell);
+      return { cell, sourceNode };
     }
 
-    // 2. Static contextual bucket — last entry wins
-    const bucket = f.declarationBucketsByName.get(name);
-    if (bucket && bucket.length > 0) {
-      return bucket[bucket.length - 1];
-    }
-
-    // 3. Walk parent
     f = f.parent;
   }
   return undefined;
+}
+
+export function lookupScopeFrameVariable(
+  frame: ScopeFrame | undefined,
+  name: string,
+  options?: {
+    start?: number;
+    filter?: (node: Node) => boolean;
+    blockedSource?: (node: Node) => boolean;
+    includeLive?: boolean;
+    includeDeclarations?: boolean;
+    bailOnPendingDeclarations?: boolean;
+  }
+): ScopeFrameVariableLookupResult {
+  let f = frame;
+  let start = options?.start;
+  let fallbackFrame = frame?.fallbackFrame;
+  while (true) {
+    while (f) {
+      let currentCellRejectedByGuard = false;
+      if (start === undefined) {
+        const currentCell = f.currentBindingsByName.get(name);
+        if (
+          currentCell
+          && currentCell.live === true
+          && options?.includeLive !== false
+        ) {
+          const sourceNode = currentCell.sourceNode;
+          if (!sourceNode || !options?.blockedSource?.(sourceNode)) {
+            return {
+              kind: 'live',
+              cell: currentCell,
+              sourceNode,
+              frame: f
+            };
+          }
+          currentCellRejectedByGuard = sourceNode !== undefined
+            && options?.blockedSource?.(sourceNode) === true;
+        } else if (
+          currentCell
+          && options?.includeDeclarations !== false
+          && f.declarationsCovered
+          && currentCell.sourceNode
+        ) {
+          if (
+            !options?.blockedSource?.(currentCell.sourceNode)
+            && (!options?.filter || options.filter(currentCell.sourceNode))
+          ) {
+            return {
+              kind: 'declaration',
+              cell: currentCell,
+              sourceNode: currentCell.sourceNode,
+              frame: f
+            };
+          }
+          currentCellRejectedByGuard = true;
+        }
+      }
+
+      if (options?.includeDeclarations !== false && !f.declarationsCovered) {
+        return { kind: 'uncovered' };
+      }
+
+      if (
+        options?.bailOnPendingDeclarations
+        && f.pendingDeclarationNames.length > 0
+        && pendingDeclarationMayAffectName(f.pendingDeclarationNames, name)
+      ) {
+        return { kind: 'uncovered' };
+      }
+
+      const bucket = options?.includeDeclarations === false
+        || currentCellRejectedByGuard
+        ? undefined
+        : f.declarationBucketsByName.get(name);
+      if (bucket?.length) {
+        for (let i = bucket.length - 1; i >= 0; i--) {
+          const entry = bucket[i]!;
+          if (
+            start !== undefined
+            && !(entry.sourceNode.index !== undefined && entry.sourceNode.index < start)
+          ) {
+            continue;
+          }
+          if (!options?.filter || options.filter(entry.sourceNode)) {
+            return {
+              kind: 'declaration',
+              cell: entry.cell,
+              sourceNode: entry.sourceNode,
+              frame: f
+            };
+          }
+        }
+      }
+
+      start = undefined;
+      f = f.parent;
+    }
+
+    if (!fallbackFrame) {
+      return { kind: 'miss' };
+    }
+
+    f = fallbackFrame;
+    fallbackFrame = fallbackFrame.fallbackFrame;
+    start = undefined;
+  }
+}
+
+export function lookupScopeFrameCallable(
+  frame: ScopeFrame | undefined,
+  name: string,
+  options?: {
+    includeRulesets?: boolean;
+    searchParents?: boolean;
+  }
+): ScopeFrameCallableLookupResult {
+  let f = frame;
+  while (f) {
+    if (!f.callablesCovered) {
+      return { kind: 'uncovered', reason: 'frame' };
+    }
+
+    const callableBucketsByName = f.callableBucketsByName;
+    if (!callableBucketsByName?.has(name)) {
+      return { kind: 'uncovered', reason: 'key' };
+    }
+
+    const bucket = callableBucketsByName.get(name);
+    let hasUnconsumedCandidate = false;
+    if (bucket?.length) {
+      for (let i = bucket.length - 1; i >= 0; i--) {
+        const entry = bucket[i]!;
+        if (options?.includeRulesets === false && entry.value.type === 'Ruleset') {
+          continue;
+        }
+        if (
+          entry.match.length === 0
+        ) {
+          return { kind: 'hit', bucket };
+        }
+        hasUnconsumedCandidate = true;
+      }
+    }
+    if (hasUnconsumedCandidate) {
+      return { kind: 'uncovered', reason: 'candidate' };
+    }
+
+    const missesCovered = options?.includeRulesets === false
+      ? f.mixinCallableMissesCovered
+      : f.callableMissesCovered;
+    if (!missesCovered) {
+      if (f.hasReferenceImports) {
+        return { kind: 'uncovered', reason: 'reference-import' };
+      }
+      return { kind: 'uncovered', reason: 'child-surface' };
+    }
+
+    if (options?.searchParents === false) {
+      break;
+    }
+    f = f.parent;
+  }
+  return { kind: 'miss' };
+}
+
+export function assignScopeFrameVariable(
+  frame: ScopeFrame | undefined,
+  name: string,
+  value: Node
+): ScopeFrameVariableLookupResult | undefined {
+  const hit = lookupScopeFrameVariable(frame, name);
+  if (hit.kind === 'miss' || hit.kind === 'uncovered') {
+    return undefined;
+  }
+  if (hit.kind === 'live') {
+    hit.cell.value = value;
+  } else {
+    hit.cell.value = value;
+  }
+  return hit;
 }

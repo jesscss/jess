@@ -1,6 +1,7 @@
 import type { Context } from '../context.js';
 import { defineType, F_STATIC } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
 export interface BasicSelector extends SimpleSelector<string> {
   eval(context: Context): BasicSelector;
@@ -12,8 +13,16 @@ export interface BasicSelector extends SimpleSelector<string> {
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
-  constructor(...args: ConstructorParameters<typeof SimpleSelector<string>>) {
-    super(...args);
+  static override childKeys = null;
+
+  constructor(
+    value: string,
+    options?: ConstructorParameters<typeof SimpleSelector<string>>[1],
+    location?: ConstructorParameters<typeof SimpleSelector<string>>[2],
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }
 
@@ -31,7 +40,8 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   override evalNode(context: Context): BasicSelector {
-    const node = super.evalNode(context) as BasicSelector;
+    const node = this;
+    super.evalNode(context);
     if (node.isClass) {
       context.hashClass(node.value);
     }
@@ -40,6 +50,16 @@ export class BasicSelector extends SimpleSelector<string> {
 
   override valueOf(): string {
     return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value));
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    const out = this.valueOf();
+    options?.writer?.add(out, this);
+    return out;
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add(this.valueOf(), this);
   }
 
   /** @todo - move to visitors */

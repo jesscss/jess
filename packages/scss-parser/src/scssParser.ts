@@ -1,8 +1,8 @@
-import { Lexer, type IToken } from 'chevrotain';
+import { Lexer, type IRecognitionException } from 'chevrotain';
 import { scssTokens, scssFragments } from './scssTokens.js';
 import { createLexerDefinition } from '@jesscss/css-parser';
-import { ScssRecursiveParser, type ScssParserConfig, type TokenMap } from './scssRecursiveParser.js';
-import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
+import { ScssRecursiveParser, type ScssParserConfig } from './scssRecursiveParser.js';
+import { nil, type Node, type Rules, type IParseResult, type TreeContext } from '@jesscss/core';
 
 export type ScssRules = keyof {
   [K in keyof ScssRecursiveParser as ScssRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
@@ -26,7 +26,7 @@ export class ScssParser {
     config: ScssParserConfig = {}
   ) {
     const { lexer, T } = createLexerDefinition(
-      scssFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
+      scssFragments(),
       scssTokens()
     );
 
@@ -34,7 +34,7 @@ export class ScssParser {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     });
-    this.parser = new ScssRecursiveParser(T as TokenMap, config);
+    this.parser = new ScssRecursiveParser(T, config);
     this.parse = this.parse.bind(this);
   }
 
@@ -50,20 +50,23 @@ export class ScssParser {
       parser.context = options.context;
     }
     parser.context.opts.trivia = undefined;
-    parser.input = lexerResult.tokens as IToken[];
-    const tree = (parser as any)[rule]() as Node | undefined;
+    parser.input = lexerResult.tokens;
+    const ruleMethod = parser[rule];
+    if (typeof ruleMethod !== 'function') {
+      throw new Error(`Unknown parser rule: ${rule}`);
+    }
+    const tree = ruleMethod.call(parser);
     const trivia = (parser as ScssRecursiveParser & { trivia: IParseResult['trivia'] }).trivia;
     parser.context.opts.trivia = trivia;
-    if (tree) {
-      tree.treeContext.opts.trivia = trivia;
-    }
+    const resultTree = tree ?? nil();
+    (resultTree.sourceRoot?._treeContext ?? parser.context).opts.trivia = trivia;
 
     const warnings = [...parser.warnings];
 
     return {
-      tree: tree as Node,
+      tree: resultTree,
       lexerResult,
-      errors: parser.errors as any,
+      errors: parser.errors as IRecognitionException[],
       trivia,
       warnings
     };

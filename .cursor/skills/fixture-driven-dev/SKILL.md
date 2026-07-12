@@ -33,11 +33,11 @@ Use this skill when a bug is reported via a fixture suite (e.g. `@less/test-data
 
 5. **Update expectations deliberately**
    - Only update snapshots/expected outputs if the new behavior is intended and explained.
-   - If behavior changes, add a short note in `.cursor/changes.md` (if significant).
+   - If behavior changes, document the reason in the focused test, handoff, or
+     PR/commit message rather than restoring a running change log.
 
 ## Anti-patterns
 
 - Updating many snapshots at once without explaining the behavior change.
 - Running large fixture suites before isolating one case.
 - Forgetting the `core → jess` build nuance and chasing “ghost failures”.
-

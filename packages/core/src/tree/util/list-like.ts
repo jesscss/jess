@@ -5,12 +5,22 @@ import { Node } from '../node.js';
 
 export type ListItems = readonly Node[];
 
+function isParenLike(node: Node): boolean {
+  return node.type === 'Paren';
+}
+
 function unwrapListContainer(node: Node): List | Sequence | undefined {
   if (node instanceof List || node instanceof Sequence) {
     return node;
   }
-  if (node instanceof Block && node.value instanceof Node) {
+  if (isParenLike(node) && node.value instanceof Node) {
     const inner = node.value;
+    if (inner instanceof List || inner instanceof Sequence) {
+      return inner;
+    }
+  }
+  if (node instanceof Block && node.node instanceof Node) {
+    const inner = node.node;
     if (inner instanceof List || inner instanceof Sequence) {
       return inner;
     }
@@ -19,16 +29,28 @@ function unwrapListContainer(node: Node): List | Sequence | undefined {
 }
 
 export function getListItems(node: Node): ListItems | undefined {
-  return unwrapListContainer(node)?.value;
+  const container = unwrapListContainer(node);
+  if (!container) {
+    return undefined;
+  }
+  return container.items;
 }
 
 export function isBracketedList(node: Node): boolean {
+  if (isParenLike(node)) {
+    return node.options?.delimiter === 'square' && unwrapListContainer(node) !== undefined;
+  }
   if (node instanceof Block) {
     return node.options?.type === 'square' && unwrapListContainer(node) !== undefined;
   }
   const { parent } = node;
+  if ((parent instanceof Block ? parent.node : parent?.value) !== node) {
+    return false;
+  }
+  if (isParenLike(parent)) {
+    return parent.options?.delimiter === 'square' && unwrapListContainer(parent) !== undefined;
+  }
   return parent instanceof Block
-    && parent.value === node
     && parent.options?.type === 'square'
     && unwrapListContainer(parent) !== undefined;
 }
@@ -42,8 +64,8 @@ export function getListSeparator(node: Node): ',' | ';' | '/' | ' ' {
 }
 
 export function coerceListItems(node: Node): ListItems {
-  if (node instanceof List && node.length === 1 && node.value[0] instanceof Sequence) {
-    return node.value[0].value;
+  if (node instanceof List && node.length === 1 && node.items[0] instanceof Sequence) {
+    return node.items[0].items;
   }
   return getListItems(node) ?? [node];
 }

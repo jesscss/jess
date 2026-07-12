@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import type { JessRuleContext as RuleContext, TokenMap } from '../jessRecursiveParser.js';
 import type { IToken } from 'chevrotain';
 import { productions as cssProductions } from '@jesscss/css-parser';
@@ -214,6 +215,13 @@ export function value(this: P, T: TokenMap) {
           ALT: () => $.SUBRULE($.jessParenExpression, { ARGS: [ctx] })
         },
         {
+          GATE: () => $.LA(1).tokenType === $.T.DollarBang,
+          ALT: () => {
+            $.CONSUME($.T.DollarBang);
+            $.CONSUME($.T.PlainIdent);
+          }
+        },
+        {
           GATE: () =>
             $.LA(1).tokenType === $.T.DollarVariable
             && $.noSep(1)
@@ -233,6 +241,15 @@ export function value(this: P, T: TokenMap) {
 
     if ($.LA(1).tokenType === $.T.DollarParen) {
       return $.SUBRULE($.jessParenExpression, { ARGS: [ctx] });
+    }
+
+    if ($.LA(1).tokenType === $.T.DollarBang) {
+      const prefix = $.CONSUME($.T.DollarBang) as unknown as IToken;
+      const token = $.CONSUME($.T.PlainIdent) as unknown as IToken;
+      return new Reference(token.image, {
+        type: 'variable',
+        readMode: 'snapshot'
+      }, $.getLocationFromNodes([prefix, token]), $.context);
     }
 
     if (

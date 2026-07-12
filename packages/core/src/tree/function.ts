@@ -1,11 +1,13 @@
 import { type Context } from '../context.js';
-import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, Node, type LocationInfo } from './node.js';
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
-import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
+import { Rules } from './rules.js';
 import { type List, list } from './list.js';
-import type { Declaration } from './declaration.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { callableRulesEntry } from './util/callable-entry.js';
+import { MixinCollection } from './util/callable-collection.js';
+import { findPropertyDeclarationOccurrence } from './util/direct-rules-lookup.js';
 
 /**
  * Stylesheet-defined function with a return value.
@@ -32,14 +34,29 @@ export type FuncOptions = {
 };
 
 export class Func extends Node<FuncValue, FuncOptions> {
-  constructor(value: FuncValue, options?: FuncOptions, location?: LocationInfo, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  static override childKeys = ['name', 'params', 'body'] as const;
+
+  readonly name: FuncValue['name'];
+  readonly params: FuncValue['params'];
+  readonly body: Rules;
+
+  constructor(
+    value: FuncValue,
+    options?: FuncOptions,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this.name = value.name;
+    this.params = value.params;
+    this.body = value.body;
+    this._treeContext = treeContext;
     // Like mixins/functions in source languages: not emitted directly.
     this.removeFlag(F_VISIBLE);
   }
 
   get nameKey(): string | undefined {
-    const { name } = this.value;
+    const { name } = this;
     if (!name) {
       return undefined;
     }
@@ -50,7 +67,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, params, body } = this.value;
+    const { name, params, body } = this;
 
     w.add('$function', this);
     w.add(' ');
@@ -61,7 +78,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     }
     w.add(') ');
 
-    body.toBraced(options);
+    body.writeBraced(options);
 
     return w.getSince(mark);
   }
@@ -79,11 +96,11 @@ export class Func extends Node<FuncValue, FuncOptions> {
   async evalCall(context: Context, args: List<Node> = list([])): Promise<Node> {
     const returnName = this._options?.returnName ?? 'return';
 
-    const bodyRules = this.value.body;
+    const bodyRules = this.body;
 
     const coll = new MixinCollection([
       callableRulesEntry(
-        { rules: bodyRules, params: this.value.params },
+        { rules: bodyRules, params: this.params },
         this.parent,
         this.index
       )
@@ -94,18 +111,17 @@ export class Func extends Node<FuncValue, FuncOptions> {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must evaluate to rules`);
     }
 
-    const decl = evaluated.find('declaration', returnName, 'Declaration', { searchParents: false }) as Declaration | undefined;
+    const decl = findPropertyDeclarationOccurrence(evaluated, returnName, { searchParents: false })?.node;
     if (!decl) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }
     // Return the declaration's value (already in the correct scope).
-    return await decl.value.value.eval(context);
+    return await decl.valueNode.eval(context);
   }
 }
 
 export const fn = defineType(Func, 'Func', 'fn') as (
   value: FuncValue | { name?: string; params?: List<Node>; body: Rules },
   options?: FuncOptions,
-  location?: LocationInfo,
-  treeContext?: TreeContext
+  location?: LocationInfo
 ) => Func;

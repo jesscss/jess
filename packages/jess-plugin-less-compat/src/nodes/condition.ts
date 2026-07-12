@@ -4,16 +4,16 @@ import { toLessNode } from '../transform/to-less.js';
 
 export const transformConditionToLess = createFromAdapter<Condition>({
   fields: {
-    op: c => c.value[1] || '',
+    op: c => c.operator || '',
     lvalue: (c, cache) => {
-      const left = c.value[0];
+      const left = c.left;
       return left instanceof Node ? toLessNode(left, { cache }) : left;
     },
     rvalue: (c, cache) => {
-      const right = c.value[2];
+      const right = c.right;
       return right instanceof Node ? toLessNode(right, { cache }) : right;
     },
-    negate: c => c.options?.negate === true
+    negate: c => c.negate
   },
   accept: selfVisitAccept()
 });

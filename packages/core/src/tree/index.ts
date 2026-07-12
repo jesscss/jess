@@ -14,12 +14,13 @@ import {
   F_VISIBLE,
   F_MAY_ASYNC,
   F_STATIC,
-  F_NON_STATIC
+  F_NON_STATIC,
+  F_HAS_NODE_CHILD
 } from './node.js';
 import { TreeContext } from '../context.js';
 import { compare } from './util/compare.js';
 
-export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC };
+export { Node, TreeContext, type LocationInfo, F_VISIBLE, F_MAY_ASYNC, F_STATIC, F_NON_STATIC, F_HAS_NODE_CHILD };
 export { N } from './node-type.js';
 
 import { Selector } from './selector.js';

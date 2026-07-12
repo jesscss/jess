@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { TreeContext, List, list, spaced, num, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
+import { TreeContext, List, list, spaced, num, any, op, ref, rules, vardecl, F_MAY_ASYNC, F_STATIC, type Rules as RulesClass } from '../index.js';
 import { Any } from '../any.js';
 import { Context } from '../../context.js';
 import { Node } from '../node.js';
@@ -68,6 +68,16 @@ describe('List', () => {
     expect(rule.toTrimmedString()).toBe('1 2 3, four');
   });
 
+  it('stores child items on a constructor-owned direct field', () => {
+    const first = any('one');
+    const second = any('two');
+    const rule = list([first, second]);
+
+    expect(List.childKeys).toEqual(['items']);
+    expect(rule.items).toEqual([first, second]);
+    expect(rule.items).toBe(rule.value);
+  });
+
   it('does not allocate options when rendering list syntax with defaults', () => {
     const rule = list([num(1), num(2), num(3)]);
 
@@ -78,9 +88,10 @@ describe('List', () => {
   it('emits trivia before parser-owned list separators', () => {
     const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
     const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
     const trivia = createTriviaMap({
-      before: new Map([[21, [token(' '), token('/* comment */', 'BlockComment')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[21, tokens]]),
+      after: new Map([[first.location[3], tokens]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia })).toBe('screen /* comment */, print');
@@ -90,9 +101,10 @@ describe('List', () => {
     const writer = new CountingWriter();
     const first = new Any('screen', undefined, [0, 1, 1, 5, 1, 6]);
     const second = new Any('print', undefined, [23, 1, 24, 27, 1, 28]);
+    const tokens = [token(' '), token('/* comment */', 'BlockComment')];
     const trivia = createTriviaMap({
-      before: new Map([[21, [token(' '), token('/* comment */', 'BlockComment')]]]),
-      after: new Map<number, IToken[]>()
+      before: new Map([[21, tokens]]),
+      after: new Map([[first.location[3], tokens]])
     }) satisfies TriviaMap;
 
     expect(list([first, second]).toString({ trivia, writer })).toBe('screen /* comment */, print');
@@ -220,6 +232,87 @@ describe('List', () => {
     }
   });
 
+  it('renders dynamic sync list values without per-call serial iteration scaffolding', () => {
+    const listNode = list([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+    const originalMap = listNode.value.map;
+    Object.defineProperty(listNode.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('sync list render should not allocate mapped serial iteration entries');
+      }
+    });
+
+    try {
+      expect(listNode.render(context)).toBe('3, solid');
+    } finally {
+      Object.defineProperty(listNode.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
+    }
+  });
+
+  it('renders async list values without tuple-array serial iteration scaffolding', async () => {
+    const asyncItem = any('one');
+    asyncItem.resolve = async () => any('resolved');
+    asyncItem.render = async () => {
+      throw new Error('async list render should render the resolved item, not the source item');
+    };
+    asyncItem.addFlag(F_MAY_ASYNC);
+    asyncItem.removeFlag(F_STATIC);
+    const listNode = list([
+      asyncItem,
+      any('solid')
+    ]);
+    listNode.addFlag(F_MAY_ASYNC);
+    listNode.removeFlag(F_STATIC);
+    const originalMap = listNode.value.map;
+    Object.defineProperty(listNode.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('async list render should not allocate mapped tuple entries');
+      }
+    });
+
+    try {
+      await expect(Promise.resolve(listNode.render(context))).resolves.toBe('resolved, solid');
+    } finally {
+      Object.defineProperty(listNode.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
+    }
+  });
+
+  it('renders dynamic sync list items directly without resolving the list items first', () => {
+    const dynamicItem = op([num(1), '+', num(2)]);
+    dynamicItem.resolve = () => {
+      throw new Error('List render should render dynamic sync items directly');
+    };
+    const listNode = list([
+      dynamicItem,
+      any('solid')
+    ]);
+
+    expect(listNode.render(context)).toBe('3, solid');
+  });
+
+  it('writes dynamic sync direct list render output into flat buffers once', () => {
+    const buffer = createRenderBuffer('flat');
+    const listNode = list([
+      op([num(1), '+', num(2)]),
+      any('solid')
+    ]);
+
+    expect(listNode.render(context, buffer)).toBe('3, solid');
+    expect(buffer.parts).toEqual(['3, solid']);
+  });
+
   it('resolves list values without touching render state', async () => {
     const node = rules([
       vardecl({
@@ -258,6 +351,30 @@ describe('List', () => {
     expect(resolved.toTrimmedString()).toBe('one, two');
   });
 
+  it('resolves dynamic unchanged lists without a replacement surface', async () => {
+    const listNode = list([any('one'), any('two')]);
+    listNode.removeFlag(F_STATIC);
+    const descriptor = Object.getOwnPropertyDescriptor(List.prototype, 'withResolvedValue');
+    if (!descriptor) {
+      throw new Error('Expected List.withResolvedValue for resolve materialization proof');
+    }
+
+    Object.defineProperty(List.prototype, 'withResolvedValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('unchanged dynamic list resolve should return the source list');
+      }
+    });
+    try {
+      const resolved = await listNode.resolve(context);
+
+      expect(resolved).toBe(listNode);
+      expect(resolved.toTrimmedString()).toBe('one, two');
+    } finally {
+      Object.defineProperty(List.prototype, 'withResolvedValue', descriptor);
+    }
+  });
+
   it('keeps source list values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
@@ -288,6 +405,42 @@ describe('List', () => {
     expect(result.toTrimmedString()).toBe('left, right');
     expect(leftChild.parent).toBe(left);
     expect(rightChild.parent).toBe(right);
+  });
+
+  it('adds list values without mapped copy-array scaffolding', () => {
+    const left = list([any('left')]);
+    const right = list([any('right')]);
+    const originalLeftMap = left.value.map;
+    const originalRightMap = right.value.map;
+    Object.defineProperty(left.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('list addition should not map left child copies');
+      }
+    });
+    Object.defineProperty(right.value, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('list addition should not map right child copies');
+      }
+    });
+
+    try {
+      const result = left.operate(right, '+', context);
+
+      expect(result.toTrimmedString()).toBe('left, right');
+    } finally {
+      Object.defineProperty(left.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalLeftMap
+      });
+      Object.defineProperty(right.value, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalRightMap
+      });
+    }
   });
 
   it('keeps source scalar children canonical after list plus scalar', () => {

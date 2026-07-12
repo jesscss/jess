@@ -1,19 +1,34 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, condition, bool, comment, ref } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, Condition, condition, bool, comment, ref } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 let context: Context;
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  previews = 0;
+  trimEnds = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override preview(fn: () => string | void, preserveSegments?: boolean): string;
+  override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
+    this.previews++;
+    return super.preview(fn, preserveSegments);
+  }
+
+  override trimEndSince(mark: number): void {
+    this.trimEnds++;
+    return super.trimEndSince(mark);
   }
 }
 
@@ -38,6 +53,42 @@ describe('Rule', () => {
         color: #eee;
       }
     `);
+  });
+
+  it('renders unique declarations at emission time instead of duplicate-cache pre-render', () => {
+    const writer = new CountingWriter();
+    const colorDecl = decl({ name: 'color', value: any('red') });
+    const sizeDecl = decl({ name: 'font-size', value: any('12px') });
+    const originalToTrimmedString = colorDecl.toTrimmedString;
+    let colorUsedCallerWriter = false;
+    colorDecl.toTrimmedString = function countCallerWriterUse(
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      const options = args[0];
+      if (options?.writer === writer) {
+        colorUsedCallerWriter = true;
+      }
+      return originalToTrimmedString.apply(this, args);
+    };
+    const node = ruleset({
+      selector: sel([el('.box')]),
+      rules: rules([
+        colorDecl,
+        sizeDecl
+      ])
+    });
+
+    try {
+      expect(node.toTrimmedString({ writer })).toBeString(`
+        .box {
+          color: red;
+          font-size: 12px;
+        }
+      `);
+      expect(colorUsedCallerWriter).toBe(true);
+    } finally {
+      colorDecl.toTrimmedString = originalToTrimmedString;
+    }
   });
 
   it('keeps authored literal and interpolated sibling rulesets separate without collapse', async () => {
@@ -304,7 +355,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.value.rules);
+    expect(bodyAtRule.parent).toBe(node.rules);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -339,7 +390,7 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(bodyAtRule.parent).toBe(node.value.rules);
+    expect(bodyAtRule.parent).toBe(node.rules);
   });
 
   it('hoists root-only body at-rules in sibling order when hoist is active', async () => {
@@ -366,7 +417,7 @@ describe('Rule', () => {
         font-family: Body;
       }
     `);
-    expect(bodyAtRule.parent).toBe(node.value.rules);
+    expect(bodyAtRule.parent).toBe(node.rules);
   });
 
   it('keeps source selector and body parentage canonical during direct render', async () => {
@@ -641,7 +692,7 @@ describe('Rule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
-  it('renders guarded nil-selector rulesets through owned guard and body output', async () => {
+  it('renders guarded nil-selector rulesets without preparing source guard or body output', async () => {
     const guard = condition([bool(true)]);
     const body = rules([
       decl({ name: 'color', value: any('red') })
@@ -675,6 +726,26 @@ describe('Rule', () => {
     }
   });
 
+  it('renders guarded nil-selector rulesets without calling the public Bool-result condition eval wrapper', async () => {
+    const originalConditionEval = Condition.prototype.eval;
+    Condition.prototype.eval = function evalForCounting(): never {
+      throw new Error('nil-selector guard should evaluate condition booleans directly');
+    };
+    const node = ruleset({
+      selector: new Nil(),
+      guard: condition([bool(true)]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+    } finally {
+      Condition.prototype.eval = originalConditionEval;
+    }
+  });
+
   it('skips failed guarded nil-selector rulesets without mutating source state', async () => {
     const guard = condition([bool(false)]);
     const body = rules([
@@ -691,7 +762,7 @@ describe('Rule', () => {
     expect(body.parent).toBe(node);
     expect(guard.evaluated).toBe(false);
     expect(body.evaluated).toBe(false);
-    expect(node.value.guard).toBe(guard);
+    expect(node.guard).toBe(guard);
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
   });
@@ -838,7 +909,7 @@ describe('Rule', () => {
 
     expect(prepared).not.toBe(node);
     expect(selector.parent).toBe(node);
-    expect(prepared.value.rules).toBe(body);
+    expect(prepared.rules).toBe(body);
   });
 
   it('renders comment-free ruleset headers without cloning source-free selector leaves', () => {
@@ -957,7 +1028,7 @@ describe('Rule', () => {
     `);
     expect(selector.parent).toBe(node);
     expect(body.parent).toBe(node);
-    expect(resolved.value.rules).not.toBe(body);
+    expect(resolved.rules).not.toBe(body);
   });
 
   it('getHeaderString keeps reference target filtering render-local', () => {
@@ -1015,15 +1086,44 @@ describe('Rule', () => {
 
   it('streams header selectors without capture scaffolding', () => {
     const writer = new CountingWriter();
+    const selector = sellist([sel([el('.foo')])]);
     const node = ruleset({
-      selector: sellist([sel([el('.foo')])]),
+      selector,
       rules: rules([])
     });
     const options = getPrintOptions({ writer });
+    const originalSelectorToString = selector.toString;
+    const originalWriteSyntax = selector.writeSyntax;
+    let selectorToStringCalls = 0;
+    let selectorUsedActiveWriter = false;
+    selector.toString = function toStringWithWriterCheck(
+      this: typeof selector,
+      nextOptions?: Parameters<typeof originalSelectorToString>[0]
+    ): string {
+      selectorToStringCalls++;
+      return originalSelectorToString.call(this, nextOptions);
+    };
+    selector.writeSyntax = function writeSyntaxWithWriterCheck(
+      this: typeof selector,
+      nextOptions: Parameters<typeof originalWriteSyntax>[0]
+    ): void {
+      selectorUsedActiveWriter = nextOptions.writer === writer;
+      originalWriteSyntax.call(this, nextOptions);
+      nextOptions.writer.add('   ');
+    };
 
-    expect(node.getHeaderString(options)).toBe('.foo {\n');
-    expect(writer.toString()).toBe('');
-    expect(writer.captures).toBe(0);
+    try {
+      expect(node.getHeaderString(options)).toBe('.foo {\n');
+      expect(writer.toString()).toBe('');
+      expect(writer.captures).toBe(0);
+      expect(writer.previews).toBe(0);
+      expect(writer.trimEnds).toBe(1);
+      expect(selectorToStringCalls).toBe(0);
+      expect(selectorUsedActiveWriter).toBe(true);
+    } finally {
+      selector.toString = originalSelectorToString;
+      selector.writeSyntax = originalWriteSyntax;
+    }
   });
 
   it('getHeaderString keeps selector visibility forcing render-local', () => {

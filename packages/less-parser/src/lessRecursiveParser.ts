@@ -250,7 +250,7 @@ export class LessRecursiveParser extends CssRecursiveParser {
       || (T['JavaScript'] && tokenMatcher(token, T['JavaScript']))
     ) {
       throw new Error(
-        'Inline JavaScript using backticks is not supported. Use @use to import a JavaScript/TypeScript module instead. Script-module documentation is coming soon.'
+        'Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead. Script-module documentation is coming soon.'
       );
     } else if (tokenType === T['InterpolatedIdent']) {
       const result = getInterpolatedOrString(token.image, this.getLocationInfo(token), this.context);

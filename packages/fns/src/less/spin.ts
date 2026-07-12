@@ -10,7 +10,7 @@ export default defineFunction(
   'spin',
   function(this: Context, color: Color, amount: Dimension) {
     const [h, s, l] = color._hsl;
-    const hue = (h + amount.value.number) % 360;
+    const hue = (h + amount.number) % 360;
     const adjustedHue = hue < 0 ? 360 + hue : hue;
 
     // Create new color with adjusted hue, preserving original format

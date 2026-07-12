@@ -59,6 +59,13 @@ When working in the evaluation engine, optimize for:
 - smaller hot-path function-call ladders where they show up in real eval/render
   work
 
+Errors are for exceptional failure, not routine control flow. Do not throw,
+catch, allocate, or return `Error` instances to represent expected misses,
+ordinary branch results, negative lookup results, failed candidate matches, or
+other hot-path control states. Use typed result objects, booleans, sentinels, or
+diagnostic records instead; only create real `Error` objects when the caller is
+actually expected to handle an exceptional failure.
+
 Avoid treating these as acceptable end states:
 
 - cloning as routine eval isolation
@@ -67,6 +74,23 @@ Avoid treating these as acceptable end states:
 - trading one deleted node for more expensive state graphs, recursive walks, or
   function-call overhead
 - local green slices presented as architectural completion
+
+For active architecture queues, a "full pass" is a swath of adjacent queue work,
+not one tiny cleanup. Keep working within the active lane until one of these is
+true: the lane is drained, the next step has materially different semantics,
+the next step needs user/product judgment, evidence says the approach is wrong,
+or a failing test/debugging thread needs focused investigation. This applies to
+binding/scope work and to broader performance/cutting work. Use small focused
+tests while iterating, then run the expensive review/build/benchmark gates once
+at the batch boundary. Commit and push the batch, not each trivial deletion.
+
+During active unreleased architecture refactors, do not treat a method or
+helper as protected API merely because it is currently exported, public on a
+class, or reachable from tests. If the surface was introduced as transitional
+refactor machinery, is undocumented, unreleased, or was not explicitly approved
+as API, prefer deleting it over preserving no-op compatibility shims. Check
+repo usage and downstream workspace consumers, but do not keep public-looking
+registry/fallback wrappers solely because they exist today.
 
 If two approaches both pass tests, prefer the one with better measured or
 well-supported runtime speed. Use memory pressure as the next tiebreaker, and
@@ -79,8 +103,9 @@ When working on the active evaluation-model refactor, use these docs as the cano
 
 - `docs/future/core-architecture/HANDOFF.md` for current architecture lanes,
   completion gates, the active queue, and verification
-- `docs/future/node-copy-reduction/README.md` only as historical background for
-  the older node-copy-specific phase
+- `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` and
+  `pnpm run verify:aggressive-cutting-review` before committing queue passes
+  that touch eval/render/lookup/traversal/copying paths
 
 Use the handoff to understand the direction. Do not add broad status trackers
 or stale architecture documents that mostly describe machinery the repo does
@@ -103,3 +128,27 @@ Tool-specific rule systems should stay thin:
 - avoid copying branch summaries, active stage snapshots, or large architectural explanations
 
 When a tool-specific rule becomes stale, replace it with a pointer to the canonical source instead of refreshing a duplicate summary.
+
+<!-- BEGIN Guildhall MCP bridge -->
+## Guildhall MCP Bridge
+
+Jess is a Guildhall project. When Guildhall MCP tools are available, use them as the first source of project context before reading raw `.guildhall/` files.
+
+Start with these MCP resources:
+
+- `guildhall://project`
+- `guildhall://project/tasks`
+- `guildhall://project/artifacts`
+- `guildhall://project/decisions`
+- `guildhall://project/memory`
+
+For artifact-scoped work, resolve IDs through `guildhall://project/artifacts` and prefer `guildhall.read_artifact` over guessing paths. If the task changes project state, use `guildhall.append_task_evidence` for audit notes when there is an active Guildhall task. If an external agent needs permission, tools, or host access it does not have, use `guildhall.create_capability_request` instead of silently working around the missing capability.
+
+To start the local MCP server from this project root:
+
+```sh
+guildhall mcp serve .
+```
+
+If Guildhall MCP tools are not configured in the current agent session, say so explicitly and fall back to normal repository inspection. Do not imply that filesystem reads came from Guildhall MCP.
+<!-- END Guildhall MCP bridge -->

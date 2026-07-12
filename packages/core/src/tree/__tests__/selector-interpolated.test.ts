@@ -7,6 +7,7 @@ import {
   compound,
   el,
   Interpolated,
+  InterpolatedSelector,
   interpolated,
   interpolatedSelector,
   INTERPOLATION_PLACEHOLDER,
@@ -31,6 +32,17 @@ describe('InterpolatedSelector', () => {
     }));
 
     expect(node.toTrimmedString()).toBe('.$[name]');
+  });
+
+  it('stores the interpolated selector child on a constructor-owned direct field', () => {
+    const value = interpolated({
+      source: `.${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'index' })]
+    });
+    const node = interpolatedSelector(value);
+
+    expect(node.node).toBe(value);
+    expect(InterpolatedSelector.childKeys).toEqual(['node']);
   });
 
   it('renders resolved interpolated selectors through render(context)', async () => {
@@ -161,7 +173,7 @@ describe('InterpolatedSelector', () => {
     const resolved = await selectorNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo]');
-    expect(replacement.parent).toBe(selectorNode.value);
+    expect(replacement.parent).toBe(selectorNode.node);
     expect(replacement.toTrimmedString()).toBe('a[data=$capture-attr]');
     expect(selectorNode.toTrimmedString()).toBe('a[data=$capture-attr]');
   });
@@ -225,7 +237,7 @@ describe('InterpolatedSelector', () => {
 
       expect(resolved.toTrimmedString()).toBe('.a.b');
       expect(basicSelectorCloneCalls).toBe(0);
-      expect(replacement.parent).toBe(selectorNode.value);
+      expect(replacement.parent).toBe(selectorNode.node);
       expect(left.parent).toBe(replacement);
       expect(right.parent).toBe(replacement);
     } finally {

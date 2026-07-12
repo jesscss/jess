@@ -10,7 +10,7 @@
 
 - Provide secure JavaScript module execution for Jess styles/functions.
 - Make script execution available only when `@jesscss/plugin-js` is installed, while keeping it optional for users who do not need script features.
-- Auto-register `@jesscss/plugin-js` in Jess when the package is installed (no manual plugin array wiring required in the default path).
+- Load `@jesscss/plugin-js` only when the source graph reaches a script execution boundary; installing the package must not add startup cost to plugin-free parsing, evaluation, or rendering.
 - Enforce a least-privilege sandbox (filesystem + network) for JS runtime.
 - Keep existing behavior unchanged for users who do not install/configure JS support.
 - Route all script-capable language features through one secure runtime path (`@jesscss/plugin-js`).
@@ -23,10 +23,166 @@
 
 ## Current behavior (evidence)
 
-- JS module loading is already gated by `enableJavaScript` in `Context.getModule()`.
+- JS module loading is plugin-driven through `Context.getModule()`. There is
+  no `enableJavaScript` or `compile.javascript` compiler gate; executable JS is
+  enabled by configuring `@jesscss/plugin-js`.
 - Module loading is plugin-driven through `PluginInterface.import()`.
-- Plugins are explicitly provided via `compile.plugins`; there is no automatic plugin discovery.
+- Parse plugin selection is separate from JS execution. A `.less` file only needs the Less parser plugin to parse `@plugin` or script-capable syntax as syntax.
 - Config loading is based on `styles.config.*` search-up behavior.
+
+## Lazy Activation Contract
+
+### Core principle
+
+Installing `@jesscss/plugin-js` must not mean "start Deno for every compile."
+Jess should treat the JS plugin as a cold optional capability until a concrete
+script boundary proves it is required.
+
+Script boundaries are:
+
+- a resolved module import with extension `.js`, `.mjs`, `.cjs`, `.ts`,
+  `.mts`, or `.cts`;
+- a file-based Less `@plugin` directive whose resolved target is a JavaScript
+  module and cannot be satisfied by an explicit in-process `pluginRegistry`;
+- future script-capable features such as Sass/Jess module imports that resolve
+  to JS/TS modules.
+
+Non-boundaries are:
+
+- parsing a stylesheet that contains `@plugin` syntax;
+- parsing or evaluating a stylesheet that has no resolved JS module or Less
+  plugin execution;
+- importing `.json`, which is data and is parsed directly in Node without a
+  script runtime;
+- importing trusted built-in function packages that the host explicitly keeps
+  in Node, such as `@jesscss/fns`, `#less/*`, and `#sass/*`.
+
+### Lifecycle
+
+1. Compiler creation builds only the language/parser and explicitly configured
+   plugins.
+2. Context creation includes only explicitly configured plugins. A configured
+   `@jesscss/plugin-js` entry is represented by a lazy proxy, so Deno remains
+   cold until script execution.
+3. Parse and ordinary eval/render do not resolve, import, prewarm, or spawn the
+   JS runtime.
+4. `Context.getModule()` resolves the import path first. If the extension is a
+   script extension and no active configured plugin can import it, the
+   feature-level "install plugin-js" error is thrown.
+5. The JS plugin starts Deno only when its `import(...)` or explicit `prewarm()`
+   path is invoked.
+
+Explicit plugin behavior:
+
+- If a user explicitly lists `@jesscss/plugin-js` in `compile.plugins`, Jess may
+  include and prewarm it as an explicit user request.
+- JS sandbox config, when present, configures runtime policy; it does not
+  eagerly add or prewarm the JS plugin by itself.
+
+### Less v5 benchmark implication
+
+The historical Less benchmark harness calls `less.render(...)` with filename,
+paths, and math options, but without source maps or script plugin options. Under
+this contract:
+
+- plugin-free benchmark source graphs parse/evaluate/render entirely in Node;
+- the Deno runtime is not resolved, prewarmed, or spawned;
+- source maps are generated only when the Less/Jess option layer requests them;
+- benchmarks that intentionally include Less `@plugin` or JS module imports
+  measure the JS bridge path honestly.
+
+## Cross-Realm Value Bridge Contract
+
+The JS runtime boundary must be a value boundary, not a live AST boundary.
+
+When a Jess value crosses from Node to Deno:
+
+1. Node serializes the value into a small protocol payload.
+2. The Deno worker reconstructs Deno-side Less/Jess-compatible value objects.
+3. User/plugin JavaScript runs against those Deno-side objects.
+4. Returned values are serialized back to protocol payloads.
+5. Node reconstructs Node-side Jess values for the evaluator.
+
+This preserves common Less plugin ergonomics inside Deno:
+
+```js
+value instanceof less.tree.Dimension
+```
+
+That check can be true because the Deno bridge provides a Deno-side
+`less.tree.Dimension` class. It is not true because a live Node object crossed
+the process boundary.
+
+### Protocol shape
+
+The bridge payload should cover plugin-facing value classes first:
+
+```ts
+type JsBridgeValue =
+  | { kind: 'dimension'; value: number; unit?: string }
+  | { kind: 'color'; rgb: [number, number, number]; alpha?: number }
+  | { kind: 'quoted'; value: string; escaped?: boolean }
+  | { kind: 'keyword'; value: string }
+  | { kind: 'list'; items: JsBridgeValue[]; separator: ',' | ' ' | '/' }
+  | { kind: 'call'; name: string; args: JsBridgeValue[] };
+```
+
+Rules:
+
+- Do not send parent pointers, source-tree ownership, scope frames, registries,
+  contexts, writer state, or source-map state across the bridge.
+- Do not proxy arbitrary property access back into Node.
+- Do not expose live Node constructors in Deno.
+- Convert only function call arguments and return values unless a future plugin
+  API explicitly needs a broader value type.
+
+### API surface tiers
+
+1. Trusted built-ins and `@jesscss/fns`: run in Node with native Jess values.
+2. Jess `@-use` / `@-from` script module imports: run in Deno as normal ESM modules.
+   Imports and exports are the API. This path must not expose Jess or Less
+   compatibility globals by default.
+3. Deprecated legacy Less `@plugin` files: run in Deno only through an explicit
+   Less compatibility mode. This mode exposes old Less API shapes such as
+   `less.tree.Dimension`, `less.functions.functionRegistry`, and
+   `registerPlugin` as needed.
+
+Visitor-style Less plugins are harder than function plugins because they expect
+tree traversal and mutation APIs. The compatibility surface must stay explicit:
+support function plugins first; add visitor bridge coverage only for documented
+Less-facing value/tree APIs, not by shipping the whole Jess AST runtime into
+Deno.
+
+The deprecated old Less API belongs to `@plugin`; Jess `@-use` and `@-from` are ESM module imports.
+`@jesscss/plugin-js` may host both runtime modes, but the modes must not be
+merged into one ambient global surface.
+
+### Deprecated legacy Less `@plugin` wrapper mode
+
+Less `@plugin` files are not ESM modules. They use the old Less loader shape:
+
+```js
+new Function(
+  "module",
+  "exports",
+  "require",
+  "registerPlugin",
+  "functions",
+  "tree",
+  "less",
+  "fileInfo",
+  source
+)
+```
+
+That wrapper belongs only to the legacy `@plugin` path. The Deno worker should
+execute it in explicit Less mode, inject Less-compatible `functions`, `tree`,
+`less`, `registerPlugin`, and `fileInfo` objects, and keep registered function
+implementations inside Deno. Node should receive callable proxies that bridge
+arguments/results through the value protocol.
+
+The wrapper must not be used for Jess `@-use` / `@-from`; those are plain ESM
+import and export handling.
 
 ## Proposed architecture
 
@@ -40,7 +196,7 @@
 - This plugin is the only path that enables Deno-backed JS execution.
 - This plugin is also the required runtime bridge for:
   - Sass and future Less `@use`,
-  - Jess `@-use`,
+  - Jess `@-use` and `@-from`,
   - Less inline JavaScript,
   - Less `@plugin`.
 
@@ -48,7 +204,7 @@
 
 - Packaging model:
   - `@jesscss/plugin-js` is an optional dependency of `@jesscss/jess` (not installed by default for all users).
-  - When installed, Jess should detect and register it automatically.
+  - When installed, Jess may resolve it lazily at the first script boundary.
   - `@jesscss/plugin-js` declares `deno` as a direct dependency.
   - Deno runtime is required for this plugin path (not optional once plugin features are invoked).
 - Runtime fallback order:
@@ -60,15 +216,22 @@
 
 Third-party script execution (for `.js`/`.mjs`/`.cjs`/`.ts` modules and script-capable language features) is allowed only when all conditions are true:
 
-1. `enableJavaScript !== false` (existing gate in core context).
-2. `@jesscss/plugin-js` is resolved and active (auto-registered by Jess if installed, or explicitly provided).
-3. Runtime policy validation passes (sandbox root resolved, permission flags built).
+1. `@jesscss/plugin-js` is configured and active.
+2. Runtime policy validation passes (sandbox root resolved, permission flags built).
+
+`disableScriptModules` is the canonical policy switch for disabling executable
+script modules. It disables local/external JS/TS module imports and deprecated
+Less file-based `@plugin` execution, even when `@jesscss/plugin-js` is installed
+and configured. The old Less-compatible `disablePluginRule` option is a
+deprecated alias for the same behavior; diagnostics and docs should tell users
+to use `disableScriptModules`.
 
 Exemption:
 
 - Functions imported from `@jesscss/fns` are always executable.
-- `@jesscss/fns` execution does not require Deno and is not blocked by `enableJavaScript`.
-- This exemption only applies to trusted built-in `@jesscss/fns` imports, not arbitrary Node modules.
+- `@jesscss/fns`, `#less/*`, and `#sass/*` execution does not require Deno.
+- `.json` imports are data imports and do not require Deno or `@jesscss/plugin-js`.
+- These exemptions only apply to trusted built-in function imports and JSON data, not arbitrary Node modules.
 
 If plugin is absent and JS import is requested, fail with deterministic error:
 - `JavaScript plugin not installed. Install @jesscss/plugin-js to enable script execution features.`
@@ -77,8 +240,10 @@ If a script-capable feature is encountered and the plugin is not installed/confi
 
 - Throw a feature-level error with consistent wording:
   - `Feature not supported. Install @jesscss/plugin-js to enable script execution features.`
-- This applies to `@use`, `@-use`, Less inline JavaScript, and Less `@plugin`.
-- `@jesscss/fns` imports are excluded from this error path.
+- This applies to executable `@-use` / `@-from` imports, Less inline JavaScript,
+  and file-based Less `@plugin`.
+- `@jesscss/fns`, `#less/*`, `#sass/*`, and `.json` imports are excluded from
+  this error path.
 
 ## Deno execution model
 
@@ -107,16 +272,18 @@ Runner script responsibilities:
 - Return only serializable exports needed by Jess JS function bridge.
 - Exit with structured error payload for consistent Jess diagnostics.
 
-### Async startup model (prewarm + lazy await)
+### Async startup model (explicit prewarm + lazy await)
 
 - On compiler/context creation:
+  - do not start broker + Deno worker initialization for implicit/lazy JS support;
+  - prepare enough resolver state to load `@jesscss/plugin-js` if a script boundary is reached.
+- On explicit JS plugin configuration or explicit plugin prewarm:
   - start broker + Deno worker initialization asynchronously,
-  - store one shared promise on context/runtime state,
-  - do not block non-script compilation on startup.
-- At first script-required operation (`@use`, `@-use`, inline JS, `@plugin`, non-`@jesscss/fns` module import):
+  - store one shared promise on context/runtime state.
+- At first script-required operation (`@-use`, `@-from`, inline JS, `@plugin`, non-`@jesscss/fns` module import):
   - await the same shared initialization promise,
   - then execute request through worker bridge.
-- If no script features are used, initialization may complete in background and never be awaited by compilation flow.
+- If no script features are used, initialization must not be started by the default lazy path.
 
 ### Runtime lifecycle state machine
 
@@ -152,14 +319,14 @@ Sandbox root in plain language:
 
 Determine effective sandbox root as follows:
 
-1. If `compile.javascript === true`, treat it as `{}` (empty JS config) and continue lookup normally.
-2. If `javascript.jsReadRoot` is configured, use it directly as the effective sandbox root.
-3. Otherwise, candidate A: root derived from starting Less file path.
-4. Candidate B: root derived from resolved `styles.config.*` file location.
-5. If both A and B exist, effective root = directory furthest up between A and B.
-6. If only A exists, use A.
-7. If only B exists, use B.
-8. If neither A nor B exists, use `process.cwd()`.
+1. If the configured plugin-js instance supplies `jsReadRoot`, use it directly
+   as the effective sandbox root.
+2. Otherwise, candidate A: root derived from starting Less file path.
+3. Candidate B: root derived from resolved `styles.config.*` file location.
+4. If both A and B exist, effective root = directory furthest up between A and B.
+5. If only A exists, use A.
+6. If only B exists, use B.
+7. If neither A nor B exists, use `process.cwd()`.
 
 Interpretation:
 
@@ -191,34 +358,27 @@ Default:
 
 - No network access (no `--allow-net`).
 
-Opt-in via config:
+Opt-in via plugin-js options:
 
-- Add config field under compile options:
-  - `javascript: true | { allowHttp?: boolean; allowNetHosts?: string[]; jsReadRoot?: string }`
+- Configure `@jesscss/plugin-js` in `compile.plugins`.
 - Behavior:
-  - `javascript: true` => same behavior as `javascript: {}`.
   - `allowHttp: false|undefined` => no network.
   - `allowHttp: true` and no host list => `--allow-net`.
   - `allowHttp: true` and host list => `--allow-net=host1,host2`.
 
 ## API and config changes
 
-### New compile config shape
+### Plugin config shape
 
-- Extend compiler options with:
+Runtime policy lives on `@jesscss/plugin-js` options:
 
 ```ts
-type JavaScriptSandboxConfig = {
+type JsPluginOptions = {
   allowHttp?: boolean; // default false
   allowNetHosts?: string[]; // optional host allowlist when allowHttp=true
   jsReadRoot?: string; // optional explicit sandbox read root
 };
-
-type CompileJavaScriptOption = true | JavaScriptSandboxConfig;
 ```
-
-- Wire this under `compile.javascript` (or `compile.js`; final naming TBD).
-- `compile.javascript: true` is valid shorthand and must be normalized to `{}` at runtime.
 
 ### Config loader enhancement
 
@@ -234,20 +394,24 @@ This enables safe computation of config-root candidate for sandboxing.
 
 ### `@jesscss/jess` (`Compiler.createContext`)
 
-- Auto-detect `@jesscss/plugin-js` when installed and add it to active plugins by default.
+- Attach a lazy script-plugin loader to the context; do not add `@jesscss/plugin-js` to active plugins solely because it is installed.
 - Compute sandbox root from:
   - entry file directory (`filePath` when provided),
   - config file directory (from config metadata),
   - and use `process.cwd()` only if neither of the above exists.
 - Derive effective root using shared helper (`resolveSandboxRoot(...)`) implementing the exact algorithm above.
-- Include resolved JS policy in context options (`contextOptions.javascript`).
-- Trigger async prewarm for scripts runtime (broker + worker init) without blocking compilation.
+- Pass resolved default root to the configured plugin-js proxy. Do not store a
+  compiler-level JS policy in context options.
+- Do not trigger runtime prewarm for plugin-js support; the configured proxy
+  stays cold until `import(...)`, `importLessPlugin(...)`, or explicit
+  `prewarm()`.
 
 ### `@jesscss/core` (`Context.getModule`)
 
-- Keep existing `enableJavaScript` hard gate for non-`@jesscss/fns` third-party script execution.
-- Ensure `@jesscss/fns` import path bypasses JS-disabled checks.
+- Do not use an `enableJavaScript` hard gate.
+- Ensure `@jesscss/fns` import path does not require plugin-js.
 - Improve error path when module import is requested but no plugin with `import()` supports it.
+- Use only active configured plugins or host-provided lazy loaders.
 - Pass through import request to `plugin.import()` unchanged; plugin owns runtime execution policy enforcement.
 - Add consistent "Feature not supported" diagnostics for script-capable syntax paths that require `@jesscss/plugin-js`.
 - On first non-`@jesscss/fns` script request, await scripts runtime readiness before dispatch.
@@ -317,19 +481,20 @@ All errors should include:
 ### Integration tests
 
 - `@jesscss/plugin-js` fixture tests:
-  - `@jesscss/fns` imports execute with `enableJavaScript=false`.
+  - `@jesscss/fns` imports execute without plugin-js.
   - `@jesscss/fns` imports execute when Deno runtime is unavailable.
+  - plugin-free Less/Jess render does not resolve or prewarm `@jesscss/plugin-js` even when the package is installed.
   - successful JS import under allowed root.
   - successful package import resolved outside `jsReadRoot` via approved external package root.
   - successful TS module import under allowed root.
   - JS import fails without plugin.
-  - non-`@jesscss/fns` JS import fails when `enableJavaScript=false`.
+  - non-`@jesscss/fns` JS import fails when plugin-js is not configured.
   - network-denied behavior with attempted fetch.
   - network allowed when `allowHttp=true`.
-  - compile start is not blocked by runtime prewarm when no script features are used.
+  - compile start does not trigger runtime prewarm when no script features are used.
   - first script operation awaits runtime readiness and succeeds after async startup completes.
   - broker disconnect mid-compile results in deterministic fail-closed diagnostics.
-  - `@use`/`@-use`/inline JS/`@plugin` throw `Feature not supported` with install guidance when plugin is absent.
+  - `@-use`/`@-from`/inline JS/`@plugin` throw `Feature not supported` with install guidance when plugin is absent.
 
 ### Cross-package checks
 
@@ -352,7 +517,7 @@ All errors should include:
 ### Phase 3: Compiler wiring
 
 - Pass JS sandbox policy from compiler context to plugin.
-- Add automatic pickup/registration of `@jesscss/plugin-js` when installed.
+- Add lazy pickup of `@jesscss/plugin-js` at script boundaries.
 - Improve diagnostics in `Context.getModule` missing-plugin scenarios.
 
 ### Phase 4: Hardening
@@ -367,31 +532,32 @@ All errors should include:
 - Default security posture remains strict (JS disabled by option or plugin absence; no network unless explicitly enabled).
 - Trusted `@jesscss/fns` imports remain available independent of JS runtime gating.
 - Script-capable features now share a unified runtime gate and error message contract.
-- Installing `@jesscss/plugin-js` should require no additional manual plugin-list wiring for the default case.
+- Installing `@jesscss/plugin-js` should require no additional manual plugin-list wiring at first script use, but must not affect script-free compiles.
 
 ## Open questions (needs decisions)
 
 1. Plugin naming/public package surface:
    - Keep package name as `@jesscss/plugin-js` per install/error guidance; do we also want an alias package name (`@jesscss/plugin-scripts`) for discoverability, or avoid aliases to reduce support burden?
 2. Runtime policy location:
-   - Should `compile.javascript` be general runtime policy for all JS plugins, or plugin-local options only?
+   - Decided: runtime policy is plugin-local options only.
 3. Runtime transport:
    - Keep `spawn` only, or support worker/reused process later for performance?
 
 ## Suggested acceptance criteria
 
 - Jess with no JS plugin behaves exactly as today.
-- Installing `@jesscss/plugin-js` is automatically detected by Jess and enables script execution features without manual plugin registration in the default path.
-- Script features require a working Deno runtime and fail with actionable diagnostics when Deno is unavailable.
+- Configuring `@jesscss/plugin-js` enables lazy script execution features when a script boundary is reached.
+- Installing `@jesscss/plugin-js` does not make script-free compiles resolve, prewarm, or spawn the Deno runtime.
+- Executable JS/TS script features require a working Deno runtime and fail with actionable diagnostics when Deno is unavailable.
 - TypeScript modules are supported out-of-the-box in the same runtime path.
-- `@jesscss/fns` imports execute without Deno and regardless of `enableJavaScript`.
+- `@jesscss/fns`, `#less/*`, `#sass/*`, and `.json` imports execute without Deno.
 - JS execution cannot read files outside computed sandbox root (A/B furthest-up, `process.cwd()` only when both A and B are absent).
 - Network is denied by default and only enabled by explicit config.
 - Error messages clearly explain missing plugin/runtime and security denials.
 
 ## Concrete implementation task list
 
-### Task 1: Add config metadata and JS policy shape
+### Task 1: Add config metadata for sandbox roots
 
 - **Files**
   - `packages/config/src/loader.ts`
@@ -399,11 +565,7 @@ All errors should include:
   - `packages/jess/src/config.ts`
 - **Changes**
   - Add loader API that returns config + config file path metadata.
-  - Add `compile.javascript` type with only:
-    - `true` shorthand support (equivalent to `{}`)
-    - `allowHttp?: boolean`
-    - `allowNetHosts?: string[]`
-    - `jsReadRoot?: string`
+  - Keep plugin-js runtime policy on plugin options, not compiler options.
   - Keep backward-compatible config loading for callers not using metadata.
 - **Done when**
   - `Compiler.createContext()` can obtain `configFilePath`.
@@ -415,14 +577,13 @@ All errors should include:
   - `packages/jess/src/index.ts` (or new helper in `packages/jess/src/*`)
 - **Changes**
   - Implement root algorithm:
-    1. normalize `compile.javascript: true` to `{}`.
-    2. `javascript.jsReadRoot` if provided.
-    3. else furthest-up of entry-file root and config-file root.
-    4. else `process.cwd()` when both are missing.
+    1. plugin-js `jsReadRoot` option if provided by the plugin instance.
+    2. else furthest-up of entry-file root and config-file root.
+    3. else `process.cwd()` when both are missing.
   - Normalize and compare with `path.resolve()`.
 - **Done when**
   - Helper has unit tests for all branches.
-  - Context receives resolved root in `contextOptions.javascript`.
+  - Plugin-js receives the resolved root when configured by string/proxy.
 
 ### Task 3: Scaffold `@jesscss/plugin-js` package
 
@@ -468,30 +629,30 @@ All errors should include:
   - Broker decisions are deterministic and logged for diagnostics.
   - External package roots outside `jsReadRoot` are supported only when resolver-approved.
 
-### Task 6: Wire auto-detection and prewarm in `jess`
+### Task 6: Wire lazy script-plugin loading in `jess`
 
 - **Files**
   - `packages/jess/src/index.ts`
   - `packages/jess/package.json`
 - **Changes**
   - Add optional dependency on `@jesscss/plugin-js`.
-  - Auto-detect and auto-register plugin when installed.
-  - Trigger runtime prewarm in `createContext()` without blocking compile.
+  - Attach a context lazy loader that resolves `@jesscss/plugin-js` only for script extensions.
+  - Keep explicit `compile.plugins: ['@jesscss/plugin-js']` as the opt-in eager/plugin-list path.
 - **Done when**
-  - Users with plugin installed get script support without manual plugin config.
-  - Compiles with no script usage are not blocked by runtime startup.
+  - Users with plugin configured get script support at first script use without starting Deno earlier.
+  - Compiles with no script usage do not start runtime setup.
 
 ### Task 7: Enforce `@jesscss/fns` exemption and core gating updates
 
 - **Files**
   - `packages/core/src/context.ts`
-  - (if needed) parser/eval files handling `@use`, `@-use`, inline JS, `@plugin`
+  - (if needed) parser/eval files handling `@-use`, `@-from`, inline JS, `@plugin`
 - **Changes**
-  - Ensure `@jesscss/fns` imports bypass `enableJavaScript` and Deno requirements.
+  - Ensure `@jesscss/fns` imports bypass Deno requirements.
   - Keep non-`@jesscss/fns` paths gated by plugin + runtime availability.
   - Preserve "Feature not supported" errors when plugin is absent.
 - **Done when**
-  - `@jesscss/fns` executes with `enableJavaScript=false` and without Deno.
+  - `@jesscss/fns` executes without Deno.
   - Other script/module paths still enforce policy.
 
 ### Task 8: Add diagnostics and user UX messages
@@ -557,6 +718,6 @@ All errors should include:
   - `cd packages/jess && pnpm test -- test/less/all-less.test.ts`
 - Sanity:
   - scriptless compile path unchanged,
-  - plugin installed path auto-registers,
+  - plugin installed path lazy-loads at first script extension,
   - first script use awaits runtime readiness,
   - broker failure path returns deterministic diagnostics.

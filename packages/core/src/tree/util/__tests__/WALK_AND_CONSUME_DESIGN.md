@@ -105,7 +105,7 @@ function walkAndExtend(
   if (isNode(target, 'CompoundSelector')) {
     return walkCompoundSelector(target, find, extendWith, partial, ctx);
   }
-  if (isNode(target, 'PseudoSelector') && target.value.arg) {
+  if (isNode(target, 'PseudoSelector') && target.arg) {
     return walkPseudoSelector(target, find, extendWith, partial, ctx);
   }
 

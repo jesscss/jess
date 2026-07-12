@@ -1,7 +1,8 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, nil } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import { resolveFrameCell } from '../scope-frame.js';
-import { getRulesEntryTraversalState, MixinRegistry } from '../util/registry-utils.js';
+import { OutputWriter } from '../util/print.js';
+import { lookupScopeFrameCallable, resolveFrameCell } from '../scope-frame.js';
+import { getRulesEntryTraversalState } from '../util/lookup-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
 import {
   attachMixinOutputSlot,
@@ -24,9 +25,18 @@ import {
   isPublicRulesEntry,
   keepsDuplicateMixinOutputDeclaration
 } from '../util/mixin-output-slot.js';
-import { createCallableOuterRules, createMixinOutputRulesWrapper } from '../rules.js';
+import { createCallableOuterRules, createMixinOutputRulesWrapper } from '../util/callable-surface.js';
 
 let context: Context;
+
+class CountingWriter extends OutputWriter {
+  reads = 0;
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 // Helper to check for errors without serializing the resolved value
 async function expectRejects<T>(
@@ -115,6 +125,54 @@ describe('Mixin', () => {
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes mixin syntax through direct child writers', () => {
+    const name = any('.button');
+    const params = list([vardecl({ name: any('tone'), value: nil() }, { paramVar: true })]);
+    const guard = condition([ref({ key: 'enabled' }, { type: 'variable' })]);
+    const node = mixin({
+      name,
+      params,
+      guard,
+      rules: rules([
+        decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+      ])
+    });
+    name.toString = () => {
+      throw new Error('Mixin.writeSyntax should not stringify the name publicly');
+    };
+    params.toString = () => {
+      throw new Error('Mixin.writeSyntax should not stringify params publicly');
+    };
+    guard.toString = () => {
+      throw new Error('Mixin.writeSyntax should not stringify guard publicly');
+    };
+    const writer = new CountingWriter();
+
+    expect(node.toTrimmedString({ writer })).toBeString(`
+      .button($tone) when $enabled {
+        color: $tone;
+      }
+    `);
+    expect(writer.toString()).toBeString(`
+      .button($tone) when $enabled {
+        color: $tone;
+      }
+    `);
+  });
+
+  it('writes mixin bodies through direct braced rules syntax', () => {
+    const body = rules([]);
+    body.toBraced = () => {
+      throw new Error('Mixin.writeSyntax should write braced rules directly');
+    };
+    const node = mixin({
+      name: any('.button'),
+      rules: body
+    });
+
+    expect(node.toTrimmedString()).toBe('.button() {\n\n}');
   });
 
   it('prepares mixin identity without pre-evaluating the body', async () => {
@@ -255,6 +313,58 @@ describe('Mixin', () => {
           color: red;
         }
       `);
+    });
+
+    it('keeps static direct mixin output placements source-backed without moving source children', async () => {
+      const sourceValue = any('red');
+      const sourceDecl = decl({ name: 'color', value: sourceValue });
+      const mixinBody = rules([sourceDecl]);
+      const mixinDef = mixin({
+        name: any('.static-direct'),
+        rules: mixinBody
+      });
+      const callerRules = rules([]);
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.use'),
+          rules: callerRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = callerRules;
+
+      const firstCall = call({ name: ref({ key: '.static-direct' }, { type: 'mixin' }) });
+      callerRules.adopt(firstCall);
+      const firstResult = await firstCall.eval(context);
+      const secondCall = call({ name: ref({ key: '.static-direct' }, { type: 'mixin' }) });
+      callerRules.adopt(secondCall);
+      const secondResult = await secondCall.eval(context);
+
+      expect(firstResult).toBeInstanceOf(RulesClass);
+      expect(secondResult).toBeInstanceOf(RulesClass);
+      if (!(firstResult instanceof RulesClass) || !(secondResult instanceof RulesClass)) {
+        throw new Error('Expected Rules results');
+      }
+      const firstDecl = firstResult.value[0];
+      const secondDecl = secondResult.value[0];
+      expect(firstDecl).toBeDefined();
+      expect(secondDecl).toBeDefined();
+      expect(firstDecl).toBe(sourceDecl);
+      expect(secondDecl).toBe(sourceDecl);
+      expect(getMixinOutputSourceChild(firstResult, firstDecl!)).toBe(sourceDecl);
+      expect(getMixinOutputSourceChild(secondResult, secondDecl!)).toBe(sourceDecl);
+      expect(getMixinOutputChildForSource(firstResult, sourceDecl)).toBe(firstDecl);
+      expect(getMixinOutputChildForSource(secondResult, sourceDecl)).toBe(secondDecl);
+      expect(firstDecl?.parent).toBe(mixinBody);
+      expect(secondDecl?.parent).toBe(mixinBody);
+      expect(sourceDecl.parent).toBe(mixinBody);
+      expect(sourceValue.parent).toBe(sourceDecl);
+      if (!isNode(firstDecl, N.VarDeclaration) || !isNode(secondDecl, N.VarDeclaration)) {
+        throw new Error('Expected VarDeclaration output children');
+      }
+      expect(firstDecl.valueNode).toBe(sourceValue);
+      expect(secondDecl.valueNode).toBe(sourceValue);
     });
 
     it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
@@ -404,12 +514,12 @@ describe('Mixin', () => {
         throw new Error('Expected Rules result');
       }
       const outputDecl = result.value[0];
-      expect(outputDecl).not.toBe(sourceDecl);
+      expect(outputDecl).toBe(sourceDecl);
       expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
       expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceBody);
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.outputRules).toBe(result);
-      expect(outputDecl?.parent).toBe(result);
+      expect(outputDecl?.parent).toBe(sourceBody);
       expect(sourceDecl.parent).toBe(sourceBody);
       expect(sourceValue.parent).toBe(sourceDecl);
     });
@@ -541,6 +651,95 @@ describe('Mixin', () => {
         }
         .test2 {
           color: blue;
+        }
+      `);
+    });
+
+    it('keeps nested callable buckets visible on live parameter scope frames', async () => {
+      const mixinDef = mixin({
+        name: any('.outer'),
+        params: list([
+          vardecl({ name: 'value', value: any('blue') }, { paramVar: true })
+        ]),
+        rules: rules([
+          mixin({
+            name: any('.inner'),
+            params: list([
+              vardecl({ name: 'tone', value: ref({ key: 'value' }, { type: 'variable' }) }, { paramVar: true })
+            ]),
+            rules: rules([
+              mixin({
+                name: any('.leaf'),
+                rules: rules([
+                  decl({ name: 'color', value: ref({ key: 'tone' }, { type: 'variable' }) })
+                ])
+              }),
+              call({ name: ref({ key: '.leaf' }, { type: 'mixin' }) })
+            ])
+          }),
+          call({ name: ref({ key: '.inner' }, { type: 'mixin' }) })
+        ])
+      });
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({ name: ref({ key: '.outer' }, { type: 'mixin' }) })
+        ])
+      });
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .test {
+          color: blue;
+        }
+      `);
+    });
+
+    it('evaluates default params against earlier parameter bindings', async () => {
+      const mixinDef = mixin({
+        name: any('.button-variant'),
+        params: list([
+          any('bg', { role: 'property' }),
+          vardecl({
+            name: 'border',
+            value: call({
+              name: ref({ key: 'derive-border' }, { type: 'function' }),
+              args: list([ref({ key: 'bg' }, { type: 'variable' })])
+            })
+          }, { paramVar: true })
+        ]),
+        rules: rules([
+          decl({ name: 'background', value: ref({ key: 'bg' }, { type: 'variable' }) }),
+          decl({ name: 'border-color', value: ref({ key: 'border' }, { type: 'variable' }) })
+        ])
+      });
+
+      const component = ruleset({
+        selector: el('.btn-primary'),
+        rules: rules([
+          call({
+            name: ref({ key: '.button-variant' }, { type: 'mixin' }),
+            args: list([any('blue')])
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, component]);
+      root.setFunctionBinding('derive-border', new JsFunction({
+        name: 'derive-border',
+        fn: (value: Node) => value
+      }));
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .btn-primary {
+          background: blue;
+          border-color: blue;
         }
       `);
     });
@@ -920,7 +1119,7 @@ describe('Mixin', () => {
         ])
       });
 
-      // Wire the imported root into the main root via push so the registry can find the mixin
+      // Wire the imported root into the main root via push so lookup can find the mixin.
       const mainRoot = rules([importedRoot, component]);
       context.root = mainRoot;
 
@@ -1119,7 +1318,7 @@ describe('Mixin', () => {
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
         ])
       });
-      const mixinBody = mixinNoParam.value.rules;
+      const mixinBody = mixinNoParam.rules;
 
       const callerRules = rules([
         vardecl({ name: 'parameterDefault', value: any('inside') }),
@@ -1185,7 +1384,6 @@ describe('Mixin', () => {
       expect(result.value.map(child => getMixinOutputSourceIndex(result, child))).toEqual([0, 1, 2]);
       expect(result.value.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
       expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      expect(result.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
       expect(mixinBody.parent).toBe(mixinNoParam);
       const css = await result.render(context);
@@ -1213,10 +1411,7 @@ describe('Mixin', () => {
       expect(secondResult.value.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
       expect(secondResult.value.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
       expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      expect(secondResult.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
-      expect(secondResult.value.map((child, index) => child === result.value[index])).toEqual(
-        mixinBody.value.map(() => false)
-      );
+      expect(secondResult.value).toEqual(result.value);
     });
 
     it('keeps mixin-output entry traversal lookup-owned and type-specific', () => {
@@ -1341,6 +1536,7 @@ describe('Mixin', () => {
           })
         ]);
         context.root = root;
+        root.getScopeFrame();
 
         const css = await renderNodeToString(root, context);
         expect(css).toContain('marker: red;');
@@ -1381,6 +1577,7 @@ describe('Mixin', () => {
           })
         ]);
         context.root = root;
+        root.getScopeFrame();
 
         const css = await renderNodeToString(root, context);
         expect(css).toBe('');
@@ -1706,7 +1903,7 @@ describe('Mixin', () => {
       const css = await renderNodeToString(root, context);
       expect(css).toBe('');
       expect(defaultValue.parent).toBe(param);
-      expect(param.parent?.parent).toBe(root.value[0]);
+      expect(param.parent?.parent).toBe(root.rules[0]);
     });
 
     it('does not clone source-free scalar leaves inside copied positional param containers', async () => {
@@ -2001,7 +2198,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('resolves lexical variable bindings without declaration-registry lookup', async () => {
+    it('resolves lexical variable bindings from scope frames', async () => {
       context.treeContext = new TreeContext({
         file: {
           name: 'test.less',
@@ -2052,14 +2249,14 @@ describe('Mixin', () => {
           }
         `);
         // Lexical contextual lookups should now resolve from ScopeFrame buckets
-        // without touching DeclarationRegistry.find at all.
+        // without touching broad declaration lookup at all.
         expect(declarationHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.find = originalFind;
       }
     });
 
-    it('ScopeFrame declarationBucketsByName matches registry state after eval', async () => {
+    it('ScopeFrame declarationBucketsByName preserves declaration order after eval', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -2073,7 +2270,7 @@ describe('Mixin', () => {
 
       await root.eval(context);
 
-      // varsByName is populated after eval (via _indexRules during registry access)
+      // ScopeFrame buckets are populated after eval and preserve source order.
       const frame = root.getScopeFrame();
 
       // Frame should have both declared names
@@ -2085,7 +2282,7 @@ describe('Mixin', () => {
       expect(brandBucket).toHaveLength(2);
       expect(brandBucket[brandBucket.length - 1]!.cell.value.valueOf()).toBe('navy');
 
-      // resolveFrameCell should return the same winner as the registry
+      // resolveFrameCell should return the last declaration in source order.
       const frameResult = resolveFrameCell('brand', frame);
       expect(frameResult).toBeDefined();
       expect(frameResult!.cell.value.valueOf()).toBe('navy');
@@ -2098,543 +2295,1725 @@ describe('Mixin', () => {
       expect(resolveFrameCell('unknown', frame)).toBeUndefined();
     });
 
-    it('mixinsByName fast path: type=mixin static-name lookup skips MixinRegistry.find', async () => {
+    it('callable cache fast path: type=mixin static-name lookup', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (typeof key === 'string' && key === '.fast-mixin') {
-          mixinRegistryHits.push(key);
+      const mixinDef = mixin({
+        name: any('.fast-mixin'),
+        rules: rules([decl({ name: 'color', value: any('purple') })])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.a'),
+          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+        }),
+        ruleset({
+          selector: el('.b'),
+          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+        }),
+        ruleset({
+          selector: el('.c'),
+          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBeString(`
+        .a {
+          color: purple;
         }
-        return originalFind.apply(this, args);
+        .b {
+          color: purple;
+        }
+        .c {
+          color: purple;
+        }
+      `);
+    });
+
+    it('direct callable fast path: one-segment array lookup', () => {
+      const mixinDef = mixin({
+        name: any('.array-mixin'),
+        rules: rules([decl({ name: 'color', value: any('purple') })])
+      });
+      const root = rules([mixinDef]);
+
+      expect(root.findMixin(['.array-mixin'], 'Mixin')).toEqual([mixinDef]);
+    });
+
+    it('direct callable fast path: empty array lookup misses', () => {
+      const root = rules([
+        mixin({
+          name: any('.array-mixin'),
+          rules: rules([decl({ name: 'color', value: any('purple') })])
+        })
+      ]);
+
+      expect(root.findMixin([], 'Mixin')).toBeUndefined();
+    });
+
+    it('ScopeFrame callable buckets: static Mixin hit skips Rules.findMixinsFast', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.frame-mixin') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
       };
 
+      let root: RulesClass | undefined;
       try {
         const mixinDef = mixin({
-          name: any('.fast-mixin'),
-          rules: rules([decl({ name: 'color', value: any('purple') })])
+          name: any('.frame-mixin'),
+          rules: rules([decl({ name: 'color', value: any('rebeccapurple') })])
         });
-
-        const root = rules([
+        root = rules([
           mixinDef,
           ruleset({
             selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+            rules: rules([call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })])
           }),
           ruleset({
             selector: el('.b'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
-          }),
-          ruleset({
-            selector: el('.c'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+            rules: rules([call({ name: ref({ key: '.frame-mixin' }, { type: 'mixin' }) })])
           })
         ]);
         context.root = root;
+        root.getScopeFrame();
 
-        const css = await renderNodeToString(root, context);
-        expect(css).toBeString(`
-          .a {
-            color: purple;
-          }
-          .b {
-            color: purple;
-          }
-          .c {
-            color: purple;
-          }
-        `);
-        expect(mixinRegistryHits.length).toBe(0);
+        expect(root.findMixin('.frame-mixin', 'Mixin')).toEqual([mixinDef]);
+        expect(fastPathHits).toHaveLength(0);
       } finally {
-        MixinRegistry.prototype.find = originalFind;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
+
+      const css = await renderNodeToString(root!, context);
+      expect(css).toBeString(`
+        .a {
+          color: rebeccapurple;
+        }
+        .b {
+          color: rebeccapurple;
+        }
+      `);
     });
 
-    it('mixinsByName fast path: type=mixin-ruleset static Mixin hit skips MixinRegistry.find', async () => {
-      context.treeContext = new TreeContext({
-        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+    it('ScopeFrame callable buckets: current frame hit does not prepare parent callable buckets', () => {
+      const mixinDef = mixin({
+        name: any('.child-frame-hit'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
       });
+      const childRules = rules([mixinDef]);
+      const root = rules([
+        mixin({
+          name: any('.parent-other'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        }),
+        childRules
+      ]);
+      root.getScopeFrame();
+      childRules.getScopeFrame();
 
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      expect(childRules.findMixin('.child-frame-hit', 'Mixin')).toEqual([mixinDef]);
+      expect(root.callableLookupCache?.has('.child-frame-hit')).not.toBe(true);
+    });
+
+    it('ScopeFrame callable buckets: parent miss reaches fallback frame before direct bridge', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
-        if (typeof key === 'string' && key === '.fast-mixin') {
-          mixinRegistryHits.push(key);
+        if (key === '.fallback-frame-hit') {
+          fastPathHits.push(key);
         }
-        return originalFind.apply(this, args);
+        return originalFindMixinsFast.apply(this, args);
       };
 
       try {
-        const mixinDef = mixin({
-          name: any('.fast-mixin'),
+        const fallbackMixin = mixin({
+          name: any('.fallback-frame-hit'),
           rules: rules([decl({ name: 'color', value: any('green') })])
         });
+        const parentRules = rules([]);
+        const fallbackRules = rules([fallbackMixin]);
+        const childRules = rules([]);
+        const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
+        childFrame.fallbackFrame = fallbackRules.getScopeFrame();
 
-        const root = rules([
-          mixinDef,
-          ruleset({
-            selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
-          }),
-          ruleset({
-            selector: el('.b'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
-          }),
-          ruleset({
-            selector: el('.c'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
-          })
-        ]);
-        context.root = root;
-
-        const css = await renderNodeToString(root, context);
-        expect(css).toBeString(`
-          .a {
-            color: green;
-          }
-          .b {
-            color: green;
-          }
-          .c {
-            color: green;
-          }
-        `);
-
-        expect(mixinRegistryHits.length).toBe(0);
+        expect(childRules.findMixin('.fallback-frame-hit', 'Mixin')).toEqual([fallbackMixin]);
+        expect(fastPathHits).toHaveLength(0);
       } finally {
-        MixinRegistry.prototype.find = originalFind;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
     });
 
-    it('mixinsByName fast path: type=mixin-ruleset simple Ruleset hit skips MixinRegistry.find', async () => {
-      context.treeContext = new TreeContext({
-        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
-      });
-
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+    it('ScopeFrame callable buckets: parent and fallback covered miss skips direct bridge', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
-        if (typeof key === 'string' && key === '.fast-ruleset') {
-          mixinRegistryHits.push(key);
+        if (key === '.fallback-frame-missing') {
+          fastPathHits.push(key);
         }
-        return originalFind.apply(this, args);
+        return originalFindMixinsFast.apply(this, args);
       };
 
       try {
-        const root = rules([
-          ruleset({
-            selector: el('.fast-ruleset'),
+        const parentRules = rules([
+          mixin({
+            name: any('.parent-other'),
+            rules: rules([decl({ name: 'color', value: any('blue') })])
+          })
+        ]);
+        const fallbackRules = rules([
+          mixin({
+            name: any('.fallback-other'),
             rules: rules([decl({ name: 'color', value: any('green') })])
-          }),
-          ruleset({
-            selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
-          }),
-          ruleset({
-            selector: el('.b'),
-            rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
           })
         ]);
-        context.root = root;
+        const childRules = rules([]);
+        const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
+        childFrame.fallbackFrame = fallbackRules.getScopeFrame();
 
-        const css = await renderNodeToString(root, context);
-        expect(css).toBeString(`
-          .fast-ruleset {
-            color: green;
-          }
-          .a {
-            color: green;
-          }
-          .b {
-            color: green;
-          }
-        `);
-
-        expect(mixinRegistryHits.length).toBe(0);
+        expect(childRules.findMixin('.fallback-frame-missing', 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
       } finally {
-        MixinRegistry.prototype.find = originalFind;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
     });
 
-    it('mixinsByName fast path: type=mixin resolved interpolated name skips MixinRegistry.find', async () => {
+    it('ScopeFrame callable buckets: uncovered fallback reference-import miss skips empty direct bridge', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      const parentRules = rules([]);
+      const fallbackRules = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const childRules = rules([]);
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.fallback-reference-missing') {
+          fastPathHits.push(`${this === fallbackRules ? 'fallback' : 'other'}:${key}`);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      try {
+        const childFrame = childRules.getScopeFrame(parentRules.getScopeFrame());
+        childFrame.fallbackFrame = fallbackRules.getScopeFrame();
+
+        expect(childRules.findMixin('.fallback-reference-missing', 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: static Ruleset-as-mixin hit skips Rules.findMixinsFast', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
-        if (typeof key === 'string' && key === '.fast-mixin') {
-          mixinRegistryHits.push(key);
+        if (key === '.frame-ruleset') {
+          fastPathHits.push(key);
         }
-        return originalFind.apply(this, args);
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      let root: RulesClass | undefined;
+      try {
+        const frameRuleset = ruleset({
+          selector: el('.frame-ruleset'),
+          rules: rules([decl({ name: 'color', value: any('teal') })])
+        });
+        root = rules([
+          frameRuleset,
+          ruleset({
+            selector: el('.a'),
+            rules: rules([call({ name: ref({ key: '.frame-ruleset' }, { type: 'mixin-ruleset' }) })])
+          })
+        ]);
+        context.root = root;
+        root.getScopeFrame();
+
+        expect(root.findMixin('.frame-ruleset', undefined)).toEqual([frameRuleset]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+
+      const css = await renderNodeToString(root!, context);
+      expect(css).toBeString(`
+        .frame-ruleset {
+          color: teal;
+        }
+        .a {
+          color: teal;
+        }
+      `);
+    });
+
+    it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when no child surfaces exist', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      let rediscoveredChildSurface = false;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.frame-missing') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
       };
 
       try {
-        const mixinDef = mixin({
-          name: interpolated({
-            source: '.' + INTERPOLATION_PLACEHOLDER,
-            replacements: [any('fast-mixin')]
-          }, { role: 'name' }),
-          rules: rules([decl({ name: 'color', value: any('orange') })])
+        const root = rules([
+          mixin({
+            name: any('.other-frame-mixin'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        root.getScopeFrame();
+        Object.defineProperty(root, 'hasDirectLookupChildSurface', {
+          configurable: true,
+          value() {
+            rediscoveredChildSurface = true;
+            return false;
+          }
         });
 
-        const root = rules([
-          mixinDef,
-          ruleset({
-            selector: el('.a'),
-            rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
-          })
-        ]);
-        context.root = root;
-
-        const css = await renderNodeToString(root, context);
-        expect(css).toBeString(`
-          .a {
-            color: orange;
-          }
-        `);
-        expect(mixinRegistryHits.length).toBe(0);
+        expect(root.findMixin('.frame-missing', 'Mixin')).toBeUndefined();
+        expect(rediscoveredChildSurface).toBe(false);
+        expect(fastPathHits).toHaveLength(0);
+        expect(root.callableLookupCache?.get('.frame-missing')).toBeNull();
       } finally {
-        MixinRegistry.prototype.find = originalFind;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
     });
 
-    it('mixinsByName fast path: type=mixin-ruleset resolved interpolated simple name skips MixinRegistry.find', async () => {
-      context.treeContext = new TreeContext({
-        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
-      });
-
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+    it('ScopeFrame callable buckets: namespace miss skips Rules.findMixinsFast when frame miss is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
-        if (typeof key === 'string' && key === '.foo') {
-          mixinRegistryHits.push(key);
+        if (key === '#missing-namespace') {
+          fastPathHits.push(key);
         }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const dynamicClass = interpolated({
-          source: '.' + INTERPOLATION_PLACEHOLDER,
-          replacements: [any('foo')]
-        }, { role: 'ident' });
-        const root = rules([
-          ruleset({
-            selector: interpolatedSelector(dynamicClass),
-            rules: rules([
-              decl({ name: 'color', value: any('red') })
-            ])
-          }),
-          ruleset({
-            selector: el('.out'),
-            rules: rules([
-              call({
-                name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
-              })
-            ])
-          })
-        ]);
-        context.root = root;
-
-        const css = await renderNodeToString(root, context);
-        expect(css).toBeString(`
-          .foo {
-            color: red;
-          }
-          .out {
-            color: red;
-          }
-        `);
-        expect(mixinRegistryHits.length).toBe(0);
-      } finally {
-        MixinRegistry.prototype.find = originalFind;
-      }
-    });
-
-    it('mixinsByName fast path: type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
-      context.treeContext = new TreeContext({
-        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
-      });
-
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (typeof key === 'string' && key === '.missing-mixin') {
-          mixinRegistryHits.push(key);
-        }
-        return originalFind.apply(this, args);
+        return originalFindMixinsFast.apply(this, args);
       };
 
       try {
         const root = rules([
           mixin({
-            name: any('.other-mixin'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
-          }),
-          ruleset({
-            selector: el('.a'),
-            rules: rules([
-              decl({
-                name: 'content',
-                value: ref({ key: '.missing-mixin' }, { type: 'mixin', fallbackValue: true })
-              })
-            ])
-          })
-        ]);
-        context.root = root;
-
-        const css = await renderNodeToString(root, context);
-        expect(css).toBeString(`
-          .a {
-            content: .missing-mixin;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        MixinRegistry.prototype.find = originalFind;
-      }
-    });
-
-    it('mixinsByName fast path: type=mixin-ruleset simple-name miss skips MixinRegistry.find once scopes are indexed', async () => {
-      context.treeContext = new TreeContext({
-        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
-      });
-
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (typeof key === 'string' && key === '.missing-ruleset-mixin') {
-          mixinRegistryHits.push(key);
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const root = rules([
-          mixin({
-            name: any('.other-mixin'),
-            rules: rules([decl({ name: 'color', value: any('green') })])
-          }),
-          ruleset({
-            selector: el('.a'),
-            rules: rules([
-              decl({
-                name: 'content',
-                value: ref({ key: '.missing-ruleset-mixin' }, { type: 'mixin-ruleset', fallbackValue: true })
-              })
-            ])
-          })
-        ]);
-        context.root = root;
-
-        const css = await renderNodeToString(root, context);
-        expect(css).toBeString(`
-          .a {
-            content: .missing-ruleset-mixin;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        MixinRegistry.prototype.find = originalFind;
-      }
-    });
-
-    it('mixinsByName fast path: unresolved dynamic simple-name candidates do not trigger MixinRegistry.find', () => {
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (typeof key === 'string' && key === '.missing-mixin') {
-          mixinRegistryHits.push(key);
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const root = rules([
-          mixin({
-            name: interpolated({
-              source: '.' + INTERPOLATION_PLACEHOLDER,
-              replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
-            }, { role: 'name' }),
-            rules: rules([decl({ name: 'color', value: any('orange') })])
-          })
-        ]);
-
-        const found = root.find('mixin', '.missing-mixin');
-        expect(found).toBeUndefined();
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        MixinRegistry.prototype.find = originalFind;
-      }
-    });
-
-    it('namespace fast path: unresolved dynamic namespace segments do not trigger MixinRegistry.find', () => {
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const root = rules([
-          mixin({
-            name: any('#theme'),
+            name: any('#other-namespace'),
             rules: rules([
               mixin({
-                name: interpolated({
-                  source: INTERPOLATION_PLACEHOLDER,
-                  replacements: [ref({ key: 'segment' }, { type: 'variable' })]
-                }, { role: 'name' }),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
+                name: any('.leaf'),
+                rules: rules([decl({ name: 'color', value: any('green') })])
               })
             ])
           })
         ]);
+        root.getScopeFrame();
 
-        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], undefined, {
-          context
-        });
-        expect(found).toBeUndefined();
-        expect(mixinRegistryHits).toHaveLength(0);
+        expect(root.findMixin(['#missing-namespace', '.leaf'], 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
       } finally {
-        MixinRegistry.prototype.find = originalFind;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
+    });
+
+    it('ScopeFrame callable buckets: ruleset namespace miss skips mixin ambiguity crawl when frame miss is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#missing-ruleset-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('#other-ruleset-namespace'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin(['#missing-ruleset-namespace', '.leaf'], undefined)).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: guarded namespace mixin start skips direct crawl when frame hit is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#guarded-frame-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const leaf = mixin({
+          name: any('.leaf'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+        const namespace = mixin({
+          name: any('#guarded-frame-namespace'),
+          guard: bool(true),
+          rules: rules([leaf])
+        });
+        const root = rules([namespace]);
+        root.getScopeFrame();
+
+        expect(root.findMixin(['#guarded-frame-namespace', '.leaf'], undefined)).toEqual([leaf]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: recursive namespace miss skips child direct crawl when child frame miss is covered', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#missing-child-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const childRules = rules([
+          mixin({
+            name: any('#other-child-namespace'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        const root = rules([
+          mixin({
+            name: any('#parent-namespace'),
+            rules: childRules
+          })
+        ]);
+        root.getScopeFrame();
+        childRules.getScopeFrame();
+
+        expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: recursive namespace miss skips child findMixin when first remainder miss is covered', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let childFindMixinCount = 0;
+      let childRules: RulesClass;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this === childRules) {
+          childFindMixinCount++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        childRules = rules([
+          mixin({
+            name: any('#other-child-namespace'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        const root = rules([
+          mixin({
+            name: any('#parent-namespace'),
+            rules: childRules
+          })
+        ]);
+        root.getScopeFrame();
+        childRules.getScopeFrame();
+
+        expect(root.findMixin(['#parent-namespace', '#missing-child-namespace', '.leaf'], undefined)).toBeUndefined();
+        expect(childFindMixinCount).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('ScopeFrame callable buckets: callable namespace child-surface covered miss skips nested findMixin', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let namespaceRulesFindMixinCount = 0;
+      let namespaceRules: RulesClass;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this === namespaceRules) {
+          namespaceRulesFindMixinCount++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const childSurface = rules([
+          mixin({
+            name: any('.other-child-mixin'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        namespaceRules = rules([childSurface]);
+        const root = rules([
+          mixin({
+            name: any('#parent-namespace'),
+            rules: namespaceRules
+          })
+        ]);
+        root.getScopeFrame();
+        namespaceRules.getScopeFrame();
+        childSurface.getScopeFrame();
+
+        expect(root.findMixin(['#parent-namespace', '.missing-child-mixin'], undefined)).toBeUndefined();
+        expect(namespaceRulesFindMixinCount).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('ScopeFrame callable buckets: callable namespace reference-import modeled miss skips nested findMixin', () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const missingKey = '.missing-reference-child';
+      let namespaceRulesFindMixinCount = 0;
+      const broadFastHits: string[] = [];
+      let namespaceRules: RulesClass;
+      let root: RulesClass;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this === namespaceRules) {
+          namespaceRulesFindMixinCount++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if ((this === namespaceRules || this === root) && key === missingKey) {
+          broadFastHits.push(this === namespaceRules ? 'namespace' : 'root');
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      const referenceChild = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      namespaceRules = rules([referenceChild]);
+      root = rules([
+        mixin({
+          name: any('#parent-namespace'),
+          rules: namespaceRules
+        })
+      ]);
+
+      try {
+        root.getScopeFrame();
+        namespaceRules.getScopeFrame();
+        referenceChild.getScopeFrame();
+        namespaceRules.collectDirectChildRulesEntries();
+        expect(namespaceRules.directChildRuleEntries?.[0]).toMatchObject({
+          hasReferenceImportSurface: true
+        });
+
+        expect(root.findMixin(['#parent-namespace', missingKey], undefined)).toBeUndefined();
+        expect(namespaceRulesFindMixinCount).toBe(0);
+        expect(broadFastHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: recursive namespace hit reaches fallback frame before child direct crawl', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#fallback-child-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const leaf = mixin({
+          name: any('.leaf'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        });
+        const fallbackChildNamespace = mixin({
+          name: any('#fallback-child-namespace'),
+          rules: rules([leaf])
+        });
+        const fallbackRules = rules([fallbackChildNamespace]);
+        const childRules = rules([]);
+        const root = rules([
+          mixin({
+            name: any('#parent-with-fallback-namespace'),
+            rules: childRules
+          })
+        ]);
+        root.getScopeFrame();
+        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+
+        expect(root.findMixin([
+          '#parent-with-fallback-namespace',
+          '#fallback-child-namespace',
+          '.leaf'
+        ], 'Mixin')).toEqual([leaf]);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: recursive namespace fallback covered miss skips direct bridge', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#fallback-missing-namespace') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const fallbackRules = rules([
+          mixin({
+            name: any('#fallback-other-namespace'),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        const childRules = rules([]);
+        const root = rules([
+          mixin({
+            name: any('#parent-with-covered-fallback'),
+            rules: childRules
+          })
+        ]);
+        root.getScopeFrame();
+        childRules.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+
+        expect(root.findMixin([
+          '#parent-with-covered-fallback',
+          '#fallback-missing-namespace',
+          '.leaf'
+        ], 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: static miss coverage stays false for reference imports', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.reference-import-missing') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          style({
+            path: quoted(any('reference-import.jess'))
+          }, {
+            type: 'import',
+            importOptions: { reference: true }
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin('.reference-import-missing', 'Mixin')).toBeUndefined();
+        const frameHit = lookupScopeFrameCallable(root._scopeFrame, '.reference-import-missing', {
+          includeRulesets: false,
+          searchParents: false
+        });
+        expect(frameHit).toEqual({
+          kind: 'uncovered',
+          reason: 'reference-import'
+        });
+        expect(root._scopeFrame?.mixinCallableMissesCovered).toBe(false);
+        expect(root._scopeFrame?.mixinCallableMissCoverageKnown).toBe(true);
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: uncovered reference imports do not reopen covered sibling child surfaces', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const missingKey = '.mixed-reference-missing';
+      const broadParentCrawls: string[] = [];
+      const coveredChild = rules([
+        mixin({
+          name: any('.covered-sibling'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        })
+      ]);
+      const referenceChild = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const root = rules([coveredChild, referenceChild]);
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (this === root && key === missingKey && options?.skipCurrentSurface === true) {
+          broadParentCrawls.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      root.getScopeFrame();
+      coveredChild.getScopeFrame();
+      expect(coveredChild.findMixin(missingKey, 'Mixin', { searchParents: false })).toBeUndefined();
+
+      try {
+        expect(root.findMixin(missingKey, 'Mixin')).toBeUndefined();
+        expect(broadParentCrawls).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child frames cover exact misses', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.frame-child-missing') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          rules([
+            mixin({
+              name: any('.child-frame-mixin'),
+              rules: rules([decl({ name: 'color', value: any('green') })])
+            })
+          ])
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin('.frame-child-missing', 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: uncovered child miss respects searchParents false after narrow bridge', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const parentRetryHits: string[] = [];
+      const missingKey = '.parent-only-after-child-miss';
+      const parentMixin = mixin({
+        name: any(missingKey),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      });
+      const childSurface = rules([
+        mixin({
+          name: any('.child-other'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        })
+      ]);
+      const childRules = rules([childSurface]);
+      const root = rules([parentMixin, childRules]);
+      root.getScopeFrame();
+      childRules.getScopeFrame(root._scopeFrame);
+
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === root && key === missingKey) {
+          parentRetryHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        expect(childRules.findMixin(missingKey, 'Mixin', { searchParents: false })).toBeUndefined();
+        expect(parentRetryHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when child surfaces cannot contain exact callables', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.frame-child-declaration-missing') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          rules([
+            decl({ name: 'color', value: any('green') })
+          ])
+        ]);
+        root.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.directChildRuleEntries).toBeNull();
+
+        expect(root.findMixin('.frame-child-declaration-missing', 'Mixin')).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: prepared child entries stop recursive surface rediscovery', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const childRules = rules([
+        decl({ name: 'color', value: any('green') })
+      ]);
+      const root = rules([childRules]);
+      root.collectDirectChildRulesEntries();
+      expect(root.directChildRuleEntries).toBeNull();
+      root.getScopeFrame();
+
+      const originalValue = childRules.value;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.prepared-child-missing') {
+          return [];
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('prepared callable child entries should prevent recursive rediscovery');
+        }
+      });
+
+      try {
+        expect(root.findMixin('.prepared-child-missing', 'Mixin')).toBeUndefined();
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
+    it('ScopeFrame callable buckets: child reference imports are carried apart from exact callable surfaces', () => {
+      const childRules = rules([
+        style({
+          path: quoted(any('reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      const root = rules([childRules]);
+
+      root.collectDirectChildRulesEntries();
+      expect(root.hasReferenceImportChildSurface).toBe(true);
+      expect(root.directChildRuleEntries).toHaveLength(1);
+      expect(root.directChildRuleEntries?.[0]).toMatchObject({
+        node: childRules,
+        hasReferenceImportSurface: true,
+        hasExactCallableSurface: false,
+        hasExactMixinSurface: false,
+        hasExactRulesetSurface: false
+      });
+
+      root.getScopeFrame();
+      expect(root._scopeFrame?.callableMissesCovered).toBe(false);
+      expect(root._scopeFrame?.mixinCallableMissesCovered).toBe(false);
+    });
+
+    it('ScopeFrame callable buckets: late exact callable children update prepared aggregate facts', () => {
+      const root = rules([]);
+      root.collectDirectChildRulesEntries();
+      expect(root.directChildRuleEntries).toBeNull();
+      root.getScopeFrame();
+      expect(root._scopeFrame?.callableMissesCovered).toBe(true);
+      expect(root._scopeFrame?.callableMissCoverageKnown).toBe(true);
+
+      const childRules = rules([
+        mixin({
+          name: any('.late-child-mixin'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        })
+      ]);
+      root.push(childRules);
+
+      expect(root.directChildRuleEntries).toHaveLength(1);
+      expect(root.directChildRuleEntries?.[0]).toMatchObject({
+        node: childRules,
+        hasExactCallableSurface: true,
+        hasExactMixinSurface: true,
+        hasExactRulesetSurface: false
+      });
+      expect(root.hasExactCallableChildSurface).toBe(true);
+      expect(root.hasExactMixinChildSurface).toBe(true);
+      expect(root._scopeFrame?.callableMissesCovered).toBe(false);
+      expect(root._scopeFrame?.callableMissCoverageKnown).toBe(false);
+    });
+
+    it('ScopeFrame callable buckets: late reference-import children update prepared aggregate facts', () => {
+      const root = rules([]);
+      root.collectDirectChildRulesEntries();
+      expect(root.directChildRuleEntries).toBeNull();
+      root.getScopeFrame();
+      expect(root._scopeFrame?.callableMissesCovered).toBe(true);
+      expect(root._scopeFrame?.callableMissCoverageKnown).toBe(true);
+
+      const childRules = rules([
+        style({
+          path: quoted(any('late-reference-import.jess'))
+        }, {
+          type: 'import',
+          importOptions: { reference: true }
+        })
+      ]);
+      root.push(childRules);
+
+      expect(root.directChildRuleEntries).toHaveLength(1);
+      expect(root.directChildRuleEntries?.[0]).toMatchObject({
+        node: childRules,
+        hasReferenceImportSurface: true,
+        hasExactCallableSurface: false,
+        hasExactMixinSurface: false,
+        hasExactRulesetSurface: false
+      });
+      expect(root.hasReferenceImportChildSurface).toBe(true);
+      expect(root._scopeFrame?.callableMissesCovered).toBe(false);
+      expect(root._scopeFrame?.callableMissCoverageKnown).toBe(false);
+    });
+
+    it('ScopeFrame callable buckets: terminal mixin-only miss skips Rules.findMixinsFast for ruleset-only child surfaces', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.ruleset-only-child-missing') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          rules([
+            ruleset({
+              selector: el('.ruleset-only-child'),
+              rules: rules([decl({ name: 'color', value: any('green') })])
+            })
+          ])
+        ]);
+        root.getScopeFrame();
+        root.collectDirectChildRulesEntries();
+        expect(root.directChildRuleEntries?.[0]).toMatchObject({
+          hasExactCallableSurface: true,
+          hasExactMixinSurface: false,
+          hasExactRulesetSurface: true
+        });
+
+        expect(root.findMixin('.ruleset-only-child-missing', 'Mixin', {
+          terminalMixinOnly: true
+        })).toBeUndefined();
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: terminal mixin-only miss ignores ruleset-only candidates', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.ruleset-only-prefix') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: compound([el('.ruleset-only-prefix'), el('.leaf')]),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin('.ruleset-only-prefix', 'Mixin', {
+          terminalMixinOnly: true
+        })).toBeUndefined();
+        expect(lookupScopeFrameCallable(root._scopeFrame, '.ruleset-only-prefix', {
+          includeRulesets: false,
+          searchParents: false
+        })).toEqual({ kind: 'miss' });
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: simple misses stop on compound-prefix candidates', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const fastPathHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.compound-prefix-only') {
+          fastPathHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: compound([el('.compound-prefix-only'), el('.leaf')]),
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          })
+        ]);
+        root.getScopeFrame();
+
+        expect(root.findMixin('.compound-prefix-only', undefined)).toBeUndefined();
+        expect(lookupScopeFrameCallable(root._scopeFrame, '.compound-prefix-only', {
+          includeRulesets: true,
+          searchParents: false
+        })).toEqual({
+          kind: 'uncovered',
+          reason: 'candidate'
+        });
+        expect(fastPathHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('ScopeFrame callable buckets: terminal mixin-only child misses still climb to parent frames', () => {
+      const parentMixin = mixin({
+        name: any('.parent-terminal-mixin'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+      });
+      const childRules = rules([
+        ruleset({
+          selector: el('.ruleset-only-child'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        })
+      ]);
+      const root = rules([
+        parentMixin,
+        ruleset({
+          selector: el('.caller'),
+          rules: childRules
+        })
+      ]);
+      root.getScopeFrame();
+      childRules.getScopeFrame();
+
+      expect(childRules.findMixin('.parent-terminal-mixin', 'Mixin', {
+        terminalMixinOnly: true
+      })).toEqual([parentMixin]);
+    });
+
+    it('direct mixin-only miss skips ruleset-only child surfaces without a frame', () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const childBridgeKeys: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.ruleset-only-direct-missing' && options?.searchParents === false) {
+          childBridgeKeys.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          rules([
+            ruleset({
+              selector: el('.ruleset-only-direct-child'),
+              rules: rules([decl({ name: 'color', value: any('green') })])
+            })
+          ])
+        ]);
+
+        expect(root.findMixin('.ruleset-only-direct-missing', 'Mixin', {
+          terminalMixinOnly: true
+        })).toBeUndefined();
+        expect(childBridgeKeys).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('direct callable fast path: prepared null child entries skip child entry reads', () => {
+      const childRules = rules([
+        decl({ name: 'color', value: any('green') })
+      ]);
+      const root = rules([childRules]);
+      root.collectDirectChildRulesEntries();
+      expect(root.directChildRuleEntries).toBeNull();
+
+      const originalValue = childRules.value;
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('mixin-only lookup should trust prepared null child entries');
+        }
+      });
+
+      try {
+        expect(root.findMixin('.prepared-null-direct-missing', 'Mixin')).toBeUndefined();
+      } finally {
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
+    it('ruleset path misses skip mixin-only child surfaces without a frame', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const childRules = rules([
+        mixin({
+          name: any('.only-mixin-child'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        })
+      ]);
+      const root = rules([
+        ruleset({
+          selector: el('.mixin-only-surface'),
+          rules: childRules
+        })
+      ]);
+
+      await root.eval(context);
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.warmup-missing-ruleset-path' || key === '.missing-ruleset-path') {
+          return [];
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      const descriptor = Object.getOwnPropertyDescriptor(childRules, 'value');
+      try {
+        expect(root.findMixin(['.warmup-missing-ruleset-path', '.leaf'], undefined)).toBeUndefined();
+        expect(root.hasExactRulesetChildSurface).toBe(false);
+
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('ruleset path lookup should skip mixin-only child surfaces');
+          }
+        });
+        expect(root.findMixin(['.missing-ruleset-path', '.leaf'], undefined)).toBeUndefined();
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        if (descriptor) {
+          Object.defineProperty(childRules, 'value', descriptor);
+        }
+      }
+    });
+
+    it('ruleset namespace path lookup crawls without indexing rules', () => {
+      const root = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            ruleset({
+              selector: el('.button'),
+              rules: rules([decl({ name: 'color', value: any('red') })])
+            })
+          ])
+        })
+      ]);
+
+      const found = root.findMixin(['#theme', '.button'], undefined, { searchParents: false });
+
+      expect('_indexRules' in RulesClass.prototype).toBe(false);
+      expect(found).toHaveLength(1);
+      expect(found?.[0]?.type).toBe('Ruleset');
+    });
+
+    it('compound-prefix ruleset lookup crawls without indexing rules', () => {
+      const root = rules([
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([decl({ name: 'primary', value: any('red') })])
+            })
+          ])
+        })
+      ]);
+
+      const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], undefined, { searchParents: false });
+
+      expect('_indexRules' in RulesClass.prototype).toBe(false);
+      expect(found).toHaveLength(1);
+      expect(found?.[0]?.type).toBe('Mixin');
+    });
+
+    it('mixin namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
+      const leaf = mixin({
+        name: any('.colors'),
+        rules: rules([decl({ name: 'primary', value: any('red') })])
+      });
+      const root = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([leaf])
+            })
+          ])
+        })
+      ]);
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const nestedArrayPathCalls: unknown[] = [];
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
+        expect(nestedArrayPathCalls).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('ruleset namespace path lookup reuses path offsets instead of materializing remainder arrays', () => {
+      const leaf = mixin({
+        name: any('.colors'),
+        rules: rules([decl({ name: 'primary', value: any('red') })])
+      });
+      const root = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            ruleset({
+              selector: el('.dark'),
+              rules: rules([leaf])
+            })
+          ])
+        })
+      ]);
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const nestedArrayPathCalls: unknown[] = [];
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.dark', '.colors'], undefined, { searchParents: false })).toEqual([leaf]);
+        expect(nestedArrayPathCalls).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('compound-prefix ruleset lookup reuses path offsets instead of materializing remainder arrays', () => {
+      const leaf = mixin({
+        name: any('.colors'),
+        rules: rules([decl({ name: 'primary', value: any('red') })])
+      });
+      const root = rules([
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([leaf])
+        })
+      ]);
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let nestedArrayPathCalls = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayPathCalls++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.dark', '.navbar', '.colors'], undefined, {
+          searchParents: false
+        })).toEqual([leaf]);
+        expect(nestedArrayPathCalls).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('definite namespace misses avoid legacy remainder-array fallback', () => {
+      const root = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            ruleset({
+              selector: el('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.other'),
+                  rules: rules([decl({ name: 'color', value: any('red') })])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#compound'), el('.prefix')]),
+          rules: rules([
+            ruleset({
+              selector: el('.inner'),
+              rules: rules([
+                mixin({
+                  name: any('.other'),
+                  rules: rules([decl({ name: 'color', value: any('blue') })])
+                })
+              ])
+            })
+          ])
+        }),
+        mixin({
+          name: any('#mixin-ns'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.other'),
+                  rules: rules([decl({ name: 'color', value: any('green') })])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const nestedArrayPathCalls: unknown[] = [];
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== root && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(root.findMixin(['#theme', '.dark', '.missing'], undefined, {
+          searchParents: false
+        })).toBeUndefined();
+        expect(root.findMixin(['#compound', '.prefix', '.inner', '.missing'], undefined, {
+          searchParents: false
+        })).toBeUndefined();
+        expect(root.findMixin(['#mixin-ns', '.dark', '.missing'], undefined, {
+          searchParents: false
+        })).toBeUndefined();
+        expect(nestedArrayPathCalls).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('callable lookup does not build a scope frame just to try the frame shortcut', () => {
+      const mixinDef = mixin({
+        name: any('.lazy-frame-mixin'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const root = rules([mixinDef]);
+
+      expect(root._scopeFrame).toBeUndefined();
+      expect(root.findMixin('.lazy-frame-mixin', 'Mixin')).toEqual([mixinDef]);
+      expect(root._scopeFrame).toBeUndefined();
+    });
+
+    it('callable cache fast path: type=mixin-ruleset static Mixin hit', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const mixinDef = mixin({
+        name: any('.fast-mixin'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.a'),
+          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+        }),
+        ruleset({
+          selector: el('.b'),
+          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+        }),
+        ruleset({
+          selector: el('.c'),
+          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }) })])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBeString(`
+        .a {
+          color: green;
+        }
+        .b {
+          color: green;
+        }
+        .c {
+          color: green;
+        }
+      `);
+    });
+
+    it('callable cache fast path: type=mixin-ruleset simple Ruleset hit', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const root = rules([
+        ruleset({
+          selector: el('.fast-ruleset'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        }),
+        ruleset({
+          selector: el('.a'),
+          rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+        }),
+        ruleset({
+          selector: el('.b'),
+          rules: rules([call({ name: ref({ key: '.fast-ruleset' }, { type: 'mixin-ruleset' }) })])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBeString(`
+        .fast-ruleset {
+          color: green;
+        }
+        .a {
+          color: green;
+        }
+        .b {
+          color: green;
+        }
+      `);
+    });
+
+    it('callable cache fast path: type=mixin resolved interpolated name', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const mixinDef = mixin({
+        name: interpolated({
+          source: '.' + INTERPOLATION_PLACEHOLDER,
+          replacements: [any('fast-mixin')]
+        }, { role: 'name' }),
+        rules: rules([decl({ name: 'color', value: any('orange') })])
+      });
+
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.a'),
+          rules: rules([call({ name: ref({ key: '.fast-mixin' }, { type: 'mixin' }) })])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBeString(`
+        .a {
+          color: orange;
+        }
+      `);
+    });
+
+    it('callable cache fast path: type=mixin-ruleset resolved interpolated simple name', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const dynamicClass = interpolated({
+        source: '.' + INTERPOLATION_PLACEHOLDER,
+        replacements: [any('foo')]
+      }, { role: 'ident' });
+      const root = rules([
+        ruleset({
+          selector: interpolatedSelector(dynamicClass),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({ key: '.foo' }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBeString(`
+        .foo {
+          color: red;
+        }
+        .out {
+          color: red;
+        }
+      `);
+    });
+
+    it('callable cache fast path: type=mixin static-name miss', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const root = rules([
+        mixin({
+          name: any('.other-mixin'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        }),
+        ruleset({
+          selector: el('.a'),
+          rules: rules([
+            decl({
+              name: 'content',
+              value: ref({ key: '.missing-mixin' }, { type: 'mixin', fallbackValue: true })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBeString(`
+        .a {
+          content: .missing-mixin;
+        }
+      `);
+    });
+
+    it('callable cache fast path: type=mixin-ruleset simple-name miss', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+
+      const root = rules([
+        mixin({
+          name: any('.other-mixin'),
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        }),
+        ruleset({
+          selector: el('.a'),
+          rules: rules([
+            decl({
+              name: 'content',
+              value: ref({ key: '.missing-ruleset-mixin' }, { type: 'mixin-ruleset', fallbackValue: true })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBeString(`
+        .a {
+          content: .missing-ruleset-mixin;
+        }
+      `);
+    });
+
+    it('callable cache fast path: unresolved dynamic simple-name candidates miss directly', () => {
+      const root = rules([
+        mixin({
+          name: interpolated({
+            source: '.' + INTERPOLATION_PLACEHOLDER,
+            replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+          }, { role: 'name' }),
+          rules: rules([decl({ name: 'color', value: any('orange') })])
+        })
+      ]);
+
+      const found = root.findMixin('.missing-mixin');
+      expect(found).toBeUndefined();
+    });
+
+    it('namespace fast path: unresolved dynamic namespace segments miss directly', () => {
+      const root = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: interpolated({
+                source: INTERPOLATION_PLACEHOLDER,
+                replacements: [ref({ key: 'segment' }, { type: 'variable' })]
+              }, { role: 'name' }),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
+
+      const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], undefined, {
+        context
+      });
+      expect(found).toBeUndefined();
     });
 
     it('namespace fast path: type=mixin ignores compound-prefix ruleset ambiguity', () => {
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const root = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-            rules: rules([
-              mixin({
-                name: any('.colors'),
-                rules: rules([
-                  decl({ name: 'primary', value: any('red') })
-                ])
-              })
-            ])
-          })
-        ]);
-        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
-          context
-        });
-        expect(found).toHaveLength(1);
-        expect(found?.[0]?.type).toBe('Mixin');
-        const mixinHit = found?.[0];
-        expect(mixinHit?.type === 'Mixin' ? mixinHit.value.name?.valueOf() : undefined).toBe('.colors');
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        MixinRegistry.prototype.find = originalFind;
-      }
+      const root = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([
+                decl({ name: 'primary', value: any('red') })
+              ])
+            })
+          ])
+        })
+      ]);
+      const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
+        context
+      });
+      expect(found).toHaveLength(1);
+      expect(found?.[0]?.type).toBe('Mixin');
+      const mixinHit = found?.[0];
+      expect(mixinHit instanceof Mixin ? mixinHit.name?.valueOf() : undefined).toBe('.colors');
     });
 
     it('namespace fast path: type=mixin misses ignore callable ruleset starts', () => {
-      const originalFind = MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
+      const root = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            ruleset({
+              selector: el('.dark'),
+              rules: rules([
+                ruleset({
+                  selector: el('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('red') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
 
-      try {
-        const root = rules([
-          ruleset({
-            selector: el('#theme'),
-            rules: rules([
-              ruleset({
-                selector: el('.dark'),
-                rules: rules([
-                  ruleset({
-                    selector: el('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('red') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          })
-        ]);
-
-        const found = root.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
-          context
-        });
-        expect(found).toBeUndefined();
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        MixinRegistry.prototype.find = originalFind;
-      }
+      const found = root.findMixin(['#theme', '.dark', '.navbar', '.colors'], 'Mixin', {
+        context
+      });
+      expect(found).toBeUndefined();
     });
 
-    it('namespace fast path: mixin-ruleset path unions plain namespace rulesets with callable namespace mixins', async () => {
+    it('namespace fast path: ruleset namespace path preserves callable namespace unions', async () => {
       const { Parser } = await import('../../../../less-parser/src/index.ts');
       const parser = new Parser();
       const tree = parser.parse(`
@@ -2670,19 +4049,298 @@ describe('Mixin', () => {
       `).tree;
 
       context.root = tree;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const directCrawlHits: string[] = [];
+      let nestedArrayPathCalls = 0;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#guarded' || key === '#deeper' || key === '.mixin') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== tree && Array.isArray(args[0])) {
+          nestedArrayPathCalls++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
 
-      const found = tree.find('mixin', ['#guarded', '#deeper', '.mixin'], undefined, {
-        context
-      });
+      try {
+        const found = tree.findMixin(['#guarded', '#deeper', '.mixin'], undefined, {
+          context
+        });
 
-      expect(found).toHaveLength(3);
+        expect(found).toHaveLength(3);
+
+        const css = await renderNodeToString(tree, context, { context });
+
+        expect(css).toContain('#guarded-caller {');
+        expect(css).toContain('guarded: namespace;');
+        expect(css).toContain('silent: namespace;');
+        expect(css).toContain('guarded: with default;');
+        expect(directCrawlHits).toEqual([]);
+        expect(nestedArrayPathCalls).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('namespace fast path: real Less stable namespaces avoid direct-crawl and array fallback', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        #theme {
+          .dark {
+            .colors() {
+              color: cyan;
+            }
+          }
+        }
+
+        #panel.dark.navbar {
+          .colors() {
+            background: red;
+          }
+        }
+
+        #ns() {
+          .leaf() {
+            width: 1px;
+          }
+        }
+
+        .parameterized {
+          color: ruleset;
+        }
+
+        .parameterized(@color) {
+          color: @color;
+        }
+
+        .a {
+          #theme > .dark > .colors();
+        }
+
+        .b {
+          #panel > .dark > .navbar > .colors();
+        }
+
+        .c {
+          #ns > .leaf();
+        }
+
+        .d {
+          .parameterized(blue);
+        }
+      `).tree;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const directCrawlHits: string[] = [];
+      let nestedArrayPathCalls = 0;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (
+          key === '#theme'
+          || key === '#panel'
+          || key === '.dark'
+          || key === '.navbar'
+          || key === '.colors'
+          || key === '#ns'
+          || key === '.leaf'
+          || key === '.parameterized'
+        ) {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== tree && Array.isArray(args[0])) {
+          nestedArrayPathCalls++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        context.root = tree;
+        const css = await renderNodeToString(tree, context, { context });
+
+        expect(css).toContain('.a {');
+        expect(css).toContain('color: cyan;');
+        expect(css).toContain('.b {');
+        expect(css).toContain('background: red;');
+        expect(css).toContain('.c {');
+        expect(css).toContain('width: 1px;');
+        expect(css).toContain('.d {');
+        expect(css).toContain('color: blue;');
+        expect(directCrawlHits).toEqual([]);
+        expect(nestedArrayPathCalls).toBe(0);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('mixin-ruleset calls with args mark terminal lookup mixin-only', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const terminalHints: boolean[] = [];
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key, , options] = args;
+        if (key === '.parameterized') {
+          terminalHints.push(options?.terminalMixinOnly === true);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          ruleset({
+            selector: el('.parameterized'),
+            rules: rules([decl({ name: 'color', value: any('ruleset') })])
+          }),
+          mixin({
+            name: any('.parameterized'),
+            params: list([any('color', { role: 'property' })]),
+            rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+          }),
+          ruleset({
+            selector: el('.a'),
+            rules: rules([
+              call({
+                name: ref({ key: '.parameterized' }, { type: 'mixin-ruleset' }),
+                args: list([any('red')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
+          .parameterized {
+            color: ruleset;
+          }
+          .a {
+            color: red;
+          }
+        `);
+        expect(terminalHints).toContain(true);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('mixin-ruleset calls with args still use rulesets as namespace containers', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        #theme {
+          .button {
+            color: ruleset;
+          }
+          .button(@color) {
+            color: @color;
+          }
+        }
+
+        .a {
+          #theme > .button(red);
+        }
+      `).tree;
+      context.root = tree;
 
       const css = await renderNodeToString(tree, context, { context });
+      expect(css).toBeString(`
+        #theme {
+          .button {
+            color: ruleset;
+          }
+        }
+        .a {
+          color: red;
+        }
+      `);
+    });
 
-      expect(css).toContain('#guarded-caller {');
-      expect(css).toContain('guarded: namespace;');
-      expect(css).toContain('silent: namespace;');
-      expect(css).toContain('guarded: with default;');
+    it('mixin-ruleset calls with args keep only the recursive namespace terminal mixin-only', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        #theme {
+          .dark {
+            .button {
+              color: ruleset;
+            }
+            .button(@color) {
+              color: @color;
+            }
+          }
+        }
+
+        .a {
+          #theme > .dark > .button(red);
+        }
+      `).tree;
+      context.root = tree;
+
+      const css = await renderNodeToString(tree, context, { context });
+      expect(css).toBeString(`
+        #theme {
+          .dark {
+            .button {
+              color: ruleset;
+            }
+          }
+        }
+        .a {
+          color: red;
+        }
+      `);
+    });
+
+    it('mixin-ruleset calls with args exclude only the namespaced terminal ruleset', () => {
+      const terminalMixin = mixin({
+        name: any('.button'),
+        params: list([any('color', { role: 'property' })]),
+        rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+      });
+      const terminalRuleset = ruleset({
+        selector: el('.button'),
+        rules: rules([decl({ name: 'color', value: any('ruleset') })])
+      });
+      const root = rules([
+        ruleset({
+          selector: el('#theme'),
+          rules: rules([
+            terminalRuleset,
+            terminalMixin
+          ])
+        })
+      ]);
+      root.getScopeFrame();
+
+      const allTerminals = root.findMixin(['#theme', '.button'], undefined);
+      expect(allTerminals).toContain(terminalRuleset);
+      expect(allTerminals).toContain(terminalMixin);
+      expect(root.findMixin(['#theme', '.button'], undefined, {
+        terminalMixinOnly: true
+      })).toEqual([terminalMixin]);
+    });
+
+    it('mixin-ruleset calls with args reject exact ruleset terminals after namespace resolution', () => {
+      const root = rules([
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.button')]),
+          rules: rules([decl({ name: 'color', value: any('ruleset') })])
+        })
+      ]);
+
+      expect(root.findMixin(['#theme', '.dark', '.button'], undefined)).toHaveLength(1);
+      expect(root.findMixin(['#theme', '.dark', '.button'], undefined, {
+        terminalMixinOnly: true
+      })).toBeUndefined();
     });
 
     it('ScopeFrame live slots resolve param and @arguments via frame chain', async () => {
@@ -2692,7 +4350,7 @@ describe('Mixin', () => {
 
       // Prove params and @arguments are in liveSlotsByName by testing their output.
       // If either were missing from the frame, the reference lookup would fail or
-      // fall through to a stale registry path that no longer exists.
+      // fall through to the slower declaration/callable lookup path.
       const mixinDef = mixin({
         name: any('.parameterized'),
         params: list([any('color', { role: 'property' })]),
@@ -2728,6 +4386,113 @@ describe('Mixin', () => {
       expect('runtimeVarBindings' in RulesClass.prototype).toBe(false);
       expect('findRuntimeVarBinding' in RulesClass.prototype).toBe(false);
       expect('setRuntimeVarBinding' in RulesClass.prototype).toBe(false);
+    });
+
+    it('keeps mixin current reads and snapshot reads on separate binding paths', async () => {
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        mixin({
+          name: any('.paint'),
+          rules: rules([
+            decl({ name: 'current-before', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({
+              name: 'snapshot-before',
+              value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' })
+            }),
+            vardecl({ name: 'color', value: any('blue') }),
+            decl({ name: 'current-after', value: ref({ key: 'color' }, { type: 'variable' }) }),
+            decl({
+              name: 'snapshot-after',
+              value: ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' })
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.paint' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .use {
+          current-before: blue;
+          snapshot-before: red;
+          current-after: blue;
+          snapshot-after: blue;
+        }
+      `);
+    });
+
+    it('routes mixin setDefined writes through the resolved caller binding', async () => {
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        mixin({
+          name: any('.set-color'),
+          rules: rules([
+            vardecl({ name: 'color', value: any('blue') }, { setDefined: true })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.set-color' }, { type: 'mixin' }) }),
+            decl({ name: 'after-call', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        }),
+        decl({ name: 'after-root', value: ref({ key: 'color' }, { type: 'variable' }) })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .use {
+          after-call: blue;
+        }
+        after-root: blue;
+      `);
+    });
+
+    it('evaluates mixin setDefined writes from live parameter bindings', async () => {
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        mixin({
+          name: any('.set-color'),
+          params: list([any('next', { role: 'property' })]),
+          rules: rules([
+            vardecl({
+              name: 'color',
+              value: ref({ key: 'next' }, { type: 'variable' })
+            }, { setDefined: true })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({
+              name: ref({ key: '.set-color' }, { type: 'mixin' }),
+              args: list([any('blue')])
+            }),
+            decl({ name: 'after-call', value: ref({ key: 'color' }, { type: 'variable' }) })
+          ])
+        }),
+        decl({ name: 'after-root', value: ref({ key: 'color' }, { type: 'variable' }) })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .use {
+          after-call: blue;
+        }
+        after-root: blue;
+      `);
     });
 
     it('does not prepare unused mixin parameter containers before lookup', async () => {
@@ -3059,7 +4824,7 @@ describe('Mixin', () => {
       expect(context.rulesContext).toBe(savedRulesContext);
     });
 
-    it('keeps dynamic guards on a copied eval surface', async () => {
+    it('evaluates dynamic guards from source without stamping guard state', async () => {
       context = new Context({ leakyRules: false });
       const guard = condition([
         expr(ref({ key: 'mode' }, { type: 'variable' })),
@@ -3089,9 +4854,10 @@ describe('Mixin', () => {
       expect(css).toContain('color: red;');
       expect(guard.evaluated).toBe(false);
       expect(guard.registrationPrepared).toBe(false);
+      expect(guard.frozen).toBe(false);
     });
 
-    it('does not clone source-free scalar leaves inside copied dynamic guards', async () => {
+    it('does not clone source-free scalar leaves while evaluating dynamic guards', async () => {
       const originalClone = Any.prototype.clone;
       let scalarClones = 0;
       Any.prototype.clone = function cloneForCounting(
@@ -3389,7 +5155,7 @@ describe('Mixin', () => {
       expect(css).not.toContain('value: blue;');
     });
 
-    it('does not clone source-free scalar leaves inside copied default guard probes', async () => {
+    it('does not clone source-free scalar leaves while probing default guards', async () => {
       const originalClone = Any.prototype.clone;
       let scalarClones = 0;
       Any.prototype.clone = function cloneForCounting(
@@ -4460,7 +6226,7 @@ describe('Mixin', () => {
 
       expect(prepared).not.toBe(node);
       expect(prepared.sourceNode).toBe(prepared);
-      expect(prepared.value.name.valueOf()).toBe('.inner-foo');
+      expect(prepared.name.valueOf()).toBe('.inner-foo');
       expect(dynamicMixinName.parent).toBe(node);
       expect(params.parent).toBe(node);
       expect(body.parent).toBe(node);

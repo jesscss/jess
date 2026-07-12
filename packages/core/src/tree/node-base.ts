@@ -12,7 +12,7 @@ import {
   prepareRenderPrintState
 } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
@@ -56,20 +56,15 @@ export const REMOVE: unique symbol = Symbol('REMOVE');
 export const IS_PROXY: unique symbol = Symbol('IS_PROXY');
 export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
+export type RegistrationOptions = {
+  reuseCanonical?: boolean;
+};
 export const DEFAULT_DATA = 'value';
 
 type BasicNodeTypes = PrimitiveOrFunc | Node;
 type NodeRecordValue = BasicNodeTypes | Array<BasicNodeTypes | PrimitiveOrFunc[]> | Record<string, any>;
 export type NodeValueObject = Record<string, NodeRecordValue>;
 export type NodeValue = BasicNodeTypes | BasicNodeTypes[] | NodeValueObject;
-
-export type NodeSetKey<Data> =
-  null | (Data extends readonly any[] ? number : Data extends object ? string & keyof Data : never);
-
-export type NodeSetValue<Data, K> =
-  K extends null ? Data
-    : Data extends readonly any[] ? K extends number ? Data[number] : never
-      : K extends keyof Data ? Data[K] : never;
 
 export type NodeMapArray<
   T extends NodeValueObject = NodeValueObject,
@@ -106,11 +101,33 @@ function mustBeNode(value: unknown): Node {
 }
 
 function setParent(node: Node, parent: Node | undefined): void {
-  Reflect.set(node, 'parent', parent);
+  node.parent = parent;
 }
 
 function isRulesNode(node: Node | { type?: string } | undefined): node is Rules {
   return node?.type === 'Rules';
+}
+
+function sourceRootOf(node: Node): Rules | undefined {
+  if (isRulesNode(node)) {
+    return node;
+  }
+  if (node._sourceRoot) {
+    return node._sourceRoot;
+  }
+  let current = node.parent;
+  while (current) {
+    if (isRulesNode(current)) {
+      node._sourceRoot = current;
+      return current;
+    }
+    if (current._sourceRoot) {
+      node._sourceRoot = current._sourceRoot;
+      return current._sourceRoot;
+    }
+    current = current.parent;
+  }
+  return undefined;
 }
 
 type TreeVisitMethod = (node: Node, ctx?: unknown) => NodeVisitReturn;
@@ -121,29 +138,33 @@ function getTreeVisitMethod(visitor: unknown): TreeVisitMethod | undefined {
   if (typeof visitor !== 'object' || visitor === null) {
     return undefined;
   }
-  const method = Reflect.get(visitor, '_visit');
+  const method = (visitor as { _visit?: unknown })._visit;
   return typeof method === 'function' ? method : undefined;
 }
 
 function hasVisitedNodeSet(visitor: unknown): boolean {
   return typeof visitor === 'object'
     && visitor !== null
-    && Reflect.get(visitor, 'visitedNodes') instanceof Set;
+    && (visitor as { visitedNodes?: unknown }).visitedNodes instanceof Set;
 }
 
 function getVisitMethod(visitor: unknown): VisitMethod | undefined {
   if (typeof visitor !== 'object' || visitor === null) {
     return undefined;
   }
-  const method = Reflect.get(visitor, 'visit');
+  const method = (visitor as { visit?: unknown }).visit;
   return typeof method === 'function' ? method : undefined;
 }
 
+function isStringKeyRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function getTypeVisitMethod(visitor: unknown, methodName: string): TypeVisitMethod | undefined {
-  if (typeof visitor !== 'object' || visitor === null) {
+  if (!isStringKeyRecord(visitor)) {
     return undefined;
   }
-  const method = Reflect.get(visitor, methodName);
+  const method = visitor[methodName];
   return typeof method === 'function' ? method : undefined;
 }
 
@@ -170,9 +191,7 @@ export const defineType = <
   let ctor = Clazz;
   do {
     const proto = ctor?.prototype;
-    const type = proto && Object.hasOwn(proto, 'type')
-      ? proto.type
-      : undefined;
+    const type = proto?.type;
 
     if (!type) {
       break;
@@ -217,6 +236,8 @@ export const F_IMPLICIT_AMPERSAND = 0b100000;
 export const F_EXTENDED = 0b1000000;
 /** Selector item that matches an extend target and should be suppressed in reference-mode output. */
 export const F_EXTEND_TARGET = 0b10000000;
+/** Node value owns at least one child node. */
+export const F_HAS_NODE_CHILD = 0b100000000;
 
 // Default state: only visible is true
 export const F_DEFAULT = F_VISIBLE;
@@ -238,14 +259,25 @@ export abstract class Node<
   Data = unknown,
   O extends NodeOptions = NodeOptions
 > {
+  /**
+   * Keys of direct instance fields that hold child nodes.
+   *
+   * `undefined` means this node still uses legacy `value` introspection.
+   * `null` marks a migrated leaf with no child fields.
+   */
+  static childKeys: readonly string[] | null | undefined = undefined;
+
   _location: NodeLocation | undefined;
   get location() {
     return (this._location ??= []);
   }
 
-  private _treeContext: TreeContext | undefined;
-  /** Assigned in index to avoid circularity */
-  declare readonly treeContext: TreeContext;
+  _sourceRoot: Rules | undefined;
+  get sourceRoot(): Rules | undefined {
+    return sourceRootOf(this);
+  }
+
+  _treeContext: TreeContext | undefined;
 
   protected _options: O & AllNodeOptions | undefined;
   get options(): O & AllNodeOptions {
@@ -326,9 +358,9 @@ export abstract class Node<
    * When evaluating, nodes are assigned an index and depth by the Rules node.
    * This is used for lookup order. Note, this _will_ be undefined
    * initially, but we assign it in the Rules node, which is also
-   * where we read it, so this makes the type easier.
+   * where we read it.
    */
-  index!: number;
+  index: number | undefined;
 
   /** @todo - Is there a reliable way to cache this? */
   get depth() {
@@ -352,11 +384,7 @@ export abstract class Node<
    * shouldn't be set directly. Instead, a parent should use
    * parent.adopt(thisNode);
    */
-  declare readonly parent: Node | undefined;
-
-  getParent() {
-    return this.parent;
-  }
+  declare parent: Node | undefined;
 
   /** Patched at runtime in node.ts to return Nil instance */
   declare nil: () => Nil;
@@ -366,20 +394,8 @@ export abstract class Node<
    *
    * This is `readonly` to prevent accidental unforked mutation.
    *
-   * Mutation paths, in order of preference:
-   *   1. `node.set(key, value)` — canonical mutation with parent adoption.
-   *   2. Direct assignment with an explicit `@ts-expect-error` escape:
-   *        // @ts-expect-error direct mutation: <why fork machinery is not needed here>
-   *        node.value = newValue;
-   *      Use this only when you know the caller is not bypassing parent
-   *      adoption or other node invariants (parse time, in-place selector
-   *      reshape helpers, etc.).
-   *      Every bypass must carry its justification inline.
-   *
-   * Short-term exception: `util/extend.ts` and friends still do extensive
-   * in-place selector reshaping and use the escape hatch liberally. That
-   * subtree is on the list to migrate; new code outside it should prefer
-   * option (1).
+   * Mutation should happen through constructor-owned direct fields or
+   * replacement-node construction. Do not add generic mutation helpers here.
    */
   readonly value: Data;
 
@@ -442,6 +458,11 @@ export abstract class Node<
     if (!node.frozen) {
       setParent(node, this);
     }
+    this.addFlag(F_HAS_NODE_CHILD);
+    const sourceRoot = sourceRootOf(this);
+    if (sourceRoot && !node._sourceRoot) {
+      node._sourceRoot = sourceRoot;
+    }
     if (node.hasFlag(F_NON_STATIC)) {
       this.addFlag(F_NON_STATIC);
       this.removeFlag(F_STATIC);
@@ -483,8 +504,7 @@ export abstract class Node<
   constructor(
     value: Data,
     options?: O,
-    location?: NodeLocation,
-    treeContext?: TreeContext
+    location?: NodeLocation
   ) {
     // Make some props non-enumerable to avoid JSON serialization issues
     Object.defineProperties(this, {
@@ -502,29 +522,8 @@ export abstract class Node<
       }
     });
     this.value = this._processNodes(value);
-    this._treeContext = treeContext;
     this._location = location;
     this._options = options;
-  }
-
-  get treeContextIfSet(): TreeContext | undefined {
-    return this._treeContext;
-  }
-
-  getValue() {
-    return this.value;
-  }
-
-  set<K extends NodeSetKey<Data>>(key: K, value: NodeSetValue<Data, K>): void;
-  set(key: null | string | number, value: any) {
-    if (key == null) {
-      Reflect.set(this, 'value', this._processNodes(value));
-    } else {
-      if (typeof this.value !== 'object' || this.value === null) {
-        throw new TypeError('Cannot set keyed value on a primitive node value.');
-      }
-      Reflect.set(this.value, key, this._processNodes(value));
-    }
   }
 
   /**
@@ -534,18 +533,16 @@ export abstract class Node<
    * @param value - The node's value data
    * @param options - Node options
    * @param location - Location information
-   * @param treeContext - Tree context
    * @returns A new node instance with generated flag set if applicable
    */
   static create<T extends Node, V, NodeOptionsT extends NodeOptions>(
-    this: new (value: V, options?: NodeOptionsT, location?: LocationInfo, treeContext?: TreeContext) => T,
+    this: new (value: V, options?: NodeOptionsT, location?: LocationInfo) => T,
     value: V,
     options?: NodeOptionsT,
-    location?: LocationInfo,
-    treeContext?: TreeContext
+    location?: LocationInfo
   ): T {
     // Create the instance with the same signature as constructor
-    const instance = new this(value, options, location, treeContext);
+    const instance = new this(value, options, location);
 
     // Mark as generated if the value is an object that can be marked
     if (instance instanceof Node) {
@@ -565,7 +562,7 @@ export abstract class Node<
 
   get sourceRulesParent(): Rules | undefined {
     const directRulesParent = this.rulesParent;
-    const frameFallbackNode = directRulesParent?.scopeFrame?.fallbackFrame?.rulesNode;
+    const frameFallbackNode = directRulesParent?._scopeFrame?.fallbackFrame?.rulesNode;
     if (isRulesNode(frameFallbackNode)) {
       return frameFallbackNode;
     }
@@ -585,19 +582,49 @@ export abstract class Node<
       });
       return;
     }
-    const entries: [Node, string | number, any][] = [];
-    this._visitEntries((node, key, coll) => {
-      entries.push([node, key, coll]);
-    });
-    return serialForEach(entries, ([value, key, collection]: [Node, string | number, any], idx: number) => {
-      const out = func(value, idx);
-      if (isThenable(out)) {
-        return out.then((result) => {
-          collection[key] = mustBeNode(result);
-        });
+
+    let pending: Promise<void> | undefined;
+    let resumeIndex = 0;
+    let nodes: Node[] | undefined;
+    let keys: Array<string | number> | undefined;
+    let collections: any[] | undefined;
+
+    this._visitEntries((node, key, coll, idx) => {
+      if (pending) {
+        (nodes ??= []).push(node);
+        (keys ??= []).push(key);
+        (collections ??= []).push(coll);
+        return;
       }
-      const result = mustBeNode(out);
-      collection[key] = result;
+
+      const out = func(node, idx);
+      if (isThenable(out)) {
+        resumeIndex = idx + 1;
+        pending = out.then((result) => {
+          coll[key] = mustBeNode(result);
+        });
+        return;
+      }
+
+      coll[key] = mustBeNode(out);
+    });
+
+    if (!pending) {
+      return;
+    }
+
+    return pending.then(async () => {
+      const resumeNodes = nodes;
+      if (!resumeNodes) {
+        return;
+      }
+      const resumeKeys = keys!;
+      const resumeCollections = collections!;
+      for (let i = 0; i < resumeNodes.length; i++) {
+        const out = func(resumeNodes[i]!, resumeIndex + i);
+        const result = isThenable(out) ? await out : out;
+        resumeCollections[i]![resumeKeys[i]!] = mustBeNode(result);
+      }
     });
   }
 
@@ -622,9 +649,8 @@ export abstract class Node<
         }
       }
     } else if (isPlainObject(data)) {
-      const values = Object.values(data as Record<string, unknown>);
-      for (let i = 0; i < values.length; i++) {
-        const v = values[i];
+      for (const k in data) {
+        const v = data[k];
         if (isArray(v)) {
           if (reverse) {
             for (let j = v.length - 1; j >= 0; j--) {
@@ -662,12 +688,8 @@ export abstract class Node<
         }
       }
     } else if (isPlainObject(value)) {
-      const obj = value as Record<string, unknown>;
-      for (const k in obj) {
-        if (!Object.hasOwn(obj, k)) {
-          continue;
-        }
-        const v = obj[k];
+      for (const k in value) {
+        const v = value[k];
         if (isArray(v)) {
           for (let i = 0; i < v.length; i++) {
             if (v[i] instanceof Node) {
@@ -675,7 +697,7 @@ export abstract class Node<
             }
           }
         } else if (v instanceof Node) {
-          cb(v, k, obj, idx++);
+          cb(v, k, value, idx++);
         }
       }
     } else if (value instanceof Node) {
@@ -692,20 +714,73 @@ export abstract class Node<
   }
 
   /**
-   * An iterator for all node children
-   * @todo - Replace `walkNodes` with this?
-   */
+  * An iterator for all node children
+  * @todo - Replace `walkNodes` with this?
+  */
   * children(deep?: boolean, reverse?: boolean): Generator<Node, void, unknown> {
-    const nodes: Node[] = [];
-    this._visitValues((v) => {
-      if (v instanceof Node) {
-        nodes.push(v);
+    const value = this.value;
+    if (isArray(value)) {
+      if (reverse) {
+        for (let i = value.length - 1; i >= 0; i--) {
+          const nodeVal = value[i];
+          if (nodeVal instanceof Node) {
+            yield nodeVal;
+            if (deep) {
+              yield* nodeVal.children(deep, reverse);
+            }
+          }
+        }
+      } else {
+        for (let i = 0; i < value.length; i++) {
+          const nodeVal = value[i];
+          if (nodeVal instanceof Node) {
+            yield nodeVal;
+            if (deep) {
+              yield* nodeVal.children(deep, reverse);
+            }
+          }
+        }
       }
-    }, reverse);
-    for (const nodeVal of nodes) {
-      yield nodeVal;
+      return;
+    }
+    if (isPlainObject(value)) {
+      for (const k in value) {
+        const childValue = value[k];
+        if (isArray(childValue)) {
+          if (reverse) {
+            for (let i = childValue.length - 1; i >= 0; i--) {
+              const nodeVal = childValue[i];
+              if (nodeVal instanceof Node) {
+                yield nodeVal;
+                if (deep) {
+                  yield* nodeVal.children(deep, reverse);
+                }
+              }
+            }
+          } else {
+            for (let i = 0; i < childValue.length; i++) {
+              const nodeVal = childValue[i];
+              if (nodeVal instanceof Node) {
+                yield nodeVal;
+                if (deep) {
+                  yield* nodeVal.children(deep, reverse);
+                }
+              }
+            }
+          }
+        } else if (childValue instanceof Node) {
+          yield childValue;
+          if (deep) {
+            yield* childValue.children(deep, reverse);
+          }
+        }
+      }
+      return;
+    }
+    if (value instanceof Node) {
+      yield value;
       if (deep) {
-        yield* nodeVal.children(deep, reverse);
+        yield* value.children(deep, reverse);
       }
     }
   }
@@ -787,9 +862,7 @@ export abstract class Node<
     } else if (isPlainObject(value)) {
       const clonedValue: Record<string, unknown> = {};
       for (const k in value) {
-        if (Object.hasOwn(value, k)) {
-          clonedValue[k] = this.cloneValue((value as Record<string, unknown>)[k]);
-        }
+        clonedValue[k] = this.cloneValue(value[k]);
       }
       return clonedValue;
     }
@@ -822,7 +895,7 @@ export abstract class Node<
 
     const newNode: this = Reflect.construct(
       this.constructor,
-      [cloned, this._options ? { ...this._options } : undefined, this.location, this.treeContext]
+      [cloned, this._options ? { ...this._options } : undefined, this.location]
     );
     newNode.inherit(this);
 
@@ -840,15 +913,13 @@ export abstract class Node<
         }
       }
     } else if (isPlainObject(value)) {
-      const obj = value as Record<string, unknown>;
-      for (const k in obj) {
-        if (!Object.hasOwn(obj, k)) {
-          continue;
-        }
-        const v = obj[k];
+      for (const k in value) {
+        const v = value[k];
         if (v instanceof Node) {
-          obj[k] = cloneFn(v);
+          value[k] = cloneFn(v);
         } else if (isArray(v)) {
+          this._deepCloneChildren(v, cloneFn);
+        } else if (isPlainObject(v)) {
           this._deepCloneChildren(v, cloneFn);
         }
       }
@@ -903,7 +974,10 @@ export abstract class Node<
    * the new output position.
    */
   detachTrivia(deep?: boolean): this {
-    this._treeContext = undefined;
+    this._sourceRoot = undefined;
+    if (isRulesNode(this)) {
+      this._treeContext = undefined;
+    }
     this._location = undefined;
     if (deep) {
       this._detachChildTrivia(this.value);
@@ -922,9 +996,7 @@ export abstract class Node<
       }
     } else if (isPlainObject(value)) {
       for (const k in value) {
-        if (Object.hasOwn(value, k)) {
-          this._detachChildTrivia((value as Record<string, unknown>)[k]);
-        }
+        this._detachChildTrivia(value[k]);
       }
     } else if (value instanceof Node) {
       value.detachTrivia(true);
@@ -937,23 +1009,16 @@ export abstract class Node<
    * The default recursively prepares children for registration. Nodes with
    * narrower identity or mark-only behavior override this method directly.
    */
-  prepareRegistration(context: Context): MaybePromise<Node> {
+  prepareRegistration(context: Context, _options?: RegistrationOptions): MaybePromise<Node> {
     if (!this.registrationPrepared) {
       const node = this;
       node.registrationPrepared = true;
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
-      let out: MaybePromise<void>;
-      try {
-        out = node.forEachNode(n => n.prepareRegistration(context), context);
-      } catch (error: unknown) {
-        throw error;
-      }
+      const out = node.forEachNode(n => n.prepareRegistration(context), context);
       if (isThenable(out)) {
-        return (out as Promise<void>).then(() => node).catch((error: unknown) => {
-          throw error;
-        });
+        return (out as Promise<void>).then(() => node);
       }
       return node;
     }
@@ -1026,7 +1091,7 @@ export abstract class Node<
       evald = node;
     }
     evald.evaluated = true;
-    if (node !== evald && typeof evald.inherit === 'function') {
+    if (node !== evald) {
       evald.inherit(node);
     }
     return evald;
@@ -1037,9 +1102,6 @@ export abstract class Node<
    * from another node.
    */
   eval(context: Context): MaybePromise<Node> {
-    if (Object.getPrototypeOf(this).eval !== Node.prototype.eval) {
-      throw new Error('Do not call super.eval() from a subclass.');
-    }
     return Node.evalStatic(this, context);
   }
 
@@ -1067,7 +1129,10 @@ export abstract class Node<
       setParent(this, this.parent ?? node.parent);
     }
     this._location = node.location;
-    this._treeContext ??= node.treeContext;
+    this._sourceRoot ??= node.sourceRoot;
+    if (isRulesNode(this)) {
+      this._treeContext ??= node.sourceRoot?._treeContext;
+    }
     /** Copy state exactly (not OR, to preserve removed flags) */
     // Only sync F_VISIBLE flag, preserve all other flags
     if (!node.hasFlag(F_VISIBLE)) {
@@ -1143,7 +1208,7 @@ export abstract class Node<
     const w = options.writer!;
     const mark = w.mark();
     const trivia = options.trivia
-      ?? this.treeContext?.opts?.trivia;
+      ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia && options.trivia !== trivia) {
       options.trivia = trivia;
     }
@@ -1164,9 +1229,9 @@ export abstract class Node<
    * context override this method and serialize their evaluated output
    * through the same print-state machinery.
    */
-  render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
-  render(context: Context, options?: PrintOptions): string;
-  render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+  render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  render(context: Context, options?: PrintOptions): MaybePromise<string>;
+  render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): MaybePromise<string> {
     if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
       return '';
     }
@@ -1227,6 +1292,11 @@ export abstract class Node<
       }
     }, false);
     return w.getSince(mark);
+  }
+
+  /** @internal */
+  writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
+    this.toTrimmedString(options);
   }
 
   /**

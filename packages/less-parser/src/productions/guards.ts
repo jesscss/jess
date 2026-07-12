@@ -9,26 +9,49 @@ import {
   Any,
   Condition,
   type ConditionOperator,
+  AtRule,
   DefaultGuard,
   Paren,
   List,
   Sequence,
   Call,
   Reference,
-  Interpolated,
   Quoted,
   Rest,
   Nil,
   VarDeclaration,
+  JsImport,
   StyleImport,
   type Url,
   isNode,
   N
 } from '@jesscss/core';
-import { createInterpolatedReference, getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
+import { getInterpolatedNode, getInterpolatedOrString } from '../utils.js';
 
 /** Use `any` for `this` to avoid structural incompatibility between LessRecursiveParser and CssRecursiveParser */
 type P = any;
+
+function isScriptUsePath(path: string): boolean {
+  const filePart = path.replace(/[?#].*$/u, '');
+  return path === '#less'
+    || path.startsWith('#less/')
+    || /\.(?:js|mjs|cjs|ts|mts|cts|json)$/i.test(filePart);
+}
+
+function defaultNamespaceFromPath(path: string): string | undefined {
+  if (path === '#less') {
+    return 'less';
+  }
+  if (path.startsWith('#less/')) {
+    return path.split('/').filter(Boolean).pop();
+  }
+  const base = path.split('/').filter(Boolean).pop();
+  if (!base) {
+    return undefined;
+  }
+  const noExt = base.replace(/\.(less|css|jess|js|mjs|cjs|ts|mts|cts|json)$/i, '');
+  return noExt || undefined;
+}
 
 function getParenFrames(ctx: RuleContext | undefined): boolean[] {
   return (ctx?.parenFrames as boolean[] | undefined) ?? [];
@@ -48,7 +71,7 @@ function isDefaultGuardCall(node: Node | undefined): node is Call {
     return true;
   }
   if (callName instanceof Reference) {
-    const key = callName.value.key;
+    const key = callName.key;
     const keyStr = String(
       (typeof key === 'object' && key !== null && 'valueOf' in key)
         ? key.valueOf()
@@ -74,13 +97,22 @@ function isGuardComparisonToken(tt: unknown, T: TokenMap) {
 }
 
 function normalizeComparisonOperator(op: string): ConditionOperator {
-  if (op === '=>') {
-    return '>=';
+  switch (op) {
+    case '=>':
+    case '>=':
+      return '>=';
+    case '=<':
+    case '<=':
+      return '<=';
+    case '=':
+      return '=';
+    case '>':
+      return '>';
+    case '<':
+      return '<';
+    default:
+      return '=';
   }
-  if (op === '=<') {
-    return '<=';
-  }
-  return op as ConditionOperator;
 }
 
 export function guard(this: P, T: TokenMap) {
@@ -94,8 +126,7 @@ export function guard(this: P, T: TokenMap) {
       },
       {
         ALT: () => {
-          ctx.allowComma = true;
-          const node = $.SUBRULE($.guardOr, { ARGS: [ctx] });
+          const node = $.SUBRULE($.guardOr, { ARGS: [{ ...ctx, allowComma: true }] });
           return node;
         }
       }
@@ -476,8 +507,8 @@ export function mixinName(this: P, T: TokenMap) {
       if (asReference) {
         // If target is a Reference with matching type, merge keys instead of nesting
         if (isNode(ctx.node, N.Reference) && ctx.node.options.type === 'mixin-ruleset') {
-          const existingKey = ctx.node.value.key;
-          const existingRawKey = ctx.node.value.rawKey;
+          const existingKey = ctx.node.key;
+          const existingRawKey = ctx.node.rawKey;
           let mergedKeys: string[];
           if (Array.isArray(existingKey)) {
             mergedKeys = [...existingKey];
@@ -644,7 +675,7 @@ export function lookupOrCall(this: P, T: TokenMap) {
             const targetType = isNode(target, N.Reference) ? target.options.type : undefined;
             const shouldMergeKeys = targetType === 'mixin' || targetType === 'mixin-ruleset' || targetType === 'ruleset';
             if (isNode(target, N.Reference) && target.options.type === type && typeof result === 'string' && shouldMergeKeys) {
-              const existingKey = target.value.key;
+              const existingKey = target.key;
               let mergedKeys: string[];
               if (Array.isArray(existingKey)) {
                 mergedKeys = [...existingKey];
@@ -711,10 +742,14 @@ export function mixinArgList(this: P, T: TokenMap) {
         const [head, ...rest] = commaNodes;
         let hasDeclarations = false;
         if (head instanceof VarDeclaration) {
-          const nodes = [head.value, ...rest];
+          const nodes = [head.valueNode, ...rest];
           hasDeclarations = rest.some(n => n instanceof VarDeclaration);
-          head.set('value', new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context));
-          semiNodes.push(head);
+          const value = new List(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
+          semiNodes.push(new VarDeclaration({
+            name: head.name,
+            value,
+            important: head.important
+          }, head.options, head.location, $.context));
         } else {
           hasDeclarations = commaNodes.some(n => n instanceof VarDeclaration);
           semiNodes.push(new List(commaNodes, undefined, $.getLocationFromNodes(commaNodes), $.context));
@@ -890,10 +925,81 @@ export function unknownAtRule(this: P, T: TokenMap) {
   const $ = this;
   return (ctx: RuleContext = {}) => {
     const img = $.LA(1).image;
+    if (img === '@use' || img === '@-use') {
+      return $.SUBRULE($.useAtRule, { ARGS: [ctx] });
+    }
     if (img === '@-export') {
       return $.SUBRULE($.exportAtRule, { ARGS: [ctx] });
     }
     return cssUnknownAtRule.call($, T)(ctx);
+  };
+}
+
+/**
+ * Parse Less v5 script-module imports.
+ *
+ * Stylesheet composition uses `@compose`; `@use` / `@-use` only become
+ * JsImport nodes for script-style paths and aliases like `#less/math`.
+ */
+export function useAtRule(this: P, T: TokenMap) {
+  const $ = this;
+  return (ctx: RuleContext = {}) => {
+    $.startRule();
+    const name = $.CONSUME(T.AtName); // '@use' or '@-use'
+
+    const pathNode: Quoted = $.SUBRULE($.string, { ARGS: [ctx] });
+
+    let namespace: string | undefined;
+    $.OPTION({
+      GATE: () =>
+        $.LA(1).tokenType === T.PlainIdent
+        && $.LA(1).image === 'as',
+      DEF: () => {
+        $.CONSUME(T.PlainIdent);
+        $.OR2([
+          { ALT: () => {
+            namespace = $.CONSUME2(T.PlainIdent).image;
+          } },
+          { ALT: () => {
+            namespace = $.CONSUME(T.Star).image;
+          } }
+        ]);
+      }
+    });
+
+    $.CONSUME(T.Semi);
+
+    const location = $.endRule();
+    if ($.RECORDING_PHASE) {
+      return;
+    }
+
+    const rawPath = pathNode.valueOf();
+    if (isScriptUsePath(rawPath)) {
+      return new JsImport(
+        { path: pathNode },
+        { namespace: namespace ?? defaultNamespaceFromPath(rawPath) },
+        location,
+        $.context
+      );
+    }
+
+    const preludeNodes: Node[] = [pathNode];
+    if (namespace) {
+      preludeNodes.push(
+        new Any('as', { role: 'ident' }, undefined, $.context),
+        new Any(namespace, { role: namespace === '*' ? 'operator' : 'ident' }, undefined, $.context)
+      );
+    }
+    return new AtRule(
+      {
+        name: new Any(name.image, { role: 'atkeyword' }, $.getLocationInfo(name), $.context),
+        prelude: new Sequence(preludeNodes, undefined, $.getLocationFromNodes(preludeNodes), $.context)
+      },
+      undefined,
+      location,
+      $.context
+    );
   };
 }
 

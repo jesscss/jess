@@ -128,7 +128,8 @@ Converts a single Less.js node back to a Jess node.
 
 This package is currently in **alpha**.
 
-Developer notes and historical analyses live in [DESIGN.md](./DESIGN.md) and `_archive/`.
+Current design notes live in [DESIGN.md](./DESIGN.md). Older transition notes
+were removed from the working tree; use git history for archaeology.
 
 ## Contributing
 

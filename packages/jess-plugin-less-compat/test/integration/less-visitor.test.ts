@@ -7,8 +7,8 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Parser } from '@jesscss/less-parser';
-import { Context, type Visitor } from '@jesscss/core';
-import { lessCompatPlugin } from '../../src/index.js';
+import { Context, TreeContext, type Visitor } from '@jesscss/core';
+import { LessCompatPlugin, lessCompatPlugin } from '../../src/index.js';
 import type { LessVisitor } from '../../src/types.js';
 
 // Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
@@ -29,6 +29,51 @@ describe('Less.js Visitor Integration', () => {
   beforeEach(() => {
     parser = new Parser();
     context = new Context();
+  });
+
+  describe('No-op dispatch', () => {
+    class CountingLessCompatPlugin extends LessCompatPlugin {
+      visitorCreated = false;
+
+      override get visitor() {
+        this.visitorCreated = true;
+        return super.visitor;
+      }
+    }
+
+    function parseWithSource(source: string) {
+      return parser.parse(source, 'stylesheet', {
+        context: new TreeContext({
+          file: {
+            name: 'input.less',
+            path: '/tmp',
+            fullPath: '/tmp/input.less',
+            source
+          }
+        })
+      }).tree;
+    }
+
+    it('does not create a before-eval visitor when compat has no configured work and source has no @plugin', () => {
+      const tree = parseWithSource('.test { color: red; }');
+      const plugin = new CountingLessCompatPlugin();
+
+      expect(plugin.beforeEvalVisitorForTree(tree)).toBeUndefined();
+      expect(plugin.visitorCreated).toBe(false);
+    });
+
+    it('creates a before-eval visitor when source contains @plugin', () => {
+      const tree = parseWithSource('@plugin "test-plugin"; .test { color: red; }');
+      const plugin = new CountingLessCompatPlugin({
+        pluginRegistry: {
+          // eslint-disable-next-line @typescript-eslint/naming-convention -- Less @plugin path must match registry key
+          'test-plugin': {}
+        }
+      });
+
+      expect(plugin.beforeEvalVisitorForTree(tree)).toBeDefined();
+      expect(plugin.visitorCreated).toBe(true);
+    });
   });
 
   describe('Simple visitor transformations', () => {
@@ -78,14 +123,14 @@ describe('Less.js Visitor Integration', () => {
       // Visit the tree - need to traverse it
       // The visitor's enter method will be called for each node by TreeVisitor
       if (tree.accept) {
-        tree.accept(visitor as any);
+        tree.accept(visitor);
       } else if (visitor.enter) {
         // Fallback: manually traverse
         visitor.enter(tree);
         if (tree.data && Array.isArray(tree.data)) {
           for (const child of tree.data) {
             if (child && child.accept) {
-              child.accept(visitor as any);
+              child.accept(visitor);
             }
           }
         }
@@ -180,7 +225,7 @@ describe('Less.js Visitor Integration', () => {
 
       // Visit the tree
       if (tree.accept) {
-        tree.accept(visitor as any);
+        tree.accept(visitor);
       } else if (visitor.enter) {
         visitor.enter(tree);
       }
@@ -279,7 +324,7 @@ describe('Less.js Visitor Integration', () => {
 
       // Visit the tree
       if (tree.accept) {
-        tree.accept(visitor as any);
+        tree.accept(visitor);
       } else if (visitor.enter) {
         visitor.enter(tree);
       }
@@ -324,7 +369,7 @@ describe('Less.js Visitor Integration', () => {
 
       // Visit the tree
       if (tree.accept) {
-        tree.accept(visitor as any);
+        tree.accept(visitor);
       } else if (visitor.enter) {
         visitor.enter(tree);
       }

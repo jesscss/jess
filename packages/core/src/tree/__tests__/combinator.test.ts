@@ -2,6 +2,22 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { co } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { OutputWriter } from '../util/print.js';
+
+class CountingWriter extends OutputWriter {
+  marks = 0;
+  reads = 0;
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+}
 
 describe('Combinator', () => {
   let context: Context;
@@ -13,6 +29,14 @@ describe('Combinator', () => {
   it('renders combinator syntax through toTrimmedString()', () => {
     expect(co('>').toTrimmedString()).toBe('>');
     expect(co('+').toTrimmedString()).toBe('+');
+  });
+
+  it('returns scalar combinator syntax without writer readback', () => {
+    const writer = new CountingWriter();
+
+    expect(co('>').toTrimmedString({ writer })).toBe('>');
+    expect(writer.toString()).toBe('>');
+    expect(writer.reads).toBe(0);
   });
 
   it('renders combinators through render(context)', () => {
@@ -39,6 +63,20 @@ describe('Combinator', () => {
     expect(await node.render(context, buffer)).toBe('>');
     expect(buffer.parts).toEqual(['>']);
     expect(resolveCalls).toBe(0);
+  });
+
+  it('renders combinators without writer mark/readback', () => {
+    const writer = new CountingWriter();
+    const buffer = createRenderBuffer('flat');
+
+    expect(co('>').render(context, { writer })).toBe('>');
+    expect(writer.toString()).toBe('>');
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
+    expect(co('+').render(context, buffer, { writer })).toBe('+');
+    expect(buffer.parts).toEqual(['+']);
+    expect(writer.marks).toBe(0);
+    expect(writer.reads).toBe(0);
   });
 
   it('resolves combinators without touching render state', async () => {

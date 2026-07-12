@@ -1,0 +1,44 @@
+@global-base: 3;
+@global-scale: 2;
+
+#lookup-catalog {
+  #alpha {
+    #beta {
+      #gamma {
+        .pick(@value) when (@value >= 0) {
+          catalog-value: @value + @global-base;
+        }
+      }
+    }
+  }
+}
+
+.path-loop(@n) when (@n <= 0) {}
+.path-loop(@n) when (@n > 0) {
+  #lookup-catalog > #alpha > #beta > #gamma > .pick(@n);
+  .path-loop((@n - 1));
+}
+
+.lexical-stack(@depth, @seed: 1) when (@depth <= 0) {}
+.lexical-stack(@depth, @seed: 1) when (@depth > 0) {
+  @local: (@depth + @seed);
+  @shadow: (@local * @global-scale);
+
+  .inner(@a: @local, @b: @shadow) when (@a >= 0) {
+    slot-@{depth}: @global-base + @global-scale + @seed + @local + @shadow + @a + @b;
+
+    .leaf(@leaf: @b) when (@leaf >= 0) {
+      leaf-@{depth}: @global-base + @seed + @local + @shadow + @a + @b + @leaf;
+    }
+
+    .leaf();
+  }
+
+  .inner();
+  .path-loop(20);
+  .lexical-stack((@depth - 1), @local);
+}
+
+.scope-lookup-stress-large {
+  .lexical-stack(120);
+}

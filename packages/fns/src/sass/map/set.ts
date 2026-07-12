@@ -24,7 +24,7 @@ const set = defineFunction(
     for (let i = 0; i < newRules.length; i++) {
       const node = newRules[i];
       if (isNode(node, N.Declaration)) {
-        const nodeKey = String(node.value.name.valueOf());
+        const nodeKey = String(node.name.valueOf());
         if (nodeKey === keyStr) {
           foundIndex = i;
           break;

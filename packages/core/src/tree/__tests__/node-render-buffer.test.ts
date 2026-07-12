@@ -3,7 +3,6 @@ import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
   Anonymous,
-  MixinCollection,
   Selector,
   amp,
   any,
@@ -18,7 +17,6 @@ import {
   compound,
   condition,
   coll,
-  callableRulesEntry,
   customdecl,
   decl,
   defaultguard,
@@ -63,8 +61,9 @@ import {
   whileNode
 } from '../index.js';
 import { extendList } from '../extend-list.js';
-import { jsexpr } from '../js-expr.js';
 import { F_MAY_ASYNC, F_NON_STATIC, Node } from '../node-base.js';
+import { MixinCollection } from '../util/callable-collection.js';
+import { callableRulesEntry } from '../util/callable-entry.js';
 import { OutputWriter, getPrintOptions, type PrintOptions } from '../util/print.js';
 import {
   createRenderBuffer,
@@ -362,7 +361,7 @@ describe('renderNodeToBuffer', () => {
       }
     ];
 
-    expect(cases).toHaveLength(20);
+    expect(cases).toHaveLength(19);
 
     for (const item of cases) {
       item.setup?.(context);
@@ -419,12 +418,11 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Block', node: block(seq([any('red'), any('blue')]), { type: 'square' }) },
       { surface: 'Collection', node: coll([decl({ name: 'color', value: any('red') })]) },
       { surface: 'RawRules', node: rawrules([decl({ name: 'color', value: any('red') })]) },
-      { surface: 'JsExpression', node: jsexpr('"ok"'), expected: 'ok' },
       { surface: 'JsImport', node: js({ path: quoted('tools.js') }, { namespace: 'tools' }), expected: '@-use "tools.js" as tools;' },
       { surface: 'Ampersand', node: amp({ appendValue: '-item' }), expected: '', expectedParts: [] }
     ];
 
-    expect(cases).toHaveLength(20);
+    expect(cases).toHaveLength(19);
 
     for (const item of cases) {
       const context = new Context();

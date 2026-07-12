@@ -4,17 +4,17 @@ import { toLessNode } from '../transform/to-less.js';
 
 export const transformMixinToLess = createFromAdapter<Mixin>({
   fields: {
-    name: m => m.value.name,
+    name: m => m.name,
     params: (m, cache) => {
-      const params = m.value.params;
+      const params = m.params;
       return params instanceof Node ? toLessNode(params, { cache }) : params;
     },
     rules: (m, cache) => {
-      const rules = m.value.rules;
-      return rules?.value ? rules.value.map((r: Node) => toLessNode(r, { cache })) : [];
+      const rules = m.rules;
+      return rules?.value ? rules.rules.map((r: Node) => toLessNode(r, { cache })) : [];
     },
     condition: (m, cache) => {
-      const guard = m.value.guard;
+      const guard = m.guard;
       return guard instanceof Node ? toLessNode(guard, { cache }) : guard;
     }
   },

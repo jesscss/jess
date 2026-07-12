@@ -130,7 +130,7 @@ export function supportsAtRule(this: C, T: TokenMap, preludeRule?: Rule | string
     let name = $.CONSUME(T.AtSupports);
     let resolvedPreludeRule: Rule | undefined;
     if (typeof preludeRule === 'string') {
-      const resolved: unknown = Reflect.get($, preludeRule);
+      const resolved = ($ as unknown as Record<string, unknown>)[preludeRule];
       if (typeof resolved === 'function') {
         resolvedPreludeRule = resolved as Rule;
       }
@@ -336,11 +336,11 @@ export function functionCall(this: C, T: TokenMap, alt?: AltContext) {
     if (!modernColorFunctions.has(name.toLowerCase())) {
       return false;
     }
-    if (!args || args.value.length !== 1) {
+    if (!args || args.items.length !== 1) {
       return false;
     }
-    const firstArg = args.value[0];
-    return Boolean(firstArg instanceof Sequence && firstArg.value.length >= 2);
+    const firstArg = args.items[0];
+    return Boolean(firstArg instanceof Sequence && firstArg.items.length >= 2);
   };
 
   alt ??= (ctx: RuleContext = {}) => [

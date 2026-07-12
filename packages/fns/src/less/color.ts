@@ -13,7 +13,7 @@ export default defineFunction(
   'color',
   function(c: Color | Quoted) {
     if (c instanceof Color) {
-      const sourceNode = c.value.node;
+      const sourceNode = c.node;
       const namedColor = typeof sourceNode === 'string' ? colors[sourceNode.toLowerCase()] : undefined;
       if (namedColor) {
         return new Color({

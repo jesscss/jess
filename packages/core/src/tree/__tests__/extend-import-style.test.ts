@@ -758,15 +758,15 @@ describe('Style import extend behavior', () => {
       if (!(firstRuleset instanceof Ruleset)) {
         throw new Error('Expected first referenced child to be a ruleset');
       }
-      const storedSelector = firstRuleset.value.selector;
+      const storedSelector = firstRuleset.selector;
 
       const css = await renderNodeToString(createReferenceExtendNode(), localContext, { context: localContext });
       const cssAgain = await renderNodeToString(createReferenceExtendNode(), localContext, { context: localContext });
 
       expect(css).toContain('.visible {');
       expect(cssAgain).toBe(css);
-      expect(firstRuleset.value.selector).toBe(storedSelector);
-      expect(firstRuleset.value.selector.valueOf()).toBe('.z');
+      expect(firstRuleset.selector).toBe(storedSelector);
+      expect(firstRuleset.selector.valueOf()).toBe('.z');
     });
 
     it('characterization: minimal reference self-extend does not activate class-only selectors', async () => {

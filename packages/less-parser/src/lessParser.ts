@@ -2,7 +2,7 @@ import { Lexer, type IToken, type IRecognitionException } from 'chevrotain';
 import { lessTokens, lessFragments } from './lessTokens.js';
 import { createLexerDefinition } from '@jesscss/css-parser';
 import { LessRecursiveParser, type LessParserConfig, type TokenMap } from './lessRecursiveParser.js';
-import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
+import { nil, type Node, type Rules, type IParseResult, type TreeContext } from '@jesscss/core';
 
 export type LessRules = keyof {
   [K in keyof LessRecursiveParser as LessRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
@@ -29,7 +29,7 @@ function getSharedLexerAndParser(config: LessParserConfig): { lexer: Lexer; pars
       lessFragments(),
       lessTokens()
     );
-    cachedTokenMap = T as TokenMap;
+    cachedTokenMap = T;
     cachedLexer = new Lexer(lexer, {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
@@ -87,21 +87,20 @@ export class LessParser {
     }
     parser.context.opts.trivia = undefined;
     parser.input = lexerResult.tokens;
-    const ruleMethod = parser[rule as keyof typeof parser] as (() => Node) | undefined;
+    const ruleMethod = parser[rule];
     if (typeof ruleMethod !== 'function') {
       throw new Error(`Unknown parser rule: ${rule}`);
     }
-    const tree = ruleMethod.call(parser) as Node | undefined;
+    const tree = ruleMethod.call(parser);
     const trivia = (parser as LessRecursiveParser & { trivia: IParseResult['trivia'] }).trivia;
     parser.context.opts.trivia = trivia;
-    if (tree) {
-      tree.treeContext.opts.trivia = trivia;
-    }
+    const resultTree = tree ?? nil();
+    (resultTree.sourceRoot?._treeContext ?? parser.context).opts.trivia = trivia;
 
     const warnings = [...parser.warnings];
 
     return {
-      tree: tree as Node,
+      tree: resultTree,
       lexerResult,
       errors: parser.errors,
       trivia,

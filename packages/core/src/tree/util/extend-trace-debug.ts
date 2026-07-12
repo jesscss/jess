@@ -6,28 +6,36 @@
 import type { Context } from '../../context.js';
 
 export function shouldTraceExtend(ctx: Context | undefined): boolean {
-  if (!ctx) return false;
-  if (process.env.DEBUG_EXTEND_TRACE === '1') return true;
+  if (!ctx) {
+    return false;
+  }
+  if (process.env.DEBUG_EXTEND_TRACE === '1') {
+    return true;
+  }
   const runId = getExtendTraceRunId(ctx);
-  if (runId === 'constructed') return true;
-  if (runId.includes('extend-chaining')) return true;
+  if (runId === 'constructed') {
+    return true;
+  }
+  if (runId.includes('extend-chaining')) {
+    return true;
+  }
   return false;
 }
 
 /** Trace when we're in the .md extend path (and collapseNesting when we want to limit to that path). */
 export function shouldTraceExtendMd(ctx: Context | undefined, targetValueOf: string): boolean {
-  if (targetValueOf !== '.md') return false;
+  if (targetValueOf !== '.md') {
+    return false;
+  }
   return true;
 }
 
 export function getExtendTraceRunId(ctx: Context | undefined): string {
-  if (!ctx) return 'unknown';
-  const file = ctx.treeContext?.file;
-  const pathStr = typeof (file as { fullPath?: string })?.fullPath === 'string'
-    ? (file as { fullPath: string }).fullPath
-    : typeof (file as { path?: string })?.path === 'string'
-      ? (file as { path: string }).path
-      : '';
+  if (!ctx) {
+    return 'unknown';
+  }
+  const file = ctx.sourceRoot?._treeContext?.file;
+  const pathStr = file?.fullPath || file?.path || '';
   return pathStr || 'constructed';
 }
 

@@ -5,7 +5,7 @@ import { toLessNode } from '../transform/to-less.js';
 export const transformRulesetToLess = createFromAdapter<Ruleset>({
   fields: {
     selectors: (rs, cache) => {
-      const selector = rs.value.selector;
+      const selector = rs.selector;
       if (selector instanceof Nil) {
         return [];
       }
@@ -15,13 +15,13 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
       return [toLessNode(selector, { cache })];
     },
     rules: (rs, cache) => {
-      const rules = rs.value.rules;
-      return rules.value.map((r: Node) => toLessNode(r, { cache }));
+      const rules = rs.rules;
+      return rules.rules.map((r: Node) => toLessNode(r, { cache }));
     }
   },
   accept: (ruleset, visitor, cache) => {
-    const selector = ruleset.value.selector;
-    const rules = ruleset.value.rules;
+    const selector = ruleset.selector;
+    const rules = ruleset.rules;
 
     // Traverse selectors
     if (selector && !(selector instanceof Nil)) {
@@ -50,7 +50,7 @@ export const transformRulesetToLess = createFromAdapter<Ruleset>({
 
     // Traverse rules
     if (rules?.value?.length > 0) {
-      const lessRules = rules.value.map((r: Node) => toLessNode(r, { cache }));
+      const lessRules = rules.rules.map((r: Node) => toLessNode(r, { cache }));
       if (visitor.visitArray) {
         visitor.visitArray(lessRules);
       } else {

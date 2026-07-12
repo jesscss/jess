@@ -78,7 +78,7 @@ export function jessCollection(this: P, _T: TokenMap) {
       return;
     }
     const rules = expectRules(rulesValue);
-    return new Collection(rules.value, undefined, loc, $.context);
+    return new Collection(rules.rules, undefined, loc, $.context);
   };
 }
 

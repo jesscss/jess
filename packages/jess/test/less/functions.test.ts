@@ -342,8 +342,10 @@ describe('Functions', () => {
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('value:');
     });
+  });
 
-    it('should support authored each() callback syntax end-to-end', async () => {
+  describe('Less each() callbacks', () => {
+    it('supports authored each() callback syntax end-to-end', async () => {
       const lessCode = `
         .test {
           each(1 2 3 4, {
@@ -359,7 +361,81 @@ describe('Functions', () => {
       expect(css).toContain('item-4: 4');
     });
 
-    it('should merge each() callback output correctly inside nested @starting-style', async () => {
+    it('re-evaluates nested rules for each range() item', async () => {
+      const css = await compiler.renderString(`
+        .loop() {
+          each(range(2), {
+            .col-@{value} {
+              width: @value;
+            }
+          });
+        }
+        .loop();
+      `, { language: 'less' });
+
+      expect(css).toContain('.col-1');
+      expect(css).toContain('width: 1');
+      expect(css).toContain('.col-2');
+      expect(css).toContain('width: 2');
+    });
+
+    it('re-evaluates each() bindings across sibling nested rulesets', async () => {
+      const css = await compiler.renderString(`
+        @spacing-steps: range(0, 2);
+        each(@spacing-steps, {
+          .gap-@{value} {
+            gap: (@value * 4px);
+          }
+          .space-x-@{value} > * + * {
+            margin-left: (@value * 4px);
+          }
+          .space-y-@{value} > * + * {
+            margin-top: (@value * 4px);
+          }
+        });
+      `, { language: 'less' });
+
+      expect(css).toContain('.gap-0');
+      expect(css).toContain('gap: 0px');
+      expect(css).toContain('.space-x-1 > * + *');
+      expect(css).toContain('margin-left: 4px');
+      expect(css).toContain('.space-y-2 > * + *');
+      expect(css).toContain('margin-top: 8px');
+    });
+
+    it('re-evaluates default each() bindings inside nested rules', async () => {
+      const css = await compiler.renderString(`
+        @sizes: small 1, large 2;
+        each(@sizes, {
+          .@{key} {
+            width: @value;
+          }
+        });
+      `, { language: 'less' });
+
+      expect(css).toContain('.1');
+      expect(css).toContain('width: small 1');
+      expect(css).toContain('.2');
+      expect(css).toContain('width: large 2');
+    });
+
+    it('re-evaluates explicit each() callback bindings inside nested rules', async () => {
+      const css = await compiler.renderString(`
+        @sizes: small 1, large 2;
+        each(@sizes, .(@size, @key) {
+          .@{key} {
+            width: @size;
+          }
+        });
+      `, { language: 'less' });
+
+      expect(css).toContain('.1');
+      expect(css).toContain('width: small');
+      expect(css).toContain('.2');
+      expect(css).toContain('width: large');
+    });
+
+    it('merges each() callback output correctly inside nested @starting-style', async () => {
       const lessCode = `
         aside {
           @starting-style {
@@ -373,6 +449,23 @@ describe('Functions', () => {
       const css = await compiler.renderString(lessCode, { language: 'less' });
       expect(css).toContain('@starting-style');
       expect(css).toContain('padding: 10px 20px 30px 40px');
+    });
+  });
+
+  describe('Less property merges', () => {
+    it('continues a merge chain after a mixin emits the first merged declaration', async () => {
+      const css = await compiler.renderString(`
+        .shadow-base {
+          box-shadow+: 0 1px 3px rgba(0, 0, 0, 0.12);
+        }
+        .shadow-elevated {
+          .shadow-base();
+          box-shadow+: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+      `, { language: 'less' });
+
+      expect(css).toContain('.shadow-elevated');
+      expect(css).toContain('box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 6px rgba(0, 0, 0, 0.1)');
     });
   });
 

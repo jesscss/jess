@@ -14,7 +14,7 @@ import { wouldExtendChange, canUseWalkAndConsume, classifyExtendMatch } from './
 import type { MatchResult } from './extend-walk.js';
 import { Nil } from '../nil.js';
 import { F_AMPERSAND, F_EXTENDED, F_VISIBLE, type Node } from '../node.js';
-import { copyOwnedWithReusableLeaves } from './cloning.js';
+import { copySelectorForPlacement as copySelectorForExtend } from './selector-utils.js';
 
 type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
@@ -26,14 +26,6 @@ function isSelectorValue(value: unknown): value is Selector {
     && typeof value === 'object'
     && 'isSelector' in value
     && value.isSelector === true;
-}
-
-function copySelectorForExtend(selector: Selector): Selector {
-  const copied = copyOwnedWithReusableLeaves(selector);
-  if (!isSelectorValue(copied)) {
-    throw new TypeError('Expected selector copy');
-  }
-  return copied;
 }
 
 function isRulesValue(value: unknown): value is Rules {
@@ -71,11 +63,11 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
  * Returns undefined if there's no parent Ruleset (root level).
  */
 function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
-  const parentRules = ruleset.getParent();
+  const parentRules = ruleset.parent;
   if (!isRulesValue(parentRules)) {
     return undefined;
   }
-  const parentRuleset = parentRules.getParent();
+  const parentRuleset = parentRules.parent;
   if (!isRulesetValue(parentRuleset)) {
     return undefined;
   }
@@ -125,12 +117,18 @@ function withSelectorBitLibrary<T extends Selector>(selector: T, ...sources: Arr
 }
 
 /**
- * Get the current local selector for a Ruleset (value.selector).
+ * Get the current local selector for a Ruleset.
  * Used for classification and application where we want to see prior updates
  * (supports extend chaining).
  */
 function getLocalSelector(ruleset: Ruleset): Selector | undefined {
-  return selectorOrUndefined(ruleset.value.selector);
+  return selectorOrUndefined(ruleset.selector);
+}
+
+function assignLocalSelector(ruleset: Ruleset, selector: Selector): void {
+  ruleset.adopt(selector);
+  ruleset.selector = selector;
+  ruleset.invalidateSelectorValueCache(selector);
 }
 
 /**
@@ -139,7 +137,7 @@ function getLocalSelector(ruleset: Ruleset): Selector | undefined {
  * additions through parent chains.
  */
 function getLocalSelectorPreExtend(ruleset: Ruleset): Selector | undefined {
-  return selectorOrUndefined(preExtendSelectors.get(ruleset) ?? ruleset.value.selector);
+  return selectorOrUndefined(preExtendSelectors.get(ruleset) ?? ruleset.selector);
 }
 
 /**
@@ -544,7 +542,7 @@ export function processExtends(context: Context): void {
     preExtendSelectors = new WeakMap<Ruleset, Selector>();
     for (const [, rulesetSet] of rulesetsByRoot) {
       for (const rs of rulesetSet) {
-        const sel = selectorOrUndefined(rs.value?.selector);
+        const sel = selectorOrUndefined(rs.selector);
         if (sel) {
           preExtendSelectors.set(rs, sel);
         }
@@ -574,7 +572,7 @@ export function processExtends(context: Context): void {
         fromReferenceScope: fromReferenceScope === true
       };
       if (!partial && isNode(target, N.SelectorList)) {
-        return target.value.map((item) => {
+        return target.selectors.map((item) => {
           item.keySetLibrary ??= context.selectorBits;
           return {
             ...base,
@@ -617,9 +615,9 @@ export function processExtends(context: Context): void {
       }
       for (const ruleset of rulesetSet) {
         // For classification: use pre-extend snapshot (original form).
-        // For application: use current value.selector (for chaining).
+        // For application: use current selector (for chaining).
         const selector = getLocalSelector(ruleset);
-        const currentSelector = selectorOrUndefined(ruleset.value.selector);
+        const currentSelector = selectorOrUndefined(ruleset.selector);
         const parentSel = getParentSelector(ruleset);
         if (!selector || isNode(selector, N.Nil)) {
           ruleset.removeFlag(F_EXTENDED);
@@ -750,7 +748,7 @@ export function processExtends(context: Context): void {
           // concerns separate lets the reference-mode compose filter
           // distinguish "original, untouched" from "added by extend".
           if (selector instanceof SelectorList) {
-            for (const item of selector.value) {
+            for (const item of selector.selectors) {
               item.addFlag(F_VISIBLE);
             }
           } else {
@@ -799,11 +797,10 @@ export function processExtends(context: Context): void {
           if (!isSelectorValue(newSelector)) {
             throw new TypeError('Expected crossing selector output');
           }
-          ruleset.value.selector = newSelector;
+          assignLocalSelector(ruleset, newSelector);
           ruleset._composedSelector = newSelector;
           ruleset.hoistToRoot = true;
           newSelector.hoistToRoot = true;
-          ruleset.invalidateSelectorValueCache();
           continue;
         }
         const ownSelector = getOwnSelectorOption(ruleset);
@@ -821,9 +818,8 @@ export function processExtends(context: Context): void {
           const fullBefore = selector.valueOf();
           const fullAfter = fullNewSelector.valueOf();
           if (ownNewSelector !== ownSelector && ownAfter !== ownBefore) {
-            ruleset.value.selector = ownNewSelector;
+            assignLocalSelector(ruleset, ownNewSelector);
             setOwnSelectorOption(ruleset, ownNewSelector);
-            ruleset.invalidateSelectorValueCache();
             if (ownNewSelector.hoistToRoot) {
               ruleset.hoistToRoot = true;
             }
@@ -856,13 +852,12 @@ export function processExtends(context: Context): void {
               if (
                 last
                 && last instanceof PseudoSelector
-                && last.value.name === ':is'
-                && last.value.arg instanceof SelectorList
+                && last.name === ':is'
+                && last.arg instanceof SelectorList
               ) {
-                const derivedOwn = copySelectorForExtend(last.value.arg);
-                ruleset.value.selector = derivedOwn;
+                const derivedOwn = copySelectorForExtend(last.arg);
+                assignLocalSelector(ruleset, derivedOwn);
                 setOwnSelectorOption(ruleset, derivedOwn);
-                ruleset.invalidateSelectorValueCache();
                 continue;
               }
             }
@@ -877,9 +872,8 @@ export function processExtends(context: Context): void {
             if (partialOnly.length === 0) {
               if (hasAncestorDrivenNonPartial) {
                 const ownAfterOwnOnly = applyExtendsToSelector(ownSelector, nonPartialOwnOnly);
-                ruleset.value.selector = ownAfterOwnOnly;
+                assignLocalSelector(ruleset, ownAfterOwnOnly);
                 setOwnSelectorOption(ruleset, ownAfterOwnOnly);
-                ruleset.invalidateSelectorValueCache();
                 continue;
               }
             } else {
@@ -895,8 +889,7 @@ export function processExtends(context: Context): void {
                 const newSel = applyExtendsToSelector(selector, nonPartialOnly);
                 if (newSel.valueOf() !== selector.valueOf()) {
                   newSel.hoistToRoot = true;
-                  ruleset.value.selector = newSel;
-                  ruleset.invalidateSelectorValueCache();
+                  assignLocalSelector(ruleset, newSel);
                   ruleset.hoistToRoot = true;
                 }
                 continue;
@@ -906,15 +899,13 @@ export function processExtends(context: Context): void {
                   ownSelector,
                   [...partialOnly, ...nonPartialOwnOnly]
                 );
-                ruleset.value.selector = ownAfterBoth;
+                assignLocalSelector(ruleset, ownAfterBoth);
                 setOwnSelectorOption(ruleset, ownAfterBoth);
-                ruleset.invalidateSelectorValueCache();
                 continue;
               }
               if (hasParentMatchedOwnOnlyNonPartial) {
-                ruleset.value.selector = ownAfterPartial;
+                assignLocalSelector(ruleset, ownAfterPartial);
                 setOwnSelectorOption(ruleset, ownAfterPartial);
-                ruleset.invalidateSelectorValueCache();
                 continue;
               }
               const shouldDeferToParentForNonPartial = Boolean(
@@ -923,9 +914,8 @@ export function processExtends(context: Context): void {
                 && hasAncestorDrivenNonPartial
               );
               if (shouldDeferToParentForNonPartial) {
-                ruleset.value.selector = ownAfterPartial;
+                assignLocalSelector(ruleset, ownAfterPartial);
                 setOwnSelectorOption(ruleset, ownAfterPartial);
-                ruleset.invalidateSelectorValueCache();
                 continue;
               }
             }
@@ -941,21 +931,20 @@ export function processExtends(context: Context): void {
           if (hasOnlyPartialExtends && isNode(newSelector, N.SelectorList)) {
             const previousValues = new Set<string>();
             if (applyInput instanceof SelectorList) {
-              for (const item of applyInput.value) {
+              for (const item of applyInput.selectors) {
                 previousValues.add(item.valueOf());
               }
             } else {
               previousValues.add(applyInput.valueOf());
             }
-            for (const item of newSelector.value) {
+            for (const item of newSelector.selectors) {
               if (!previousValues.has(item.valueOf())) {
                 item.addFlag(F_EXTENDED);
               }
             }
           }
-          ruleset.value.selector = newSelector;
+          assignLocalSelector(ruleset, newSelector);
           ruleset._composedSelector = newSelector;
-          ruleset.invalidateSelectorValueCache();
           if (newSelector.hoistToRoot) {
             ruleset.hoistToRoot = true;
           }
@@ -974,7 +963,7 @@ export function processExtends(context: Context): void {
       const targetLocation = instruction.target.location;
       const targetLine = targetLocation.length >= 2 ? targetLocation[1] : undefined;
       const targetColumn = targetLocation.length >= 3 ? targetLocation[2] : undefined;
-      const targetFile = instruction.target.treeContext?.file;
+      const targetFile = instruction.target.sourceRoot?._treeContext?.file;
       const targetFilePath = targetFile?.fullPath;
       const blockedProtectedRootExists = Array.from(rulesetsByRoot.keys()).some((root) => {
         if (!root) {
@@ -988,7 +977,7 @@ export function processExtends(context: Context): void {
           return false;
         }
         return Array.from(rulesets).some((ruleset) => {
-          const sel = selectorOrUndefined(ruleset.value.selector);
+          const sel = selectorOrUndefined(ruleset.selector);
           return !!sel && wouldInstructionChangeSel(sel, instruction);
         });
       });

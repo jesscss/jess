@@ -24,11 +24,17 @@ import {
   atrule
 } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
-import type { FindOptions } from '../util/registry-utils.js';
+import type { DeclarationFindOptions } from '../util/lookup-utils.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { setScopeFrameLiveBinding } from '../scope-frame.js';
+import {
+  findAnyDeclarationOccurrence,
+  findPropertyDeclarationOccurrence,
+  findVariableDeclarationOccurrence
+} from '../util/direct-rules-lookup.js';
 
 let context: Context;
 
@@ -46,30 +52,29 @@ function expectDeclarationNode(node: Node | undefined): Declaration {
   return node;
 }
 
-function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getPropWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  opts.searchParents = true;
-  return n.find('declaration', key, 'Declaration', opts);
+  return findPropertyDeclarationOccurrence(n, key, { ...opts, searchParents: true })?.node;
 }
 
-function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  opts.searchParents = true;
-  let decl = n.find('declaration', key, 'VarDeclaration', opts);
+  let decl = findVariableDeclarationOccurrence(n, key, { ...opts, searchParents: true })?.node;
   return decl;
 }
 
-function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  opts.searchParents = true;
-  return n.find('declaration', key, undefined, opts);
+  return findAnyDeclarationOccurrence(n, key, { ...opts, searchParents: true })?.node;
 }
 
 class WholeBufferCountingWriter extends OutputWriter {
   wholeBufferReads = 0;
+  readbacks = 0;
   captures = 0;
 
   override getSince(mark: number): string {
+    this.readbacks++;
     if (mark === 0) {
       this.wholeBufferReads++;
     }
@@ -81,13 +86,6 @@ class WholeBufferCountingWriter extends OutputWriter {
     return super.capture(fn);
   }
 }
-
-// function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindOptions = {}, start?: number) {
-//   context.rulesContext = n;
-//   opts.searchParents = true;
-//   let decl = n.findDeclaration(key, 'VarDeclaration', opts);
-//   return decl;
-// }
 
 describe('Rules', () => {
   beforeAll(() => {
@@ -109,6 +107,15 @@ describe('Rules', () => {
     getDeclEither = getDeclEitherWithContext.bind(context, context);
     // getSelector = getSelectorWithContext.bind(context, context);
     context.id = 'testing';
+  });
+
+  it('exposes constructor-owned rules as the direct child field', () => {
+    const child = decl({ name: 'color', value: any('red') });
+    const node = rules([child]);
+
+    expect(node.rules).toBe(node.value);
+    expect(node.rules[0]).toBe(child);
+    expect(node.constructor.childKeys).toEqual(['rules']);
   });
 
   it.skip('assigns position linearly for nested rules', async () => {
@@ -155,6 +162,16 @@ describe('Rules', () => {
     expect(out).toBe('color: red;');
     expect(options.referenceMode).toBe(false);
     expect(options.referenceRenderEnabled).toBe(true);
+  });
+
+  it('writes braced rules without return-value readback', () => {
+    const writer = new WholeBufferCountingWriter();
+    const node = rules([]);
+
+    node.writeBraced(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('{\n\n}');
+    expect(writer.readbacks).toBe(0);
   });
 
   it('lets Rules.evalNode own registration prep', async () => {
@@ -265,7 +282,7 @@ describe('Rules', () => {
     expect(emptyFrame.rulesNode).toBe(source);
 
     const emptyDerived = source.derive([]);
-    expect(emptyDerived.scopeFrame).toBeUndefined();
+    expect(emptyDerived._scopeFrame).toBeUndefined();
 
     const fallbackRules = rules([]);
     source.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
@@ -560,17 +577,32 @@ describe('Rules', () => {
 
   it('streams root charset and imports without capture scaffolding', () => {
     const writer = new WholeBufferCountingWriter();
-    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    const charset = any('@charset "utf-8";', { role: 'charset' });
+    let charsetSawActiveWriter = false;
+    const importRule = atrule({
+      name: any('@import', { role: 'atkeyword' }),
+      prelude: quoted(any('theme.css'))
+    });
+    charset.toTrimmedString = () => {
+      throw new Error('Rules root serializer should write charset syntax directly');
+    };
+    const writeCharsetSyntax = charset.writeSyntax.bind(charset);
+    charset.writeSyntax = (options: Parameters<typeof charset.writeSyntax>[0]) => {
+      charsetSawActiveWriter = options.writer === writer;
+      writeCharsetSyntax(options);
+    };
+    importRule.toString = () => {
+      throw new Error('Rules root serializer should write imports directly');
+    };
+    context.currentCharset = charset;
     context.topImports = [
-      atrule({
-        name: any('@import', { role: 'atkeyword' }),
-        prelude: quoted(any('theme.css'))
-      })
+      importRule
     ];
     const node = rules([]);
 
     expect(node.toString({ context, writer })).toBe('@charset "utf-8";\n@import "theme.css";\n');
     expect(writer.captures).toBe(0);
+    expect(charsetSawActiveWriter).toBe(true);
   });
 
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
@@ -657,7 +689,7 @@ describe('Rules', () => {
         expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: bar');
       });
 
-      it('find(declaration, key, undefined) picks VarDeclaration or Declaration by source order', async () => {
+      it('findAnyDeclaration picks VarDeclaration or Declaration by source order', async () => {
         let node = rules([
           vardecl({ name: any('n'), value: any('from-var') }),
           decl({ name: any('n'), value: any('from-decl') })
@@ -872,7 +904,7 @@ describe('Rules', () => {
         expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.valueNode.valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -956,7 +988,7 @@ describe('Rules', () => {
         expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
-        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'root-third');
+        const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.name.valueOf() === 'var' && n.valueNode.valueOf() === 'root-third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
@@ -1076,23 +1108,23 @@ describe('Rules', () => {
         if (!isNode(scope1, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 1, got ${scope1?.type ?? 'undefined'}`);
         }
-        const scope2 = scope1.value.rules.at(1);
+        const scope2 = scope1.rules.at(1);
         if (!isNode(scope2, N.Ruleset)) {
           throw new Error(`Expected Ruleset at nested index 1, got ${scope2?.type ?? 'undefined'}`);
         }
-        const scope3 = scope2.value.rules.at(0);
+        const scope3 = scope2.rules.at(0);
         if (!isNode(scope3, N.Ruleset)) {
           throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
         }
-        const scope3Rules = scope3.value.rules;
+        const scope3Rules = scope3.rules;
         expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
-        const scope3Found = scope3Rules.find('declaration', 'z', 'VarDeclaration', {
+        const scope3Found = findVariableDeclarationOccurrence(scope3Rules, 'z', {
           filter: () => true,
           context,
           hasTarget: false,
           searchParents: true,
           start: 0
-        });
+        })?.node;
         expect(scope3Found?.toTrimmedString()).toBe('$z: black');
         const border = expectDeclarationNode(scope3Rules.at(0));
         context.rulesContext = scope3Rules;
@@ -1172,8 +1204,8 @@ describe('Rules', () => {
         if (!isNode(grid, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 0, got ${grid?.type ?? 'undefined'}`);
         }
-        const width = expectDeclarationNode(grid.value.rules.at(0));
-        context.rulesContext = grid.value.rules;
+        const width = expectDeclarationNode(grid.rules.at(0));
+        context.rulesContext = grid.rules;
         const evald = await width.eval(context);
         expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });
@@ -1214,7 +1246,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        // With registry-based setDefined, the Rules node stays at index 1 (no array changes)
+        // With direct setDefined lookup, the Rules node stays at index 1 (no array changes)
         let inherited = node.at(1);
         expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: three');
         expect(getVar(expectRulesNode(inherited), 'one')?.toTrimmedString()).toBe('$one := three');
@@ -1278,21 +1310,18 @@ describe('Rules', () => {
         //
         // This test demonstrates Sass !global behavior with mixins using live resolution.
         //
-        // Solution implemented: `$~color` syntax for live resolution.
-        // - `$color` = scoped lookup (Less-style)
-        // - `$^color` = linear lookup from definition position (Sass-style for regular code)
-        // - `$~color` = linear lookup from call site position (Sass-style for mixins/functions)
+        // Current syntax uses `$!color` for explicit source-position reads in
+        // the live-binding model.
         //
-        // When a mixin uses `$~color`, the variable is resolved at the call site, allowing
+        // When a mixin uses explicit live-binding syntax, the variable is resolved at the call site, allowing
         // !global assignments to affect mixin behavior correctly.
 
         let node = rules([
           // Global variable declaration
           vardecl({ name: 'color', value: any('red') }),
 
-          // Mixin definition that uses the variable with live resolution
-          // In Jess, this would be: my-mixin() { color: $~color; }
-          // This makes the mixin resolve the variable at call time, not definition time
+          // Mixin definition that uses explicit live-binding semantics.
+          // This makes the mixin resolve the variable at call time, not definition time.
           mixin({
             name: any('my-mixin'),
             rules: rules([
@@ -1335,8 +1364,8 @@ describe('Rules', () => {
         if (!boxRuleset || !isNode(boxRuleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 2, got ${boxRuleset?.type || 'undefined'}`);
         }
-        // After evaluation, rulesets are still Rulesets, access via .value.rules
-        let boxRules = boxRuleset.value.rules;
+        // After evaluation, rulesets are still Rulesets, access via direct rules.
+        let boxRules = boxRuleset.rules;
         if (!boxRules) {
           throw new Error('Expected .box ruleset to have rules');
         }
@@ -1344,7 +1373,7 @@ describe('Rules', () => {
         if (!isNode(boxRules, N.Rules)) {
           throw new Error(`Expected Rules, got ${boxRules?.type ?? 'undefined'}`);
         }
-        expect(boxRules.value.length).toBe(2);
+        expect(boxRules.rules.length).toBe(2);
 
         // First declaration: color: $color
         let boxDecl1 = await boxRules.at(0)!.eval(context);
@@ -1370,14 +1399,14 @@ describe('Rules', () => {
         if (!box3Ruleset || !isNode(box3Ruleset, N.Ruleset)) {
           throw new Error(`Expected Ruleset at index 4, got ${box3Ruleset?.type || 'undefined'}`);
         }
-        let box3Rules = box3Ruleset.value.rules;
+        let box3Rules = box3Ruleset.rules;
         if (!box3Rules) {
           throw new Error('Expected .box3 ruleset to have rules');
         }
         if (!isNode(box3Rules, N.Rules)) {
           throw new Error(`Expected Rules, got ${box3Rules?.type ?? 'undefined'}`);
         }
-        expect(box3Rules.value.length).toBe(2);
+        expect(box3Rules.rules.length).toBe(2);
 
         // First declaration: color: $color
         let box3Decl1 = await box3Rules.at(0)!.eval(context);
@@ -1395,7 +1424,7 @@ describe('Rules', () => {
         let box3MixinRules = box3MixinResult;
         expect(box3MixinRules.value.length).toBeGreaterThan(0);
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
-        // With live resolution ($~color), the mixin should resolve the variable
+        // With explicit live-binding syntax, the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
         expect(box3MixinDecl.toTrimmedString()).toBe('color: blue');
 
@@ -1445,6 +1474,83 @@ describe('Rules', () => {
         } finally {
           VarDeclaration.prototype.copy = originalCopy;
         }
+      });
+
+      it('updates static setDefined variables without deriving placement declarations', async () => {
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        let deriveCalls = 0;
+        assignment.deriveWithOptions = function countDerive(
+          ...args: Parameters<typeof assignment.deriveWithOptions>
+        ): ReturnType<typeof assignment.deriveWithOptions> {
+          deriveCalls++;
+          return VarDeclaration.prototype.deriveWithOptions.apply(this, args);
+        };
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          rules([assignment]),
+          decl({ name: 'seen', value: ref({ key: 'one' }, { type: 'variable' }) })
+        ]);
+
+        const evald = await node.eval(context);
+
+        expect(await renderNodeToString(evald, context)).toBeString(`
+          seen: three;
+        `);
+        expect(deriveCalls).toBe(0);
+      });
+
+      it('updates modeled setDefined live binding cells without direct occurrence crawl', () => {
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          assignment
+        ]);
+        const frame = node.getScopeFrame(undefined, false);
+        setScopeFrameLiveBinding(frame, 'one', {
+          value: any('one')
+        });
+        const originalValue = node.value;
+
+        Object.defineProperty(node, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('setDefined current-cell path should not crawl Rules.value');
+          }
+        });
+
+        try {
+          node.registerNode(assignment, undefined, context);
+        } finally {
+          Object.defineProperty(node, 'value', {
+            configurable: true,
+            writable: true,
+            value: originalValue
+          });
+        }
+
+        expect(frame.currentBindingsByName.get('one')?.value?.toString()).toBe('three');
+      });
+
+      it('does not build a scope frame just to try setDefined live binding writes', () => {
+        const assignment = vardecl(
+          { name: 'one', value: any('three') },
+          { setDefined: true }
+        );
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          assignment
+        ]);
+
+        node.registerNode(assignment, undefined, context);
+
+        expect(node._scopeFrame).toBeUndefined();
+        expect(getVarWithContext(context, node, 'one')?.toTrimmedString()).toBe('$one: three');
       });
 
       // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found

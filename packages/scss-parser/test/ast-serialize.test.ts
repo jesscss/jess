@@ -71,9 +71,10 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (Expression
-        (Operation
+        node:
+          (Operation
     `);
-    expect(firstRuleDeclValue(tree)?.value?.value?.[1]).toBe('+');
+    expect(firstRuleDeclValue(tree)?.value?.operator).toBe('+');
   });
 
   it('serializes isolated parenthesized slash division as Expression(Operation)', () => {
@@ -83,9 +84,10 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (Expression
-        (Operation
+        node:
+          (Operation
     `);
-    expect(firstRuleDeclValue(tree)?.value?.value?.[1]).toBe('/');
+    expect(firstRuleDeclValue(tree)?.value?.operator).toBe('/');
   });
 
   it('keeps paren list slash forms as grouped values, not arithmetic expressions', () => {
@@ -107,7 +109,7 @@ describe('scss-parser (ast serialize)', () => {
       (Declaration
         name:
           (Any [role=property] 'font')
-        value:
+        valueNode:
           (Collection
     `);
     expect(serializeTypes(tree)).toContainString(`size`);
@@ -123,7 +125,7 @@ describe('scss-parser (ast serialize)', () => {
       (Declaration
         name:
           (Any [role=property] 'margin')
-        value:
+        valueNode:
           (Sequence
     `);
     expect(serializeTypes(tree)).toContainString(`(Collection`);
@@ -402,8 +404,9 @@ describe('scss-parser (ast serialize)', () => {
       (Ruleset
         selector:
           (ComplexSelector
-            [
-              (Ampersand
+            value:
+              [
+                (Ampersand
     `);
     expect(serialized).toContainString(`root-class`);
   });
@@ -431,12 +434,13 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString(`
       (Expression
-        (Call
-          name:
-            (Reference
-              target:
-                (Reference
-                  key: 'ns'
+        node:
+          (Call
+            name:
+              (Reference
+                target:
+                  (Reference
+                    key: 'ns'
                 )
               key: 'fn'
             )
@@ -527,10 +531,11 @@ describe('scss-parser (ast serialize)', () => {
     assertValidTree(tree);
     expect(serializeTypes(tree, { showOptions: true })).toContainString(`
       (Expression
-        (Call
-          name:
-            (Reference
-              type: 'function'
+        node:
+          (Call
+            name:
+              (Reference
+                type: 'function'
       `);
   });
 

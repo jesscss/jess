@@ -8,7 +8,7 @@ describe('replace()', () => {
     const result = await callWithContext(new Context(), replace, input, new Quoted('l'), new Quoted('x')) as Quoted;
     expect(result).toBeInstanceOf(Quoted);
     expect(result.valueOf()).toBe('hexlo');
-    expect(result.options.quote).toBe('\'');
+    expect(result.quote).toBe('\'');
   });
 
   it('replaces with flags and returns Any for non-quoted input', async () => {

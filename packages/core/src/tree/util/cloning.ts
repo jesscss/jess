@@ -1,17 +1,7 @@
-import { F_NON_STATIC, Node } from '../node-base.js';
-
-export function hasNodeChild(value: unknown): boolean {
-  if (value instanceof Node) {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.some(item => hasNodeChild(item));
-  }
-  if (value !== null && typeof value === 'object') {
-    return Object.values(value).some(item => hasNodeChild(item));
-  }
-  return false;
-}
+import { F_HAS_NODE_CHILD, F_NON_STATIC, Node } from '../node-base.js';
+import { N } from '../node-type.js';
+import { PseudoSelector } from '../selector-pseudo.js';
+import { isNode } from './is-node.js';
 
 /**
  * A source-free childless node can be shared as an inert value leaf.
@@ -19,9 +9,9 @@ export function hasNodeChild(value: unknown): boolean {
  * their children for a particular placement.
  */
 export function canReuseLeaf(node: Node): boolean {
-  return node.location.length === 0
+  return (node._location?.length ?? 0) === 0
     && !node.hasFlag(F_NON_STATIC)
-    && !hasNodeChild(node.value);
+    && !node.hasFlag(F_HAS_NODE_CHILD);
 }
 
 export function reuseLeaf<T extends Node>(node: T): T {
@@ -39,11 +29,20 @@ export function cloneWithReusableLeaves<T extends Node>(node: T): T {
     return reuseLeaf(node);
   }
   const cloneChild = (child: Node): Node => cloneWithReusableLeaves(child);
-  return node.clone(true, cloneChild);
+  const clone = node.clone(true, cloneChild);
+  copyRenderMetadata(node, clone);
+  return clone;
 }
 
+/**
+ * Clones a list of output children while preserving reusable scalar leaves.
+ */
 export function cloneChildrenWithReusableLeaves<T extends Node>(nodes: readonly T[]): T[] {
-  return nodes.map(node => cloneWithReusableLeaves(node));
+  const out = new Array<T>(nodes.length);
+  for (let i = 0; i < nodes.length; i++) {
+    out[i] = cloneWithReusableLeaves(nodes[i]!);
+  }
+  return out;
 }
 
 function copyChild(value: unknown): unknown {
@@ -51,14 +50,37 @@ function copyChild(value: unknown): unknown {
     return copyWithReusableLeaves(value);
   }
   if (Array.isArray(value)) {
-    return value.map(item => copyChild(item));
+    const out = new Array<unknown>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      out[i] = copyChild(value[i]);
+    }
+    return out;
   }
   if (isRecord(value)) {
     const out: Record<string, unknown> = {};
     for (const key in value) {
-      if (Object.hasOwn(value, key)) {
-        out[key] = copyChild(value[key]);
-      }
+      out[key] = copyChild(value[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+function copyChildPreservingComments(value: unknown): unknown {
+  if (value instanceof Node) {
+    return copyWithReusableLeavesPreservingComments(value);
+  }
+  if (Array.isArray(value)) {
+    const out = new Array<unknown>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      out[i] = copyChildPreservingComments(value[i]);
+    }
+    return out;
+  }
+  if (isRecord(value)) {
+    const out: Record<string, unknown> = {};
+    for (const key in value) {
+      out[key] = copyChildPreservingComments(value[key]);
     }
     return out;
   }
@@ -69,36 +91,76 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
-function nodeOptions(node: Node): unknown {
-  return Object.getOwnPropertyDescriptor(node, '_options')?.value;
+type FrameMetadataNode = Node & {
+  frames?: unknown;
+};
+
+function hasFrameMetadata(node: Node): node is FrameMetadataNode {
+  return 'frames' in node;
+}
+
+function copyRenderMetadata(source: Node, target: Node): void {
+  target.hoistToRoot = source.hoistToRoot;
+  if (hasFrameMetadata(source)) {
+    const frames = source.frames;
+    if (Array.isArray(frames)) {
+      const frameCopy = new Array<unknown>(frames.length);
+      for (let i = 0; i < frames.length; i++) {
+        frameCopy[i] = frames[i];
+      }
+      (target as FrameMetadataNode).frames = frameCopy;
+    } else {
+      (target as FrameMetadataNode).frames = undefined;
+    }
+  }
 }
 
 function constructCopy(node: Node, value: unknown): Node {
-  const options = nodeOptions(node);
+  const options = node.options;
   const copy = Reflect.construct(
     node.constructor,
     [
       value,
-      options && isRecord(options) ? { ...options } : undefined,
-      node.location,
-      node.treeContext
+      isRecord(options) ? { ...options } : undefined,
+      node.location
     ]
   );
   if (!(copy instanceof Node)) {
     throw new TypeError('Copied value must construct a Node');
   }
-  return copy.inherit(node);
+  copy.inherit(node);
+  copyRenderMetadata(node, copy);
+  return copy;
+}
+
+function constructPseudoCopy(node: Node, preserveComments: boolean): Node | undefined {
+  if (!isNode(node, N.PseudoSelector)) {
+    return undefined;
+  }
+  const arg = node.arg
+    ? (preserveComments ? copyChildPreservingComments(node.arg) : copyChild(node.arg))
+    : undefined;
+  const copy = new PseudoSelector(
+    {
+      name: node.name,
+      ...(arg instanceof Node && { arg }),
+      ...(node.generatedPseudoPlacementOverride !== undefined && {
+        generatedPseudoPlacementOverride: node.generatedPseudoPlacementOverride
+      })
+    },
+    isRecord(node.options) ? { ...node.options } : undefined,
+    node.location,
+    node.sourceRoot?._treeContext
+  ).inherit(node);
+  copyRenderMetadata(node, copy);
+  return copy;
 }
 
 function deriveAmpersand(node: Node): Node | undefined {
-  if (node.type !== 'Ampersand') {
+  if (!isNode(node, N.Ampersand)) {
     return undefined;
   }
-  const derive: unknown = Reflect.get(node, 'derive');
-  if (typeof derive !== 'function') {
-    return undefined;
-  }
-  const derived = derive.call(node);
+  const derived = node.derive();
   if (derived instanceof Node) {
     return derived;
   }
@@ -120,7 +182,31 @@ export function copyWithReusableLeaves(node: Node): Node {
   if (canReuseLeaf(node)) {
     return reuseLeaf(node);
   }
+  const pseudoCopy = constructPseudoCopy(node, false);
+  if (pseudoCopy) {
+    pseudoCopy.frozen = true;
+    return pseudoCopy;
+  }
   const copy = constructCopy(node, copyChild(node.value));
+  copy.frozen = true;
+  return copy;
+}
+
+export function copyWithReusableLeavesPreservingComments(node: Node): Node {
+  const derivedAmpersand = deriveAmpersand(node);
+  if (derivedAmpersand) {
+    derivedAmpersand.frozen = true;
+    return derivedAmpersand;
+  }
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
+  }
+  const pseudoCopy = constructPseudoCopy(node, true);
+  if (pseudoCopy) {
+    pseudoCopy.frozen = true;
+    return pseudoCopy;
+  }
+  const copy = constructCopy(node, copyChildPreservingComments(node.value));
   copy.frozen = true;
   return copy;
 }
@@ -136,6 +222,11 @@ export function copyOwnedWithReusableLeaves(node: Node): Node {
   if (derivedAmpersand) {
     derivedAmpersand.frozen = true;
     return derivedAmpersand;
+  }
+  const pseudoCopy = constructPseudoCopy(node, false);
+  if (pseudoCopy) {
+    pseudoCopy.frozen = true;
+    return pseudoCopy;
   }
   const copy = constructCopy(node, copyChild(node.value));
   copy.frozen = true;

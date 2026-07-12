@@ -38,12 +38,13 @@ export function isNode(
     if (typeof value !== 'object') {
       return false;
     }
-    return typeof Reflect.get(value, 'type') === 'string'
-      && typeof Reflect.get(value, 'children') === 'function';
+    const maybeNode = value as { type?: unknown; children?: unknown };
+    return typeof maybeNode.type === 'string'
+      && typeof maybeNode.children === 'function';
   }
   if (typeof value !== 'object') {
     return false;
   }
-  const nodeType = Reflect.get(value, 'nodeType');
+  const nodeType = (value as { nodeType?: unknown }).nodeType;
   return typeof nodeType === 'number' && (nodeType & mask) !== 0;
 }

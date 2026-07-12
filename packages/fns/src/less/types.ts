@@ -33,7 +33,7 @@ const isstring = defineFunction(
 const iskeyword = defineFunction(
   'iskeyword',
   function(value: Node) {
-    return new Bool(value instanceof Any && (value.options?.role === 'keyword' || value.options?.role === 'ident'));
+    return new Bool(value instanceof Any && (value.role === 'keyword' || value.role === 'ident'));
   },
   {
     params: [{ name: 'value', type: Node }]
@@ -57,7 +57,7 @@ const isunit = defineFunction(
       return new Bool(false);
     }
     const expected = String(unit.valueOf?.() ?? '').toLowerCase();
-    const current = (value.value.unit ?? '').toLowerCase();
+    const current = (value.unit ?? '').toLowerCase();
     return new Bool(current === expected);
   },
   {
@@ -68,7 +68,7 @@ const isunit = defineFunction(
 const ispixel = defineFunction(
   'ispixel',
   function(value: Node) {
-    return new Bool(value instanceof Dimension && (value.value.unit ?? '').toLowerCase() === 'px');
+    return new Bool(value instanceof Dimension && (value.unit ?? '').toLowerCase() === 'px');
   },
   {
     params: [{ name: 'value', type: Node }]
@@ -78,7 +78,7 @@ const ispixel = defineFunction(
 const ispercentage = defineFunction(
   'ispercentage',
   function(value: Node) {
-    return new Bool(value instanceof Dimension && (value.value.unit ?? '').toLowerCase() === '%');
+    return new Bool(value instanceof Dimension && (value.unit ?? '').toLowerCase() === '%');
   },
   {
     params: [{ name: 'value', type: Node }]
@@ -88,7 +88,7 @@ const ispercentage = defineFunction(
 const isem = defineFunction(
   'isem',
   function(value: Node) {
-    return new Bool(value instanceof Dimension && (value.value.unit ?? '').toLowerCase() === 'em');
+    return new Bool(value instanceof Dimension && (value.unit ?? '').toLowerCase() === 'em');
   },
   {
     params: [{ name: 'value', type: Node }]

@@ -167,7 +167,7 @@ describe('Flag bubbling', () => {
 
       // Get the deepest nodes to verify specific types
       const declaration = innerRuleset.value.rules.value[0]! as Declaration;
-      const listNode = declaration.value.value as List;
+      const listNode = declaration.valueNode as List;
 
       // List should have both flags (non-static + mayAsync)
       expectFlags(listNode, false, true);
@@ -204,7 +204,7 @@ describe('Flag bubbling', () => {
 
       // Get the deepest nodes to verify specific types
       const declaration = innerRuleset.value.rules.value[0]! as Declaration;
-      const operation = declaration.value.value as Operation;
+      const operation = declaration.valueNode as Operation;
 
       // Operation should have non-static
       expectFlags(operation, false, false);
@@ -241,7 +241,7 @@ describe('Flag bubbling', () => {
 
       // Get the deepest nodes to verify specific types
       const declaration = innerRuleset.value.rules.value[0]! as Declaration;
-      const callNode = declaration.value.value as Call;
+      const callNode = declaration.valueNode as Call;
 
       // Call should have both flags
       expectFlags(callNode, false, true);

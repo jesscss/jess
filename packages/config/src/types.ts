@@ -14,25 +14,6 @@ export type UnitMode = 'loose' | 'preserve' | 'strict';
 export type EqualityMode = 'coerce' | 'strict';
 export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
-export interface JavaScriptSandboxConfig {
-  /**
-   * Allow network access for script execution runtime.
-   * @default false
-   */
-  allowHttp?: boolean;
-  /**
-   * Optional host allowlist when `allowHttp` is enabled.
-   */
-  allowNetHosts?: string[];
-  /**
-   * Optional explicit filesystem root for script reads.
-   * If omitted, compiler resolves using entry/config roots.
-   */
-  jsReadRoot?: string;
-}
-
-export type CompileJavaScriptOption = true | JavaScriptSandboxConfig;
-
 /**
  * Less compiler options
  * Based on less.js default-options.js and bin/lessc
@@ -49,6 +30,11 @@ export interface LessOptions {
    * @default false
    */
   javascriptEnabled?: boolean;
+
+  /**
+   * @deprecated Use `disableScriptModules` instead.
+   */
+  disablePluginRule?: boolean;
 
   /**
    * Outputs a makefile import dependency list to stdout.
@@ -295,8 +281,12 @@ export interface InputOptions extends FileMatchOptions {
   unitMode?: UnitMode;
   equalityMode?: EqualityMode;
   allowExtendSelectors?: ExtendSelectorKind[];
+  disableScriptModules?: boolean;
+  /**
+   * @deprecated Use `disableScriptModules` instead.
+   */
+  disablePluginRule?: boolean;
   searchPaths?: string[];
-  enableJavaScript?: boolean;
 
   // Less-specific options that can be overridden per-input
   javascriptEnabled?: boolean;
@@ -348,12 +338,15 @@ export interface StylesConfig {
      */
     plugins?: Array<any | string>;
     searchPaths?: string[];
-    enableJavaScript?: boolean;
-    javascript?: CompileJavaScriptOption;
     mathMode?: MathMode;
     unitMode?: UnitMode;
     equalityMode?: EqualityMode;
     allowExtendSelectors?: ExtendSelectorKind[];
+    disableScriptModules?: boolean;
+    /**
+     * @deprecated Use `disableScriptModules` instead.
+     */
+    disablePluginRule?: boolean;
   };
   /**
    * Input file options. Can be a single object for defaults, or an array

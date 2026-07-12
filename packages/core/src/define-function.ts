@@ -13,7 +13,7 @@ export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
 export type Lazy<T> = () => MaybePromise<T>;
 
 /**
- * FunctionThis provides a proxy-based interface for function execution context.
+ * FunctionThis provides the function execution context.
  *
  * The `args` property is always a function that returns a `MaybePromise<List>`,
  * providing a consistent API regardless of lazy parameter configuration.
@@ -194,9 +194,23 @@ function normalizeParamSignatures(params: DefineFunctionOptions['params'] | unde
   if (!params) {
     return [];
   }
-  return isOverloadedParams(params)
-    ? params.map(sig => [...sig])
-    : [[...params]];
+  if (isOverloadedParams(params)) {
+    const out = new Array<ParamDefinition[]>(params.length);
+    for (let i = 0; i < params.length; i++) {
+      const sig = params[i]!;
+      const copy = new Array<ParamDefinition>(sig.length);
+      for (let j = 0; j < sig.length; j++) {
+        copy[j] = sig[j]!;
+      }
+      out[i] = copy;
+    }
+    return out;
+  }
+  const copy = new Array<ParamDefinition>(params.length);
+  for (let i = 0; i < params.length; i++) {
+    copy[i] = params[i]!;
+  }
+  return [copy];
 }
 
 export function defineFunction<
@@ -317,25 +331,23 @@ export function defineFunction<
     return fn(...positionalArgs);
   };
 
-  /** Allow runtime reflection on the function */
-  return new Proxy(result, {
-    has(target, prop) {
-      if (prop === 'name' || prop === 'options') {
-        return true;
-      }
-      return prop in target;
+  /** Attach runtime metadata directly; keep the callable as a real function. */
+  Object.defineProperties(result, {
+    name: {
+      value: name,
+      configurable: true
     },
-    get(target, prop) {
-      if (prop === 'name') {
-        return name;
-      } else if (prop === 'options') {
-        return options;
-      } else if (prop === '_internal') {
-        return fn;
-      }
-      return Reflect.get(target, prop);
+    options: {
+      value: options,
+      configurable: true
+    },
+    _internal: {
+      value: fn,
+      configurable: true
     }
   });
+
+  return result;
 }
 
 /** This will be called internally by Jess to functions created with defineFunction */
@@ -344,12 +356,23 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   const listArg = args.length === 1 && isNode(args[0], N.List)
     ? args[0] as List
     : undefined;
-  args = listArg ? [...listArg.value] : args;
+  if (listArg) {
+    const listValues = listArg.value;
+    args = new Array(listValues.length);
+    for (let i = 0; i < listValues.length; i++) {
+      args[i] = listValues[i];
+    }
+  }
   // Only reject record-based calls (plain objects) when there's no params metadata
   // Collections are allowed as positional arguments even without params metadata
   // (e.g., detached rulesets passed to mixins)
-  if (!runtimeFn.options?.params && args.some(arg => isPlainObject(arg) && !isNode(arg))) {
-    throw new Error('Record-based call without params is not supported');
+  if (!runtimeFn.options?.params) {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (isPlainObject(arg) && !isNode(arg)) {
+        throw new Error('Record-based call without params is not supported');
+      }
+    }
   }
 
   const hasParams = !!runtimeFn.options?.params;
@@ -372,9 +395,18 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
       setRawArgsPlacement(originalArgsList, placement);
     }
   } else {
-    originalArgsList = new List(args.map(arg => isNode(arg) ? copyWithReusableLeaves(arg) : arg));
+    const copiedArgs = new Array(args.length);
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      copiedArgs[i] = isNode(arg) ? copyWithReusableLeaves(arg) : arg;
+    }
+    originalArgsList = new List(copiedArgs);
   }
-  args = [...originalArgsList.value];
+  const originalValues = originalArgsList.items;
+  args = new Array(originalValues.length);
+  for (let i = 0; i < originalValues.length; i++) {
+    args[i] = originalValues[i];
+  }
 
   const params = runtimeFn.options?.params;
   const options = runtimeFn.options;
@@ -410,7 +442,13 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
 
       // Check if we have a record object (plain object) in args
       // Collections are treated as positional arguments, not record-based calls
-      const hasRecordArg = args.some(arg => isPlainObject(arg));
+      let hasRecordArg = false;
+      for (let i = 0; i < args.length; i++) {
+        if (isPlainObject(args[i])) {
+          hasRecordArg = true;
+          break;
+        }
+      }
 
       for (let i = 0; i < signature.length; i++) {
         const def = signature[i]!;
@@ -430,7 +468,13 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
       }
 
       // Check if we have too many arguments (not counting rest params or record args)
-      const hasRest = signature.some(p => p.rest);
+      let hasRest = false;
+      for (let i = 0; i < signature.length; i++) {
+        if (signature[i]!.rest) {
+          hasRest = true;
+          break;
+        }
+      }
       if (!hasRest && !hasRecordArg && args.length > signature.length) {
         isValid = false;
       }
@@ -514,17 +558,32 @@ function applyConversionPlugins(value: unknown, plugins: ConversionPlugin[]): un
  */
 function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[]): any {
   const record: any = {};
-  const restIndex = params.findIndex(p => p.rest);
+  let restIndex = -1;
+  for (let i = 0; i < params.length; i++) {
+    if (params[i]!.rest) {
+      restIndex = i;
+      break;
+    }
+  }
   const hasRest = restIndex >= 0;
 
   // Handle pure record call (single object argument)
   if (args.length === 1 && isPlainObject(args[0])) {
-    const isClassInstance = params?.some((opt) => {
+    let isClassInstance = false;
+    for (let i = 0; i < params.length; i++) {
+      const opt = params[i]!;
       const types = Array.isArray(opt.type) ? opt.type : [opt.type];
-      return types.some(type =>
-        typeof type === 'function' && args[0] instanceof type
-      );
-    });
+      for (let j = 0; j < types.length; j++) {
+        const type = types[j];
+        if (typeof type === 'function' && args[0] instanceof type) {
+          isClassInstance = true;
+          break;
+        }
+      }
+      if (isClassInstance) {
+        break;
+      }
+    }
 
     if (!isClassInstance) {
       const input = args[0] as any;
@@ -535,7 +594,10 @@ function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[])
 
   // Handle hybrid call (positional + record)
   if (args.length > 1 && isPlainObject(args[args.length - 1])) {
-    const positionalArgs = args.slice(0, -1);
+    const positionalArgs = new Array(args.length - 1);
+    for (let i = 0; i < args.length - 1; i++) {
+      positionalArgs[i] = args[i];
+    }
     const recordArg = args[args.length - 1];
 
     // Set values from positional arguments
@@ -551,7 +613,11 @@ function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[])
         const def = params[i]!;
         const paramName = def.name;
         if (def.rest) {
-          record[paramName] = positionalArgs.slice(i);
+          const rest = new Array(positionalArgs.length - i);
+          for (let j = i; j < positionalArgs.length; j++) {
+            rest[j - i] = positionalArgs[j];
+          }
+          record[paramName] = rest;
           break;
         } else if (i < positionalArgs.length) {
           record[paramName] = positionalArgs[i];
@@ -583,7 +649,11 @@ function parseArgumentsToRecord(args: any[], params: readonly ParamDefinition[])
       const def = params[i]!;
       const paramName = def.name;
       if (def.rest) {
-        record[paramName] = args.slice(i);
+        const rest = new Array(args.length - i);
+        for (let j = i; j < args.length; j++) {
+          rest[j - i] = args[j];
+        }
+        record[paramName] = rest;
         break;
       } else if (i < args.length) {
         record[paramName] = args[i];
@@ -636,15 +706,19 @@ function buildPositionalArgs(record: any, params: readonly ParamDefinition[]): a
       const v = record[name];
       const arr: any[] = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
       if (def.lazy) {
-        positionalArgs.push(...arr.map(item => createThunk(item, def)));
+        for (let j = 0; j < arr.length; j++) {
+          positionalArgs.push(createThunk(arr[j], def));
+        }
       } else {
-        positionalArgs.push(...arr.map((item) => {
+        for (let j = 0; j < arr.length; j++) {
+          const item = arr[j];
           // Apply conversion plugins if defined
           if (def.convert && item instanceof Dimension) {
-            return applyConversionPlugins(item, def.convert);
+            positionalArgs.push(applyConversionPlugins(item, def.convert));
+          } else {
+            positionalArgs.push(item);
           }
-          return item;
-        }));
+        }
       }
     } else {
       const v = record[name];
@@ -703,7 +777,11 @@ function parseCallWithContextArgs(args: any[], params: readonly ParamDefinition[
         continue;
       }
       if (def.rest) {
-        record[paramName] = args.slice(i);
+        const rest = new Array(args.length - i);
+        for (let j = i; j < args.length; j++) {
+          rest[j - i] = args[j];
+        }
+        record[paramName] = rest;
         break;
       } else {
         record[paramName] = arg;
@@ -732,7 +810,9 @@ async function buildCallWithContextPositionalArgs(
       const v = record[name];
       const arr: any[] = Array.isArray(v) ? v : (v === undefined ? [] : [v]);
       if (def.lazy) {
-        positionalArgs.push(...arr.map(item => createThunk(item, def, context)));
+        for (let j = 0; j < arr.length; j++) {
+          positionalArgs.push(createThunk(arr[j], def, context));
+        }
       } else {
         for (const item of arr) {
           let processedItem: any = (isNode(item) && !item.evaluated) ? item.eval(context) : item;
@@ -885,10 +965,22 @@ function validateArguments(record: any, params?: readonly ParamDefinition[]) {
       const elementTypes = Array.isArray(expectedType) ? expectedType : [expectedType];
       for (let idx = 0; idx < value.length; idx++) {
         const el = value[idx];
-        const isValid = (Array.isArray(elementTypes) ? elementTypes : [elementTypes]).some(type => isValidType(el, type));
+        let isValid = false;
+        for (let i = 0; i < elementTypes.length; i++) {
+          if (isValidType(el, elementTypes[i]!)) {
+            isValid = true;
+            break;
+          }
+        }
         if (!isValid) {
-          const types = Array.isArray(elementTypes) ? elementTypes : [elementTypes];
-          const typeList = types.map((t: any) => typeof t === 'function' ? t.name : t).join(', ');
+          let typeList = '';
+          for (let i = 0; i < elementTypes.length; i++) {
+            if (i > 0) {
+              typeList += ', ';
+            }
+            const t = elementTypes[i] as any;
+            typeList += typeof t === 'function' ? t.name : t;
+          }
           const actualType = typeof el === 'object' && el !== null ? el.constructor?.name || typeof el : typeof el;
           throw new TypeError(`Element ${idx} of '${paramName}' must be of type '${typeList}'. Got: ${actualType}`);
         }
@@ -932,9 +1024,22 @@ function validateArgumentIfNeeded(
 function validateValue(value: any, expectedType: ArgType | readonly ArgType[], paramName: string, context: string = 'Argument'): ValidationResult {
   // Handle array of types (union types)
   if (Array.isArray(expectedType)) {
-    const isValid = expectedType.some(type => isValidType(value, type));
+    let isValid = false;
+    for (let i = 0; i < expectedType.length; i++) {
+      if (isValidType(value, expectedType[i]!)) {
+        isValid = true;
+        break;
+      }
+    }
     if (!isValid) {
-      const typeList = expectedType.map((t: any) => typeof t === 'function' ? t.name : t).join(', ');
+      let typeList = '';
+      for (let i = 0; i < expectedType.length; i++) {
+        if (i > 0) {
+          typeList += ', ';
+        }
+        const t = expectedType[i] as any;
+        typeList += typeof t === 'function' ? t.name : t;
+      }
       const actualType = typeof value === 'object' && value !== null ? value.constructor?.name || typeof value : typeof value;
       return {
         isValid: false,

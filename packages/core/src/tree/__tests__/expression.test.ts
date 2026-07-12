@@ -1,4 +1,4 @@
-import { expr, any, list, ref, Rules, rules, vardecl } from '../index.js';
+import { expr, any, Expression, list, ref, Rules, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -19,9 +19,13 @@ describe('Expression', () => {
   });
 
   it('renders expression syntax through toTrimmedString()', () => {
-    const rule = expr(any('foo'));
+    const child = any('foo');
+    const rule = expr(child);
 
     expect(rule.toTrimmedString()).toBe('$(foo)');
+    expect(rule.node).toBe(child);
+    expect(rule.value).toBe(child);
+    expect(Expression.childKeys).toEqual(['node']);
   });
 
   it('renders resolved expression values through render(context)', async () => {
@@ -66,7 +70,7 @@ describe('Expression', () => {
     let expressionResolveCalls = 0;
     renderedNode.resolve = (renderContext: Context) => {
       expressionResolveCalls++;
-      return renderedNode.value.resolve(renderContext);
+      return renderedNode.node.resolve(renderContext);
     };
     let childResolveCalls = 0;
     const originalChildResolve = expressionChild.resolve;
@@ -108,6 +112,24 @@ describe('Expression', () => {
     expect(renderedNode.render(context)).toBe('one, foo');
     expect(renderedNode.evaluated).toBe(false);
     expect(renderedNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders sync scalar children without may-async continuation scaffolding', () => {
+    const expressionChild = any('foo');
+    const originalEval = expressionChild.eval;
+    expressionChild.eval = function evalSyncOnly(
+      this: typeof expressionChild,
+      renderContext: Context
+    ) {
+      const out = originalEval.call(this, renderContext);
+      if (out instanceof Promise) {
+        throw new Error('Expression.render should keep sync values on the sync path');
+      }
+      return out;
+    };
+    const renderedNode = expr(expressionChild);
+
+    expect(renderedNode.render(context)).toBe('foo');
   });
 
   it('resolves expression values without touching render state', async () => {

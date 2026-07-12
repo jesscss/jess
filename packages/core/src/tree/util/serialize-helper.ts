@@ -12,8 +12,7 @@ import {
   restorePrintState,
   saveArrayState,
   restoreArrayState,
-  saveSetState,
-  restoreSetState
+  withScratchEmittedTrivia
 } from './print.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
@@ -23,6 +22,27 @@ import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken 
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 
 type TriviaSide = 'before' | 'after';
+type SerializeProfileCounter =
+  | 'duplicateDeclarationComparisonContainers'
+  | 'duplicateDeclarationPrerenderedDeclarations'
+  | 'duplicateDeclarationCachedOutputReuses'
+  | 'emissionRenderNodeTextPreviewCalls'
+  | 'emissionRenderNodeTextRulesPreviewCalls'
+  | 'emissionRenderNodeTextDeclarationFallbackCalls'
+  | 'emissionRenderNodeTextLeafCalls';
+
+const SERIALIZE_PROFILE_COUNTERS_KEY = '__JESS_SERIALIZE_PROFILE_COUNTERS__';
+
+type SerializeProfileGlobals = typeof globalThis & {
+  [SERIALIZE_PROFILE_COUNTERS_KEY]?: Partial<Record<SerializeProfileCounter, number>>;
+};
+
+const serializeProfileGlobals = globalThis as SerializeProfileGlobals;
+const serializeProfileCounters = serializeProfileGlobals[SERIALIZE_PROFILE_COUNTERS_KEY];
+
+function incrementSerializeProfileCounter(counter: SerializeProfileCounter): void {
+  serializeProfileCounters![counter] = (serializeProfileCounters![counter] ?? 0) + 1;
+}
 
 function boundaryOffset(node: Node, side: TriviaSide): number | undefined {
   return side === 'before' ? node.location[0] : node.location[3];
@@ -33,7 +53,7 @@ export function hasPrintableTriviaAt(
   side: TriviaSide,
   options?: Pick<FinalPrintOptions, 'context' | 'trivia'>
 ): boolean {
-  const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
+  const trivia = options?.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
   if (!trivia) {
     return false;
   }
@@ -55,7 +75,7 @@ function captureNodeTrivia(
   side: TriviaSide,
   options: FinalPrintOptions
 ): string {
-  const trivia: TriviaMap | undefined = options.trivia ?? node.treeContext?.opts?.trivia;
+  const trivia: TriviaMap | undefined = options.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
   }
@@ -65,7 +85,21 @@ function captureNodeTrivia(
   return consumeTriviaText(trivia, boundaryOffset(node, side), side, options);
 }
 
-function renderNodeText(node: Node, options: FinalPrintOptions): string {
+function renderNodeText(
+  node: Node,
+  options: FinalPrintOptions,
+  reason: 'rules-preview' | 'declaration-fallback' | 'leaf' = 'leaf'
+): string {
+  if (serializeProfileCounters) {
+    incrementSerializeProfileCounter('emissionRenderNodeTextPreviewCalls');
+    if (reason === 'rules-preview') {
+      incrementSerializeProfileCounter('emissionRenderNodeTextRulesPreviewCalls');
+    } else if (reason === 'declaration-fallback') {
+      incrementSerializeProfileCounter('emissionRenderNodeTextDeclarationFallbackCalls');
+    } else {
+      incrementSerializeProfileCounter('emissionRenderNodeTextLeafCalls');
+    }
+  }
   return options.writer.preview(() => node.toTrimmedString(options));
 }
 
@@ -74,7 +108,7 @@ type RenderRuleEntry = {
 };
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
-  const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
+  const trivia = options?.trivia ?? node.sourceRoot?._treeContext?.opts?.trivia;
   const tokens = getPrintableTriviaTokens(trivia?.lookup(node.location[0], 'before'), options);
   if (!tokens) {
     return false;
@@ -82,10 +116,14 @@ function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'c
   return tokens.some(isBlockCommentTriviaToken);
 }
 
-function getContainerRules(node: AtRule | Ruleset): Rules | undefined {
+function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions): Rules | undefined {
   return isNode(node, N.AtRule)
-    ? node.getRenderRules()
-    : node.value.rules;
+    ? (
+        node === options?.atRuleBodyNode
+          ? options.atRuleBodyOverride
+          : node.getRenderRules()
+      )
+    : node.rules;
 }
 
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
@@ -120,13 +158,13 @@ function canMergeSameHeaderRuleset(
 ): boolean {
   const currentOwn = (currentFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
   const priorOwn = (priorFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
-  const currentSelector = currentOwn ?? currentFrame.value.selector;
-  const priorSelector = priorOwn ?? priorFrame.value.selector;
+  const currentSelector = currentOwn ?? currentFrame.selector;
+  const priorSelector = priorOwn ?? priorFrame.selector;
   return (
     currentFrame.hasFlag(F_EXTENDED)
     || priorFrame.hasFlag(F_EXTENDED)
-    || Ruleset.hasExtendedTopLevelSelector(currentFrame.value.selector)
-    || Ruleset.hasExtendedTopLevelSelector(priorFrame.value.selector)
+    || Ruleset.hasExtendedTopLevelSelector(currentFrame.selector)
+    || Ruleset.hasExtendedTopLevelSelector(priorFrame.selector)
     || isNode(currentOwn, N.Ampersand)
     || isNode(priorOwn, N.Ampersand)
     || containsNodeType(currentSelector, 'InterpolatedSelector')
@@ -161,7 +199,7 @@ export function flattenVisibleRulesForRender(
     allowTransparentFlatten: boolean,
     forceLeadingLeaves: boolean = false
   ) => {
-    for (const child of current.value) {
+    for (const child of current.rules) {
       const isEvaluatedDefinitionNode = current.evaluated && isNode(child, N.Mixin | N.VarDeclaration);
       if (isEvaluatedDefinitionNode && !hasPrintableTrivia(child, options)) {
         continue;
@@ -190,13 +228,26 @@ export function flattenVisibleRulesForRender(
         if (
           ownSelector
           && Ruleset.isBareAmpersandSelector(ownSelector)
-          && !Ruleset.isBareAmpersandSelector(child.value.selector)
+          && !Ruleset.isBareAmpersandSelector(child.selector)
         ) {
-          const visibleChildren = getContainerRules(child)!.value.filter(node => node.visible || node.fullRender);
-          const hasVisibleContainers = visibleChildren.some(node => isNode(node, N.Rules | N.Ruleset | N.AtRule));
+          const childRules = getContainerRules(child)!.rules;
+          let hasVisibleContainers = false;
+          for (let i = 0; i < childRules.length; i++) {
+            const visibleChild = childRules[i]!;
+            if (
+              (visibleChild.visible || visibleChild.fullRender)
+              && isNode(visibleChild, N.Rules | N.Ruleset | N.AtRule)
+            ) {
+              hasVisibleContainers = true;
+              break;
+            }
+          }
           if (!hasVisibleContainers) {
-            for (const leaf of visibleChildren) {
-              pushLeaf(leaf, true);
+            for (let i = 0; i < childRules.length; i++) {
+              const leaf = childRules[i]!;
+              if (leaf.visible || leaf.fullRender) {
+                pushLeaf(leaf, true);
+              }
             }
             continue;
           }
@@ -205,7 +256,7 @@ export function flattenVisibleRulesForRender(
       if (
         allowTransparentFlatten
         && isNode(child, N.Ruleset)
-        && Ruleset.isBareAmpersandSelector(child.value.selector)
+        && Ruleset.isBareAmpersandSelector(child.selector)
         && getContainerRules(child)
       ) {
         iterateRules(getContainerRules(child)!, true, true);
@@ -295,18 +346,29 @@ function getHoistedParent(
     return undefined;
   }
   const atRule = node as AtRule;
-  if (!atRule.isNestable() || atRule.isRootOnly() || !atRule.isHoisted(options)) {
+  const runtimeFrames = options.atRuleFrameNode === atRule
+    ? options.atRuleFrameOverride
+    : undefined;
+  const runtimeHoist = options.atRuleHoistNode === atRule
+    ? options.atRuleHoistOverride
+    : undefined;
+  const hoisted = runtimeFrames !== undefined && atRule.isNestable()
+    ? true
+    : (runtimeHoist ?? atRule.isHoisted(options));
+  if (!atRule.isNestable() || atRule.isRootOnly() || !hoisted) {
     return undefined;
   }
-  const rulesetFrames = (atRule.getRenderFrames() ?? []).filter(frame => isNode(frame, N.Ruleset));
-  if (rulesetFrames.length === 0) {
-    return undefined;
-  }
-  const frame = rulesetFrames[rulesetFrames.length - 1]!;
+  const renderFrames = runtimeFrames ?? atRule.getRenderFrames();
+  let frame: Ruleset | undefined;
   let parentSelector: Selector | undefined;
-  for (let i = 0; i < rulesetFrames.length; i++) {
-    const currentFrame = rulesetFrames[i]!;
-    const currentSelector = currentFrame.value.selector;
+  const frameCount = renderFrames?.length ?? 0;
+  for (let i = 0; i < frameCount; i++) {
+    const currentFrame = renderFrames![i]!;
+    if (!isNode(currentFrame, N.Ruleset)) {
+      continue;
+    }
+    frame = currentFrame;
+    const currentSelector = currentFrame.selector;
     if (!currentSelector || currentSelector instanceof Nil) {
       continue;
     }
@@ -314,6 +376,9 @@ function getHoistedParent(
     parentSelector = parentSelector
       ? Ruleset.composeSelector(nextSelector, parentSelector)
       : nextSelector;
+  }
+  if (!frame) {
+    return undefined;
   }
   return parentSelector ? { frame, selector: parentSelector } : undefined;
 }
@@ -324,7 +389,7 @@ function renderHoistedParentHeader(
   depth: number
 ): string {
   const writer = new OutputWriter();
-  parent.selector.toString({
+  parent.selector.writeSyntax({
     ...options,
     writer,
     collapseNesting: false,
@@ -339,7 +404,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   let inFrames = options.inFrames;
   const frameHeaders = options.frameHeaders;
 
-  if (isNode(node, N.Ruleset) && (node as Ruleset).value.selector instanceof Nil) {
+  if (isNode(node, N.Ruleset) && (node as Ruleset).selector instanceof Nil) {
     return '';
   }
   // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
@@ -352,7 +417,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   let isTransparentWrapper = false;
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
-    const sel = rs.value.selector;
+    const sel = rs.selector;
     const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand);
     if (isBareAmp) {
       isTransparentWrapper = true;
@@ -381,12 +446,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const inReferenceMode = previousReferenceMode || ownReferenceMode;
     const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
     const nodeExtendsReference = isNode(node, N.Ruleset)
-      && (node.hasFlag(F_EXTENDED) || Ruleset.hasExtendedTopLevelSelector(node.value.selector));
+      && (node.hasFlag(F_EXTENDED) || Ruleset.hasExtendedTopLevelSelector(node.selector));
     const inheritedRenderEnabled = enteringReferenceMode ? false : previousReferenceRenderEnabled;
     const renderEnabled = inReferenceMode ? (inheritedRenderEnabled || nodeExtendsReference) : true;
     options.referenceMode = inReferenceMode;
     options.referenceRenderEnabled = renderEnabled;
-    const rules = getContainerRules(node);
+    const rules = getContainerRules(node, options);
     if (!rules) {
       if (inReferenceMode && !renderEnabled) {
         return '';
@@ -443,31 +508,43 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
     // Less-style duplicate declaration handling:
     // for each property, keep the last exact serialized declaration and skip earlier duplicates.
+    if (serializeProfileCounters) {
+      incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
+    }
+    const declarationCountsByProp = new Map<string, number>();
+    for (let i = 0; i < rulesToRender.length; i++) {
+      const node = rulesToRender[i]!.node;
+      if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
+        continue;
+      }
+      const declProp = node.name.valueOf();
+      declarationCountsByProp.set(declProp, (declarationCountsByProp.get(declProp) ?? 0) + 1);
+    }
     for (let i = rulesToRender.length - 1; i >= 0; i--) {
       const node = rulesToRender[i]!.node;
       if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
         continue;
       }
+      const declProp = node.name.valueOf();
+      if ((declarationCountsByProp.get(declProp) ?? 0) < 2) {
+        continue;
+      }
       const declWriter = new OutputWriter();
       const declSaved = savePrintState(options, ['writer', 'depth']);
-      const declEmittedTrivia = saveSetState(options.emittedTrivia);
+      const declEmittedTrivia = new Set<IToken[]>();
+      const previousEmittedTrivia = options.emittedTrivia;
       options.writer = declWriter;
       options.depth = options.depth + 1;
-      const declOut = node.toTrimmedString(options);
-      const emittedDuringCapture = new Set<IToken[]>();
-      if (options.emittedTrivia) {
-        for (const tokens of options.emittedTrivia) {
-          if (!declEmittedTrivia?.has(tokens)) {
-            emittedDuringCapture.add(tokens);
-          }
-        }
+      options.emittedTrivia = declEmittedTrivia;
+      if (serializeProfileCounters) {
+        incrementSerializeProfileCounter('duplicateDeclarationPrerenderedDeclarations');
       }
-      restoreSetState(options.emittedTrivia, declEmittedTrivia);
+      const declOut = node.toTrimmedString(options);
+      options.emittedTrivia = previousEmittedTrivia;
       restorePrintState(options, declSaved);
       declarationOutputCache.set(i, declOut);
-      declarationTriviaCache.set(i, emittedDuringCapture);
+      declarationTriviaCache.set(i, declEmittedTrivia);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
-      const declProp = node.value.name.valueOf();
       let seenValues = seenDeclarationsByProp.get(declProp);
       if (!seenValues) {
         seenValues = new Set<string>();
@@ -486,7 +563,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
     }
 
-    const hoisted = node.isHoisted(options);
+    const hoisted = isNode(node, N.AtRule) && options.atRuleFrameNode === node
+      ? true
+      : isNode(node, N.AtRule) && options.atRuleHoistNode === node
+        ? (options.atRuleHoistOverride ?? node.isHoisted(options))
+        : node.isHoisted(options);
     // const isRuleset = isNode(node, 'Ruleset');
     const treeFrames = options.treeFrames!;
     const renderRulesBody = () => {
@@ -515,18 +596,18 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             break;
           }
           options.depth = i;
-          const headerProbeEmittedTrivia = saveSetState(options.emittedTrivia);
-          const currentHeader = (
-            hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
-          )
-            ? renderHoistedParentHeader(hoistedParent, options, i)
-            : currentFrame.getHeaderString(options, true);
-          const priorComparableHeader = (
-            hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
-          )
-            ? renderHoistedParentHeader(hoistedParent, options, i)
-            : priorFrame.getHeaderString(options, true);
-          restoreSetState(options.emittedTrivia, headerProbeEmittedTrivia);
+          const [currentHeader, priorComparableHeader] = withScratchEmittedTrivia(options, () => [
+            (
+              hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
+            )
+              ? renderHoistedParentHeader(hoistedParent, options, i)
+              : currentFrame.getHeaderString(options, true),
+            (
+              hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
+            )
+              ? renderHoistedParentHeader(hoistedParent, options, i)
+              : priorFrame.getHeaderString(options, true)
+          ]);
           const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
             && isNode(priorFrame, N.Ruleset)
             && (
@@ -597,7 +678,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           continue;
         }
 
-        const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).getRenderRules();
+        const isLeafAtRule = isNode(n, N.AtRule) && !getContainerRules(n as AtRule, options);
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
           const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
           options.depth = options.depth + 1;
@@ -627,8 +708,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         /** Re-widen type after accumulated isNode narrowing above */
         const nn = n as Node;
+        let leafFrames = inFrames;
+        if (hoistedParent) {
+          leafFrames = [...inFrames, hoistedParent.frame];
+        }
+        let renderedRulesOutput: string | undefined;
+        let renderedRulesTrivia: Set<IToken[]> | undefined;
         if (isNode(nn, N.Rules)) {
-          const hasRenderableChild = nn.value.some(child =>
+          const hasRenderableChild = nn.rules.some(child =>
             child.visible || child.fullRender || hasPrintableTrivia(child, options)
           );
           if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
@@ -640,37 +727,35 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const childReferenceRenderEnabled = childReferenceMode
             ? (enteringReferenceMode ? false : renderEnabled)
             : true;
-          const previewSaved = savePrintState(options, [
+          const rulesSaved = savePrintState(options, [
             'depth',
             'referenceMode',
             'referenceRenderEnabled'
           ]);
-          const previewInFramesLength = options.inFrames.length;
-          const previewTreeFramesLength = options.treeFrames.length;
-          const previewLastRenderedFramesLength = options.lastRenderedFrames.length;
-          const previewFrameHeadersLength = options.frameHeaders.length;
-          const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
-          const previewEmittedTrivia = saveSetState(options.emittedTrivia);
-          options.depth = options.depth + 1;
+          const rulesInFramesLength = options.inFrames.length;
+          const rulesTreeFramesLength = options.treeFrames.length;
+          const rulesLastRenderedFramesLength = options.lastRenderedFrames.length;
+          const rulesFrameHeadersLength = options.frameHeaders.length;
+          const rulesComposedSelectorStackLength = options.composedSelectorStack?.length;
+          renderedRulesTrivia = new Set<IToken[]>();
+          const previousEmittedTrivia = options.emittedTrivia;
+          options.depth = leafFrames.length;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
-          const previewOut = renderNodeText(nn, getPrintOptions(options));
-          restoreSetState(options.emittedTrivia, previewEmittedTrivia);
-          options.inFrames.length = previewInFramesLength;
-          options.treeFrames.length = previewTreeFramesLength;
-          options.lastRenderedFrames.length = previewLastRenderedFramesLength;
-          options.frameHeaders.length = previewFrameHeadersLength;
-          if (options.composedSelectorStack && previewComposedSelectorStackLength !== undefined) {
-            options.composedSelectorStack.length = previewComposedSelectorStackLength;
+          options.emittedTrivia = renderedRulesTrivia;
+          renderedRulesOutput = renderNodeText(nn, getPrintOptions(options), 'rules-preview');
+          options.emittedTrivia = previousEmittedTrivia;
+          options.inFrames.length = rulesInFramesLength;
+          options.treeFrames.length = rulesTreeFramesLength;
+          options.lastRenderedFrames.length = rulesLastRenderedFramesLength;
+          options.frameHeaders.length = rulesFrameHeadersLength;
+          if (options.composedSelectorStack && rulesComposedSelectorStackLength !== undefined) {
+            options.composedSelectorStack.length = rulesComposedSelectorStackLength;
           }
-          restorePrintState(options, previewSaved);
-          if (!previewOut && !hasPrintableTrivia(nn, options)) {
+          restorePrintState(options, rulesSaved);
+          if (!renderedRulesOutput && !hasPrintableTrivia(nn, options)) {
             continue;
           }
-        }
-        let leafFrames = inFrames;
-        if (hoistedParent) {
-          leafFrames = [...inFrames, hoistedParent.frame];
         }
         ensureRenderedFrames(leafFrames);
 
@@ -702,20 +787,31 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
         const leading = captureNodeTrivia(nn, 'before', options);
+        const cachedDeclarationOutput = isNode(nn, N.Declaration)
+          ? declarationOutputCache.get(idx)
+          : undefined;
         const out = isHiddenStructuralNode
           ? ''
           : isNode(nn, N.Declaration)
-            ? (declarationOutputCache.get(idx) ?? renderNodeText(nn, options))
-            : isNode(nn, N.Rules)
-              ? renderNodeText(nn, options)
+            ? (cachedDeclarationOutput ?? renderNodeText(nn, options, 'declaration-fallback'))
+            : renderedRulesOutput !== undefined
+              ? renderedRulesOutput
               : renderNodeText(nn, options);
-        if (isNode(nn, N.Declaration) && declarationOutputCache.has(idx)) {
+        if (isNode(nn, N.Declaration) && cachedDeclarationOutput !== undefined) {
+          if (serializeProfileCounters) {
+            incrementSerializeProfileCounter('duplicateDeclarationCachedOutputReuses');
+          }
           const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
           const cachedTrivia = declarationTriviaCache.get(idx);
           if (cachedTrivia) {
             for (const tokens of cachedTrivia) {
               emittedTrivia.add(tokens);
             }
+          }
+        } else if (renderedRulesTrivia) {
+          const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+          for (const tokens of renderedRulesTrivia) {
+            emittedTrivia.add(tokens);
           }
         }
         restorePrintState(options, leafSaved);
@@ -725,6 +821,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           && !nn.requiredSemi
           && !out.trim()
           && !leading.trim()
+        ) {
+          continue;
+        }
+        if (
+          isNode(nn, N.Rules)
+          && !out
+          && !leading.trim()
+          && !hasPrintableTrivia(nn, options)
         ) {
           continue;
         }
@@ -760,7 +864,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
             ? `${idt}${out}`
             : normalizeIndent(declIn, idt, true);
-          if (nn.value.name.valueOf().startsWith('--')) {
+          if (nn.name.valueOf().startsWith('--')) {
             w.add(idt);
             w.add(out, nn);
           } else {
@@ -841,8 +945,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // in `treeFrames` and cause nested output like:
       //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
       // even though the current node is hoisted to root.
-      const atRulesOnly = treeFrames.filter(f => isNode(f, N.AtRule));
-      treeFrames.splice(0, treeFrames.length, ...atRulesOnly, node);
+      let atRuleCount = 0;
+      for (let i = 0; i < treeFrames.length; i++) {
+        const frame = treeFrames[i]!;
+        if (isNode(frame, N.AtRule)) {
+          treeFrames[atRuleCount++] = frame;
+        }
+      }
+      treeFrames.length = atRuleCount;
+      treeFrames.push(node);
       options.inFrames = inFrames = treeFrames;
       const out = renderRulesBody();
       restoreArrayState(treeFrames, savedFrames);

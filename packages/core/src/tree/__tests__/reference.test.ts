@@ -1,13 +1,43 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, Sequence, JsArray, JsObject, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, F_MAY_ASYNC, F_NON_STATIC, defaultguard, type Node } from '../index.js';
 import { Context } from '../../context.js';
-import { getRulesLikeReferenceCallableSource, getRulesLikeReferenceLookupState, getRulesLikeReferenceSource } from '../reference.js';
-import { JsExpression } from '../js-expr.js';
-import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
-import { buildScopeFrame } from '../scope-frame.js';
+import { buildScopeFrame, lookupScopeFrameVariable, setScopeFrameLiveBinding } from '../scope-frame.js';
+import {
+  findPropertyDeclarationOccurrence,
+  findVariableDeclarationOccurrence
+} from '../util/direct-rules-lookup.js';
 let context: Context;
 let expectedAsyncRulesContext: RulesClass | undefined;
+
+function getDirectDeclarationOwnerLookupVersion(value: unknown): number | undefined {
+  if (
+    value
+    && typeof value === 'object'
+    && 'kind' in value
+    && value.kind === 'direct-declaration-occurrence'
+    && 'ownerLookupVersion' in value
+    && typeof value.ownerLookupVersion === 'number'
+  ) {
+    return value.ownerLookupVersion;
+  }
+  return undefined;
+}
+
+function getDirectDeclarationSlot(value: unknown): number | undefined {
+  if (
+    value
+    && typeof value === 'object'
+    && 'kind' in value
+    && value.kind === 'direct-declaration-occurrence'
+    && 'slot' in value
+    && typeof value.slot === 'number'
+  ) {
+    return value.slot;
+  }
+  return undefined;
+}
 
 function setRulesContext(root: Node): RulesClass {
   expect(root).toBeInstanceOf(RulesClass);
@@ -17,6 +47,13 @@ function setRulesContext(root: Node): RulesClass {
   context.root = root;
   context.rulesContext = root;
   return root;
+}
+
+function expectNodeType(value: unknown, type: string): void {
+  expect(isNode(value)).toBe(true);
+  if (isNode(value)) {
+    expect(value.type).toBe(type);
+  }
 }
 
 class AsyncRulesContextAny extends Any<string> {
@@ -51,6 +88,17 @@ class AsyncNativeRenderAny extends Any<string> {
   }
 }
 
+class RejectingAsyncAny extends Any<string> {
+  constructor(value: string) {
+    super(value);
+    this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  override eval() {
+    return Promise.reject(new Error(this.value));
+  }
+}
+
 describe('reference', () => {
   beforeEach(() => {
     context = new Context();
@@ -65,6 +113,11 @@ describe('reference', () => {
     it('should serialize a variable reference', () => {
       let node = ref({ key: 'foo' }, { type: 'variable' });
       expect(node.toTrimmedString()).toBe('$foo');
+    });
+
+    it('serializes a snapshot variable reference', () => {
+      let node = ref({ key: 'foo' }, { type: 'variable', readMode: 'snapshot' });
+      expect(node.toTrimmedString()).toBe('$!foo');
     });
 
     it('should serialize a declaration reference', () => {
@@ -100,6 +153,36 @@ describe('reference', () => {
     it('should serialize a quoted (property) index', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
       expect(node.toTrimmedString()).toBe('$["foo"]');
+    });
+
+    it('writes node reference keys without public string transport', () => {
+      const key = quoted('foo');
+      key.toString = () => {
+        throw new Error('Reference key syntax should use writeSyntax directly');
+      };
+      const node = ref({ key }, { type: 'index' });
+
+      expect(node.toTrimmedString()).toBe('$["foo"]');
+    });
+
+    it('writes reference targets without public string transport', () => {
+      const target = ref({ key: 'theme' }, { type: 'variable' });
+      target.toString = () => {
+        throw new Error('Reference target syntax should use writeSyntax directly');
+      };
+      const node = ref({ target, key: 'color' }, { type: 'property' });
+
+      expect(node.toTrimmedString()).toBe('$theme[color]');
+    });
+
+    it('writes array reference key segments directly', () => {
+      const chunks: string[] = [];
+      const writer = new OutputWriter(false, chunks);
+      const node = ref({ key: ['#theme', '.dark'] }, { type: 'index' });
+
+      node.writeSyntax(getPrintOptions({ writer }));
+
+      expect(chunks).toEqual(['$', '[', '#theme', '.dark', ']']);
     });
   });
 
@@ -231,6 +314,31 @@ describe('reference', () => {
       expect(context.rulesContext).toBe(runtimeScope);
     });
 
+    it('restores runtime binding frames when async live-slot value eval rejects', async () => {
+      const definitionRules = rules([]);
+      const paramDecl = vardecl({ name: any('tone'), value: any('blue') }, { paramVar: true });
+      definitionRules.push(paramDecl);
+      const asyncValue = new RejectingAsyncAny('runtime binding failed');
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: list([asyncValue]),
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+
+      await expect(ref({ key: 'tone' }, { type: 'variable' }).eval(context)).rejects.toThrow('runtime binding failed');
+      expect(context.rulesContext).toBe(runtimeScope);
+      expect(context.searchScope.has(paramDecl)).toBe(false);
+      expect(context.referenceStack).toBe(0);
+    });
+
     it('renders runtime-binding scalar references without applying public result metadata', async () => {
       const sourceValue = any('red');
       const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
@@ -283,6 +391,119 @@ describe('reference', () => {
       } finally {
         Any.prototype.copy = originalCopy;
         sourceValue.inherit = originalInherit;
+      }
+    });
+
+    it('resolves runtime-binding scalar references without frozen result metadata', async () => {
+      const sourceValue = any('red');
+      const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['tone', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const refNode = ref({ key: 'tone' }, { type: 'variable' });
+        const resolved = await refNode.eval(context);
+
+        expect(resolved).toBe(sourceValue);
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(scalarCopies).toBe(0);
+        expect(sourceValue.frozen).toBe(false);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('resolves fallback-frame declarations without Rules.find fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      const declarationHits: string[] = [];
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'tone') {
+          declarationHits.push(key);
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const fallbackScope = rules([
+          vardecl({ name: any('tone'), value: any('blue') })
+        ]);
+        await fallbackScope.eval(context);
+        const runtimeScope = rules([]);
+        await runtimeScope.eval(context);
+        runtimeScope.getScopeFrame().fallbackFrame = fallbackScope.getScopeFrame();
+        context.rulesContext = runtimeScope;
+
+        const resolved = await ref({ key: 'tone' }, { type: 'variable' }).eval(context);
+
+        expect(resolved.toTrimmedString()).toBe('blue');
+        expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('does not rediscover fallback-frame parent declarations after covered misses', async () => {
+      const fallbackParent = rules([
+        vardecl({ name: any('tone'), value: any('blue') })
+      ]);
+      const originalValue = fallbackParent.value;
+
+      try {
+        const fallbackChild = rules([]);
+        fallbackParent.push(fallbackChild);
+        await fallbackParent.eval(context);
+        const runtimeScope = rules([]);
+        await runtimeScope.eval(context);
+        fallbackChild.scopeFrame = buildScopeFrame(undefined, fallbackChild);
+        const fallbackFrame = fallbackChild.getScopeFrame();
+        runtimeScope.getScopeFrame().fallbackFrame = fallbackFrame;
+        context.rulesContext = runtimeScope;
+
+        Object.defineProperty(fallbackParent, 'value', {
+          configurable: true,
+          get() {
+            throw new Error('covered fallback-frame miss should not rediscover fallback parent declarations');
+          }
+        });
+
+        const resolved = await ref({
+          key: 'tone'
+        }, {
+          type: 'variable',
+          fallbackValue: any('fallback')
+        }).eval(context);
+
+        expect(resolved.toTrimmedString()).toBe('fallback');
+      } finally {
+        Object.defineProperty(fallbackParent, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
       }
     });
 
@@ -490,7 +711,103 @@ describe('reference', () => {
       }
     });
 
-    it('keeps runtime-binding containers owned for public resolve', async () => {
+    it('renders source-backed variable sequences with source-backed children without copies or frozen state', async () => {
+      const first = dimension([1, 'px']);
+      const second = dimension([2, 'px']);
+      first._location = [10, 1, 11, 13, 1, 14];
+      second._location = [14, 1, 15, 16, 1, 17];
+      const sourceValue = spaced([first, second]);
+      sourceValue._location = [10, 1, 11, 16, 1, 17];
+      const node = rules([
+        vardecl({
+          name: any('space'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      const firstParent = first.parent;
+      const secondParent = second.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'space' }, { type: 'variable' });
+      const buffer = createRenderBuffer('segmented');
+      const originalSequenceInherit = Sequence.prototype.inherit;
+      const originalDimensionInherit = Dimension.prototype.inherit;
+      let sequenceInherits = 0;
+      let dimensionInherits = 0;
+      Sequence.prototype.inherit = function inheritForCounting(
+        this: Sequence,
+        ...args: Parameters<typeof originalSequenceInherit>
+      ): ReturnType<typeof originalSequenceInherit> {
+        if (args[0] === sourceValue) {
+          sequenceInherits++;
+        }
+        return originalSequenceInherit.apply(this, args);
+      };
+      Dimension.prototype.inherit = function inheritForCounting(
+        this: Dimension,
+        ...args: Parameters<typeof originalDimensionInherit>
+      ): ReturnType<typeof originalDimensionInherit> {
+        if (args[0] === first || args[0] === second) {
+          dimensionInherits++;
+        }
+        return originalDimensionInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('1px 2px');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('1px 2px');
+        expect(buffer.segments).toEqual(['1px 2px']);
+        expect(sequenceInherits).toBe(0);
+        expect(dimensionInherits).toBe(0);
+        expect(sourceValue.frozen).toBe(false);
+        expect(first.frozen).toBe(false);
+        expect(second.frozen).toBe(false);
+        expect(sourceValue.parent).toBe(sourceParent);
+        expect(first.parent).toBe(firstParent);
+        expect(second.parent).toBe(secondParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        Sequence.prototype.inherit = originalSequenceInherit;
+        Dimension.prototype.inherit = originalDimensionInherit;
+      }
+    });
+
+    it('renders simple variable references through raw lookup without public eval materialization', async () => {
+      const first = dimension([1, 'px']);
+      const second = dimension([2, 'px']);
+      const sourceValue = spaced([first, second]);
+      const node = rules([
+        vardecl({
+          name: any('space'),
+          value: sourceValue
+        })
+      ]);
+      const sourceParent = sourceValue.parent;
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'space' }, { type: 'variable' });
+      const buffer = createRenderBuffer('segmented');
+      const originalEvalNode = refNode.evalNode;
+      let evalNodeCalls = 0;
+      refNode.evalNode = function evalNodeForCounting(
+        this: typeof refNode,
+        ...args: Parameters<typeof originalEvalNode>
+      ): ReturnType<typeof originalEvalNode> {
+        evalNodeCalls++;
+        return originalEvalNode.apply(this, args);
+      };
+
+      expect(await Promise.resolve(refNode.render(context))).toBe('1px 2px');
+      expect(await Promise.resolve(refNode.render(context, buffer))).toBe('1px 2px');
+      expect(buffer.segments).toEqual(['1px 2px']);
+      expect(evalNodeCalls).toBe(0);
+      expect(sourceValue.frozen).toBe(false);
+      expect(sourceValue.parent).toBe(sourceParent);
+      expect(refNode.evaluated).toBe(false);
+      expect(refNode.registrationPrepared).toBe(false);
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('keeps runtime-binding container sources canonical during public resolve', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       const paramDecl = vardecl({ name: any('tone'), value: sourceValue }, { paramVar: true });
       const runtimeScope = rules([]);
@@ -510,10 +827,52 @@ describe('reference', () => {
       const resolved = await ref({ key: 'tone' }, { type: 'variable' }).resolve(context);
 
       expect(resolved).toBeInstanceOf(List);
-      expect(resolved).not.toBe(sourceValue);
       expect(resolved.toTrimmedString()).toBe('red, blue');
+      expect(sourceValue.toTrimmedString()).toBe('red, blue');
       expect(sourceValue.parent).toBe(paramDecl);
       expect(context.referenceStack).toBe(0);
+    });
+
+    it('resolves dynamic runtime-binding containers without post-eval reference ownership copies', async () => {
+      const sourceValue = list([new AsyncNativeRenderAny('red')]);
+      const paramDecl = vardecl({ name: any('palette'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['palette', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      const refNode = ref({ key: 'palette' }, { type: 'variable' });
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBeInstanceOf(List);
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(inheritedFromReference).toBe(0);
+        expect(sourceValue.parent).toBe(paramDecl);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
     });
 
     it('resolves a variable value without touching render state', async () => {
@@ -724,6 +1083,48 @@ describe('reference', () => {
       }
     });
 
+    it('renders dynamic runtime-binding containers without post-eval reference ownership copies', async () => {
+      const sourceValue = list([new AsyncNativeRenderAny('red')]);
+      const paramDecl = vardecl({ name: any('palette'), value: sourceValue }, { paramVar: true });
+      const runtimeScope = rules([]);
+      runtimeScope.scopeFrame = buildScopeFrame(
+        undefined,
+        runtimeScope,
+        undefined,
+        new Map([
+          ['palette', {
+            value: sourceValue,
+            sourceNode: paramDecl
+          }]
+        ])
+      );
+      context.rulesContext = runtimeScope;
+      const refNode = ref({ key: 'palette' }, { type: 'variable' });
+      const buffer = createRenderBuffer('segmented');
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
+        expect(buffer.segments).toEqual(['red']);
+        expect(inheritedFromReference).toBe(0);
+        expect(sourceValue.parent).toBe(paramDecl);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
     it('renders source-backed static declaration reference containers as text without container copies', async () => {
       const sourceValue = list([any('red'), any('blue')]);
       sourceValue._location = [10, 1, 11, 20, 1, 21];
@@ -770,6 +1171,136 @@ describe('reference', () => {
         expect(context.referenceStack).toBe(0);
       } finally {
         List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('renders dynamic declaration reference containers without post-eval reference ownership copies', async () => {
+      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' })]);
+      const node = rules([
+        vardecl({ name: any('tone'), value: any('red') }),
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+      const buffer = createRenderBuffer('segmented');
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(refNode.render(context))).toBe('red');
+        expect(await Promise.resolve(refNode.render(context, buffer))).toBe('red');
+        expect(buffer.segments).toEqual(['red']);
+        expect(inheritedFromReference).toBe(0);
+        expect(sourceValue.parent?.type).toBe('Declaration');
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('resolves dynamic declaration reference containers without post-eval reference ownership copies', async () => {
+      const sourceValue = list([ref({ key: 'tone' }, { type: 'variable' })]);
+      const node = rules([
+        vardecl({ name: any('tone'), value: any('red') }),
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+      const originalInherit = List.prototype.inherit;
+      let inheritedFromReference = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === refNode) {
+          inheritedFromReference++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved).toBeInstanceOf(List);
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(inheritedFromReference).toBe(0);
+        expect(sourceValue.parent?.type).toBe('Declaration');
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('restores declaration reference frames when async value eval rejects', async () => {
+      const declaration = decl({
+        name: any('src'),
+        value: list([new RejectingAsyncAny('declaration reference failed')])
+      });
+      const node = rules([declaration]);
+      setRulesContext(node);
+
+      await expect(ref({ key: 'src' }, { type: 'declaration' }).eval(context)).rejects.toThrow('declaration reference failed');
+      expect(context.searchScope.has(declaration)).toBe(false);
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('restores important source when async important declaration reference rejects', async () => {
+      const declaration = decl({
+        name: any('src'),
+        value: list([new RejectingAsyncAny('important declaration failed')]),
+        important: any('!important', { role: 'flag' })
+      });
+      const node = rules([declaration]);
+      setRulesContext(node);
+
+      await expect(ref({ key: 'src' }, { type: 'declaration' }).eval(context)).rejects.toThrow('important declaration failed');
+      expect(context.hasImportantSource).toBe(false);
+      expect(context.searchScope.has(declaration)).toBe(false);
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('restores declaration reference frames when async merged finalization throws', async () => {
+      const declaration = decl({
+        name: any('src'),
+        value: list([new AsyncNativeRenderAny('red'), any('blue')]),
+        important: any('!important', { role: 'flag' })
+      }, { normalizedFromAssign: '+:' });
+      const node = rules([declaration]);
+      setRulesContext(node);
+      const refNode = ref({ key: 'src' }, { type: 'declaration' });
+
+      const originalInherit = List.prototype.inherit;
+      List.prototype.inherit = function throwingInherit(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] !== refNode) {
+          return originalInherit.apply(this, args);
+        }
+        throw new Error('merged finalization failed');
+      };
+      try {
+        await expect(refNode.eval(context)).rejects.toThrow('merged finalization failed');
+        expect(context.hasImportantSource).toBe(false);
+        expect(context.searchScope.has(declaration)).toBe(false);
+        expect(context.referenceStack).toBe(0);
+      } finally {
         List.prototype.inherit = originalInherit;
       }
     });
@@ -840,6 +1371,123 @@ describe('reference', () => {
       }, { type: 'index' }).render(context))).resolves.toBe('purple');
 
       expect(context.referenceStack).toBe(0);
+    });
+
+    it('index references use typed declaration lanes without generic declaration fallback', async () => {
+      const node = rules([
+        vardecl({ name: 'tone-var', value: any('purple') }),
+        decl({ name: 'tone', value: any('orange') }),
+        decl({
+          name: any('seen-var'),
+          value: ref({ key: 'tone-var' }, { type: 'index' })
+        }),
+        decl({
+          name: any('seen-prop'),
+          value: ref({ key: quoted('tone') }, { type: 'index' })
+        })
+      ]);
+
+      const css = await renderNodeToString(node, context);
+
+      expect(css).toBeString(`
+        tone: orange;
+        seen-var: purple;
+        seen-prop: orange;
+      `);
+    });
+
+    it('direct Rules index targets use typed declaration lanes without generic declaration fallback', async () => {
+      const targetRules = rules([
+        decl({ name: 'tone', value: any('orange') }),
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
+
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' }).render(context))).resolves.toBe('orange');
+
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'toneVar'
+      }, { type: 'index' }).render(context))).resolves.toBe('purple');
+
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('direct Rules index target occurrences re-read after owner mutation', async () => {
+      const targetRules = rules([
+        decl({ name: 'tone', value: any('orange') }),
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
+      const propertyRef = ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: quoted('tone')
+      }, { type: 'index' });
+      const variableRef = ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'toneVar'
+      }, { type: 'index' });
+
+      expect(propertyRef.eval(context).valueOf()).toBe('orange');
+      expect(variableRef.eval(context).valueOf()).toBe('purple');
+
+      targetRules.push(decl({ name: 'tone', value: any('green') }));
+      targetRules.push(vardecl({ name: 'toneVar', value: any('blue') }));
+
+      expect(propertyRef.eval(context).valueOf()).toBe('green');
+      expect(variableRef.eval(context).valueOf()).toBe('blue');
+    });
+
+    it('explicit target variable refs use occurrence fallback without public Rules variable facade', async () => {
+      const targetRules = rules([
+        vardecl({ name: 'toneVar', value: any('purple') })
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
+      const variableRef = ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'toneVar'
+      }, { type: 'variable' });
+
+      expect(variableRef.eval(context).valueOf()).toBe('purple');
+
+      targetRules.push(vardecl({ name: 'toneVar', value: any('blue') }));
+
+      expect(variableRef.eval(context).valueOf()).toBe('blue');
+    });
+
+    it('explicit target variable fallback uses carried declaration child entries', async () => {
+      const childRules = rules([
+        vardecl({ name: 'target-color', value: any('blue') })
+      ]);
+      const targetRules = rules([
+        childRules
+      ]);
+      const node = rules([
+        vardecl({ name: 'targetRules', value: targetRules })
+      ]);
+      setRulesContext(await node.eval(context));
+
+      targetRules.collectDirectDeclarationChildEntries();
+      targetRules.getScopeFrame();
+      childRules.getScopeFrame();
+
+      expect('_rulesSet' in targetRules).toBe(false);
+      await expect(Promise.resolve(ref({
+        target: ref({ key: 'targetRules' }, { type: 'variable' }),
+        key: 'target-color'
+      }, { type: 'variable' }).render(context))).resolves.toBe('blue');
     });
 
     it('renders source-free direct index scalar hits without applying reference metadata', async () => {
@@ -1041,7 +1689,7 @@ describe('reference', () => {
       }
     });
 
-    it('keeps public direct index container resolve owned while preserving source parents', async () => {
+    it('keeps public direct index container resolve from corrupting source parents', async () => {
       const targetObject = new JsObject({
         tones: list([any('one'), any('two')])
       });
@@ -1060,15 +1708,15 @@ describe('reference', () => {
 
       const resolved = await refNode.resolve(context);
 
-      expect(resolved).not.toBe(sourceList);
       expect(resolved.toTrimmedString()).toBe('one, two');
+      expect(sourceList.toTrimmedString()).toBe('one, two');
       expect(sourceList.parent).not.toBe(refNode);
       expect(resolved.parent).not.toBe(refNode);
       expect(refNode.parent).toBeUndefined();
       expect(context.referenceStack).toBe(0);
     });
 
-    it('keeps source-free public direct index container results owned for mutation safety', async () => {
+    it('keeps source-free public direct index container sources canonical', async () => {
       const sourceList = list([any('a'), any('b')]);
       sourceList.frozen = true;
       const targetArray = new JsArray([sourceList]);
@@ -1084,11 +1732,13 @@ describe('reference', () => {
       const result = await refNode.resolve(context);
 
       expect(result).toBeInstanceOf(List);
-      expect(result).not.toBe(sourceList);
+      expect(result).toBe(sourceList);
+      expect(result.toTrimmedString()).toBe('a, b');
+      expect(sourceList.toTrimmedString()).toBe('a, b');
       if (result instanceof List) {
         expect(result.parent).not.toBe(refNode);
-        expect(result.value).toHaveLength(sourceList.value.length);
-        expect(sourceList.value).toHaveLength(2);
+        expect(result.items).toHaveLength(sourceList.items.length);
+        expect(sourceList.items).toHaveLength(2);
         expect(sourceList.frozen).toBe(true);
       }
     });
@@ -1122,7 +1772,9 @@ describe('reference', () => {
 
     it('preserves rules-like variable references as shallow owned surfaces', async () => {
       const originalClone = RulesClass.prototype.clone;
+      const originalInherit = RulesClass.prototype.inherit;
       let clonedRules = 0;
+      let inheritedRules = 0;
       RulesClass.prototype.clone = function cloneForCounting(
         this: RulesClass,
         ...args: Parameters<typeof originalClone>
@@ -1132,6 +1784,15 @@ describe('reference', () => {
       };
       const sourceDecl = decl({ name: 'color', value: any('blue') });
       const sourceValue = rules([sourceDecl]);
+      RulesClass.prototype.inherit = function inheritForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue) {
+          inheritedRules++;
+        }
+        return originalInherit.apply(this, args);
+      };
       const sourceBinding = vardecl({
         name: any('block'),
         value: sourceValue
@@ -1155,19 +1816,13 @@ describe('reference', () => {
         if (!(resolvedSource instanceof RulesClass)) {
           throw new Error('Expected Rules source');
         }
-        expect(getRulesLikeReferenceSource(resolved)).toBe(resolvedSource);
-        expect(getRulesLikeReferenceLookupState(resolved)).toEqual({
-          source: resolvedSource,
-          output: resolved,
-          publicBoundary: 'shallow-owned-callable-surface',
-          preservesCallableSurface: true
-        });
-        expect(getRulesLikeReferenceCallableSource(resolved)).toBe(resolvedSource);
         expect(clonedRules).toBe(0);
+        expect(inheritedRules).toBe(0);
         expect(resolved.value[0]).toBe(resolvedSource.value[0]);
         expect(context.referenceStack).toBe(0);
       } finally {
         RulesClass.prototype.clone = originalClone;
+        RulesClass.prototype.inherit = originalInherit;
       }
     });
 
@@ -1206,6 +1861,25 @@ describe('reference', () => {
       }
     });
 
+    it('keeps canonical rules-like sources unfrozen alongside preserved surfaces', async () => {
+      const sourceValue = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      const node = rules([
+        vardecl({
+          name: any('block'),
+          value: sourceValue
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+
+      const resolved = await ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true }).eval(context);
+      expect(resolved).toBeInstanceOf(RulesClass);
+      expect(resolved.sourceNode).toBeInstanceOf(RulesClass);
+      expect(resolved.sourceNode?.frozen).toBe(false);
+      expect(context.referenceStack).toBe(0);
+    });
+
     it('keeps fallback value containers canonical after resolve(context)', async () => {
       const root = rules([
         vardecl({
@@ -1235,7 +1909,9 @@ describe('reference', () => {
 
     it('does not copy childless scalar fallback values before resolve(context)', async () => {
       const originalCopy = Any.prototype.copy;
+      const originalInherit = Any.prototype.inherit;
       let scalarCopies = 0;
+      let scalarInherits = 0;
       Any.prototype.copy = function copyForCounting(
         this: Any,
         ...args: Parameters<typeof originalCopy>
@@ -1248,6 +1924,16 @@ describe('reference', () => {
 
       try {
         const fallback = any('red');
+        const fallbackParent = fallback.parent;
+        Any.prototype.inherit = function inheritForCounting(
+          this: Any,
+          ...args: Parameters<typeof originalInherit>
+        ): ReturnType<typeof originalInherit> {
+          if (this === fallback) {
+            scalarInherits++;
+          }
+          return originalInherit.apply(this, args);
+        };
         const refNode = ref(
           { key: 'missing' },
           {
@@ -1259,9 +1945,13 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('red');
         expect(scalarCopies).toBe(0);
+        expect(scalarInherits).toBe(0);
+        expect(fallback.frozen).toBe(false);
+        expect(fallback.parent).toBe(fallbackParent);
         expect(refNode.toTrimmedString()).toBe('$missing');
       } finally {
         Any.prototype.copy = originalCopy;
+        Any.prototype.inherit = originalInherit;
       }
     });
 
@@ -1324,37 +2014,6 @@ describe('reference', () => {
         expect(context.referenceStack).toBe(0);
       } finally {
         fallback.inherit = originalInherit;
-      }
-    });
-
-    it('renders dynamic JsExpression fallback scalars as text without copying the fallback node', async () => {
-      const fallback = new JsExpression('"dynamic-red"');
-      const fallbackParent = fallback.parent;
-      const originalCopy = fallback.copy;
-      let copyCalls = 0;
-      fallback.copy = function copyForCounting(
-        this: typeof fallback,
-        ...args: Parameters<typeof originalCopy>
-      ): ReturnType<typeof originalCopy> {
-        copyCalls++;
-        return originalCopy.apply(this, args);
-      };
-
-      try {
-        const refNode = ref(
-          { key: 'missing' },
-          {
-            type: 'variable',
-            fallbackValue: fallback
-          }
-        );
-
-        expect(await Promise.resolve(refNode.render(context))).toBe('dynamic-red');
-        expect(copyCalls).toBe(0);
-        expect(fallback.parent).toBe(fallbackParent);
-        expect(context.referenceStack).toBe(0);
-      } finally {
-        fallback.copy = originalCopy;
       }
     });
 
@@ -1457,6 +2116,47 @@ describe('reference', () => {
       }
     });
 
+    it('resolves dynamic fallback containers without pre-copying the source container', async () => {
+      const fallback = list([ref('tone', { type: 'variable' })]);
+      fallback._location = [10, 1, 11, 20, 1, 21];
+      const fallbackParent = fallback.parent;
+      const originalCopy = List.prototype.copy;
+      let fallbackCopies = 0;
+      List.prototype.copy = function copyForCounting(
+        this: List,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === fallback) {
+          fallbackCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      const root = rules([
+        vardecl({ name: 'tone', value: any('red') })
+      ]);
+      context.root = root;
+      context.rulesContext = root;
+
+      try {
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(fallbackCopies).toBe(0);
+        expect(fallback.parent).toBe(fallbackParent);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        List.prototype.copy = originalCopy;
+      }
+    });
+
     it('restores reference stack after async fallback render', async () => {
       const fallback = new AsyncNativeRenderAny('red');
       const refNode = ref(
@@ -1468,6 +2168,20 @@ describe('reference', () => {
       );
 
       await expect(Promise.resolve(refNode.render(context))).resolves.toBe('rendered-red');
+      expect(context.referenceStack).toBe(0);
+    });
+
+    it('restores reference stack when async fallback render rejects', async () => {
+      const fallback = new RejectingAsyncAny('fallback failed');
+      const refNode = ref(
+        { key: 'missing' },
+        {
+          type: 'variable',
+          fallbackValue: fallback
+        }
+      );
+
+      await expect(Promise.resolve(refNode.render(context))).rejects.toThrow('fallback failed');
       expect(context.referenceStack).toBe(0);
     });
 
@@ -1535,6 +2249,18 @@ describe('reference', () => {
 
     it('reuses source-free static fallback lists as inert output containers', async () => {
       const fallback = list([any('red')]);
+      const fallbackParent = fallback.parent;
+      const originalInherit = List.prototype.inherit;
+      let listInherits = 0;
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (this === fallback) {
+          listInherits++;
+        }
+        return originalInherit.apply(this, args);
+      };
       const refNode = ref(
         { key: 'missing' },
         {
@@ -1543,11 +2269,18 @@ describe('reference', () => {
         }
       );
 
-      const resolved = await refNode.resolve(context);
+      try {
+        const resolved = await refNode.resolve(context);
 
-      expect(resolved).toBe(fallback);
-      expect(resolved.toTrimmedString()).toBe('red');
-      expect(refNode.toTrimmedString()).toBe('$missing');
+        expect(resolved).toBe(fallback);
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(listInherits).toBe(0);
+        expect(fallback.frozen).toBe(false);
+        expect(fallback.parent).toBe(fallbackParent);
+        expect(refNode.toTrimmedString()).toBe('$missing');
+      } finally {
+        List.prototype.inherit = originalInherit;
+      }
     });
 
     it('reuses source-free static fallback sequences as inert output containers', async () => {
@@ -1587,22 +2320,82 @@ describe('reference', () => {
         name: any('.fast-mixin'),
         rules: rules([decl({ name: 'color', value: any('green') })])
       });
+      const originalInherit = MixinClass.prototype.inherit;
+      let inheritedMixins = 0;
+      MixinClass.prototype.inherit = function inheritForCounting(
+        this: MixinClass,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === mixinDef) {
+          inheritedMixins++;
+        }
+        return originalInherit.apply(this, args);
+      };
       const root = rules([mixinDef]);
       const evald = setRulesContext(await root.eval(context));
 
-      const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
+      try {
+        const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
 
-      expect(resolved.type).toBe('MixinCollection');
-      expect(resolved.value).toHaveLength(1);
-      expect(resolved.value[0]).not.toBe(mixinDef);
-      expect(resolved.value[0]!.type).toBe('Mixin');
-      expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+        expect(resolved.type).toBe('MixinCollection');
+        expect(resolved.value).toHaveLength(1);
+        expect(resolved.value[0]).not.toBe(mixinDef);
+        expect(resolved.value[0]!.type).toBe('Mixin');
+        expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+        expect(inheritedMixins).toBe(0);
 
-      const resolvedAgain = resolved.resolve(context);
+        const resolvedAgain = resolved.resolve(context);
 
-      expect(resolvedAgain).toBe(resolved);
-      expect(resolved.evaluated).toBe(false);
-      expect(resolved.registrationPrepared).toBe(false);
+        expect(resolvedAgain).toBe(resolved);
+        expect(resolved.evaluated).toBe(false);
+        expect(resolved.registrationPrepared).toBe(false);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        MixinClass.prototype.inherit = originalInherit;
+      }
+    });
+
+    it('materializes mixin reference targets without double-inheriting evaluated rules', async () => {
+      const mixinRules = rules([
+        decl({ name: 'color', value: any('green') })
+      ]);
+      const mixinDef = mixin({
+        name: any('.box'),
+        rules: mixinRules
+      });
+      const root = rules([
+        vardecl({ name: 'target', value: mixinDef }),
+        decl({
+          name: 'out',
+          value: ref({
+            target: ref({ key: 'target' }, { type: 'variable' }),
+            key: quoted('color')
+          }, { type: 'index' })
+        })
+      ]);
+      const originalInherit = RulesClass.prototype.inherit;
+      let inheritedFromMixinRules = 0;
+      RulesClass.prototype.inherit = function inheritForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === mixinRules) {
+          inheritedFromMixinRules++;
+        }
+        return originalInherit.apply(this, args);
+      };
+
+      try {
+        const evald = setRulesContext(await root.eval(context));
+
+        expect(await renderNodeToString(evald, context)).toBeString(`
+          out: green;
+        `);
+        expect(inheritedFromMixinRules).toBe(1);
+        expect(context.referenceStack).toBe(0);
+      } finally {
+        RulesClass.prototype.inherit = originalInherit;
+      }
     });
 
     it('should get a variable from scope', async () => {
@@ -1672,7 +2465,7 @@ describe('reference', () => {
       }
     });
 
-    it('does not clone source-free declaration reference containers before resolving them', async () => {
+    it('reuses source-free static declaration reference containers during public resolve', async () => {
       const sourceValue = list([any('red')]);
       const node = rules([
         decl({
@@ -1682,24 +2475,40 @@ describe('reference', () => {
       ]);
       const evaldRoot = setRulesContext(await node.eval(context));
 
-      const originalClone = List.prototype.clone;
-      let listClones = 0;
-      List.prototype.clone = function cloneForCounting(
+      const originalCopy = List.prototype.copy;
+      const originalInherit = List.prototype.inherit;
+      let listCopies = 0;
+      let listInherits = 0;
+      List.prototype.copy = function copyForCounting(
         this: List,
-        ...args: Parameters<typeof originalClone>
-      ): ReturnType<typeof originalClone> {
-        listClones++;
-        return originalClone.apply(this, args);
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this === sourceValue) {
+          listCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] === sourceValue || args[0]?.type === 'Reference') {
+          listInherits++;
+        }
+        return originalInherit.apply(this, args);
       };
 
       try {
         const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
 
+        expect(resolved).toBe(sourceValue);
         expect(resolved.toTrimmedString()).toBe('red');
-        expect(listClones).toBe(0);
+        expect(listCopies).toBe(0);
+        expect(listInherits).toBe(0);
         expect(sourceValue.toTrimmedString()).toBe('red');
       } finally {
-        List.prototype.clone = originalClone;
+        List.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
       }
     });
 
@@ -1766,33 +2575,47 @@ describe('reference', () => {
     });
 
     it('flattens merged declaration references without recopying copied leaves', async () => {
+      const sourceValue = list([any('red'), any('foo')]);
       const node = rules([
         decl({
           name: any('background-color'),
-          value: any('red')
-        }, { assign: '+:' }),
-        decl({
-          name: any('background-color'),
-          value: any('foo')
-        }, { assign: '+:' })
+          value: sourceValue
+        }, { normalizedFromAssign: '+:' })
       ]);
-      const evald = setRulesContext(await node.eval(context));
 
       const originalCopy = Any.prototype.copy;
+      const originalInherit = List.prototype.inherit;
       let valueCopyCount = 0;
+      let latestCopiedList: List | undefined;
+      let finalizedList: List | undefined;
       Any.prototype.copy = function(this: Any, deep?: boolean, cloneFn?: (n: Node) => Node) {
         if (this.value === 'red' || this.value === 'foo') {
           valueCopyCount++;
         }
         return originalCopy.call(this, deep, cloneFn);
       };
+      const refNode = ref({ key: 'background-color' }, { type: 'declaration' });
+      List.prototype.inherit = function inheritForCounting(
+        this: List,
+        ...args: Parameters<typeof originalInherit>
+      ): ReturnType<typeof originalInherit> {
+        if (args[0] instanceof List) {
+          latestCopiedList = this;
+        } else if (args[0] === refNode) {
+          finalizedList = this;
+        }
+        return originalInherit.apply(this, args);
+      };
       try {
-        const resolved = await ref({ key: 'background-color' }, { type: 'declaration' }).resolve(context);
+        setRulesContext(await node.eval(context));
+        const resolved = await refNode.resolve(context);
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
         expect(valueCopyCount).toBe(0);
+        expect(finalizedList).toBe(latestCopiedList);
       } finally {
         Any.prototype.copy = originalCopy;
+        List.prototype.inherit = originalInherit;
       }
     });
 
@@ -1940,7 +2763,7 @@ describe('reference', () => {
       await expect(async () => await node.eval(context)).rejects.toThrow();
     });
 
-    it('plain lexical misses do not fall back to DeclarationRegistry.find when no child scopes are searchable', async () => {
+    it('plain lexical misses do not fall back to broad declaration find when no child scopes are searchable', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -1960,6 +2783,810 @@ describe('reference', () => {
         ]);
         await expect(async () => await node.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('snapshot reads avoid broad declaration find for covered same-frame source-order lookup', async () => {
+      const originalFind = RulesClass.prototype.find;
+      let declarationHits = 0;
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
+          declarationHits++;
+        }
+        return originalFind.apply(this, args);
+      };
+
+      const snapshotRef = ref({ key: 'color' }, { type: 'variable', readMode: 'snapshot' });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: snapshotRef
+        }),
+        vardecl({ name: 'color', value: any('blue') })
+      ]);
+
+      const css = await renderNodeToString(node, context);
+
+      RulesClass.prototype.find = originalFind;
+      expect(css).toBeString(`
+        seen: red;
+      `);
+      expect(declarationHits).toBe(0);
+      expect(isNode(snapshotRef._rulesLookupHandle?.returnVal)).toBe(false);
+      expect(snapshotRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+    });
+
+    it('static variable hits avoid Rules.find for covered binding-frame lookup', async () => {
+      const originalFind = RulesClass.prototype.find;
+      let declarationHits = 0;
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
+          declarationHits++;
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('red') }),
+          decl({
+            name: any('seen'),
+            value: ref({ key: 'color' }, { type: 'variable' })
+          })
+        ]);
+
+        const css = await renderNodeToString(node, context);
+
+        expect(css).toBeString(`
+          seen: red;
+        `);
+        expect(declarationHits).toBe(0);
+      } finally {
+        RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('static variable handle reuses binding identity without caching stale live values', async () => {
+      const colorRef = ref({ key: 'color' }, { type: 'variable' });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      setRulesContext(node);
+
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+
+      setScopeFrameLiveBinding(node.getScopeFrame(), 'color', {
+        value: any('blue')
+      });
+      const second = await colorRef.eval(context);
+
+      expect(second.valueOf()).toBe('blue');
+      expect(colorRef.render(context)).toBe('blue');
+    });
+
+    it('cached variable handles use frame and cell identity without re-reading the current binding map', async () => {
+      const colorRef = ref({ key: 'color' }, { type: 'variable' });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      setRulesContext(node);
+
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle',
+        ownerFrameCurrentBindingsVersion: node.getScopeFrame().currentBindingsVersion
+      });
+
+      const frame = node.getScopeFrame();
+      const originalGet = frame.currentBindingsByName.get;
+      let currentBindingReads = 0;
+      frame.currentBindingsByName.get = function countCurrentBindingReads(
+        this: typeof frame.currentBindingsByName,
+        ...args: Parameters<typeof originalGet>
+      ): ReturnType<typeof originalGet> {
+        currentBindingReads++;
+        return originalGet.apply(this, args);
+      };
+
+      try {
+        const second = await colorRef.eval(context);
+        expect(second.valueOf()).toBe('red');
+        expect(currentBindingReads).toBe(1);
+      } finally {
+        frame.currentBindingsByName.get = originalGet;
+      }
+    });
+
+    it('variable references prepare scope frames without callable miss coverage', async () => {
+      const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      const callableCoveragePrep: unknown[] = [];
+      RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
+        callableCoveragePrep.push(args[1]);
+        return originalGetScopeFrame.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          vardecl({ name: 'color', value: any('red') })
+        ]);
+        setRulesContext(node);
+        const colorRef = ref({ key: 'color' }, { type: 'variable' });
+
+        const value = await colorRef.eval(context);
+
+        expect(value.valueOf()).toBe('red');
+        expect(callableCoveragePrep).toContain(false);
+        expect(callableCoveragePrep).not.toContain(true);
+      } finally {
+        RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+      }
+    });
+
+    it('nested variable references do not prepare callable coverage on auto-wired parents', async () => {
+      const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      const callableCoveragePrep: unknown[] = [];
+      RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
+        callableCoveragePrep.push(args[1]);
+        return originalGetScopeFrame.apply(this, args);
+      };
+
+      try {
+        const colorRef = ref({ key: 'color' }, { type: 'variable' });
+        const childRules = rules([
+          decl({
+            name: any('seen'),
+            value: colorRef
+          })
+        ]);
+        const root = rules([
+          vardecl({ name: 'color', value: any('red') }),
+          ruleset({
+            selector: el('.scope'),
+            rules: childRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = childRules;
+
+        const value = await colorRef.eval(context);
+
+        expect(value.valueOf()).toBe('red');
+        expect(callableCoveragePrep).toContain(false);
+        expect(callableCoveragePrep).not.toContain(true);
+      } finally {
+        RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+      }
+    });
+
+    it('static variable handle invalidates when a parent frame replaces the current cell', async () => {
+      const colorRef = ref({ key: 'color' }, { type: 'variable' });
+      const childRules = rules([
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = childRules;
+      childRules.scopeFrame = childRules.getScopeFrame(root.getScopeFrame());
+
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+
+      setScopeFrameLiveBinding(root.getScopeFrame(), 'color', {
+        value: any('blue')
+      });
+      const second = await colorRef.eval(context);
+
+      expect(second.valueOf()).toBe('blue');
+    });
+
+    it('covered variable misses avoid duplicate live-current retries', async () => {
+      const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      let variableFramePreps = 0;
+      RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
+        if (args[1] === false) {
+          variableFramePreps++;
+        }
+        return originalGetScopeFrame.apply(this, args);
+      };
+
+      try {
+        const missingRef = ref({ key: 'missing' }, { type: 'variable' });
+        const node = rules([
+          decl({
+            name: any('seen'),
+            value: missingRef
+          })
+        ]);
+        setRulesContext(node);
+
+        await expect(async () => await missingRef.eval(context)).rejects.toThrow();
+
+        expect(variableFramePreps).toBe(1);
+      } finally {
+        RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+      }
+    });
+
+    it('ancestor variable binding handles invalidate when a child frame gains a current binding', async () => {
+      const colorRef = ref({ key: 'color' }, { type: 'variable' });
+      const childRules = rules([
+        decl({
+          name: any('seen'),
+          value: colorRef
+        })
+      ]);
+      const root = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = childRules;
+      const rootFrame = root.getScopeFrame();
+      childRules.scopeFrame = childRules.getScopeFrame(rootFrame);
+
+      const first = await colorRef.eval(context);
+      expect(first.valueOf()).toBe('red');
+      expect(colorRef._rulesLookupHandle?.lookupType).toBe('variable');
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+      const firstHandle = colorRef._rulesLookupHandle;
+
+      setScopeFrameLiveBinding(childRules.scopeFrame, 'color', {
+        value: any('blue')
+      });
+      const second = await colorRef.eval(context);
+
+      expect(second.valueOf()).toBe('blue');
+      expect(colorRef._rulesLookupHandle).not.toBe(firstHandle);
+      expect(colorRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+    });
+
+    it('VarDeclaration occurrence lookup uses direct lookup', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const found = findVariableDeclarationOccurrence(node, 'color')?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('red');
+    });
+
+    it('variable occurrence lookup uses the variable lane directly', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const found = findVariableDeclarationOccurrence(node, 'color')?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('red');
+    });
+
+    it('direct VarDeclaration lookup reads live cells through current bindings', async () => {
+      const liveSource = vardecl({ name: 'color', value: any('blue') });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+      await node.eval(context);
+      const frame = node.getScopeFrame();
+      setScopeFrameLiveBinding(frame, 'color', {
+        value: liveSource.valueNode,
+        sourceNode: liveSource
+      });
+      const originalGet = frame.liveSlotsByName.get;
+      frame.liveSlotsByName.get = () => {
+        throw new Error('direct lookup should read currentBindingsByName');
+      };
+
+      try {
+        const found = findVariableDeclarationOccurrence(node, 'color')?.node;
+
+        expect(found).toBe(liveSource);
+      } finally {
+        frame.liveSlotsByName.get = originalGet;
+      }
+    });
+
+    it('variable occurrence lookup reads live cells through current bindings', async () => {
+      const liveSource = vardecl({ name: 'color', value: any('blue') });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+      await node.eval(context);
+      const frame = node.getScopeFrame();
+      setScopeFrameLiveBinding(frame, 'color', {
+        value: liveSource.valueNode,
+        sourceNode: liveSource
+      });
+      const originalGet = frame.liveSlotsByName.get;
+      frame.liveSlotsByName.get = () => {
+        throw new Error('direct lookup should read currentBindingsByName');
+      };
+
+      try {
+        const found = findVariableDeclarationOccurrence(node, 'color')?.node;
+
+        expect(found).toBe(liveSource);
+      } finally {
+        frame.liveSlotsByName.get = originalGet;
+      }
+    });
+
+    it('property occurrence lookup uses direct Declaration lookup for unfiltered exact hits', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const found = findPropertyDeclarationOccurrence(node, 'color')?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('red');
+    });
+
+    it('direct property lookup records merge-chain occurrence slots', async () => {
+      const directLookupNode = rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' })
+      ]);
+      const directFound = findPropertyDeclarationOccurrence(
+        directLookupNode,
+        'background-color',
+        { searchParents: false }
+      )?.node;
+      const cachedSlot = getDirectDeclarationSlot(
+        directLookupNode.directDeclarationLookupCache?.values().next().value?.publicMatch
+      );
+
+      const renderNode = rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' })
+      ]);
+      const css = await renderNodeToString(renderNode, context);
+
+      expect(directFound?.valueNode.valueOf()).toBe('foo');
+      expect(cachedSlot).toBe(1);
+      expect(css).toBeString(`
+        background-color: red, foo;
+      `);
+    });
+
+    it('property occurrence lookup uses direct Declaration lookup for covered unfiltered misses', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
+
+      await node.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(node, 'missing')).toBeUndefined();
+    });
+
+    it('direct VarDeclaration lookup ignores empty candidate sets', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const opts = {
+        candidates: new Set(),
+        optionalCandidates: new Set()
+      };
+      const found = findVariableDeclarationOccurrence(node, 'color', opts)?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('red');
+    });
+
+    it('direct property lookup ignores empty candidate sets', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const opts = {
+        candidates: new Set(),
+        optionalCandidates: new Set()
+      };
+      const found = findPropertyDeclarationOccurrence(node, 'color', opts)?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
+    });
+
+    it('direct property lookup records non-empty candidate hits', async () => {
+      const stale = decl({ name: any('other-color'), value: any('black') });
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const candidates = new Set<Node>([stale]);
+      const optionalCandidates = new Set<Node>();
+      const found = findPropertyDeclarationOccurrence(node, 'color', {
+        candidates,
+        optionalCandidates
+      })?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('red');
+      expect(found).toBeDefined();
+      expect(candidates.has(found!)).toBe(true);
+      expect(candidates.has(stale)).toBe(true);
+      expect(optionalCandidates.size).toBe(0);
+    });
+
+    it('unfiltered property references use direct Declaration lookup', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') }),
+        decl({
+          name: any('seen'),
+          value: ref({ key: 'color' }, { type: 'property' })
+        })
+      ]);
+
+      const css = await renderNodeToString(node, context);
+
+      expect(css).toBeString(`
+        color: red;
+        seen: red;
+      `);
+    });
+
+    it('semantic filtered property lookup uses direct declaration lookup', async () => {
+      const node = rules([
+        decl({ name: any('color'), value: any('red') })
+      ]);
+
+      await node.eval(context);
+      const found = findPropertyDeclarationOccurrence(node, 'color', {
+        semanticFilter: true,
+        filter: () => true
+      })?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('red');
+    });
+
+    it('semantic filtered child declaration fallback uses carried child entries without rulesSet storage', async () => {
+      const childRules = rules([
+        decl({ name: any('child-color'), value: any('blue') })
+      ]);
+      const root = rules([
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      await root.eval(context);
+
+      expect('_rulesSet' in root).toBe(false);
+      const found = findPropertyDeclarationOccurrence(root, 'child-color', {
+        searchParents: false,
+        semanticFilter: true,
+        filter: () => true
+      })?.node;
+      expect(found?.valueNode.valueOf()).toBe('blue');
+    });
+
+    it('direct property lookup reuses carried child rule entries after indexing', async () => {
+      const childRules = rules([
+        decl({ name: any('child-color'), value: any('blue') })
+      ]);
+      const root = rules([
+        decl({ name: any('root-color'), value: any('red') }),
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      await root.eval(context);
+
+      expect(findPropertyDeclarationOccurrence(
+        root,
+        'child-color',
+        { searchParents: false }
+      )?.node.valueNode.valueOf()).toBe('blue');
+      expect(root.directDeclarationChildEntries?.map(entry => entry.node)).toEqual([childRules]);
+      let cachedMatch = root.directDeclarationLookupCache?.get('__missing__');
+      for (const entry of root.directDeclarationLookupCache?.values() ?? []) {
+        if (entry.publicMatch?.node === childRules.value[0]) {
+          cachedMatch = entry;
+          break;
+        }
+      }
+      expect(cachedMatch?.publicMatch).toMatchObject({
+        node: childRules.value[0],
+        ownerRules: childRules,
+        index: 0
+      });
+
+      const originalValue = root.rules;
+      Object.defineProperty(root, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('direct declaration lookup should reuse carried child entries');
+        }
+      });
+
+      try {
+        const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
+        expect(found?.valueNode.valueOf()).toBe('blue');
+      } finally {
+        Object.defineProperty(root, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
+    it('direct property lookup skips child rules whose visibility cannot contain properties', async () => {
+      const childRules = rules([
+        vardecl({ name: 'child-color', value: any('blue') })
+      ], {
+        rulesVisibility: {
+          VarDeclaration: 'public',
+          Declaration: 'private'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.getScopeFrame();
+      root.collectDirectDeclarationChildEntries();
+      expect(root.hasDeclarationChildSurface).toBe(false);
+      expect(root.hasVarDeclarationChildSurface).toBe(true);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        hasDeclarationSurface: false,
+        hasVarDeclarationSurface: true
+      });
+
+      const originalValue = childRules.value;
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('property lookup should skip variable-only child surfaces');
+        }
+      });
+
+      try {
+        const found = findPropertyDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+      } finally {
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
+    it('direct variable lookup skips child rules whose visibility cannot contain variables', async () => {
+      const childRules = rules([
+        decl({ name: any('child-color'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          VarDeclaration: 'private',
+          Declaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      expect(root.hasDeclarationChildSurface).toBe(true);
+      expect(root.hasVarDeclarationChildSurface).toBe(false);
+      expect(root.directDeclarationChildEntries?.[0]).toMatchObject({
+        hasDeclarationSurface: true,
+        hasVarDeclarationSurface: false
+      });
+
+      const originalValue = childRules.value;
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('variable lookup should skip property-only child surfaces');
+        }
+      });
+
+      try {
+        const found = findVariableDeclarationOccurrence(root, 'child-color', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+      } finally {
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
+    it('direct variable lookup enters reference-import child surfaces even when family flags are absent', async () => {
+      const childRules = rules([
+        vardecl({ name: any('from-ref'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          VarDeclaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      const entry = root.directDeclarationChildEntries?.[0];
+      expect(entry).toBeDefined();
+      if (!entry) {
+        throw new Error('expected carried child entry');
+      }
+      root.hasVarDeclarationChildSurface = false;
+      root.hasReferenceImportChildSurface = true;
+      entry.hasVarDeclarationSurface = false;
+      entry.hasReferenceImportSurface = true;
+
+      const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
+
+      expect(found?.valueNode.valueOf()).toBe('blue');
+    });
+
+    it('direct variable lookup still skips children without variable or reference-import surfaces', async () => {
+      const childRules = rules([
+        vardecl({ name: any('from-ref'), value: any('blue') })
+      ], {
+        rulesVisibility: {
+          VarDeclaration: 'public'
+        }
+      });
+      const root = rules([childRules]);
+      await root.eval(context);
+      root.collectDirectDeclarationChildEntries();
+      const entry = root.directDeclarationChildEntries?.[0];
+      expect(entry).toBeDefined();
+      if (!entry) {
+        throw new Error('expected carried child entry');
+      }
+      root.hasVarDeclarationChildSurface = false;
+      root.hasReferenceImportChildSurface = false;
+      entry.hasVarDeclarationSurface = false;
+      entry.hasReferenceImportSurface = false;
+
+      const originalValue = childRules.value;
+      Object.defineProperty(childRules, 'value', {
+        configurable: true,
+        get() {
+          throw new Error('variable lookup should skip non-variable non-reference-import child surfaces');
+        }
+      });
+
+      try {
+        const found = findVariableDeclarationOccurrence(root, 'from-ref', { searchParents: false })?.node;
+        expect(found).toBeUndefined();
+      } finally {
+        Object.defineProperty(childRules, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
+      }
+    });
+
+    it('setDefined variable assignment uses occurrence lookup', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+        decl({
+          name: any('seen'),
+          value: ref({ key: 'color' }, { type: 'variable' })
+        })
+      ]);
+
+      const css = await renderNodeToString(node, context);
+
+      expect(css).toBeString(`
+        seen: blue;
+      `);
+    });
+
+    it('setDefined current-cell probes do not use historical declaration buckets', async () => {
+      const latest = vardecl({ name: 'color', value: any('green') });
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        latest
+      ]);
+
+      await node.eval(context);
+      const frame = node.getScopeFrame();
+      const assignmentProbe = lookupScopeFrameVariable(frame, 'color', {
+        bailOnPendingDeclarations: true,
+        blockedSource: source => source === latest,
+        filter: source => source !== latest
+      });
+      const sourceOrderRead = lookupScopeFrameVariable(frame, 'color', {
+        start: latest.index
+      });
+
+      expect(assignmentProbe.kind).toBe('miss');
+      expect(sourceOrderRead.kind).toBe('declaration');
+      expect(sourceOrderRead.kind === 'declaration' && sourceOrderRead.cell.value?.valueOf()).toBe('red');
+    });
+
+    it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
+      const originalFind = RulesClass.prototype.find;
+      let declarationHits = 0;
+      RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
+        const [type, key, filterType] = args;
+        if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
+          declarationHits++;
+        }
+        return originalFind.apply(this, args);
+      };
+
+      try {
+        const childRules = rules([
+          decl({
+            name: any('seen'),
+            value: ref({ key: 'color' }, { type: 'variable' })
+          })
+        ]);
+        const root = rules([
+          vardecl({ name: 'color', value: any('red') }),
+          ruleset({
+            selector: el('.scope'),
+            rules: childRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = childRules;
+
+        const evald = await childRules.eval(context);
+        const css = await renderNodeToString(evald, context);
+
+        expect(css).toBeString(`
+          seen: red;
+        `);
+        expect(declarationHits).toBe(0);
       } finally {
         RulesClass.prototype.find = originalFind;
       }
@@ -2000,7 +3627,7 @@ describe('reference', () => {
       }
     });
 
-    it('plain lexical misses ignore unresolved dynamic declaration names without declaration-registry fallback', async () => {
+    it('plain lexical misses ignore unresolved dynamic declaration names', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -2032,7 +3659,7 @@ describe('reference', () => {
       }
     });
 
-    it('same-scope unresolved dynamic names before a static winner do not force declaration-registry fallback', async () => {
+    it('same-scope unresolved dynamic names before a static winner stay on direct lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -2071,7 +3698,7 @@ describe('reference', () => {
       }
     });
 
-    it('same-scope unresolved dynamic names after a static winner do not force declaration-registry fallback', async () => {
+    it('same-scope unresolved dynamic names after a static winner stay on direct lookup', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -2107,6 +3734,47 @@ describe('reference', () => {
         expect(declarationHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.find = originalFind;
+      }
+    });
+
+    it('scope-frame prep records pending dynamic names without a second value scan', () => {
+      const node = rules([
+        vardecl({
+          name: interpolated({
+            source: '%%',
+            replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
+          }),
+          value: any('red')
+        }),
+        vardecl({
+          name: any('x'),
+          value: any('blue')
+        })
+      ]);
+      const originalValue = node.value;
+      let reads = 0;
+      Object.defineProperty(node, 'value', {
+        configurable: true,
+        get() {
+          reads++;
+          if (reads > 1) {
+            throw new Error('scope-frame declaration prep should collect pending names in the first scan');
+          }
+          return originalValue;
+        }
+      });
+
+      try {
+        const frame = node.getScopeFrame(undefined, false);
+        expect(frame.pendingDeclarationNames).toHaveLength(1);
+        expect(frame.pendingDeclarationNames[0]).toBe(originalValue[0]);
+        expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(originalValue[1]);
+      } finally {
+        Object.defineProperty(node, 'value', {
+          configurable: true,
+          writable: true,
+          value: originalValue
+        });
       }
     });
 
@@ -2274,6 +3942,10 @@ describe('reference', () => {
       try {
         const node = rules([
           vardecl({
+            name: any('suffix'),
+            value: any('x')
+          }),
+          vardecl({
             name: interpolated({
               source: '%%',
               replacements: [ref({ key: 'suffix' }, { type: 'variable' })]
@@ -2287,14 +3959,25 @@ describe('reference', () => {
         ]);
 
         const frame = node.getScopeFrame();
-        const dynamicDecl = node.at(0)!;
-        dynamicDecl.set('name', any('x'));
+        expect(findPropertyDeclarationOccurrence(node, 'x', { searchParents: false })).toBeUndefined();
+        expect(findPropertyDeclarationOccurrence(node, 'unaffected', { searchParents: false })).toBeUndefined();
+        expect(node.directDeclarationsByName?.get('x')).toBeNull();
+        expect(node.directDeclarationsByName?.get('unaffected')).toBeNull();
+        await Promise.resolve(node.prepareRegistration(context));
+        setRulesContext(node);
+        const dynamicDecl = node.value.find(child => child instanceof VarDeclaration && child.name.valueOf() === 'x')!;
 
-        const resolved = await node.at(1)!.eval(context);
-        expect(resolved.toTrimmedString()).toBe('bar: red');
         expect(declarationHits).toHaveLength(0);
+        expect(node.directDeclarationsByName?.get('x')).toBeUndefined();
+        expect(node.directDeclarationsByName?.get('unaffected')).toBeUndefined();
+        expect([...(node.directDeclarationLookupCache?.keys() ?? [])].filter(key => key.startsWith('x\u001f'))).toHaveLength(0);
         expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
+        const promotedHit = lookupScopeFrameVariable(frame, 'x', {
+          bailOnPendingDeclarations: true
+        });
+        expect(promotedHit.kind).toBe('declaration');
+        expect(promotedHit.kind === 'declaration' && promotedHit.sourceNode).toBe(dynamicDecl);
       } finally {
         RulesClass.prototype.find = originalFind;
       }
@@ -2366,7 +4049,10 @@ describe('reference', () => {
             value: ref({ key: 'x' }, { type: 'variable' })
           })
         ]);
-        node.getRegistry('function').add('async-name', async () => any('x'));
+        node.setFunctionBinding('async-name', new JsFunction({
+          name: 'async-name',
+          fn: async () => any('x')
+        }));
 
         const frame = node.getScopeFrame();
         context.rulesContext = node;
@@ -2742,83 +4428,68 @@ describe('reference', () => {
       `);
     });
 
-    it('fast-paths compound-prefix callable ruleset precedence without MixinRegistry.find', async () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const node = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-            rules: rules([
-              mixin({
-                name: any('.colors'),
-                rules: rules([
-                  decl({ name: 'primary', value: any('red') })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: el('.output'),
-            rules: rules([
-              vardecl({
-                name: 'colors',
-                value: call({
-                  name: ref({
-                    key: ['#theme', '.dark', '.navbar', '.colors']
-                  }, { type: 'mixin-ruleset' })
+    it('fast-paths compound-prefix callable ruleset precedence', async () => {
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
                 })
-              }),
-              decl({
-                name: 'background',
-                value: ref({
-                  target: ref({ key: 'colors' }, { type: 'variable' }),
-                  key: 'primary'
-                }, { type: 'declaration' })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([
+                decl({ name: 'primary', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: ['#theme', '.dark', '.navbar', '.colors']
+                }, { type: 'mixin-ruleset' })
               })
-            ])
-          })
-        ]);
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'declaration' })
+            })
+          ])
+        })
+      ]);
 
-        const evald = await node.eval(context);
-        expect(await renderNodeToString(evald, context)).toBeString(`
-          .output {
-            background: red;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        .output {
+          background: red;
+        }
+      `);
     });
 
     it('should resolve a mixin-ruleset call keyed by BasicSelector', async () => {
@@ -2890,57 +4561,1067 @@ describe('reference', () => {
       `);
     });
 
-    it('fast-paths exact callable ruleset array paths without MixinRegistry.find when no namespace start exists', async () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '.b') {
-          mixinRegistryHits.push(key.join(' '));
+    it('fast-paths exact callable ruleset array paths when no namespace start exists', async () => {
+      const node = rules([
+        ruleset({
+          selector: compound([
+            el('.b'),
+            el('.bb'),
+            el('.foo-xxx'),
+            el('.yyy-foo'),
+            el('#foo'),
+            el('.foo'),
+            el('.bbb')
+          ]),
+          rules: rules([
+            decl({ name: 'b', value: any('1') })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({
+                key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
+          b: 1;
         }
-        return originalFind.apply(this, args);
+        .out {
+          b: 1;
+        }
+      `);
+    });
+
+    it('keeps static compound reference path arrays as binding identity', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const path = ['.a', '.b', '.c'];
+      const pathIdentityHits: boolean[] = [];
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (
+          Array.isArray(key)
+          && key.length === path.length
+          && key[0] === path[0]
+        ) {
+          pathIdentityHits.push(key === path);
+        }
+        return originalFindMixin.apply(this, args);
       };
 
       try {
         const node = rules([
           ruleset({
-            selector: compound([
-              el('.b'),
-              el('.bb'),
-              el('.foo-xxx'),
-              el('.yyy-foo'),
-              el('#foo'),
-              el('.foo'),
-              el('.bbb')
-            ]),
+            selector: compound([el('.a'), el('.b'), el('.c')]),
             rules: rules([
-              decl({ name: 'b', value: any('1') })
+              decl({ name: 'color', value: any('blue') })
             ])
           }),
           ruleset({
             selector: el('.out'),
             rules: rules([
               call({
-                name: ref({
-                  key: ['.b', '.bb', '.foo-xxx', '.yyy-foo', '#foo', '.foo', '.bbb']
-                }, { type: 'mixin-ruleset' })
+                name: ref({ key: path }, { type: 'mixin-ruleset' })
               })
             ])
           })
         ]);
 
         const evald = await node.eval(context);
+
         expect(await renderNodeToString(evald, context)).toBeString(`
-          .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
-            b: 1;
+          .a.b.c {
+            color: blue;
           }
           .out {
-            b: 1;
+            color: blue;
           }
         `);
-        expect(mixinRegistryHits).toHaveLength(0);
+        expect(pathIdentityHits).toContain(true);
+        expect(pathIdentityHits).not.toContain(false);
       } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('reuses static callable binding handles across unrelated target rules version changes', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const path = ['.a', '.b', '.c'];
+      let pathLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === path) {
+          pathLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: compound([el('.a'), el('.b'), el('.c')]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: path }, { type: 'mixin-ruleset' });
+
+        const first = lookupRef.eval(context);
+        expect(isNode(first)).toBe(true);
+        if (isNode(first)) {
+          expect(first.type).toBe('MixinCollection');
+        }
+        expect(pathLookups).toBe(1);
+
+        const second = lookupRef.eval(context);
+        expect(isNode(second)).toBe(true);
+        if (isNode(second)) {
+          expect(second.type).toBe('MixinCollection');
+        }
+        expect(pathLookups).toBe(1);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        const third = lookupRef.eval(context);
+        expect(isNode(third)).toBe(true);
+        if (isNode(third)) {
+          expect(third.type).toBe('MixinCollection');
+        }
+        expect(pathLookups).toBe(1);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('ordinary simple callable references do not prepare scope frames', async () => {
+      const node = rules([
+        mixin({
+          name: any('.paint'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
+      const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
+      const framePreparations: string[] = [];
+      RulesClass.prototype.getScopeFrame = function(...args: Parameters<typeof originalGetScopeFrame>) {
+        framePreparations.push(this.toTrimmedString());
+        return originalGetScopeFrame.apply(this, args);
+      };
+
+      try {
+        expectNodeType(lookupRef.eval(context), 'MixinCollection');
+        expect(lookupRef._rulesLookupHandle?.lookupType).toBe('mixin');
+        expect(framePreparations).toEqual([]);
+
+        expectNodeType(lookupRef.eval(context), 'MixinCollection');
+        expect(framePreparations).toEqual([]);
+      } finally {
+        RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
+      }
+    });
+
+    it('reuses static function binding handles until the function key version changes', async () => {
+      const originalFindFunction = RulesClass.prototype.findFunction;
+      let functionLookups = 0;
+      RulesClass.prototype.findFunction = function(...args: Parameters<typeof originalFindFunction>) {
+        const [key] = args;
+        if (key === 'paint') {
+          functionLookups++;
+        }
+        return originalFindFunction.apply(this, args);
+      };
+
+      try {
+        const node = rules([]);
+        node.setFunctionBinding('paint', new JsFunction({
+          name: 'paint',
+          fn: () => any('blue')
+        }));
+        setRulesContext(await node.eval(context));
+        const ignoredExcludedNodes = [
+          decl({ name: 'color', value: any('red') }),
+          decl({ name: 'color', value: any('green') }),
+          decl({ name: 'color', value: any('black') })
+        ];
+        const lookupRef = ref({ key: 'paint' }, {
+          type: 'function',
+          excludedNodes: ignoredExcludedNodes,
+          requiredNormalizedFromAssign: ['one', 'two', 'three', 'four', 'five']
+        });
+
+        const first = lookupRef.eval(context);
+        expect(isNode(first)).toBe(true);
+        if (isNode(first)) {
+          expect(first.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(1);
+        const firstHandle = lookupRef._rulesLookupHandle;
+        expect(firstHandle?.lookupType).toBe('function');
+        expect(firstHandle && 'requiredNormalizedFromAssignKey' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedNodesLength' in firstHandle).toBe(false);
+
+        ignoredExcludedNodes[0] = decl({ name: 'color', value: any('mutated') });
+        const second = lookupRef.eval(context);
+        expect(isNode(second)).toBe(true);
+        if (isNode(second)) {
+          expect(second.type).toBe('JsFunction');
+        }
+        expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
+        expect(functionLookups).toBe(1);
+
+        node.setFunctionBinding('paint', new JsFunction({
+          name: 'paint',
+          fn: () => any('green')
+        }));
+        const third = lookupRef.eval(context);
+        expect(isNode(third)).toBe(true);
+        if (isNode(third)) {
+          expect(third.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(2);
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        const fourth = lookupRef.eval(context);
+        expect(isNode(fourth)).toBe(true);
+        if (isNode(fourth)) {
+          expect(fourth.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(2);
+
+        node.setFunctionBinding('other-fn', new JsFunction({
+          name: 'other-fn',
+          fn: () => any('black')
+        }));
+        const fifth = lookupRef.eval(context);
+        expect(isNode(fifth)).toBe(true);
+        if (isNode(fifth)) {
+          expect(fifth.type).toBe('JsFunction');
+        }
+        expect(functionLookups).toBe(2);
+      } finally {
+        RulesClass.prototype.findFunction = originalFindFunction;
+      }
+    });
+
+    it('static property references use direct declaration lookup before binding handle reuse', async () => {
+      const node = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'property' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+      const handle = lookupRef._rulesLookupHandle;
+      const handleVersion = handle?.targetLookupVersion;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+
+      node.push(decl({ name: 'unrelated', value: any('1') }));
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
+      expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
+    });
+
+    it('static variable references use scope-frame bindings before public variable bridge', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'variable' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
+
+      node.push(decl({ name: 'unrelated', value: any('1') }));
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
+    });
+
+    it('source-static handles read before rebuilding lookup strategy', async () => {
+      const node = rules([
+        vardecl({ name: 'tone-var', value: any('purple') }),
+        decl({ name: 'tone-prop', value: any('orange') }),
+        mixin({
+          name: any('.tone-mixin'),
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        })
+      ]);
+      node.setFunctionBinding('tone-fn', new JsFunction({
+        name: 'tone-fn',
+        fn: () => any('green')
+      }));
+      setRulesContext(await node.eval(context));
+      const reads = [
+        {
+          lookupRef: ref({ key: 'tone-var' }, { type: 'variable' }),
+          expectValue: 'purple'
+        },
+        {
+          lookupRef: ref({ key: 'tone-prop' }, { type: 'property' }),
+          expectValue: 'orange'
+        },
+        {
+          lookupRef: ref({ key: 'tone-fn' }, { type: 'function' }),
+          expectType: 'JsFunction'
+        },
+        {
+          lookupRef: ref({ key: '.tone-mixin' }, { type: 'mixin' }),
+          expectType: 'MixinCollection'
+        }
+      ];
+
+      for (const read of reads) {
+        const first = read.lookupRef.eval(context);
+        if (read.expectValue) {
+          expect(first.valueOf()).toBe(read.expectValue);
+        } else if (read.expectType) {
+          expect(isNode(first)).toBe(true);
+          if (isNode(first)) {
+            expect(first.type).toBe(read.expectType);
+          }
+        } else if ('expectArray' in read) {
+          expect(Array.isArray(first)).toBe(read.expectArray);
+        }
+        const handle = read.lookupRef._rulesLookupHandle;
+        expect(handle).toBeDefined();
+        expect(read.lookupRef._lookupStrategy).toBeDefined();
+
+        read.lookupRef._lookupStrategy = undefined;
+        const second = read.lookupRef.eval(context);
+
+        if (read.expectValue) {
+          expect(second.valueOf()).toBe(read.expectValue);
+        } else if (read.expectType) {
+          expect(isNode(second)).toBe(true);
+          if (isNode(second)) {
+            expect(second.type).toBe(read.expectType);
+          }
+        } else if ('expectArray' in read) {
+          expect(Array.isArray(second)).toBe(read.expectArray);
+        }
+        expect(read.lookupRef._rulesLookupHandle).toBe(handle);
+        expect(read.lookupRef._lookupStrategy).toBeUndefined();
+      }
+    });
+
+    it('static property occurrence handles invalidate when owner rules changes', async () => {
+      const childRules = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      const root = rules([
+        ruleset({
+          selector: el('.scope'),
+          rules: childRules
+        })
+      ]);
+      setRulesContext(await root.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'property' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+      const occurrence = lookupRef._rulesLookupHandle?.returnVal;
+      const ownerLookupVersion = getDirectDeclarationOwnerLookupVersion(occurrence);
+
+      childRules.push(decl({ name: 'color', value: any('green') }));
+
+      expect(lookupRef.eval(context).valueOf()).toBe('green');
+      const updatedOccurrence = lookupRef._rulesLookupHandle?.returnVal;
+      expect(getDirectDeclarationOwnerLookupVersion(updatedOccurrence)).not.toBe(ownerLookupVersion);
+    });
+
+    it('static property handles stay cold while searchScope disqualifies lookup', async () => {
+      const declaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        fallbackValue: any('fallback')
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(declaration);
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static variable handles stay cold while searchScope disqualifies lookup', async () => {
+      const declaration = vardecl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'variable',
+        fallbackValue: any('fallback')
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(declaration);
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static declaration handles stay cold while searchScope disqualifies lookup', async () => {
+      const declaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'declaration',
+        fallbackValue: any('fallback')
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      context.searchScope.add(declaration);
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(declaration);
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static declaration handles stay cold while leakyRules disqualifies lookup', async () => {
+      const declaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'declaration',
+        fallbackValue: any('fallback')
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static property handles stay cold while leakyRules disqualifies lookup', async () => {
+      const declaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        fallbackValue: any('fallback')
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static variable handles stay cold while leakyRules disqualifies lookup', async () => {
+      const declaration = vardecl({ name: 'color', value: any('blue') });
+      const node = rules([declaration]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'variable',
+        fallbackValue: any('fallback')
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'scope-frame-variable-binding-handle'
+      });
+
+      expect(lookupRef.eval(leakyContext).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static function handles stay cold while leakyRules disqualifies lookup', async () => {
+      const node = rules([]);
+      node.setFunctionBinding('paint', new JsFunction({
+        name: 'paint',
+        fn: () => any('blue')
+      }));
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: 'paint' }, { type: 'function' });
+
+      expectNodeType(lookupRef.eval(leakyContext), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('function');
+
+      expectNodeType(lookupRef.eval(leakyContext), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static function handles stay cold while searchScope disqualifies lookup', async () => {
+      const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
+      const node = rules([ignoredDeclaration]);
+      node.setFunctionBinding('paint', new JsFunction({
+        name: 'paint',
+        fn: () => any('blue')
+      }));
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'paint' }, { type: 'function' });
+
+      context.searchScope.add(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('function');
+
+      context.searchScope.add(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(ignoredDeclaration);
+
+      expectNodeType(lookupRef.eval(context), 'JsFunction');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static callable handles stay cold while leakyRules disqualifies lookup', async () => {
+      const callable = mixin({
+        name: any('.paint'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const node = rules([callable]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
+
+      expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('mixin');
+
+      expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static callable handles stay cold while searchScope disqualifies lookup', async () => {
+      const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
+      const callable = mixin({
+        name: any('.paint'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const node = rules([ignoredDeclaration, callable]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
+
+      context.searchScope.add(ignoredDeclaration);
+      expect(lookupRef.eval(context)).toBeDefined();
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(ignoredDeclaration);
+      expect(lookupRef.eval(context)).toBeDefined();
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('mixin');
+
+      context.searchScope.add(ignoredDeclaration);
+      expect(lookupRef.eval(context)).toBeDefined();
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(ignoredDeclaration);
+
+      expect(lookupRef.eval(context)).toBeDefined();
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static mixin-ruleset handles stay cold while leakyRules disqualifies lookup', async () => {
+      const callable = ruleset({
+        selector: el('.paint'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const node = rules([callable]);
+      const root = setRulesContext(await node.eval(context));
+      const leakyContext = new Context({ leakyRules: true });
+      leakyContext.root = root;
+      leakyContext.rulesContext = root;
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin-ruleset' });
+
+      expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('mixin-ruleset');
+
+      expectNodeType(lookupRef.eval(leakyContext), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static mixin-ruleset handles stay cold while searchScope disqualifies lookup', async () => {
+      const ignoredDeclaration = decl({ name: 'color', value: any('blue') });
+      const callable = ruleset({
+        selector: el('.paint'),
+        rules: rules([decl({ name: 'color', value: any('green') })])
+      });
+      const node = rules([ignoredDeclaration, callable]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: '.paint' }, { type: 'mixin-ruleset' });
+
+      context.searchScope.add(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+
+      context.searchScope.delete(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.lookupType).toBe('mixin-ruleset');
+
+      context.searchScope.add(ignoredDeclaration);
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+      context.searchScope.delete(ignoredDeclaration);
+
+      expectNodeType(lookupRef.eval(context), 'MixinCollection');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('static property handles reuse source-static normalized assignment constraints', async () => {
+      const node = rules([
+        decl({ name: 'background-color', value: any('red') }),
+        decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '+,:' })
+      ]);
+      setRulesContext(await node.eval(context));
+      const requiredNormalizedFromAssign = ['+,:'];
+      const lookupRef = ref({ key: 'background-color' }, {
+        type: 'property',
+        requiredNormalizedFromAssign
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
+    });
+
+    it('static property handles include excluded source/output identities', async () => {
+      const earlier = decl({ name: 'color', value: any('red') });
+      const later = decl({ name: 'color', value: any('blue') });
+      const node = rules([earlier, later]);
+      setRulesContext(await node.eval(context));
+      const excludedNodes: Node[] = [later];
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        excludedNodes
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('red');
+      const firstHandle = lookupRef._rulesLookupHandle;
+      expect(firstHandle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      excludedNodes[0] = earlier;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
+    });
+
+    it('real Less merge-chain property refs avoid public lookup bridges', async () => {
+      const { Parser } = await import('../../../../less-parser/src/index.ts');
+      const parser = new Parser();
+      const tree = parser.parse(`
+        .out {
+          box-shadow+: inset 0 0 1px red;
+          box-shadow+: 0 0 2px blue;
+          background+: red;
+          background+: blue;
+        }
+      `).tree;
+      context.root = tree;
+      const css = await renderNodeToString(tree, context, { context });
+
+      expect(css).toContain('box-shadow: inset 0 0 1px red, 0 0 2px blue;');
+      expect(css).toContain('background: red, blue;');
+    });
+
+    it('keeps wider excluded-node filters cold instead of caching generic filter shape', async () => {
+      const first = decl({ name: 'color', value: any('red') });
+      const second = decl({ name: 'color', value: any('blue') });
+      const third = decl({ name: 'other', value: any('green') });
+      const node = rules([first, second, third]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, {
+        type: 'property',
+        excludedNodes: [first, second, third],
+        fallbackValue: any('fallback')
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('fallback');
+      expect(lookupRef._rulesLookupHandle).toBeUndefined();
+    });
+
+    it('static declaration references use direct declaration lookup before binding handle reuse', async () => {
+      const node = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'declaration' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      const handleVersion = handle?.targetLookupVersion;
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+
+      node.push(decl({ name: 'unrelated', value: any('1') }));
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._rulesLookupHandle).toBe(handle);
+      expect(lookupRef._rulesLookupHandle?.targetLookupVersion).toBe(handleVersion);
+    });
+
+    it('static declaration handles reuse source-static normalized assignment constraints', async () => {
+      const node = rules([
+        decl({ name: 'background-color', value: any('red') }),
+        decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '&,:' }),
+        decl({ name: 'background-color', value: any('green') }, { normalizedFromAssign: '+,:' })
+      ]);
+      setRulesContext(await node.eval(context));
+      const requiredNormalizedFromAssign = ['&,:'];
+      const lookupRef = ref({ key: 'background-color' }, {
+        type: 'declaration',
+        requiredNormalizedFromAssign
+      });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      const handle = lookupRef._rulesLookupHandle;
+      expect(handle?.returnVal).toMatchObject({
+        kind: 'direct-declaration-occurrence'
+      });
+
+      requiredNormalizedFromAssign[0] = '+,:';
+
+      expect(lookupRef.eval(context).valueOf()).toBe('green');
+      expect(lookupRef._rulesLookupHandle).not.toBe(handle);
+    });
+
+    it('reference strategy cache rejects stale lookup types in one node slot', async () => {
+      const node = rules([
+        vardecl({ name: 'color', value: any('red') }),
+        decl({ name: any('color'), value: any('blue') })
+      ]);
+      setRulesContext(await node.eval(context));
+      const lookupRef = ref({ key: 'color' }, { type: 'property' });
+
+      expect(lookupRef.eval(context).valueOf()).toBe('blue');
+      expect(lookupRef._lookupStrategy?.lookupType).toBe('property');
+      expect(lookupRef._rulesLookupHandle?.lookupType).toBe('property');
+
+      lookupRef.options.type = 'variable';
+
+      expect(lookupRef.eval(context).valueOf()).toBe('red');
+      expect(lookupRef._lookupStrategy?.lookupType).toBe('variable');
+      expect(lookupRef._rulesLookupHandle?.lookupType).toBe('variable');
+    });
+
+    it('callable handles reject stale terminal mixin-only mode', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let callableLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === '.parameterized-handle') {
+          callableLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: el('.parameterized-handle'),
+            rules: rules([decl({ name: 'color', value: any('ruleset') })])
+          }),
+          mixin({
+            name: any('.parameterized-handle'),
+            params: list([any('color', { role: 'property' })]),
+            rules: rules([decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: '.parameterized-handle' }, { type: 'mixin-ruleset' });
+
+        const first = lookupRef.eval(context);
+        expect(isNode(first)).toBe(true);
+        expect(callableLookups).toBe(1);
+        expect(lookupRef._rulesLookupHandle?.terminalMixinOnly).toBe(false);
+
+        lookupRef.options.mixinRulesetCallHasArgs = true;
+
+        const second = lookupRef.eval(context);
+        expect(isNode(second)).toBe(true);
+        expect(callableLookups).toBe(2);
+        expect(lookupRef._rulesLookupHandle?.terminalMixinOnly).toBe(true);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('callable handles survive unrelated declaration and function writes', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      let callableLookups = 0;
+      let broadCallableLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === '.callable-handle') {
+          callableLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.callable-handle') {
+          broadCallableLookups++;
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('.callable-handle'),
+            rules: rules([decl({ name: 'color', value: any('blue') })])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const ignoredExcludedNodes = [
+          decl({ name: 'color', value: any('red') }),
+          decl({ name: 'color', value: any('green') }),
+          decl({ name: 'color', value: any('black') })
+        ];
+        const lookupRef = ref({ key: '.callable-handle' }, {
+          type: 'mixin',
+          excludedNodes: ignoredExcludedNodes,
+          requiredNormalizedFromAssign: ['one', 'two', 'three', 'four', 'five']
+        });
+
+        const first = lookupRef.eval(context);
+        expect(first).toBeDefined();
+        expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
+        const callableCache = node.callableLookupCache;
+        const callableBuckets = node._scopeFrame?.callableBucketsByName;
+        const firstHandle = lookupRef._rulesLookupHandle;
+        expect(callableCache).toBeDefined();
+        expect(firstHandle?.lookupType).toBe('mixin');
+        expect(firstHandle && 'requiredNormalizedFromAssignKey' in firstHandle).toBe(false);
+        expect(firstHandle && 'excludedNodesLength' in firstHandle).toBe(false);
+
+        ignoredExcludedNodes[0] = decl({ name: 'color', value: any('mutated') });
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        const second = lookupRef.eval(context);
+        expect(second).toBeDefined();
+        expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
+        expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
+        expect(node.callableLookupCache).toBe(callableCache);
+        expect(node._scopeFrame?.callableBucketsByName).toBe(callableBuckets);
+
+        node.setFunctionBinding('unrelated-fn', new JsFunction({
+          name: 'unrelated-fn',
+          fn: () => any('ok')
+        }));
+        const third = lookupRef.eval(context);
+        expect(third).toBeDefined();
+        expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('mixin-ruleset handles skip public and broad callable lookup after cache write', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      let callableLookups = 0;
+      let broadCallableLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === '.ruleset-handle') {
+          callableLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.ruleset-handle') {
+          broadCallableLookups++;
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          ruleset({
+            selector: el('.ruleset-handle'),
+            rules: rules([decl({ name: 'color', value: any('blue') })])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: '.ruleset-handle' }, { type: 'mixin-ruleset' });
+
+        expectNodeType(lookupRef.eval(context), 'MixinCollection');
+        expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
+        const firstHandle = lookupRef._rulesLookupHandle;
+        expect(firstHandle?.lookupType).toBe('mixin-ruleset');
+
+        node.push(decl({ name: 'unrelated', value: any('1') }));
+        expectNodeType(lookupRef.eval(context), 'MixinCollection');
+        expect(lookupRef._rulesLookupHandle).toBe(firstHandle);
+        expect(callableLookups).toBe(1);
+        expect(broadCallableLookups).toBe(1);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
+    });
+
+    it('callable handles invalidate when callable surfaces change', async () => {
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      let callableLookups = 0;
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        const [key] = args;
+        if (key === '.callable-handle') {
+          callableLookups++;
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const node = rules([
+          mixin({
+            name: any('.callable-handle'),
+            rules: rules([decl({ name: 'color', value: any('blue') })])
+          })
+        ]);
+        setRulesContext(await node.eval(context));
+        const lookupRef = ref({ key: '.callable-handle' }, { type: 'mixin' });
+
+        const first = lookupRef.eval(context);
+        expect(first).toBeDefined();
+        expect(callableLookups).toBe(1);
+
+        node.push(mixin({
+          name: any('.other-callable'),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        }));
+        const second = lookupRef.eval(context);
+        expect(second).toBeDefined();
+        expect(callableLookups).toBe(2);
+      } finally {
+        RulesClass.prototype.findMixin = originalFindMixin;
       }
     });
 
@@ -2982,57 +5663,42 @@ describe('reference', () => {
       `);
     });
 
-    it('fast-paths complex selector callable ruleset paths without MixinRegistry.find under a ruleset namespace prefix', async () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#foo-foo') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
+    it('fast-paths complex selector callable ruleset paths under a ruleset namespace prefix', async () => {
+      const node = rules([
+        ruleset({
+          selector: sel([el('#foo-foo')]),
+          rules: rules([
+            ruleset({
+              selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
+              rules: rules([
+                decl({ name: 'c', value: any('c') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            call({
+              name: ref({
+                key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
+              }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
 
-      try {
-        const node = rules([
-          ruleset({
-            selector: sel([el('#foo-foo')]),
-            rules: rules([
-              ruleset({
-                selector: sel([co('>'), compound([el('.bar'), el('.baz')])]),
-                rules: rules([
-                  decl({ name: 'c', value: any('c') })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: el('.out'),
-            rules: rules([
-              call({
-                name: ref({
-                  key: sel([el('#foo-foo'), co('>'), compound([el('.bar'), el('.baz')])])
-                }, { type: 'mixin-ruleset' })
-              })
-            ])
-          })
-        ]);
-
-        const evald = await node.eval(context);
-        expect(await renderNodeToString(evald, context)).toBeString(`
-          #foo-foo {
-            > .bar.baz {
-              c: c;
-            }
-          }
-          .out {
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        #foo-foo {
+          > .bar.baz {
             c: c;
           }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+        }
+        .out {
+          c: c;
+        }
+      `);
     });
 
     it('should resolve nested mixin-ruleset reference chains through nested mixins', async () => {
@@ -3125,400 +5791,310 @@ describe('reference', () => {
       `);
     });
 
-    it('fast-paths pure nested no-arg mixin namespace array paths without MixinRegistry.find', async () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const node = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: el('.output'),
-            rules: rules([
-              vardecl({
-                name: 'colors',
-                value: call({
-                  name: ref({
-                    key: ['#theme', '.dark', '.navbar', '.colors']
-                  }, { type: 'mixin-ruleset' })
+    it('fast-paths pure nested no-arg mixin namespace array paths', async () => {
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
                 })
-              }),
-              decl({
-                name: 'background',
-                value: ref({
-                  target: ref({ key: 'colors' }, { type: 'variable' }),
-                  key: 'primary'
-                }, { type: 'declaration' })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: ['#theme', '.dark', '.navbar', '.colors']
+                }, { type: 'mixin-ruleset' })
               })
-            ])
-          })
-        ]);
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'declaration' })
+            })
+          ])
+        })
+      ]);
 
-        const evald = await node.eval(context);
-        expect(await renderNodeToString(evald, context)).toBeString(`
-          .output {
-            background: cyan;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        .output {
+          background: cyan;
+        }
+      `);
     });
 
     it('does not fall back for unrelated rulesets that only share the first namespace segment', async () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const node = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: compound([el('#theme'), el('.warning')]),
-            rules: rules([
-              mixin({
-                name: any('.palette'),
-                rules: rules([
-                  decl({ name: 'primary', value: any('orange') })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: el('.output'),
-            rules: rules([
-              vardecl({
-                name: 'colors',
-                value: call({
-                  name: ref({
-                    key: ['#theme', '.dark', '.navbar', '.colors']
-                  }, { type: 'mixin-ruleset' })
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
                 })
-              }),
-              decl({
-                name: 'background',
-                value: ref({
-                  target: ref({ key: 'colors' }, { type: 'variable' }),
-                  key: 'primary'
-                }, { type: 'declaration' })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#theme'), el('.warning')]),
+          rules: rules([
+            mixin({
+              name: any('.palette'),
+              rules: rules([
+                decl({ name: 'primary', value: any('orange') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: ['#theme', '.dark', '.navbar', '.colors']
+                }, { type: 'mixin-ruleset' })
               })
-            ])
-          })
-        ]);
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'declaration' })
+            })
+          ])
+        })
+      ]);
 
-        const evald = await node.eval(context);
-        expect(await renderNodeToString(evald, context)).toBeString(`
-          .output {
-            background: cyan;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        .output {
+          background: cyan;
+        }
+      `);
     });
 
-    it('fast-paths terminal rulesets under pure nested no-arg mixin namespaces without MixinRegistry.find', async () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const node = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      ruleset({
-                        selector: el('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: el('.output'),
-            rules: rules([
-              vardecl({
-                name: 'colors',
-                value: call({
-                  name: ref({
-                    key: ['#theme', '.dark', '.navbar', '.colors']
-                  }, { type: 'mixin-ruleset' })
+    it('fast-paths terminal rulesets under pure nested no-arg mixin namespaces', async () => {
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    ruleset({
+                      selector: el('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
                 })
-              }),
-              decl({
-                name: 'background',
-                value: ref({
-                  target: ref({ key: 'colors' }, { type: 'variable' }),
-                  key: 'primary'
-                }, { type: 'declaration' })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: ['#theme', '.dark', '.navbar', '.colors']
+                }, { type: 'mixin-ruleset' })
               })
-            ])
-          })
-        ]);
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'declaration' })
+            })
+          ])
+        })
+      ]);
 
-        const evald = await node.eval(context);
-        expect(await renderNodeToString(evald, context)).toBeString(`
-          .output {
-            background: cyan;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        .output {
+          background: cyan;
+        }
+      `);
     });
 
     it('fast-paths compound-prefix precedence even when a competing namespace hop requires args', async () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
-
-      try {
-        const node = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                params: list([any('mode', { role: 'property' })]),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
-            rules: rules([
-              mixin({
-                name: any('.colors'),
-                rules: rules([
-                  decl({ name: 'primary', value: any('red') })
-                ])
-              })
-            ])
-          }),
-          ruleset({
-            selector: el('.output'),
-            rules: rules([
-              vardecl({
-                name: 'colors',
-                value: call({
-                  name: ref({
-                    key: ['#theme', '.dark', '.navbar', '.colors']
-                  }, { type: 'mixin-ruleset' })
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              params: list([any('mode', { role: 'property' })]),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
                 })
-              }),
-              decl({
-                name: 'background',
-                value: ref({
-                  target: ref({ key: 'colors' }, { type: 'variable' }),
-                  key: 'primary'
-                }, { type: 'declaration' })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
+          rules: rules([
+            mixin({
+              name: any('.colors'),
+              rules: rules([
+                decl({ name: 'primary', value: any('red') })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.output'),
+          rules: rules([
+            vardecl({
+              name: 'colors',
+              value: call({
+                name: ref({
+                  key: ['#theme', '.dark', '.navbar', '.colors']
+                }, { type: 'mixin-ruleset' })
               })
-            ])
-          })
-        ]);
+            }),
+            decl({
+              name: 'background',
+              value: ref({
+                target: ref({ key: 'colors' }, { type: 'variable' }),
+                key: 'primary'
+              }, { type: 'declaration' })
+            })
+          ])
+        })
+      ]);
 
-        const evald = await node.eval(context);
-        expect(await renderNodeToString(evald, context)).toBeString(`
-          .output {
-            background: red;
-          }
-        `);
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        .output {
+          background: red;
+        }
+      `);
     });
 
     it('treats required-arg intermediate namespace hops as definite misses when no compound-prefix ruleset is involved', () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              params: list([any('mode', { role: 'property' })]),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
 
-      try {
-        const node = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                params: list([any('mode', { role: 'property' })]),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          })
-        ]);
+      context.root = node;
+      context.rulesContext = node;
 
-        context.root = node;
-        context.rulesContext = node;
+      const result = node.findMixin(['#theme', '.dark', '.navbar', '.colors'], undefined, {
+        context
+      });
 
-        const result = node.find('mixin', ['#theme', '.dark', '.navbar', '.colors'], undefined, {
-          context
-        });
-
-        expect(result).toBeUndefined();
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+      expect(result).toBeUndefined();
     });
 
-    it('fast-paths definite namespace array-path misses without MixinRegistry.find', () => {
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
-        const [key] = args;
-        if (Array.isArray(key) && key[0] === '#theme') {
-          mixinRegistryHits.push(key.join(' '));
-        }
-        return originalFind.apply(this, args);
-      };
+    it('fast-paths definite namespace array-path misses', () => {
+      const node = rules([
+        mixin({
+          name: any('#theme'),
+          rules: rules([
+            mixin({
+              name: any('.dark'),
+              rules: rules([
+                mixin({
+                  name: any('.navbar'),
+                  rules: rules([
+                    mixin({
+                      name: any('.colors'),
+                      rules: rules([
+                        decl({ name: 'primary', value: any('cyan') })
+                      ])
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        })
+      ]);
 
-      try {
-        const node = rules([
-          mixin({
-            name: any('#theme'),
-            rules: rules([
-              mixin({
-                name: any('.dark'),
-                rules: rules([
-                  mixin({
-                    name: any('.navbar'),
-                    rules: rules([
-                      mixin({
-                        name: any('.colors'),
-                        rules: rules([
-                          decl({ name: 'primary', value: any('cyan') })
-                        ])
-                      })
-                    ])
-                  })
-                ])
-              })
-            ])
-          })
-        ]);
+      context.root = node;
+      context.rulesContext = node;
 
-        context.root = node;
-        context.rulesContext = node;
+      const result = node.findMixin(['#theme', '.dark', '.missing', '.colors'], undefined, {
+        context
+      });
 
-        const result = node.find('mixin', ['#theme', '.dark', '.missing', '.colors'], undefined, {
-          context
-        });
-
-        expect(result).toBeUndefined();
-        expect(mixinRegistryHits).toHaveLength(0);
-      } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
-      }
+      expect(result).toBeUndefined();
     });
   });
 });

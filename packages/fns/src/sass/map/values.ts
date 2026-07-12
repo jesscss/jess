@@ -18,7 +18,7 @@ const values = defineFunction(
     for (const node of map.value) {
       if (isNode(node, N.Declaration)) {
         // The value is the declaration's value (already a Node)
-        valueNodes.push(node.value.value);
+        valueNodes.push(node.valueNode);
       }
     }
     return new List(valueNodes, { sep: ',' });

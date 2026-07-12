@@ -1,12 +1,11 @@
 import { type Context } from '../context.js';
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, defineType, type LocationInfo } from './node.js';
 import { Selector } from './selector.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  type RenderBuffer,
-  writeRenderTextResult
+  type RenderBuffer
 } from './util/render-buffer.js';
 
 export interface SelectorCapture extends Node<Selector> {
@@ -25,42 +24,48 @@ const isSelectorNode = (value: unknown): value is Selector => (
  * (e.g. Less `*[ ... ]`, Sass `selector.parse(\"...\")`).
  */
 export class SelectorCapture extends Node<Selector> {
-  private renderCaptureSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
+  static override childKeys = ['selector'] as const;
+
+  readonly selector: Selector;
+
+  constructor(value: Selector, options?: undefined, location?: LocationInfo, treeContext?: Context['treeContext']) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.selector = value;
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
     w.add('*[', this);
-    this.value.toString(options);
+    this.selector.writeSyntax(options);
     w.add(']', this);
-    return w.getSince(mark);
   }
 
   override valueOf(): string {
-    return String(this.value.valueOf());
+    return String(this.selector.valueOf());
   }
 
   override toTrimmedString(options?: PrintOptions): string {
-    return this.renderCaptureSyntax(options);
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    const w = options.writer;
+    return w.getSince(mark);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveValue(context),
-      node => this.renderResolvedSelector(context, node, bufferOrOptions, options)
-    );
-  }
-
-  private renderResolvedSelector(
-    context: Context,
-    node: Selector,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): MaybePromise<string> {
-    return isRenderBuffer(bufferOrOptions)
-      ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
-      : node.render(context, bufferOrOptions);
+    const node = this.resolveValue(context);
+    if (!isRenderBuffer(bufferOrOptions)) {
+      return isThenable(node)
+        ? node.then(resolved => resolved.render(context, bufferOrOptions))
+        : node.render(context, bufferOrOptions);
+    }
+    return isThenable(node)
+      ? node.then(resolved => resolved.render(context, bufferOrOptions, options))
+      : node.render(context, bufferOrOptions, options);
   }
 
   private requireSelector(value: unknown): Selector {
@@ -71,7 +76,7 @@ export class SelectorCapture extends Node<Selector> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    const out = this.value.eval(context);
+    const out = this.selector.eval(context);
     if (isThenable(out)) {
       return out.then(value => this.requireSelector(value));
     }
@@ -84,9 +89,9 @@ export class SelectorCapture extends Node<Selector> {
 
   private resolveValue(context: Context): MaybePromise<Selector> {
     if (this.hasFlag(F_STATIC)) {
-      return this.value;
+      return this.selector;
     }
-    const out = this.value.resolve(context);
+    const out = this.selector.resolve(context);
     if (isThenable(out)) {
       return out.then(value => this.requireSelector(value));
     }

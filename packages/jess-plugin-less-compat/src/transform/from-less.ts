@@ -98,7 +98,7 @@ export function fromLessNode(
       for (const rr of rules) {
         if (rr && typeof rr === 'object' && (rr.type === 'Declaration' || rr.type === 'Rule')) {
           const prop = String(rr.name ?? '');
-          const val = (rr as any).value;
+          const val = rr.value;
           const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
             ? val.value
             : String(val ?? '');

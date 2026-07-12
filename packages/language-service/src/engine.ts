@@ -58,7 +58,7 @@ type JessIndex = {
 };
 
 function nodeField(node: object, key: string): unknown {
-  return Reflect.get(node, key);
+  return (node as Record<string, unknown>)[key];
 }
 
 function getSpan(node: Node): { start: number; end: number } | null {

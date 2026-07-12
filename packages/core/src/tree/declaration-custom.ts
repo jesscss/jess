@@ -2,7 +2,7 @@ import { Declaration } from './declaration.js';
 import { defineType } from './node.js';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 // import type { OutputCollector } from '../output'
 
 /**
@@ -17,13 +17,26 @@ import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 export class CustomDeclaration extends Declaration {
   override evalNode(context: Context): MaybePromise<this | Nil> {
     context.inCustom = true;
-    return pipe(
-      () => super.evalNode(context),
-      (node) => {
-        context.inCustom = false;
-        return node as this | Nil;
+    try {
+      const node = super.evalNode(context);
+      if (isThenable(node)) {
+        return (node as Promise<this | Nil>).then(
+          (resolved) => {
+            context.inCustom = false;
+            return resolved;
+          },
+          (error) => {
+            context.inCustom = false;
+            throw error;
+          }
+        );
       }
-    );
+      context.inCustom = false;
+      return node as this | Nil;
+    } catch (error) {
+      context.inCustom = false;
+      throw error;
+    }
   }
 
   /** @todo move to visitors */

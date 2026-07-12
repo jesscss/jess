@@ -81,6 +81,9 @@ describe('Ampersand', () => {
 
   it('keeps composed selector stack render-local when serializing bare ampersands', () => {
     const parentSelector = sel([el('.foo')]);
+    parentSelector.toString = () => {
+      throw new Error('Ampersand collapse should write parent selector syntax directly');
+    };
     const composedSelectorStack = [parentSelector];
     const options = getPrintOptions({
       writer: new OutputWriter(),
@@ -93,6 +96,15 @@ describe('Ampersand', () => {
     expect(out).toBe('.foo');
     expect(options.composedSelectorStack).toBe(composedSelectorStack);
     expect(options.composedSelectorStack).toEqual([parentSelector]);
+  });
+
+  it('writes ampersand source syntax directly', () => {
+    const writer = new OutputWriter();
+    amp().writeSyntax(getPrintOptions({ writer }));
+    writer.add(' ');
+    amp('-bar').writeSyntax(getPrintOptions({ writer }));
+
+    expect(writer.toString()).toBe('& &(-bar)');
   });
 
   it('resolves framed ampersands without touching render state', async () => {
@@ -111,13 +123,29 @@ describe('Ampersand', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  it('resolves appended framed ampersands without dead selector string snapshots', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    frame.selector.toTrimmedString = () => {
+      throw new Error('Ampersand append placement should not snapshot selector text');
+    };
+
+    const resolved = await amp('-bar').resolve(context);
+
+    expect(resolved.valueOf()).toBe('.foo-bar');
+    expect(resolved.hoistToRoot).toBe(true);
+  });
+
   it('derives appended framed ampersand selectors without cloning the frame selector', async () => {
     const frame = ruleset({
       selector: sel([el('.foo')]),
       rules: rules([])
     });
     context.rulesetFrames.push(frame);
-    const sourceSelector = frame.value.selector;
+    const sourceSelector = frame.selector;
     expect(sourceSelector).toBeInstanceOf(Selector);
     if (!(sourceSelector instanceof Selector)) {
       throw new Error(`Expected Selector, got ${sourceSelector.type}`);
@@ -140,10 +168,69 @@ describe('Ampersand', () => {
       expect(resolved.toTrimmedString()).toBe('.foo-bar');
       expect(resolved).not.toBe(sourceSelector);
       expect(sourceSelector.toTrimmedString()).toBe('.foo');
-      expect(frame.value.selector).toBe(sourceSelector);
+      expect(frame.selector).toBe(sourceSelector);
       expect(resolved.hoistToRoot).toBe(true);
     } finally {
       sourceSelector.clone = originalClone;
+    }
+  });
+
+  it('derives basic selector merge templates without public string transport', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const originalToTrimmedString = BasicSelector.prototype.toTrimmedString;
+    BasicSelector.prototype.toTrimmedString = () => {
+      throw new Error('Ampersand template merge should read exact basic selector text directly');
+    };
+
+    try {
+      const resolved = await amp('&-theme').resolve(context);
+
+      expect(resolved.valueOf()).toBe('.foo-theme');
+      expect(resolved.hoistToRoot).toBe(true);
+    } finally {
+      BasicSelector.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('derives appended selector-list ampersands without callback array mapping', async () => {
+    const parentSelector = sellist([
+      sel([el('.one')]),
+      sel([el('.two')])
+    ]);
+    const frame = ruleset({
+      selector: parentSelector,
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const originalMap = parentSelector.selectors.map;
+    Object.defineProperty(parentSelector.selectors, 'map', {
+      configurable: true,
+      value: () => {
+        throw new Error('Ampersand selector-list append should not map source selectors');
+      }
+    });
+
+    try {
+      const resolved = await amp('-bar').resolve(context);
+
+      expect(resolved.toTrimmedString()).toBeString(`
+        .one-bar,
+        .two-bar
+      `);
+      expect(parentSelector.toTrimmedString()).toBeString(`
+        .one,
+        .two
+      `);
+    } finally {
+      Object.defineProperty(parentSelector.selectors, 'map', {
+        configurable: true,
+        writable: true,
+        value: originalMap
+      });
     }
   });
 
@@ -153,7 +240,7 @@ describe('Ampersand', () => {
       rules: rules([])
     });
     context.rulesetFrames.push(frame);
-    const sourceSelector = frame.value.selector;
+    const sourceSelector = frame.selector;
     expect(sourceSelector).toBeInstanceOf(Selector);
     if (!(sourceSelector instanceof Selector)) {
       throw new Error(`Expected Selector, got ${sourceSelector.type}`);
@@ -164,7 +251,7 @@ describe('Ampersand', () => {
 
     expect(resolved.toTrimmedString()).toBe('.foo .bar-baz');
     expect(resolved).not.toBe(sourceSelector);
-    expect(frame.value.selector).toBe(sourceSelector);
+    expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.foo .bar');
     expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
@@ -414,10 +501,14 @@ describe('Ampersand', () => {
   });
 
   it('should distribute merge template across comma-separated items', async () => {
-    // Simulates ~'apple, satsuma, banana, pear' as parent selector
     const node = rules([
       ruleset({
-        selector: el('apple, satsuma, banana, pear'),
+        selector: sellist([
+          sel([el('apple')]),
+          sel([el('satsuma')]),
+          sel([el('banana')]),
+          sel([el('pear')])
+        ]),
         rules: rules([
           ruleset({
             selector: sel([amp('.fruit-quoted-&')]),
@@ -463,7 +554,7 @@ describe('Ampersand', () => {
     expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.one')).toBe(true);
     expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.two')).toBe(true);
     expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.child-theme')).toBe(true);
-    expect(frame.value.selector).toBe(sourceSelector);
+    expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.one > .child,\n.two .child');
     expect(sourceSelector.value).toEqual(sourceChildren);
     expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
@@ -473,7 +564,10 @@ describe('Ampersand', () => {
     // .one starts with '.' and '-' before '&' is ident — invalid head join per item
     const node = rules([
       ruleset({
-        selector: el('.one, .two'),
+        selector: sellist([
+          sel([el('.one')]),
+          sel([el('.two')])
+        ]),
         rules: rules([
           ruleset({
             selector: sel([amp('.fruit-&')]),

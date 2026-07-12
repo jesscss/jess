@@ -16,7 +16,6 @@ Cursor has no memory between sessions. These files are the project's memory. **U
 |-----|--------------|----------------|
 | `.cursor/PROJECT_STATE.md` | Start of any debugging or build-related task | After meaningful progress or at end of session |
 | Area-specific plan (keep minimal) | When working on that area | When baseline or next step changes for that area |
-| `.cursor/changes.md` | To see recent work | End of day / after significant fix (per main rules) |
 
 **Before starting a debugging task:** Read the relevant state file(s) so you know current baseline, last thing tried, and next step.
 

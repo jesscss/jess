@@ -2,6 +2,7 @@ import {
   Any,
   Block,
   Call,
+  Condition,
   For,
   If,
   INTERPOLATION_PLACEHOLDER,
@@ -15,10 +16,12 @@ import {
   any,
   bool,
   call,
+  co,
   condition,
   decl,
   expr,
   interpolated,
+  interpolatedSelector,
   list,
   el,
   mixin,
@@ -30,7 +33,7 @@ import {
   op,
   vardecl
 } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -88,8 +91,8 @@ function normalizePattern(pattern: any) {
   if (pattern instanceof VarDeclaration) {
     return { kind: 'single' as const, value: pattern };
   }
-  if (pattern instanceof Block && pattern.value instanceof List) {
-    const values = pattern.value.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
+  if (pattern instanceof Block && pattern.node instanceof List) {
+    const values = pattern.node.value.filter((entry): entry is VarDeclaration => entry instanceof VarDeclaration);
     const [first, ...rest] = values;
     if (!first) {
       throw new Error('Expected at least one binding in block pattern');
@@ -110,6 +113,27 @@ function normalizePattern(pattern: any) {
 }
 
 describe('Control Nodes', () => {
+  it('preserves parser tree context on control constructors', () => {
+    const treeContext = new TreeContext();
+    const branchRules = rules([]);
+    const ifRule = new If({
+      branches: [{ condition: bool(true), rules: branchRules }]
+    }, undefined, undefined, treeContext);
+    const forRule = new For({
+      pattern: { kind: 'single', value: vardecl({ name: any('item'), value: any('') }, { paramVar: true }) },
+      iterable: { kind: 'node', value: list([any('a')]) },
+      rules: rules([])
+    }, undefined, undefined, treeContext);
+    const whileRule = new While({
+      condition: bool(false),
+      rules: rules([])
+    }, undefined, undefined, treeContext);
+
+    expect(ifRule._treeContext).toBe(treeContext);
+    expect(forRule._treeContext).toBe(treeContext);
+    expect(whileRule._treeContext).toBe(treeContext);
+  });
+
   it('serializes $if source syntax through toTrimmedString()', () => {
     const node = new If({
       branches: [
@@ -150,6 +174,31 @@ describe('Control Nodes', () => {
     expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 
+  it('renders $if condition branches without calling the public Bool-result condition eval wrapper', async () => {
+    const context = new Context();
+    const originalConditionEval = Condition.prototype.eval;
+    Condition.prototype.eval = function evalForCounting(): never {
+      throw new Error('$if should evaluate condition booleans directly');
+    };
+    const node = new If({
+      branches: [
+        {
+          condition: condition([bool(true)]),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        },
+        {
+          rules: rules([decl({ name: 'color', value: any('blue') })])
+        }
+      ]
+    });
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    } finally {
+      Condition.prototype.eval = originalConditionEval;
+    }
+  });
+
   it('keeps direct $if resolve(context) on source syntax without eval stamping', () => {
     const context = new Context();
     const node = new If({
@@ -178,11 +227,13 @@ describe('Control Nodes', () => {
     const selectedRules = rules([decl({ name: 'color', value: any('blue') })]);
     const originalSelectedRender = selectedRules.render;
     let selectedRulesRenderCalls = 0;
+    let selectedRulesRenderBuffer: unknown;
     selectedRules.render = function countSelectedRulesRender(
       this: typeof selectedRules,
       ...args: Parameters<typeof originalSelectedRender>
     ): ReturnType<typeof originalSelectedRender> {
       selectedRulesRenderCalls++;
+      selectedRulesRenderBuffer = args[1];
       return originalSelectedRender.apply(this, args);
     };
     const node = new If({
@@ -210,6 +261,7 @@ describe('Control Nodes', () => {
     await expect(node.render(context, buffer)).resolves.toBe('color: blue;');
     expect(buffer.parts).toEqual(['color: blue;']);
     expect(selectedRulesRenderCalls).toBe(1);
+    expect(selectedRulesRenderBuffer).toBe(buffer);
   });
 
   it('evaluates $if output through root render', async () => {
@@ -249,8 +301,8 @@ describe('Control Nodes', () => {
       throw new Error('Expected unmatched $if output to be Rules');
     }
     expect(resolved.location).toHaveLength(0);
-    expect(resolved.treeContextIfSet).toBeUndefined();
-    expect(resolved.scopeFrame).toBeUndefined();
+    expect(resolved._treeContext).toBeUndefined();
+    expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.parent).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);
@@ -440,8 +492,8 @@ describe('Control Nodes', () => {
       throw new Error('Expected false $while output to be Rules');
     }
     expect(resolved.location).toHaveLength(0);
-    expect(resolved.treeContextIfSet).toBeUndefined();
-    expect(resolved.scopeFrame).toBeUndefined();
+    expect(resolved._treeContext).toBeUndefined();
+    expect(resolved._scopeFrame).toBeUndefined();
     expect(resolved.toTrimmedString()).toBe('');
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
@@ -933,7 +985,7 @@ describe('Control Nodes', () => {
   it('evaluates $for with call iterable branch', async () => {
     const context = new Context();
     const root = rules([]);
-    root.register('function', new JsFunction({
+    root.setFunctionBinding('mkList', new JsFunction({
       name: 'mkList',
       fn: () => list([new Any('x'), new Any('y')])
     }));
@@ -947,6 +999,33 @@ describe('Control Nodes', () => {
     expect(css).toContain('item: y');
     expect(css).toContain('key: 1');
     expect(css).toContain('key: 2');
+  });
+
+  it('keeps $for live bindings visible in nested rulesets with call iterables', async () => {
+    const context = new Context();
+    const root = rules([]);
+    root.setFunctionBinding('mkList', new JsFunction({
+      name: 'mkList',
+      fn: () => list([new Any('x'), new Any('y')])
+    }));
+    const iterableCall = new Call({
+      name: ref({ key: 'mkList' }, { type: 'function' }),
+      args: list([])
+    });
+    const loopRules = rules([
+      ruleset({
+        selector: el('.col'),
+        rules: rules([
+          decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
+        ])
+      })
+    ]);
+    root.push(makeLoop(makePattern(['value', 'key', 'index']), iterableCall, loopRules));
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toContain('width: x');
+    expect(css).toContain('width: y');
   });
 
   it('evaluates $for with rules iterable and skips non-declarations', async () => {
@@ -1033,16 +1112,16 @@ describe('Control Nodes', () => {
     expect(loopOutput.value).toEqual([]);
     expect(loopOutput.location).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
-    expect(loopOutput.scopeFrame).toBeUndefined();
+    expect(loopOutput._scopeFrame).toBeUndefined();
     expect(await renderNodeToString(root, new Context())).toBe('');
   });
 
-  it('does not carry function registries on zero-iteration $for output wrappers', async () => {
+  it('does not carry function bindings on zero-iteration $for output wrappers', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
-    loopRules.register('function', new JsFunction({
+    loopRules.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));
@@ -1051,12 +1130,12 @@ describe('Control Nodes', () => {
     const evald = await root.eval(context);
     const loopOutput = evald.at(0);
 
-    expect(loopRules.functionRegistry).toBeDefined();
+    expect(loopRules.functionsByName).toBeDefined();
     expect(loopOutput).toBeInstanceOf(Rules);
     if (!(loopOutput instanceof Rules)) {
       throw new Error('Expected loop output to be Rules');
     }
-    expect(loopOutput.functionRegistry).toBeUndefined();
+    expect(loopOutput.functionsByName).toBeUndefined();
   });
 
   it('does not prepare $for body registration when the iterable is empty', async () => {
@@ -1128,7 +1207,7 @@ describe('Control Nodes', () => {
     if (!(loopOutput instanceof Rules)) {
       throw new Error('Expected loop output to be Rules');
     }
-    expect(loopOutput.scopeFrame).toBeUndefined();
+    expect(loopOutput._scopeFrame).toBeUndefined();
     expect(firstChild).not.toBeInstanceOf(Rules);
     expect(await renderNodeToString(root, new Context())).toContain('item: a');
   });
@@ -1172,7 +1251,7 @@ describe('Control Nodes', () => {
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ], { local: true });
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+    const root = rules([makeLoop(makePattern(['value', 'key', 'index']), list([new Any('a'), new Any('b')]), loopRules)]);
 
     const evald = await root.eval(context);
     const loopOutput = evald.at(0);
@@ -1185,18 +1264,18 @@ describe('Control Nodes', () => {
     expect(loopOutput.value).toHaveLength(2);
     expect(loopOutput.location).toHaveLength(0);
     expect(loopOutput.options.local).toBeUndefined();
-    expect(loopOutput.scopeFrame).toBeUndefined();
+    expect(loopOutput._scopeFrame).toBeUndefined();
     const css = await renderNodeToString(root, new Context());
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
   });
 
-  it('does not carry function registries on multi-iteration $for output wrappers', async () => {
+  it('does not carry function bindings on multi-iteration $for output wrappers', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
     ]);
-    loopRules.register('function', new JsFunction({
+    loopRules.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));
@@ -1205,16 +1284,16 @@ describe('Control Nodes', () => {
     const evald = await root.eval(context);
     const loopOutput = evald.at(0);
 
-    expect(loopRules.functionRegistry).toBeDefined();
+    expect(loopRules.functionsByName).toBeDefined();
     expect(loopOutput).toBeInstanceOf(Rules);
     if (!(loopOutput instanceof Rules)) {
       throw new Error('Expected loop output to be Rules');
     }
     expect(loopOutput.value).toHaveLength(2);
-    expect(loopOutput.functionRegistry).toBeUndefined();
+    expect(loopOutput.functionsByName).toBeUndefined();
   });
 
-  it('preserves function registries on runtime $for iteration surfaces', async () => {
+  it('preserves function bindings on runtime $for iteration surfaces', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({
@@ -1225,7 +1304,7 @@ describe('Control Nodes', () => {
         })
       })
     ]);
-    loopRules.register('function', new JsFunction({
+    loopRules.setFunctionBinding('make-blue', new JsFunction({
       name: 'make-blue',
       fn: () => any('blue')
     }));
@@ -1236,7 +1315,7 @@ describe('Control Nodes', () => {
 
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
     const context = new Context();
-    const registryHits: string[] = [];
+    const declarationLookupHits: string[] = [];
     const originalFind = Rules.prototype.find;
     Rules.prototype.find = function(...args: Parameters<typeof originalFind>) {
       const [type, key] = args;
@@ -1245,7 +1324,7 @@ describe('Control Nodes', () => {
         && typeof key === 'string'
         && (key === 'value' || key === 'key' || key === 'index')
       ) {
-        registryHits.push(key);
+        declarationLookupHits.push(key);
       }
       return originalFind.apply(this, args);
     };
@@ -1255,10 +1334,79 @@ describe('Control Nodes', () => {
       const css = await renderNodeToString(root, context);
       expect(css).toContain('item: a');
       expect(css).toContain('item: b');
-      expect(registryHits).toEqual([]);
+      expect(declarationLookupHits).toEqual([]);
     } finally {
       Rules.prototype.find = originalFind;
     }
+  });
+
+  it('keeps $for current reads and snapshot reads on separate binding paths', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'current', value: ref({ key: 'value' }, { type: 'variable' }) }),
+      decl({
+        name: 'snapshot',
+        value: ref({ key: 'value' }, { type: 'variable', readMode: 'snapshot' })
+      })
+    ]);
+    const root = rules([
+      vardecl({ name: 'value', value: any('outer') }),
+      makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)
+    ]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toBeString(`
+      current: a;
+      snapshot: outer;
+      current: b;
+      snapshot: outer;
+    `);
+  });
+
+  it('routes $for setDefined writes through the resolved outer binding', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      vardecl({ name: 'color', value: any('blue') }, { setDefined: true }),
+      decl({ name: 'inner', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+    const root = rules([
+      vardecl({ name: 'color', value: any('red') }),
+      makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules),
+      decl({ name: 'after', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toBeString(`
+      inner: blue;
+      inner: blue;
+      after: blue;
+    `);
+  });
+
+  it('evaluates $for setDefined writes from live iteration bindings', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      vardecl({
+        name: 'color',
+        value: ref({ key: 'value' }, { type: 'variable' })
+      }, { setDefined: true }),
+      decl({ name: 'inner', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+    const root = rules([
+      vardecl({ name: 'color', value: any('red') }),
+      makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules),
+      decl({ name: 'after', value: ref({ key: 'color' }, { type: 'variable' }) })
+    ]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toBeString(`
+      inner: a;
+      inner: b;
+      after: b;
+    `);
   });
 
   it('keeps canonical $for body children parented to the source wrapper', async () => {
@@ -1325,7 +1473,7 @@ describe('Control Nodes', () => {
     expect(css).toContain('color: red');
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(1);
+    expect(sourcePrepCalls).toBe(0);
     expect(colorDecl.parent).toBe(loopRules);
   });
 
@@ -1345,8 +1493,50 @@ describe('Control Nodes', () => {
 
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
-    expect(sourcePrepCalls).toBe(1);
+    expect(sourcePrepCalls).toBe(0);
     expect(itemDecl.parent).toBe(loopRules);
+  });
+
+  it('keeps $for live bindings visible while evaluating nested generated rulesets', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      ruleset({
+        selector: interpolatedSelector(interpolated({
+          source: `.col-${INTERPOLATION_PLACEHOLDER}`,
+          replacements: [ref({ key: 'value' }, { type: 'variable' })]
+        })),
+        rules: rules([
+          decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
+        ])
+      }),
+      ruleset({
+        selector: sel([
+          interpolatedSelector(interpolated({
+            source: `.gap-${INTERPOLATION_PLACEHOLDER}`,
+            replacements: [ref({ key: 'value' }, { type: 'variable' })]
+          })),
+          co('>'),
+          el('*'),
+          co('+'),
+          el('*')
+        ]),
+        rules: rules([
+          decl({ name: 'gap', value: ref({ key: 'value' }, { type: 'variable' }) })
+        ])
+      })
+    ]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toContain('.col-a');
+    expect(css).toContain('.col-b');
+    expect(css).toContain('width: a');
+    expect(css).toContain('width: b');
+    expect(css).toContain('.gap-a > * + *');
+    expect(css).toContain('.gap-b > * + *');
+    expect(css).toContain('gap: a');
+    expect(css).toContain('gap: b');
   });
 
   it('binds source-free scalar $for values without copying or cloning them first', async () => {
@@ -1430,18 +1620,18 @@ describe('Control Nodes', () => {
         }
       })
     });
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(ifNode.value.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(forNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
-    expect(whileNode.value.rules.options.rulesVisibility.Declaration).toBe('public');
-    expect(whileNode.value.rules.options.rulesVisibility.Ruleset).toBe('public');
-    expect(whileNode.value.rules.options.rulesVisibility.VarDeclaration).toBe('public');
-    expect(whileNode.value.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(ifNode.branches[0]!.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(ifNode.branches[0]!.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(forNode.rules.options.rulesVisibility.Mixin).toBe('public');
+    expect(whileNode.rules.options.rulesVisibility.Declaration).toBe('public');
+    expect(whileNode.rules.options.rulesVisibility.Ruleset).toBe('public');
+    expect(whileNode.rules.options.rulesVisibility.VarDeclaration).toBe('public');
+    expect(whileNode.rules.options.rulesVisibility.Mixin).toBe('public');
   });
 
   it('keeps nested eval state isolated across mixin calls and $for iterations', async () => {

@@ -6,7 +6,7 @@ import {
 } from './node.js';
 import { isNode } from './util/is-node.js';
 import { Nil } from './nil.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 import { Interpolated } from './interpolated.js';
 import { Any, any, type AnyRole } from './any.js';
 import { Reference } from './reference.js';
@@ -25,13 +25,16 @@ import {
 } from './util/print.js';
 import {
   isRenderBuffer,
-  prepareBufferPrintState,
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { emitCommentTriviaAfterNode } from './util/trivia.js';
 import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
 
 export const enum AssignmentType {
   Default = ':',
@@ -147,15 +150,13 @@ export function collectDeclarationMergeAdapterItems(
   const mergedItems: Node[] = [];
   const collect = (child: Node) => {
     if (isNode(child, N.List) || (options.includeSequences && isNode(child, N.Sequence))) {
-      for (const item of child.value) {
+      for (const item of child.items) {
         collect(item);
       }
       return;
     }
-    const isEmptyPlaceholder = (
-      isNode(child, N.Nil)
-      || String(child.valueOf?.() ?? '') === ''
-    );
+    const isEmptyPlaceholder = isNode(child, N.Nil)
+      || (isNode(child, N.Any) && child.value === '');
     if (!isEmptyPlaceholder) {
       mergedItems.push(child);
     }
@@ -166,7 +167,6 @@ export function collectDeclarationMergeAdapterItems(
 
 type DeclarationMergeAdapterItemsState = {
   kind: 'list' | 'space';
-  value: Node;
   items: Node[];
 };
 
@@ -192,7 +192,7 @@ export function createDeclarationMergeAdapterState(
   if (mergedItems.length === 1) {
     return mergedItems[0]!;
   }
-  return { kind: mode, value, items: mergedItems };
+  return { kind: mode, items: mergedItems };
 }
 
 type DeclarationValueState<T extends Declaration = Declaration> = {
@@ -215,6 +215,10 @@ type DeclarationRegistrationState = {
   bindOutput?: (node: Declaration) => void;
 };
 
+type DeclarationRegistrationOptions = {
+  reuseCanonical?: boolean;
+};
+
 type DeclarationRenderValue = Node | Nil | Node[] | CustomInterpolatedRenderValue;
 
 const isCustomInterpolatedRenderValue = (value: DeclarationRenderValue): value is CustomInterpolatedRenderValue => (
@@ -230,17 +234,37 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   if (node.type === 'Interpolated') {
     return true;
   }
-  for (const child of node.children(true)) {
-    if (isNode(child) && shouldResolveCustomPropertyValue(child)) {
-      return true;
+  return valueShouldResolveCustomProperty(node.value);
+};
+
+const valueShouldResolveCustomProperty = (value: unknown): boolean => {
+  if (isNode(value)) {
+    return shouldResolveCustomPropertyValue(value);
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      if (valueShouldResolveCustomProperty(value[i])) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (isRecord(value)) {
+    for (const key in value) {
+      if (valueShouldResolveCustomProperty(value[key])) {
+        return true;
+      }
     }
   }
   return false;
 };
 
 const unwrapAtomicCustomValue = (node: Node): Node => {
-  if ((isNode(node, N.Sequence) || isNode(node, N.List)) && node.value.length === 1) {
-    return unwrapAtomicCustomValue(node.value[0]!);
+  if (isNode(node, N.List) && node.items.length === 1) {
+    return unwrapAtomicCustomValue(node.items[0]!);
+  }
+  if (isNode(node, N.Sequence) && node.items.length === 1) {
+    return unwrapAtomicCustomValue(node.items[0]!);
   }
   return node;
 };
@@ -252,28 +276,96 @@ const canReuseSourceFreeAssignmentInput = (node: Node): boolean => {
   if (node.location.length !== 0 || !node.hasFlag(F_STATIC)) {
     return false;
   }
-  return node.value.every(child => child instanceof Node && canReuseLeaf(child));
+  return node.items.every(child => child instanceof Node && canReuseLeaf(child));
 };
 
 type LessFunctionFallbackCall = Call & {
-  value: Call['value'] & {
-    name: Reference;
-  };
+  name: Reference;
 };
 
 const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCall => (
   isNode(node, N.Call)
-  && isNode(node.value.name, N.Reference)
-  && node.value.name.options?.type === 'function'
-  && node.value.name.options?.fallbackValue === true
+  && isNode(node.name, N.Reference)
+  && node.name.options?.type === 'function'
+  && node.name.options?.fallbackValue === true
 );
 
 const stringifyDetached = (node: Node, options: PrintOptions): string => {
   const printOptions = getPrintOptions(options);
-  return node.toString({
+  const writer = new OutputWriter();
+  node.writeSyntax({
     ...printOptions,
-    writer: new OutputWriter()
+    writer
   });
+  return writer.toString();
+};
+
+const isHorizontalWhitespace = (code: number): boolean => (
+  code === 9
+  || code === 12
+  || code === 13
+  || code === 32
+);
+
+const needsCustomTrailingNewlineTrim = (text: string): boolean => {
+  let index = text.length - 1;
+  while (index >= 0 && isHorizontalWhitespace(text.charCodeAt(index))) {
+    index--;
+  }
+  return index >= 0 && text.charCodeAt(index) === 10;
+};
+
+const leadingHorizontalWhitespace = (text: string): string => {
+  let index = 0;
+  while (index < text.length && isHorizontalWhitespace(text.charCodeAt(index))) {
+    index++;
+  }
+  return index === 0 ? '' : text.slice(0, index);
+};
+
+const hasTrailingWhitespace = (text: string): boolean => {
+  if (text.length === 0) {
+    return false;
+  }
+  const code = text.charCodeAt(text.length - 1);
+  return code === 10 || isHorizontalWhitespace(code);
+};
+
+const trimCustomTrailingNewline = (text: string): string => {
+  if (!needsCustomTrailingNewlineTrim(text)) {
+    return text;
+  }
+  let index = text.length - 1;
+  while (index >= 0 && isHorizontalWhitespace(text.charCodeAt(index))) {
+    index--;
+  }
+  index--;
+  while (index >= 0 && isHorizontalWhitespace(text.charCodeAt(index))) {
+    index--;
+  }
+  return text.slice(0, index + 1);
+};
+
+const nodeValueText = (node: Node): string | undefined => {
+  const value = node.valueOf();
+  return typeof value === 'string' || typeof value === 'number'
+    ? String(value)
+    : undefined;
+};
+
+const maybeTrimmedScalarText = (node: Node): string | undefined => {
+  const text = nodeValueText(node);
+  if (text === undefined || text.length === 0) {
+    return text;
+  }
+  const first = text.charCodeAt(0);
+  const last = text.charCodeAt(text.length - 1);
+  return isHorizontalWhitespace(first)
+    || isHorizontalWhitespace(last)
+    || first === 10
+    || last === 10
+    ? undefined
+    : text;
 };
 
 const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
@@ -282,18 +374,36 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
     return undefined;
   }
 
-  const { name, args } = atomicValue.value;
-  const printableKey = name.value.rawKey ?? name.value.key;
-  const nameText = typeof printableKey === 'string' || typeof printableKey === 'number'
-    ? String(printableKey)
-    : Array.isArray(printableKey)
-      ? printableKey.map(part => String(part)).join('')
-      : stringifyDetached(printableKey, options).trim();
-  const argTexts = (args?.value ?? [])
-    .filter(Boolean)
-    .map(arg => stringifyDetached(arg, options).trim());
+  const { name, args } = atomicValue;
+  const printableKey = name.value.rawKey ?? name.key;
+  let nameText: string;
+  if (typeof printableKey === 'string' || typeof printableKey === 'number') {
+    nameText = String(printableKey);
+  } else if (Array.isArray(printableKey)) {
+    let text = '';
+    for (let index = 0; index < printableKey.length; index++) {
+      text += String(printableKey[index]);
+    }
+    nameText = text;
+  } else {
+    nameText = stringifyDetached(printableKey, options).trim();
+  }
+  let argText = '';
+  const values = args?.value ?? [];
+  let hasArg = false;
+  for (let index = 0; index < values.length; index++) {
+    const arg = values[index];
+    if (!arg) {
+      continue;
+    }
+    if (hasArg) {
+      argText += ', ';
+    }
+    argText += stringifyDetached(arg, options).trim();
+    hasArg = true;
+  }
 
-  return `${nameText}(${argTexts.join(', ')})`;
+  return `${nameText}(${argText})`;
 };
 
 /**
@@ -303,7 +413,25 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
  * Once evaluated, name must be a string
  */
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
+  static override childKeys = ['name', 'valueNode', 'important'];
+
+  readonly name: DeclarationValue['name'];
+  readonly valueNode: DeclarationValue['value'];
+  readonly important: DeclarationValue['important'];
+
   override allowRuleRoot = true;
+
+  constructor(
+    value: DeclarationValue,
+    options?: Opts,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location, treeContext);
+    this.name = value.name;
+    this.valueNode = value.value;
+    this.important = value.important;
+  }
 
   private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
     if (canReuseLeaf(node)) {
@@ -356,8 +484,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       [
         value,
         this._options ? { ...this._options } : undefined,
-        this.location,
-        this.treeContext
+        this.location
       ]
     );
     return this.applyDerivedMetadata(node);
@@ -365,15 +492,31 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   private derive(): this {
     return this.withParts({
-      name: this.copyNameForDerived(this.value.name),
-      value: this.copyValueForDerived(this.value.value),
-      important: this.copyImportantForDerived(this.value.important)
+      name: this.copyNameForDerived(this.name),
+      value: this.copyValueForDerived(this.valueNode),
+      important: this.copyImportantForDerived(this.important)
     });
   }
 
   deriveWithOptions(options: Opts & DeclarationOptions): this {
     const node = this.derive();
     node.options = options;
+    return node;
+  }
+
+  deriveWithParts(parts: Partial<DeclarationValue>): this {
+    const node = this.withParts({
+      name: parts.name === undefined
+        ? this.copyNameForDerived(this.name)
+        : parts.name,
+      value: parts.value === undefined
+        ? this.copyValueForDerived(this.valueNode)
+        : parts.value,
+      important: parts.important === undefined
+        ? this.copyImportantForDerived(this.important)
+        : parts.important
+    });
+    node.registrationPrepared = this.registrationPrepared;
     return node;
   }
 
@@ -416,7 +559,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
   /** If the value has curly braces, a semi-colon is not required */
   override get requiredSemi() {
-    return this.valueRequiresSemi(this.value.value);
+    return this.valueRequiresSemi(this.valueNode);
   }
 
   private valueRequiresSemi(value: Node): boolean {
@@ -424,7 +567,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   protected declTrimmedString(options?: PrintOptions) {
-    return this.declValueTrimmedString(this.value, options);
+    return this.declValueTrimmedString({
+      name: this.name,
+      value: this.valueNode,
+      important: this.important
+    }, options);
   }
 
   private declValueTrimmedString(
@@ -439,20 +586,40 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   ) {
     options = getPrintOptions(options);
     const w = options.writer!;
+    const mark = w.mark();
+    this.writeDeclarationValueSyntax(valueParts, options, renderState);
+    return w.getSince(mark);
+  }
+
+  private writeDeclarationValueSyntax(
+    valueParts: DeclarationValue,
+    options: ReturnType<typeof getPrintOptions>,
+    renderState?: {
+      customInterpolatedValue?: DeclarationRenderState['customInterpolatedValue'];
+      mergeAdapter?: DeclarationMergeAdapterState;
+      importantText?: string;
+      normalizedFromAssign?: AssignmentType;
+    }
+  ): void {
+    const w = options.writer!;
     const { name, value, important } = valueParts;
     const { mergeAdapter, importantText } = renderState ?? {};
     const { assign = ':', normalizedFromAssign, setDefined } = this._options ?? {};
-    const mark = w.mark();
-    // setDefined uses `:=` (with default spacing rules) instead of the historical `$^` prefix.
+    // setDefined uses `:=` with default spacing rules.
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
       ? AssignmentType.Default
       : assign;
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
-    const nameMark = w.mark();
-    name.toTrimmedString(options);
-    w.trimEndSince(nameMark);
+    const nameText = nodeValueText(name);
+    if (nameText !== undefined && !hasTrailingWhitespace(nameText)) {
+      name.writeSyntax(options);
+    } else {
+      const nameMark = w.mark();
+      name.writeSyntax(options);
+      w.trimEndSince(nameMark);
+    }
     emitCommentTriviaAfterNode(name, options);
     w.add(a);
     // Custom properties must preserve value text exactly as provided.
@@ -463,22 +630,35 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       // Preserve custom value text, but normalize boundary artifacts:
       // - if capture ended with a line break before declaration termination,
       //   drop that trailing line break so semicolon insertion stays inline.
-      const valueMark = w.mark();
-      if (renderState?.customInterpolatedValue?.source === value) {
+      const customValueText = nodeValueText(value);
+      const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
+      if (
+        renderState?.customInterpolatedValue?.source !== value
+        && fallbackOut === undefined
+        && customValueText !== undefined
+        && !needsCustomTrailingNewlineTrim(customValueText)
+      ) {
+        value.writeSyntax(options);
+      } else if (fallbackOut !== undefined) {
+        const leading = customValueText === undefined ? '' : leadingHorizontalWhitespace(customValueText);
+        w.add(`${leading}${fallbackOut}`, value);
+      } else if (renderState?.customInterpolatedValue?.source === value) {
+        const valueMark = w.mark();
         renderState.customInterpolatedValue.source.writeWithReplacements(
           renderState.customInterpolatedValue.replacements,
           options
         );
+        w.replaceSince(valueMark, valueOut => trimCustomTrailingNewline(valueOut), value);
       } else {
-        value.toString(options);
+        const valueMark = w.mark();
+        value.writeSyntax(options);
+        w.replaceSince(valueMark, (valueOut) => {
+          const customOut = fallbackOut === undefined
+            ? valueOut
+            : `${leadingHorizontalWhitespace(valueOut)}${fallbackOut}`;
+          return trimCustomTrailingNewline(customOut);
+        }, value);
       }
-      w.replaceSince(valueMark, (valueOut) => {
-        const fallbackOut = stringifyCustomFallbackFunctionCall(value, options);
-        const customOut = fallbackOut === undefined
-          ? valueOut
-          : `${valueOut.match(/^[ \t\r\f]*/)?.[0] ?? ''}${fallbackOut}`;
-        return customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
-      }, value);
       restorePrintState(options, saved);
     } else {
       const valueMark = w.mark();
@@ -487,17 +667,22 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       } else if (mergeAdapter?.kind === 'space') {
         this.renderSpaceValueSyntax(mergeAdapter.items, options);
       } else {
-        value.toTrimmedString(options);
+        value.writeSyntax(options);
       }
       w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
         if (important || importantText) {
           w.add(' ');
           if (important) {
-            const importantMark = w.mark();
-            important.toString(options);
-            w.trimStartSince(importantMark);
-            w.trimEndSince(importantMark);
+            const importantText = maybeTrimmedScalarText(important);
+            if (importantText !== undefined) {
+              w.add(importantText, important);
+            } else {
+              const importantMark = w.mark();
+              important.writeSyntax(options);
+              w.trimStartSince(importantMark);
+              w.trimEndSince(importantMark);
+            }
           } else {
             w.add(importantText!, value);
           }
@@ -507,19 +692,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (this.valueRequiresSemi(value)) {
       emitCommentTriviaAfterNode(important ?? value, options);
     }
-    return w.getSince(mark);
   }
 
   private renderSpaceValueSyntax(value: Node[], options: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     const w = printOptions.writer!;
     const mark = w.mark();
-    value.forEach((item, index) => {
-      if (index > 0) {
+    for (let index = 0; index < value.length; index++) {
+      if (index !== 0) {
         w.queueSpacer(' ');
       }
-      item.toString(printOptions);
-    });
+      const item = value[index]!;
+      item.writeSyntax(printOptions);
+    }
     return w.getSince(mark);
   }
 
@@ -527,19 +712,42 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     return this.declTrimmedString(options);
   }
 
+  override writeSyntax(options: ReturnType<typeof getPrintOptions>): void {
+    this.writeDeclarationValueSyntax({
+      name: this.name,
+      value: this.valueNode,
+      important: this.important
+    }, options);
+  }
+
+  private renderDeclarationPartsToBuffer(
+    context: Context,
+    buffer: RenderBuffer,
+    valueParts: DeclarationValue,
+    options?: PrintOptions,
+    renderState?: Parameters<Declaration['writeDeclarationValueSyntax']>[2]
+  ): string {
+    const prepared = prepareRenderPrintState(context, {
+      ...(options ?? {}),
+      writer: new OutputWriter()
+    });
+    this.writeDeclarationValueSyntax(valueParts, prepared, renderState);
+    return writeRenderText(buffer, prepared.writer.toString());
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (this.type !== 'Declaration') {
-      return pipe(
-        () => this.evalPreparedState(context),
-        state => this.renderEvaluatedDeclaration(context, state, bufferOrOptions, options)
-      );
+      const state = this.evalPreparedState(context);
+      return isThenable(state)
+        ? (state as Promise<DeclarationEvalState>).then(resolved => this.renderEvaluatedDeclaration(context, resolved, bufferOrOptions, options))
+        : this.renderEvaluatedDeclaration(context, state as DeclarationEvalState, bufferOrOptions, options);
     }
-    return pipe(
-      () => this.evalRenderState(context),
-      state => this.renderDeclarationRenderState(context, state, bufferOrOptions, options)
-    );
+    const state = this.evalRenderState(context);
+    return isThenable(state)
+      ? (state as Promise<DeclarationRenderState>).then(resolved => this.renderDeclarationRenderState(context, resolved, bufferOrOptions, options))
+      : this.renderDeclarationRenderState(context, state as DeclarationRenderState, bufferOrOptions, options);
   }
 
   private renderEvaluatedDeclaration(
@@ -560,19 +768,28 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         : node.render(context, bufferOrOptions);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const prepared = buffer
-      ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
+    if (buffer) {
+      return state.value
+        ? this.renderDeclarationPartsToBuffer(context, buffer, {
+            name: state.name ?? state.output.name,
+            value: state.value,
+            important: state.important
+          }, options)
+        : state.output.renderDeclarationPartsToBuffer(context, buffer, {
+            name: state.output.name,
+            value: state.output.valueNode,
+            important: state.output.important
+          }, options);
+    }
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
     const out = state.value
       ? this.declValueTrimmedString({
-          name: state.name ?? state.output.value.name,
+          name: state.name ?? state.output.name,
           value: state.value,
           important: state.important
         }, prepared)
       : state.output.declTrimmedString(prepared);
-    return buffer
-      ? writeRenderText(buffer, out)
-      : out;
+    return out;
   }
 
   private renderDeclarationRenderState(
@@ -588,36 +805,40 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         : output.render(context, bufferOrOptions);
     }
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
-    const prepared = buffer
-      ? prepareBufferPrintState(context, options)
-      : prepareRenderPrintState(context, bufferOrOptions);
-    const out = this.declValueTrimmedString({
-      name: state.name,
-      value: state.value,
-      important: state.important
-    }, prepared, {
+    const renderState = {
       mergeAdapter: state.mergeAdapter,
       customInterpolatedValue: state.customInterpolatedValue,
       importantText: state.importantText,
       normalizedFromAssign: state.normalizedFromAssign
-    });
-    return buffer
-      ? writeRenderText(buffer, out)
-      : out;
+    };
+    if (buffer) {
+      return this.renderDeclarationPartsToBuffer(context, buffer, {
+        name: state.name,
+        value: state.value,
+        important: state.important
+      }, options, renderState);
+    }
+    const prepared = prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.declValueTrimmedString({
+      name: state.name,
+      value: state.value,
+      important: state.important
+    }, prepared, renderState);
+    return out;
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    return pipe(
-      () => this.evalPreparedState(context),
-      state => state.output
-    );
+    const state = this.evalPreparedState(context);
+    return isThenable(state)
+      ? (state as Promise<DeclarationEvalState>).then(resolved => resolved.output)
+      : (state as DeclarationEvalState).output;
   }
 
   private evalRenderState(context: Context): MaybePromise<DeclarationRenderState> {
-    return pipe(
-      () => this._prepareDeclarationRegistrationState(context, { ownParts: false }),
-      state => this.evalRegistrationRenderState(context, state)
-    );
+    const state = this._prepareDeclarationRegistrationState(context, { ownParts: false });
+    return isThenable(state)
+      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.evalRegistrationRenderState(context, resolved))
+      : this.evalRegistrationRenderState(context, state as DeclarationRegistrationState);
   }
 
   private evalRegistrationRenderState(
@@ -638,7 +859,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const evaluateItem = (item: Node): MaybePromise<void> => {
         const out = item.eval(context);
         if (isThenable(out)) {
-          return Promise.resolve(out).then((node) => {
+          return (out as Promise<Node>).then((node) => {
             if (!(node instanceof Nil)) {
               evaluated.push(node);
             }
@@ -655,7 +876,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         const out = evaluateItem(item);
         if (isThenable(out)) {
-          chain = Promise.resolve(out);
+          chain = out as Promise<void>;
         }
       }
       return chain ? chain.then(() => evaluated) : evaluated;
@@ -682,9 +903,16 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
       }
       if (isThenable(maybeValue)) {
-        return Promise.resolve(maybeValue).finally(() => {
-          context.inCustom = previousInCustom;
-        });
+        return (maybeValue as Promise<DeclarationRenderValue>).then(
+          (value) => {
+            context.inCustom = previousInCustom;
+            return value;
+          },
+          (error) => {
+            context.inCustom = previousInCustom;
+            throw error;
+          }
+        );
       }
       return maybeValue;
     };
@@ -710,7 +938,6 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           value,
           mergeAdapter: {
             kind: isList ? 'list' : 'space',
-            value,
             items: newValue
           },
           important: state.important,
@@ -753,25 +980,26 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     context: Context,
     node: Interpolated
   ): MaybePromise<DeclarationRenderState['customInterpolatedValue']> {
-    const replacements = [...node.value.replacements];
+    const replacements = [...node.replacements];
     let chain: Promise<void> | undefined;
     const evaluateReplacement = (replacement: Node, index: number): MaybePromise<void> => {
       const out = replacement.eval(context);
       if (isThenable(out)) {
-        return Promise.resolve(out).then((evaluated) => {
+        return (out as Promise<Node>).then((evaluated) => {
           replacements[index] = evaluated;
         });
       }
       replacements[index] = out as Node;
     };
-    for (const [index, replacement] of replacements.entries()) {
+    for (let index = 0; index < replacements.length; index++) {
+      const replacement = replacements[index]!;
       if (chain) {
         chain = chain.then(() => evaluateReplacement(replacement, index));
         continue;
       }
       const out = evaluateReplacement(replacement, index);
       if (isThenable(out)) {
-        chain = Promise.resolve(out);
+        chain = out as Promise<void>;
       }
     }
     const finish = (): DeclarationRenderState['customInterpolatedValue'] => ({
@@ -803,15 +1031,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         (isListMergedAssign && isNode(child, N.List))
         || (isSpaceMergedAssign && isNode(child, N.Sequence))
       ) {
-        for (const item of child.value) {
+        for (const item of child.items) {
           collect(item);
         }
         return;
       }
-      const isEmptyPlaceholder = (
-        isNode(child, N.Nil)
-        || String(child.valueOf?.() ?? '') === ''
-      );
+      const isEmptyPlaceholder = isNode(child, N.Nil)
+        || (isNode(child, N.Any) && child.value === '');
       if (isEmptyPlaceholder) {
         emptyPlaceholder ??= child;
       }
@@ -825,59 +1051,74 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private evalPreparedState(context: Context): MaybePromise<DeclarationEvalState> {
-    return pipe(
-      () => this.evalPreparedValueState(context),
-      valueState => valueState instanceof Nil
-        ? valueState
-        : this.materializeValueState(valueState),
-      output => ({
+    const valueState = this.evalPreparedValueState(context);
+    const finish = (resolved: DeclarationValueState<this> | Nil): DeclarationEvalState => {
+      const output = resolved instanceof Nil
+        ? resolved
+        : this.materializeValueState(resolved);
+      return {
         output,
-        name: output instanceof Declaration ? output.value.name : undefined,
-        value: output instanceof Declaration ? output.value.value : undefined,
-        important: output instanceof Declaration ? output.value.important : undefined,
+        name: output instanceof Declaration ? output.name : undefined,
+        value: output instanceof Declaration ? output.valueNode : undefined,
+        important: output instanceof Declaration ? output.important : undefined,
         nil: output instanceof Nil
-      })
-    );
+      };
+    };
+    return isThenable(valueState)
+      ? (valueState as Promise<DeclarationValueState<this> | Nil>).then(finish)
+      : finish(valueState as DeclarationValueState<this> | Nil);
   }
 
   private evalPreparedValueState(context: Context): MaybePromise<DeclarationValueState<this> | Nil> {
-    return pipe(
-      () => this.prepareRegistration(context),
-      node => node.evalValueState(context)
-    );
+    const node = this.prepareRegistration(context);
+    return isThenable(node)
+      ? (node as Promise<this>).then(prepared => prepared.evalValueState(context))
+      : (node as this).evalValueState(context);
   }
 
-  override prepareRegistration(context: Context): MaybePromise<this> {
-    return pipe(
-      () => this._prepareDeclarationRegistrationState(context),
-      state => this.materializeRegistrationState(state)
-    );
+  override prepareRegistration(
+    context: Context,
+    options: DeclarationRegistrationOptions = {}
+  ): MaybePromise<this> {
+    const state = this._prepareDeclarationRegistrationState(context, options);
+    return isThenable(state)
+      ? (state as Promise<DeclarationRegistrationState>).then(resolved => this.materializeRegistrationState(resolved, options))
+      : this.materializeRegistrationState(state as DeclarationRegistrationState, options);
   }
 
-  private createRegistrationState(): DeclarationRegistrationState {
+  private createRegistrationState(
+    options: DeclarationRegistrationOptions = {}
+  ): DeclarationRegistrationState {
+    if (options.reuseCanonical === true) {
+      return {
+        name: this.name,
+        value: this.valueNode,
+        important: this.important
+      };
+    }
     return {
-      name: this.copyNameForDerived(this.value.name),
-      value: this.copyValueForDerived(this.value.value),
-      important: this.copyImportantForDerived(this.value.important)
+      name: this.copyNameForDerived(this.name),
+      value: this.copyValueForDerived(this.valueNode),
+      important: this.copyImportantForDerived(this.important)
     };
   }
 
   private createRenderRegistrationState(): DeclarationRegistrationState {
     return {
-      name: this.value.name,
-      value: this.value.value,
-      important: this.value.important,
+      name: this.name,
+      value: this.valueNode,
+      important: this.important,
       renderOnly: true
     };
   }
 
   private _prepareDeclarationRegistrationState(
     context: Context,
-    options: { ownParts?: boolean } = {}
+    options: { ownParts?: boolean; reuseCanonical?: boolean } = {}
   ): MaybePromise<DeclarationRegistrationState> {
     const state = options.ownParts === false
       ? this.createRenderRegistrationState()
-      : this.createRegistrationState();
+      : this.createRegistrationState(options);
     const preparedName = this._prepareDeclarationNameIdentity(state, context);
     if (isThenable(preparedName)) {
       return preparedName.then(key => this._finishDeclarationRegistrationPrep(state, key));
@@ -944,26 +1185,28 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       switch (assign) {
         case AssignmentType.MergeList:
         case AssignmentType.MergeSequence: {
-          const isLessMergeAssign = (assignValue: string): boolean => (
-            assignValue === AssignmentType.MergeList
-            || assignValue === AssignmentType.MergeSequence
-            || assignValue === '+,:'
-            || assignValue === '+_:'
-          );
+          let boundOutputNode: Declaration | undefined;
           const ref = new Reference({ key: referenceKey }, {
             type,
             fallbackValue: new Nil(),
-            // Assignment normalization clears `assign` to Default, so matching by
-            // assignment flag prevents later merge iterations from seeing prior values.
-            // For Less-style property merges, any prior merge node participates in the chain,
-            // but plain declarations do not.
-            // Exclude only the current node to avoid self-reference.
-            filter: n => (
-              n !== outputNode
-              && n !== this
-              && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
-            )
-          });
+            excludedNode0: this,
+            get excludedNode1() {
+              return boundOutputNode;
+            },
+            get excludedNodesLength() {
+              return boundOutputNode ? 2 : 1;
+            },
+            requiredNormalizedFromAssign: [
+              AssignmentType.MergeList,
+              AssignmentType.MergeSequence,
+              '+,:',
+              '+_:'
+            ]
+          }, undefined, this.sourceRoot?._treeContext);
+          state.bindOutput = (node: Declaration) => {
+            outputNode = node;
+            boundOutputNode = node;
+          };
           /**
            * @note - It's up to Sequence and List to handle
            *         the merging of the values, if Nil()
@@ -994,7 +1237,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               fallbackValue: new Nil(),
               // Prevent self-referential reads while normalizing this node.
               filter: n => n !== outputNode && n !== this
-            });
+            }, undefined, this.sourceRoot?._treeContext);
             if (state.renderOnly) {
               state.renderAssignment = {
                 items: [ref, inputValue],
@@ -1007,7 +1250,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
           } else {
             setValue(
               new Operation([
-                new Reference({ key: referenceKey }, { type }),
+                new Reference({ key: referenceKey }, { type }, undefined, this.sourceRoot?._treeContext),
                 '+',
                 inputValue
               ])
@@ -1020,7 +1263,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             new Reference({ key: referenceKey }, {
               type,
               fallbackValue: inputValue
-            })
+            }, undefined, this.sourceRoot?._treeContext)
           );
           break;
         }
@@ -1029,11 +1272,27 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     }
   }
 
-  private materializeRegistrationState(state: DeclarationRegistrationState): this {
+  private materializeRegistrationState(
+    state: DeclarationRegistrationState,
+    options: DeclarationRegistrationOptions = {}
+  ): this {
+    const changed = (
+      state.name !== this.name
+      || state.value !== this.valueNode
+      || state.important !== this.important
+      || state.normalizedFromAssign !== undefined
+      || state.bindOutput !== undefined
+    );
+    if (options.reuseCanonical === true && !changed) {
+      this.registrationPrepared = true;
+      return this;
+    }
     const node = this.withParts({
-      name: state.name,
-      value: state.value,
-      important: state.important
+      name: state.name === this.name ? this.copyNameForDerived(state.name) : state.name,
+      value: state.value === this.valueNode ? this.copyValueForDerived(state.value) : state.value,
+      important: state.important === this.important
+        ? this.copyImportantForDerived(state.important)
+        : state.important
     });
     if (state.normalizedFromAssign) {
       node.options.normalizedFromAssign = state.normalizedFromAssign;
@@ -1048,100 +1307,100 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       this.evaluated = true;
       return {
         source: this,
-        value: this.value.value,
-        important: this.value.important,
+        value: this.valueNode,
+        important: this.important,
         changed: false
       };
     }
-    return pipe(
-      () => {
-        let node = this;
-        const state: DeclarationValueState = {
-          source: node,
-          value: node.value.value,
-          important: node.value.important,
-          changed: false
-        };
-        const setVal = (newValue: Node) => {
-          if (state.value !== newValue) {
-            state.value = newValue;
-            state.changed = true;
-          }
-        };
-        const setImportant = (important: Any<'flag'>) => {
-          if (state.important !== important) {
-            state.important = important;
-            state.changed = true;
-          }
-        };
-        const normalizeMergedLeadingPlaceholder = () => {
-          const normalizedAssign = node.options.normalizedFromAssign;
-          const isListMergedAssign =
+    {
+      let node = this;
+      const state: DeclarationValueState = {
+        source: node,
+        value: node.valueNode,
+        important: node.important,
+        changed: false
+      };
+      const setVal = (newValue: Node) => {
+        if (state.value !== newValue) {
+          state.value = newValue;
+          state.changed = true;
+        }
+      };
+      const setImportant = (important: Any<'flag'>) => {
+        if (state.important !== important) {
+          state.important = important;
+          state.changed = true;
+        }
+      };
+      const normalizeMergedLeadingPlaceholder = () => {
+        const normalizedAssign = node.options.normalizedFromAssign;
+        const isListMergedAssign =
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
-          if (!isListMergedAssign || !isNode(state.value, N.List)) {
-            return;
-          }
-          const mergedItems = collectDeclarationMergeAdapterItems(state.value, { includeSequences: false });
-          if (mergedItems.length === 0) {
-            setVal(new Nil());
-            return;
-          }
-          if (mergedItems.length === 1) {
-            const item = mergedItems[0]!;
-            setVal(this.ownMergedAssignmentOutputItem(item));
-            return;
-          }
-          setVal(new List(mergedItems.map(item => (
-            this.ownMergedAssignmentOutputItem(item)
-          ))));
-        };
+        if (!isListMergedAssign || !isNode(state.value, N.List)) {
+          return;
+        }
+        const mergedItems = collectDeclarationMergeAdapterItems(state.value, { includeSequences: false });
+        if (mergedItems.length === 0) {
+          setVal(new Nil());
+          return;
+        }
+        if (mergedItems.length === 1) {
+          const item = mergedItems[0]!;
+          setVal(this.ownMergedAssignmentOutputItem(item));
+          return;
+        }
+        const outputItems = new Array<Node>(mergedItems.length);
+        for (let i = 0; i < mergedItems.length; i++) {
+          outputItems[i] = this.ownMergedAssignmentOutputItem(mergedItems[i]!);
+        }
+        setVal(new List(outputItems));
+      };
         /** Registration prep already stabilized the name; eval handles the value. */
-        if (node.type === 'VarDeclaration') {
-          return state;
-        }
-        const { name, value } = node.value;
-        if (value instanceof Node) {
-          const isCustomProperty = name.valueOf().startsWith('--');
-          if (isCustomProperty) {
-            if (!shouldResolveCustomPropertyValue(value)) {
-              return state;
-            }
-            context.inCustom = true;
-          }
-          const maybeNewValue = value.eval(context);
-          if (isThenable(maybeNewValue)) {
-            return maybeNewValue.then((newValue: Node | Nil) => {
-              context.inCustom = false;
-              if (newValue instanceof Nil) {
-                return newValue.inherit(node);
-              }
-              setVal(newValue);
-              normalizeMergedLeadingPlaceholder();
-              const importantState = finalizeContextualImportantPublicState(context, state.important);
-              if (importantState.important && importantState.important !== state.important) {
-                setImportant(importantState.important);
-              }
-              return state;
-            });
-          }
-          context.inCustom = false;
-          if (maybeNewValue instanceof Nil) {
-            return maybeNewValue.inherit(node);
-          }
-          if (!(maybeNewValue instanceof Node)) {
-            return node;
-          }
-          setVal(maybeNewValue);
-          normalizeMergedLeadingPlaceholder();
-          const importantState = finalizeContextualImportantPublicState(context, state.important);
-          if (importantState.important && importantState.important !== state.important) {
-            setImportant(importantState.important);
-          }
-        }
+      if (node.type === 'VarDeclaration') {
         return state;
       }
-    );
+      const { name, valueNode: value } = node;
+      if (value instanceof Node) {
+        const isCustomProperty = name.valueOf().startsWith('--');
+        if (isCustomProperty) {
+          if (!shouldResolveCustomPropertyValue(value)) {
+            return state;
+          }
+          context.inCustom = true;
+        }
+        const maybeNewValue = value.eval(context);
+        if (isThenable(maybeNewValue)) {
+          return maybeNewValue.then((newValue: Node | Nil) => {
+            context.inCustom = false;
+            if (newValue instanceof Nil) {
+              return newValue.inherit(node);
+            }
+            setVal(newValue);
+            normalizeMergedLeadingPlaceholder();
+            const importantState = finalizeContextualImportantPublicState(context, state.important);
+            if (importantState.important && importantState.important !== state.important) {
+              setImportant(importantState.important);
+            }
+            return state;
+          });
+        }
+        context.inCustom = false;
+        if (maybeNewValue instanceof Nil) {
+          return maybeNewValue.inherit(node);
+        }
+        if (!(maybeNewValue instanceof Node)) {
+          return node;
+        }
+        setVal(maybeNewValue);
+        normalizeMergedLeadingPlaceholder();
+        const importantState = finalizeContextualImportantPublicState(context, state.important);
+        if (importantState.important && importantState.important !== state.important) {
+          setImportant(importantState.important);
+        }
+      }
+      return state;
+    }
   }
 
   private materializeValueState(state: DeclarationValueState<this>): this {
@@ -1150,11 +1409,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return node;
     }
     const output = node.withParts({
-      name: this.copyNameForDerived(node.value.name),
-      value: state.value === node.value.value
+      name: this.copyNameForDerived(node.name),
+      value: state.value === node.valueNode
         ? this.copyValueForDerived(state.value)
         : state.value,
-      important: state.important === node.value.important
+      important: state.important === node.important
         ? this.copyImportantForDerived(state.important)
         : state.important
     });
@@ -1163,10 +1422,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
-    return pipe(
-      () => this.evalValueState(context),
-      state => state instanceof Nil ? state : this.materializeValueState(state)
-    ) as MaybePromise<this | Nil>;
+    const state = this.evalValueState(context);
+    return isThenable(state)
+      ? (state as Promise<DeclarationValueState<this> | Nil>).then(resolved => resolved instanceof Nil ? resolved : this.materializeValueState(resolved))
+      : state instanceof Nil ? state : this.materializeValueState(state as DeclarationValueState<this>);
   }
 
   /** @todo - move to visitors */
@@ -1211,15 +1470,14 @@ function isDeclarationValue(
 export const decl = (
   value: DeclarationValue | { name: string; value: Node; important?: Any<'flag'> },
   options?: DeclarationOptions,
-  location?: LocationInfo,
-  treeContext?: TreeContext
+  location?: LocationInfo
 ) => {
   if (!isDeclarationValue(value)) {
     return new Declaration({
       name: any(value.name, { role: 'property' }),
       value: value.value,
       important: value.important
-    }, options, location, treeContext);
+    }, options, location);
   }
-  return new Declaration(value, options, location, treeContext);
+  return new Declaration(value, options, location);
 };

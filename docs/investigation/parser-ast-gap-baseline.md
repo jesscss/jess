@@ -76,7 +76,7 @@ These are not parser gaps by themselves:
 - serializer output order changes
 - `Nil ''` vs `Nil`
 - operation serialization changing from positional list output to named `left` / `right` / `operator`
-- tests updated to read `atRule.prelude` instead of `atRule.value.prelude`
+- tests updated to read `atRule.prelude` instead of the old AtRule payload prelude
 - tests updated to read `call.name` / `call.args` instead of `call.value.name` / `call.value.args`
 
 ## Stable AST Contracts We Should Preserve
@@ -114,7 +114,7 @@ No parser-shape drift has been identified yet from the historical CSS AST serial
 
 Observed changes in current CSS tests are node API access changes, not parser AST drift:
 
-- `atRule.value.prelude` -> `atRule.prelude`
+- old AtRule payload prelude access -> `atRule.prelude`
 - `call.value.name` / `call.value.args` -> `call.name` / `call.args`
 
 That means the CSS parser should be treated as structurally stable unless a specific parse shape is proven otherwise.

@@ -1,38 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Context, Dimension, Num, callWithContext } from '@jesscss/core';
 import hsv from '../hsv.js';
-import hsl from '../hsl.js';
 import hsva from '../hsva.js';
 import hsla from '../hsla.js';
-
-type InternalHolder = {
-  _internal?: unknown;
-};
-
-type HslaInternal = (this: {
-  context?: Context;
-  args: () => Promise<unknown[]>;
-  rawArgs: unknown[];
-}, ...args: number[]) => Promise<Color>;
 
 function expectColor(value: unknown): Color {
   expect(value).toBeInstanceOf(Color);
   if (!(value instanceof Color)) {
     throw new Error('Expected Color instance');
-  }
-  return value;
-}
-
-function expectInternalHolder(value: unknown): InternalHolder {
-  if ((typeof value !== 'function' && (typeof value !== 'object' || value === null)) || !('_internal' in value)) {
-    throw new Error('Expected function/object with _internal');
-  }
-  return value;
-}
-
-function expectHslaInternal(value: unknown): HslaInternal {
-  if (typeof value !== 'function') {
-    throw new Error('Expected hsla internal function');
   }
   return value;
 }
@@ -59,7 +34,7 @@ describe('hsv/hsva/hsla()', () => {
     );
     expect(result).toBeInstanceOf(Color);
     expect(result.rgb).toEqual([0, 255, 0]);
-    expect(result.options.format).toBe(ColorFormat.HSL);
+    expect(result.options.format).toBe(ColorFormat.HEX);
   });
 
   it('hsla works both direct and callWithContext paths', async () => {
@@ -94,34 +69,12 @@ describe('hsv/hsva/hsla()', () => {
     expect(expectColor(result).toTrimmedString()).toBe('hsla(120, 100%, 66.66666667%, 0.5)');
   });
 
-  it('hsla falls back to hsl call when internal is unavailable', async () => {
-    const hslInternalHolder = expectInternalHolder(hsl);
-    const originalInternal = hslInternalHolder._internal;
-    try {
-      hslInternalHolder._internal = undefined;
-      const fallback = await hsla(
-        new Dimension({ number: 300, unit: 'deg' }),
-        new Dimension({ number: 100, unit: '%' }),
-        new Dimension({ number: 50, unit: '%' }),
-        new Dimension({ number: 40, unit: '%' })
-      );
-      const fallbackColor = expectColor(fallback);
-      expect(fallbackColor.alpha).toBeCloseTo(0.4);
-      expect(fallbackColor.options.format).toBe(ColorFormat.HSL);
-    } finally {
-      hslInternalHolder._internal = originalInternal;
-    }
-  });
-
-  it('hsla internal direct-call path works without context', async () => {
-    const hslaInternal = expectHslaInternal(expectInternalHolder(hsla)._internal);
-
-    const result = await hslaInternal.call(
-      { context: undefined, args: async () => [], rawArgs: [] },
-      180,
-      1,
-      0.5,
-      0.2
+  it('hsla direct path works without context', async () => {
+    const result = await hsla(
+      new Dimension({ number: 180, unit: 'deg' }),
+      new Dimension({ number: 100, unit: '%' }),
+      new Dimension({ number: 50, unit: '%' }),
+      new Dimension({ number: 20, unit: '%' })
     );
 
     expect(result).toBeInstanceOf(Color);

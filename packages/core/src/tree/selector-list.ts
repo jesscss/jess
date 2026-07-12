@@ -1,14 +1,17 @@
 import {
-  type Node,
+  Node,
   defineType,
   F_EXTENDED,
-  F_EXTEND_TARGET
+  F_EXTEND_TARGET,
+  F_MAY_ASYNC,
+  type NodeLocation,
+  type NodeOptions
 } from './node.js';
 import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { selectorCompare } from './util/compare.js';
@@ -21,13 +24,13 @@ import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLea
 
 function emitSelectorListItem(
   item: Selector,
-  options: ReturnType<typeof getPrintOptions>,
+  options: FinalPrintOptions,
   suppressPre = false
 ): void {
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
   try {
-    item.toString(options);
+    item.writeSyntax(options);
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
@@ -35,6 +38,21 @@ function emitSelectorListItem(
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
+  static override childKeys = ['selectors'] as const;
+
+  readonly selectors: Selector[];
+
+  constructor(
+    value: Selector[],
+    options?: NodeOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.selectors = value;
+  }
+
   private ownSelector(item: Selector): Selector {
     const owned = canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item);
     if (!(owned instanceof Selector)) {
@@ -43,18 +61,27 @@ export class SelectorList extends Selector<Selector[]> {
     return owned;
   }
 
-  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.value): this {
-    const node: this = Reflect.construct(
-      this.constructor,
-      [
-        // Own unchanged source children; evaluated clones may carry runtime state.
-        value.map(item => sourceValue.includes(item) ? this.ownSelector(item) : item),
-        this._options ? { ...this._options } : undefined,
-        this.location,
-        this.treeContext
-      ]
-    );
-    return node.inherit(this);
+  private withSelectors(value: Selector[], sourceValue: readonly Selector[] = this.selectors): this {
+    const ownedValue = new Array<Selector>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      const item = value[i]!;
+      ownedValue[i] = this.isSourceSelector(item, sourceValue) ? this.ownSelector(item) : item;
+    }
+    // Own unchanged source children; evaluated clones may carry runtime state.
+    return new SelectorList(
+      ownedValue,
+      this._options ? { ...this._options } : undefined,
+      this.location
+    ).inherit(this) as this;
+  }
+
+  private isSourceSelector(item: Selector, sourceValue: readonly Selector[]): boolean {
+    for (let i = 0; i < sourceValue.length; i++) {
+      if (sourceValue[i] === item) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private createEvaluatedSelectorListSurface(value: Selector[], sourceValue: readonly Selector[]): this {
@@ -69,36 +96,35 @@ export class SelectorList extends Selector<Selector[]> {
     return owned;
   }
 
-  private renderSelectorListSyntax(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
+  override writeSyntax(printOptions: FinalPrintOptions): void {
     const w = printOptions.writer;
     let depth = printOptions.depth;
     let space = ''.padStart(depth * 2);
     const value: Selector[] = [];
-    for (const item of this.value) {
-      if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
-        const arg = item.value.arg;
+    for (const item of this.selectors) {
+      if (isNode(item, N.PseudoSelector) && item.name === ':is') {
+        const arg = item.arg;
         if (arg && isNode(arg, N.SelectorList)) {
-          value.push(...arg.value);
+          value.push(...arg.selectors);
           continue;
         }
       }
-      if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-          const arg = only.value.arg;
+      if (isNode(item, N.CompoundSelector) && item.components.length === 1) {
+        const only = item.components[0]!;
+        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+          const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
+            value.push(...arg.selectors);
             continue;
           }
         }
       }
-      if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-          const arg = only.value.arg;
+      if (isNode(item, N.ComplexSelector) && item.components.length === 1) {
+        const only = item.components[0]!;
+        if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+          const arg = only.arg;
           if (arg && isNode(arg, N.SelectorList)) {
-            value.push(...arg.value);
+            value.push(...arg.selectors);
             continue;
           }
         }
@@ -110,18 +136,21 @@ export class SelectorList extends Selector<Selector[]> {
       && printOptions.referenceRenderEnabled === true
       && printOptions.referenceFilterTargets === true
     ) {
-      const extendedOnly = value.filter(item =>
-        item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)
-      );
-      if (extendedOnly.length > 0) {
-        value.splice(0, value.length, ...extendedOnly);
+      let extendedCount = 0;
+      for (let i = 0; i < value.length; i++) {
+        const item = value[i]!;
+        if (item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)) {
+          value[extendedCount++] = item;
+        }
+      }
+      if (extendedCount > 0) {
+        value.length = extendedCount;
       }
     }
     let length = value.length;
     if (length === 0) {
-      return '';
+      return;
     }
-    const mark = w.mark();
     let item = value[0]!;
 
     emitSelectorListItem(item, printOptions);
@@ -140,6 +169,16 @@ export class SelectorList extends Selector<Selector[]> {
       }
       emitSelectorListItem(item, printOptions, true);
     }
+  }
+
+  private renderSelectorListSyntax(options?: PrintOptions): string {
+    if (this.selectors.length === 0) {
+      return '';
+    }
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
+    const mark = w.mark();
+    this.writeSyntax(printOptions);
     return w.getSince(mark);
   }
 
@@ -148,7 +187,7 @@ export class SelectorList extends Selector<Selector[]> {
       return;
     }
     const library = this._requireKeySetLibrary();
-    const { value } = this;
+    const value = this.selectors;
     let keySet = library.getBitset();
     let visibleKeySet = library.getBitset();
     for (const selector of value) {
@@ -169,8 +208,15 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    const itemValues = this.value.map(item => item.valueOf());
-    return itemValues.join(',');
+    const value = this.selectors;
+    if (value.length === 0) {
+      return '';
+    }
+    let out = String(value[0]!.valueOf());
+    for (let i = 1; i < value.length; i++) {
+      out += `,${String(value[i]!.valueOf())}`;
+    }
+    return out;
   }
 
   override compare(b: Selector): 0 | 1 | -1 | undefined {
@@ -186,152 +232,145 @@ export class SelectorList extends Selector<Selector[]> {
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    return pipe(
-      () => {
-        const list = this;
-        const currentValue = list.value;
-        const evaluatedValue = [...currentValue];
-        const maybe = serialForEach(evaluatedValue, (item, i) => {
-          const out = item.eval(context);
-          if (isThenable(out)) {
-            return Promise.resolve(out).then((res) => {
-              if (isNode(res, N.Selector)) {
-                evaluatedValue[i] = res;
-              }
-              return undefined;
-            });
-          }
-          if (isNode(out, N.Selector)) {
-            evaluatedValue[i] = out;
-          }
-          return undefined;
-        });
-        if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => [list, currentValue, evaluatedValue] as const);
-        }
-        return [list, currentValue, evaluatedValue] as const;
-      },
-      ([list, currentValue, evaluatedValue]) => {
-        // Flatten top-level `:is(a, b)` items into the selector list.
-        // This is safe in SelectorList context (it is equivalent to `a, b`).
-        const flattened: Selector[] = [];
-        for (const item of evaluatedValue) {
-          if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
-            const arg = item.value.arg;
-            if (arg && isNode(arg, N.SelectorList)) {
-              flattened.push(...arg.value);
-              continue;
-            }
-          }
-          if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-              const arg = only.value.arg;
-              if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.value);
-                continue;
-              }
-            }
-          }
-          if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-              const arg = only.value.arg;
-              if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.value);
-                continue;
-              }
-            }
-          }
-          flattened.push(item);
-        }
-        if (flattened.length === 1) {
-          return list.collapsedSelector(flattened[0]!, currentValue);
-        }
-        const changed = (
-          flattened.length !== currentValue.length
-          || flattened.some((item, idx) => item !== currentValue[idx])
-        );
-        if (!changed) {
-          return list;
-        }
-        return list.createEvaluatedSelectorListSurface(flattened, currentValue);
-      }
-    );
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, false), true);
+    }
+    const evaluatedValue = this.evaluateSelectors(context, false);
+    return isThenable(evaluatedValue)
+      ? (evaluatedValue as Promise<Selector[]>).then(value => this.finalizeEvaluatedSelectors(value, true))
+      : this.finalizeEvaluatedSelectors(evaluatedValue as Selector[], true);
   }
 
   protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    return pipe(
-      () => {
-        const list = this;
-        const currentValue = list.value;
-        const resolvedValue = [...currentValue];
-        const maybe = serialForEach(resolvedValue, (item, i) => {
-          const out = item.resolve(context);
-          if (isThenable(out)) {
-            return Promise.resolve(out).then((res) => {
-              if (isNode(res, N.Selector)) {
-                resolvedValue[i] = res;
-              }
-              return undefined;
-            });
-          }
-          if (isNode(out, N.Selector)) {
-            resolvedValue[i] = out;
-          }
-          return undefined;
-        });
-        if (isThenable(maybe)) {
-          return (maybe as Promise<void>).then(() => [list, currentValue, resolvedValue] as const);
+    if (!this.hasFlag(F_MAY_ASYNC)) {
+      return this.finalizeEvaluatedSelectors(this.evaluateSelectorsSync(context, true), false);
+    }
+    const resolvedValue = this.evaluateSelectors(context, true);
+    return isThenable(resolvedValue)
+      ? (resolvedValue as Promise<Selector[]>).then(value => this.finalizeEvaluatedSelectors(value, false))
+      : this.finalizeEvaluatedSelectors(resolvedValue as Selector[], false);
+  }
+
+  private evaluateSelectorsSync(context: Context, resolve: boolean): Selector[] {
+    const currentValue = this.selectors;
+    const evaluatedValue = new Array<Selector>(currentValue.length);
+    for (let i = 0; i < currentValue.length; i++) {
+      const item = currentValue[i]!;
+      const out = resolve ? item.resolve(context) : item.eval(context);
+      if (!(out instanceof Node)) {
+        if (out !== null && typeof out === 'object') {
+          throw new TypeError('Expected sync selector evaluation to return a node');
         }
-        return [list, currentValue, resolvedValue] as const;
-      },
-      ([list, currentValue, resolvedValue]) => {
-        const flattened: Selector[] = [];
-        for (const item of resolvedValue) {
-          if (isNode(item, N.PseudoSelector) && item.value.name === ':is') {
-            const arg = item.value.arg;
-            if (arg && isNode(arg, N.SelectorList)) {
-              flattened.push(...arg.value);
-              continue;
-            }
-          }
-          if (isNode(item, N.CompoundSelector) && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-              const arg = only.value.arg;
-              if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.value);
-                continue;
-              }
-            }
-          }
-          if (isNode(item, N.ComplexSelector) && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, N.PseudoSelector) && only.value.name === ':is') {
-              const arg = only.value.arg;
-              if (arg && isNode(arg, N.SelectorList)) {
-                flattened.push(...arg.value);
-                continue;
-              }
-            }
-          }
-          flattened.push(item);
-        }
-        if (flattened.length === 1) {
-          return list.collapsedSelector(flattened[0]!, currentValue);
-        }
-        const changed = (
-          flattened.length !== currentValue.length
-          || flattened.some((item, idx) => item !== currentValue[idx])
-        );
-        if (!changed) {
-          return list;
-        }
-        return list.withSelectors(flattened, currentValue);
+        evaluatedValue[i] = item;
+        continue;
       }
-    );
+      evaluatedValue[i] = isNode(out, N.Selector) ? out : item;
+    }
+    return evaluatedValue;
+  }
+
+  private evaluateSelectors(context: Context, resolve: boolean): MaybePromise<Selector[]> {
+    const currentValue = this.selectors;
+    const evaluatedValue = new Array<Selector>(currentValue.length);
+    for (let i = 0; i < currentValue.length; i++) {
+      const item = currentValue[i]!;
+      const out = resolve ? item.resolve(context) : item.eval(context);
+      if (isThenable(out)) {
+        return out.then((res) => {
+          evaluatedValue[i] = isNode(res, N.Selector) ? res : item;
+          return this.evaluateSelectorsRest(context, resolve, evaluatedValue, i + 1);
+        });
+      }
+      evaluatedValue[i] = isNode(out, N.Selector) ? out : item;
+    }
+    return evaluatedValue;
+  }
+
+  private evaluateSelectorsRest(
+    context: Context,
+    resolve: boolean,
+    evaluatedValue: Selector[],
+    start: number
+  ): MaybePromise<Selector[]> {
+    const currentValue = this.selectors;
+    for (let i = start; i < currentValue.length; i++) {
+      const item = currentValue[i]!;
+      const out = resolve ? item.resolve(context) : item.eval(context);
+      if (isThenable(out)) {
+        return out.then((res) => {
+          evaluatedValue[i] = isNode(res, N.Selector) ? res : item;
+          return this.evaluateSelectorsRest(context, resolve, evaluatedValue, i + 1);
+        });
+      }
+      evaluatedValue[i] = isNode(out, N.Selector) ? out : item;
+    }
+    return evaluatedValue;
+  }
+
+  private finalizeEvaluatedSelectors(evaluatedValue: Selector[], evaluated: boolean): Node {
+    const currentValue = this.selectors;
+    const flattened: Selector[] = [];
+    for (let i = 0; i < evaluatedValue.length; i++) {
+      this.appendFlattenedSelector(evaluatedValue[i]!, flattened);
+    }
+    if (flattened.length === 1) {
+      return this.collapsedSelector(flattened[0]!, currentValue);
+    }
+    let changed = flattened.length !== currentValue.length;
+    if (!changed) {
+      for (let i = 0; i < flattened.length; i++) {
+        if (flattened[i] !== currentValue[i]) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (!changed) {
+      return this;
+    }
+    return evaluated
+      ? this.createEvaluatedSelectorListSurface(flattened, currentValue)
+      : this.withSelectors(flattened, currentValue);
+  }
+
+  private appendFlattenedSelector(item: Selector, flattened: Selector[]): void {
+    // Flatten top-level `:is(a, b)` items into the selector list.
+    // This is safe in SelectorList context (it is equivalent to `a, b`).
+    if (isNode(item, N.PseudoSelector) && item.name === ':is') {
+      const arg = item.arg;
+      if (arg && isNode(arg, N.SelectorList)) {
+        this.appendSelectorListValue(arg.selectors, flattened);
+        return;
+      }
+    }
+    if (isNode(item, N.CompoundSelector) && item.components.length === 1) {
+      const only = item.components[0]!;
+      if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+        const arg = only.arg;
+        if (arg && isNode(arg, N.SelectorList)) {
+          this.appendSelectorListValue(arg.selectors, flattened);
+          return;
+        }
+      }
+    }
+    if (isNode(item, N.ComplexSelector) && item.components.length === 1) {
+      const only = item.components[0]!;
+      if (isNode(only, N.PseudoSelector) && only.name === ':is') {
+        const arg = only.arg;
+        if (arg && isNode(arg, N.SelectorList)) {
+          this.appendSelectorListValue(arg.selectors, flattened);
+          return;
+        }
+      }
+    }
+    flattened.push(item);
+  }
+
+  private appendSelectorListValue(value: Selector[], out: Selector[]): void {
+    for (let i = 0; i < value.length; i++) {
+      out.push(value[i]!);
+    }
   }
 
   override resolve(context: Context): MaybePromise<Node> {

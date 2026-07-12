@@ -12,7 +12,7 @@ A math operation. Parses math expressions and returns results, preserving node t
 
 #### Example
 ```css
-@import { op } from '@jesscss/fns';
+@-from '@jesscss/fns' import (op);
 .box {
   one: op(2px * (2 + 1));
   two: op(2px * 3 * 2);
@@ -42,7 +42,7 @@ If you're performing a lot of operations using `op`, one way to give it a small 
 :::
 
 ```css
-@import { op as _ } from '@jesscss/fns';
+@-from '@jesscss/fns' import (op as _);
 .box {
   one: _(2px * (2 + 1));
   two: _(2px * 3 * 2);

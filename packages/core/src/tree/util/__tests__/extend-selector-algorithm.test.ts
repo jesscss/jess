@@ -265,7 +265,7 @@ describe('Extend Selector Tests', () => {
       const result = extendSelector(selector, arg, extendWith, false);
 
       expect(result.valueOf()).toBe(':is(.a,.c)');
-      expect(selector.value.arg).toBe(arg);
+      expect(selector.arg).toBe(arg);
       expect(arg.parent).toBe(selector);
       expect(extendWith.parent).toBeUndefined();
     });
@@ -489,11 +489,11 @@ describe('Extend Selector Tests', () => {
       // Extract the :is() argument to compare
       if (isNode(isResult, N.PseudoSelector)) {
         const pseudo = isResult;
-        if (pseudo.value && typeof pseudo.value === 'object' && 'name' in pseudo.value && pseudo.value.name === ':is' && 'arg' in pseudo.value && pseudo.value.arg) {
-          if (!isNode(pseudo.value.arg, N.Selector)) {
+        if (pseudo.name === ':is' && pseudo.arg) {
+          if (!isNode(pseudo.arg, N.Selector)) {
             throw new Error('Expected :is() argument to be a selector');
           }
-          const isArgStr = pseudo.value.arg.valueOf();
+          const isArgStr = pseudo.arg.valueOf();
           expect(isArgStr).toBe('.g,.i.j');
         } else {
           throw new Error(`Expected :is() selector, got ${isResult.type}`);

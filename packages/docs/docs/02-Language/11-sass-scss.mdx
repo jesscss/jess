@@ -43,9 +43,9 @@ Jess equivalent:
 
 Jess’s module import node is `StyleImport` (see `packages/core/src/tree/import-style.ts`). It supports namespaces, configuration, and export/protection flags.
 
-### `@use` (scripts) → `@-use`
+### `@use` (scripts) → `@-use` / `@-from`
 
-In Jess, `@-use` is for importing JS/TS/JSON modules (see `packages/core/src/tree/import-js.ts`).
+In Jess, `@-use` is the Sass-module-style namespace form for JS/TS/JSON modules. Like Sass, it can infer the namespace from the module name when `as` is omitted. `@-from` is the ESM-style form for named imports or `import * as ns` namespace imports (see `packages/core/src/tree/import-js.ts`).
 
 When parsing SCSS, Jess will treat `@use` as a stylesheet import by default, but if the `@use` path clearly targets a script module (for example `./tokens.js`, `./tokens.ts`, `./tokens.json`), it will parse to a JS import node instead.
 
@@ -128,4 +128,3 @@ Sass supports `!global` and `!default` on variable assignments ([variables](http
 Jess’s SCSS support intentionally does **not** implement Sass’s full `!global` shadowing model. Instead, SCSS `!global` will be treated as “set existing / do not shadow” (Jess’s `setDefined` behavior), which is equivalent to `!global` *unless the user has already shadowed the variable in a narrower scope*—in that case, the user must refactor the source for clarity.
 
 `!default` exists in Sass primarily to support module configuration (`@use ... with (...)`). Jess will align with Sass’s `@use` configuration behavior by ensuring configurable variables are explicitly marked and handled accordingly.
-

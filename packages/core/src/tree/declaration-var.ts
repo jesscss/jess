@@ -5,9 +5,10 @@ import {
 } from './declaration.js';
 import { Any, type AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
-import { defineType, F_VISIBLE, type Node, type NodeLocation, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, type Node, type NodeLocation } from './node.js';
 import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import type { Context } from '../context.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
@@ -20,7 +21,7 @@ export type VarDeclarationOptions = DeclarationOptions & {
  *   SCSS: `$foo: 1`
  *
  * @example `setDefined`
- *   Jess: `$^foo: 1`
+ *   Jess: `$foo := 1`
  *   SCSS: `$foo: 1 !global`
  *
  *
@@ -34,7 +35,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     value: DeclarationValue<AnyRole>,
     options?: VarDeclarationOptions,
     location?: NodeLocation,
-    treeContext?: TreeContext
+    treeContext?: Context['treeContext']
   ) {
     super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);
@@ -52,10 +53,10 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     //
     // Special-case parameter vars (used in mixin signatures) that have no default value:
     // print `$name` (no `: <value>`).
-    if (this._options?.paramVar && this.value.value instanceof Nil) {
+    if (this._options?.paramVar && this.valueNode instanceof Nil) {
       w.add('$', this);
-      const normalizedName = String(this.value.name).replace(/\s+$/, '');
-      w.add(normalizedName, this.value.name);
+      const normalizedName = String(this.name).replace(/\s+$/, '');
+      w.add(normalizedName, this.name);
       return w.getSince(mark);
     }
 
@@ -75,7 +76,7 @@ export const vardecl = (
   value: DeclarationValue<AnyRole> | { name: string; value: Node; important?: Any<'flag'> },
   options?: VarDeclarationOptions,
   location?: NodeLocation,
-  treeContext?: TreeContext
+  treeContext?: Context['treeContext']
 ) => {
   const { name } = value;
   const nameNode: DeclarationValue['name'] = typeof name === 'string'
@@ -83,7 +84,12 @@ export const vardecl = (
     : name instanceof Any
       ? new Any(name.value, { role: 'property' })
       : name instanceof Interpolated
-        ? new Interpolated(name.value, { ...name.options, role: 'property' }, name.location, name.treeContext)
+        ? new Interpolated(
+          { source: name.source, replacements: name.replacements },
+          { ...name.options, role: 'property' },
+          name.location,
+          name.sourceRoot?._treeContext
+        )
         : name;
   const declarationValue: DeclarationValue = {
     ...value,

@@ -32,7 +32,7 @@ describe('value', () => {
 
   it('should reject backtick javascript values', () => {
     expect(() => parse('.a { js: `1 + 1`; esc: ~`2 + 5 + "px"`; }', 'stylesheet')).toThrow(
-      'Inline JavaScript using backticks is not supported. Use @use to import a JavaScript/TypeScript module instead. Script-module documentation is coming soon.'
+      'Inline JavaScript using backticks is not supported. Use @use / @-use to import a script module instead. Script-module documentation is coming soon.'
     );
   });
 
@@ -47,11 +47,11 @@ describe('value', () => {
 
     expect(errors.length).toBe(0);
     const ruleset = tree.value[0]!;
-    const eachNode = ruleset.value.rules.value[0]!;
+    const eachNode = ruleset.rules.value[0]!;
     expect(eachNode.type).toBe('For');
-    expect(eachNode.value.pattern.kind).toBe('tuple');
-    expect(eachNode.value.pattern.values.map((entry: any) => entry.value.name.valueOf())).toEqual(['value', 'key', 'index']);
-    expect(eachNode.value.rules.value).toHaveLength(1);
+    expect(eachNode.pattern.kind).toBe('tuple');
+    expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['value', 'key', 'index']);
+    expect(eachNode.rules.value).toHaveLength(1);
   });
 
   it('preserves explicit each() callback params in the For pattern', () => {
@@ -64,8 +64,8 @@ describe('value', () => {
     expect(errors.length).toBe(0);
     const eachNode = tree.value[0]!;
     expect(eachNode.type).toBe('For');
-    expect(eachNode.value.pattern.kind).toBe('tuple');
-    expect(eachNode.value.pattern.values.map((entry: any) => entry.value.name.valueOf())).toEqual(['v', 'i']);
+    expect(eachNode.pattern.kind).toBe('tuple');
+    expect(eachNode.pattern.values.map((entry: any) => entry.name.valueOf())).toEqual(['v', 'i']);
   });
 });
 
@@ -88,10 +88,10 @@ describe('valueSequence', () => {
 
     expect(errors.length).toBe(0);
     const serialized = serializeTypes(tree, { showOptions: true });
-    expect(serialized).toContain("sep: '/'");
-    expect(serialized).toContain("'small'");
+    expect(serialized).toContain('sep: \'/\'');
+    expect(serialized).toContain('\'small\'');
     expect(serialized).toContain('(Dimension');
-    expect(serialized).toContain("unit: 'px'");
+    expect(serialized).toContain('unit: \'px\'');
   });
 
   it('allows color-keyword slash values to remain division-like in math: always mode', () => {
@@ -101,7 +101,7 @@ describe('valueSequence', () => {
     expect(errors.length).toBe(0);
     const serialized = serializeTypes(tree, { showOptions: true });
     expect(serialized).toContain('(Operation');
-    expect(serialized).toContain("node: 'red'");
+    expect(serialized).toContain('node: \'red\'');
     expect(serialized).toContain('(Num 2)');
   });
 });

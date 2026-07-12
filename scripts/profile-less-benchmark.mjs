@@ -17,11 +17,14 @@ const cliArgs = new Map(
   })
 );
 
-const benchmarkArg = cliArgs.get('--file') ?? 'benchmark.less';
+const benchmarkArg = cliArgs.get('--fixture') ?? cliArgs.get('--file') ?? 'benchmark.less';
+const benchmarkRoot = cliArgs.has('--fixture') ? repoRoot : path.join(lessPkgRoot, 'benchmark');
 const benchmarkFile = path.isAbsolute(benchmarkArg)
   ? benchmarkArg
-  : path.join(lessPkgRoot, 'benchmark', benchmarkArg);
+  : path.join(benchmarkRoot, benchmarkArg);
 const useCompat = cliArgs.get('--compat') !== 'false';
+globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ = {};
+globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ = {};
 
 const coreLib = pathToFileURL(path.join(repoRoot, 'packages/core/lib/index.js')).href;
 const lessParserLib = pathToFileURL(path.join(repoRoot, 'packages/less-parser/lib/index.js')).href;
@@ -89,7 +92,7 @@ function wrapMethod(proto, methodName, label, before) {
   if (original.__instrumented) {
     return true;
   }
-  const wrapped = function (...args) {
+  const wrapped = function(...args) {
     before?.call(this, args);
     const start = performance.now();
     let result;
@@ -132,7 +135,7 @@ wrapMethod(OutputWriter.prototype, 'capture', 'OutputWriter.capture');
 wrapMethod(Node.prototype, 'clone', 'Node.clone');
 wrapMethod(Node.prototype, 'copy', 'Node.copy');
 wrapMethod(Node.prototype, 'cloneValue', 'Node.cloneValue');
-wrapMethod(Reference.prototype, 'evalNode', 'Reference.evalNode', function () {
+wrapMethod(Reference.prototype, 'evalNode', 'Reference.evalNode', function() {
   const key = this?.value?.rawKey ?? this?.value?.key;
   const type = this?.options?.type ?? 'variable';
   const line = this?.location?.line ?? this?.source?.start?.line ?? '?';
@@ -142,7 +145,7 @@ wrapMethod(Reference.prototype, 'evalNode', 'Reference.evalNode', function () {
   recordPath(lookupStats.referenceEvalBySite, `${type}:${normalizeLookupKey(key)} @ ${path.basename(String(file))}:${line}:${column}`);
 });
 
-wrapMethod(Rules.prototype, 'find', 'Rules.find', function (args) {
+wrapMethod(Rules.prototype, 'find', 'Rules.find', function(args) {
   const [type, keys] = args;
   recordPath(lookupStats.rulesFindByType, String(type));
   recordPath(lookupStats.rulesFindByKey, `${String(type)}:${normalizeLookupKey(keys)}`);
@@ -159,17 +162,17 @@ wrapMethod(Rules.prototype, 'find', 'Rules.find', function (args) {
 });
 {
   const originalGetRegistry = Rules.prototype.getRegistry;
-  Rules.prototype.getRegistry = function (...args) {
+  Rules.prototype.getRegistry = function(...args) {
     const registry = originalGetRegistry.apply(this, args);
     if (registry?.constructor?.prototype) {
       const proto = registry.constructor.prototype;
       const prefix = registry.constructor.name || 'Registry';
-      wrapMethod(proto, 'find', `${prefix}.find`, function (findArgs) {
+      wrapMethod(proto, 'find', `${prefix}.find`, function(findArgs) {
         const [keys] = findArgs;
         recordPath(lookupStats.registryFindByType, prefix);
         recordPath(lookupStats.registryFindByKey, `${prefix}:${normalizeLookupKey(keys)}`);
       });
-      wrapMethod(proto, '_searchRulesChildren', `${prefix}._searchRulesChildren`, function (childArgs) {
+      wrapMethod(proto, '_searchRulesChildren', `${prefix}._searchRulesChildren`, function(childArgs) {
         const [keys] = childArgs;
         recordPath(lookupStats.searchChildrenByType, prefix);
         recordPath(lookupStats.searchChildrenByKey, `${prefix}:${normalizeLookupKey(keys)}`);
@@ -182,7 +185,7 @@ wrapMethod(Rules.prototype, 'find', 'Rules.find', function (args) {
 
 {
   const originalGetTree = Context.prototype.getTree;
-  Context.prototype.getTree = async function (...args) {
+  Context.prototype.getTree = async function(...args) {
     importStats.getTreeCalls++;
     const [importPath] = args;
     recordPath(importStats.getTreeByPath, String(importPath));
@@ -202,7 +205,7 @@ wrapMethod(Rules.prototype, 'find', 'Rules.find', function (args) {
   };
 }
 
-wrapMethod(LessParser.prototype, 'parse', 'LessParser.parse', function (args) {
+wrapMethod(LessParser.prototype, 'parse', 'LessParser.parse', function(args) {
   importStats.parseCalls++;
   const [, rule = 'stylesheet'] = args;
   recordPath(importStats.parseByRule, String(rule));
@@ -246,6 +249,8 @@ if (useCompat) {
   );
 }
 const elapsedMs = performance.now() - start;
+const serializeProfileCounters = globalThis.__JESS_SERIALIZE_PROFILE_COUNTERS__ ?? {};
+const directLookupProfileCounters = globalThis.__JESS_DIRECT_LOOKUP_PROFILE_COUNTERS__ ?? {};
 
 const metricRows = [...stats.entries()]
   .map(([name, metric]) => ({
@@ -260,6 +265,15 @@ const result = {
   benchmarkFile,
   compat: useCompat,
   elapsedMs: Number(elapsedMs.toFixed(2)),
+  serializeStats: {
+    duplicateDeclarationComparisonContainers: serializeProfileCounters.duplicateDeclarationComparisonContainers ?? 0,
+    duplicateDeclarationPrerenderedDeclarations: serializeProfileCounters.duplicateDeclarationPrerenderedDeclarations ?? 0,
+    duplicateDeclarationCachedOutputReuses: serializeProfileCounters.duplicateDeclarationCachedOutputReuses ?? 0,
+    emissionRenderNodeTextPreviewCalls: serializeProfileCounters.emissionRenderNodeTextPreviewCalls ?? 0,
+    emissionRenderNodeTextRulesPreviewCalls: serializeProfileCounters.emissionRenderNodeTextRulesPreviewCalls ?? 0,
+    emissionRenderNodeTextDeclarationFallbackCalls: serializeProfileCounters.emissionRenderNodeTextDeclarationFallbackCalls ?? 0,
+    emissionRenderNodeTextLeafCalls: serializeProfileCounters.emissionRenderNodeTextLeafCalls ?? 0
+  },
   importStats: {
     getTreeCalls: importStats.getTreeCalls,
     getTreeCacheHits: importStats.getTreeCacheHits,
@@ -276,6 +290,7 @@ const result = {
     topRegistryFindKeys: Object.fromEntries(printMap(lookupStats.registryFindByKey, 30)),
     searchChildrenByType: Object.fromEntries(printMap(lookupStats.searchChildrenByType, 20)),
     topSearchChildrenKeys: Object.fromEntries(printMap(lookupStats.searchChildrenByKey, 30)),
+    directLookupCounters: Object.fromEntries(printMap(new Map(Object.entries(directLookupProfileCounters)), 40)),
     topReferenceEvalKeys: Object.fromEntries(printMap(lookupStats.referenceEvalByKey, 30)),
     topReferenceEvalSites: Object.fromEntries(printMap(lookupStats.referenceEvalBySite, 40))
   },

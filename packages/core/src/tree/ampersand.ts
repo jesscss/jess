@@ -1,8 +1,8 @@
-import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
+import { defineType, type NodeOptions, type LocationInfo, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
 import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
-import { PseudoSelector } from './selector-pseudo.js';
+import { createGeneratedIsPseudo } from './selector-pseudo.js';
 import { SelectorList } from './selector-list.js';
 import { BasicSelector } from './selector-basic.js';
 import { CompoundSelector } from './selector-compound.js';
@@ -11,7 +11,7 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
@@ -80,7 +80,7 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
     return true;
   }
   if (isNode(node, N.ComplexSelector) || isNode(node, N.CompoundSelector)) {
-    return node.value.length === 1 && isNode(node.value[0], N.Ampersand);
+    return node.components.length === 1 && isNode(node.components[0], N.Ampersand);
   }
   return false;
 };
@@ -130,24 +130,9 @@ type AmpersandAppendPlacementState = {
   templateMerge: boolean;
   templateParts?: string[];
   hoistToRoot: boolean;
-  inputItemTexts: string[];
-  inputItemCount: number;
   result?: Selector | Nil;
-  resultItemTexts?: string[];
-  resultItemCount?: number;
-  resultText?: string;
   selectorBits: Context['selectorBits'];
 };
-
-function getSelectorItemTexts(selector: Selector | Nil): string[] {
-  if (isNode(selector, N.SelectorList)) {
-    return selector.value.map(item => item.toTrimmedString());
-  }
-  if (isNode(selector, N.Nil)) {
-    return [];
-  }
-  return [selector.toTrimmedString()];
-}
 
 function createAmpersandAppendPlacementState(
   source: Ampersand,
@@ -155,7 +140,6 @@ function createAmpersandAppendPlacementState(
   context: Context,
   appendValue?: string
 ): AmpersandAppendPlacementState {
-  const inputItemTexts = getSelectorItemTexts(selector);
   return {
     source,
     selector,
@@ -163,8 +147,6 @@ function createAmpersandAppendPlacementState(
     templateMerge: appendValue?.includes('&') === true,
     templateParts: appendValue?.includes('&') === true ? appendValue.split('&') : undefined,
     hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
-    inputItemTexts,
-    inputItemCount: inputItemTexts.length,
     selectorBits: context.selectorBits
   };
 }
@@ -200,26 +182,49 @@ function throwCannotAppendSelector(appendValue: string): never {
   throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
 }
 
+function getExactBasicSelectorText(selector: Selector): string | undefined {
+  return selector.constructor === BasicSelector
+    ? (selector as BasicSelector).valueOf()
+    : undefined;
+}
+
 function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
   if (
     isNode(baseSelector, N.PseudoSelector)
-    && baseSelector.value.name === ':is'
-    && baseSelector.value.arg
-    && isNode(baseSelector.value.arg, N.SelectorList)
+    && baseSelector.name === ':is'
+    && baseSelector.arg
+    && isNode(baseSelector.arg, N.SelectorList)
   ) {
-    return baseSelector.value.arg.value.map(item => item as Selector);
+    return baseSelector.arg.selectors;
   }
   if (isNode(baseSelector, N.SelectorList)) {
-    return baseSelector.value.map(item => item as Selector);
+    return baseSelector.selectors;
   }
-
-  const selectorStr = baseSelector.toTrimmedString();
-  if (!selectorStr.includes(',')) {
-    return [baseSelector];
+  const exactBasicText = getExactBasicSelectorText(baseSelector);
+  if (exactBasicText !== undefined) {
+    if (!exactBasicText.includes(',')) {
+      return [baseSelector];
+    }
+    const parts = splitTopLevelCommas(exactBasicText);
+    const selectors = new Array<Selector>(parts.length);
+    for (let i = 0; i < parts.length; i++) {
+      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+    }
+    return selectors;
   }
-
-  return splitTopLevelCommas(selectorStr)
-    .map(item => new BasicSelector(item).inherit(baseSelector));
+  if (isNode(baseSelector, N.SimpleSelector)) {
+    const selectorText = baseSelector.toTrimmedString();
+    if (!selectorText.includes(',')) {
+      return [baseSelector];
+    }
+    const parts = splitTopLevelCommas(selectorText);
+    const selectors = new Array<Selector>(parts.length);
+    for (let i = 0; i < parts.length; i++) {
+      selectors[i] = new BasicSelector(parts[i]!).inherit(baseSelector);
+    }
+    return selectors;
+  }
+  return [baseSelector];
 }
 
 function mergeAmpersandTemplateSelector(
@@ -231,17 +236,20 @@ function mergeAmpersandTemplateSelector(
     return baseSelector;
   }
   const replacements = getAmpersandTemplateReplacements(baseSelector);
-  const merged = replacements.map((item) => {
-    const value = item.toTrimmedString();
+  const merged = new Array<Selector>(replacements.length);
+  for (let i = 0; i < replacements.length; i++) {
+    const item = replacements[i]!;
+    const value = getExactBasicSelectorText(item) ?? item.toTrimmedString();
     assertValidAmpersandTemplateJoin(appendValue, value);
     if (templateParts?.length === 2 && templateParts[0] === '' && templateParts[1]) {
       const result = appendSelector(item, templateParts[1]);
       if (result.appended) {
-        return result.selector;
+        merged[i] = result.selector;
+        continue;
       }
     }
-    return new BasicSelector((templateParts ?? [appendValue]).join(value)).inherit(baseSelector);
-  });
+    merged[i] = new BasicSelector((templateParts ?? [appendValue]).join(value)).inherit(baseSelector);
+  }
   if (merged.length === 1) {
     return merged[0]!;
   }
@@ -270,12 +278,11 @@ function createAmpersandWithSelectorContainer(
 ): Ampersand {
   return new Ampersand(
     {
-      appendValue: source.value.appendValue,
+      appendValue: source.appendValue,
       selectorContainer
     },
     source.options,
-    source.location.length === 0 ? undefined : source.location,
-    source.treeContext
+    source.location.length === 0 ? undefined : source.location
   ).inherit(source);
 }
 
@@ -320,8 +327,7 @@ function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): Sim
     [
       value,
       { ...selector.options },
-      selector.location.length === 0 ? undefined : selector.location,
-      selector.treeContext
+      selector.location.length === 0 ? undefined : selector.location
     ]
   );
   if (!(node instanceof SimpleSelector)) {
@@ -342,13 +348,16 @@ function appendSimpleSelector(selector: SimpleSelector, appendValue: string): Ap
 
 function appendSelector(selector: Selector, appendValue: string): AppendSelectorResult {
   if (isNode(selector, N.SelectorList)) {
-    const items = selector.value.map((item) => {
+    const sourceItems = selector.selectors;
+    const items = new Array<Selector>(sourceItems.length);
+    for (let i = 0; i < sourceItems.length; i++) {
+      const item = sourceItems[i]!;
       const result = appendSelector(item as Selector, appendValue);
       if (!result.appended) {
         throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
       }
-      return result.selector;
-    });
+      items[i] = result.selector;
+    }
     return {
       selector: SelectorList.create(items).inherit(selector),
       appended: true
@@ -356,8 +365,8 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   if (isNode(selector, N.ComplexSelector)) {
-    for (let i = selector.value.length - 1; i >= 0; i--) {
-      const component = selector.value[i]!;
+    for (let i = selector.components.length - 1; i >= 0; i--) {
+      const component = selector.components[i]!;
       if (isNode(component, N.Combinator)) {
         continue;
       }
@@ -365,11 +374,13 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
       if (!result.appended) {
         continue;
       }
-      const components = selector.value.map((item, idx) => (
-        idx === i
+      const sourceComponents = selector.components;
+      const components = new Array<ComplexSelectorComponent>(sourceComponents.length);
+      for (let j = 0; j < sourceComponents.length; j++) {
+        components[j] = j === i
           ? expectComplexAppendResult(result.selector)
-          : ownComplexComponentForAppend(item)
-      ));
+          : ownComplexComponentForAppend(sourceComponents[j]!);
+      }
       return {
         selector: ComplexSelector.create(components).inherit(selector),
         appended: true
@@ -379,12 +390,14 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   if (isNode(selector, N.CompoundSelector)) {
-    for (let i = selector.value.length - 1; i >= 0; i--) {
-      const part = selector.value[i]!;
+    for (let i = selector.components.length - 1; i >= 0; i--) {
+      const part = selector.components[i]!;
       const result = appendSimpleSelector(part, appendValue);
-      const parts = selector.value.map((item, idx) => (
-        idx === i ? result.selector : ownSelectorForAppend(item)
-      ));
+      const sourceParts = selector.components;
+      const parts = new Array<SimpleSelector>(sourceParts.length);
+      for (let j = 0; j < sourceParts.length; j++) {
+        parts[j] = j === i ? result.selector : ownSelectorForAppend(sourceParts[j]!);
+      }
       return {
         selector: CompoundSelector.create(parts).inherit(selector),
         appended: true
@@ -406,11 +419,6 @@ function finishAmpersandAppendPlacement(
 ): Selector | Nil {
   placement.selector = selector;
   placement.result = selector;
-  placement.resultItemTexts = getSelectorItemTexts(selector);
-  placement.resultItemCount = placement.resultItemTexts.length;
-  placement.resultText = placement.resultItemTexts.length === 1
-    ? placement.resultItemTexts[0]
-    : selector.toTrimmedString();
   if (placement.hoistToRoot) {
     placement.result.hoistToRoot = true;
   }
@@ -421,6 +429,10 @@ function finishAmpersandAppendPlacement(
  * The '&' selector element
  */
 export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
+  static override childKeys = null;
+
+  readonly appendValue: string | undefined;
+
   private _storedSelector: Selector | Nil | undefined;
   private _selectorContainer: { selector?: Selector | Nil | undefined } | undefined;
 
@@ -428,21 +440,23 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     value?: AmpersandValue | string,
     options?: NodeOptions,
     location?: LocationInfo,
-    treeContext?: TreeContext
+    treeContext?: Context['treeContext']
   ) {
     let finalValue: AmpersandValue = {};
     if (typeof value === 'string') {
       finalValue.appendValue = value;
-      super(finalValue, options, location, treeContext);
+      super(finalValue, options, location);
     } else {
       finalValue = value ? { appendValue: value.appendValue } : {};
-      super(finalValue, options, location, treeContext);
+      super(finalValue, options, location);
       const selectorContainer = value?.selectorContainer;
       if (selectorContainer) {
         this._selectorContainer = selectorContainer;
         this._storedSelector = selectorContainer?.selector;
       }
     }
+    this.appendValue = finalValue.appendValue;
+    this._treeContext = treeContext;
 
     // Set the F_AMPERSAND flag so it bubbles up to parent selectors
     this.addFlag(F_AMPERSAND);
@@ -511,12 +525,10 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const selector = this._selectorContainer?.selector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
       const arg = copyOwnedWithReusableLeaves(selector);
-      if (!isNode(arg, N.Selector)) {
+      if (!(arg instanceof Selector)) {
         throw new TypeError('Expected selector copy');
       }
-      const wrapped = PseudoSelector.create({ name: ':is', arg });
-      wrapped.generated = true;
-      return wrapped;
+      return createGeneratedIsPseudo(arg);
     }
     return selector;
   }
@@ -533,7 +545,13 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { appendValue } = this.value;
+    this.writeSyntax(options);
+    return w.getSince(mark);
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    const w = options.writer;
+    const { appendValue } = this;
     if (appendValue) {
       w.add('&(');
       w.add(appendValue, this);
@@ -543,23 +561,22 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // resolves to the grandparent, then restore it after rendering.
       const parent = options.composedSelectorStack.pop()!;
       if (options.ampersandFirst !== false) {
-        parent.toString(options);
+        parent.writeSyntax(options);
       } else {
         w.add(':is(');
-        parent.toString(options);
+        parent.writeSyntax(options);
         w.add(')');
       }
       options.composedSelectorStack.push(parent);
     } else {
       w.add('&', this);
     }
-    return w.getSince(mark);
   }
 
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     this.keySetLibrary = context.selectorBits;
-    const { appendValue } = this.value;
+    const { appendValue } = this;
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
     if (appendValue !== undefined || this.hoistToRoot) {
@@ -607,7 +624,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       const parentSelector = amp.parent;
       const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);
       if (!isBareWrapperAmp) {
-        const file = amp.treeContext?.file;
+        const file = amp.sourceRoot?._treeContext?.file;
         const selectorText = String(amp.parent?.valueOf?.() ?? '&');
         context.warnings.push(toDiagnostic(WARN.parentlessAmpersand({
           ctx: file ? { file } : undefined,
@@ -636,12 +653,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   derive(): Ampersand {
     const node = new Ampersand(
       {
-        appendValue: this.value.appendValue,
+        appendValue: this.appendValue,
         selectorContainer: this._selectorContainer
       },
       this._options ? { ...this._options } : undefined,
-      this.location.length === 0 ? undefined : this.location,
-      this.treeContext
+      this.location.length === 0 ? undefined : this.location
     ).inherit(this);
     if (this._storedSelector) {
       node._storedSelector = this._storedSelector;

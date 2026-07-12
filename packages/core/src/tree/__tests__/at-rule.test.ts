@@ -7,9 +7,7 @@ import {
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
-  AtRule,
-  createAtRuleBodyPublicResultState,
-  createAtRuleBodyRuntimeUpdate
+  AtRule
 } from '../at-rule.js';
 import { Rules } from '../rules.js';
 import { Node } from '../node.js';
@@ -17,6 +15,7 @@ import { serializeTypes } from '../util/serialize-types.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import * as path from 'path';
 import * as fs from 'fs';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
@@ -36,10 +35,36 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  marks = 0;
+  previews = 0;
+  reads = 0;
+  restores = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override mark(): number {
+    this.marks++;
+    return super.mark();
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
+  }
+
+  override preview(fn: () => string | void, preserveSegments?: boolean): string;
+  override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
+    this.previews++;
+    return super.preview(fn, preserveSegments);
+  }
+
+  override restore(mark: number): void {
+    this.restores++;
+    super.restore(mark);
   }
 }
 
@@ -75,6 +100,22 @@ describe('AtRule', () => {
     expect(prepared).toBe(node);
   });
 
+  it('compares at-rule names without public string transport', () => {
+    const name = any('@media', { role: 'atkeyword' });
+    let toStringCalls = 0;
+    name.toString = () => {
+      toStringCalls++;
+      return '@wrong';
+    };
+    const node = atrule({
+      name,
+      prelude: seq([any('screen', { role: 'keyword' })])
+    });
+
+    expect(node.valueOf()).toBe('@media screen');
+    expect(toStringCalls).toBe(0);
+  });
+
   it('keeps interpolated at-rule registration prep wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
     const prelude = seq([any('screen', { role: 'keyword' })]);
     const node = atrule({
@@ -93,7 +134,7 @@ describe('AtRule', () => {
     if (!(prepared instanceof AtRule)) {
       throw new Error('Expected AtRule result');
     }
-    expect(prepared.value.name.valueOf()).toBe('@media');
+    expect(prepared.name.valueOf()).toBe('@media');
     expect(prelude.parent).toBe(node);
   });
 
@@ -119,7 +160,7 @@ describe('AtRule', () => {
     if (!(prepared instanceof AtRule)) {
       throw new Error('Expected AtRule result');
     }
-    expect(prepared.value.rules).toBe(preparedRules);
+    expect(prepared.rules).toBe(preparedRules);
     expect(sourceRules.parent).toBe(node);
     expect(sourcePrelude.parent).toBe(node);
     expect(node.registrationPrepared).toBe(false);
@@ -196,7 +237,7 @@ describe('AtRule', () => {
     context.rulesContext = savedRulesContext;
 
     await expect(Promise.resolve(node.eval(context))).resolves.toBe(node);
-    expect(node.value.prelude?.toTrimmedString()).toBe('print');
+    expect(node.prelude?.toTrimmedString()).toBe('print');
     expect(context.rulesContext).toBe(savedRulesContext);
   });
 
@@ -219,7 +260,7 @@ describe('AtRule', () => {
     expect(context.frames).toEqual([savedFrame]);
   });
 
-  it('restores hoist runtime compatibility state when body eval throws', () => {
+  it('keeps source hoist fields canonical when body eval throws', () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
       rules: rules([])
@@ -281,7 +322,7 @@ describe('AtRule', () => {
     expect(context.frames).toEqual([savedFrame]);
   });
 
-  it('restores hoist runtime compatibility state when body eval rejects', async () => {
+  it('keeps source hoist fields canonical when body eval rejects', async () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
       rules: rules([])
@@ -440,8 +481,54 @@ describe('AtRule', () => {
     expect(outerBody.parent).toBe(outerLayer);
     expect(nestedLayer.parent).toBe(outerBody);
     expect(nestedBody.parent).toBe(nestedLayer);
-    expect(outerLayer.value.rules).toBe(outerBody);
-    expect(nestedLayer.value.rules).toBe(nestedBody);
+    expect(outerLayer.rules).toBe(outerBody);
+    expect(nestedLayer.rules).toBe(nestedBody);
+  });
+
+  it('registers async nested layer names from invocation records without mutating source children', async () => {
+    const nestedPrelude = any('child');
+    nestedPrelude.addFlag(F_MAY_ASYNC);
+    nestedPrelude.eval = async () => {
+      await Promise.resolve();
+      return any('child');
+    };
+    const nestedBody = rules([
+      ruleset({
+        selector: el('.inner'),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+    const nestedLayer = atrule({
+      name: any('@layer', { role: 'atkeyword' }),
+      prelude: nestedPrelude,
+      rules: nestedBody
+    });
+    const outerBody = rules([nestedLayer]);
+    const outerLayer = atrule({
+      name: any('@layer', { role: 'atkeyword' }),
+      prelude: any('parent'),
+      rules: outerBody
+    });
+    const registeredLayers: Array<string | undefined> = [];
+    const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
+    context.extendRoots.registerRoot = function registerRootWithLayerCapture(
+      ...args: Parameters<typeof originalRegisterRoot>
+    ): ReturnType<typeof originalRegisterRoot> {
+      registeredLayers.push(args[2]?.layerName);
+      return originalRegisterRoot(...args);
+    };
+
+    const root = rules([outerLayer]);
+
+    await Promise.resolve(root.render(context));
+
+    expect(registeredLayers).toContain('parent');
+    expect(registeredLayers).toContain('parent.child');
+    expect(outerBody.parent).toBe(outerLayer);
+    expect(nestedLayer.parent).toBe(outerBody);
+    expect(nestedBody.parent).toBe(nestedLayer);
+    expect(outerLayer.rules).toBe(outerBody);
+    expect(nestedLayer.rules).toBe(nestedBody);
   });
 
   it('renders already evaluated at-rules without deriving another eval surface', async () => {
@@ -536,30 +623,73 @@ describe('AtRule', () => {
   });
 
   it('renders dynamic leaf at-rule preludes without evaluating an at-rule surface', async () => {
+    const namespaceValue = any('svg');
     const root = rules([
       vardecl({
         name: 'namespace',
-        value: any('svg')
+        value: namespaceValue
       })
     ]);
     const evaldRoot = await root.eval(context);
     context.root = evaldRoot;
     context.rulesContext = evaldRoot;
+    const name = any('@namespace', { role: 'atkeyword' });
     const prelude = seq([ref({ key: 'namespace' }, { type: 'variable' })]);
     const node = atrule({
-      name: any('@namespace', { role: 'atkeyword' }),
+      name,
       prelude
     });
     const originalEval = AtRule.prototype.eval;
+    const originalNameToString = name.toString;
+    const originalNameWriteSyntax = name.writeSyntax;
+    const originalPreludeToString = node.prelude!.toString;
+    const originalNamespaceValueWriteSyntax = namespaceValue.writeSyntax;
+    let nameStringCalls = 0;
+    let preludeStringCalls = 0;
+    let nameWriteSyntaxCalls = 0;
+    let namespaceValueWriteSyntaxCalls = 0;
+    name.toString = () => {
+      nameStringCalls++;
+      return '@wrong';
+    };
+    name.writeSyntax = function countNameWriteSyntax(
+      this: typeof name,
+      ...args: Parameters<typeof originalNameWriteSyntax>
+    ): ReturnType<typeof originalNameWriteSyntax> {
+      nameWriteSyntaxCalls++;
+      return originalNameWriteSyntax.apply(this, args);
+    };
+    namespaceValue.writeSyntax = function countNamespaceValueWriteSyntax(
+      this: typeof namespaceValue,
+      ...args: Parameters<typeof originalNamespaceValueWriteSyntax>
+    ): ReturnType<typeof originalNamespaceValueWriteSyntax> {
+      namespaceValueWriteSyntaxCalls++;
+      return originalNamespaceValueWriteSyntax.apply(this, args);
+    };
     AtRule.prototype.eval = () => {
       throw new Error('leaf at-rule render should not evaluate an at-rule surface');
     };
 
     try {
+      node.prelude!.toString = function countPreludeString(
+        this: typeof prelude,
+        ...args: Parameters<typeof originalPreludeToString>
+      ): string {
+        preludeStringCalls++;
+        return originalPreludeToString.apply(this, args);
+      };
       expect(await Promise.resolve(node.render(context))).toBe('@namespace svg;');
       const buffer = createRenderBuffer('flat');
       expect(await Promise.resolve(node.render(context, buffer))).toBe('@namespace svg;');
       expect(buffer.parts).toEqual(['@namespace svg;']);
+      expect(nameStringCalls).toBe(0);
+      expect(preludeStringCalls).toBe(0);
+      expect(nameWriteSyntaxCalls).toBe(2);
+      expect(namespaceValueWriteSyntaxCalls).toBe(2);
+      name.toString = originalNameToString;
+      name.writeSyntax = originalNameWriteSyntax;
+      namespaceValue.writeSyntax = originalNamespaceValueWriteSyntax;
+      node.prelude!.toString = originalPreludeToString;
       const resolved = await Promise.resolve(node.resolve(context));
       expect(resolved.toTrimmedString()).toBe('@namespace svg;');
       expect(prelude.parent).toBe(node);
@@ -567,6 +697,10 @@ describe('AtRule', () => {
       expect(node.evaluated).toBe(false);
     } finally {
       AtRule.prototype.eval = originalEval;
+      name.toString = originalNameToString;
+      name.writeSyntax = originalNameWriteSyntax;
+      namespaceValue.writeSyntax = originalNamespaceValueWriteSyntax;
+      node.prelude!.toString = originalPreludeToString;
     }
   });
 
@@ -606,7 +740,7 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourcePrelude.evaluated).toBe(false);
     expect(sourceRules.parent).toBe(node);
@@ -761,6 +895,9 @@ describe('AtRule', () => {
       rulesEvalCalls++;
       return originalEval.apply(this, args);
     };
+    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+      throw new Error('static direct root-only body render should not derive a temporary at-rule');
+    };
     try {
       expect(await Promise.resolve(node.render(context))).toBeString(`
         @font-face {
@@ -788,8 +925,8 @@ describe('AtRule', () => {
 
     expect(await Promise.resolve(node.render(context))).toBe('');
     expect(node.visible).toBe(true);
-    expect(node.value.rules?.parent).toBe(node);
-    expect(node.value.rules?.evaluated).toBe(false);
+    expect(node.rules?.parent).toBe(node);
+    expect(node.rules?.evaluated).toBe(false);
   });
 
   it('keeps public body-resolve visibility on the owned result', async () => {
@@ -815,7 +952,7 @@ describe('AtRule', () => {
 
     expect(resolved.toString()).toBe('');
     expect(node.visible).toBe(true);
-    expect(node.value.rules).toBe(sourceRules);
+    expect(node.rules).toBe(sourceRules);
     expect(sourceRules.parent).toBe(node);
     if (resolved instanceof AtRule) {
       expect(resolved).not.toBe(node);
@@ -853,10 +990,10 @@ describe('AtRule', () => {
     expect(node.hoistToRoot).toBeUndefined();
     expect(node.frames).toBeUndefined();
     expect(node.evaluated).toBe(false);
-    expect(node.getRenderRules()).toBe(node.value.rules);
+    expect(node.getRenderRules()).toBe(node.rules);
   });
 
-  it('keeps body eval output frames in runtime state instead of mutating at-rule fields', async () => {
+  it('returns an owned at-rule when body eval changes hoist output', async () => {
     const parentFrame = ruleset({
       selector: el('.parent'),
       rules: rules([])
@@ -872,13 +1009,198 @@ describe('AtRule', () => {
 
     const evaluated = await Promise.resolve(node.eval(context));
 
-    expect(evaluated).toBe(node);
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
     expect(node.frames).toBeUndefined();
     expect(node.hoistToRoot).toBeUndefined();
-    expect(node.isHoisted({ collapseNesting: false })).toBe(true);
-    expect(node.toTrimmedString()).toBeString(`
+    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    expect(evaluated.hoistToRoot).toBe(true);
+    expect(evaluated.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(evaluated.getRenderFrames()).toBeUndefined();
+    expect(evaluated.toTrimmedString()).toBeString(`
       @font-face {
         font-family: Jess;
+      }
+    `);
+  });
+
+  it('returns owned evaluated collapse-nesting hoist state in frames without a runtime hoist field', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.opts.collapseNesting = true;
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
+    expect(node.getRenderFrames()).toBeUndefined();
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    expect(evaluated.hoistToRoot).toBeUndefined();
+    expect(evaluated.frames).toEqual([parentFrame]);
+    expect(evaluated.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
+  });
+
+  it('renders owned evaluated collapse-nesting at-rules without mutating source frame state', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.opts.collapseNesting = true;
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    expect(evaluated.render(context)).toBeString(`
+      @media (max-width: 10px) {
+        .parent {
+          color: red;
+        }
+      }
+    `);
+    expect(node.frames).toBeUndefined();
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.getRenderFrames()).toBeUndefined();
+    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
+  });
+
+  it('renders owned evaluated collapse-nesting at-rules without deriving another temporary at-rule node', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.opts.collapseNesting = true;
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBeInstanceOf(AtRule);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    evaluated.deriveAtRule = function deriveShouldNotRun(): AtRule {
+      throw new Error('evaluated collapse-nesting render should not derive a temporary at-rule');
+    };
+
+    expect(evaluated.render(context)).toBeString(`
+      @media (max-width: 10px) {
+        .parent {
+          color: red;
+        }
+      }
+    `);
+  });
+
+  it('serializes owned evaluated collapse-nesting at-rules without consulting source compatibility frame getters', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.opts.collapseNesting = true;
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+    node.getRenderFrames = function getRenderFramesShouldNotRun(): AtRule['frames'] {
+      throw new Error('evaluated collapse-nesting serialization should not consult compatibility frame getters');
+    };
+    expect(evaluated.toTrimmedString()).toBeString(`
+      @media (max-width: 10px) {
+        .parent {
+          color: red;
+        }
+      }
+    `);
+  });
+
+  it('keeps async collapse-nesting frame state on the owned result without mutating source state', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    body.addFlag(F_MAY_ASYNC);
+    body.eval = async () => {
+      await Promise.resolve();
+      return body;
+    };
+    context.opts.collapseNesting = true;
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: paren(decl({ name: 'max-width', value: dimension([10, 'px']) })),
+      rules: body
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBeInstanceOf(AtRule);
+    expect(evaluated).not.toBe(node);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected AtRule eval result');
+    }
+    expect(node.frames).toBeUndefined();
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.getRenderFrames()).toBeUndefined();
+    expect(evaluated.getRenderFrames()).toEqual([parentFrame]);
+    expect(evaluated.render(context)).toBeString(`
+      @media (max-width: 10px) {
+        .parent {
+          color: red;
+        }
       }
     `);
   });
@@ -911,13 +1233,17 @@ describe('AtRule', () => {
       ])
     });
 
+    node.deriveAtRule = function deriveShouldNotRun(): AtRule {
+      throw new Error('direct body render with evaluated prelude should not derive a temporary at-rule');
+    };
+
     expect(await Promise.resolve(node.render(context))).toBeString(`
       @media print {
         color: red;
       }
     `);
     expect(preludeEvalCalls).toBe(1);
-    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourcePrelude.evaluated).toBe(false);
     expect(node.evaluated).toBe(false);
@@ -950,9 +1276,9 @@ describe('AtRule', () => {
       throw new Error('Expected evaluated AtRule result');
     }
     expect(evaluated).not.toBe(node);
-    expect(node.value.rules).toBe(originalRules);
+    expect(node.rules).toBe(originalRules);
     expect(node.getRenderRules()).toBe(originalRules);
-    expect(evaluated.value.rules).toBe(evaluatedRules);
+    expect(evaluated.rules).toBe(evaluatedRules);
     expect(evaluated.getRenderRules()).toBe(evaluatedRules);
     expect(node.toTrimmedString()).toBeString(`
       @font-face {
@@ -967,7 +1293,7 @@ describe('AtRule', () => {
     expect(originalRules.parent).toBe(node);
   });
 
-  it('restores evaluated body runtime compatibility state when post-eval visibility checks throw', async () => {
+  it('keeps source body state canonical when post-eval visibility checks throw', async () => {
     const originalRules = rules([
       decl({ name: 'color', value: any('red') })
     ]);
@@ -975,7 +1301,7 @@ describe('AtRule', () => {
       decl({ name: 'color', value: any('blue') })
     ]);
     const originalEval = originalRules.eval;
-    const originalVisibleRules = evaluatedRules.visibleRules;
+    const originalHasVisibleRules = evaluatedRules.hasVisibleRules;
     originalRules.eval = function evalReplacementBody(
       this: Rules,
       ..._args: Parameters<typeof originalEval>
@@ -983,147 +1309,25 @@ describe('AtRule', () => {
       evaluatedRules.evaluated = true;
       return evaluatedRules;
     };
-    evaluatedRules.visibleRules = function throwAfterEval(
+    evaluatedRules.hasVisibleRules = function throwAfterEval(
       this: Rules,
-      ..._args: Parameters<typeof originalVisibleRules>
-    ): ReturnType<typeof originalVisibleRules> {
-      throw new Error('visibleRules failed');
+      ..._args: Parameters<typeof originalHasVisibleRules>
+    ): ReturnType<typeof originalHasVisibleRules> {
+      throw new Error('hasVisibleRules failed');
     };
     const node = atrule({
       name: any('@font-face', { role: 'atkeyword' }),
       rules: originalRules
     });
 
-    expect(() => node.eval(context)).toThrow('visibleRules failed');
-    expect(node.value.rules).toBe(originalRules);
+    expect(() => node.eval(context)).toThrow('hasVisibleRules failed');
+    expect(node.rules).toBe(originalRules);
     expect(node.getRenderRules()).toBe(originalRules);
     expect(node.toTrimmedString()).toBeString(`
       @font-face {
         color: red;
       }
     `);
-  });
-
-  it('builds render runtime updates from body invocation state', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const evaluatedRules = rules([
-      decl({ name: 'color', value: any('blue') })
-    ]);
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      evaluatedBody: evaluatedRules,
-      output: { hoistToRoot: true }
-    })).toEqual({
-      evaluatedBody: evaluatedRules,
-      hoistToRoot: true
-    });
-  });
-
-  it('skips render runtime update allocation when body state matches source', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      evaluatedBody: sourceRules
-    })).toBeUndefined();
-  });
-
-  it('skips render output runtime updates when hoist facts already live on the source', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const frames = [] as AtRule['frames'];
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-    node.hoistToRoot = true;
-    node.frames = frames;
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      output: {
-        hoistToRoot: true,
-        frames
-      }
-    })).toBeUndefined();
-  });
-
-  it('builds flattened runtime updates for hoist frames without an output wrapper', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const frames = [] as AtRule['frames'];
-    const node = atrule({
-      name: any('@font-face', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-
-    expect(createAtRuleBodyRuntimeUpdate(node, {
-      output: {
-        hoistToRoot: true,
-        frames
-      }
-    })).toEqual({
-      hoistToRoot: true,
-      frames
-    });
-  });
-
-  it('builds public body result state from a narrow public adapter input', () => {
-    const sourceRules = rules([
-      decl({ name: 'color', value: any('red') })
-    ]);
-    const evaluatedRules = rules([
-      decl({ name: 'color', value: any('blue') })
-    ]);
-    const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
-      rules: sourceRules
-    });
-    const prelude = any('screen');
-
-    expect(createAtRuleBodyPublicResultState({
-      node,
-      evaluatedPrelude: prelude,
-      evaluatedBody: evaluatedRules,
-      visible: false,
-      output: { hoistToRoot: true }
-    })).toEqual({
-      node,
-      evaluatedPrelude: prelude,
-      evaluatedBody: evaluatedRules,
-      visible: false,
-      output: { hoistToRoot: true }
-    });
-  });
-
-  it('builds public nil body result state without an eval-frame fallback', () => {
-    const node = atrule({
-      name: any('@media', { role: 'atkeyword' }),
-      rules: rules([])
-    });
-
-    expect(createAtRuleBodyPublicResultState({
-      node,
-      visible: false
-    })).toEqual({
-      node,
-      evaluatedPrelude: undefined,
-      evaluatedBody: undefined,
-      visible: false,
-      output: undefined
-    });
   });
 
   it('resolves at-rules without touching render state', async () => {
@@ -1144,9 +1348,9 @@ describe('AtRule', () => {
         decl({ name: 'color', value: any('red') })
       ])
     });
-    const sourceName = node.value.name;
-    const sourcePrelude = node.value.prelude;
-    const sourceRules = node.value.rules;
+    const sourceName = node.name;
+    const sourcePrelude = node.prelude;
+    const sourceRules = node.rules;
 
     const resolved = await node.resolve(context);
 
@@ -1158,9 +1362,9 @@ describe('AtRule', () => {
     expect(sourceName.parent).toBe(node);
     expect(sourcePrelude?.parent).toBe(node);
     expect(sourceRules?.parent).toBe(node);
-    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.prelude).toBe(sourcePrelude);
     if (resolved instanceof AtRule) {
-      expect(resolved.value.prelude).not.toBe(sourcePrelude);
+      expect(resolved.prelude).not.toBe(sourcePrelude);
     }
     expect(node.evaluated).toBe(false);
     expect(node.registrationPrepared).toBe(false);
@@ -1213,7 +1417,7 @@ describe('AtRule', () => {
         color: red;
       }
     `);
-    expect(node.value.rules).toBe(originalRules);
+    expect(node.rules).toBe(originalRules);
     expect(originalRules.parent).toBe(node);
   });
 
@@ -1240,7 +1444,7 @@ describe('AtRule', () => {
       prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
       rules: sourceRules
     });
-    const sourcePrelude = node.value.prelude;
+    const sourcePrelude = node.prelude;
     const originalPrepareRegistration = Rules.prototype.prepareRegistration;
     const bodyPrepFrames: Node[] = [];
     Rules.prototype.prepareRegistration = function countBodyPrepFrame(
@@ -1273,9 +1477,9 @@ describe('AtRule', () => {
         }
       }
     `);
-    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.prelude).toBe(sourcePrelude);
     expect(sourcePrelude?.parent).toBe(node);
-    expect(node.value.rules).toBe(sourceRules);
+    expect(node.rules).toBe(sourceRules);
     expect(sourceRules.parent).toBe(node);
     expect(node.evaluated).toBe(false);
     expect(node.visible).toBe(true);
@@ -1310,13 +1514,13 @@ describe('AtRule', () => {
       throw new Error('Expected public at-rule results');
     }
 
-    first.value.prelude = any('print');
+    first.prelude = any('print');
 
     expect(first).not.toBe(node);
     expect(first).not.toBe(second);
-    expect(second.value.prelude?.toTrimmedString()).toBe('screen');
-    expect(node.value.prelude).toBe(sourcePrelude);
-    expect(node.value.rules).toBe(sourceRules);
+    expect(second.prelude?.toTrimmedString()).toBe('screen');
+    expect(node.prelude).toBe(sourcePrelude);
+    expect(node.rules).toBe(sourceRules);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourceRules.parent).toBe(node);
   });
@@ -1362,8 +1566,8 @@ describe('AtRule', () => {
     }
 
     expect(resolved).not.toBe(node);
-    expect(resolved.value.rules).not.toBe(sourceRules);
-    expect(resolved.getRenderRules()).toBe(resolved.value.rules);
+    expect(resolved.rules).not.toBe(sourceRules);
+    expect(resolved.getRenderRules()).toBe(resolved.rules);
     expect(resolved.hoistToRoot).toBe(true);
     expect(resolved.isHoisted({ collapseNesting: false })).toBe(true);
     expect(resolved.getRenderFrames()).toBeUndefined();
@@ -1375,8 +1579,8 @@ describe('AtRule', () => {
         }
       }
     `);
-    expect(node.value.prelude).toBe(sourcePrelude);
-    expect(node.value.rules).toBe(sourceRules);
+    expect(node.prelude).toBe(sourcePrelude);
+    expect(node.rules).toBe(sourceRules);
     expect(sourcePrelude.parent).toBe(node);
     expect(sourceRules.parent).toBe(node);
     expect(node.hoistToRoot).toBeUndefined();
@@ -1451,10 +1655,54 @@ describe('AtRule', () => {
       rules: rules([])
     });
     const options = getPrintOptions({ writer });
+    const name = node.name;
+    const prelude = node.prelude!;
+    const originalNameToString = name.toString;
+    const originalPreludeToString = prelude.toString;
+    let nameToStringCalls = 0;
+    let preludeToStringCalls = 0;
+    name.toString = function toStringWithWriterCheck(
+      this: typeof name
+    ): string {
+      nameToStringCalls++;
+      return originalNameToString.call(this);
+    };
+    prelude.toString = function toStringWithWriterCheck(
+      this: typeof prelude
+    ): string {
+      preludeToStringCalls++;
+      return originalPreludeToString.call(this);
+    };
 
-    expect(node.getHeaderString(options)).toBe('@media screen {\n');
-    expect(writer.toString()).toBe('');
+    try {
+      expect(node.getHeaderString(options)).toBe('@media screen {\n');
+      expect(writer.toString()).toBe('');
+      expect(writer.captures).toBe(0);
+      expect(writer.marks).toBe(0);
+      expect(writer.previews).toBe(0);
+      expect(writer.reads).toBe(0);
+      expect(writer.restores).toBe(0);
+      expect(nameToStringCalls).toBe(0);
+      expect(preludeToStringCalls).toBe(0);
+    } finally {
+      name.toString = originalNameToString;
+      prelude.toString = originalPreludeToString;
+    }
+  });
+
+  it('renders leaf at-rules without preview scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@custom-media', { role: 'atkeyword' }),
+      prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
+    });
+    const options = getPrintOptions({ writer });
+
+    const rendered = '@custom-media --narrow (max-width: 30em);';
+    expect(node.render(context, options)).toBe(rendered);
+    expect(writer.toString()).toBe(rendered);
     expect(writer.captures).toBe(0);
+    expect(writer.previews).toBe(0);
   });
 
   it('renders comment-free at-rule headers without cloning source-free prelude leaves', () => {
@@ -2890,7 +3138,7 @@ describe('AtRule', () => {
             }),
             atrule({
               name: any('@page', { role: 'atkeyword' }),
-              prelude: list([el('Test:first')]),
+              prelude: list([any('Test:first', { role: 'ident' })]),
               rules: rules([
                 decl({
                   name: 'margin',

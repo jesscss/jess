@@ -17,6 +17,20 @@ describe('defineFunction', () => {
   );
   const uncheckedMyFunc: (...args: any[]) => unknown = myFunc;
 
+  it('attaches runtime metadata directly to the function object', () => {
+    const runtimeFunc = myFunc as typeof myFunc & {
+      options?: unknown;
+      _internal?: unknown;
+    };
+
+    expect(typeof runtimeFunc).toBe('function');
+    expect(runtimeFunc.name).toBe('test');
+    expect(Object.prototype.hasOwnProperty.call(runtimeFunc, 'options')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(runtimeFunc, '_internal')).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(runtimeFunc, 'options')?.value).toEqual({ params: args });
+    expect(Object.getOwnPropertyDescriptor(runtimeFunc, '_internal')?.value).toBeTypeOf('function');
+  });
+
   describe('positional calls', () => {
     it('should work with valid positional arguments', () => {
       const myFunc = defineFunction(
@@ -466,7 +480,7 @@ describe('defineFunction', () => {
         }
 
         override async evalNode(_context: Context): Promise<this> {
-          calls.push(String(this.value.node));
+          calls.push(String(this.node));
           return this;
         }
       }
@@ -533,7 +547,7 @@ describe('defineFunction', () => {
         }
 
         override async evalNode(_context: Context): Promise<this> {
-          calls.push(String(this.value.node));
+          calls.push(String(this.node));
           return this;
         }
       }

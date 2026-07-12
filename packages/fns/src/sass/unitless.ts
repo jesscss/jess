@@ -12,7 +12,7 @@ import { defineFunction, Dimension, Bool } from '@jesscss/core';
 const unitless = defineFunction(
   'unitless',
   function(number: Dimension): Bool {
-    const { unit } = number.value;
+    const { unit } = number;
     const hasUnit = unit !== undefined && unit !== '';
     return new Bool(!hasUnit);
   },

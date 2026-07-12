@@ -25,7 +25,7 @@ function trimLines(s: string): string {
   return s.trim().split('\n').map(l => l.trimEnd()).join('\n');
 }
 
-describe.todo('At-rule bubbling selector bugs', () => {
+describe('At-rule bubbling selector bugs', () => {
   /**
    * Bug 1: Parent selector lost during mixin + at-rule bubbling
    * Source: at-rules.less lines 135-145

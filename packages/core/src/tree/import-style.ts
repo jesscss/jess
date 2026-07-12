@@ -1,11 +1,11 @@
-import { basename, dirname } from 'node:path';
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, TreeContext, defineType, type NodeLocation } from './node.js';
+import { basename, dirname, extname, join, relative } from 'node:path';
+import { TreeContext, type Context } from '../context.js';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
-import { type Context } from '../context.js';
-import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Ruleset } from './ruleset.js';
@@ -14,15 +14,16 @@ import { AtRule } from './at-rule.js';
 import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
-import { buildScopeFrame, type BindingCell } from './scope-frame.js';
+import { buildScopeFrame, copyScopeFrameLiveBindingSlots, type BindingCell } from './scope-frame.js';
 import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
 import { Comment } from './comment.js';
 import {
   isRenderBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
-import type { PrintOptions } from './util/print.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { createPlacementChildSegment, type PlacementChildSegment } from './util/placement-state.js';
+import { queueTopImport } from './util/import-queue.js';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -42,6 +43,44 @@ function isParseError(error: unknown): boolean {
     || (typeof error.code === 'string' && error.code.startsWith('parse/'));
 }
 
+function escapeQuotedImportPath(value: string, quote: '"' | '\''): string {
+  return value.replaceAll('\\', '\\\\').replaceAll(quote, `\\${quote}`);
+}
+
+function toCanonicalRelativeImportPath(fromDir: string | undefined, resolvedPath: string): string {
+  if (!fromDir) {
+    return resolvedPath.replace(/\\/g, '/');
+  }
+  let out = relative(fromDir, resolvedPath).replace(/\\/g, '/');
+  if (!out.startsWith('.') && !out.startsWith('/')) {
+    out = `./${out}`;
+  }
+  return out || './';
+}
+
+function replaceFileExtension(filePath: string, extension: string): string {
+  const current = extname(filePath);
+  return current
+    ? `${filePath.substring(0, filePath.length - current.length)}${extension}`
+    : `${filePath}${extension}`;
+}
+
+function mapConvertedFilePath(
+  sourcePath: string,
+  options: FinalPrintOptions,
+  fallbackRoot: string | undefined
+): string {
+  const conversion = options.conversion;
+  if (conversion?.mapPath) {
+    return replaceFileExtension(conversion.mapPath(sourcePath), '.jess');
+  }
+  if (!conversion?.outputDir) {
+    return replaceFileExtension(sourcePath, '.jess');
+  }
+  const sourceRoot = conversion.sourceRoot ?? fallbackRoot ?? dirname(sourcePath);
+  return replaceFileExtension(join(conversion.outputDir, relative(sourceRoot, sourcePath)), '.jess');
+}
+
 function throwMissingImportSourceGetter(): never {
   throw new Error('No source getter found');
 }
@@ -50,19 +89,52 @@ function throwInvalidImportedRulesRegistrationPrep(): never {
   throw new TypeError('Expected imported rules registration prep to return Rules');
 }
 
+function variableNameKey(node: Node): string {
+  if (!isNode(node, N.VarDeclaration)) {
+    return '';
+  }
+  const name = node.name;
+  return name instanceof Any
+    ? name.value
+    : String(name.valueOf?.() ?? '');
+}
+
+function visitDescendantRulesets(value: unknown, cb: (ruleset: Ruleset) => void): void {
+  if (isNode(value, N.Ruleset)) {
+    cb(value as Ruleset);
+  }
+  if (value instanceof Node) {
+    visitDescendantRulesets(value.value, cb);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      visitDescendantRulesets(value[i], cb);
+    }
+    return;
+  }
+  if (isObject(value)) {
+    for (const key in value) {
+      visitDescendantRulesets(value[key], cb);
+    }
+  }
+}
+
 function copyImportPlacementValue(value: unknown): unknown {
   if (value instanceof Node) {
     return copyImportPlacementNode(value);
   }
   if (Array.isArray(value)) {
-    return value.map(item => copyImportPlacementValue(item));
+    const out = new Array<unknown>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      out[i] = copyImportPlacementValue(value[i]);
+    }
+    return out;
   }
   if (isObject(value)) {
     const out: Record<string, unknown> = {};
     for (const key in value) {
-      if (Object.hasOwn(value, key)) {
-        out[key] = copyImportPlacementValue(value[key]);
-      }
+      out[key] = copyImportPlacementValue(value[key]);
     }
     return out;
   }
@@ -75,8 +147,7 @@ function constructImportPlacementNode(node: Node, value: unknown): Node {
     [
       value,
       node.options ? { ...node.options } : undefined,
-      node.location.length === 0 ? undefined : node.location,
-      node.treeContext
+      node.location.length === 0 ? undefined : node.location
     ]
   );
   if (!(copy instanceof Node)) {
@@ -86,14 +157,10 @@ function constructImportPlacementNode(node: Node, value: unknown): Node {
 }
 
 function copyImportPlacementAmpersand(node: Node): Node | undefined {
-  if (node.type !== 'Ampersand') {
+  if (!isNode(node, N.Ampersand)) {
     return undefined;
   }
-  const derive: unknown = Reflect.get(node, 'derive');
-  if (typeof derive !== 'function') {
-    return undefined;
-  }
-  const derived = derive.call(node);
+  const derived = node.derive();
   return derived instanceof Node ? derived : undefined;
 }
 
@@ -103,7 +170,7 @@ function copyImportPlacementNode(node: Node): Node {
       node.value,
       node.options ? { ...node.options } : undefined,
       node.location.length === 0 ? undefined : node.location,
-      node.treeContext
+      node.sourceRoot?._treeContext
     ).inherit(node);
   }
   const derivedAmpersand = copyImportPlacementAmpersand(node);
@@ -221,6 +288,17 @@ export type StyleImportOptions = {
   /** Set on the import node instead of on rules */
   local?: boolean;
   rulesVisibility?: RulesOptions['rulesVisibility'];
+
+  /**
+   * Resolved import target captured during evaluation. Parsers preserve the
+   * authored specifier; conversion passes can use this to rewrite the canonical
+   * Jess tree after the resolver has proven where the import actually landed.
+   */
+  resolvedPath?: string;
+  /** Directory of the importing file at the time `resolvedPath` was proven. */
+  resolvedFromPath?: string;
+  /** Full path of the importing file at the time `resolvedPath` was proven. */
+  resolvedFromFilePath?: string;
 };
 
 export type StyleImportValue = {
@@ -249,8 +327,6 @@ type ImportPlacementState = {
   source: Rules;
   children: Node[];
   childSegments: readonly ImportPlacementChildSegment[];
-  sourceByPlacement: ReadonlyMap<Node, Node>;
-  preservesDirectCommentChildren: true;
 };
 
 export type ImportPlacementChildSegment = PlacementChildSegment;
@@ -299,77 +375,67 @@ function findImportPlacementState(placementRules: Rules): ImportPlacementState |
   return undefined;
 }
 
-function collectImportPlacementSourceMap(
-  source: unknown,
-  placement: unknown,
-  sourceByPlacement: Map<Node, Node>,
-  seen = new Set<unknown>()
-): void {
-  if (!(source instanceof Node) || !(placement instanceof Node) || seen.has(placement)) {
-    return;
-  }
-  seen.add(placement);
-  sourceByPlacement.set(placement, source);
-  collectImportPlacementSourceMapForValue(source.value, placement.value, sourceByPlacement, seen);
-}
+type ImportPlacementValuePath = readonly (string | number)[];
 
-function collectImportPlacementSourceMapForValue(
-  source: unknown,
-  placement: unknown,
-  sourceByPlacement: Map<Node, Node>,
-  seen: Set<unknown>
-): void {
-  if (source instanceof Node || placement instanceof Node) {
-    collectImportPlacementSourceMap(source, placement, sourceByPlacement, seen);
-    return;
-  }
-  if (Array.isArray(source) && Array.isArray(placement)) {
-    for (let index = 0; index < source.length; index++) {
-      collectImportPlacementSourceMap(source[index], placement[index], sourceByPlacement, seen);
-    }
-    return;
-  }
-  if (isRecord(source) && isRecord(placement)) {
-    for (const key of Object.keys(source)) {
-      collectImportPlacementSourceMap(source[key], placement[key], sourceByPlacement, seen);
-    }
-  }
-}
-
-function findImportPlacementSourceDescendant(
-  source: unknown,
-  placement: unknown,
+function findImportPlacementValuePath(
+  value: unknown,
   target: Node,
-  seen = new Set<unknown>()
-): Node | undefined {
-  if (placement === target) {
-    return source instanceof Node ? source : undefined;
-  }
-  if (placement instanceof Node) {
-    if (seen.has(placement)) {
-      return undefined;
+  path: (string | number)[] = []
+): ImportPlacementValuePath | undefined {
+  if (value === target) {
+    const out = new Array<string | number>(path.length);
+    for (let i = 0; i < path.length; i++) {
+      out[i] = path[i]!;
     }
-    seen.add(placement);
-    return findImportPlacementSourceDescendant(source instanceof Node ? source.value : undefined, placement.value, target, seen);
+    return out;
   }
-  if (Array.isArray(source) && Array.isArray(placement)) {
-    for (let index = 0; index < placement.length; index++) {
-      const found = findImportPlacementSourceDescendant(source[index], placement[index], target, seen);
+  if (value instanceof Node) {
+    return findImportPlacementValuePath(value.value, target, path);
+  }
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      path.push(index);
+      const found = findImportPlacementValuePath(value[index], target, path);
+      path.pop();
       if (found) {
         return found;
       }
     }
     return undefined;
   }
-  if (isRecord(source) && isRecord(placement)) {
-    for (const key of Object.keys(placement)) {
-      const found = findImportPlacementSourceDescendant(source[key], placement[key], target, seen);
+  if (isRecord(value)) {
+    for (const key in value) {
+      path.push(key);
+      const found = findImportPlacementValuePath(value[key], target, path);
+      path.pop();
       if (found) {
         return found;
       }
     }
   }
   return undefined;
+}
+
+function readImportPlacementValuePath(value: unknown, path: ImportPlacementValuePath): unknown {
+  let cursor = value;
+  for (const segment of path) {
+    if (cursor instanceof Node) {
+      cursor = cursor.value;
+    }
+    if (Array.isArray(cursor)) {
+      if (typeof segment !== 'number') {
+        return undefined;
+      }
+      cursor = cursor[segment];
+      continue;
+    }
+    if (isRecord(cursor)) {
+      cursor = cursor[segment];
+      continue;
+    }
+    return undefined;
+  }
+  return cursor;
 }
 
 export function getImportPlacementSourceChild(
@@ -384,34 +450,31 @@ export function getImportPlacementSourceChild(
   if (segmentSource) {
     return segmentSource;
   }
-  const directSource = state.sourceByPlacement.get(placementChild);
-  if (directSource) {
-    return directSource;
-  }
-  if (isNode(placementChild.sourceNode)) {
-    for (const [stateChild, sourceChild] of state.sourceByPlacement) {
-      if (stateChild === placementChild.sourceNode || sourceChild === placementChild.sourceNode) {
-        return sourceChild;
-      }
-    }
-  }
-  for (const [stateChild, sourceChild] of state.sourceByPlacement) {
-    const sourceDescendant = findImportPlacementSourceDescendant(sourceChild, stateChild, placementChild);
-    if (sourceDescendant) {
-      return sourceDescendant;
-    }
-  }
-  const index = placementRules.value.indexOf(placementChild);
-  return index >= 0 ? state.source.value[index] : undefined;
+  const index = placementRules.rules.indexOf(placementChild);
+  return index >= 0 ? state.source.rules[index] : undefined;
 }
 
 export function getImportPlacementSegmentSourceChild(
   placementRules: Rules,
   placementChild: Node
 ): Node | undefined {
-  return getImportPlacementChildSegments(placementRules)
-    ?.find(segment => segment.output === placementChild)
-    ?.source;
+  const state = findImportPlacementState(placementRules);
+  if (!state) {
+    return undefined;
+  }
+  for (const segment of state.childSegments) {
+    const placementSegment = placementRules.rules[segment.index];
+    if (placementSegment === placementChild) {
+      return segment.source;
+    }
+    const path = findImportPlacementValuePath(placementSegment.value, placementChild);
+    if (!path) {
+      continue;
+    }
+    const sourceDescendant = readImportPlacementValuePath(segment.source.value, path);
+    return sourceDescendant instanceof Node ? sourceDescendant : undefined;
+  }
+  return undefined;
 }
 
 export function getImportPlacementChildSegments(placementRules: Rules): readonly ImportPlacementChildSegment[] | undefined {
@@ -419,9 +482,12 @@ export function getImportPlacementChildSegments(placementRules: Rules): readonly
   if (!state) {
     return undefined;
   }
-  return state.childSegments.map(segment => (
-    createPlacementChildSegment(segment.source, placementRules.value[segment.index], segment.index)
-  ));
+  const segments = new Array<ImportPlacementChildSegment>(state.childSegments.length);
+  for (let i = 0; i < state.childSegments.length; i++) {
+    const segment = state.childSegments[i]!;
+    segments[i] = createPlacementChildSegment(segment.source, placementRules.rules[segment.index], segment.index);
+  }
+  return segments;
 }
 
 function readImportPlacementRenderState(placementRules: Rules): ImportPlacementRenderState {
@@ -475,6 +541,12 @@ export function getImportPostludeRenderState(outputRules: Rules): ImportPostlude
  * @see https://sass-lang.com/documentation/at-rules/import/
  */
 export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
+  static override childKeys = ['path', 'withNode'] as const;
+
+  readonly path: StyleImportValue['path'];
+  readonly with: StyleImportValue['with'] | undefined;
+  readonly withNode: StyleImportValue['with']['node'] | undefined;
+
   private getImportAnchorRules(context: Context): Rules {
     return isNode(context.rulesContext, N.Rules)
       ? context.rulesContext
@@ -500,8 +572,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   ): Rules {
     const sourceLocation = anchorRules.location.length === 6 ? anchorRules.location : undefined;
     const wrapped = childNodes !== undefined
-      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules.treeContext).inherit(anchorRules)
+      ? new Rules([], anchorRules.options ? { ...anchorRules.options } : undefined, sourceLocation, anchorRules._treeContext)
       : anchorRules.derive();
+    if (childNodes !== undefined) {
+      wrapped.parent = anchorRules.parent;
+      wrapped.index = anchorRules.index;
+    }
     if (options?.resetScopeFrame) {
       wrapped.scopeFrame = undefined;
     }
@@ -511,14 +587,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (childNodes) {
       for (const childNode of childNodes) {
         wrapped.adopt(childNode);
-        wrapped.value.push(childNode);
+        wrapped.rules.push(childNode);
       }
     }
     return wrapped;
-  }
-
-  private createImportAnchorSurface(context: Context, childNodes?: Node[]): Rules {
-    return this.deriveRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
   }
 
   private createInlineSourceNode(source: string, resolvedPath: string): Any<'any'> {
@@ -530,24 +602,24 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         source
       }
     });
-    return new Any(source, { role: 'any' }, getInlineSourceLocation(source), treeContext);
+    const node = new Any(source, { role: 'any' }, getInlineSourceLocation(source));
+    new Rules([node], undefined, undefined, treeContext);
+    return node;
   }
 
   private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
-    const children = sourceRules.value.map(node => this.copyImportPlacementChild(node));
-    const childSegments = sourceRules.value.map((source, index) => (
-      createPlacementChildSegment(source, children[index], index)
-    ));
-    const sourceByPlacement = new Map<Node, Node>();
-    for (let index = 0; index < children.length; index++) {
-      collectImportPlacementSourceMap(sourceRules.value[index], children[index], sourceByPlacement);
+    const children = new Array<Node>(sourceRules.rules.length);
+    const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
+    for (let index = 0; index < sourceRules.rules.length; index++) {
+      const source = sourceRules.rules[index]!;
+      const child = copyImportPlacementNode(source);
+      children[index] = child;
+      childSegments[index] = createPlacementChildSegment(source, child, index);
     }
     return {
       source: sourceRules,
       children,
-      childSegments,
-      sourceByPlacement,
-      preservesDirectCommentChildren: true
+      childSegments
     };
   }
 
@@ -557,15 +629,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return placement;
   }
 
-  private copyImportPlacementChild(node: Node): Node {
-    return copyImportPlacementNode(node);
-  }
-
   private getPostludeNodes(postlude?: Node): Node[] {
     if (!postlude) {
       return [];
     }
-    return isNode(postlude, N.Sequence) || isNode(postlude, N.List) ? postlude.value : [postlude];
+    if (isNode(postlude, N.List)) {
+      return postlude.items;
+    }
+    return isNode(postlude, N.Sequence) ? postlude.items : [postlude];
   }
 
   private wrapRulesInAtRuleSurface(anchorRules: Rules, rules: Rules, name: string, prelude: Node): Rules {
@@ -608,12 +679,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     replacementsByIndex: Map<number, Node>;
   } {
     const firstVarIndexByName = new Map<string, number>();
-    for (let index = 0; index < sourceRules.value.length; index++) {
-      const existingNode = sourceRules.value[index]!;
+    for (let index = 0; index < sourceRules.rules.length; index++) {
+      const existingNode = sourceRules.rules[index]!;
       if (!isNode(existingNode, N.VarDeclaration)) {
         continue;
       }
-      const existingName = existingNode.value.name?.toString();
+      const existingName = variableNameKey(existingNode);
       if (existingName && !firstVarIndexByName.has(existingName)) {
         firstVarIndexByName.set(existingName, index);
       }
@@ -621,9 +692,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
     const newVariables: Node[] = [];
     const replacementsByIndex = new Map<number, Node>();
-    for (const injectedNode of withRules.value) {
+    for (const injectedNode of withRules.rules) {
       if (isNode(injectedNode, N.VarDeclaration)) {
-        const varName = injectedNode.value.name?.toString();
+        const varName = variableNameKey(injectedNode);
         if (varName) {
           const existingIndex = firstVarIndexByName.get(varName);
           if (existingIndex !== undefined) {
@@ -651,12 +722,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return importedRules;
     }
 
-    importedRules.value.length = 0;
-    for (let index = 0; index < sourceRules.value.length; index++) {
-      const originalNode = sourceRules.value[index]!;
+    importedRules.rules.length = 0;
+    for (let index = 0; index < sourceRules.rules.length; index++) {
+      const originalNode = sourceRules.rules[index]!;
       const nextNode = replacementsByIndex.get(index) ?? originalNode;
       importedRules.adopt(nextNode);
-      importedRules.value.push(nextNode);
+      importedRules.rules.push(nextNode);
     }
     return importedRules;
   }
@@ -666,8 +737,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     importedRules: Rules,
     additiveNodes: Node[]
   ): Rules {
-    const additiveVariableNodes = additiveNodes.filter(node => isNode(node, N.VarDeclaration));
-    const additiveNonVariableNodes = additiveNodes.filter(node => !isNode(node, N.VarDeclaration));
+    const additiveVariableNodes: Node[] = [];
+    const additiveNonVariableNodes: Node[] = [];
+    for (let i = 0; i < additiveNodes.length; i++) {
+      const node = additiveNodes[i]!;
+      if (isNode(node, N.VarDeclaration)) {
+        additiveVariableNodes.push(node);
+      } else {
+        additiveNonVariableNodes.push(node);
+      }
+    }
     this.clearConfiguredImportBoundary(importedRules);
     if (additiveNonVariableNodes.length === 0) {
       this.attachConfiguredVarBindings(importedRules, additiveVariableNodes);
@@ -677,11 +756,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const finalRules = this.deriveRulesSurface(sourceRules, [], { resetScopeFrame: true });
     for (const newNode of additiveNonVariableNodes) {
       finalRules.adopt(newNode);
-      finalRules.value.push(newNode);
+      finalRules.rules.push(newNode);
     }
     this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
     finalRules.adopt(importedRules);
-    finalRules.value.push(importedRules);
+    finalRules.rules.push(importedRules);
     return finalRules;
   }
 
@@ -701,18 +780,18 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   }
 
   private attachConfiguredVarBindings(targetRules: Rules, variableNodes: Node[]): void {
-    const liveSlots = new Map(targetRules.scopeFrame?.liveSlotsByName ?? []);
+    const liveSlots = copyScopeFrameLiveBindingSlots(targetRules._scopeFrame);
     let didAdd = false;
     for (const node of variableNodes) {
       if (!isNode(node, N.VarDeclaration)) {
         continue;
       }
-      const name = node.value.name?.toString();
+      const name = variableNameKey(node);
       if (!name) {
         continue;
       }
       liveSlots.set(name, {
-        value: node.value.value,
+        value: node.valueNode,
         sourceNode: node,
         readonly: node.options?.readonly
       } satisfies BindingCell);
@@ -721,13 +800,23 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     if (!didAdd) {
       return;
     }
+    const existingFallbackFrame = targetRules._scopeFrame?.fallbackFrame;
     targetRules.scopeFrame = buildScopeFrame(
       undefined,
       targetRules,
-      targetRules.scopeFrame?.parent,
+      targetRules._scopeFrame?.parent,
       liveSlots,
-      targetRules.scopeFrame?.pendingDeclarationNames
+      targetRules._scopeFrame?.pendingDeclarationNames,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      targetRules._scopeFrame?.hasReferenceImports ?? targetRules._hasReferenceImports
     );
+    targetRules.scopeFrame.fallbackFrame = existingFallbackFrame;
   }
 
   private toImportPathNode(node: Node): Quoted | Url {
@@ -757,49 +846,81 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createCssImportAtRule(pathNode: Quoted | Url): AtRule {
     const preludeNodes: Node[] = [pathNode];
-    preludeNodes.push(...this.getPostludeNodes(this.options.importOptions?.postlude));
+    const postludeNodes = this.getPostludeNodes(this.options.importOptions?.postlude);
+    for (let i = 0; i < postludeNodes.length; i++) {
+      preludeNodes.push(postludeNodes[i]!);
+    }
     const prelude = preludeNodes.length === 1
       ? preludeNodes[0]
-      : new Sequence(preludeNodes, undefined, undefined, this.treeContext);
+      : new Sequence(preludeNodes);
 
     const location = this.location && this.location.length === 6 ? this.location : undefined;
     return new AtRule({
       name: new Any('@import', { role: 'atkeyword' }),
       prelude
-    }, undefined, location, this.treeContext);
+    }, undefined, location);
   }
 
-  private queueCssImport(context: Context, importRule: AtRule): void {
-    if (context.inReferenceImportScope) {
-      return;
-    }
-    const topImports = (context.topImports ??= []);
-    const nodeLoc = importRule.location?.join(':') ?? '';
-    const nodeSig = `${importRule.value.name.valueOf?.() ?? importRule.value.name}:${importRule.value.prelude?.valueOf?.() ?? ''}`;
-    const alreadyQueued = topImports.some((queuedNode) => {
-      if (!isNode(queuedNode, N.AtRule)) {
-        return false;
-      }
-      const queued = queuedNode as AtRule;
-      return (
-        queued === importRule
-        || queued.sourceNode === importRule.sourceNode
-        || queued.sourceNode === importRule
-        || (
-          (queued.location?.join(':') ?? '') === nodeLoc
-          && `${queued.value.name.valueOf?.() ?? queued.value.name}:${queued.value.prelude?.valueOf?.() ?? ''}` === nodeSig
-        )
-      );
-    });
-    if (!alreadyQueued) {
-      topImports.push(importRule);
-    }
-  }
-
-  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: TreeContext) {
-    super(value, options, location, treeContext);
+  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.path = value.path;
+    this.with = value.with;
+    this.withNode = value.with?.node;
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
+  }
+
+  private getCanonicalSourcePath(options: FinalPrintOptions): string | undefined {
+    if (options.syntax !== 'jess' || !this.options.resolvedPath) {
+      return undefined;
+    }
+    const resolvedFromRoot = this.options.resolvedFromPath;
+    const targetPath = mapConvertedFilePath(this.options.resolvedPath, options, resolvedFromRoot);
+    const fromFilePath = options.conversion?.fromFilePath
+      ?? (this.options.resolvedFromFilePath
+        ? mapConvertedFilePath(this.options.resolvedFromFilePath, options, resolvedFromRoot)
+        : undefined);
+    return toCanonicalRelativeImportPath(
+      fromFilePath ? dirname(fromFilePath) : resolvedFromRoot,
+      targetPath
+    );
+  }
+
+  private writeImportPathSyntax(options: FinalPrintOptions): void {
+    const canonicalPath = this.getCanonicalSourcePath(options);
+    if (canonicalPath === undefined) {
+      this.path.writeSyntax(options);
+      return;
+    }
+    const quote = this.path instanceof Url
+      ? '"'
+      : this.path.options?.quote ?? '"';
+    options.writer.add(quote, this.path);
+    options.writer.add(escapeQuotedImportPath(canonicalPath, quote), this.path);
+    options.writer.add(quote, this.path);
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    const importOptions = this.options.importOptions;
+    const atRuleName = this.options.type === 'compose'
+      ? importOptions?.forward === true ? '@-export' : '@-compose'
+      : '@import';
+    const w = options.writer;
+    w.add(`${atRuleName} `, this);
+    this.writeImportPathSyntax(options);
+    if (this.options.namespace) {
+      w.add(` as ${this.options.namespace}`);
+    }
+    w.add(';');
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const mark = options.writer.mark();
+    this.writeSyntax(options);
+    return options.writer.getSince(mark);
   }
 
   getFinalRules(evaluatedRules: Rules) {
@@ -896,7 +1017,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private _preparePathIdentity(context: Context): MaybePromise<Node> {
     try {
-      return this.value.path.eval(context);
+      return this.path.eval(context);
     } catch (e) {
       // Tag path-resolution errors so the eval-queue retry policy can
       // distinguish "path interpolation not ready" (cheap, worth retrying)
@@ -914,7 +1035,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
-    const { with: withValues } = node.value;
+    const { with: withValues } = node;
     const { options } = node;
     options.importOptions ??= {};
     const { type, importOptions } = options;
@@ -935,6 +1056,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
     const finalize = async (finalPath: string, evaluatedPathNode: Quoted | Url) => {
       const previousTreeContext = context.treeContext;
+      const resolvedFromFile = (node.sourceRoot?._treeContext ?? previousTreeContext)?.file;
+      const resolvedFromPath = resolvedFromFile?.path;
+      const resolvedFromFilePath = resolvedFromFile?.fullPath;
       // Inherit "reference branch" semantics lexically for nested imports unless
       // `multiple` explicitly opts into fresh output.
       const inheritedReferenceMode = context.inReferenceImportScope;
@@ -943,8 +1067,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       if (inheritedReferenceMode && !importOptions!.multiple) {
         importOptions!.reference = true;
       }
-      if (node.treeContext) {
-        context.treeContext = node.treeContext;
+      const nodeTreeContext = node.sourceRoot?._treeContext;
+      if (nodeTreeContext) {
+        context.treeContext = nodeTreeContext;
       }
       if (importOptions!.multiple || importOptions!.reference) {
         // Scope push/pop is intentionally paired in this method's try/finally.
@@ -958,8 +1083,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       try {
         if (this.isPlainCssImport(finalPath)) {
           const importRule = this.createCssImportAtRule(evaluatedPathNode);
-          this.queueCssImport(context, importRule);
-          return this.createImportAnchorSurface(context);
+          queueTopImport(context, importRule);
+          return this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
         }
         const isInlineImport = importOptions!.inline === true;
         let rules: Rules;
@@ -973,27 +1098,30 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           }
           const source = await sourceGetter.getSource!(resolvedPath);
           const sourceNode = this.createInlineSourceNode(source, resolvedPath);
-          const sourceRules = this.createImportAnchorSurface(context, [sourceNode]);
+          const sourceRules = this.deriveRulesSurface(this.getImportAnchorRules(context), [sourceNode], { resetScopeFrame: true });
           rules = this.wrapRulesWithPostlude(sourceRules, importOptions!.postlude);
         } else {
           try {
             const loaded = await context.getTree(finalPath, importOptions);
             if (!loaded.node) {
-              return this.createImportAnchorSurface(context);
+              return this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
             }
             ({ node: rules, resolvedPath } = loaded);
           } catch (error) {
             if (importOptions!.optional) {
-              return this.createImportAnchorSurface(context);
+              return this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
             }
             if (importOptions!.reference && isParseError(error)) {
-              return this.createImportAnchorSurface(context);
+              return this.deriveRulesSurface(this.getImportAnchorRules(context), [], { resetScopeFrame: true });
             }
             throw error;
           }
         }
         // Mark import-boundary semantics on the Rules surface directly instead
         // of depending on source-node provenance walks.
+        node.options.resolvedPath = resolvedPath;
+        node.options.resolvedFromPath = resolvedFromPath;
+        node.options.resolvedFromFilePath = resolvedFromFilePath;
         rules.options.importBoundary ??= this.options.type !== 'import';
         let evaldRules = context.evaldTrees.get(resolvedPath);
         if (type === 'import' && !evaldRules && !withValues) {
@@ -1166,11 +1294,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // getFinalRules can derive a placement wrapper; re-register all descendant rulesets
           // under finalRules' extend root set.
           if (shouldReRegisterLocalRootRulesets) {
-            for (const maybeRuleset of finalRules.nodes()) {
-              if (isNode(maybeRuleset, N.Ruleset)) {
-                registerRulesetWithRoot(finalRules, maybeRuleset as Ruleset);
-              }
-            }
+            visitDescendantRulesets(finalRules.rules, ruleset => registerRulesetWithRoot(finalRules, ruleset));
           }
         // Don't push to stack - import type uses parent's root for extends inside the import
         // But we register it so extends from parent can find rulesets in the imported Rules
@@ -1204,12 +1328,14 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.evalNode(context),
-      node => isRenderBuffer(bufferOrOptions)
+    const node = this.evalNode(context);
+    return isThenable(node)
+      ? node.then(resolved => isRenderBuffer(bufferOrOptions)
+          ? resolved.render(context, bufferOrOptions, options)
+          : resolved.render(context, bufferOrOptions))
+      : isRenderBuffer(bufferOrOptions)
         ? node.render(context, bufferOrOptions, options)
-        : node.render(context, bufferOrOptions)
-    );
+        : node.render(context, bufferOrOptions);
   }
 
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
@@ -1223,10 +1349,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       if (isNode(current, N.Call)) {
-        const callName = String(current.value.name).toLowerCase();
+        const callName = String(current.name).toLowerCase();
         if (callName === 'media' || callName === 'supports' || callName === 'layer') {
-          const args = current.value.args?.value ?? [];
-          const prelude = args.length <= 1 ? args[0] : current.value.args;
+          const args = current.args?.items ?? [];
+          const prelude = args.length <= 1 ? args[0] : current.args;
           if (prelude) {
             wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);
             postludeNames.unshift(`@${callName}`);

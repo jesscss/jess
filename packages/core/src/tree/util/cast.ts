@@ -42,14 +42,18 @@ function getNodeType(value: any): Node {
     return createPublicBool(value);
   }
   if (typeof value === 'function') {
-    const options = Reflect.get(value, 'options');
+    const options = 'options' in value ? value.options : undefined;
     return new JsFunction(value, typeof options === 'object' && options !== null ? options : undefined);
   }
   if (isPlainObject(value)) {
     return new JsObject(value);
   }
   if (isArray(value)) {
-    return new List(value.map(val => cast(val)));
+    const items = new Array<Node>(value.length);
+    for (let i = 0; i < value.length; i++) {
+      items[i] = cast(value[i]);
+    }
+    return new List(items);
   }
   if (typeof value === 'number') {
     const Num = getNum();

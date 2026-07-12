@@ -39,7 +39,7 @@ describe('jess-parser (ast serialize)', () => {
       const varDecl = rules.value.find(n => isNode(n, N.VarDeclaration));
       expect(varDecl && isNode(varDecl, N.VarDeclaration)).toBe(true);
       if (varDecl && isNode(varDecl, N.VarDeclaration)) {
-        expect(varDecl.value.name.valueOf()).toBe('foo');
+        expect(varDecl.name.valueOf()).toBe('foo');
       }
     }
   });
@@ -106,7 +106,7 @@ describe('jess-parser (ast serialize)', () => {
       const mixin = rules.value.find(n => isNode(n, N.Mixin));
       expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
       if (mixin && isNode(mixin, N.Mixin)) {
-        expect(mixin.value.name.toTrimmedString()).toBe('mixin');
+        expect(mixin.name?.toTrimmedString()).toBe('mixin');
       }
     }
   });
@@ -179,7 +179,7 @@ describe('jess-parser (ast serialize)', () => {
       return;
     }
 
-    const childTypes = ruleset.value.rules.value.map(n => n.type);
+    const childTypes = ruleset.rules.value.map(n => n.type);
     expect(childTypes).toEqual(['If', 'For', 'While']);
     const serialized = serializeTypes(ruleset);
     expect(serialized).toContainString('(Ruleset');
@@ -227,14 +227,15 @@ describe('jess-parser (ast serialize)', () => {
       (JsImport
         path:
           (Quoted
-            (Any [role=any] './tokens.js')
+            value:
+              (Any [role=any] './tokens.js')
           )
       `);
     const rules = isNode(tree, N.Rules) ? tree : null;
     const imported = rules?.value.find(n => isNode(n, N.JsImport));
     expect(isNode(imported, N.JsImport)).toBe(true);
     if (isNode(imported, N.JsImport)) {
-      expect(imported.value.path.valueOf()).toBe('./tokens.js');
+      expect(imported.path.valueOf()).toBe('./tokens.js');
       expect(imported.options.namespace).toBe('foo');
     }
   });
@@ -249,8 +250,8 @@ describe('jess-parser (ast serialize)', () => {
     const imported = rules?.value.find(n => isNode(n, N.JsImport));
     expect(isNode(imported, N.JsImport)).toBe(true);
     if (isNode(imported, N.JsImport)) {
-      expect(imported.value.imports).toContain('primary');
-      expect(imported.value.imports).toContain('secondary');
+      expect(imported.imports).toContain('primary');
+      expect(imported.imports).toContain('secondary');
     }
   });
 
@@ -295,7 +296,7 @@ describe('jess-parser (ast serialize)', () => {
       const mixin = rules.value.find(n => isNode(n, N.Mixin));
       expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
       if (mixin && isNode(mixin, N.Mixin)) {
-        expect(mixin.value.guard).toBeDefined();
+        expect(mixin.guard).toBeDefined();
       }
     }
   });

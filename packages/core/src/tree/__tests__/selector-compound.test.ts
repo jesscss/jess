@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { amp, any, attr, compound, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
+import { amp, any, attr, compound, CompoundSelector, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
@@ -19,10 +19,16 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -46,6 +52,16 @@ describe('Compound Selector', () => {
   });
 
   describe('equality', () => {
+    test('exposes components as the direct child field', () => {
+      const first = el('.foo');
+      const second = el('.bar');
+      const node = compound([first, second]);
+
+      expect(node.components).toEqual([first, second]);
+      expect(node.value).toEqual([first, second]);
+      expect(CompoundSelector.childKeys).toEqual(['components']);
+    });
+
     test('renders compound selector syntax through toTrimmedString()', () => {
       const node = compound([
         el('a'),
@@ -57,6 +73,15 @@ describe('Compound Selector', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('a[data=bar]');
+    });
+
+    test('writes empty compound selector syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(compound([]).toTrimmedString({ writer })).toBe('');
+      expect(writer.toString()).toBe('');
+      expect(writer.reads).toBe(0);
+      expect(writer.captures).toBe(0);
     });
 
     test('same value', () => {
@@ -171,6 +196,29 @@ describe('Compound Selector', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
+  test('derives resolved compound selector surfaces without generic construction', async () => {
+    const first = el('.source');
+    const resolvedFirst = el('.resolved');
+    first.resolve = () => resolvedFirst;
+    const selector = compound([
+      first,
+      el('.other')
+    ]);
+    const originalConstruct = Reflect.construct;
+    Reflect.construct = () => {
+      throw new Error('compound selector resolve should not use generic construction');
+    };
+
+    try {
+      const resolved = await selector.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('.resolved.other');
+      expect(first.parent).toBe(selector);
+    } finally {
+      Reflect.construct = originalConstruct;
+    }
+  });
+
   test('keeps source compound selector values canonical after resolve(context)', async () => {
     const node = rules([
       vardecl({
@@ -188,8 +236,8 @@ describe('Compound Selector', () => {
         value: ref({ key: 'capture-attr' }, { type: 'variable' })
       })
     ]);
-    const sourceElement = selector.value[0]!;
-    const sourceAttr = selector.value[1]!;
+    const sourceElement = selector.components[0]!;
+    const sourceAttr = selector.components[1]!;
     const resolved = await selector.resolve(context);
 
     expect(resolved.render(context)).toBe('a[data=foo]');
@@ -203,7 +251,7 @@ describe('Compound Selector', () => {
       amp(),
       el('.keep')
     ]);
-    const sourceChild = selector.value[1]!;
+    const sourceChild = selector.components[1]!;
     const sourceParent = sourceChild.parent;
     const sourceLocation = sourceChild.location;
     const resolved = await selector.eval(context);

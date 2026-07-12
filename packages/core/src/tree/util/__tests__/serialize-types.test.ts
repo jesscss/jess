@@ -15,7 +15,7 @@ describe('serializeTypes', () => {
 
   it('protects against node cycles', () => {
     const root = rules([]);
-    root.value.push(root);
+    root.rules.push(root);
 
     expect(serializeTypes(root)).toContain('(Rules');
     expect(serializeTypes(root)).toContain('(Rules …)');

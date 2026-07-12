@@ -3,17 +3,17 @@ import { serializeNodeValue } from '../util/serialize-node.js';
 
 const replace = defineFunction(
   'replace',
-  function(this: any, input: Node, pattern: Node, replacement: Node, flags?: Node) {
-    const source = serializeNodeValue(input, this.context);
-    const patternValue = serializeNodeValue(pattern, this.context);
+  async function(this: any, input: Node, pattern: Node, replacement: Node, flags?: Node) {
+    const source = await serializeNodeValue(input, this.context);
+    const patternValue = await serializeNodeValue(pattern, this.context);
     const replacementValue = replacement instanceof Quoted
       ? replacement.valueOf()
-      : serializeNodeValue(replacement, this.context);
-    const flagValue = flags ? serializeNodeValue(flags, this.context) : '';
+      : await serializeNodeValue(replacement, this.context);
+    const flagValue = flags ? await serializeNodeValue(flags, this.context) : '';
     const result = source.replace(new RegExp(patternValue, flagValue), replacementValue);
 
-    if (input instanceof Quoted && !input.options.escaped) {
-      return new Quoted(result, { quote: input.options.quote, escaped: false });
+    if (input instanceof Quoted && !input.escaped) {
+      return new Quoted(result, { quote: input.quote, escaped: false });
     }
     return new Any(result, { role: 'keyword' });
   },

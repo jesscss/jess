@@ -9,7 +9,7 @@ Jess imports are intentionally practical: bring in stylesheet APIs, pull values 
 
 ```css
 // JavaScript example
-@import { WIDTH } from './constants.js';
+@-from './constants.js' import (WIDTH);
 
 .box {
   width: $(WIDTH)px;
@@ -17,7 +17,7 @@ Jess imports are intentionally practical: bring in stylesheet APIs, pull values 
 ```
 ```css
 // Jess example
-@import { myMixin } from './mixins.jess';
+@-from './mixins.jess' import (myMixin);
 
 .box {
   @include myMixin();

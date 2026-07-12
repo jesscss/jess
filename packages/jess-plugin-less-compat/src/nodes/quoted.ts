@@ -12,12 +12,12 @@ export const transformQuotedToLess = createFromAdapter<Quoted>({
         return value.value;
       }
       if (value instanceof Interpolated) {
-        return String(value.value.source);
+        return String(value.source);
       }
       return String(value);
     },
-    quote: q => q.options.quote || '"',
-    escaped: q => q.options.escaped === true
+    quote: q => q.quote || '"',
+    escaped: q => q.escaped === true
   },
   accept: selfVisitAccept()
 });

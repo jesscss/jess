@@ -39,11 +39,11 @@ describe('debug self analysis', () => {
       }
       const produced = (factory as RuleFactory).call(parser, T);
       expect(typeof produced, `${name} factory return type`).toBe('function');
-      expect(typeof Reflect.get(parser, name), `${name} parser rule type`).toBe('function');
+      expect(typeof (parser as unknown as Record<string, unknown>)[name], `${name} parser rule type`).toBe('function');
     }
 
     for (const name of parser.definedRulesNames) {
-      const rule = Reflect.get(parser, name);
+      const rule = (parser as unknown as Record<string, unknown>)[name];
       expect(isRuleMetadata(rule), `${name} rule metadata`).toBe(true);
       expect(isRuleMetadata(rule) ? typeof rule.originalGrammarAction : undefined, `${name} originalGrammarAction type`).toBe('function');
     }

@@ -25,7 +25,7 @@ const unitConversions: Record<string, Record<string, number>> = {
 export default defineFunction(
   'convert',
   function(value: Dimension, unit: Any<'keyword'> | Quoted) {
-    const { number, unit: from } = value.value;
+    const { number, unit: from } = value;
     const target = unit.valueOf();
     if (!from || !target || from === target) {
       return value;

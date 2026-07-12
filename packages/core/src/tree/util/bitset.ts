@@ -4,13 +4,13 @@ function isNumberArray(value: unknown): value is number[] {
   return Array.isArray(value) && value.every(item => typeof item === 'number');
 }
 
-function dataOf(bitset: OriginalBitSet): number[] | undefined {
-  const data: unknown = Reflect.get(bitset, 'data');
+function dataOf(bitset: OriginalBitSet & { data?: unknown }): number[] | undefined {
+  const data: unknown = bitset.data;
   return isNumberArray(data) ? data : undefined;
 }
 
-function isInverted(bitset: OriginalBitSet): boolean {
-  return Reflect.get(bitset, '_') === 1;
+function isInverted(bitset: OriginalBitSet & { _?: unknown }): boolean {
+  return bitset._ === 1;
 }
 
 function withLibrary<T>(bitset: OriginalBitSet, library: BitSetLibrary<T> | undefined): BitSet<T> {

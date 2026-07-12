@@ -8,9 +8,10 @@ describe('operation result finalization', () => {
     const renderResult = any('2px');
     const publicResult = any('3px');
 
+    expect(finalizePublicOperationResult).toBe(finalizeOperationMetadataResult);
     expect(finalizeOperationMetadataResult(source, renderResult)).toBe(renderResult);
     expect(finalizePublicOperationResult(source, publicResult)).toBe(publicResult);
     expect(publicResult.location).toEqual(source.location);
-    expect(publicResult.treeContext).toBe(source.treeContext);
+    expect(publicResult._sourceRoot).toBe(source._sourceRoot);
   });
 });

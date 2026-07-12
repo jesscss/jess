@@ -3,8 +3,9 @@
  * The patching happens in node.ts
  */
 import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
 export type AnyRole =
   'ident'
@@ -44,8 +45,19 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
-    super(...args);
+  static override childKeys = null;
+
+  readonly role: Role | undefined;
+
+  constructor(
+    value: string,
+    options?: AnyOptions<Role>,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
   }
 
@@ -63,6 +75,16 @@ export class Any<
     return this.evalNode(context);
   }
 
+  override toTrimmedString(options?: PrintOptions): string {
+    const out = this.value;
+    options?.writer?.add(out, this);
+    return out;
+  }
+
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add(this.value, this);
+  }
+
   override compare(other: Node): 0 | 1 | -1 | undefined {
     // In Less guards, quoted strings are distinct from bare identifiers.
     if (other.type === 'Quoted') {
@@ -76,13 +98,8 @@ export class Any<
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherValue = other.value;
-      const otherNumber = typeof otherValue === 'object' && otherValue !== null && 'number' in otherValue
-        ? otherValue.number
-        : undefined;
-      const otherUnit = typeof otherValue === 'object' && otherValue !== null && 'unit' in otherValue
-        ? otherValue.unit
-        : undefined;
+      const otherNumber = 'number' in other ? other.number : undefined;
+      const otherUnit = 'unit' in other ? other.unit : undefined;
       if (typeof otherNumber !== 'number') {
         return undefined;
       }
@@ -99,9 +116,11 @@ export class Any<
 // Custom any function that properly handles role narrowing
 export function any<Role extends AnyRole = AnyRole>(
   value: string,
-  options?: AnyOptions<Role>
+  options?: AnyOptions<Role>,
+  location?: LocationInfo,
+  treeContext?: Context['treeContext']
 ): Any<Role> {
-  return new Any(value, options);
+  return new Any(value, options, location, treeContext);
 }
 defineType(Any, 'Any');
 
@@ -126,10 +145,10 @@ export class Keyword extends Any<'keyword'> {
     value: string,
     options?: Omit<NodeOptions, 'role'>,
     location?: LocationInfo,
-    context?: TreeContext
+    treeContext?: Context['treeContext']
   ) {
     // Force role to 'keyword'
-    super(value, { ...options, role: 'keyword' }, location, context);
+    super(value, { ...options, role: 'keyword' }, location, treeContext);
   }
 }
 defineType(Keyword, 'Keyword');
@@ -141,7 +160,7 @@ export function keyword(
   value: string,
   options?: Omit<NodeOptions, 'role'>,
   location?: LocationInfo,
-  context?: TreeContext
+  treeContext?: Context['treeContext']
 ): Keyword {
-  return new Keyword(value, options, location, context);
+  return new Keyword(value, options, location, treeContext);
 }

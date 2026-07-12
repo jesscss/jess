@@ -16,17 +16,17 @@ describe('Sass HSL channel functions', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] }); // hsl(120, 50%, 50%)
       const result = hue(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(120);
-      expect((result as Dimension).data.unit).toBe('deg');
+      expect((result as Dimension).number).toBe(120);
+      expect((result as Dimension).unit).toBe('deg');
     });
 
     it('extracts hue from RGB color (converts to HSL)', () => {
       const color = new Color('#ff0000'); // Red - hue should be 0
       const result = hue(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.unit).toBe('deg');
+      expect((result as Dimension).unit).toBe('deg');
       // Hue for red should be close to 0 (or 360)
-      const hueValue = (result as Dimension).data.number;
+      const hueValue = (result as Dimension).number;
       expect(hueValue).toBeGreaterThanOrEqual(0);
       expect(hueValue).toBeLessThan(360);
     });
@@ -35,8 +35,8 @@ describe('Sass HSL channel functions', () => {
       const color = new Color({ format: 2, hsl: [180, 0.5, 0.5] });
       const result = hue({ color });
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(180);
-      expect((result as Dimension).data.unit).toBe('deg');
+      expect((result as Dimension).number).toBe(180);
+      expect((result as Dimension).unit).toBe('deg');
     });
   });
 
@@ -45,25 +45,25 @@ describe('Sass HSL channel functions', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] }); // hsl(120, 50%, 50%)
       const result = saturation(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(50);
-      expect((result as Dimension).data.unit).toBe('%');
+      expect((result as Dimension).number).toBe(50);
+      expect((result as Dimension).unit).toBe('%');
     });
 
     it('extracts saturation from RGB color (converts to HSL)', () => {
       const color = new Color('#ff0000'); // Red
       const result = saturation(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.unit).toBe('%');
-      expect((result as Dimension).data.number).toBeGreaterThanOrEqual(0);
-      expect((result as Dimension).data.number).toBeLessThanOrEqual(100);
+      expect((result as Dimension).unit).toBe('%');
+      expect((result as Dimension).number).toBeGreaterThanOrEqual(0);
+      expect((result as Dimension).number).toBeLessThanOrEqual(100);
     });
 
     it('works with object parameters', () => {
       const color = new Color({ format: 2, hsl: [120, 0.75, 0.5] });
       const result = saturation({ color });
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(75);
-      expect((result as Dimension).data.unit).toBe('%');
+      expect((result as Dimension).number).toBe(75);
+      expect((result as Dimension).unit).toBe('%');
     });
   });
 
@@ -72,25 +72,25 @@ describe('Sass HSL channel functions', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] }); // hsl(120, 50%, 50%)
       const result = lightness(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(50);
-      expect((result as Dimension).data.unit).toBe('%');
+      expect((result as Dimension).number).toBe(50);
+      expect((result as Dimension).unit).toBe('%');
     });
 
     it('extracts lightness from RGB color (converts to HSL)', () => {
       const color = new Color('#ff0000'); // Red
       const result = lightness(color);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.unit).toBe('%');
-      expect((result as Dimension).data.number).toBeGreaterThanOrEqual(0);
-      expect((result as Dimension).data.number).toBeLessThanOrEqual(100);
+      expect((result as Dimension).unit).toBe('%');
+      expect((result as Dimension).number).toBeGreaterThanOrEqual(0);
+      expect((result as Dimension).number).toBeLessThanOrEqual(100);
     });
 
     it('works with object parameters', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.25] });
       const result = lightness({ color });
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).data.number).toBe(25);
-      expect((result as Dimension).data.unit).toBe('%');
+      expect((result as Dimension).number).toBe(25);
+      expect((result as Dimension).unit).toBe('%');
     });
   });
 });

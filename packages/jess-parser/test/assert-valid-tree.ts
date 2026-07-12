@@ -90,7 +90,7 @@ export function assertValidTree(root: unknown) {
     // - always include `.data` (the canonical child container for most nodes)
     // - also include other own enumerable fields (for nodes with direct child fields)
     const childRoots: unknown[] = [];
-    childRoots.push(Reflect.get(value, 'data'));
+    childRoots.push((value as unknown as { data?: unknown }).data);
 
     for (const key of Object.keys(value)) {
       // Avoid infinite recursion / unrelated references.
@@ -102,7 +102,7 @@ export function assertValidTree(root: unknown) {
       ) {
         continue;
       }
-      childRoots.push(Reflect.get(value, key));
+      childRoots.push((value as unknown as Record<string, unknown>)[key]);
     }
 
     for (const childRoot of childRoots) {

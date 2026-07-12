@@ -1,8 +1,7 @@
 import { Lexer } from 'chevrotain';
 import { cssLexer } from './cssTokens.js';
 import { CssRecursiveParser, type CssRecursiveParserConfig } from './cssRecursiveParser.js';
-import { type Node, type Rules, type IParseResult } from '@jesscss/core';
-import type { TokenMap } from './cssRecursiveParser.js';
+import { nil, type Node, type Rules, type IParseResult } from '@jesscss/core';
 
 export type CssRules = keyof {
   [K in keyof CssRecursiveParser as CssRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
@@ -35,7 +34,7 @@ export class CssParser {
       ensureOptimizations: true,
       skipValidations: process.env.TEST !== 'true'
     });
-    this.parser = new CssRecursiveParser(T as TokenMap, config);
+    this.parser = new CssRecursiveParser(T, config);
   }
 
   parse(text: string): IParseResult<Rules>;
@@ -46,19 +45,18 @@ export class CssParser {
     const lexerResult = this.lexer.tokenize(text);
     parser.context.opts.trivia = undefined;
     parser.input = lexerResult.tokens;
-    const ruleFn = Reflect.get(parser, rule);
+    const ruleFn = parser[rule];
     if (typeof ruleFn !== 'function') {
       throw new Error(`Unknown parser rule: ${rule}`);
     }
-    const tree = Reflect.apply(ruleFn, parser, []) as Node | undefined;
+    const tree = ruleFn.call(parser);
     const trivia = parser.trivia;
     parser.context.opts.trivia = trivia;
-    if (tree) {
-      tree.treeContext.opts.trivia = trivia;
-    }
+    const resultTree = tree ?? nil();
+    (resultTree.sourceRoot?._treeContext ?? parser.context).opts.trivia = trivia;
 
     return {
-      tree: tree as Node,
+      tree: resultTree,
       lexerResult,
       errors: parser.errors,
       trivia,

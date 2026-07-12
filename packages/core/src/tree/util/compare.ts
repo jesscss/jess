@@ -1,8 +1,17 @@
 import { isNode } from './is-node.js';
 import isObject from 'lodash-es/isObject.js';
 import { type Node } from '../node.js';
-import { type Rules } from '../rules.js';
 import type { EqualityMode } from '../../types/modes.js';
+
+/** Normalize loose CSS value text for guard/comparison coercion. */
+export function normalizeComparableText(value: string): string {
+  return value.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
+}
+
+/** Normalize sequence text where only whitespace is semantically collapsible. */
+export function normalizeComparableWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
 
 export function compare(a: any, b: any, mode: EqualityMode = 'coerce') {
   if (a === b) {

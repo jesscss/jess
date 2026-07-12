@@ -40,8 +40,10 @@ export function stylesheet(this: C, T: TokenMap): StylesheetRule {
       if (charset && root instanceof Rules) {
         let loc = $.getLocationInfo(charset);
         let rootLoc = root.location;
-        let rules = root.value;
-        root.set(null, [new Any(charset.image, { role: 'charset' }, loc, context!), ...rules]);
+        let rules = root.rules;
+        const charsetNode = new Any(charset.image, { role: 'charset' }, loc, context!);
+        root.adopt(charsetNode);
+        rules.unshift(charsetNode);
         rootLoc[0] = loc[0];
         rootLoc[1] = loc[1];
         rootLoc[2] = loc[2];
@@ -600,7 +602,8 @@ export function relativeSelector(this: C, T: TokenMap) {
           if (!$.RECORDING_PHASE) {
             let combinator = new Combinator(co.image as Combinators, undefined, $.getLocationInfo(co), this.context);
             if (complex instanceof ComplexSelector) {
-              complex.set(null, [combinator, ...complex.value]);
+              complex.adopt(combinator);
+              complex.components.unshift(combinator);
               let location = complex.location;
               location[0] = co.startOffset;
               location[1] = co.startLine;

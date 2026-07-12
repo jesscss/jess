@@ -1,28 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { Any, Bool, Mixin, Rules } from '@jesscss/core';
-import isruleset from '../isruleset.js';
-
-type LazyBoolInternal = {
-  _internal: (value: () => unknown) => Promise<Bool>;
-};
+import { Any, Mixin, Rules } from '@jesscss/core';
+import { isrulesetImplementation } from '../isruleset.js';
 
 describe('isruleset()', () => {
   it('returns false for lazy ReferenceError and rethrows non-reference errors', async () => {
-    const isrulesetInternal = (isruleset as unknown as LazyBoolInternal)._internal;
-
-    const rulesResult = await isrulesetInternal(() => new Rules([]));
-    const mixinResult = await isrulesetInternal(() => new Mixin({ rules: new Rules([]) }));
-    const noRulesResult = await isrulesetInternal(() => new Any('nope'));
-    const missingRulesResult = await isrulesetInternal(() => {
+    const rulesResult = await isrulesetImplementation(() => new Rules([]));
+    const mixinResult = await isrulesetImplementation(() => new Mixin({ rules: new Rules([]) }));
+    const noRulesResult = await isrulesetImplementation(() => new Any('nope'));
+    const missingRulesResult = await isrulesetImplementation(() => {
       throw new ReferenceError('missing');
     });
 
-    expect(rulesResult.data).toBe(true);
-    expect(mixinResult.data).toBe(true);
-    expect(noRulesResult.data).toBe(false);
-    expect(missingRulesResult.data).toBe(false);
+    expect(rulesResult.value).toBe(true);
+    expect(mixinResult.value).toBe(true);
+    expect(noRulesResult.value).toBe(false);
+    expect(missingRulesResult.value).toBe(false);
 
-    await expect(isrulesetInternal(() => {
+    await expect(isrulesetImplementation(() => {
       throw new TypeError('boom');
     })).rejects.toThrow('boom');
   });

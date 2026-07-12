@@ -38,8 +38,8 @@ function memoize<Args extends any[], Return>(
  * Memoized so that percentOf(255) always returns the same function instance
  */
 export const percentOf = memoize((base: number): ConversionPlugin => (value: unknown) => {
-  if (value instanceof Dimension && value.value.unit === '%') {
-    const converted = value.value.number * base / 100;
+  if (value instanceof Dimension && value.unit === '%') {
+    const converted = value.number * base / 100;
     return new Num(converted);
   }
   return value;
@@ -131,10 +131,10 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
  */
 export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
   if (value instanceof Dimension) {
-    return new Num(value.value.number); // Extract number from Dimension
+    return new Num(value.number); // Extract number from Dimension
   }
   if (value instanceof Num) {
-    return new Num(value.value.number);
+    return new Num(value.number);
   }
   return value; // Don't know how to handle this, pass through
 });
@@ -253,18 +253,18 @@ export const splitSequence = (): PreprocessParams => {
 
     // Split the sequence into individual arguments
     const splitArgs: any[] = [];
-    for (let i = 0; i < sequence.value.length; i++) {
-      const item = sequence.value[i]!;
+    for (let i = 0; i < sequence.items.length; i++) {
+      const item = sequence.items[i]!;
 
       // Check if this is the last item and it's an Operation (likely a slash)
-      if (i === sequence.value.length - 1 && item instanceof Operation) {
+      if (i === sequence.items.length - 1 && item instanceof Operation) {
         const [left, , right] = item.value;
         // Add the left operand
         splitArgs.push(left);
         // Add the right operand if it exists and is not a placeholder (Num with value 0)
         // This handles test cases where Num(0) is used as a placeholder for undefined
         if (right) {
-          const isPlaceholder = right instanceof Num && right.value.number === 0;
+          const isPlaceholder = right instanceof Num && right.number === 0;
           if (!isPlaceholder) {
             splitArgs.push(right);
           }

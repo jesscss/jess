@@ -1,11 +1,11 @@
-import { pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { F_VISIBLE, Node, type NodeOptions, type NodeValue, defineType } from './node.js';
 import type { IfAny } from 'type-fest';
 import type { Context } from '../context.js';
 import type { Nil } from './nil.js';
 import { BitSetLibrary, BitSet } from './util/bitset.js';
 import type { RenderBuffer } from './util/render-buffer.js';
-import type { PrintOptions } from './util/print.js';
+import type { FinalPrintOptions, PrintOptions } from './util/print.js';
 
 const { isArray } = Array;
 
@@ -24,7 +24,7 @@ function selectorArg(value: unknown): Selector | undefined {
   if (typeof value !== 'object' || value === null || !('arg' in value)) {
     return undefined;
   }
-  const arg = Reflect.get(value, 'arg');
+  const { arg } = value;
   return isSelector(arg) ? arg : undefined;
 }
 
@@ -69,7 +69,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     const parentLibrary = parent !== this && isSelector(parent)
       ? parent.keySetLibrary
       : undefined;
-    const treeContext = this.treeContextIfSet;
+    const treeContext = this.sourceRoot?._treeContext;
     const library = keySetLibrary
       ?? parentLibrary
       ?? sourceLibrary
@@ -127,13 +127,17 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
     return this.evalNode(context);
   }
 
+  writeSyntax(options: FinalPrintOptions): void {
+    this.toTrimmedString(options);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveForRender(context),
-      node => this.renderOutput(context, node, bufferOrOptions, options)
-    );
+    const node = this.resolveForRender(context);
+    return isThenable(node)
+      ? (node as Promise<Node>).then(resolved => this.renderOutput(context, resolved, bufferOrOptions, options))
+      : this.renderOutput(context, node as Node, bufferOrOptions, options);
   }
 
   /**

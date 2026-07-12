@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import { amp, any, attr, co, compound, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
+import { amp, any, attr, co, compound, ComplexSelector, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
@@ -7,10 +7,16 @@ import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
+  reads = 0;
 
   override capture(fn: () => void): string {
     this.captures++;
     return super.capture(fn);
+  }
+
+  override getSince(mark: number): string {
+    this.reads++;
+    return super.getSince(mark);
   }
 }
 
@@ -50,6 +56,26 @@ describe('Complex selector', () => {
       ]);
 
       expect(node.toTrimmedString()).toBe('a > .foo');
+    });
+
+    test('exposes components as direct child field', () => {
+      const first = el('a');
+      const combinator = co('>');
+      const second = el('.foo');
+      const node = sel([first, combinator, second]);
+
+      expect(node.components).toEqual([first, combinator, second]);
+      expect(node.value).toEqual([first, combinator, second]);
+      expect(ComplexSelector.childKeys).toEqual(['components']);
+    });
+
+    test('writes empty complex selector syntax without writer readback', () => {
+      const writer = new CountingWriter();
+
+      expect(sel([]).toTrimmedString({ writer })).toBe('');
+      expect(writer.toString()).toBe('');
+      expect(writer.reads).toBe(0);
+      expect(writer.captures).toBe(0);
     });
 
     test('streams selector components without capture scaffolding', () => {
@@ -176,6 +202,30 @@ describe('Complex selector', () => {
       expect(context.printState.writer).toBeUndefined();
     });
 
+    test('derives resolved complex selector surfaces without generic construction', async () => {
+      const first = el('.source');
+      const resolvedFirst = el('.resolved');
+      first.resolve = () => resolvedFirst;
+      const selector = sel([
+        first,
+        co('>'),
+        el('.other')
+      ]);
+      const originalConstruct = Reflect.construct;
+      Reflect.construct = () => {
+        throw new Error('complex selector resolve should not use generic construction');
+      };
+
+      try {
+        const resolved = await selector.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('.resolved > .other');
+        expect(first.parent).toBe(selector);
+      } finally {
+        Reflect.construct = originalConstruct;
+      }
+    });
+
     test('keeps source complex selector values canonical after resolve(context)', async () => {
       const node = rules([
         vardecl({
@@ -197,9 +247,9 @@ describe('Complex selector', () => {
         co('>'),
         el('.foo')
       ]);
-      const sourceCompound = selector.value[0]!;
-      const sourceCombinator = selector.value[1]!;
-      const sourceChild = selector.value[2]!;
+      const sourceCompound = selector.components[0]!;
+      const sourceCombinator = selector.components[1]!;
+      const sourceChild = selector.components[2]!;
       const resolved = await selector.resolve(context);
 
       expect(resolved.render(context)).toBe('a[data=foo] > .foo');
@@ -214,7 +264,7 @@ describe('Complex selector', () => {
         amp(),
         el('.keep')
       ]);
-      const sourceChild = selector.value[1]!;
+      const sourceChild = selector.components[1]!;
       const sourceParent = sourceChild.parent;
       const sourceLocation = sourceChild.location;
       const resolved = await selector.eval(context);

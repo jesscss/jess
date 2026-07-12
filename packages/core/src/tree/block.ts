@@ -1,8 +1,8 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, defineType, type NodeLocation } from './node.js';
 import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
-import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
   prepareBufferPrintState,
@@ -23,6 +23,10 @@ export interface Block extends Node<Node, BlockOptions> {
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
+  static override childKeys = ['node'] as const;
+
+  readonly node: Node;
+
   private withValue(value: Node): Block {
     const location = this._location && this._location.length === 6
       ? this._location
@@ -31,11 +35,22 @@ export class Block extends Node<Node, BlockOptions> {
       value,
       this._options ? { ...this._options } : undefined,
       location,
-      this.treeContext
+      this.sourceRoot?._treeContext
     ).inherit(this);
   }
 
-  private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
+  constructor(
+    value: Node,
+    options?: BlockOptions,
+    location?: NodeLocation,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
+    this.node = value;
+  }
+
+  private renderBlockSyntax(value = this.node, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -44,7 +59,7 @@ export class Block extends Node<Node, BlockOptions> {
     let end = type === 'square' ? ']' : '}';
     w.add(start);
     value.toString(options);
-    const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
+    const trivia = options.trivia ?? this.sourceRoot?._treeContext?.opts?.trivia;
     if (trivia) {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
     }
@@ -53,52 +68,46 @@ export class Block extends Node<Node, BlockOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderBlockSyntax(this.value, options);
+    return this.renderBlockSyntax(this.node, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    return pipe(
-      () => this.resolveRenderValue(context),
-      value => this.renderResolvedBlockValue(context, value, bufferOrOptions, options)
-    );
-  }
-
-  override resolve(context: Context): MaybePromise<Node> {
-    return this.resolveValue(context);
-  }
-
-  private renderResolvedBlockValue(
-    context: Context,
-    value: Node,
-    bufferOrOptions?: RenderBuffer | PrintOptions,
-    options?: PrintOptions
-  ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
-    const out = this.renderBlockSyntax(value, prepared);
+    const value = this.hasFlag(F_STATIC) ? this.node : this.node.eval(context);
+    if (isThenable(value)) {
+      return (value as Promise<Node>).then((resolved) => {
+        const out = this.renderBlockSyntax(resolved, prepared);
+        return buffer
+          ? writeRenderText(buffer, out)
+          : out;
+      });
+    }
+    const out = this.renderBlockSyntax(value as Node, prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
   }
 
-  private resolveRenderValue(context: Context): MaybePromise<Node> {
-    if (this.hasFlag(F_STATIC)) {
-      return this.value;
-    }
-    return this.value.resolve(context);
+  override evalNode(context: Context): MaybePromise<Block> {
+    return this.evaluateValue(context);
   }
 
-  private resolveValue(context: Context): MaybePromise<Block> {
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evaluateValue(context);
+  }
+
+  private evaluateValue(context: Context): MaybePromise<Block> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }
-    const value = this.value.resolve(context);
+    const value = this.node.eval(context);
     const finalize = (resolvedValue: Node): Block => {
-      if (resolvedValue === this.value) {
+      if (resolvedValue === this.node) {
         return this;
       }
       return this.withValue(resolvedValue);

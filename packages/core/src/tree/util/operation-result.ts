@@ -5,6 +5,4 @@ export function finalizeOperationMetadataResult<T extends Node>(source: Node, re
   return result;
 }
 
-export function finalizePublicOperationResult<T extends Node>(source: Node, result: T): T {
-  return finalizeOperationMetadataResult(source, result);
-}
+export const finalizePublicOperationResult = finalizeOperationMetadataResult;

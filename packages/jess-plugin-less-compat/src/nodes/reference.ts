@@ -20,7 +20,7 @@ export const transformReferenceToLess = createFromAdapter<Reference>({
         : (refType === 'function' || refType === 'mixin')
             ? 'VariableCall'
             : 'Variable';
-      const key = ref.value.key;
+      const key = ref.key;
       if (typeof key === 'string') {
         if (lessType === 'Variable' && !key.startsWith('@')) {
           return `@${key}`;

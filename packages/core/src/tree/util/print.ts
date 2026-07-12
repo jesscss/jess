@@ -35,11 +35,21 @@ export type PrintOptions = {
   /** Render-local override for one at-rule header prelude during direct render. */
   atRuleHeaderNode?: AtRule;
   atRuleHeaderPrelude?: Node;
+  /** Render-local override for one at-rule body during direct render. */
+  atRuleBodyNode?: AtRule;
+  atRuleBodyOverride?: import('../rules.js').Rules;
+  /** Render-local override for one at-rule hoist flag during direct render. */
+  atRuleHoistNode?: AtRule;
+  atRuleHoistOverride?: boolean;
+  /** Render-local override for one at-rule frame stack during direct render. */
+  atRuleFrameNode?: AtRule;
+  atRuleFrameOverride?: (Ruleset | AtRule)[];
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
   emittedTrivia?: Set<IToken[]>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
+  sourceMap?: boolean;
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -62,23 +72,36 @@ type RestorablePrintStateKey =
   | 'referenceFilterTargets'
   | 'referenceMode'
   | 'referenceRenderEnabled'
+  | 'sourceMap'
   | 'suppressBoundaryTrivia'
   | 'writer';
 
+const DEFAULT_SPACER_SHOULD_ADD = (nextText: string): boolean => !/^[ \t\r\n\f]/u.test(nextText);
+
 function isTriviaMap(value: unknown): value is TriviaMap {
-  return Boolean(
-    value
-    && typeof value === 'object'
-    && Reflect.get(value, 'runs') instanceof Set
-    && typeof Reflect.get(value, 'lookup') === 'function'
-    && typeof Reflect.get(value, 'entries') === 'function'
-    && typeof Reflect.get(value, 'has') === 'function'
-  );
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  if (
+    !('runs' in value)
+    || !('lookup' in value)
+    || !('entries' in value)
+    || !('has' in value)
+  ) {
+    return false;
+  }
+  return value.runs instanceof Set
+    && typeof value.lookup === 'function'
+    && typeof value.entries === 'function'
+    && typeof value.has === 'function';
 }
 
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
   options.depth ??= 0;
-  options.writer ??= new OutputWriter();
+  if (options.sourceMap === undefined && options.context?.opts?.sourceMap !== undefined) {
+    options.sourceMap = Boolean(options.context.opts.sourceMap);
+  }
+  options.writer ??= new OutputWriter(options.sourceMap === true);
   options.inFrames ??= [];
   options.frameHeaders ??= [];
   options.treeFrames ??= [];
@@ -96,6 +119,8 @@ export interface OutputWriter {
   addSpacer(text: string): void;
   queueSpacer(text: string, shouldAdd?: (nextText: string) => boolean): void;
   mark(): number;
+  position(): number;
+  writesTo(chunks: string[]): boolean;
   getSince(mark: number): string;
   hasContentSince(mark: number): boolean;
   preview(fn: () => string | void, preserveSegments?: boolean): string;
@@ -120,15 +145,21 @@ export type SourceSegment = {
   origColumn: number;  // 0-based
 };
 
+type SourceMapTreeContext = {
+  file?: {
+    fullPath?: string;
+    path?: string;
+    name?: string;
+  };
+};
+
+type SourceMapSourceRoot = {
+  _treeContext?: SourceMapTreeContext;
+};
+
 type SourceMapOrigin = {
   location?: unknown;
-  treeContext?: {
-    file?: {
-      fullPath?: string;
-      path?: string;
-      name?: string;
-    };
-  };
+  sourceRoot?: SourceMapSourceRoot;
 };
 
 const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
@@ -143,7 +174,8 @@ function sourceSegmentFor(originParam: unknown, genLine: number, genColumn: numb
   }
   const startLine = (loc[1] ?? 1) - 1;
   const startColumn = (loc[2] ?? 1) - 1;
-  const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
+  const treeContext = origin?.sourceRoot?._treeContext;
+  const file = treeContext?.file?.fullPath || treeContext?.file?.path || treeContext?.file?.name;
   return {
     genLine,
     genColumn,
@@ -215,7 +247,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.lastRenderedFrames = [];
   state.frameHeaders = [];
   state.depth = 0;
-  state.writer = seed?.writer ?? new OutputWriter();
+  state.sourceMap = seed?.sourceMap ?? Boolean(context.opts.sourceMap);
+  state.writer = seed?.writer ?? new OutputWriter(state.sourceMap === true);
   state.compress = seed?.compress;
   state.collapseNesting = seed?.collapseNesting;
   state.inCustom = seed?.inCustom;
@@ -225,7 +258,7 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.composedSelectorStack = seed?.composedSelectorStack;
   state.composedSelectorCache = new WeakMap();
   state.ampersandFirst = seed?.ampersandFirst;
-  const contextTrivia = Reflect.get(context.opts, 'trivia');
+  const contextTrivia = 'trivia' in context.opts ? context.opts.trivia : undefined;
   state.trivia = seed?.trivia ?? (isTriviaMap(contextTrivia) ? contextTrivia : undefined);
   state.emittedTrivia = new Set();
 
@@ -291,6 +324,16 @@ export function restoreSetState<T>(
   }
 }
 
+export function withScratchEmittedTrivia<T>(options: PrintOptions, fn: () => T): T {
+  const saved = options.emittedTrivia;
+  options.emittedTrivia = new Set();
+  try {
+    return fn();
+  } finally {
+    options.emittedTrivia = saved;
+  }
+}
+
 export function getCachedComposedSelector(
   options: FinalPrintOptions,
   ruleset: Ruleset
@@ -312,12 +355,25 @@ export class OutputWriter implements OutputWriter {
   private _line = 0;
   private _column = 0;
   private _segments: SourceSegment[] = [];
-  private _positions: Array<{ line: number; column: number; segments: number; length: number }> = [];
+  private _posLine: number[] = [];
+  private _posColumn: number[] = [];
+  private _posSegments: number[] = [];
+  private _posLength: number[] = [];
   /** Diagnostic: remember the origin that last wrote a trailing newline */
   private _lastNewlineOrigin: unknown = undefined;
   /** Store segments from the most recent capture for merging when content is added back */
   private _capturedSegments: SourceSegment[] | null = null;
-  private _queuedSpacer: { text: string; shouldAdd: (nextText: string) => boolean } | null = null;
+  private _queuedSpacerText = '';
+  private _queuedSpacerShouldAdd: ((nextText: string) => boolean) | undefined;
+
+  constructor(private readonly tracksSources = true, chunks?: string[]) {
+    if (chunks) {
+      this.chunks = chunks;
+      if (chunks.length > 0) {
+        this.refreshPositions();
+      }
+    }
+  }
 
   get line() {
     return this._line;
@@ -328,6 +384,9 @@ export class OutputWriter implements OutputWriter {
   }
 
   markSource(originParam?: unknown): void {
+    if (!this.tracksSources) {
+      return;
+    }
     const segment = sourceSegmentFor(originParam, this._line, this._column);
     if (segment) {
       this._segments.push(segment);
@@ -338,15 +397,24 @@ export class OutputWriter implements OutputWriter {
     if (!text) {
       return;
     }
-    const queuedSpacer = this._queuedSpacer;
-    if (queuedSpacer) {
-      this._queuedSpacer = null;
-      if (queuedSpacer.shouldAdd(text)) {
-        this.addSpacer(queuedSpacer.text);
+    const queuedSpacerText = this._queuedSpacerText;
+    if (queuedSpacerText) {
+      const shouldAdd = this._queuedSpacerShouldAdd ?? DEFAULT_SPACER_SHOULD_ADD;
+      this.clearQueuedSpacer();
+      if (shouldAdd(text)) {
+        this.addSpacer(queuedSpacerText);
       }
     }
+    const chunkIndex = this.chunks.length;
     this.chunks.push(text);
     this._length += text.length;
+    if (!this.tracksSources) {
+      this.recordPosition(chunkIndex);
+      if (!originParam) {
+        this._capturedSegments = null;
+      }
+      return;
+    }
 
     const currentLine = this._line;
     const currentColumn = this._column;
@@ -382,7 +450,7 @@ export class OutputWriter implements OutputWriter {
     let i = text.indexOf('\n');
     if (i === -1) {
       this._column += text.length;
-      this._positions.push({ line: this._line, column: this._column, segments: this._segments.length, length: this._length });
+      this.recordPosition(chunkIndex);
       // Clear captured segments if we added content without origin (normal add, not merging captured content)
       if (!originParam) {
         this._capturedSegments = null;
@@ -401,7 +469,7 @@ export class OutputWriter implements OutputWriter {
       i = next;
     }
     this._column = text.length - (i + 1);
-    this._positions.push({ line: this._line, column: this._column, segments: this._segments.length, length: this._length });
+    this.recordPosition(chunkIndex);
     // Clear captured segments if we added content without origin
     if (!originParam) {
       this._capturedSegments = null;
@@ -417,22 +485,42 @@ export class OutputWriter implements OutputWriter {
     this._capturedSegments = pendingSegments;
   }
 
-  queueSpacer(text: string, shouldAdd: (nextText: string) => boolean = nextText => !/^[ \t\r\n\f]/u.test(nextText)): void {
+  queueSpacer(text: string, shouldAdd: (nextText: string) => boolean = DEFAULT_SPACER_SHOULD_ADD): void {
     if (!text) {
       return;
     }
-    this._queuedSpacer = { text, shouldAdd };
+    this._queuedSpacerText = text;
+    this._queuedSpacerShouldAdd = shouldAdd;
   }
 
   mark(): number {
     return this.chunks.length;
   }
 
+  position(): number {
+    return this.chunks.length;
+  }
+
+  writesTo(chunks: string[]): boolean {
+    return this.chunks === chunks;
+  }
+
   getSince(mark: number): string {
     if (mark < 0 || mark > this.chunks.length) {
       return '';
     }
-    return this.chunks.slice(mark).join('');
+    const length = this.chunks.length;
+    if (mark === length) {
+      return '';
+    }
+    if (mark === length - 1) {
+      return this.chunks[mark] ?? '';
+    }
+    let out = '';
+    for (let i = mark; i < length; i++) {
+      out += this.chunks[i] ?? '';
+    }
+    return out;
   }
 
   hasContentSince(mark: number): boolean {
@@ -502,7 +590,7 @@ export class OutputWriter implements OutputWriter {
     if (mark < 0 || mark > this.chunks.length) {
       return;
     }
-    const segmentMark = mark > 0 ? (this._positions[mark - 1]?.segments ?? 0) : 0;
+    const segmentMark = mark > 0 ? (this._posSegments[mark - 1] ?? 0) : 0;
     const segmentsCreated = this._segments.slice(segmentMark);
     const replacement = replacer(this.getSince(mark));
     this.restore(mark);
@@ -602,47 +690,105 @@ export class OutputWriter implements OutputWriter {
       return;
     }
     this.chunks.length = mark;
-    const pos = this._positions[mark - 1];
-    if (pos) {
-      this._line = pos.line;
-      this._column = pos.column;
-      this._segments.length = pos.segments;
-      this._length = pos.length;
+    const posIndex = mark - 1;
+    if (!this.tracksSources) {
+      this._length = posIndex >= 0 ? (this._posLength[posIndex] ?? 0) : 0;
+      this._line = 0;
+      this._column = 0;
+      this._segments.length = 0;
+      this.truncatePositions(mark);
+      this.clearQueuedSpacer();
+      return;
+    }
+    if (posIndex >= 0 && posIndex < this._posLine.length) {
+      this._line = this._posLine[posIndex] ?? 0;
+      this._column = this._posColumn[posIndex] ?? 0;
+      this._segments.length = this._posSegments[posIndex] ?? 0;
+      this._length = this._posLength[posIndex] ?? 0;
     } else {
       this._line = 0;
       this._column = 0;
       this._segments.length = 0;
       this._length = 0;
     }
-    this._positions.length = mark;
-    this._queuedSpacer = null;
+    this.truncatePositions(mark);
+    this.clearQueuedSpacer();
   }
 
   private refreshPositions(): void {
-    const segmentCounts = this._positions.map(pos => pos.segments);
-    this._positions = [];
+    if (!this.tracksSources) {
+      this._posLength.length = 0;
+      this._length = 0;
+      for (let i = 0; i < this.chunks.length; i++) {
+        this._length += this.chunks[i]!.length;
+        this._posLength[i] = this._length;
+      }
+      this._posLine.length = 0;
+      this._posColumn.length = 0;
+      this._posSegments.length = 0;
+      this._line = 0;
+      this._column = 0;
+      this._segments.length = 0;
+      return;
+    }
+    this._posLine.length = 0;
+    this._posColumn.length = 0;
+    this._posLength.length = 0;
     this._length = 0;
     this._line = 0;
     this._column = 0;
     for (let i = 0; i < this.chunks.length; i++) {
       const text = this.chunks[i]!;
+      const segmentCount = this._posSegments[i] ?? this._segments.length;
       this._length += text.length;
       const newline = text.lastIndexOf('\n');
       if (newline === -1) {
         this._column += text.length;
       } else {
-        this._line += text.split('\n').length - 1;
+        let lineBreaks = 1;
+        for (let next = text.indexOf('\n', 0); ;) {
+          next = text.indexOf('\n', next + 1);
+          if (next === -1) {
+            break;
+          }
+          lineBreaks++;
+        }
         this._column = text.length - (newline + 1);
+        this._line += lineBreaks;
       }
-      this._positions.push({
-        line: this._line,
-        column: this._column,
-        segments: segmentCounts[i] ?? this._segments.length,
-        length: this._length
-      });
+      this._posLine[i] = this._line;
+      this._posColumn[i] = this._column;
+      this._posSegments[i] = segmentCount;
+      this._posLength[i] = this._length;
     }
-    const last = this._positions.at(-1);
-    this._segments.length = last?.segments ?? 0;
+    this._posSegments.length = this.chunks.length;
+    const lastIndex = this.chunks.length - 1;
+    this._segments.length = lastIndex >= 0 ? (this._posSegments[lastIndex] ?? 0) : 0;
+  }
+
+  private recordPosition(index: number): void {
+    if (!this.tracksSources) {
+      this._posLength[index] = this._length;
+      return;
+    }
+    this._posLine[index] = this._line;
+    this._posColumn[index] = this._column;
+    this._posSegments[index] = this._segments.length;
+    this._posLength[index] = this._length;
+  }
+
+  private truncatePositions(length: number): void {
+    if (this.tracksSources) {
+      this._posLine.length = length;
+      this._posColumn.length = length;
+      this._posSegments.length = length;
+    }
+    this._posLength.length = length;
+  }
+
+  private clearQueuedSpacer(): void {
+    this._queuedSpacerText = '';
+    this._queuedSpacerShouldAdd = undefined;
   }
 
   /** Capture output from a function without committing to the main buffer */

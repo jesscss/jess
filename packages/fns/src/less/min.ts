@@ -22,7 +22,7 @@ const unitGroups: UnitGroup[] = [{
 }];
 
 function toCanonical(node: Dimension, forcedUnit?: string) {
-  const { number, unit: nodeUnit } = node.value;
+  const { number, unit: nodeUnit } = node;
   const unit = nodeUnit || forcedUnit || '';
   if (!unit) {
     return { number, unit: '' };
@@ -38,7 +38,7 @@ function toCanonical(node: Dimension, forcedUnit?: string) {
 
 export default defineFunction(
   'min',
-  function(this: any, ...input: Node[]) {
+  async function(this: any, ...input: Node[]) {
     let args = input.slice();
     const unitMode = this?.context?.opts?.unitMode ?? 'loose';
     const isLooseMode = unitMode === 'loose';
@@ -51,19 +51,19 @@ export default defineFunction(
       let current = args[i] as unknown;
       if (!(current instanceof Dimension)) {
         if (current instanceof List) {
-          args.push(...current.value);
+          args.push(...current.items);
           continue;
         }
         throw new TypeError('incompatible types');
       }
 
-      const currentUnified = toCanonical(current, current.value.unit ? undefined : unitClone);
+      const currentUnified = toCanonical(current, current.unit ? undefined : unitClone);
       const unit = currentUnified.unit === '' && unitStatic !== undefined ? unitStatic : currentUnified.unit;
       if (unit !== '' && (unitStatic === undefined || toCanonical(order[0]!, unitClone).unit === '')) {
         unitStatic = unit;
       }
       if (unit !== '' && unitClone === undefined) {
-        unitClone = current.value.unit || unit;
+        unitClone = current.unit || unit;
       }
       const j = values[''] !== undefined && unit !== '' && unit === unitStatic ? values[''] : values[unit];
       if (j === undefined) {
@@ -74,7 +74,7 @@ export default defineFunction(
         order.push(current);
         continue;
       }
-      const referenceUnified = toCanonical(order[j]!, order[j]!.value.unit ? undefined : unitClone);
+      const referenceUnified = toCanonical(order[j]!, order[j]!.unit ? undefined : unitClone);
       if (currentUnified.number < referenceUnified.number) {
         order[j] = current;
       }
@@ -84,7 +84,7 @@ export default defineFunction(
       return order[0];
     }
     const sep = this?.context?.compress ? ',' : ', ';
-    const serialized = order.map(n => serializeNodeValue(n, this?.context).trimStart());
+    const serialized = await Promise.all(order.map(async n => (await serializeNodeValue(n, this?.context)).trimStart()));
     return new Any(`min(${serialized.join(sep)})`);
   },
   {

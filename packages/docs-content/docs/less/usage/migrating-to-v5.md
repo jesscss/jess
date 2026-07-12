@@ -184,7 +184,12 @@ This is a breaking change from older Less behavior, but it matches a more predic
 
 One surprising behavior for some teams is that legacy Less workflows could execute JavaScript (including via `.js` imports). That became a real security concern in setups where front-end input was passed directly into a Less compiler.
 
-In 5.x, JavaScript execution has a stronger opt-in model: it is not enabled by default, requires explicit plugin installation (`@jesscss/plugin-js`), and runs on Deno, which is secure by default.
+In 5.x, executable JavaScript has a stronger opt-in model: local/package JS and legacy file-based `@plugin` execution require `@jesscss/plugin-js` and run on Deno, which is secure by default. JSON imports are data-only and do not need that runtime. Deno-backed scripts cannot read outside the configured script sandbox root, cannot access Node `process` or environment variables by default, and cannot use the network unless plugin-js policy explicitly allows it.
+
+To turn off executable scripts entirely, use `disableScriptModules`. This also
+disables file-based `@plugin`. The old `disablePluginRule` option is still
+recognized for Less compatibility, but it is deprecated and maps to the same
+runtime switch.
 
 Example migration path:
 

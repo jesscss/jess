@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { nil } from '../index.js';
-import { Context } from '../../context.js';
+import { Context, TreeContext } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Nil', () => {
@@ -8,6 +8,13 @@ describe('Nil', () => {
 
   beforeEach(() => {
     context = new Context();
+  });
+
+  it('preserves parser tree context on construction', () => {
+    const treeContext = new TreeContext();
+    const node = nil(undefined, undefined, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
   });
 
   it('keeps nil source serializers empty', () => {

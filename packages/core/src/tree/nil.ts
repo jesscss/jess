@@ -10,7 +10,8 @@ import {
   type LocationInfo,
   type NodeOptions
 } from './node-base.js';
-import type { Context, TreeContext } from '../context.js';
+import type { Context } from '../context.js';
+import type { FinalPrintOptions } from './util/print.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
@@ -27,14 +28,18 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
+  static override childKeys = null;
+
   override allowRoot = true;
   override allowRuleRoot = true;
   constructor(
     value?: '',
     options?: NodeOptions,
     location?: LocationInfo,
-    treeContext?: TreeContext) {
-    super('', options, location, treeContext);
+    treeContext?: Context['treeContext']
+  ) {
+    super('', options, location);
+    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
     this.removeFlag(F_VISIBLE);
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
@@ -48,6 +53,9 @@ export class Nil extends Node<''> {
   override toString() {
     return '';
   }
+
+  /** @internal */
+  override writeSyntax(_options: FinalPrintOptions): void {}
 
   override resolve(_context: Context): this {
     return this;

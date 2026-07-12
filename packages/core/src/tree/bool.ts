@@ -1,6 +1,7 @@
 import type { Context } from '../context.js';
-import { Node, F_STATIC, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { Node, F_STATIC, F_VISIBLE, defineType, type LocationInfo, type NodeOptions } from './node.js';
+import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
+import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
 export interface Bool extends Node<boolean> {
   eval(context: Context): Bool;
@@ -10,8 +11,16 @@ export interface Bool extends Node<boolean> {
  * A boolean. Named `Bool` to avoid conflict with the built-in `Boolean` class.
  */
 export class Bool extends Node<boolean> {
-  constructor(...args: ConstructorParameters<typeof Node<boolean>>) {
-    super(...args);
+  static override childKeys = null;
+
+  constructor(
+    value: boolean,
+    options?: NodeOptions,
+    location?: LocationInfo,
+    treeContext?: Context['treeContext']
+  ) {
+    super(value, options, location);
+    this._treeContext = treeContext;
     this.addFlag(F_STATIC);
   }
 
@@ -23,11 +32,28 @@ export class Bool extends Node<boolean> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    options = getPrintOptions(options);
-    const w = options.writer!;
-    const mark = w.mark();
-    w.add(this.value ? 'true' : 'false', this);
-    return w.getSince(mark);
+    const out = this.value ? 'true' : 'false';
+    getPrintOptions(options).writer.add(out, this);
+    return out;
+  }
+
+  /** @internal */
+  override writeSyntax(options: FinalPrintOptions): void {
+    options.writer.add(this.value ? 'true' : 'false', this);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
+    }
+    const out = this.value ? 'true' : 'false';
+    if (isRenderBuffer(bufferOrOptions)) {
+      return writeRenderText(bufferOrOptions, out);
+    }
+    getPrintOptions(bufferOrOptions).writer.add(out, this);
+    return out;
   }
 
   override resolve(_context: Context): this {

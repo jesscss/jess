@@ -39,6 +39,14 @@ describe('Block', () => {
     expect(block(any('foo')).toTrimmedString()).toBe('{foo}');
   });
 
+  it('stores the block child on a constructor-owned direct field', () => {
+    const value = any('foo');
+    const node = block(value);
+
+    expect(node.node).toBe(value);
+    expect(Block.childKeys).toEqual(['node']);
+  });
+
   it('does not allocate options when rendering block syntax with defaults', () => {
     const rule = block(any('foo'));
 
@@ -181,7 +189,7 @@ describe('Block', () => {
     await setEvaluatedRoot(context, node);
 
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
-    const sourceValue = blockNode.value;
+    const sourceValue = blockNode.node;
     const resolved = await blockNode.resolve(context);
 
     expect(resolved.render(context)).toBe('{foo}');

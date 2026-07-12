@@ -10,7 +10,7 @@ These operations are _similar_ (though not necessarily identical) to the blend m
 
 Example:
 ```css
-@import { multiply } from '@jesscss/fns';
+@-from '@jesscss/fns' import (multiply);
 
 .box {
   color: multiply(#ff6600, #000000);

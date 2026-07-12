@@ -1,5 +1,5 @@
 import type { IToken } from 'chevrotain';
-import type { PrintOptions } from './print.js';
+import type { FinalPrintOptions, PrintOptions } from './print.js';
 import type { TriviaLookup, TriviaMap } from '../../types/index.js';
 import type { Node } from '../node.js';
 
@@ -58,7 +58,7 @@ function isTriviaMap(value: unknown): value is TriviaMap {
 }
 
 function treeTrivia(node: Node): TriviaMap | undefined {
-  const trivia: unknown = node.treeContext?.opts?.trivia;
+  const trivia: unknown = node.sourceRoot?._treeContext?.opts?.trivia;
   return isTriviaMap(trivia) ? trivia : undefined;
 }
 
@@ -110,6 +110,29 @@ export function emitTriviaTokens(
   }
 }
 
+/**
+ * Emits a child node in authored syntax while preserving its leading trivia.
+ *
+ * This is the direct-writer form of the child-boundary behavior that
+ * `Node.toString(...)` historically provided: consume leading trivia for the
+ * active print state, then let the node write its syntax into the same writer.
+ */
+export function emitNodeSourceSyntaxWithTrivia(
+  node: Node,
+  options: FinalPrintOptions
+): void {
+  const trivia = options.trivia ?? treeTrivia(node);
+  if (trivia && options.trivia !== trivia) {
+    options.trivia = trivia;
+  }
+  const suppressPre = options.suppressBoundaryTrivia === 'pre'
+    || options.suppressBoundaryTrivia === 'both';
+  if (!suppressPre && trivia) {
+    emitTriviaTokens(consumeTrivia(trivia, node.location[0], 'before', options), options);
+  }
+  node.writeSyntax(options);
+}
+
 export function emitCommentTriviaBetweenNodes(
   prev: Node,
   next: Node,
@@ -121,18 +144,14 @@ export function emitCommentTriviaBetweenNodes(
     ?? treeTrivia(next)
   );
   const prevEnd = prev.location[3];
-  const nextStart = next.location[0];
-  if (!trivia || prevEnd === undefined || nextStart === undefined) {
+  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
     return;
   }
-  for (const offset of [...trivia.entries('before')].map(([entryOffset]) => entryOffset).sort((a, b) => a - b)) {
-    if (offset > prevEnd && offset < nextStart) {
-      const tokens = trivia.lookup(offset, 'before');
-      if (tokens?.some(token => token.tokenType.name !== 'WS')) {
-        emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
-      }
-    }
+  const tokens = trivia.lookup(prevEnd, 'after');
+  if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
+    return;
   }
+  emitTriviaTokens(consumeTrivia(trivia, prevEnd, 'after', options), options);
 }
 
 export function emitCommentTriviaBeforeDelimiter(
@@ -146,30 +165,14 @@ export function emitCommentTriviaBeforeDelimiter(
     ?? treeTrivia(next)
   );
   const prevEnd = prev.location[3];
-  const nextStart = next.location[0];
-  if (!trivia || prevEnd === undefined || nextStart === undefined) {
+  if (!trivia || prevEnd === undefined || next.location[0] === undefined) {
     return;
   }
   const tokens = trivia.lookup(prevEnd, 'after');
   if (!tokens?.some(token => token.tokenType.name !== 'WS')) {
     return;
   }
-  let delimiterOffset: number | undefined;
-  for (const [offset, beforeTokens] of trivia.entries('before')) {
-    if (beforeTokens === tokens && offset > prevEnd && offset < nextStart) {
-      delimiterOffset = offset;
-      break;
-    }
-  }
-  if (delimiterOffset === undefined) {
-    return;
-  }
-  const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
-  if (emittedTrivia.has(tokens)) {
-    return;
-  }
-  emittedTrivia.add(tokens);
-  emitTriviaTokens(tokens, options);
+  emitTriviaTokens(consumeTrivia(trivia, prevEnd, 'after', options), options);
 }
 
 export function emitCommentTriviaAfterNode(

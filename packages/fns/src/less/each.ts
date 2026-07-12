@@ -28,15 +28,13 @@ import {
  * }
  * $each(list, iterate);
  */
-const each = defineFunction(
-  'each',
-  async function(_this: FunctionThis, list: Node, mixin: Mixin | Rules) {
-    const mixinRules = mixin instanceof Rules ? mixin : mixin.value.rules;
+export async function eachImplementation(_this: FunctionThis, list: Node, mixin: Mixin | Rules) {
+    const mixinRules = mixin instanceof Rules ? mixin : mixin.rules;
     let keys: [string, string, string] = ['value', 'key', 'index'];
     if (mixin instanceof Mixin) {
-      const { params } = mixin.value;
+      const { params } = mixin;
       if (params) {
-        let paramList = params.value;
+        let paramList = params.items;
         let key0 = paramList[0]?.toTrimmedString();
         let key1 = paramList[1]?.toTrimmedString();
         let key2 = paramList[2]?.toTrimmedString();
@@ -67,7 +65,11 @@ const each = defineFunction(
       iterable: { kind: 'node', value: list },
       rules: mixinRules
     });
-  },
+}
+
+const each = defineFunction(
+  'each',
+  eachImplementation,
   {
     params: [{
       name: 'list',

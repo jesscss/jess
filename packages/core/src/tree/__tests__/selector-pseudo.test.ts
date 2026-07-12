@@ -8,7 +8,7 @@ import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
-import { PseudoSelector } from '../selector-pseudo.js';
+import { createGeneratedIsPseudo, PseudoSelector } from '../selector-pseudo.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -37,6 +37,13 @@ describe('PseudoSelector', () => {
 
   it('renders pseudo selector syntax through toTrimmedString()', () => {
     expect(pseudo({ name: ':hover' }).toTrimmedString()).toBe(':hover');
+  });
+
+  it('preserves parser tree context on construction', () => {
+    const treeContext = new TreeContext();
+    const node = pseudo({ name: ':hover' }, undefined, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
   });
 
   it('renders compound selector arguments without sequence spacing', () => {
@@ -68,16 +75,12 @@ describe('PseudoSelector', () => {
   });
 
   it('omits generated :is() wrappers only for single-selector-list placement output', () => {
-    const generatedSingle = pseudo({
-      name: ':is',
-      arg: sellist([sel([el('.a'), co(' '), el('.b')])])
-    });
-    generatedSingle.generated = true;
-    const generatedMulti = pseudo({
-      name: ':is',
-      arg: sellist([el('.a'), el('.b')])
-    });
-    generatedMulti.generated = true;
+    const generatedSingle = createGeneratedIsPseudo(
+      sellist([sel([el('.a'), co(' '), el('.b')])])
+    );
+    const generatedMulti = createGeneratedIsPseudo(
+      sellist([el('.a'), el('.b')])
+    );
     const authoredSingle = pseudo({
       name: ':is',
       arg: sellist([sel([el('.a'), co(' '), el('.b')])])
@@ -93,11 +96,9 @@ describe('PseudoSelector', () => {
 
   it('keeps generated :is() placement output aligned between string and buffer render', () => {
     const buffer = createRenderBuffer('segmented');
-    const node = pseudo({
-      name: ':is',
-      arg: sellist([sel([el('.a'), co(' '), el('.b')])])
-    });
-    node.generated = true;
+    const node = createGeneratedIsPseudo(
+      sellist([sel([el('.a'), co(' '), el('.b')])])
+    );
 
     expect(node.render(context)).toBe('.a .b');
     expect(node.render(context, buffer)).toBe('.a .b');
@@ -219,7 +220,7 @@ describe('PseudoSelector', () => {
       name: ':is',
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
     });
-    const sourceArg = pseudoNode.value.arg;
+    const sourceArg = pseudoNode.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved.render(context)).toBe(':is(.foo, .bar)');
@@ -241,7 +242,7 @@ describe('PseudoSelector', () => {
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
     });
     pseudoNode.generated = true;
-    const sourceArg = pseudoNode.value.arg;
+    const sourceArg = pseudoNode.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved).toBeInstanceOf(PseudoSelector);
@@ -266,7 +267,7 @@ describe('PseudoSelector', () => {
       arg: ref({ key: 'capture-selector' }, { type: 'variable' })
     });
     pseudoNode.generated = true;
-    const sourceArg = pseudoNode.value.arg;
+    const sourceArg = pseudoNode.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved).toBeInstanceOf(PseudoSelector);
@@ -344,7 +345,7 @@ describe('PseudoSelector', () => {
       arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
     });
     pseudoNode.generated = true;
-    const sourceArg = pseudoNode.value.arg;
+    const sourceArg = pseudoNode.arg;
     const resolved = await pseudoNode.resolve(context);
 
     expect(resolved).toBeInstanceOf(PseudoSelector);

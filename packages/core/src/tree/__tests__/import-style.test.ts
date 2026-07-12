@@ -35,29 +35,44 @@ import { Rules as RulesClass } from '../index.js';
 import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSegmentSourceChild, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder, getImportPostludeRenderState } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
-import { Context } from '../../context.js';
-import * as Registries from '../util/registry-utils.js';
-import type { FindOptions } from '../util/registry-utils.js';
+import { Context, TreeContext } from '../../context.js';
+import type { CallableFindOptions, DeclarationFindOptions } from '../util/lookup-utils.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { buildSourceMap } from '../util/sourcemap.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
+import { findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
 
 let context: Context;
 
-function getVarWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+describe('Style import construction', () => {
+  it('preserves parser tree context on construction', () => {
+    const treeContext = new TreeContext();
+    const node = style({
+      path: quoted('module.jess')
+    }, { type: 'compose' }, undefined, treeContext);
+
+    expect(node._treeContext).toBe(treeContext);
+  });
+});
+
+function getVarWithContext(context: Context, n: Rules, key: string, opts: DeclarationFindOptions = {}) {
   context.rulesContext = n;
-  opts.context ??= context;
-  opts.searchParents = true;
-  return n.find('declaration', key, 'VarDeclaration', opts);
+  return findVariableDeclarationOccurrence(n, key, {
+    ...opts,
+    context: opts.context ?? context,
+    searchParents: true
+  })?.node;
 }
 
-function getMixinWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
+function getMixinWithContext(context: Context, n: Rules, key: string, opts: CallableFindOptions = {}) {
   context.rulesContext = n;
-  opts.context ??= context;
-  opts.searchParents = true;
-  return n.find('mixin', key, 'Mixin', opts);
+  return n.findMixin(key, 'Mixin', {
+    ...opts,
+    context: opts.context ?? context,
+    searchParents: true
+  });
 }
 
 describe('Style import', () => {
@@ -133,7 +148,7 @@ describe('Style import', () => {
 
       // The imported ruleset should be able to reference the parent variable
       // The declaration should already be evaluated as part of the ruleset evaluation
-      const importedDecl = (importedRuleset as any).value.rules.at(0);
+      const importedDecl = (importedRuleset as any).rules.at(0);
       expect(importedDecl.toTrimmedString()).toBe('color: red');
     });
 
@@ -167,7 +182,7 @@ describe('Style import', () => {
 
       // The composed ruleset should NOT be able to reference the parent variable
       // It should use the fallback value instead
-      const composedDecl = (composedRuleset as any).value.rules.at(0);
+      const composedDecl = (composedRuleset as any).rules.at(0);
       const resolved = await composedDecl.eval(context);
       expect(resolved.toTrimmedString()).toBe('color: blue');
     });
@@ -222,7 +237,7 @@ describe('Style import', () => {
       expect(composedRules.options.importBoundary).toBe(true);
       expect(composedRules.sourceNode).toBe(composedRules);
 
-      const composedDecl = (composedRuleset as any).value.rules.at(0);
+      const composedDecl = (composedRuleset as any).rules.at(0);
       const resolved = await composedDecl.eval(context);
       expect(resolved.toTrimmedString()).toBe('color: blue');
     });
@@ -248,12 +263,12 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
-      const parentDecl = (parentRuleset as any).value.rules.at(0);
+      const parentDecl = (parentRuleset as any).rules.at(0);
       const resolved = await parentDecl.eval(context);
       expect(resolved.toTrimmedString()).toBe('color: green');
     });
 
-    it('import type variables visible to parent do not fall back to DeclarationRegistry.find', async () => {
+    it('import type variables visible to parent do not fall back to broad declaration find', async () => {
       context.sourceTrees.set('imported.jess', rules([
         vardecl({ name: 'importedVar', value: any('green') })
       ]));
@@ -285,7 +300,7 @@ describe('Style import', () => {
 
         const evald = await node.eval(context);
         const parentRuleset = evald.at(1);
-        const parentDecl = (parentRuleset as any).value.rules.at(0);
+        const parentDecl = (parentRuleset as any).rules.at(0);
         const resolved = await parentDecl.eval(context);
         expect(resolved.toTrimmedString()).toBe('color: green');
         expect(declarationHits).toHaveLength(0);
@@ -317,13 +332,13 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
-      const parentDecl = (parentRuleset as any).value.rules.at(0);
+      const parentDecl = (parentRuleset as any).rules.at(0);
       const resolved = await parentDecl.eval(context);
       // Should use composedVar from the compose
       expect(resolved.toTrimmedString()).toBe('color: purple');
     });
 
-    it('compose type variables visible to parent do not fall back to DeclarationRegistry.find', async () => {
+    it('compose type variables visible to parent do not fall back to broad declaration find', async () => {
       const composedPath = resolve(process.cwd(), 'composed.jess');
       context.sourceTrees.set(composedPath, rules([
         vardecl({ name: 'composedVar', value: any('purple') })
@@ -357,7 +372,7 @@ describe('Style import', () => {
 
         const evald = await node.eval(context);
         const parentRuleset = evald.at(1);
-        const parentDecl = (parentRuleset as any).value.rules.at(0);
+        const parentDecl = (parentRuleset as any).rules.at(0);
         const resolved = await parentDecl.eval(context);
         expect(resolved.toTrimmedString()).toBe('color: purple');
         expect(declarationHits).toHaveLength(0);
@@ -394,7 +409,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
-      const mixinCall = (parentRuleset as any).value.rules.at(0);
+      const mixinCall = (parentRuleset as any).rules.at(0);
       const resolved = await mixinCall.eval(context);
       expect(resolved.toTrimmedString()).toContainString('color: blue');
     });
@@ -427,7 +442,7 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const parentRuleset = evald.at(1);
-      const mixinCall = (parentRuleset as any).value.rules.at(0);
+      const mixinCall = (parentRuleset as any).rules.at(0);
       const resolved = await mixinCall.eval(context);
       expect(resolved.toTrimmedString()).toContainString('color: yellow');
     });
@@ -461,7 +476,7 @@ describe('Style import', () => {
 
       const evald1 = await node1.eval(context);
       const parentRuleset1 = evald1.at(1);
-      const mixinCall1 = (parentRuleset1 as any).value.rules.at(0);
+      const mixinCall1 = (parentRuleset1 as any).rules.at(0);
       const resolved1 = await mixinCall1.eval(context);
       expect(resolved1.toTrimmedString()).toContainString('color: white');
     });
@@ -686,7 +701,7 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
       expect(composedRules.options.importBoundary).toBe(true);
 
       // Test 1: Verify injected variables are accessible
@@ -694,7 +709,7 @@ describe('Style import', () => {
       expect(injectedVar).toBeDefined();
       // The variable declaration exists, which means the injection worked
       // We can verify the value by evaluating the variable's value property
-      const injectedVarValueNode = injectedVar!.value.value;
+      const injectedVarValueNode = injectedVar!.valueNode;
       const injectedVarValue = await injectedVarValueNode.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('purple');
 
@@ -732,14 +747,14 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
 
       // Test 1: Verify injected variables are accessible
       const injectedVar = getVarWithContext(context, composedRules, 'primaryColor');
       expect(injectedVar).toBeDefined();
       // The variable declaration exists, which means the injection worked
       // We can verify the value by evaluating the variable's value property
-      const injectedVarValueNode = injectedVar!.value.value;
+      const injectedVarValueNode = injectedVar!.valueNode;
       const injectedVarValue = await injectedVarValueNode.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('orange');
 
@@ -777,19 +792,19 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.value.eval(context);
+      const baseColorValue = await baseColor!.valueNode.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('blue');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      const derivedColorValue = await derivedColor!.valueNode.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('blue');
     });
 
-    it('updates computed variables with "with" type - linear lookup', async () => {
+    it('updates computed variables with "with" type - source-position lookup', async () => {
       // Test that when we inject a variable, dependent variables are updated
-      // This tests linear lookup ($^var)
+      // This tests explicit source-position lookup ($!var)
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('red') }),
@@ -817,13 +832,13 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.value.eval(context);
+      const baseColorValue = await baseColor!.valueNode.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('green');
 
       // Verify derivedColor reflects the injected value (linear lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      const derivedColorValue = await derivedColor!.valueNode.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('green');
     });
 
@@ -857,19 +872,19 @@ describe('Style import', () => {
       // Verify baseColor has the injected value
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.value.eval(context);
+      const baseColorValue = await baseColor!.valueNode.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('yellow');
 
       // Verify derivedColor reflects the injected value (scope lookup)
       const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
       expect(derivedColor).toBeDefined();
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      const derivedColorValue = await derivedColor!.valueNode.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('yellow');
     });
 
-    it('updates computed variables with "set" type - linear lookup', async () => {
+    it('updates computed variables with "set" type - source-position lookup', async () => {
       // Test that when we inject a variable with "set", dependent variables are updated
-      // This tests linear lookup ($^var)
+      // This tests explicit source-position lookup ($!var)
       const libraryPath = resolve(process.cwd(), 'library.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'baseColor', value: any('red') }),
@@ -901,7 +916,7 @@ describe('Style import', () => {
       // Verify baseColor was injected (should be the injected one, not the original)
       const baseColor = getVarWithContext(context, composedRules, 'baseColor');
       expect(baseColor).toBeDefined();
-      const baseColorValue = await baseColor!.value.value.eval(context);
+      const baseColorValue = await baseColor!.valueNode.eval(context);
       expect(baseColorValue.toTrimmedString()).toBe('cyan');
 
       // Verify derivedColor reflects the injected value (linear lookup)
@@ -911,7 +926,7 @@ describe('Style import', () => {
       expect(derivedColor).toBeDefined();
       // The value should already be evaluated during the import evaluation
       // and should have used the injected baseColor
-      const derivedColorValue = await derivedColor!.value.value.eval(context);
+      const derivedColorValue = await derivedColor!.valueNode.eval(context);
       expect(derivedColorValue.toTrimmedString()).toBe('cyan');
     });
 
@@ -1033,10 +1048,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+      const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.options.importBoundary).toBe(true);
       expect(importedChildSurface?.options.importBoundary).toBeUndefined();
       expect(css).toContain('.base');
@@ -1074,17 +1089,19 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(false);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(false);
       expect(composedRules.options.importBoundary).toBe(true);
       const injectedVar = getVarWithContext(context, composedRules, 'accentColor');
       expect(injectedVar).toBeDefined();
-      const injectedVarValue = await injectedVar!.value.value.eval(context);
+      const injectedVarValue = await injectedVar!.valueNode.eval(context);
       expect(injectedVarValue.toTrimmedString()).toBe('purple');
       expect(css).toContain('.base');
       expect(css).toContain('color: purple');
     });
 
     it('keeps variable-only additive "with" configs visible to imported guarded mixins', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directChildSurfaceBridges: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-guarded-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
@@ -1147,15 +1164,30 @@ describe('Style import', () => {
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.configured-guarded' && options?.searchParents === false) {
+          directChildSurfaceBridges.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('.light {\n  color: red;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(directChildSurfaceBridges).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('keeps replacement "set" configs visible to imported guarded mixins', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directChildSurfaceBridges: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-guarded-mixin-set.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
@@ -1219,13 +1251,26 @@ describe('Style import', () => {
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.configured-guarded-set' && options?.searchParents === false) {
+          directChildSurfaceBridges.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('.light {\n  color: red;');
-      expect(css).not.toContain('border-color: red;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(css).not.toContain('border-color: red;');
+        expect(directChildSurfaceBridges).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('keeps variable-only additive "with" configs visible to imported detached ruleset variable closures', async () => {
@@ -1284,7 +1329,7 @@ describe('Style import', () => {
         this: RulesClass,
         ...args: Parameters<typeof originalClone>
       ): ReturnType<typeof originalClone> {
-        if (this.value.some(node => isNode(node, N.VarDeclaration) && node.value.name.valueOf() === 'baseColor')) {
+        if (this.value.some(node => isNode(node, N.VarDeclaration) && node.name.valueOf() === 'baseColor')) {
           clonedLibraryRules++;
         }
         return originalClone.apply(this, args);
@@ -1325,10 +1370,10 @@ describe('Style import', () => {
       try {
         const evald = await node.eval(context);
         const composedRules = evald.at(0) as Rules;
-        const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+        const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
         const css = await renderNodeToString(node, context, { context });
 
-        expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+        expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
         expect(composedRules.options.importBoundary).toBe(true);
         expect(importedChildSurface?.options.importBoundary).toBeUndefined();
         expect(css).toContain('.base');
@@ -1337,7 +1382,7 @@ describe('Style import', () => {
 
         const derivedColor = getVarWithContext(context, composedRules, 'derivedColor');
         expect(derivedColor).toBeDefined();
-        const derivedColorValue = await derivedColor!.value.value.eval(context);
+        const derivedColorValue = await derivedColor!.valueNode.eval(context);
         expect(derivedColorValue.toTrimmedString()).toBe('teal');
       } finally {
         RulesClass.prototype.clone = originalClone;
@@ -1403,10 +1448,10 @@ describe('Style import', () => {
 
       const evald = await node.eval(context);
       const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
+      const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
       expect(composedRules.options.importBoundary).toBe(true);
       expect(importedChildSurface?.options.importBoundary).toBeUndefined();
       expect(css).toContain('.base');
@@ -1417,6 +1462,8 @@ describe('Style import', () => {
     });
 
     it('keeps replacement "set" configs on an imported child rules surface for guarded mixins', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directChildSurfaceBridges: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-guarded-mixin-set-child-surface.jess');
       context.sourceTrees.set(libraryPath, rules([
         vardecl({ name: 'accentColor', value: any('red') }),
@@ -1493,21 +1540,34 @@ describe('Style import', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const composedRules = evald.at(0) as Rules;
-      const importedChildSurface = composedRules.value.find(child => isNode(child, N.Rules)) as Rules | undefined;
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.guarded-child-surface-set' && options?.searchParents === false) {
+          directChildSurfaceBridges.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
-      expect(composedRules.options.importBoundary).toBe(true);
-      expect(importedChildSurface?.options.importBoundary).toBeUndefined();
-      expect(css).toContain('.base');
-      expect(css).toContain('.addon');
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('.light {\n  color: red;');
-      expect(css).not.toContain('border-color: red;');
+      try {
+        const evald = await node.eval(context);
+        const composedRules = evald.at(0) as Rules;
+        const importedChildSurface = composedRules.rules.find(child => isNode(child, N.Rules)) as Rules | undefined;
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
+        expect(composedRules.options.importBoundary).toBe(true);
+        expect(importedChildSurface?.options.importBoundary).toBeUndefined();
+        expect(css).toContain('.base');
+        expect(css).toContain('.addon');
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(css).not.toContain('border-color: red;');
+        expect(directChildSurfaceBridges).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('keeps child-surface additive "with" configs compatible with imported mixin calls', async () => {
@@ -1561,7 +1621,7 @@ describe('Style import', () => {
       const composedRules = evald.at(0) as Rules;
       const css = await renderNodeToString(node, context, { context });
 
-      expect(composedRules.value.some(child => isNode(child, N.Rules))).toBe(true);
+      expect(composedRules.rules.some(child => isNode(child, N.Rules))).toBe(true);
       expect(css).toContain('.base');
       expect(css).toContain('.addon');
       expect(css).toContain('.consumer {');
@@ -1569,6 +1629,8 @@ describe('Style import', () => {
     });
 
     it('keeps child-surface additive "with" configs visible to imported guarded mixins', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directChildSurfaceBridges: string[] = [];
       const libraryPath = resolve(process.cwd(), 'library-child-surface-guarded-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
@@ -1637,13 +1699,26 @@ describe('Style import', () => {
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key, options] = args;
+        if (key === '.guarded-child-surface' && options?.searchParents === false) {
+          directChildSurfaceBridges.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.addon');
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('border-color: purple;');
-      expect(css).not.toContain('.light {\n  color: red;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.addon');
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: purple;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(directChildSurfaceBridges).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('keeps child-surface additive "with" configs visible to imported detached ruleset variable closures', async () => {
@@ -1873,7 +1948,7 @@ describe('Style import', () => {
           ])
         })
       ]);
-      const sourceChild = importedRules.value[0];
+      const sourceChild = importedRules.rules[0];
       context.sourceTrees.set('shared-import-child.jess', importedRules);
 
       const node = rules([
@@ -1921,7 +1996,7 @@ describe('Style import', () => {
       if (!isNode(placementDecl, N.Declaration)) {
         throw new TypeError('Expected placement child to be a declaration');
       }
-      expect(placementDecl.value.value).toBe(red);
+      expect(placementDecl.valueNode).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });
 
@@ -1966,15 +2041,17 @@ describe('Style import', () => {
       ]);
       expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
       expect(getImportPlacementSegmentSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
-      const placementDecl = placementRuleset.value.rules?.value[0];
+      const placementDecl = placementRuleset.rules?.value[0];
       expect(placementDecl).not.toBe(sourceDecl);
       expect(isNode(placementDecl, N.Declaration)).toBe(true);
       if (!isNode(placementDecl, N.Declaration)) {
         throw new TypeError('Expected nested placement declaration');
       }
       expect(getImportPlacementSourceChild(placement, placementDecl)).toBe(sourceDecl);
-      expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBeUndefined();
-      expect(placementDecl.value.value).toBe(red);
+      expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBe(sourceDecl);
+      expect(getImportPlacementSourceChild(placement, red)).toBe(red);
+      expect(getImportPlacementSegmentSourceChild(placement, red)).toBe(red);
+      expect(placementDecl.valueNode).toBe(red);
       expect(red.parent).toBe(sourceDecl);
     });
 
@@ -2070,7 +2147,7 @@ describe('Style import', () => {
         outputRules: wrapped
       });
       expect(placement?.outputRules).toBe(wrapped);
-      expect(isNode(placement?.sourceRules.value[0], N.Ruleset)).toBe(true);
+      expect(isNode(placement?.sourceRules.rules[0], N.Ruleset)).toBe(true);
       expect(isNode(wrapped.value[0], N.AtRule)).toBe(true);
       expect(await evald.render(context)).toContain('@layer components');
     });
@@ -2191,8 +2268,8 @@ describe('Style import', () => {
       if (!(wrappedImport instanceof RulesClass)) {
         throw new Error('Expected inline wrapped import to be Rules');
       }
-      expect(wrappedImport.value).toHaveLength(1);
-      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
+      expect(wrappedImport.rules).toHaveLength(1);
+      expect(isNode(wrappedImport.rules[0], N.AtRule)).toBe(true);
       const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@media (min-width: 600px)');
       expect(css).toContain('#css { color: yellow; }');
@@ -2255,31 +2332,31 @@ describe('Style import', () => {
       if (!(wrappedImport instanceof RulesClass)) {
         throw new Error('Expected inline wrapped import to be Rules');
       }
-      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
-      if (!isNode(wrappedImport.value[0], N.AtRule)) {
+      expect(isNode(wrappedImport.rules[0], N.AtRule)).toBe(true);
+      if (!isNode(wrappedImport.rules[0], N.AtRule)) {
         throw new Error('Expected inline wrapped import child to be AtRule');
       }
-      expect(wrappedImport.value[0].value.name.toTrimmedString()).toBe('@layer');
-      const supportsRules = wrappedImport.value[0].value.rules;
+      expect(wrappedImport.rules[0].name.toTrimmedString()).toBe('@layer');
+      const supportsRules = wrappedImport.rules[0].rules;
       expect(supportsRules).toBeInstanceOf(RulesClass);
       if (!(supportsRules instanceof RulesClass)) {
         throw new Error('Expected @layer rules to be wrapped in Rules');
       }
-      expect(isNode(supportsRules.value[0], N.AtRule)).toBe(true);
-      if (!isNode(supportsRules.value[0], N.AtRule)) {
+      expect(isNode(supportsRules.rules[0], N.AtRule)).toBe(true);
+      if (!isNode(supportsRules.rules[0], N.AtRule)) {
         throw new Error('Expected @layer child to be AtRule');
       }
-      expect(supportsRules.value[0].value.name.toTrimmedString()).toBe('@supports');
-      const mediaRules = supportsRules.value[0].value.rules;
+      expect(supportsRules.rules[0].name.toTrimmedString()).toBe('@supports');
+      const mediaRules = supportsRules.rules[0].rules;
       expect(mediaRules).toBeInstanceOf(RulesClass);
       if (!(mediaRules instanceof RulesClass)) {
         throw new Error('Expected @supports rules to be wrapped in Rules');
       }
-      expect(isNode(mediaRules.value[0], N.AtRule)).toBe(true);
-      if (!isNode(mediaRules.value[0], N.AtRule)) {
+      expect(isNode(mediaRules.rules[0], N.AtRule)).toBe(true);
+      if (!isNode(mediaRules.rules[0], N.AtRule)) {
         throw new Error('Expected @supports child to be AtRule');
       }
-      expect(mediaRules.value[0].value.name.toTrimmedString()).toBe('@media');
+      expect(mediaRules.rules[0].name.toTrimmedString()).toBe('@media');
 
       const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@layer theme');
@@ -2316,12 +2393,12 @@ describe('Style import', () => {
         throw new Error('Expected wrapped import to be Rules');
       }
       expect(wrappedImport).not.toBe(context.sourceTrees.get(importedPath));
-      expect(wrappedImport.value).toHaveLength(1);
-      expect(isNode(wrappedImport.value[0], N.AtRule)).toBe(true);
-      if (!isNode(wrappedImport.value[0], N.AtRule)) {
+      expect(wrappedImport.rules).toHaveLength(1);
+      expect(isNode(wrappedImport.rules[0], N.AtRule)).toBe(true);
+      if (!isNode(wrappedImport.rules[0], N.AtRule)) {
         throw new Error('Expected wrapped import child to be AtRule');
       }
-      expect(wrappedImport.value[0].value.rules).toBeInstanceOf(RulesClass);
+      expect(wrappedImport.rules[0].rules).toBeInstanceOf(RulesClass);
       const css = await renderNodeToString(node, context, { context });
       expect(css).toContain('@media screen and (min-width: 600px)');
       expect(css).toContain('.imported');
@@ -2449,9 +2526,53 @@ describe('Style import', () => {
       ]);
       const evald = await node.eval(context);
       const rulesetNode = evald.at(1) as any;
-      const declaration = rulesetNode.value.rules.at(0);
+      const declaration = rulesetNode.rules.at(0);
       const resolved = await declaration.eval(context);
       expect(resolved.toTrimmedString()).toBe('value: 42');
+    });
+
+    it('import-reference: real hit and miss refs avoid public declaration bridges', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-hit-miss.jess');
+      const sourceValue = any('42');
+      const fallbackValue = any('fallback');
+      context.sourceTrees.set(referencedPath, rules([
+        vardecl({ name: 'fromRef', value: sourceValue })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('reference-hit-miss.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: sellist([sel([el('.test')])]),
+          rules: rules([
+            decl({ name: any('hit'), value: ref('fromRef', { type: 'variable' }) }),
+            decl({ name: any('miss'), value: ref('missingFromRef', {
+              type: 'variable',
+              fallbackValue
+            }) })
+          ])
+        })
+      ]);
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function(...args: Parameters<typeof originalCopy>) {
+        if (this === sourceValue || this === fallbackValue) {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const css = await renderNodeToString(node, context);
+
+        expect(css).toBeString(`
+          .test {
+            hit: 42;
+            miss: fallback;
+          }
+        `);
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
     });
 
     it('import-reference: reference-imported mixins remain callable', async () => {
@@ -2485,6 +2606,56 @@ describe('Style import', () => {
           color: red;
         }
       `);
+    });
+
+    it('import-reference: rendered callable misses avoid no-frame direct-crawl bridge', async () => {
+      const referencedPath = resolve(process.cwd(), 'reference-callable-miss.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        mixin({
+          name: any('.actual-reference-mixin'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+      const node = rules([
+        style({ path: quoted(any('reference-callable-miss.jess')) }, { type: 'import', importOptions: { reference: true } }),
+        ruleset({
+          selector: el('.out'),
+          rules: rules([
+            decl({
+              name: any('missing'),
+              value: ref({ key: '.missing-reference-mixin' }, {
+                type: 'mixin',
+                fallbackValue: true
+              })
+            })
+          ])
+        })
+      ]);
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directCrawlHits: string[] = [];
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.missing-reference-mixin') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        node.getScopeFrame();
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toBeString(`
+          .out {
+            missing: .missing-reference-mixin;
+          }
+        `);
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('import-reference: reference-imported mixins preserve detached ruleset variable closures', async () => {
@@ -2574,6 +2745,8 @@ describe('Style import', () => {
     });
 
     it('import-reference: reference-imported mixin guards read caller scope while params stay live-bound', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directCrawlHits: string[] = [];
       const referencedPath = resolve(process.cwd(), 'reference-mixin-guarded.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
@@ -2619,19 +2792,42 @@ describe('Style import', () => {
             call({
               name: ref({ key: '.guarded-ref' }, { type: 'mixin-ruleset' }),
               args: list([any('red')])
+            }),
+            decl({
+              name: any('missing'),
+              value: ref({ key: '.guarded-ref' }, {
+                type: 'mixin',
+                fallbackValue: true
+              })
             })
           ])
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.guarded-ref') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).not.toContain('.light {\n  color: red;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).not.toContain('.light {\n  color: red;');
+        expect(css).toContain('missing: .guarded-ref(color)');
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('import-reference: reference-imported default guards read caller scope without leaking param bindings', async () => {
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const directCrawlHits: string[] = [];
       const referencedPath = resolve(process.cwd(), 'reference-mixin-default-guarded.jess');
       context.sourceTrees.set(referencedPath, rules([
         mixin({
@@ -2695,21 +2891,42 @@ describe('Style import', () => {
               name: ref({ key: '.guarded-default-ref' }, { type: 'mixin-ruleset' }),
               args: list([any('blue')])
             }),
+            decl({
+              name: any('missing'),
+              value: ref({ key: '.guarded-default-ref' }, {
+                type: 'mixin',
+                fallbackValue: true
+              })
+            }),
             decl({ name: any('value'), value: ref({ key: 'color' }, { type: 'variable' }) })
           ])
         })
       ]);
 
-      const css = await renderNodeToString(node, context, { context });
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '.guarded-default-ref') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
 
-      expect(css).toContain('.dark {');
-      expect(css).toContain('color: red;');
-      expect(css).toContain('value: outer-dark;');
-      expect(css).toContain('.light {');
-      expect(css).toContain('background: blue;');
-      expect(css).toContain('value: outer-light;');
-      expect(css).not.toContain('value: red;');
-      expect(css).not.toContain('value: blue;');
+      try {
+        const css = await renderNodeToString(node, context, { context });
+
+        expect(css).toContain('.dark {');
+        expect(css).toContain('color: red;');
+        expect(css).toContain('value: outer-dark;');
+        expect(css).toContain('.light {');
+        expect(css).toContain('background: blue;');
+        expect(css).toContain('value: outer-light;');
+        expect(css).not.toContain('value: red;');
+        expect(css).not.toContain('value: blue;');
+        expect(css).toContain('missing: .guarded-default-ref(color)');
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('import-reference: directive-bearing reference-imported mixins remain callable', async () => {
@@ -2932,7 +3149,7 @@ describe('Style import', () => {
       `);
     });
 
-    it('import-reference: namespaced reference-imported ruleset array-path lookups skip MixinRegistry.find', async () => {
+    it('import-reference: namespaced reference-imported ruleset array-path lookups', async () => {
       const referencedPath = resolve(process.cwd(), 'simple-mixin-array-fast.jess');
       context.sourceTrees.set(referencedPath, rules([
         ruleset({
@@ -2943,43 +3160,105 @@ describe('Style import', () => {
         })
       ]));
 
-      const originalFind = Registries.MixinRegistry.prototype.find;
-      const mixinRegistryHits: string[] = [];
-      Registries.MixinRegistry.prototype.find = function(...args: Parameters<typeof originalFind>) {
+      const node = rules([
+        ruleset({
+          selector: el('#Namespace'),
+          rules: rules([
+            style({ path: quoted(any('simple-mixin-array-fast.jess')) }, { type: 'import', importOptions: { reference: true } })
+          ])
+        }),
+        ruleset({
+          selector: el('#used-namespaced-mixin'),
+          rules: rules([
+            call({
+              name: ref({ key: ['#Namespace', '.mixin'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      const directCrawlHits: string[] = [];
+      const nestedArrayPathCalls: unknown[] = [];
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
-        if (Array.isArray(key) && key[0] === '#Namespace') {
-          mixinRegistryHits.push(key.join(' '));
+        if (key === '#Namespace' || key === '.mixin') {
+          directCrawlHits.push(key);
         }
-        return originalFind.apply(this, args);
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== node && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
       };
 
       try {
-        const node = rules([
-          ruleset({
-            selector: el('#Namespace'),
-            rules: rules([
-              style({ path: quoted(any('simple-mixin-array-fast.jess')) }, { type: 'import', importOptions: { reference: true } })
-            ])
-          }),
-          ruleset({
-            selector: el('#used-namespaced-mixin'),
-            rules: rules([
-              call({
-                name: ref({ key: ['#Namespace', '.mixin'] }, { type: 'mixin-ruleset' })
-              })
-            ])
-          })
-        ]);
-
         const css = await renderNodeToString(node, context, { context });
         expect(css).toBeString(`
           #used-namespaced-mixin {
             was: included;
           }
         `);
-        expect(mixinRegistryHits).toHaveLength(0);
+        const generatedFallbackArrayPathCalls = nestedArrayPathCalls.filter(path => (
+          !Array.isArray(path)
+          || path.length !== 2
+          || path[0] !== '#Namespace'
+          || path[1] !== '.mixin'
+        ));
+        expect(generatedFallbackArrayPathCalls).toEqual([]);
+        expect(directCrawlHits).toEqual([]);
       } finally {
-        Registries.MixinRegistry.prototype.find = originalFind;
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('import-reference: namespaced reference-imported ruleset array-path misses stay off direct crawl', () => {
+      const referencedPath = resolve(process.cwd(), 'simple-mixin-array-miss.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: el('.mixin'),
+          rules: rules([
+            decl({ name: any('was'), value: any('included') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        ruleset({
+          selector: el('#Namespace'),
+          rules: rules([
+            style({ path: quoted(any('simple-mixin-array-miss.jess')) }, { type: 'import', importOptions: { reference: true } })
+          ])
+        })
+      ]);
+      const directCrawlHits: string[] = [];
+      const nestedArrayPathCalls: unknown[] = [];
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#Namespace' || key === '.missing') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== node && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        expect(node.findMixin(['#Namespace', '.missing'], undefined, { searchParents: false })).toBeUndefined();
+        expect(nestedArrayPathCalls).toEqual([]);
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
       }
     });
 
@@ -3199,6 +3478,107 @@ describe('Style import', () => {
         }
       `);
       expect(out).not.toContain('.only-with-visible');
+    });
+
+    it('import-reference: namespaced selector-list array-path lookups stay off direct crawl', async () => {
+      const referencedPath = resolve(process.cwd(), 'selector-list-namespace-array.jess');
+      context.sourceTrees.set(referencedPath, rules([
+        ruleset({
+          selector: sellist([sel([el('.mixin')]), sel([el('.alias')])]),
+          rules: rules([
+            decl({ name: any('was'), value: any('included') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        ruleset({
+          selector: el('#Namespace'),
+          rules: rules([
+            style({ path: quoted(any('selector-list-namespace-array.jess')) }, { type: 'import', importOptions: { reference: true } })
+          ])
+        }),
+        ruleset({
+          selector: el('#used-selector-list-namespace'),
+          rules: rules([
+            call({
+              name: ref({ key: ['#Namespace', '.alias'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      const directCrawlHits: string[] = [];
+      const nestedArrayPathCalls: unknown[] = [];
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      const originalFindMixin = RulesClass.prototype.findMixin;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (key === '#Namespace' || key === '.alias' || key === '.missing') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+      RulesClass.prototype.findMixin = function(...args: Parameters<typeof originalFindMixin>) {
+        if (this !== node && Array.isArray(args[0])) {
+          nestedArrayPathCalls.push(args[0]);
+        }
+        return originalFindMixin.apply(this, args);
+      };
+
+      try {
+        const css = await renderNodeToString(node, context, { context });
+        expect(css).toBeString(`
+          #used-selector-list-namespace {
+            was: included;
+          }
+        `);
+        expect(node.findMixin(['#Namespace', '.missing'], undefined, { searchParents: false })).toBeUndefined();
+        const generatedFallbackArrayPathCalls = nestedArrayPathCalls.filter(path => (
+          !Array.isArray(path)
+          || path.length !== 2
+          || path[0] !== '#Namespace'
+          || path[1] !== '.alias'
+        ));
+        expect(generatedFallbackArrayPathCalls).toEqual([]);
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        RulesClass.prototype.findMixin = originalFindMixin;
+      }
+    });
+
+    it('callable child-surface namespace misses stay off broad start crawl', () => {
+      const node = rules([
+        rules([
+          mixin({
+            name: any('#ImportedNamespace'),
+            rules: rules([
+              mixin({
+                name: any('.other'),
+                rules: rules([
+                  decl({ name: any('was'), value: any('not-used') })
+                ])
+              })
+            ])
+          })
+        ])
+      ]);
+      const directCrawlHits: string[] = [];
+      const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
+      RulesClass.prototype.findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
+        const [key] = args;
+        if (this === node && key === '#MissingNamespace') {
+          directCrawlHits.push(key);
+        }
+        return originalFindMixinsFast.apply(this, args);
+      };
+
+      try {
+        expect(node.findMixin(['#MissingNamespace', '.leaf'], undefined, { searchParents: false })).toBeUndefined();
+        expect(directCrawlHits).toEqual([]);
+      } finally {
+        RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+      }
     });
 
     it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {

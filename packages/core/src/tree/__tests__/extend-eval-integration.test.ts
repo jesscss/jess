@@ -435,28 +435,28 @@ describe('extend integration (eval -> toString)', () => {
     const evald = await root.eval(context);
     const isDeclarationNamed = (node: unknown, name: string): node is Declaration => (
       node instanceof Declaration
-      && (node.value.name.valueOf?.() ?? node.value.name) === name
+      && (node.name.valueOf?.() ?? node.name) === name
     );
     const isRulesetWithRules = (node: unknown): node is Ruleset => (
       node instanceof Ruleset
-      && Array.isArray(node.value.rules.value)
+      && Array.isArray(node.rules.rules)
     );
 
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
     const outerBb = evald.value.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
-        && node.value.rules.value.some(rule => isDeclarationNamed(rule, 'background'))
-        && node.value.rules.value.some(rule => rule instanceof Ruleset)
+        && node.rules.rules.some(rule => isDeclarationNamed(rule, 'background'))
+        && node.rules.rules.some(rule => rule instanceof Ruleset)
     );
     expect(outerBb).toBeTruthy();
-    const inner = outerBb?.value.rules.value.find(
+    const inner = outerBb?.rules.rules.find(
       (node): node is Ruleset =>
         isRulesetWithRules(node)
-        && node.value.rules.value.some(rule => isDeclarationNamed(rule, 'color'))
+        && node.rules.rules.some(rule => isDeclarationNamed(rule, 'color'))
     );
     expect(inner).toBeTruthy();
-    const innerSelectorStr = inner?.value.selector.valueOf() ?? '';
+    const innerSelectorStr = inner?.selector.valueOf() ?? '';
     // Inner selector must be .bb .bb (or equivalent), must NOT contain .ee
     expect(innerSelectorStr).toContain('.bb');
     expect(innerSelectorStr).not.toContain('.ee');
@@ -1232,6 +1232,76 @@ describe('extend integration (eval -> toString)', () => {
       .issue-2586-bordered,
       .issue-2586-somepage .content {
         border: solid 1px black;
+      }
+    `);
+  });
+
+  it('keeps generated selector-list omission aligned with exact extend integration', async () => {
+    const root = rules([
+      ruleset({
+        selector: sellist([sel([el('.one')]), sel([el('.two')])]),
+        rules: rules([
+          ruleset({
+            selector: sel([el('.three')]),
+            rules: rules([
+              decl({ name: 'inner', value: any('one two') })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.theme'),
+        rules: rules([
+          extend({
+            target: sel([el('.one'), co(' '), el('.three')]),
+            flag: ExtendFlag.Exact
+          })
+        ])
+      })
+    ]);
+
+    const context = new Context({ collapseNesting: true });
+    const css = await renderNodeToString(root, context, { context });
+
+    expect(css).toBeString(`
+      :is(.one, .two) .three,
+      .theme {
+        inner: one two;
+      }
+    `);
+  });
+
+  it('keeps generated selector-list omission aligned with all-extend integration', async () => {
+    const root = rules([
+      ruleset({
+        selector: sellist([sel([el('.one')]), sel([el('.two')])]),
+        rules: rules([
+          ruleset({
+            selector: sel([el('.three')]),
+            rules: rules([
+              decl({ name: 'inner', value: any('one two') })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.theme'),
+        rules: rules([
+          extend({
+            target: el('.three'),
+            flag: ExtendFlag.All
+          })
+        ])
+      })
+    ]);
+
+    const context = new Context({ collapseNesting: true });
+    const css = await renderNodeToString(root, context, { context });
+
+    expect(css).toBeString(`
+      :is(.one, .two) .three,
+      :is(.one, .two) .theme {
+        inner: one two;
       }
     `);
   });
