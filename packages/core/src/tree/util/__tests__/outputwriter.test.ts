@@ -144,6 +144,42 @@ describe('OutputWriter', () => {
       expect(previewed).toBe('returned');
       expect(w.toString()).toBe('');
     });
+
+    it('previews awaitable content without committing it', async () => {
+      const w = new OutputWriter();
+
+      w.add('start');
+      const previewed = await w.preview(async () => {
+        await Promise.resolve();
+        w.add('middle');
+      });
+      w.add('end');
+
+      expect(previewed).toBe('middle');
+      expect(w.toString()).toBe('startend');
+    });
+
+    it('keeps sync preview paths synchronous', () => {
+      const w = new OutputWriter();
+
+      w.add('start');
+      const previewed = w.preview(() => {
+        w.add('middle');
+      });
+      w.add('end');
+
+      expect(previewed).toBe('middle');
+      expect(w.toString()).toBe('startend');
+    });
+
+    it('uses awaitable callback return values when the callback writes elsewhere', async () => {
+      const w = new OutputWriter();
+
+      const previewed = await w.preview(async () => 'returned');
+
+      expect(previewed).toBe('returned');
+      expect(w.toString()).toBe('');
+    });
   });
 
   describe('mark and restore', () => {

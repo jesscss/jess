@@ -1,5 +1,5 @@
 import { defineType, type NodeOptions, type LocationInfo, type TreeContext, F_AMPERSAND, F_IMPLICIT_AMPERSAND, type Node } from './node.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import type { Context } from '../context.js';
 import { SimpleSelector } from './selector-simple.js';
 import { PseudoSelector } from './selector-pseudo.js';
@@ -12,7 +12,7 @@ import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { copyOwnedWithReusableLeaves, copyWithReusableLeaves } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
   /**
@@ -85,17 +85,233 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
   return false;
 };
 
+function splitTopLevelCommas(str: string): string[] {
+  const items: string[] = [];
+  let depth = 0;
+  let inQuote: string | null = null;
+  let start = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]!;
+    if (inQuote) {
+      if (ch === inQuote && str[i - 1] !== '\\') {
+        inQuote = null;
+      }
+    // eslint-disable-next-line @stylistic/quotes
+    } else if (ch === '"' || ch === "'") {
+      inQuote = ch;
+    } else if (ch === '(' || ch === '[') {
+      depth++;
+    } else if (ch === ')' || ch === ']') {
+      depth--;
+    } else if (ch === ',' && depth === 0) {
+      const item = str.slice(start, i).trim();
+      if (item) {
+        items.push(item);
+      }
+      start = i + 1;
+    }
+  }
+  const last = str.slice(start).trim();
+  if (last) {
+    items.push(last);
+  }
+  return items;
+}
+
 type AppendSelectorResult<T extends Selector = Selector> = {
   selector: T;
   appended: boolean;
 };
 
+type AmpersandAppendPlacementState = {
+  source: Ampersand;
+  selector: Selector | Nil;
+  appendValue?: string;
+  templateMerge: boolean;
+  templateParts?: string[];
+  hoistToRoot: boolean;
+  inputItemTexts: string[];
+  inputItemCount: number;
+  result?: Selector | Nil;
+  resultItemTexts?: string[];
+  resultItemCount?: number;
+  resultText?: string;
+  selectorBits: Context['selectorBits'];
+};
+
+function getSelectorItemTexts(selector: Selector | Nil): string[] {
+  if (isNode(selector, N.SelectorList)) {
+    return selector.value.map(item => item.toTrimmedString());
+  }
+  if (isNode(selector, N.Nil)) {
+    return [];
+  }
+  return [selector.toTrimmedString()];
+}
+
+function createAmpersandAppendPlacementState(
+  source: Ampersand,
+  selector: Selector | Nil,
+  context: Context,
+  appendValue?: string
+): AmpersandAppendPlacementState {
+  const inputItemTexts = getSelectorItemTexts(selector);
+  return {
+    source,
+    selector,
+    appendValue,
+    templateMerge: appendValue?.includes('&') === true,
+    templateParts: appendValue?.includes('&') === true ? appendValue.split('&') : undefined,
+    hoistToRoot: appendValue !== undefined || source.hoistToRoot === true,
+    inputItemTexts,
+    inputItemCount: inputItemTexts.length,
+    selectorBits: context.selectorBits
+  };
+}
+
+function isIdentJoinChar(char: string | undefined): boolean {
+  return !!char && /[a-zA-Z0-9_-]/.test(char);
+}
+
+function assertValidAmpersandTemplateJoin(template: string, replacement: string): void {
+  if (!replacement) {
+    return;
+  }
+  let searchFrom = 0;
+  while (true) {
+    const idx = template.indexOf('&', searchFrom);
+    if (idx === -1) {
+      break;
+    }
+    const before = idx > 0 ? template[idx - 1] : undefined;
+    const after = idx < template.length - 1 ? template[idx + 1] : undefined;
+    const first = replacement[0];
+    const last = replacement[replacement.length - 1];
+    const invalidHeadJoin = (first === '.' || first === '#') && isIdentJoinChar(before);
+    const invalidTailJoin = (last === '.' || last === '#') && isIdentJoinChar(after);
+    if (invalidHeadJoin || invalidTailJoin) {
+      throw new SyntaxError(`Invalid ampersand merge template "${template}" with parent selector "${replacement}"`);
+    }
+    searchFrom = idx + 1;
+  }
+}
+
+function throwCannotAppendSelector(appendValue: string): never {
+  throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+}
+
+function getAmpersandTemplateReplacements(baseSelector: Selector): Selector[] {
+  if (
+    isNode(baseSelector, N.PseudoSelector)
+    && baseSelector.value.name === ':is'
+    && baseSelector.value.arg
+    && isNode(baseSelector.value.arg, N.SelectorList)
+  ) {
+    return baseSelector.value.arg.value.map(item => item as Selector);
+  }
+  if (isNode(baseSelector, N.SelectorList)) {
+    return baseSelector.value.map(item => item as Selector);
+  }
+
+  const selectorStr = baseSelector.toTrimmedString();
+  if (!selectorStr.includes(',')) {
+    return [baseSelector];
+  }
+
+  return splitTopLevelCommas(selectorStr)
+    .map(item => new BasicSelector(item).inherit(baseSelector));
+}
+
+function mergeAmpersandTemplateSelector(
+  baseSelector: Selector,
+  placement: AmpersandAppendPlacementState
+): Selector {
+  const { appendValue, templateParts } = placement;
+  if (appendValue === undefined) {
+    return baseSelector;
+  }
+  const replacements = getAmpersandTemplateReplacements(baseSelector);
+  const merged = replacements.map((item) => {
+    const value = item.toTrimmedString();
+    assertValidAmpersandTemplateJoin(appendValue, value);
+    if (templateParts?.length === 2 && templateParts[0] === '' && templateParts[1]) {
+      const result = appendSelector(item, templateParts[1]);
+      if (result.appended) {
+        return result.selector;
+      }
+    }
+    return new BasicSelector((templateParts ?? [appendValue]).join(value)).inherit(baseSelector);
+  });
+  if (merged.length === 1) {
+    return merged[0]!;
+  }
+  return new SelectorList(merged).inherit(baseSelector);
+}
+
+function mergeAmpersandTemplateSelectorList(
+  selector: SelectorList,
+  placement: AmpersandAppendPlacementState
+): SelectorList {
+  const mergedItems: Selector[] = [];
+  for (const item of selector.value) {
+    const merged = mergeAmpersandTemplateSelector(item as Selector, placement);
+    if (isNode(merged, N.SelectorList)) {
+      mergedItems.push(...merged.value);
+    } else {
+      mergedItems.push(merged);
+    }
+  }
+  return new SelectorList(mergedItems).inherit(selector);
+}
+
+function createAmpersandWithSelectorContainer(
+  source: Ampersand,
+  selectorContainer: { selector?: Selector | Nil | undefined }
+): Ampersand {
+  return new Ampersand(
+    {
+      appendValue: source.value.appendValue,
+      selectorContainer
+    },
+    source.options,
+    source.location.length === 0 ? undefined : source.location,
+    source.treeContext
+  ).inherit(source);
+}
+
 function ownSelectorForAppend(selector: Selector): Selector {
-  const owned = copyWithReusableLeaves(selector);
+  const owned = copyOwnedWithReusableLeaves(selector);
   if (!(owned instanceof Selector)) {
     throw new TypeError('Expected selector copy');
   }
   return owned;
+}
+
+function expectComplexAppendResult(selector: Selector): ComplexSelectorComponent {
+  if (
+    isNode(selector, N.SimpleSelector)
+    || isNode(selector, N.CompoundSelector)
+    || isNode(selector, N.ComplexSelector)
+  ) {
+    return selector;
+  }
+  throw new TypeError('Expected complex selector component');
+}
+
+function expectComplexAppendComponent(node: Node): ComplexSelectorComponent {
+  if (
+    isNode(node, N.SimpleSelector)
+    || isNode(node, N.CompoundSelector)
+    || isNode(node, N.ComplexSelector)
+    || isNode(node, N.Combinator)
+  ) {
+    return node;
+  }
+  throw new TypeError('Expected complex selector component');
+}
+
+function ownComplexComponentForAppend(component: ComplexSelectorComponent): ComplexSelectorComponent {
+  return expectComplexAppendComponent(copyOwnedWithReusableLeaves(component));
 }
 
 function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
@@ -145,14 +361,14 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
       if (isNode(component, N.Combinator)) {
         continue;
       }
-      const result = appendSelector(component as Selector, appendValue);
+      const result = appendSelector(component, appendValue);
       if (!result.appended) {
         continue;
       }
       const components = selector.value.map((item, idx) => (
         idx === i
-          ? result.selector as ComplexSelectorComponent
-          : ownSelectorForAppend(item as Selector) as ComplexSelectorComponent
+          ? expectComplexAppendResult(result.selector)
+          : ownComplexComponentForAppend(item)
       ));
       return {
         selector: ComplexSelector.create(components).inherit(selector),
@@ -182,6 +398,23 @@ function appendSelector(selector: Selector, appendValue: string): AppendSelector
   }
 
   return { selector, appended: false };
+}
+
+function finishAmpersandAppendPlacement(
+  placement: AmpersandAppendPlacementState,
+  selector: Selector | Nil
+): Selector | Nil {
+  placement.selector = selector;
+  placement.result = selector;
+  placement.resultItemTexts = getSelectorItemTexts(selector);
+  placement.resultItemCount = placement.resultItemTexts.length;
+  placement.resultText = placement.resultItemTexts.length === 1
+    ? placement.resultItemTexts[0]
+    : selector.toTrimmedString();
+  if (placement.hoistToRoot) {
+    placement.result.hoistToRoot = true;
+  }
+  return placement.result;
 }
 
 /**
@@ -323,42 +556,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     return w.getSince(mark);
   }
 
-  /**
-   * Split a string on commas that aren't inside brackets, parens, or quotes.
-   */
-  private static splitTopLevelCommas(str: string): string[] {
-    const items: string[] = [];
-    let depth = 0;
-    let inQuote: string | null = null;
-    let start = 0;
-    for (let i = 0; i < str.length; i++) {
-      const ch = str[i]!;
-      if (inQuote) {
-        if (ch === inQuote && str[i - 1] !== '\\') {
-          inQuote = null;
-        }
-      // eslint-disable-next-line @stylistic/quotes
-      } else if (ch === '"' || ch === "'") {
-        inQuote = ch;
-      } else if (ch === '(' || ch === '[') {
-        depth++;
-      } else if (ch === ')' || ch === ']') {
-        depth--;
-      } else if (ch === ',' && depth === 0) {
-        const item = str.slice(start, i).trim();
-        if (item) {
-          items.push(item);
-        }
-        start = i + 1;
-      }
-    }
-    const last = str.slice(start).trim();
-    if (last) {
-      items.push(last);
-    }
-    return items;
-  }
-
   /** Hmm this should never return Extend */
   override evalNode(context: Context): Selector | Nil {
     this.keySetLibrary = context.selectorBits;
@@ -370,88 +567,20 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       let frame = atIndex(context.rulesetFrames, -1);
       let selector = storedSelector ?? frame?.selector;
       if (!selector) {
-        return new Nil();
+        return createPublicNil();
       }
+      const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
-        const isTemplateMerge = appendValue.includes('&');
-        if (isTemplateMerge) {
-          const isIdentJoinChar = (char: string | undefined): boolean => {
-            return !!char && /[a-zA-Z0-9_-]/.test(char);
-          };
-          const assertValidTemplateJoin = (template: string, replacement: string): void => {
-            if (!replacement) {
-              return;
-            }
-            let searchFrom = 0;
-            while (true) {
-              const idx = template.indexOf('&', searchFrom);
-              if (idx === -1) {
-                break;
-              }
-              const before = idx > 0 ? template[idx - 1] : undefined;
-              const after = idx < template.length - 1 ? template[idx + 1] : undefined;
-              const first = replacement[0];
-              const last = replacement[replacement.length - 1];
-              const invalidHeadJoin = (first === '.' || first === '#') && isIdentJoinChar(before);
-              const invalidTailJoin = (last === '.' || last === '#') && isIdentJoinChar(after);
-              if (invalidHeadJoin || invalidTailJoin) {
-                throw new SyntaxError(`Invalid ampersand merge template "${template}" with parent selector "${replacement}"`);
-              }
-              searchFrom = idx + 1;
-            }
-          };
-          const mergeTemplate = (baseSelector: Selector): Selector => {
-            const baseSelectors: Selector[] = [];
-            if (
-              isNode(baseSelector, N.PseudoSelector)
-              && baseSelector.value.name === ':is'
-              && baseSelector.value.arg
-              && isNode(baseSelector.value.arg, N.SelectorList)
-            ) {
-              baseSelectors.push(...baseSelector.value.arg.value.map(item => item as Selector));
-            } else if (isNode(baseSelector, N.SelectorList)) {
-              baseSelectors.push(...baseSelector.value.map(item => item as Selector));
-            } else {
-              // Handle raw comma-separated strings (e.g. from ~'apple, satsuma, banana, pear')
-              // by splitting into individual items so the template distributes across all of them.
-              const selectorStr = baseSelector.toTrimmedString();
-              if (selectorStr.includes(',')) {
-                const items = Ampersand.splitTopLevelCommas(selectorStr);
-                for (const item of items) {
-                  baseSelectors.push(new BasicSelector(item).inherit(baseSelector));
-                }
-              } else {
-                baseSelectors.push(baseSelector);
-              }
-            }
-            const merged = baseSelectors.map((item) => {
-              const value = item.toTrimmedString();
-              assertValidTemplateJoin(appendValue, value);
-              return new BasicSelector(appendValue.split('&').join(value)).inherit(baseSelector);
-            });
-            if (merged.length === 1) {
-              return merged[0]!;
-            }
-            return new SelectorList(merged).inherit(baseSelector);
-          };
+        if (placement.templateMerge) {
           if (isNode(selector, N.SelectorList)) {
-            const mergedItems: Selector[] = [];
-            for (const item of selector.value) {
-              const merged = mergeTemplate(item as Selector);
-              if (isNode(merged, N.SelectorList)) {
-                mergedItems.push(...merged.value);
-              } else {
-                mergedItems.push(merged);
-              }
-            }
-            selector = new SelectorList(mergedItems).inherit(selector);
+            selector = mergeAmpersandTemplateSelectorList(selector, placement);
           } else {
-            selector = mergeTemplate(selector);
+            selector = mergeAmpersandTemplateSelector(selector, placement);
           }
         } else {
           const result = appendSelector(selector, appendValue);
           if (!result.appended) {
-            throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+            throwCannotAppendSelector(appendValue);
           }
           selector = result.selector;
         }
@@ -461,11 +590,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       // the new top-level selector (marked hoistToRoot so composeSelector
       // won't re-prepend the parent). A SelectorList or ComplexSelector
       // result renders correctly on its own at the top level.
-      const result: Selector | Nil = selector;
-      if (appendValue !== undefined || this.hoistToRoot) {
-        result.hoistToRoot = true;
-      }
-      return result;
+      return finishAmpersandAppendPlacement(placement, selector);
     }
 
     let frame = atIndex(context.rulesetFrames, -1);
@@ -477,15 +602,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
      * preserve it instead of overwriting with the frame selector.
      */
     if (!amp._selectorContainer && frame && frame.selector) {
-      amp = new Ampersand(
-        {
-          appendValue: this.value.appendValue,
-          selectorContainer: frame
-        },
-        this.options,
-        this.location.length === 0 ? undefined : this.location,
-        this.treeContext
-      ).inherit(this);
+      amp = createAmpersandWithSelectorContainer(this, frame);
     } else if (!amp._selectorContainer) {
       const parentSelector = amp.parent;
       const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);
@@ -500,7 +617,7 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           meta: { selector: selectorText }
         })));
       }
-      return new Nil();
+      return createPublicNil();
     }
     return amp;
   }

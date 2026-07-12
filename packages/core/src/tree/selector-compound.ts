@@ -3,13 +3,13 @@ import {
   defineType
 } from './node.js';
 import type { Context } from '../context.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
 
 /**
  * @example
@@ -65,6 +65,18 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
       node.hoistToRoot = true;
     }
     return node.inherit(this);
+  }
+
+  private createEvaluatedComponentSurface(value: Selector[], sourceValue: readonly Selector[]): this {
+    return this.withComponents(value, sourceValue);
+  }
+
+  private collapsedSelector(item: Selector, sourceValue: readonly Selector[]): Selector {
+    const owned = ownCollapsedSourceChild(item, sourceValue, this);
+    if (!(owned instanceof Selector)) {
+      throw new TypeError('Expected selector copy');
+    }
+    return owned;
   }
 
   private renderCompoundSyntax(options?: PrintOptions): string {
@@ -165,10 +177,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           return aIsElement ? -1 : bIsElement ? 1 : 0;
         });
         if (value.length === 0) {
-          return (new Nil()).inherit(this);
+          return createPublicNil().inherit(this);
         }
         if (value.length === 1) {
-          return value[0]!.inherit(this) as Selector;
+          return this.collapsedSelector(value[0]!, currentValue);
         }
         const changed = (
           value.length !== currentValue.length
@@ -177,12 +189,12 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         if (!changed) {
           return sel;
         }
-        return sel.withComponents(value, currentValue);
+        return sel.createEvaluatedComponentSurface(value, currentValue);
       }
     );
   }
 
-  override resolve(context: Context): MaybePromise<Node> {
+  protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
@@ -220,10 +232,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
           return aIsElement ? -1 : bIsElement ? 1 : 0;
         });
         if (value.length === 0) {
-          return (new Nil()).inherit(this);
+          return createPublicNil().inherit(this);
         }
         if (value.length === 1) {
-          return value[0]!.inherit(this) as Selector;
+          return this.collapsedSelector(value[0]!, currentValue);
         }
         const changed = (
           value.length !== currentValue.length
@@ -235,6 +247,10 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         return sel.withComponents(value, currentValue);
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveForRender(context);
   }
 
   /** @todo move to visitors */

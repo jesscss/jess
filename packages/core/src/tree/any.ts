@@ -5,13 +5,6 @@
 import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
-import { Nil } from './nil.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import {
-  isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
-} from './util/render-buffer.js';
 
 export type AnyRole =
   'ident'
@@ -56,20 +49,8 @@ export class Any<
     this.addFlag(F_STATIC);
   }
 
-  override preEval(context: Context): this | Nil {
-    return this.prepareRegistration(context);
-  }
-
-  override prepareRegistration(context: Context): this | Nil {
-    this.preEvaluated = true;
-    // Index should already be assigned by parent Rules
-    if (this._options?.role === 'charset') {
-      if (!context.currentCharset) {
-        /** @todo - Throw error in the future? */
-        context.currentCharset = this;
-      }
-      return new Nil();
-    }
+  override prepareRegistration(_context: Context): this {
+    this.registrationPrepared = true;
     return this;
   }
 
@@ -80,15 +61,6 @@ export class Any<
 
   override resolve(context: Context): MaybePromise<Node> {
     return this.evalNode(context);
-  }
-
-  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
-  override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
-    }
-    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {

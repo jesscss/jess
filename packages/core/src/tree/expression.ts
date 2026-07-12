@@ -1,10 +1,11 @@
 import type { Context } from '../context.js';
-import { Node, F_NON_STATIC, defineType } from './node.js';
+import { Node, F_NON_STATIC, defineType, type NodeLocation, type NodeOptions, type TreeContext } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
+import { List } from './list.js';
+import { Sequence } from './sequence.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -20,7 +21,7 @@ export interface Expression extends Node<Node> {
 }
 
 export class Expression extends Node<Node> {
-  constructor(value: Node, options?: any, location?: any, treeContext?: any) {
+  constructor(value: Node, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlag(F_NON_STATIC);
   }
@@ -47,10 +48,17 @@ export class Expression extends Node<Node> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    if (this.value instanceof List || this.value instanceof Sequence) {
+      return isRenderBuffer(bufferOrOptions)
+        ? this.value.render(context, bufferOrOptions, options)
+        : this.value.render(context, bufferOrOptions);
     }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.evalNode(context),
+      node => isRenderBuffer(bufferOrOptions)
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions)
+    );
   }
 
   override toTrimmedString(options?: PrintOptions): string {

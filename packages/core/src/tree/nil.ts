@@ -11,11 +11,6 @@ import {
   type NodeOptions
 } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import {
-  isRenderBuffer,
-  type RenderBuffer
-} from './util/render-buffer.js';
 
 export interface Nil extends Node<''> {
   valueOf(): '';
@@ -35,7 +30,7 @@ export class Nil extends Node<''> {
   override allowRoot = true;
   override allowRuleRoot = true;
   constructor(
-    value?: any,
+    value?: '',
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext) {
@@ -46,8 +41,6 @@ export class Nil extends Node<''> {
     this.fullRender = false;
   }
 
-  foo() {}
-
   override toTrimmedString() {
     return '';
   }
@@ -56,20 +49,13 @@ export class Nil extends Node<''> {
     return '';
   }
 
-  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
-  override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
-    if (isRenderBuffer(bufferOrOptions)) {
-      getPrintOptions({ ...options, context });
-      return '';
-    }
-    getPrintOptions({ ...bufferOrOptions, context });
-    return '';
-  }
-
   override resolve(_context: Context): this {
     return this;
   }
+}
+
+export function createPublicNil(): Nil {
+  return new Nil();
 }
 
 export const nil = defineType(Nil, 'Nil');

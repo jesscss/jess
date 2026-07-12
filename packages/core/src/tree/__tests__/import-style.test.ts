@@ -32,12 +32,15 @@ import {
   atrule
 } from '../index.js';
 import { Rules as RulesClass } from '../index.js';
+import { getImportPlacementChildSegments, getImportPlacementReferenceMode, getImportPlacementRenderState, getImportPlacementRulesVisibility, getImportPlacementSegmentSourceChild, getImportPlacementSourceChild, getImportPostludePlacement, getImportPostludeRenderOrder, getImportPostludeRenderState } from '../import-style.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import type { FindOptions } from '../util/registry-utils.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { OutputWriter, getPrintOptions } from '../util/print.js';
+import { buildSourceMap } from '../util/sourcemap.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 
@@ -1783,7 +1786,7 @@ describe('Style import', () => {
   });
 
   describe('multiple imports', () => {
-    it('reuses source-free scalar leaves when creating first-use import-local rules copies', async () => {
+    it('reuses source-free scalar leaves for first-use import-local placement', async () => {
       const originalClone = Any.prototype.clone;
       let clonedRedLeaves = 0;
       Any.prototype.clone = function cloneForCounting(
@@ -1859,6 +1862,217 @@ describe('Style import', () => {
       } finally {
         RulesClass.prototype.clone = originalClone;
       }
+    });
+
+    it('keeps cache-stable first-use plain import source children canonical until eval replaces them', async () => {
+      const importedRules = rules([
+        ruleset({
+          selector: sellist([sel([el('.shared-import-child')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]);
+      const sourceChild = importedRules.value[0];
+      context.sourceTrees.set('shared-import-child.jess', importedRules);
+
+      const node = rules([
+        style({
+          path: quoted(any('shared-import-child.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const placement = evald.value[0];
+      expect(isNode(placement, N.Rules)).toBe(true);
+      if (!isNode(placement, N.Rules)) {
+        throw new TypeError('Expected import result to be a Rules placement');
+      }
+      expect(placement.value[0]).not.toBe(sourceChild);
+      expect(sourceChild?.parent).toBe(importedRules);
+    });
+
+    it('keeps first-use source-free scalar declaration imports placement-owned while reusing the scalar leaf', async () => {
+      const red = any('red');
+      const sourceDecl = decl({ name: any('color'), value: red });
+      const importedRules = rules([sourceDecl]);
+      context.sourceTrees.set('shared-import-scalar-decl.jess', importedRules);
+
+      const node = rules([
+        style({
+          path: quoted(any('shared-import-scalar-decl.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const placement = evald.value[0];
+      expect(isNode(placement, N.Rules)).toBe(true);
+      if (!isNode(placement, N.Rules)) {
+        throw new TypeError('Expected import result to be a Rules placement');
+      }
+      const placementDecl = placement.value[0];
+      expect(placementDecl).not.toBe(sourceDecl);
+      expect(sourceDecl.parent).toBe(importedRules);
+      expect(isNode(placementDecl, N.Declaration)).toBe(true);
+      if (!isNode(placementDecl, N.Declaration)) {
+        throw new TypeError('Expected placement child to be a declaration');
+      }
+      expect(placementDecl.value.value).toBe(red);
+      expect(red.parent).toBe(sourceDecl);
+    });
+
+    it('keeps nested source-free scalar import placement owned while reusing scalar leaves', async () => {
+      const red = any('red');
+      const sourceDecl = decl({ name: any('color'), value: red });
+      const sourceRuleset = ruleset({
+        selector: sellist([sel([el('.nested-import')])]),
+        rules: rules([sourceDecl])
+      });
+      const importedRules = rules([sourceRuleset]);
+      context.sourceTrees.set('nested-source-free-scalar.jess', importedRules);
+
+      const node = rules([
+        style({
+          path: quoted(any('nested-source-free-scalar.jess'))
+        }, {
+          type: 'import'
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const placement = evald.value[0];
+      expect(isNode(placement, N.Rules)).toBe(true);
+      if (!isNode(placement, N.Rules)) {
+        throw new TypeError('Expected import result to be a Rules placement');
+      }
+      const placementRuleset = placement.value[0];
+      expect(placementRuleset).not.toBe(sourceRuleset);
+      expect(sourceRuleset.parent).toBe(importedRules);
+      expect(isNode(placementRuleset, N.Ruleset)).toBe(true);
+      if (!isNode(placementRuleset, N.Ruleset)) {
+        throw new TypeError('Expected placement child to be a ruleset');
+      }
+      expect(getImportPlacementChildSegments(placement)).toEqual([
+        {
+          kind: 'source-child',
+          source: sourceRuleset,
+          output: placementRuleset,
+          index: 0
+        }
+      ]);
+      expect(getImportPlacementSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
+      expect(getImportPlacementSegmentSourceChild(placement, placementRuleset)).toBe(sourceRuleset);
+      const placementDecl = placementRuleset.value.rules?.value[0];
+      expect(placementDecl).not.toBe(sourceDecl);
+      expect(isNode(placementDecl, N.Declaration)).toBe(true);
+      if (!isNode(placementDecl, N.Declaration)) {
+        throw new TypeError('Expected nested placement declaration');
+      }
+      expect(getImportPlacementSourceChild(placement, placementDecl)).toBe(sourceDecl);
+      expect(getImportPlacementSegmentSourceChild(placement, placementDecl)).toBeUndefined();
+      expect(placementDecl.value.value).toBe(red);
+      expect(red.parent).toBe(sourceDecl);
+    });
+
+    it('keeps cache-hit reference visibility isolated from the cached import source', async () => {
+      const importedRules = rules([
+        ruleset({
+          selector: sellist([sel([el('.cached-reference')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]);
+      context.sourceTrees.set('cached-reference.jess', importedRules);
+
+      const firstEval = await rules([
+        style({
+          path: quoted(any('cached-reference.jess'))
+        }, {
+          type: 'import'
+        })
+      ]).eval(context);
+      const secondEval = await rules([
+        style({
+          path: quoted(any('cached-reference.jess'))
+        }, {
+          type: 'import',
+          importOptions: {
+            reference: true
+          }
+        })
+      ]).eval(context);
+
+      expect(firstEval.value[0]).not.toBe(importedRules);
+      const referencePlacement = secondEval.value[0];
+      expect(isNode(referencePlacement, N.Rules)).toBe(true);
+      if (!isNode(referencePlacement, N.Rules)) {
+        throw new TypeError('Expected reference import placement');
+      }
+      expect(referencePlacement.options.referenceMode).toBe(true);
+      expect(getImportPlacementReferenceMode(referencePlacement)).toBe(true);
+      expect(referencePlacement.options.rulesVisibility.Ruleset).toBe('optional');
+      expect(getImportPlacementRulesVisibility(referencePlacement)?.Ruleset).toBe('optional');
+      expect(importedRules.options.referenceMode).not.toBe(true);
+      expect(importedRules.options.rulesVisibility.Ruleset).toBe('public');
+
+      delete referencePlacement.options.referenceMode;
+      delete referencePlacement.options.rulesVisibility;
+      expect(getImportPlacementReferenceMode(referencePlacement)).toBe(true);
+      expect(getImportPlacementRulesVisibility(referencePlacement)?.Ruleset).toBe('optional');
+      expect(getImportPlacementRenderState(referencePlacement)).toEqual({
+        referenceMode: true,
+        rulesVisibility: getImportPlacementRulesVisibility(referencePlacement)
+      });
+    });
+
+    it('records postlude wrapper order beside nested import placement output', async () => {
+      context.sourceTrees.set('postlude-order.jess', rules([
+        ruleset({
+          selector: sellist([sel([el('.imported')])]),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+
+      const node = rules([
+        style({
+          path: quoted(any('postlude-order.jess'))
+        }, {
+          type: 'import',
+          importOptions: {
+            multiple: true,
+            postlude: list([
+              call({ name: 'layer', args: list([any('components')]) }),
+              call({ name: 'media', args: list([any('screen')]) })
+            ])
+          }
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      const wrapped = evald.value[0];
+      expect(isNode(wrapped, N.Rules)).toBe(true);
+      if (!isNode(wrapped, N.Rules)) {
+        throw new TypeError('Expected postlude Rules wrapper');
+      }
+      const placement = getImportPostludePlacement(wrapped);
+      expect(placement?.postludeNames).toEqual(['@layer', '@media']);
+      expect(getImportPostludeRenderOrder(wrapped)).toEqual(['@layer', '@media']);
+      expect(getImportPostludeRenderState(wrapped)).toEqual({
+        order: ['@layer', '@media'],
+        sourceRules: placement?.sourceRules,
+        outputRules: wrapped
+      });
+      expect(placement?.outputRules).toBe(wrapped);
+      expect(isNode(placement?.sourceRules.value[0], N.Ruleset)).toBe(true);
+      expect(isNode(wrapped.value[0], N.AtRule)).toBe(true);
+      expect(await evald.render(context)).toContain('@layer components');
     });
 
     it('import type can be imported multiple times', async () => {
@@ -1982,6 +2196,15 @@ describe('Style import', () => {
       const css = await renderNodeToString(node, inlineContext, { context: inlineContext });
       expect(css).toContain('@media (min-width: 600px)');
       expect(css).toContain('#css { color: yellow; }');
+
+      const writer = new OutputWriter();
+      wrappedImport.toString(getPrintOptions({ writer, context: inlineContext }));
+      const map = buildSourceMap(writer, {
+        file: 'out.css',
+        sourcesContent: new Map([[inlinePath, '#css { color: yellow; }\n']])
+      });
+      expect(map.sources).toContain(inlinePath);
+      expect(map.sourcesContent).toContain('#css { color: yellow; }\n');
     });
 
     it('import-inline: supports/layer postludes wrap inline source in order', async () => {
@@ -3061,8 +3284,77 @@ describe('Style import', () => {
       expect(isNode(resolved, N.Rules)).toBe(true);
       expect((resolved as Rules).value.length).toBe(0);
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
+    });
+
+    it('writes resolved style import output into segmented buffers', async () => {
+      context.sourceTrees.set('buffer-import.jess', rules([
+        ruleset({
+          selector: el('.buffered'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+      const node = style(
+        { path: quoted(any('buffer-import.jess')) },
+        { type: 'import' }
+      );
+      const anchor = rules([node]);
+      context.root = anchor;
+      context.rulesContext = anchor;
+      const buffer = createRenderBuffer('segmented');
+      const originalResolve = node.resolve;
+      let resolveCalls = 0;
+      node.resolve = function countResolveCalls(
+        this: typeof node,
+        ...args: Parameters<typeof originalResolve>
+      ): ReturnType<typeof originalResolve> {
+        resolveCalls++;
+        return originalResolve.apply(this, args);
+      };
+
+      const rendered = await node.render(context, buffer);
+
+      expect(rendered).toBeString(`
+        .buffered {
+          color: red;
+        }
+      `);
+      expect(buffer.segments).toEqual([rendered]);
+      expect(resolveCalls).toBe(0);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
+    });
+
+    it('renders resolved style import output directly without public resolve', async () => {
+      context.sourceTrees.set('direct-import.jess', rules([
+        ruleset({
+          selector: el('.directed'),
+          rules: rules([
+            decl({ name: any('color'), value: any('red') })
+          ])
+        })
+      ]));
+      const node = style(
+        { path: quoted(any('direct-import.jess')) },
+        { type: 'import' }
+      );
+      const anchor = rules([node]);
+      context.root = anchor;
+      context.rulesContext = anchor;
+      node.resolve = () => {
+        throw new Error('StyleImport direct render should use evalNode');
+      };
+
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        .directed {
+          color: red;
+        }
+      `);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
     });
   });
 

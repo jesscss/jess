@@ -1,8 +1,9 @@
-import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type LocationInfo } from './node.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC, type NodeLocation, type NodeOptions } from './node.js';
 import type { Context, TreeContext } from '../context.js';
 import { Rules } from './rules.js';
 import { Any } from './any.js';
 import { Num } from './number.js';
+import { Bool } from './bool.js';
 
 import { VarDeclaration } from './declaration-var.js';
 import { isNode } from './util/is-node.js';
@@ -10,8 +11,14 @@ import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { Range } from './range.js';
-import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
-import { copyWithReusableLeaves } from './util/cloning.js';
+import { buildScopeFrame, getBindingCellValue, type BindingCell, type ScopeFrame } from './scope-frame.js';
+import {
+  createRenderBuffer,
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -19,6 +26,15 @@ const PUBLIC_RULE_VISIBILITY = {
   VarDeclaration: 'public',
   Mixin: 'public'
 } as const;
+const MAX_WHILE_ITERATIONS = 10000;
+
+function throwWhileIterationLimitExceeded(): never {
+  throw new Error(`$while exceeded ${MAX_WHILE_ITERATIONS} iterations`);
+}
+
+function throwInvalidWhileIterationRegistrationPrep(): never {
+  throw new TypeError('Expected $while iteration registration prep to return Rules');
+}
 
 function makeDirectiveRulesPublic(rules: Rules) {
   rules.options.rulesVisibility = {
@@ -27,14 +43,176 @@ function makeDirectiveRulesPublic(rules: Rules) {
   };
 }
 
-function renderControlSourceSyntax(node: Node, context: Context, options?: PrintOptions): string {
-  const printOptions = getPrintOptions({ ...options, context });
-  const savedContext = printOptions.context;
-  printOptions.context = undefined;
+function renderControlToString(render: (buffer: RenderBuffer) => MaybePromise<string>): MaybePromise<string> {
+  return render(createRenderBuffer('flat'));
+}
+
+async function renderControlRules(
+  rules: Rules,
+  context: Context,
+  buffer: RenderBuffer,
+  options?: PrintOptions
+): Promise<string> {
+  return writeRenderText(
+    buffer,
+    await Promise.resolve(rules.render(context, prepareBufferPrintState(context, options)))
+  );
+}
+
+function createDerivedIterationRulesSurface(
+  sourceRules: Rules,
+  childNodes?: Node[],
+  options: {
+    preserveFunctionRegistry?: boolean;
+  } = {}
+): Rules {
+  const sourceOptions = sourceRules.options;
+  const sourceLocation = sourceRules.location.length === 0
+    ? undefined
+    : sourceRules.location;
+  const output = new Rules(
+    [],
+    {
+      ...sourceOptions,
+      rulesVisibility: { ...sourceOptions.rulesVisibility }
+    },
+    sourceLocation,
+    sourceRules.treeContext
+  ).inherit(sourceRules);
+  if (options.preserveFunctionRegistry === true && sourceRules.functionRegistry) {
+    output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
+  }
+  output.scopeFrame = undefined;
+  if (childNodes) {
+    for (const childNode of childNodes) {
+      output.push(childNode);
+    }
+  }
+  return output;
+}
+
+function createGeneratedOutputRulesSurface(childNodes?: Node[]): Rules {
+  const output = new Rules([]);
+  if (childNodes) {
+    for (const childNode of childNodes) {
+      output.push(childNode);
+    }
+  }
+  return output;
+}
+
+async function runWithRulesContext<T>(
+  context: Context,
+  rulesContext: Rules,
+  run: () => Promise<T>
+): Promise<T> {
+  const savedRulesContext = context.rulesContext;
+  context.rulesContext = rulesContext;
   try {
-    return node.toTrimmedString(printOptions);
+    return await run();
   } finally {
-    printOptions.context = savedContext;
+    context.rulesContext = savedRulesContext;
+  }
+}
+
+function deriveIterationChild(node: Node): Node {
+  node.frozen = true;
+  return node;
+}
+
+function createIterationEvalSurface(sourceRules: Rules): Rules {
+  const iterationRules = createDerivedIterationRulesSurface(
+    sourceRules,
+    sourceRules.value.map(deriveIterationChild),
+    { preserveFunctionRegistry: true }
+  );
+  iterationRules.options.rulesVisibility = {
+    ...iterationRules.options.rulesVisibility,
+    ...PUBLIC_RULE_VISIBILITY
+  };
+  return iterationRules;
+}
+
+function createWhileStateSurface(sourceRules: Rules, context: Context): Rules {
+  const stateRules = createDerivedIterationRulesSurface(
+    sourceRules,
+    undefined,
+    { preserveFunctionRegistry: true }
+  );
+  const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
+    ? context.rulesContext.getScopeFrame()
+    : undefined;
+  stateRules.scopeFrame = buildScopeFrame(undefined, stateRules, parentFrame, new Map());
+  return stateRules;
+}
+
+function createWhileIterationSurface(sourceRules: Rules, stateRules: Rules): Rules {
+  const iterationRules = createIterationEvalSurface(sourceRules);
+  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateRules.getScopeFrame());
+  return iterationRules;
+}
+
+function hasIterationStateMutation(rules: Rules): boolean {
+  return rules.value.some(node => isNode(node, N.VarDeclaration));
+}
+
+function getDirectIterationStateMutations(rules: Rules): VarDeclaration[] | undefined {
+  const mutations: VarDeclaration[] = [];
+  for (const node of rules.value) {
+    if (!isNode(node, N.VarDeclaration)) {
+      continue;
+    }
+    if (
+      node.options?.assign
+      || node.options?.setDefined
+      || node.options?.throwIfDefined
+    ) {
+      return undefined;
+    }
+    mutations.push(node);
+  }
+  return mutations.length > 0 ? mutations : undefined;
+}
+
+async function syncWhileState(
+  stateRules: Rules,
+  iterationRules: Rules,
+  context: Context
+): Promise<void> {
+  const stateFrame = stateRules.getScopeFrame();
+  const iterationFrame = iterationRules.getScopeFrame();
+  for (const [name, bucket] of iterationFrame.declarationBucketsByName) {
+    const last = bucket[bucket.length - 1];
+    if (!last) {
+      continue;
+    }
+    const value = await getBindingCellValue(last.cell).eval(context);
+    stateFrame.liveSlotsByName.set(name, {
+      value,
+      sourceNode: last.sourceNode,
+      readonly: last.cell.readonly
+    });
+  }
+}
+
+async function syncDirectWhileStateMutations(
+  stateRules: Rules,
+  mutations: VarDeclaration[],
+  context: Context
+): Promise<void> {
+  const stateFrame = stateRules.getScopeFrame();
+  for (const mutation of mutations) {
+    const name = mutation.value.name instanceof Any
+      ? mutation.value.name
+      : await mutation.value.name.eval(context);
+    if (!(name instanceof Any)) {
+      throw new TypeError('Expected $while mutation name to resolve to Any');
+    }
+    stateFrame.liveSlotsByName.set(name.valueOf(), {
+      value: await mutation.value.value.eval(context),
+      sourceNode: mutation,
+      readonly: mutation.options?.readonly
+    });
   }
 }
 
@@ -139,6 +317,60 @@ function iterableToNode(iterable: ForIterable): Node {
   );
 }
 
+function getForBindingInfo(pattern: ForPattern): {
+  bindingDecls: VarDeclaration[];
+  bindingNames: string[];
+} {
+  const bindingDecls = getBindingDeclarations(pattern);
+  if (bindingDecls.length === 0) {
+    throw new Error('Invalid $for header: missing binding variable');
+  }
+  return {
+    bindingDecls,
+    bindingNames: bindingDecls.map(entry => entry.value.name.valueOf())
+  };
+}
+
+async function createForIterationSurface(
+  originalRules: Rules,
+  context: Context,
+  bindingDecls: VarDeclaration[],
+  bindingNames: string[],
+  value: Node,
+  key: number | string | Node,
+  counter: number
+): Promise<Rules> {
+  const resolvedValue = await value.eval(context);
+  let resolvedKey: Node;
+  if (typeof key === 'number') {
+    resolvedKey = new Num(key + 1);
+  } else if (typeof key === 'string' && key === 'value') {
+    resolvedKey = new Num(counter);
+  } else if (isNode(key)) {
+    resolvedKey = await key.eval(context);
+  } else {
+    resolvedKey = new Any(String(key), { role: 'property' });
+  }
+
+  const iterationRules = createIterationEvalSurface(originalRules);
+
+  const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
+  const liveSlots = new Map<string, BindingCell>();
+  for (let i = Math.min(bindingDecls.length, bindings.length) - 1; i >= 0; i--) {
+    const bindingDecl = bindingDecls[i]!;
+    liveSlots.set(bindingNames[i]!, {
+      value: bindings[i]!,
+      sourceNode: bindingDecl,
+      readonly: bindingDecl.options?.readonly
+    });
+  }
+  const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
+    ? context.rulesContext.getScopeFrame()
+    : undefined;
+  iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
+  return iterationRules;
+}
+
 export type IfBranch = {
   /** Undefined means "else" branch */
   condition?: Node;
@@ -161,7 +393,7 @@ export class If extends Node<IfValue> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: IfValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     for (const branch of value.branches) {
@@ -199,8 +431,46 @@ export class If extends Node<IfValue> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
-    return renderControlSourceSyntax(this, context, options);
+  override evalNode(context: Context): MaybePromise<Node> {
+    const run = async (): Promise<Node> => {
+      for (const branch of this.value.branches) {
+        if (!branch.condition) {
+          return branch.rules.eval(context);
+        }
+        const condition = await branch.condition.eval(context);
+        if (condition instanceof Bool && condition.value === true) {
+          return branch.rules.eval(context);
+        }
+      }
+      return createGeneratedOutputRulesSurface();
+    };
+    return run();
+  }
+
+  private async renderSelectedBranch(
+    context: Context,
+    buffer: RenderBuffer,
+    options?: PrintOptions
+  ): Promise<string> {
+    for (const branch of this.value.branches) {
+      if (!branch.condition) {
+        return renderControlRules(branch.rules, context, buffer, options);
+      }
+      const condition = await branch.condition.eval(context);
+      if (condition instanceof Bool && condition.value === true) {
+        return renderControlRules(branch.rules, context, buffer, options);
+      }
+    }
+    return '';
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return this.renderSelectedBranch(context, bufferOrOptions, options);
+    }
+    return renderControlToString(buffer => this.renderSelectedBranch(context, buffer, bufferOrOptions));
   }
 
   override resolve(_context: Context): this {
@@ -221,45 +491,7 @@ export class For extends Node<StructuredLoopValue> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  private createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
-    const sourceOptions = sourceRules.options;
-    const sourceLocation = sourceRules.location.length === 0
-      ? undefined
-      : sourceRules.location;
-    const output = new Rules(
-      [],
-      {
-        ...sourceOptions,
-        rulesVisibility: { ...sourceOptions.rulesVisibility }
-      },
-      sourceLocation,
-      sourceRules.treeContext
-    ).inherit(sourceRules);
-    if (sourceRules.functionRegistry) {
-      output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
-    }
-    output.scopeFrame = undefined;
-    if (childNodes) {
-      for (const childNode of childNodes) {
-        output.push(childNode);
-      }
-    }
-    return output;
-  }
-
-  private createIterationEvalSurface(sourceRules: Rules): Rules {
-    const iterationRules = copyWithReusableLeaves(sourceRules);
-    if (!(iterationRules instanceof Rules)) {
-      throw new TypeError('Copied $for body must remain Rules');
-    }
-    iterationRules.options.rulesVisibility = {
-      ...iterationRules.options.rulesVisibility,
-      ...PUBLIC_RULE_VISIBILITY
-    };
-    return iterationRules;
-  }
-
-  constructor(value: StructuredLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
     for (const decl of getBindingDeclarations(value.pattern)) {
@@ -278,59 +510,26 @@ export class For extends Node<StructuredLoopValue> {
     makeDirectiveRulesPublic(value.rules);
   }
 
-  override preEval(context: Context): MaybePromise<Node> {
-    return this.prepareRegistration(context);
-  }
-
-  override prepareRegistration(_context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
-      this.preEvaluated = true;
-      return this;
-    }
-    return this;
-  }
-
   override evalNode(context: Context): MaybePromise<Node> {
     const { pattern, iterable } = this.value;
-    const bindingDecls = getBindingDeclarations(pattern);
-    const bindingNames = bindingDecls.map(entry => entry.value.name.valueOf());
-    if (bindingDecls.length === 0) {
-      throw new Error('Invalid $for header: missing binding variable');
-    }
+    const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
     const run = async (): Promise<Node> => {
       const outputRules: Node[] = [];
       let counter = 1;
       const originalRules = this.value.rules;
       const evaluatedIterable = await iterableToNode(iterable).eval(context);
+      let preparedOriginalRules: Rules | undefined;
       for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
-        const resolvedValue = await value.eval(context);
-        let resolvedKey: Node;
-        if (typeof key === 'number') {
-          resolvedKey = new Num(key + 1);
-        } else if (typeof key === 'string' && key === 'value') {
-          resolvedKey = new Num(counter);
-        } else if (isNode(key)) {
-          resolvedKey = await key.eval(context);
-        } else {
-          resolvedKey = new Any(String(key), { role: 'property' });
-        }
-
-        const iterationRules = this.createIterationEvalSurface(originalRules);
-
-        const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
-        const liveSlots = new Map<string, BindingCell>();
-        for (let i = Math.min(bindingDecls.length, bindings.length) - 1; i >= 0; i--) {
-          const bindingDecl = bindingDecls[i]!;
-          liveSlots.set(bindingNames[i]!, {
-            value: bindings[i]!,
-            sourceNode: bindingDecl,
-            readonly: bindingDecl.options?.readonly
-          });
-        }
-        const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
-          ? context.rulesContext.getScopeFrame()
-          : undefined;
-        iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, parentFrame, liveSlots);
+        preparedOriginalRules ??= await originalRules.prepareRegistration(context);
+        const iterationRules = await createForIterationSurface(
+          preparedOriginalRules,
+          context,
+          bindingDecls,
+          bindingNames,
+          value,
+          key,
+          counter
+        );
         counter++;
         const result = await iterationRules.eval(context);
 
@@ -342,12 +541,12 @@ export class For extends Node<StructuredLoopValue> {
         }
       }
       if (outputRules.length === 0) {
-        return this.createDerivedIterationOutputSurface(originalRules);
+        return createGeneratedOutputRulesSurface();
       }
       if (outputRules.length === 1) {
         return outputRules[0]!;
       }
-      return this.createDerivedIterationOutputSurface(originalRules, outputRules);
+      return createGeneratedOutputRulesSurface(outputRules);
     };
     return run();
   }
@@ -409,8 +608,41 @@ export class For extends Node<StructuredLoopValue> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
-    return renderControlSourceSyntax(this, context, options);
+  private async renderIterations(
+    context: Context,
+    buffer: RenderBuffer,
+    options?: PrintOptions
+  ): Promise<string> {
+    const { pattern, iterable, rules: originalRules } = this.value;
+    const { bindingDecls, bindingNames } = getForBindingInfo(pattern);
+    const evaluatedIterable = await iterableToNode(iterable).eval(context);
+    let preparedOriginalRules: Rules | undefined;
+    let counter = 1;
+    let output = '';
+    for await (const [value, key] of resolveEntries(evaluatedIterable, context)) {
+      preparedOriginalRules ??= await originalRules.prepareRegistration(context);
+      const iterationRules = await createForIterationSurface(
+        preparedOriginalRules,
+        context,
+        bindingDecls,
+        bindingNames,
+        value,
+        key,
+        counter
+      );
+      counter++;
+      output += await iterationRules.render(context, buffer, options);
+    }
+    return output;
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return this.renderIterations(context, bufferOrOptions, options);
+    }
+    return renderControlToString(buffer => this.renderIterations(context, buffer, bufferOrOptions));
   }
 }
 
@@ -426,9 +658,11 @@ export class While extends Node<WhileValue> {
   override allowRoot = true;
   override allowRuleRoot = true;
 
-  constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
+  constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    this.adopt(value.condition);
+    this.adopt(value.rules);
     makeDirectiveRulesPublic(value.rules);
   }
 
@@ -443,12 +677,94 @@ export class While extends Node<WhileValue> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, options?: PrintOptions): string {
-    return renderControlSourceSyntax(this, context, options);
+  override evalNode(context: Context): MaybePromise<Node> {
+    const run = async (): Promise<Node> => {
+      const outputRules: Node[] = [];
+      const originalRules = this.value.rules;
+      const stateRules = createWhileStateSurface(originalRules, context);
+      let iterations = 0;
+      await runWithRulesContext(context, stateRules, async () => {
+        while (true) {
+          const condition = await this.value.condition.eval(context);
+          if (!(condition instanceof Bool && condition.value === true)) {
+            break;
+          }
+          iterations++;
+          if (iterations > MAX_WHILE_ITERATIONS) {
+            throwWhileIterationLimitExceeded();
+          }
+          const iterationRules = createWhileIterationSurface(originalRules, stateRules);
+          const result = await iterationRules.eval(context);
+          if (isNode(result, N.Rules)) {
+            await syncWhileState(stateRules, result, context);
+            result.scopeFrame = undefined;
+            outputRules.push(result);
+          } else {
+            await syncWhileState(stateRules, iterationRules, context);
+            outputRules.push(result);
+          }
+        }
+      });
+      if (outputRules.length === 0) {
+        return createGeneratedOutputRulesSurface();
+      }
+      if (outputRules.length === 1) {
+        return outputRules[0]!;
+      }
+      return createGeneratedOutputRulesSurface(outputRules);
+    };
+    return run();
   }
 
-  override resolve(_context: Context): this {
-    return this;
+  private async renderIterations(
+    context: Context,
+    buffer: RenderBuffer,
+    options?: PrintOptions
+  ): Promise<string> {
+    const originalRules = this.value.rules;
+    const stateRules = createWhileStateSurface(originalRules, context);
+    const directMutations = getDirectIterationStateMutations(originalRules);
+    let iterations = 0;
+    let output = '';
+    await runWithRulesContext(context, stateRules, async () => {
+      while (true) {
+        const condition = await this.value.condition.eval(context);
+        if (!(condition instanceof Bool && condition.value === true)) {
+          break;
+        }
+        iterations++;
+        if (iterations > MAX_WHILE_ITERATIONS) {
+          throwWhileIterationLimitExceeded();
+        }
+        let iterationRules = createWhileIterationSurface(originalRules, stateRules);
+        if (directMutations) {
+          await syncDirectWhileStateMutations(stateRules, directMutations, context);
+        } else if (hasIterationStateMutation(originalRules)) {
+          const preparedIterationRules = await iterationRules.prepareRegistration(context);
+          if (!(preparedIterationRules instanceof Rules)) {
+            throwInvalidWhileIterationRegistrationPrep();
+          }
+          await syncWhileState(stateRules, preparedIterationRules, context);
+          iterationRules = preparedIterationRules;
+        }
+        output += await iterationRules.render(context, buffer, options);
+        await syncWhileState(stateRules, iterationRules, context);
+      }
+    });
+    return output;
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return this.renderIterations(context, bufferOrOptions, options);
+    }
+    return renderControlToString(buffer => this.renderIterations(context, buffer, bufferOrOptions));
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 }
 

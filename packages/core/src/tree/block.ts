@@ -1,11 +1,12 @@
 import type { Context } from '../context.js';
-import { Node, defineType } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { Node, F_STATIC, defineType } from './node.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { consumeTriviaText } from './util/trivia.js';
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -34,7 +35,7 @@ export class Block extends Node<Node, BlockOptions> {
     ).inherit(this);
   }
 
-  override toTrimmedString(options?: PrintOptions) {
+  private renderBlockSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -42,7 +43,7 @@ export class Block extends Node<Node, BlockOptions> {
     let start = type === 'square' ? '[' : '{';
     let end = type === 'square' ? ']' : '}';
     w.add(start);
-    super.toTrimmedString(options);
+    value.toString(options);
     const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
     if (trivia) {
       w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
@@ -51,18 +52,52 @@ export class Block extends Node<Node, BlockOptions> {
     return w.getSince(mark);
   }
 
+  override toTrimmedString(options?: PrintOptions) {
+    return this.renderBlockSyntax(this.value, options);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
-    }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.resolveRenderValue(context),
+      value => this.renderResolvedBlockValue(context, value, bufferOrOptions, options)
+    );
   }
 
   override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveValue(context);
+  }
+
+  private renderResolvedBlockValue(
+    context: Context,
+    value: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.renderBlockSyntax(value, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
+
+  private resolveRenderValue(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this.value;
+    }
+    return this.value.resolve(context);
+  }
+
+  private resolveValue(context: Context): MaybePromise<Block> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     const value = this.value.resolve(context);
-    const finalize = (resolvedValue: Node): Node => {
+    const finalize = (resolvedValue: Node): Block => {
       if (resolvedValue === this.value) {
         return this;
       }

@@ -1,419 +1,365 @@
 # Node Copy Reduction
 
-This folder is the active handoff for reducing and, where possible, eliminating
-routine node copying during eval. It should stay small enough to read at
-startup.
+This folder is historical background for the older node-copy-specific phase.
+The active eval/render architecture handoff is now
+[`docs/future/core-architecture/HANDOFF.md`](../core-architecture/HANDOFF.md).
+
+The old framing was too narrow. Current work optimizes total hot-path cost:
+AST nodes, state/tracking objects, `WeakMap` side maps, recursive walks,
+function-call overhead, parse/execution size, source parentage, and public API
+boundaries. Use this README for context, not as the active queue or completion
+contract. Older per-file completion logs live in
+`docs/_archive/node-copy-reduction/README-2026-05-12.md`.
 
 ## Direction
 
 - Keep one canonical source tree as the default model.
+- Treat fastest practical tree evaluation/render for real-world Less
+  stylesheets as the project priority. Right now, the working strategy is
+  complete single-pass eval/render and minimum honest node creation. A green
+  output test is not enough if the path still builds a broad output tree,
+  clones routine subtrees, or creates wrapper surfaces that are not required by
+  scope, lookup, placement, or user-code mutation semantics.
+- Treat memory reduction as second to speed. Object-count reduction is a proxy,
+  not the goal: keep or add an object when it makes the hot path faster or
+  prevents broader allocation, copying, or lookup work.
 - Prefer lazy per-placement runtime state over routine copied or cloned trees.
-- The target compile path is not "eval creates a complete output tree, then
-  serialize that tree". Evaluation should move semantic state forward and
-  rendering should emit through contextual resolution, with small owned output
-  surfaces only where a rule, scope, import/reference, merge, or generated
-  selector placement truly needs one.
-- Do not treat `copy()`/`clone()` as the future evaluation model. The target is
-  to remove them from normal eval flow for most cases, not to make every legacy
-  copy path more elaborate.
-- Use shallow wrapper owners only when they carry real local scope, registry, or
-  output ownership.
-- Keep render state ownership explicit. Fresh render traversals should reset
-  context-owned print state, while nested render bridges should reuse the
-  active writer/frame/trivia state through `prepareRenderPrintState(...)`
-  instead of recreating that decision at each call site.
-- Treat deep clone, materialization, and broad wrapper growth as debt unless a
-  focused proof shows they are still required.
+- Do not treat `copy()` / `clone()` as the future evaluation model.
+- Do not treat mutation helpers such as `inherit(...)`, `set(...)`, or derived
+  wrapper construction as the future evaluation model either. They are
+  transitional ownership tools. Keep them local, prove why each one is needed,
+  and prefer replacing broad helper-driven mutation with explicit side state or
+  direct render/eval output as the surrounding seam becomes clear.
+- Use shallow wrapper owners only when they carry real local scope, registry,
+  import/reference, merge, generated selector placement, or output ownership.
+- Keep render state ownership explicit. Fresh render traversals reset
+  context-owned print state; nested render adapters reuse active
+  writer/frame/trivia state through `prepareRenderPrintState(...)`.
+- Treat deep clone, broad materialization, and wrapper growth as debt unless a
+  focused test proves a semantic ownership boundary.
 - Fix structural ownership bugs where they are created, not by filtering output
   later.
+- Static resolve fast paths are acceptable only when the node is already fully
+  canonical and the fast path preserves that node's existing resolve contract.
+  Add focused tests that prove child resolution is skipped; do not use
+  `F_STATIC` to skip dynamic binding, evaluation, registration, or output
+  ownership work.
 
-## Current Frontier
+The target compile path is not "eval creates a complete output tree, then
+serialize that tree". Evaluation should move semantic state forward and
+rendering should emit through contextual resolution, with small owned output
+surfaces only where a rule, scope, import/reference, merge, or generated
+selector placement truly needs one. Remaining work should prove that each kept
+surface is necessary and should remove or narrow anything that exists only so a
+later serializer can walk it.
 
-The remaining work is production conversion, not old model preservation. The
-verified baseline is green; use focused tests to prove each copy boundary before
-touching production code.
+## Current State
 
-- `packages/core/src/tree/rules.ts`
-  - `Rules.resolve(context)` now uses the shared derived Rules surface instead
-    of `clone(false)`; the derived wrapper preserves function-registry and
-    live-slot ownership while forcing lazy registry re-indexing, and preserves
-    rules-like subclasses such as `Collection`
-  - `setDefined` insertion now derives the generated declaration through the
-    declaration-owned derivation path instead of calling generic
-    `VarDeclaration.copy()` during registration
-  - guarded mixin dispatch now has local candidate accessors; those accessors
-    are the next place to replace raw candidate field reads when an explicit
-    ownership surface exists
-  - guarded mixin dispatch still has ambient scope plumbing
-  - param/rest/`@arguments` binding still uses frozen deep copies in places;
-    already-evaluated or static childless scalar values with no source location
-    now bind directly, and copied param/default/rest/`@arguments` containers
-    now reuse source-free scalar leaves while keeping the container as the
-    owned binding surface
-  - resolving live-slot values now also reuses those source-free scalar leaves,
-    including children of copied source-free `@arguments`/rest containers; the
-    containers themselves still keep an owned copy surface
-  - static guards are proven copy-free; dynamic guards and default-guard probes
-    still use a copied eval surface, but that surface now reuses childless
-    source-free scalar leaves
-  - ruleset-call and ordinary mixin output now derives the root `Rules`
-    wrapper directly and clones only child output surfaces through the shared
-    reusable-leaf helper; direct comment children remain cloned/preserved for
-    each output placement
-  - detached-ruleset unlock is covered by a regression test proving it does not
-    deep-clone body leaves before evaluating the unlocked surface, and now
-    derives the unlock wrapper instead of shallow-cloning the source rules
-  - derived empty mixin wrapper surfaces are now constructed directly instead
-    of shallow-cloning non-empty body rules and clearing them
-  - post-eval merged declaration coalescing now keeps its accumulated value map
-    as a read-only snapshot surface and lets merge composition own the copy
-    boundary, instead of recopying every stored/list-flattened value leaf
-  - merged declaration composition now copies owned value containers with the
-    shared reusable-leaf traversal, so source-free scalar leaves are not copied
-    again while list/sequence/rules surfaces remain owned by the output
-- `packages/core/src/tree/reference.ts`
-  - `preserveRulesLike` variable references now keep a shallow owned wrapper
-    instead of deep-copying the referenced rules-like body; that shallow
-    wrapper is constructed directly instead of through `clone(false)`
-  - fallback, runtime-binding, and declaration reference result copies now use
-    the shared reusable-leaf traversal directly; the old `freezeChildren` copy
-    branch and bespoke source-free list/sequence clone path are gone
-  - merged declaration reference flattening now reuses the already-copied
-    leaves instead of copying them again
-  - merged declaration references now normalize the evaluated owned value
-    directly instead of making one more defensive result copy
-  - childless static fallback values with no source location now resolve
-    directly; copied fallback/declaration containers now keep an owned surface
-    while reusing source-free scalar leaves; source-backed values, defaults,
-    and non-leaf nodes still use defensive owned copies. Nested source-free
-    reference result containers also use the shared reusable-leaf traversal
-    rather than freezing every child leaf
-- `packages/core/src/tree/declaration.ts`
-  - declaration registration/eval derived wrappers now construct with owned or
-    reusable child surfaces instead of shallow-cloning the declaration and then
-    replacing individual children, so resolving a declaration no longer
-    reparents the source value
-  - interpolated declaration names also use the shared reusable-leaf traversal
-    for derived wrappers, so source-free scalar replacement leaves are not
-    cloned just to own the name container
-  - source-backed `!important` flag leaves now use the same reusable-leaf copy
-    path as other derived declaration parts instead of calling `clone(true)`
-- `packages/core/src/tree/call.ts`
-  - non-plain `Call.resolve()` now derives a small owned call surface directly
-    instead of reconstructing the whole source `Call`; copied name/arg/content
-    containers still reuse childless source-free scalar leaves, and plain
-    string CSS calls build their evaluated output directly, copying only
-    nested argument containers that need their own eval surface
-  - flat render-buffer output for plain CSS calls now renders arguments and
-    content through the async render bridge, so async child resolution does not
-    force the legacy synchronous source-serialization fallback on that path
-  - plain CSS call render paths share the central render print-state prep
-    helper, so nested arg/content rendering keeps the active writer/frame/trivia
-    state without each call path owning its own state-reset heuristic
-  - JS function argument isolation copies only when a local arg-list surface is
-    needed; ordinary empty positional JS calls skip the arg-list copy, and
-    copied positional/callback arg containers reuse source-free scalar leaves
-  - optional fallback call output is now derived directly instead of shallow
-    cloning the source call before mutating name/options/args
-  - variable-reference callable names that need `preserveRulesLike` now get a
-    derived reference wrapper instead of cloning the source reference
-- `packages/jess/src/index.ts`
-  - `render(...)`, `renderString(...)`, `renderToResult(...)`, and
-    `safeRender(...)` all exercise the awaited eval/render path instead of
-    requiring callers to compile a whole evaluated tree and serialize it later
-  - `safeCompile(...)` remains an explicit compatibility/debug API for callers
-    that need a tree surface, but it should not be used as the implementation
-    shortcut for normal CSS output
-- `packages/core/src/tree/at-rule.ts`
-  - at-rule registration/resolve wrappers now construct owned/reusable child
-    surfaces directly instead of shallow-cloning and replacing name/body
-    children, so source at-rule preludes and rules stay parented to the
-    canonical at-rule after prep and `resolve(context)`
-  - comment-free header serialization now uses the same owned/reusable copy
-    helpers for the local name/prelude print surface, so source-free prelude
-    leaves are not cloned just to suppress header trivia
-- `packages/core/src/tree/ruleset.ts`
-  - ruleset registration/resolve prep now derives the wrapper with an owned
-    selector surface instead of shallow-cloning the source ruleset, so source
-    selectors stay parented to the canonical ruleset; body rules remain the
-    existing registration/eval surface because copying them changes mixin and
-    scope behavior
-  - ruleset `ownSelector` metadata now uses the shared owned/reusable selector
-    copy boundary, so selector-list metadata does not clone inert source-free
-    selector leaves during registration prep
-  - render-local ruleset header selector visibility forcing uses that same
-    owned/reusable boundary, so source-free selector leaves are not cloned just
-    to make the print surface visible
-  - comment-free header serialization now reuses that same owned/reusable
-    selector-copy boundary for its local print surface instead of deep-cloning
-    source-free selector leaves just to suppress selector trivia
-  - reference-mode selector header filtering also uses the owned/reusable
-    selector-copy boundary when it only needs a local print surface; selectors
-    that need visibility mutation still keep the defensive deep-copy path
-  - the ruleset-specific `copy()` override has been removed; no production
-    eval/render caller needed it, so keeping a special ruleset copy surface was
-    legacy API polishing rather than normal-flow copy reduction
-  - the unused hoisted implicit-ampersand materialization helper has been
-    removed instead of modernized, because current header composition no longer
-    calls that older deep-copy path
-- `packages/core/src/tree/mixin.ts`
-  - interpolated-name registration prep now derives an owned wrapper directly
-    instead of shallow-cloning the source mixin before replacing the name, so
-    source dynamic names, params, guards, and body rules stay canonical
-- `packages/core/src/tree/import-style.ts`
-  - import-owned child Rules surfaces now reuse the shared derived Rules helper
-    instead of shallow-cloning imported source rules, keeping the import
-    placement surface explicit without treating clone as isolation machinery
-  - compose/import output visibility wrappers now use `Rules.derive()` instead
-    of shallow `Rules.clone()`, and first-use import-local wrappers now derive
-    the root Rules surface directly while cloning only child output surfaces
-    through the shared reusable-leaf helper
-- `packages/core/src/tree/ampersand.ts`
-  - framed ampersand resolution now constructs the framed wrapper directly
-    instead of shallow-cloning the source ampersand just to attach the current
-    selector frame
-  - appended framed ampersands (`&-foo`) now derive a generated selector
-    output surface directly instead of deep-cloning and mutating the frame
-    selector; template merge forms still use their existing generated output
-    path, and hoist-only ampersands still return the frame selector without
-    append mutation
-  - implicit selector-list ampersand wrapping now copies the generated `:is()`
-    argument through the shared owned/reusable selector boundary, so source-free
-    selector leaves are not cloned just to build the wrapper
-- `packages/core/src/tree/interpolated.ts` and
-  `packages/core/src/tree/selector-interpolated.ts`
-  - resolved interpolated wrappers now construct directly when replacement
-    values change, and interpolated selector resolve no longer deep-clones the
-    source interpolated value before resolving selector output
-  - whole-selector interpolation now uses the shared reusable-leaf copy
-    boundary when an evaluated replacement is already a selector, so generated
-    selector output owns a wrapper without cloning inert source-free selector
-    leaves
-- `packages/core/src/tree/control.ts`
-  - `$for` aggregate/empty output wrappers are now constructed directly instead
-    of shallow-cloning the loop body rules and clearing them
-  - per-iteration `$for` body rules now use an owned copied body surface because
-    they carry the live slot `ScopeFrame`; childless source-free scalar leaves
-    inside that copied body are reused so the source body stays canonical without
-    cloning inert values, and the owned surface now uses the shared
-    reusable-leaf traversal rather than `Rules.clone()`
-  - source-free scalar `$for` iteration values bind directly without copy or
-    clone; the iteration wrapper remains the ownership surface
-- `packages/core/src/tree/sequence.ts`
-  - `Sequence.operate('+')` now derives its output sequence directly and copies
-    operand children through the shared reusable-leaf traversal, so source
-    children keep their canonical parents and childless source-free scalar
-    leaves are reused without reconstructing the source sequence
-  - changed-value eval/resolve now constructs the derived sequence directly
-    instead of cloning the source sequence before replacing its value array
-- `packages/core/src/tree/list.ts`
-  - `List.operate('+')` now derives its output list directly and uses the same
-    reusable-leaf traversal for operand children, so list addition no longer
-    reparents source children and still reuses childless source-free scalar
-    leaves without reconstructing the source list
-- `packages/core/src/tree/operation.ts`
-  - preserved operation wrappers now construct the derived operation directly
-    from final operands instead of shallow-cloning first, so unchanged source
-    operands are not reparented when a resolved sibling keeps the operation
-    shape alive
-- `packages/core/src/tree/paren.ts`
-  - resolved paren wrappers now construct directly from the resolved child
-    instead of shallow-cloning first, so resolving a child container no longer
-    reparents the source paren value
-- `packages/core/src/tree/block.ts`
-  - resolved block wrappers now construct directly from the resolved child
-    instead of shallow-cloning first, so resolving a block child no longer
-    reparents the source block value
-- `packages/core/src/tree/quoted.ts`
-  - resolved quoted wrappers now construct directly from the resolved value
-    instead of shallow-cloning first, so resolving interpolated quoted content
-    no longer reparents the source quoted value
-- `packages/core/src/tree/selector-attr.ts`
-  - resolved attribute selector wrappers now construct with owned/reusable
-    unchanged child surfaces instead of shallow-cloning and replacing the
-    resolved value, so resolving an attribute selector no longer reparents the
-    source value
-- `packages/core/src/tree/selector-pseudo.ts`,
-  `packages/core/src/tree/selector-list.ts`,
-  `packages/core/src/tree/selector-compound.ts`, and
-  `packages/core/src/tree/selector-complex.ts`
-  - resolved selector wrappers now construct derived selector surfaces with
-    owned/reusable unchanged children instead of shallow-cloning wrappers and
-    replacing resolved children, so source selector arguments, items, and
-    components stay parented to their canonical wrappers after
-    `resolve(context)`
-  - selector expansion and extend copy sites are intentionally separate from
-    this cleanup; they still represent generated selector output, not
-    shallow-wrapper replacement
-- `packages/core/src/tree/util/serialize-helper.ts`
-  - serialization still has text-preview and frame-stack coupling that should
-    eventually move to explicit node/output ownership decisions
-- `packages/core/src/tree/util/print.ts` and
-  `packages/core/src/tree/util/render-buffer.ts`
-  - `prepareRenderPrintState(...)` is the shared boundary between fresh
-    render traversals and nested render bridges. Keep new render/eval string
-    bridges on that helper so they do not fork print-state reset/reuse logic.
-  - `renderNodeToString(...)` remains a bridge from contextual resolution to
-    existing serializers. It should stay small: if a node has delayed-output
-    semantics, add explicit buffer/segment behavior rather than growing a
-    second output-tree model in the bridge.
-  - Root `Rules` output now routes through the canonical root serializer inside
-    the render bridge, so kept root output such as first `@charset`, hoisted CSS
-    `@import`, and final newline policy stays owned by `Rules.toString(...)`
-    while compile APIs can still await render.
-  - The root serializer exception is identity-based on either the resolved root
-    surface or the source root node. This covers owned root output surfaces
-    produced by `Rules.resolve(context)` without making `toString(...)` part of
-    the generic renderable-output contract.
-- `packages/fns/src/util/serialize-node.ts`
-  - Less function helper serialization now uses `node.render(context)` for
-    ordinary node values when a render context exists, keeping function helper
-    value rendering on the eval/render path instead of calling source
-    serializers directly. `Quoted` and `Any` stay raw because Less string and
-    asset helpers consume their literal value forms.
-- `packages/fns/src/less/argb.ts`
-  - `argb()` now constructs its generated ARGB color directly instead of
-    cloning the input color and mutating the clone's `value.node`; the input
-    color remains unchanged and no `Color.clone()` call is needed for this
-    generated output.
-- `packages/fns/src/util/relative-color.ts`
-  - Relative-color channel substitution now constructs generated
-    `Call`/`Operation`/`List`/`Sequence` wrappers directly instead of cloning
-    source expression containers and mutating their children. The source
-    channel expression stays canonical while the generated calc expression owns
-    the substituted channel values.
-- `packages/jess/src/index.ts`
-  - `postEvalVisitor` is a compatibility hook name for pre-render visitors:
-    compiler tests prove it runs after eval and before serialization, and
-    typed visitor objects do not need a generic `visit(...)` method to run.
-  - typed `preEvalVisitor` objects are also covered on the public render path:
-    a plain `{ varDeclaration(...) { ... } }` visitor can update variables
-    before Less variable resolution without using a generic visitor wrapper.
-- `packages/core/src/tree/util/selector-utils.ts`
-  - implicit selector-list construction now maps generated implicit-ampersand
-    items into a fresh `SelectorList` instead of cloning the source selector
-    list and replacing children, so source list children stay canonical while
-    generated selector output still owns its emitted items
-  - implicit ampersand placement copies now use the shared owned/reusable
-    selector copy helper, so source-free selector leaves are not cloned just to
-    add the generated parent boundary
-- `packages/core/src/tree/util/cloning.ts`,
-  `packages/core/src/tree/extend.ts`,
-  `packages/core/src/tree/util/extend-roots.ts`,
-  `packages/core/src/tree/util/extend.ts`,
-  `packages/core/src/tree/util/extend-walk.ts`
-  - extend-generated selector output now has an owned-root/reusable-children
-    copy helper, so flagging `F_EXTENDED` / `F_EXTEND_TARGET` no longer
-    deep-clones matched selector items just to mutate flags; this keeps extend
-    output ownership explicit while preserving source selector parentage
-  - parent-boundary extend composition uses the same helper for generated
-    selector-list wrappers and fully-composed `extendWith` selectors, so
-    crossing extends do not clone inert source-free leaves just to build output
-  - materializing implicit ampersands for extend records now uses the same
-    owned/reusable selector boundary, so selector-list leaves are not cloned
-    just to build stored extend selectors
-  - `Extend` is explicitly marked async-capable now, matching its existing
-    async selector-eval branch; sync and async extend record materialization
-    share the same owned/reusable selector boundary
-  - `walkAndExtend()` selector-list reconstruction now copies processed output
-    for placement before creating the generated list, so unchanged source list
-    items stay parented to the canonical source list and the old `clone(true)`
-    self-parenting guard is gone
-  - `extend-walk.ts` is whole-file lint-clean now; keep future generated-output
-    cleanup there on typed selector/component helpers instead of reintroducing
-    `any` assertions
-- `packages/core/src/tree/ampersand.ts`,
-  `packages/core/src/tree/util/cloning.ts`, and
-  `packages/core/src/tree/util/extend.ts`
-  - implicit ampersand extend output now derives ampersand wrappers directly
-    instead of cloning the source ampersand, while preserving the live selector
-    container required by nested Less output; extend placement copies now route
-    through the owned/reusable helper so generated compound/list replacements
-    do not adopt source ampersand nodes
-  - `createExtendedSelectorList()` now names that placement boundary directly
-    (`copySelectorsForPlacement`) and no longer carries the stale second
-    `s === inheritFrom ? s.clone(true)` guard; owned placement copies are the
-    self-parenting guard for selector-list output
-  - legacy full-match extend paths now pass the source selector directly as
-    inheritance metadata instead of shallow-cloning it first; generated
-    selector-list placement copies remain the adoption boundary
-  - complex ampersand boundary replacement now uses the owned/reusable selector
-    helper instead of generic `selector.copy()`, clears stale bubbled
-    ampersand flags after substitution, and preserves the existing relative
-    partial-selector behavior proven by the focused ampersand tests
+- Public CSS output APIs (`render(...)`, `renderString(...)`,
+  `renderToResult(...)`, and `safeRender(...)`) use the awaited eval/render
+  path. `safeCompile(...)` remains the explicit tree-surface compatibility API.
+- The compiler render phase writes the evaluated root through a flat render
+  buffer and finalizes that buffer. Production render paths must not call
+  `renderNodeToBuffer(...)`, `renderNodeToWriter(...)`, or
+  `renderNodeToString(...)`; those helpers are test/utility bridges only and
+  are not re-exported from the `@jesscss/core` package root. The root package
+  may expose only the flat buffer constructor/finalizer and their types used
+  by the Jess compiler render phase.
+- `preRenderVisitor` is the direct hook name for visitors that run after
+  evaluation and before serialization. `postEvalVisitor` remains a compatibility
+  alias for older plugin callers.
+- The public `preEval()` phase and the old `preEvaluated` node flag are gone.
+  Runtime registration setup is tracked as `registrationPrepared`; do not add
+  new eval behavior that depends on a hidden tree-wide preparation pass.
+- The render-buffer frontier is not a per-node status list anymore. The
+  important current facts are that the production bridge scan is green and
+  that `$for` / `$while` stream each loop iteration through node render methods.
+  The render-buffer and materialization frontier scans cover production `src`
+  files across packages, not just `packages/core`.
+- `Rules.render(...)` owns the root serializer exception locally. The generic
+  eval-output and root-aware eval-output helpers have been removed from the
+  render-buffer utility layer. Root direct render keeps the CSS-document final
+  newline; non-root direct render trims one trailing rule separator because it
+  returns a body fragment. Buffer render preserves the full emitted fragment
+  text so loop/control aggregation can concatenate iterations without guessing
+  at separators.
+- The node-copy frontier scan is green for deep copy/clone and ordinary
+  production `.copy()` calls outside infrastructure. `$for` and `$while`
+  iteration eval surfaces reuse direct body children from the canonical body;
+  frozen non-static placement nodes re-evaluate instead of retaining a
+  per-placement eval stamp. The scan ignores BitSet `.clone()` calls because
+  those are immutable selector-index data, not AST ownership surfaces. New
+  copy/clone sites must prove an ownership need before they land.
+- `pnpm run verify:baseline` is the broad output gate. It covers core, the CSS
+  parsers, the Less fixture corpus, the less-compat plugin suite, and the
+  frontier, package-export, and node-constructor metadata scans. `--changed`
+  may narrow package work, but changes to the gate scripts or root dependency
+  metadata intentionally run the full baseline. It includes local unstaged and
+  staged changes, not only committed branch diff. The pre-push gate uses the
+  same root-gate rules; any non-blocking upstream TODO report is generated
+  under `.cursor/PREPUSH_CHECK_TODOS.md`, ignored by git, and removed again
+  after a clean upstream run.
+- `$if`, `$for`, and `$while` do not render by materializing a control-node
+  wrapper first. `$if` renders only the selected branch output; `$for` and
+  `$while` render per iteration through direct `Rules.render(...)` calls.
+  Direct-string control render uses one local flat-buffer adapter so it stays
+  aligned with buffer output. `$while` carries loop-body variable mutation in a
+  small live `ScopeFrame`, not in a full output tree. `$for` and `$while` reuse
+  both static and dynamic direct body children without reparenting the
+  canonical body. Empty control output and loop output grouping wrappers are
+  generated containers: they do not inherit source location/options or copy
+  function registries. Only runtime iteration/state surfaces preserve function
+  registries for body lookup. `$for` body registration prep is lazy and does
+  not run for empty iterables.
+- The base `Node.render(context)` implementation is the inherited
+  static/source serializer. It does not call `resolve()` or serialize an
+  evaluated wrapper. Nodes whose output depends on context must override
+  `render(...)`, choose the evaluated value locally, and serialize that value
+  through the protected `renderOutput(...)` / `renderSource(...)` base
+  primitives. Expression-like native render
+  overloads must also await async child resolution instead of falling back to
+  authored syntax; direct string render and buffer render should choose the
+  same evaluated value. Static or source-only nodes should use the base render
+  path instead of reimplementing local string/buffer branching, except when
+  they inherit from a context-dependent base and need to opt back into source
+  rendering. Base render owns the normal invisible/full-render source gate;
+  invisible side-effect nodes must override when evaluation still needs to run.
+- `Collection` and `RawRules` are intentional source-only exceptions because
+  they inherit from context-dependent `Rules`; they delegate to base
+  `Node.render(...)`.
+- `Reference.render(...)` follows that rule by evaluating the reference locally
+  and then rendering the referenced node through its native render path,
+  including async referenced values. Do not turn references back into "eval
+  node, then source-serialize the resolved value" bridges.
+- Rules-like references (`Rules`, `Collection`, `Mixin`, and `Ruleset`) are
+  not text-only reference containers. They carry callable/public lookup
+  surfaces, so render and resolve must preserve them through a shallow owned
+  reference surface until a future placement record can carry those facts
+  explicitly.
+- `SelectorCapture.render(...)` follows the same native resolved-payload rule
+  for selector-valued payloads.
+- `AtRule.render(...)` still needs a derived evaluated at-rule surface for
+  body/root-hoist compatibility, but final evaluated body output is no longer
+  carried by assigning `node.value.rules = finalRules`. At-rules expose their
+  active render body through `getRenderRules()`, and the rules-container
+  serializer uses that method when it needs the body.
+- The remaining direct unevaluated `AtRule.render(...)` derived surface is a
+  compatibility/debug isolation surface. It currently protects dynamic
+  name/prelude evaluation, body eval isolation, root-only frame clearing, and
+  nested extend-root registration from mutating the canonical source at-rule.
+  Do not delete it until those responsibilities are split into explicit state
+  or direct render paths.
+- Dynamic leaf at-rule render is the first split: direct and buffer render
+  evaluate name/prelude into local render state without evaluating a derived
+  at-rule surface. Leaf `resolve(...)` still returns an owned at-rule node;
+  body/root-hoist at-rules still use the compatibility isolation surface.
+- Plain static direct `Rules.render(...)` is split from the compatibility path:
+  rule-leaf bodies serialize the canonical source tree without deriving/evaling.
+  Broader static Rules can still carry nesting, hoists, controls, or
+  declaration merges, so they stay on the owned eval surface until registration
+  prep, body-fragment serialization, and public resolve compatibility are
+  separated.
+- `AtRule.resolve(...)` returns static at-rules directly. Dynamic at-rules
+  still derive before eval so prelude/body mutation does not touch the source.
+- `Declaration.render(...)` evaluates through declaration registration/value
+  state and writes declaration syntax directly. It does not materialize a
+  prepared declaration node for direct render; `resolve(...)` still returns a
+  public node result and may materialize one.
+- `Ruleset.render(...)` follows the same container-output rule for evaluated
+  rulesets. When evaluation returns a `Rules` body instead of a ruleset, it
+  delegates to that body's native render path.
+- There is no shared at-rule/ruleset render bridge anymore. `AtRule.render(...)`
+  and `Ruleset.render(...)` call `serializeRulesContainer(...)` directly with
+  active render print state.
+- `Block.render(...)` and `List.render(...)` resolve local child values, then
+  serialize through their native block/list syntax printers. They do not use
+  the generic source-output bridge as a completed-output serializer.
+- `Sequence.render(...)` follows the same local-syntax rule for resolved
+  sequences, while delegating non-sequence resolved outputs to that node's
+  native render path.
+- Expression, wrapper, selector, interpolation, and URL render paths choose
+  their local output and then call the base `renderOutput(...)` primitive. The
+  old resolved-output adapter is gone; do not recreate a generic "resolved
+  value, now serialize" bridge outside the node inheritance model.
+- Condition/default-guard render is a direct boolean text path. Keep
+  `eval()` / `resolve()` returning `Bool` nodes, but do not allocate a `Bool`
+  during render just to print `true` or `false`. Default-guard normalization
+  should use primitive booleans until a public node-result API requires a fresh
+  `Bool`; do not introduce shared singleton `Bool` nodes because node parent
+  and runtime flags are mutable. `Paren.render(...)` follows the same render
+  rule for direct `default()` values while preserving `Bool` node results for
+  eval/resolve.
+- Plain CSS calls render their arguments/content natively. Direct and buffer
+  `calc(...)` render share the same evaluated argument normalization, including
+  nested `calc(...)`; authored source syntax is still available through
+  `toString()` / `toTrimmedString()`.
+- Dynamic non-string calls render by evaluating `CallEvalState` locally and
+  then using the evaluated result's native render path. The old copied
+  fallback `Call` surface is gone. Already-evaluated fallback calls are
+  finalized syntax, not another name-evaluation request; direct state eval
+  marks that output before render so optional CSS fallback calls do not
+  recurse into name lookup. Dynamic calls use the base `renderOutput(...)`
+  primitive for final output delegation. Preserve-rules-like variable names
+  still get a small owned reference state; do not broaden dynamic-name copying
+  without focused proof, because broad copied-name state has already caused
+  runaway allocation. Metadata functions evaluate params from their owned arg
+  surface and rely on `callWithContext(...)` for the single owned `rawArgs`
+  list.
+- `packages/core/src/define-function.ts` is no longer blocked by unrelated
+  focused lint debt. Function argument-surface work should keep metadata access
+  typed and avoid rebuilding unused validation paths.
+- Context shadow state is intentionally small runtime state, not an output
+  tree substitute. Keep `ScopeFrame.liveSlotsByName` for mixin params,
+  `@arguments`, loop counters, and `$while` mutation; keep
+  `ScopeFrame.fallbackFrame` for caller fallback/leaky body lookup; keep
+  `Context.rulesContext` as the active lexical/eval scope pointer. These are
+  the mechanisms that let evaluation avoid rewriting parent pointers or
+  cloning caller/loop body trees. Remaining cleanup should shrink redundant
+  save/restore plumbing or broad context mutation, not remove the frame model.
+  Ordinary temporary `rulesContext` switches should use the shared context
+  helper; manual restore callbacks are for custom flows that span more than one
+  local evaluated operation.
 
-## Current Todo Shape
+## Remaining Architecture Work
 
-Use this as the active checklist for the next narrow batches:
+The remaining work is not "add a buffer overload to every class." It is to
+remove the places where eval still creates broad output surfaces merely so a
+later serializer can walk them.
 
-1. Continue eliminating copy/clone from normal eval flow. Start with
-   shallow-clone-then-replace patterns that temporarily reparent canonical
-   source children.
-2. Prefer explicit derived wrappers or lazy runtime state. Use
-   `copyWithReusableLeaves(...)` only when a container still proves it needs an
-   owned eval/output surface and childless source-free scalar leaves do not need
-   copies.
-3. Use `prepareRenderPrintState(...)` for render bridges that might run inside
-   an active traversal; do not reopen ad hoc writer/frame/trivia reuse checks in
-   individual nodes.
-4. Keep `packages/jess/test/less/all-less.test.ts` on `renderToResult(...)` so
-   the Less fixture baseline exercises eval plus awaited render, not
-   compile-plus-`toString(...)` as a parallel whole-tree serialization path.
-5. Keep `postEvalVisitor` as a pre-render visitor hook despite the compatibility
-   name; visitors should see evaluated nodes before serialization, not final CSS
-   strings.
-6. Keep semantic wrapper surfaces where they carry real scope, registry,
-   import/reference, merge, or output ownership.
-7. Audit remaining `clone()` call sites by node shape and prove changes with
-   canonical-parent tests before changing them.
-8. Record only durable frontier changes here; old recovery details belong in
-   git history, not this startup handoff.
+These are architectural seams, not a live ordered queue. Use
+[`../core-architecture/HANDOFF.md`](../core-architecture/HANDOFF.md) for the
+current order of work.
 
-Current scan note: outside clone infrastructure and key-set/bitset copies, the
-remaining production deep-clone surfaces are explicit and should not be treated
-as generic low-hanging fruit:
+1. **Loop eval surfaces**: direct loop-body child copying and source-state /
+   function-registry copying on output grouping wrappers are no longer the
+   active frontier. Keep the existing render, static-child, dynamic-child,
+   scalar-leaf, and registry guards green while reducing any remaining loop
+   output surfaces.
+2. **Generated selector/output ownership**: selector expansion, extend output,
+   and direct comment children may still need owned placement surfaces. Reduce
+   these with parentage, visibility, and extend-output tests; do not collapse
+   them by pattern.
+   The current `GeneratedPseudoPlacementState` is intentionally smaller than
+   the possible future model: it carries only source/name/arg plus the proven
+   generated `:is(...)` wrapper-omission fact. Visibility, extend metadata, and
+   composed-header facts remain AST-owned until focused selector-shape tests
+   prove otherwise, but ruleset header composition now has one shared path for
+   `getHeaderString(...)` and serializer frame-stack precomputation. Wrapper
+   omission now lives as a generated-pseudo placement override when eval
+   collapses a generated selector-list or selector arg; it is still placement
+   state, not a parallel selector tree. Ampersand
+   append/template state is similarly narrow: replacement selectors/text are
+   derived locally when needed, and proven suffix templates such as
+   `&-theme` use structured selector append output instead of flattening a
+   whole complex selector-list parent into one `BasicSelector` string.
+   The likely next model is a small generated-selector state object, not a
+   new selector AST. It would sit beside a canonical selector node and carry
+   only per-placement facts: evaluated replacement children, visibility
+   overrides, selector-bit library, extend metadata, hoist/root placement, and
+   composed-header cache. It must not own source children, rewrite source
+   parentage, or become a second tree. Until that exists, keep the focused
+   `SelectorList` / `ComplexSelector` / `CompoundSelector` ownership copies
+   that prevent generated selector output from reparenting canonical source
+   selector leaves.
+   `inherit(...)` on a source child is specifically not an acceptable collapse
+   strategy: collapsed output must either be an owned result or a future
+   generated-selector state record that can render the canonical child without
+   rewriting parent/location/runtime flags.
+3. **Function/mixin argument surfaces**: metadata-backed functions still need
+   one copied raw-argument ownership surface for `this.rawArgs`,
+   `this.args()`, preprocessing, lazy params, validation, and
+   `@arguments`-style behavior. That retained surface protects the canonical
+   call argument list from user-code mutation through `this.rawArgs`. Plain
+   functions should keep receiving positional args directly. Dynamic metadata
+   render/resolve already routes through the owned `callWithContext(...)`
+   rawArgs list instead of a copied source `Call`; the remaining call work is
+   content-node and rules-like/fallback state, not another rawArgs surface.
+4. **Context shadow state**: the frame model is a kept part of the target
+   architecture. Audit this seam for redundant save/restore, stale aliases, or
+   overly broad context mutation; do not replace `liveSlotsByName`,
+   `fallbackFrame`, or `rulesContext` with copied nodes.
+5. **Control render surfaces**: `$for` / `$while` stream generated iteration
+   rules through direct `Rules.render(...)` calls. `$if` selected branches use
+   branch `Rules.render(context)` for trimmed block output. Remaining work is
+   about eval-only output wrappers, not adding another control render helper.
 
-- `packages/core/src/tree/ruleset.ts` no longer has the defensive
-  `selector.copy(true)` fallback after the owned/reusable selector helper; the
-  helper must return a selector-shaped node or throw.
-- `packages/core/src/tree/util/extend.ts` no longer has a deep `.copy(true)`
-  generated-output frontier; the final template-combinator placement now uses
-  the shared owned/reusable complex-component helper. Complex ampersand
-  boundary replacement also no longer calls generic `selector.copy()`. Its
-  generated-output helper path is whole-file lint-clean, so follow-up work
-  should keep that gate green.
+6. **Mixin output slots**: current mixin output wrappers are generated `Rules`
+   owners because they carry lookup visibility, mixin-output gating,
+   reference-mode clearing, repeated placement, and definition/caller
+   `ScopeFrame` links. A future replacement should be an output-slot record,
+   not another tree: source body, evaluated placement children, scope frame,
+   visibility gates, reference/import flags, rule index, and caller fallback.
+   It should stream its children through `Rules.render(...)`/child render paths
+   and register only the lookup state needed for that placement. Do not move
+   declarations or selectors into a parallel AST just to avoid constructing a
+   `Rules` wrapper.
+7. **Dynamic call state**: dynamic calls still derive a call surface to protect
+   source name, args, content, and optional fallback syntax while the call
+   evaluates referenced functions, rules-like variables, and fallback CSS
+   function output. Plain dynamic JS functions without metadata and
+   metadata-backed dynamic calls now skip that full copied call/arg surface:
+   render/resolve evaluates only an owned dynamic name, then either passes
+   source args directly or lets `callWithContext(...)` create the one owned
+   rawArgs list. The likely replacement for the remaining paths is a small
+   call-eval state record: evaluated name, evaluated args/content, finalized
+   fallback name/options, caller pointer, and parent/source preservation flags.
+   It must not expose mutable source args to metadata JS functions or reparent
+   canonical call children.
 
-Do not present any of those as completed runtime-eval copy removal until a
-focused test proves the specific ownership boundary can move.
-Use `pnpm run verify:node-copy-frontier` to refresh the exact deep
-copy/clone-style call-site scan before choosing the next seam. That check also
-guards against reintroducing ordinary production `.copy()` callers outside the
-base node-copy API/infrastructure.
+## Guardrails
 
-If the next seam is generated selector output, keep the `extend.ts` typed-helper
-cleanup intact. The file now passes whole-file ESLint and the deep-copy frontier
-scan is clear; future work should audit ordinary `.copy()` calls by ownership
-purpose rather than treating every remaining local copy as the same class of
-problem.
+- Base `Node.copy()` / `Node.clone()`, keyset copies, bitset copies, reusable
+  leaf helpers, and test-only clones are infrastructure, not automatic wins.
+- `inherit(...)` is infrastructure too. It is acceptable when constructing an
+  owned output surface that needs source location/options/runtime metadata, but
+  it must not be called on a canonical source child just because eval/resolve
+  collapsed to that child. If the target object is still part of the source
+  tree, own it first or render it through side state.
+- `.value` is still the right shape for scalar and list/container nodes. Future
+  direct-field cleanup is only for record-shaped nodes where named fields would
+  reduce real indirection or ownership confusion; do not turn it into a broad
+  `.value` removal pass.
+- `prepareRenderPrintState(...)` is the central adapter for active writer,
+  frame, and trivia state. Do not add local writer/frame/trivia reset heuristics.
+- Buffer render helpers must serialize through a detached writer and only
+  append the final text to the target buffer; they must not mutate or add a
+  writer on caller-owned print options passed in from a render-to-string
+  adapter.
+- Shared render-buffer helpers must stay narrow:
+  - `writeRenderText(...)` writes already-rendered text.
+  - `writeRenderTextResult(...)` writes maybe-async rendered text.
+  - `prepareBufferPrintState(...)` preserves render state while working from a
+    shallow detached options object before anything writes into a render
+    buffer.
+  - `renderInvisibleEffect(...)` evaluates invisible side-effect output and
+    intentionally emits nothing through either string or buffer render.
+- These helpers describe the current serializer boundary, not a desired
+  long-term abstraction family. Do not add new wrapper layers around them;
+  prefer shrinking or deleting helpers when the surrounding render path no
+  longer needs them.
+- Invisible registration or side-effect nodes should stay invisible unless a
+  focused output test proves a real render seam.
+- If a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer a
+  parser-accurate focused core repro first when practical.
 
-Recent quality pass note: utility cleanups should stay focused on files whose
-whole-file lint debt can actually be paid in the same patch. `Context.getTree()`
-now avoids catch/rethrow and no longer hides unsupported-file no-tree results
-behind `any`; import evaluation handles that no-tree case explicitly. The
-follow-up cleanup kept that scope: `rules.ts` no longer catches only to rethrow
-mixin-argument eval failures, import parse-error checks use small `unknown`-safe
-helpers, and `use-webpack-resolver.ts` is whole-file lint clean. `bitset.ts`
-now keeps the third-party bitset internals behind local guards and preserves
-selector-bit library identity without `any` field copying; treat this as a
-small utility boundary cleanup, not as selector/extend generated-output work.
-`jess-error.ts` now keeps slash-style diagnostic codes in a typed map instead
-of a lint-hostile object literal, and its Chevrotain adapter reads parser and
-lexer error shapes through local guards instead of `any` assertions. The
-follow-up moved diagnostic-code validation and ErrorDiagnostic-to-JessError
-conversion into `jess-error.ts`, so `context.ts` and `plugin.ts` no longer carry
-their own duplicate code whitelists or throw-conversion blocks. Broader typed
-cleanup in legacy high-debt files should be planned as its own batch, not mixed
-into node-copy work opportunistically.
+## Useful Commands
+
+```sh
+pnpm run verify:node-copy-frontier
+pnpm run verify:render-buffer-frontier
+pnpm run verify:materialization-frontier
+pnpm run verify:package-exports
+pnpm run verify:node-constructor-metadata
+pnpm run test:less:test-data
+pnpm --filter ./packages/jess-plugin-less-compat test
+pnpm run verify:baseline
+pnpm run verify:baseline -- --changed
+```
+
+`verify:materialization-frontier` guards against direct eval/resolve output
+being serialized as a completed tree surface. If it trips, either shrink that
+path into contextual render output or document the remaining ownership need in
+this handoff before allowing it.
 
 ## Working Rule
 
@@ -421,4 +367,5 @@ Pick one narrow production seam, prove it with the closest focused test, then
 run the smallest broader verification that covers the affected behavior. Do not
 add architecture or status documents that mostly describe absent machinery.
 
-Use [HANDOFF.md](./HANDOFF.md) for the current execution checklist.
+Use [`../core-architecture/HANDOFF.md`](../core-architecture/HANDOFF.md) for
+the current execution checklist.

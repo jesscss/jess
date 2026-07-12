@@ -5,7 +5,7 @@ import {
   defineType
 } from './node.js';
 import type { Context } from '../context.js';
-import { Nil, type Nil as NilType } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
@@ -16,18 +16,14 @@ import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState }
 import { consumeTriviaBetween, emitTriviaTokens } from './util/trivia.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { WARN, toDiagnostic } from '../jess-error.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
 
 /** Components that may appear in a complex or relative selector. */
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
 export type ComplexSelectorValue = ComplexSelectorComponent[];
 
-const isUnresolvedAmpersand = (part: ComplexSelectorComponent | Nil): part is Ampersand => {
+const isUnresolvedAmpersand = (part: Node): part is Ampersand => {
   return isNode(part, N.Ampersand) && !part.getResolvedSelector();
-};
-
-const isComplexSelectorComponent = (part: ComplexSelectorComponent | Nil): part is ComplexSelectorComponent => {
-  return !isNode(part, N.Nil);
 };
 
 const isComplexSelectorComponentNode = (part: Node): part is ComplexSelectorComponent => {
@@ -35,6 +31,10 @@ const isComplexSelectorComponentNode = (part: Node): part is ComplexSelectorComp
     && !isNode(part, N.SelectorList)
     && !isNode(part, N.ComplexSelector);
 };
+
+function isComplexSelectorComponent(part: Node): part is ComplexSelectorComponent {
+  return isComplexSelectorComponentNode(part);
+}
 
 /**
  * Selectors with combinators.
@@ -72,6 +72,24 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       node.hoistToRoot = true;
     }
     return node.inherit(this);
+  }
+
+  private createEvaluatedComponentSurface(
+    value: Node[],
+    sourceValue: readonly ComplexSelectorComponent[]
+  ): this {
+    return this.withComponents(value.filter(isComplexSelectorComponent), sourceValue);
+  }
+
+  private collapsedComponent(
+    component: Selector,
+    sourceValue: readonly ComplexSelectorComponent[]
+  ): Selector {
+    const owned = ownCollapsedSourceChild(component, sourceValue, this);
+    if (!(owned instanceof Selector)) {
+      throw new TypeError('Expected selector result');
+    }
+    return owned;
   }
 
   private renderComplexSyntax(options?: PrintOptions): string {
@@ -169,11 +187,12 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         requiredKeySet = requiredKeySet.or(component.requiredKeySet);
         continue;
       }
-      const selector = component as Selector;
-      selector.keySetLibrary ??= library;
-      keySet = keySet.or(selector.keySet);
-      visibleKeySet = visibleKeySet.or(selector.visibleKeySet);
-      requiredKeySet = requiredKeySet.or(selector.requiredKeySet);
+      if (component instanceof Selector) {
+        component.keySetLibrary ??= library;
+        keySet = keySet.or(component.keySet);
+        visibleKeySet = visibleKeySet.or(component.visibleKeySet);
+        requiredKeySet = requiredKeySet.or(component.requiredKeySet);
+      }
     }
     this._keySet = keySet;
     this._visibleKeySet = visibleKeySet;
@@ -187,22 +206,22 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   /**
    * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
    */
-  override evalNode(context: Context): MaybePromise<Selector | NilType> {
+  override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
         const selector = this;
         const currentValue = selector.value;
-        const evaluatedValue: Array<ComplexSelectorComponent | Nil> = [...currentValue];
+        const evaluatedValue: Node[] = [...currentValue];
         const maybe = serialForEach(evaluatedValue, (sel, i) => {
           const out = sel.eval(context);
           if (isThenable(out)) {
-            return (out as Promise<Selector | Nil>).then((res) => {
-              evaluatedValue[i] = res as ComplexSelectorComponent | Nil;
+            return Promise.resolve(out).then((res) => {
+              evaluatedValue[i] = res;
               return undefined;
             });
           }
-          evaluatedValue[i] = out as ComplexSelectorComponent | Nil;
+          evaluatedValue[i] = out;
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -250,14 +269,21 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           return Boolean(prev && next && !isNode(prev, N.Combinator) && !isNode(next, N.Combinator));
         });
         if (value.length === 0) {
-          return new Nil().inherit(selector);
+          return createPublicNil().inherit(selector);
         }
         if (value.length === 1) {
-          const only = value[0]!.inherit(selector);
-          if (selector.hoistToRoot) {
-            Reflect.set(only, 'hoistToRoot', true);
+          const only = value[0]!;
+          if (only instanceof Nil) {
+            return only;
           }
-          return only;
+          if (!(only instanceof Selector)) {
+            return only.inherit(selector);
+          }
+          const collapsed = selector.collapsedComponent(only, currentValue);
+          if (selector.hoistToRoot) {
+            Reflect.set(collapsed, 'hoistToRoot', true);
+          }
+          return collapsed;
         }
         const changed = (
           value.length !== currentValue.length
@@ -266,18 +292,18 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         if (!changed) {
           return selector;
         }
-        return selector.withComponents(value.filter(isComplexSelectorComponent), currentValue);
+        return selector.createEvaluatedComponentSurface(value, currentValue);
       }
     );
   }
 
-  override resolve(context: Context): MaybePromise<Node> {
+  protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
         const selector = this;
         const currentValue = selector.value;
-        const resolvedValue: Array<ComplexSelectorComponent | Nil> = [...currentValue];
+        const resolvedValue: Node[] = [...currentValue];
         const maybe = serialForEach(resolvedValue, (sel, i) => {
           const out = sel.resolve(context);
           if (isThenable(out)) {
@@ -338,14 +364,21 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
           return Boolean(prev && next && !isNode(prev, N.Combinator) && !isNode(next, N.Combinator));
         });
         if (value.length === 0) {
-          return new Nil().inherit(selector);
+          return createPublicNil().inherit(selector);
         }
         if (value.length === 1) {
-          const only = value[0]!.inherit(selector);
-          if (selector.hoistToRoot) {
-            Reflect.set(only, 'hoistToRoot', true);
+          const only = value[0]!;
+          if (only instanceof Nil) {
+            return only;
           }
-          return only;
+          if (!(only instanceof Selector)) {
+            throw new TypeError('Expected selector result');
+          }
+          const collapsed = selector.collapsedComponent(only, currentValue);
+          if (selector.hoistToRoot) {
+            Reflect.set(collapsed, 'hoistToRoot', true);
+          }
+          return collapsed;
         }
         const changed = (
           value.length !== currentValue.length
@@ -357,6 +390,10 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         return selector.withComponents(value.filter(isComplexSelectorComponent), currentValue);
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveForRender(context);
   }
   // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
   //   let elements = [...selector.value] as ComplexSelectorValue

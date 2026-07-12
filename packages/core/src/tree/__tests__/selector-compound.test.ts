@@ -1,9 +1,10 @@
 import type { IToken } from 'chevrotain';
-import { any, attr, compound, el, pseudo, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { amp, any, attr, compound, el, pseudo, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -26,6 +27,15 @@ class CountingWriter extends OutputWriter {
 }
 
 let context: Context;
+
+async function useEvaluatedRules(node: Rules): Promise<void> {
+  const evald = await node.eval(context);
+  if (!(evald instanceof Rules)) {
+    throw new TypeError('Expected Rules');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 /**
  * @todo - add tests for list bubbling
@@ -86,9 +96,7 @@ describe('Compound Selector', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await useEvaluatedRules(node);
 
     const rendered = compound([
       el('a'),
@@ -102,6 +110,41 @@ describe('Compound Selector', () => {
     expect(rendered).toBe('a[data=foo]');
   });
 
+  test('writes resolved compound selector output into segmented buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    await useEvaluatedRules(node);
+    const buffer = createRenderBuffer('segmented');
+
+    const selectorNode = compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]);
+    const originalResolve = selectorNode.resolve;
+    let resolveCalls = 0;
+    selectorNode.resolve = function countResolveCalls(
+      this: typeof selectorNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    const rendered = selectorNode.render(context, buffer);
+
+    expect(rendered).toBe('a[data=foo]');
+    expect(buffer.segments).toEqual(['a[data=foo]']);
+    expect(resolveCalls).toBe(0);
+  });
+
   test('resolves compound selector values without touching render state', async () => {
     const node = rules([
       vardecl({
@@ -109,9 +152,7 @@ describe('Compound Selector', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await useEvaluatedRules(node);
 
     const selector = compound([
       el('a'),
@@ -126,7 +167,7 @@ describe('Compound Selector', () => {
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo]');
     expect(selector.evaluated).toBe(false);
-    expect(selector.preEvaluated).toBe(false);
+    expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -137,9 +178,7 @@ describe('Compound Selector', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await useEvaluatedRules(node);
 
     const selector = compound([
       el('a'),
@@ -157,6 +196,23 @@ describe('Compound Selector', () => {
     expect(sourceElement.parent).toBe(selector);
     expect(sourceAttr.parent).toBe(selector);
     expect(selector.toTrimmedString()).toBe('a[data=$capture-attr]');
+  });
+
+  test('keeps source compound child canonical when eval collapses to one selector', async () => {
+    const selector = compound([
+      amp(),
+      el('.keep')
+    ]);
+    const sourceChild = selector.value[1]!;
+    const sourceParent = sourceChild.parent;
+    const sourceLocation = sourceChild.location;
+    const resolved = await selector.eval(context);
+
+    expect(resolved.toTrimmedString()).toBe('.keep');
+    expect(resolved).not.toBe(sourceChild);
+    expect(sourceChild.parent).toBe(sourceParent);
+    expect(sourceChild.location).toBe(sourceLocation);
+    expect(selector.toTrimmedString()).toBe('&.keep');
   });
 
   describe('keys', () => {

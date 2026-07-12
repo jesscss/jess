@@ -160,7 +160,7 @@ function resolveFallback<R>(fb: SafePipeOptions<R>['fallback']): R | undefined {
   return isFallbackFactory(fb) ? fb() : fb;
 }
 
-function runAsyncSafe<R>(v: unknown, fns: AnyFn[], startIndex: number, opts: SafePipeOptions<R>): Promise<R | undefined> {
+function runAsyncSafe<R>(v: unknown, fns: AnyFn[], startIndex: number, opts: SafePipeOptions<R>): Promise<unknown> {
   const { onError, fallback } = opts;
   const callOnError = (e: unknown) => {
     try {

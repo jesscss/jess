@@ -1,8 +1,18 @@
-import { expr, any, list, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
+import { expr, any, list, ref, Rules, rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
+const setRoot = async (node: Rules): Promise<void> => {
+  const evald = await node.eval(context);
+  expect(evald).toBeInstanceOf(Rules);
+  if (!(evald instanceof Rules)) {
+    throw new Error('Expected Rules');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+};
+
 describe('Expression', () => {
   beforeEach(() => {
     context = new Context();
@@ -21,16 +31,24 @@ describe('Expression', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+    const originalResolve = renderedNode.resolve;
+    let resolveCalls = 0;
+    renderedNode.resolve = function countResolveCalls(
+      this: typeof renderedNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = renderedNode.render(context);
 
     expect(rendered).toBe('foo');
+    expect(resolveCalls).toBe(0);
     expect(renderedNode.evaluated).toBe(false);
-    expect(renderedNode.preEvaluated).toBe(false);
+    expect(renderedNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved expression render output into flat buffers', async () => {
@@ -40,17 +58,56 @@ describe('Expression', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const buffer = createRenderBuffer('flat');
-    const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+    const expressionChild = ref({ key: 'value' }, { type: 'variable' });
+    const renderedNode = expr(expressionChild);
+    let expressionResolveCalls = 0;
+    renderedNode.resolve = (renderContext: Context) => {
+      expressionResolveCalls++;
+      return renderedNode.value.resolve(renderContext);
+    };
+    let childResolveCalls = 0;
+    const originalChildResolve = expressionChild.resolve;
+    expressionChild.resolve = function countResolveCalls(
+      this: typeof expressionChild,
+      ...args: Parameters<typeof originalChildResolve>
+    ): ReturnType<typeof originalChildResolve> {
+      childResolveCalls++;
+      return originalChildResolve.apply(this, args);
+    };
+    expect(renderedNode.toTrimmedString()).not.toBe('foo');
 
     expect(await renderedNode.render(context, buffer)).toBe('foo');
     expect(buffer.parts).toEqual(['foo']);
+    expect(expressionResolveCalls).toBe(0);
+    expect(childResolveCalls).toBe(0);
     expect(renderedNode.evaluated).toBe(false);
-    expect(renderedNode.preEvaluated).toBe(false);
+    expect(renderedNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders list children directly without evaluating the expression wrapper', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await setRoot(node);
+
+    const expressionChild = list([
+      any('one'),
+      ref({ key: 'value' }, { type: 'variable' })
+    ]);
+    expressionChild.eval = () => {
+      throw new Error('Expression.render should not evaluate child list wrappers');
+    };
+    const renderedNode = expr(expressionChild);
+
+    expect(renderedNode.render(context)).toBe('one, foo');
+    expect(renderedNode.evaluated).toBe(false);
+    expect(renderedNode.registrationPrepared).toBe(false);
   });
 
   it('resolves expression values without touching render state', async () => {
@@ -60,16 +117,14 @@ describe('Expression', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const nodeToResolve = expr(ref({ key: 'value' }, { type: 'variable' }));
     const resolved = await nodeToResolve.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('foo');
     expect(nodeToResolve.evaluated).toBe(false);
-    expect(nodeToResolve.preEvaluated).toBe(false);
+    expect(nodeToResolve.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -80,9 +135,7 @@ describe('Expression', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setRoot(node);
 
     const nodeToResolve = expr(list([
       any('one'),

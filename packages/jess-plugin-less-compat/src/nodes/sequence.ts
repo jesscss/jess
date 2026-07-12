@@ -36,7 +36,7 @@ export const transformSequenceToLess = createFromAdapter<Sequence>({
             jessReplacement.inherit(item);
           }
           seq.adopt(jessReplacement);
-          const seqArr = seq.value as Node[];
+          const seqArr = [...seq.value];
           seqArr[i] = jessReplacement;
           seq.set(null, seqArr);
         } catch {

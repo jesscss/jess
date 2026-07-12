@@ -12,11 +12,17 @@ import {
   prepareRenderPrintState
 } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
-import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import type { Rules } from './rules.js';
 import type { Nil } from './nil.js';
 import { nodeTypeBits } from './node-type.js';
 import { isPlainObject } from './util/collections.js';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 const { isArray } = Array;
 
@@ -79,6 +85,7 @@ export type LocationInfo = [
   endLine: number,
   endColumn: number
 ];
+export type NodeLocation = LocationInfo | [];
 
 function createNodeOptions() {
   return Object.create(null);
@@ -231,7 +238,7 @@ export abstract class Node<
   Data = unknown,
   O extends NodeOptions = NodeOptions
 > {
-  _location: LocationInfo | [] | undefined;
+  _location: NodeLocation | undefined;
   get location() {
     return (this._location ??= []);
   }
@@ -266,8 +273,9 @@ export abstract class Node<
   /** Will be copied during inherit */
   state = F_DEFAULT;
 
-  /** Runtime tracking: has this node completed its current prep phase? */
-  preEvaluated = false;
+  /** Runtime tracking: has this node completed registration identity prep? */
+  registrationPrepared = false;
+
   /** Runtime tracking: has eval been run on this node? */
   evaluated = false;
 
@@ -475,7 +483,7 @@ export abstract class Node<
   constructor(
     value: Data,
     options?: O,
-    location?: LocationInfo,
+    location?: NodeLocation,
     treeContext?: TreeContext
   ) {
     // Make some props non-enumerable to avoid JSON serialization issues
@@ -924,25 +932,15 @@ export abstract class Node<
   }
 
   /**
-   * Compatibility entrypoint for older callers.
-   *
-   * New preparation work should use `prepareRegistration()` or
-   * `prepareEval()` so the caller states which phase it needs.
-   */
-  preEval(context: Context): MaybePromise<Node> {
-    return this.prepareRegistration(context);
-  }
-
-  /**
    * Registration-time identity preparation.
    *
    * The default recursively prepares children for registration. Nodes with
    * narrower identity or mark-only behavior override this method directly.
    */
   prepareRegistration(context: Context): MaybePromise<Node> {
-    if (!this.preEvaluated) {
+    if (!this.registrationPrepared) {
       const node = this;
-      node.preEvaluated = true;
+      node.registrationPrepared = true;
 
       // Note: Rules nodes handle index assignment for themselves and their children
       // Other nodes will get indices assigned by their parent Rules
@@ -960,17 +958,6 @@ export abstract class Node<
       return node;
     }
     return this;
-  }
-
-  /**
-   * Internal eval-time preparation hook.
-   *
-   * The default uses registration prep until eval owns narrower setup directly.
-   * Nodes that have split their setup into narrower eval-owned work should
-   * override this instead of making eval depend on the public preEval phase name.
-   */
-  protected prepareEval(context: Context): MaybePromise<Node> {
-    return this.prepareRegistration(context);
   }
 
   /**
@@ -1004,64 +991,43 @@ export abstract class Node<
      * template, not a retained result. The remaining fork storage no longer
      * tracks an "active render key" on the node itself.
      */
-    const needsReeval = false;
+    // Frozen non-static nodes are reusable placement templates; their eval
+    // result is context-dependent and must not be retained across placements.
+    const needsReeval = node.frozen && !node.hasFlag(F_STATIC);
 
     if (!node.hasFlag(F_MAY_ASYNC)) {
       return Node._evalStaticSync(node, context, needsReeval);
     }
 
-    let preparedNode: Node;
-
-    return pipe(
-      () => {
-        if (!node.preEvaluated || needsReeval) {
-          return node.prepareEval(context);
-        }
-        return node;
-      },
-      (prepared) => {
-        preparedNode = prepared;
-        preparedNode.preEvaluated = true;
-        if (prepared !== node) {
-          preparedNode.inherit(node);
-        }
-        if (!preparedNode.evaluated || needsReeval) {
-          return preparedNode.evalNode(context);
-        }
-        return preparedNode;
-      },
-      (evald) => {
+    const evaluated = node.evaluated && !needsReeval
+      ? node
+      : node.evalNode(context);
+    if (isThenable(evaluated)) {
+      return (evaluated as Promise<Node>).then((evald) => {
         evald.evaluated = true;
-        if (preparedNode !== evald) {
-          evald.inherit(preparedNode);
+        if (node !== evald) {
+          evald.inherit(node);
         }
         return evald;
-      }
-    );
+      });
+    }
+    evaluated.evaluated = true;
+    if (node !== evaluated) {
+      evaluated.inherit(node);
+    }
+    return evaluated;
   }
 
   private static _evalStaticSync(node: Node, context: Context, needsReeval = false): Node {
-    let preparedNode: Node;
-
-    if (!node.preEvaluated || needsReeval) {
-      preparedNode = mustBeNode(node.prepareEval(context));
-    } else {
-      preparedNode = node;
-    }
-    preparedNode.preEvaluated = true;
-    if (preparedNode !== node) {
-      preparedNode.inherit(node);
-    }
-
     let evald: Node;
-    if (!preparedNode.evaluated || needsReeval) {
-      evald = mustBeNode(preparedNode.evalNode(context));
+    if (!node.evaluated || needsReeval) {
+      evald = mustBeNode(node.evalNode(context));
     } else {
-      evald = preparedNode;
+      evald = node;
     }
     evald.evaluated = true;
-    if (preparedNode !== evald && typeof evald.inherit === 'function') {
-      evald.inherit(preparedNode);
+    if (node !== evald && typeof evald.inherit === 'function') {
+      evald.inherit(node);
     }
     return evald;
   }
@@ -1191,23 +1157,50 @@ export abstract class Node<
   }
 
   /**
-   * Renders evaluated output for this node through the context-owned print
-   * state. This is the live-binding render path, not a source serializer.
+   * Renders this node's direct syntax through the context-owned print state.
    *
-   * This legacy string overload is intentionally synchronous. Nodes whose
-   * contextual resolution is async must use the buffer/async render bridge
-   * until the top-level compile path owns async render directly. For now, the
-   * sync overload keeps the old source-serializer fallback so legacy sync
-   * formatting paths can continue while they are converted.
+   * The base implementation is only the inherited static/source serializer. It
+   * must not resolve/evaluate the node first. Nodes whose output depends on
+   * context override this method and serialize their evaluated output
+   * through the same print-state machinery.
    */
-  render(context: Context, options?: PrintOptions): string {
-    const prepared = prepareRenderPrintState(context, options);
-    const resolved = this.resolve(context);
-    if (!isThenable(resolved)) {
-      return resolved.toTrimmedString(prepared);
+  render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
+  render(context: Context, options?: PrintOptions): string;
+  render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
+    if (!this.hasFlag(F_VISIBLE) && !this.fullRender) {
+      return '';
     }
-    const printOptions = getPrintOptions(prepared);
-    return this.toTrimmedString(printOptions);
+    return this.renderSource(context, bufferOrOptions, options);
+  }
+
+  protected renderSource(
+    context: Context,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const printOptions = isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, printOptions);
+    const out = this.toTrimmedString(prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
+
+  protected renderOutput(
+    context: Context,
+    node: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    if (node === this) {
+      return this.renderSource(context, bufferOrOptions, options);
+    }
+    return isRenderBuffer(bufferOrOptions)
+      ? node.render(context, bufferOrOptions, options)
+      : node.render(context, bufferOrOptions);
   }
 
   /**

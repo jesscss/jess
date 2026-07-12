@@ -81,7 +81,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     this.removeFlag(F_VISIBLE);
   }
 
-  // Mixin owns registration prep and marks `preEvaluated` directly.
+  // Mixin owns registration prep and marks `registrationPrepared` directly.
 
   private ownName(value: NonNullable<MixinValue['name']>): NonNullable<MixinValue['name']> {
     const owned = canReuseLeaf(value) ? reuseLeaf(value) : copyWithReusableLeaves(value);
@@ -174,12 +174,8 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
     return w.getSince(mark);
   }
 
-  override preEval(context: Context): MaybePromise<Mixin> {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(context: Context): MaybePromise<Mixin> {
-    if (this.preEvaluated) {
+    if (this.registrationPrepared) {
       return this;
     }
     return this._prepareMixinRegistration(context);
@@ -195,7 +191,7 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
       name = node.value.name;
       rules = node.value.rules;
     }
-    node.preEvaluated = true;
+    node.registrationPrepared = true;
     this._prepareMixinBodyVisibility(rules, context);
     return this._prepareMixinNameIdentity(node, name, context);
   }
@@ -224,14 +220,16 @@ export class Mixin extends Node<MixinValue, MixinOptions> {
           if (!(key instanceof Any)) {
             throw new TypeError('Expected evaluated mixin name');
           }
-          node.set('name', key);
+          node.adopt(key);
+          node.value.name = key;
           return node;
         });
       }
       if (!(maybeKey instanceof Any)) {
         throw new TypeError('Expected evaluated mixin name');
       }
-      node.set('name', maybeKey);
+      node.adopt(maybeKey);
+      node.value.name = maybeKey;
     }
     return node;
   }

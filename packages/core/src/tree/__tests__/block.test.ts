@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { any, block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, block, Block, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -16,6 +18,15 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   startColumn: 1,
   endColumn: image.length
 });
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 describe('Block', () => {
   let context: Context;
@@ -53,16 +64,24 @@ describe('Block', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    const originalResolve = blockNode.resolve;
+    let resolveCalls = 0;
+    blockNode.resolve = function countResolveCalls(
+      this: typeof blockNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = blockNode.render(context);
 
     expect(rendered).toBe('{foo}');
+    expect(resolveCalls).toBe(0);
     expect(blockNode.evaluated).toBe(false);
-    expect(blockNode.preEvaluated).toBe(false);
+    expect(blockNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved block render output into flat buffers', async () => {
@@ -72,17 +91,53 @@ describe('Block', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+    const originalResolve = blockNode.resolve;
+    let resolveCalls = 0;
+    blockNode.resolve = function countResolveCalls(
+      this: typeof blockNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await blockNode.render(context, buffer)).toBe('{foo}');
     expect(buffer.parts).toEqual(['{foo}']);
+    expect(resolveCalls).toBe(0);
     expect(blockNode.evaluated).toBe(false);
-    expect(blockNode.preEvaluated).toBe(false);
+    expect(blockNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders resolved block values without materializing a replacement block', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const descriptor = Object.getOwnPropertyDescriptor(Block.prototype, 'withValue');
+    if (!descriptor) {
+      throw new Error('Expected Block.withValue for render materialization proof');
+    }
+
+    Object.defineProperty(Block.prototype, 'withValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Block render should not materialize a replacement block');
+      }
+    });
+    try {
+      const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
+
+      expect(await blockNode.render(context)).toBe('{foo}');
+    } finally {
+      Object.defineProperty(Block.prototype, 'withValue', descriptor);
+    }
   });
 
   it('resolves block values without touching render state', async () => {
@@ -92,17 +147,28 @@ describe('Block', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
     const resolved = await blockNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('{foo}');
     expect(blockNode.evaluated).toBe(false);
-    expect(blockNode.preEvaluated).toBe(false);
+    expect(blockNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('returns static blocks without resolving child values', async () => {
+    const value = any('foo');
+    const blockNode = block(value);
+    value.resolve = () => {
+      throw new Error('static block child should not resolve');
+    };
+
+    const resolved = await blockNode.resolve(context);
+
+    expect(resolved).toBe(blockNode);
+    expect(resolved.toTrimmedString()).toBe('{foo}');
   });
 
   it('keeps source block values canonical after resolve(context)', async () => {
@@ -112,9 +178,7 @@ describe('Block', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const blockNode = block(ref({ key: 'value' }, { type: 'variable' }));
     const sourceValue = blockNode.value;

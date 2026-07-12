@@ -52,7 +52,7 @@ describe('InterpolatedSelector', () => {
 
     expect(rendered).toBe('.foo');
     expect(selectorNode.evaluated).toBe(false);
-    expect(selectorNode.preEvaluated).toBe(false);
+    expect(selectorNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved interpolated selector output into flat buffers', async () => {
@@ -71,11 +71,45 @@ describe('InterpolatedSelector', () => {
       source: `.${INTERPOLATION_PLACEHOLDER}`,
       replacements: [ref({ key: 'name' }, { type: 'index' })]
     }));
+    const originalResolve = selectorNode.resolve;
+    let resolveCalls = 0;
+    selectorNode.resolve = function countResolveCalls(
+      this: typeof selectorNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await selectorNode.render(context, buffer)).toBe('.foo');
     expect(buffer.parts).toEqual(['.foo']);
+    expect(resolveCalls).toBe(0);
     expect(selectorNode.evaluated).toBe(false);
-    expect(selectorNode.preEvaluated).toBe(false);
+    expect(selectorNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders resolved interpolated selector output directly without public resolve', async () => {
+    const root = rules([
+      vardecl({
+        name: any('name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const selectorNode = interpolatedSelector(interpolated({
+      source: `.${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'name' }, { type: 'index' })]
+    }));
+    selectorNode.resolve = () => {
+      throw new Error('InterpolatedSelector direct render should resolve natively');
+    };
+
+    expect(selectorNode.render(context)).toBe('.foo');
+    expect(selectorNode.evaluated).toBe(false);
+    expect(selectorNode.registrationPrepared).toBe(false);
   });
 
   it('resolves interpolated selectors without touching render state', async () => {
@@ -97,7 +131,7 @@ describe('InterpolatedSelector', () => {
 
     expect(resolved.toTrimmedString()).toBe('.foo');
     expect(selectorNode.evaluated).toBe(false);
-    expect(selectorNode.preEvaluated).toBe(false);
+    expect(selectorNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

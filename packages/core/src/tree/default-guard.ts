@@ -1,10 +1,10 @@
 import { type Context } from '../context.js';
 import { Node, defineType } from './node.js';
-import { Bool } from './bool.js';
+import { Bool, createPublicBool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
@@ -23,7 +23,7 @@ export class DefaultGuard extends Node<string> {
   }
 
   override evalNode(context: Context): Bool {
-    return new Bool(Boolean(context.isDefault));
+    return createPublicBool(Boolean(context.isDefault));
   }
 
   override resolve(context: Context): Bool {
@@ -32,15 +32,11 @@ export class DefaultGuard extends Node<string> {
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
-    }
-    const printOptions = getPrintOptions({ ...bufferOrOptions, context });
-    const w = printOptions.writer!;
-    const mark = w.mark();
-    w.add(context.isDefault ? 'true' : 'false', this);
-    return w.getSince(mark);
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
+    const out = String(Boolean(context.isDefault));
+    return isRenderBuffer(bufferOrOptions)
+      ? writeRenderText(bufferOrOptions, out)
+      : out;
   }
 }
 export const defaultguard = defineType(DefaultGuard, 'DefaultGuard');

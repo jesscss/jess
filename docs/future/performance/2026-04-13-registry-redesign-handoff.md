@@ -1,13 +1,18 @@
 # Registry Redesign — Handoff
 
-This file is historical design context plus the current high-level roadmap. It
-is not an operational queue.
+This file is the current high-level roadmap for the registry/runtime redesign.
+It is not an operational queue.
+
+Older April 2026 benchmark audits, proposal text, and investigation ticket
+drafts are archived under `docs/_archive/future-performance-2026-04-13/`.
+Use those only for archaeology; do not treat their dated "current system" notes
+as active guidance.
 
 For active execution, prefer:
 
 1. `AGENTS.md`
-2. `docs/future/node-copy-reduction/README.md`
-3. `docs/future/node-copy-reduction/HANDOFF.md`
+2. `docs/future/core-architecture/HANDOFF.md`
+3. `docs/future/node-copy-reduction/README.md` for historical node-copy context
 4. `docs/future/pre-eval-elimination.md`
 
 Do not recreate the retired task registry, task loop, or auto-loop machinery
@@ -16,14 +21,10 @@ handoffs above.
 
 ## Current Status
 
-Last verified during this cleanup pass:
-
-- branch: `dev`
-- baseline: `pnpm run verify:baseline`
-- result: passing for core, parsers, and `packages/jess/test/less/all-less.test.ts`
-
-The old failure buckets in this document were removed because they described
-past recovery work as if it were current state.
+The old failure buckets were removed because they described past recovery work
+as if it were current state. For the current baseline and exact verification
+commands, run the active handoff checks in `docs/future/core-architecture/`
+and the relevant focused tests for the code being changed.
 
 ## Architecture Direction
 
@@ -82,25 +83,33 @@ generic `Node.evalStatic(...)` stamping path. Reopen Track 1C only with a
 focused failing test or code path showing direct `render(context)` /
 `resolve(context)` still stamps a canonical source node.
 
-### Track 2 — Node Shape: Direct Instance Fields
+### Track 2 — Record-Shaped Node Fields
 
 Open, not active.
 
-Goal: replace the current `value` proxy/object pattern with direct typed fields
-on node classes where that meaningfully reduces allocation and makes ownership
-clearer.
+The old transparent `value` proxy overhead has been removed. Do not read this
+track as "remove `.value` from every node."
+
+The remaining optional shape cleanup is narrower: record-shaped nodes may move
+from generic property bags such as `this.value.name`, `this.value.rules`, or
+`this.value.selector` to direct typed fields when that meaningfully reduces
+allocation, indirection, parent/adoption ambiguity, copy surfaces, or adapter
+glue.
+
+Nodes whose shape is naturally one payload should keep `.value`. That includes
+scalar nodes and list/container nodes such as `List`, `Sequence`, and `Rules`.
 
 Do not start this as a broad mechanical rewrite. The next useful pass should
-begin with one node family, focused tests, and a migration rule for parser and
-Less-compat call sites.
+begin with one record-shaped node family, focused tests, and a migration rule
+for parser and Less-compat call sites.
 
 ### Track 3 — Less-Compat Adapter Layer
 
 Mostly closed.
 
-The proxy-to-adapter switch has landed. Revisit after Track 2 changes the core
-node API; until then, avoid adapter churn unless it fixes a concrete API bug or
-removes stale field-mapping glue.
+The proxy-to-adapter switch has landed. Revisit only if a future record-shaped
+node-field pass changes the core node API, or if adapter code has concrete
+stale field-mapping glue to remove. Avoid adapter churn for its own sake.
 
 ### Track 4 — TriviaMap Cleanup
 
@@ -123,7 +132,9 @@ tests. Do not move trivia back onto nodes.
 
 ### Track 5 — Pre-Eval Elimination / Buffered Render
 
-Open and active after the current node-copy cleanup frontier.
+Open and active. The live checkpoint queue for this track is
+`docs/future/core-architecture/HANDOFF.md`; this section is only the
+high-level roadmap.
 
 Target shape:
 
@@ -143,47 +154,56 @@ in flat mode, it should stay strings.
 Current implementation state:
 
 - `packages/core/src/tree/util/render-buffer.ts` defines the initial
-  `RenderBuffer` / segment types and helpers.
+  `RenderBuffer` / segment types and helpers. Buffer selection now knows all
+  currently named delayed-output families: extends, reference imports, hoists,
+  merges, and pending refs.
 - Flat-buffer bridging exists for many simple nodes.
-- Segmented rendering is not integrated into structural nodes yet.
+- Segmented buffers can still accept finalized string output. A delayed parent
+  segment is not permission to retain child node structure when a child can
+  already render to a string.
+- `Ruleset` and `AtRule` can now write finalized string output through the
+  segmented buffer bridge. Their delayed selector/reference/hoist finalization
+  still needs explicit segment integration.
 - Extend collection still uses AST/runtime-side machinery rather than a render
   side table.
 - Reference visibility, selector finalization, and hoist/merge finalization are
   still post-step work.
 
-## Active Todo List
+## Reference Roadmap
 
-Use this list as the roadmap after the current node-copy reduction pass:
+This list is not the active queue. Use
+`docs/future/core-architecture/HANDOFF.md` for immediate next work and exact
+verification. Keep this list as the broader roadmap only.
 
-1. Finish the remaining node-copy reduction seams in
-   `docs/future/node-copy-reduction/README.md`.
-2. Keep reducing routine `clone()` / defensive copy boundaries where focused
+1. Keep reducing routine `clone()` / defensive copy boundaries where focused
    tests prove the source tree stays canonical.
-3. Audit remaining `sourceNode` / `sourceParent` uses and classify each as
-   semantic provenance, import/reference identity, or removable transport debt.
-4. Audit remaining `OutputWriter.mark()` / `getSince()` / `restore()` /
-   `capture()` sites and remove legacy preview scaffolding where direct
-   streaming preserves trivia and sourcemaps.
-5. Before deeper Track 5 integration, refresh
-   `docs/future/pre-eval-elimination.md` against the current `Rules` code and
-   verify its eval-order decisions still match production.
-6. Implement the first structural `RenderBuffer` integration only where a node
+2. Keep `sourceNode` on semantic provenance surfaces only: import/reference
+   identity, selector keyset/library inheritance, sourcemap/trivia mapping, and
+   focused recursion/lookup identity. Production `sourceParent` transport is
+   gone; do not reintroduce it.
+3. Reduce writer preview scaffolding. Production `OutputWriter.capture()` use
+   is retired outside the writer implementation; remaining broad usage is
+   `mark()` / `getSince()` local serializer windows plus the real
+   `Rules._emitRulesBody(...)` preview path. Do not remove that path without
+   focused ruleset/at-rule/trivia/sourcemap tests.
+4. Implement the first structural `RenderBuffer` integration only where a node
    has a proven delayed-output need.
-7. Move extend collection toward render-pass side-table population.
-8. Implement a pure post-step for selector finalization, extend application,
+5. Move extend collection toward render-pass side-table population.
+6. Implement a pure post-step for selector finalization, extend application,
    and reference visibility.
-9. Migrate `extend-roots.ts` reachability logic toward a pure
+7. Migrate `extend-roots.ts` reachability logic toward a pure
    `ExtendRoot x ExtendRoot` predicate usable by the post-step.
-10. Remove base-class `preEval` / generic eval stamping / compatibility
-    serialization bridges only after node-level replacements and parity
-    coverage prove they are unused.
+8. Keep shrinking registration prep and compatibility serialization bridges.
+   Public `preEval()` and the old eval stamp are gone; do not recreate them
+   under different names.
 
 ## Guardrails
 
 - Preserve Jess behavior unless a behavior change is explicitly chosen.
 - Do not weaken Less fixtures or core tests to make refactors look complete.
 - Do not add broad abstractions without multiple node-shape proofs.
-- Do not use `sourceParent` or `sourceNode` to smuggle invocation scope.
+- Do not use `sourceNode` to smuggle invocation scope, and do not reintroduce
+  `sourceParent` transport.
 - Do not reintroduce wrapper `VarDeclaration` insertion for lookup transport.
 - Keep docs short enough to read at startup; move old debugging archaeology to
   archive or git history instead of keeping it in active handoffs.

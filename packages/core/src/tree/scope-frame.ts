@@ -13,7 +13,7 @@
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/future/performance/2026-04-13-registry-redesign-proposal.md
+ * @see docs/future/performance/2026-04-13-registry-redesign-handoff.md
  */
 
 import type { Node } from './node.js';
@@ -24,10 +24,24 @@ import type { VarDeclaration } from './declaration-var.js';
  * mixin params — no copy, no fork.
  */
 export interface BindingCell {
-  value: Node;
+  value?: Node;
+  prepareValue?: (value: Node | undefined) => Node;
   /** Back-pointer to the canonical AST node, used for recursion detection. */
   sourceNode?: Node;
   readonly?: boolean;
+}
+
+export function getBindingCellValue(cell: BindingCell): Node {
+  if (!cell.prepareValue) {
+    if (!cell.value) {
+      throw new Error('Binding cell has no value');
+    }
+    return cell.value;
+  }
+  const value = cell.prepareValue(cell.value);
+  cell.value = value;
+  cell.prepareValue = undefined;
+  return value;
 }
 
 /**
@@ -155,7 +169,7 @@ export function resolveFrameCell(
     // 1. Live slots (mixin params, @arguments, loop vars)
     const live = f.liveSlotsByName.get(name);
     if (live) {
-      return { cell: live, sourceNode: live.sourceNode ?? live.value };
+      return { cell: live, sourceNode: live.sourceNode ?? getBindingCellValue(live) };
     }
 
     // 2. Static contextual bucket — last entry wins

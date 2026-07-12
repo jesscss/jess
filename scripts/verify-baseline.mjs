@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Commit gate: core tests + CSS parsers + Less fixture baseline must all pass.
+ * Commit gate: core tests + CSS parsers + Less fixture and compatibility
+ * baselines must all pass.
  * Run before claiming completion or pushing. Fails fast on first failure.
  * Policy: always move the bar up — fix failures and add new critical suites here;
  * never relax expectations or remove tests to get green.
@@ -11,6 +12,7 @@
 import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
 
 const ROOT = process.cwd();
 const CHANGED_ONLY = process.argv.includes('--changed');
@@ -19,7 +21,8 @@ const BASELINE_PACKAGE_DIRS = new Set([
   'packages/core',
   'packages/less-parser',
   'packages/css-parser',
-  'packages/jess'
+  'packages/jess',
+  'packages/jess-plugin-less-compat'
 ]);
 
 const NON_SOURCE_PATH_PATTERNS = [
@@ -44,11 +47,19 @@ function run(name, args, opts = {}) {
   }
 }
 
+function runFrontierChecks() {
+  run('pnpm', ['run', 'verify:node-copy-frontier']);
+  run('pnpm', ['run', 'verify:render-buffer-frontier']);
+  run('pnpm', ['run', 'verify:materialization-frontier']);
+}
+
 function getWorkspaceDeps(manifest) {
   const deps = new Set();
   for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
     const section = manifest[field];
-    if (!section || typeof section !== 'object') continue;
+    if (!section || typeof section !== 'object') {
+      continue;
+    }
     for (const [name, version] of Object.entries(section)) {
       if (typeof version === 'string' && version.startsWith('workspace:')) {
         deps.add(name);
@@ -65,12 +76,18 @@ function buildBaselineGraph() {
 
   const packagesDir = path.join(ROOT, 'packages');
   for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory()) {
+      continue;
+    }
     const dir = `packages/${entry.name}`;
     const pkgPath = path.join(ROOT, dir, 'package.json');
-    if (!existsSync(pkgPath)) continue;
+    if (!existsSync(pkgPath)) {
+      continue;
+    }
     const manifest = JSON.parse(readFileSync(pkgPath, 'utf8'));
-    if (manifest.name) nameToDir.set(manifest.name, dir);
+    if (manifest.name) {
+      nameToDir.set(manifest.name, dir);
+    }
   }
 
   for (const dir of BASELINE_PACKAGE_DIRS) {
@@ -78,7 +95,9 @@ function buildBaselineGraph() {
   }
   for (const dir of BASELINE_PACKAGE_DIRS) {
     const pkgPath = path.join(ROOT, dir, 'package.json');
-    if (!existsSync(pkgPath)) continue;
+    if (!existsSync(pkgPath)) {
+      continue;
+    }
     const manifest = JSON.parse(readFileSync(pkgPath, 'utf8'));
     const deps = getWorkspaceDeps(manifest);
     for (const depName of deps) {
@@ -100,20 +119,37 @@ function changedFilesAgainstUpstream() {
         cwd: ROOT,
         encoding: 'utf8'
       }).trim();
-      if (!base) continue;
-      const output = execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
-        cwd: ROOT,
-        encoding: 'utf8'
-      });
-      return output
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
+      if (!base) {
+        continue;
+      }
+      return uniqueLines([
+        execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
+          cwd: ROOT,
+          encoding: 'utf8'
+        }),
+        execSync('git diff --name-only --diff-filter=ACMR', {
+          cwd: ROOT,
+          encoding: 'utf8'
+        }),
+        execSync('git diff --cached --name-only --diff-filter=ACMR', {
+          cwd: ROOT,
+          encoding: 'utf8'
+        })
+      ]);
     } catch {
       // Try next fallback ref
     }
   }
   return [];
+}
+
+function uniqueLines(outputs) {
+  return [...new Set(
+    outputs
+      .flatMap(output => output.split('\n'))
+      .map(line => line.trim())
+      .filter(Boolean)
+  )];
 }
 
 function packageDirsFromFiles(files) {
@@ -123,7 +159,9 @@ function packageDirsFromFiles(files) {
   const dirs = new Set();
   for (const file of filtered) {
     const match = file.match(/^packages\/[^/]+/);
-    if (match) dirs.add(match[0]);
+    if (match) {
+      dirs.add(match[0]);
+    }
   }
   return [...dirs];
 }
@@ -150,7 +188,9 @@ function getPackagesToCheck(changedDirs, revDeps, nameToDir) {
   // Baseline packages whose workspace deps changed
   for (const dir of BASELINE_PACKAGE_DIRS) {
     const pkgPath = path.join(ROOT, dir, 'package.json');
-    if (!existsSync(pkgPath)) continue;
+    if (!existsSync(pkgPath)) {
+      continue;
+    }
     const manifest = JSON.parse(readFileSync(pkgPath, 'utf8'));
     const deps = getWorkspaceDeps(manifest);
     for (const depName of deps) {
@@ -172,26 +212,33 @@ const { revDeps, nameToDir } = buildBaselineGraph();
 let packagesToCheck = [...BASELINE_PACKAGE_DIRS].sort();
 if (CHANGED_ONLY) {
   const changedFiles = changedFilesAgainstUpstream();
-  const changedDirs = packageDirsFromFiles(changedFiles);
-  packagesToCheck = getPackagesToCheck(changedDirs, revDeps, nameToDir);
+  if (shouldRunFullBaselineForFiles(changedFiles)) {
+    console.log('Verify baseline (--changed): baseline gate or root dependency changed; running full baseline.');
+  } else {
+    const changedDirs = packageDirsFromFiles(changedFiles);
+    packagesToCheck = getPackagesToCheck(changedDirs, revDeps, nameToDir);
+  }
   if (packagesToCheck.length === 0) {
-    console.log('Verify baseline (--changed): no baseline packages changed or affected. Skipping.');
+    console.log('Verify baseline (--changed): no baseline packages changed or affected. Running frontier checks only.');
+    runFrontierChecks();
+    console.log('\n>>> Verify baseline passed (frontier checks only).');
     process.exit(0);
   }
   console.log(
     `Verify baseline (--changed): ${packagesToCheck.length} package(s) to check: ${packagesToCheck.join(', ')}`
   );
 } else {
-  console.log('Verify baseline: core + parsers + packages/jess/test/less/all-less.test.ts');
+  console.log('Verify baseline: core + parsers + Less fixture and compatibility suites');
 }
 
 const runCore = packagesToCheck.includes('packages/core');
 const runLessParser = packagesToCheck.includes('packages/less-parser');
 const runCssParser = packagesToCheck.includes('packages/css-parser');
 const runJess = packagesToCheck.includes('packages/jess');
+const runLessCompat = packagesToCheck.includes('packages/jess-plugin-less-compat');
 
 // Build core if any downstream needs it
-const needsCoreBuild = runCore || runLessParser || runCssParser || runJess;
+const needsCoreBuild = runCore || runLessParser || runCssParser || runJess || runLessCompat;
 if (needsCoreBuild) {
   run('pnpm', ['--filter', '@jesscss/core', 'build']);
 }
@@ -208,5 +255,12 @@ if (runCssParser) {
 if (runJess) {
   run('pnpm', ['run', 'test:less:test-data']);
 }
+if (runLessCompat) {
+  run('pnpm', ['--filter', './packages/jess-plugin-less-compat', 'test']);
+}
 
-console.log('\n>>> Verify baseline passed (core + parsers + all-less.test.ts).');
+runFrontierChecks();
+run('pnpm', ['run', 'verify:package-exports']);
+run('pnpm', ['run', 'verify:node-constructor-metadata']);
+
+console.log('\n>>> Verify baseline passed (core + parsers + Less fixture and compatibility suites + frontier checks).');

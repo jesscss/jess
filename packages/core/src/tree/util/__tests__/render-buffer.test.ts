@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Context } from '../../../context.js';
 import {
   addExtendRecord,
   createHoistBlock,
@@ -6,11 +7,14 @@ import {
   createPendingRefSlot,
   createRenderBuffer,
   createRenderBufferForFlags,
+  finalizeFlatRenderBuffer,
   createRulesetBlock,
   createSegmentBody,
   finalizeRenderBuffer,
   isRenderBuffer,
+  prepareBufferPrintState,
   pushRenderSegment,
+  renderInvisibleEffect,
   writeSegmentText,
   writeRenderText,
   type HoistBlock,
@@ -36,11 +40,26 @@ describe('RenderBuffer', () => {
   it('keeps flat mode as plain string parts', () => {
     const buffer = createRenderBuffer('flat');
 
-    writeRenderText(buffer, '.a');
-    writeRenderText(buffer, ' { color: red; }');
+    expect(writeRenderText(buffer, '.a')).toBe('.a');
+    expect(writeRenderText(buffer, ' { color: red; }')).toBe(' { color: red; }');
 
     expect(buffer.parts).toEqual(['.a', ' { color: red; }']);
     expect(finalizeRenderBuffer(buffer, finalizers)).toBe('.a { color: red; }');
+    expect(finalizeFlatRenderBuffer(buffer)).toBe('.a { color: red; }');
+  });
+
+  it('prepares buffer print state from a shallow detached options object', () => {
+    const context = new Context();
+    const frameHeaders: string[] = [];
+    const options = { context, frameHeaders };
+
+    const prepared = prepareBufferPrintState(context, options);
+
+    expect(prepared).not.toBe(options);
+    expect(prepared.context).toBe(context);
+    expect(prepared.frameHeaders).toBe(frameHeaders);
+    expect(prepared.writer).toBeDefined();
+    expect('writer' in options).toBe(false);
   });
 
   it('chooses flat mode until delayed finalization is needed', () => {
@@ -48,11 +67,17 @@ describe('RenderBuffer', () => {
     expect(createRenderBufferForFlags({ hasExtends: false, hasReferenceImports: false }).kind).toBe('flat');
     expect(createRenderBufferForFlags({ hasExtends: true }).kind).toBe('segmented');
     expect(createRenderBufferForFlags({ hasReferenceImports: true }).kind).toBe('segmented');
+    expect(createRenderBufferForFlags({ hasHoists: true }).kind).toBe('segmented');
+    expect(createRenderBufferForFlags({ hasMerges: true }).kind).toBe('segmented');
+    expect(createRenderBufferForFlags({ hasPendingRefs: true }).kind).toBe('segmented');
   });
 
   it('recognizes render buffer objects', () => {
     expect(isRenderBuffer(createRenderBuffer('flat'))).toBe(true);
     expect(isRenderBuffer(createRenderBuffer('segmented'))).toBe(true);
+    expect(isRenderBuffer({ kind: 'flat' })).toBe(false);
+    expect(isRenderBuffer({ kind: 'flat', parts: 'nope' })).toBe(false);
+    expect(isRenderBuffer({ kind: 'segmented', segments: [] })).toBe(false);
     expect(isRenderBuffer({ kind: 'other' })).toBe(false);
     expect(isRenderBuffer(null)).toBe(false);
   });
@@ -125,5 +150,14 @@ describe('RenderBuffer', () => {
     expect(buffer.extendRecords).toHaveLength(1);
     expect(buffer.extendRecords[0]?.sourceBlock).toBe(sourceBlock);
     expect(buffer.extendRecords[0]?.targetSelector.valueOf()).toBe('.target');
+  });
+
+  it('routes invisible effects through string and buffer surfaces', async () => {
+    const directEffect = Promise.resolve('ignored');
+    const buffer = createRenderBuffer('flat');
+
+    await expect(renderInvisibleEffect(directEffect)).resolves.toBe('');
+    expect(renderInvisibleEffect(undefined, buffer)).toBe('');
+    expect(buffer.parts).toEqual([]);
   });
 });

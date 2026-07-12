@@ -115,6 +115,17 @@ describe('jess-parser (baseline)', () => {
     expect(result.tree.toString()).toContain('$else');
   });
 
+  it('parses $while loop', () => {
+    const parser = new Parser();
+    const result = parser.parse('$while ($i < 3) { .a { color: red; } }');
+    expect(result.lexerResult.errors.length).toBe(0);
+    expect(result.errors.length).toBe(0);
+    assertValidTree(result.tree);
+    expect(serializeTypes(result.tree)).toContainString('(While');
+    const rules = isNode(result.tree, N.Rules) ? result.tree : null;
+    expect(rules?.value.some(n => n.type === 'While')).toBe(true);
+  });
+
   it('parses @-compose', () => {
     const parser = new Parser();
     const result = parser.parse('@-compose "./theme.jess";');

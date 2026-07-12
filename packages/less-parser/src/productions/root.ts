@@ -11,6 +11,7 @@ import {
   Block,
   Any,
   type LocationInfo,
+  type TreeContext,
   type Operator,
   type ConditionOperator,
   Ruleset,

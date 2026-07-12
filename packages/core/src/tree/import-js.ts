@@ -1,5 +1,5 @@
 import type { Context } from '../context.js';
-import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
+import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType, type NodeLocation, type TreeContext } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -28,7 +28,7 @@ export type JsImportValue = {
 };
 
 export class JsImport extends Node<JsImportValue, JsImportOptions> {
-  constructor(value: JsImportValue, options?: JsImportOptions, location?: any, treeContext?: any) {
+  constructor(value: JsImportValue, options?: JsImportOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // JS imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);

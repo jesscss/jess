@@ -5,6 +5,8 @@ import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter, type PrintOptions } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -31,6 +33,15 @@ class DirectText extends Node<string> {
     w.add(this.value);
     return this.value;
   }
+}
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
 }
 
 /**
@@ -67,20 +78,28 @@ describe('Sequence', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const sequenceNode = seq([
       num(10),
       ref({ key: 'mid' }, { type: 'variable' }),
       num(30)
     ]);
+    const originalResolve = sequenceNode.resolve;
+    let resolveCalls = 0;
+    sequenceNode.resolve = function countResolveCalls(
+      this: typeof sequenceNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = sequenceNode.render(context);
 
     expect(rendered).toBe('10 20 30');
+    expect(resolveCalls).toBe(0);
     expect(sequenceNode.evaluated).toBe(false);
-    expect(sequenceNode.preEvaluated).toBe(false);
+    expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved sequence render output into flat buffers', async () => {
@@ -90,9 +109,7 @@ describe('Sequence', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const sequenceNode = seq([
@@ -100,11 +117,21 @@ describe('Sequence', () => {
       ref({ key: 'mid' }, { type: 'variable' }),
       num(30)
     ]);
+    const originalResolve = sequenceNode.resolve;
+    let resolveCalls = 0;
+    sequenceNode.resolve = function countResolveCalls(
+      this: typeof sequenceNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await sequenceNode.render(context, buffer)).toBe('10 20 30');
     expect(buffer.parts).toEqual(['10 20 30']);
+    expect(resolveCalls).toBe(0);
     expect(sequenceNode.evaluated).toBe(false);
-    expect(sequenceNode.preEvaluated).toBe(false);
+    expect(sequenceNode.registrationPrepared).toBe(false);
   });
 
   it('resolves sequence values without touching render state', async () => {
@@ -114,9 +141,7 @@ describe('Sequence', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const sequenceNode = seq([
       num(10),
@@ -127,7 +152,7 @@ describe('Sequence', () => {
 
     expect(resolved.toTrimmedString()).toBe('10 20 30');
     expect(sequenceNode.evaluated).toBe(false);
-    expect(sequenceNode.preEvaluated).toBe(false);
+    expect(sequenceNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -138,9 +163,7 @@ describe('Sequence', () => {
         value: any('foo')
       })
     ]);
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, root);
 
     const child = list([
       any('one'),

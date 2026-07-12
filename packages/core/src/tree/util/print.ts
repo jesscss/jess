@@ -2,8 +2,10 @@ import type { Context } from '../../context.js';
 import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import type { AtRule } from '../at-rule.js';
+import type { Node } from '../node.js';
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export type PrintOptions = {
   /** The actual tree frames we started from */
@@ -30,6 +32,9 @@ export type PrintOptions = {
   composedSelectorStack?: Selector[];
   /** Session-local composed selector cache keyed by rendered ruleset. */
   composedSelectorCache?: WeakMap<Ruleset, Selector>;
+  /** Render-local override for one at-rule header prelude during direct render. */
+  atRuleHeaderNode?: AtRule;
+  atRuleHeaderPrelude?: Node;
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
@@ -94,6 +99,7 @@ export interface OutputWriter {
   getSince(mark: number): string;
   hasContentSince(mark: number): boolean;
   preview(fn: () => string | void, preserveSegments?: boolean): string;
+  preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
   endsWith(suffix: string): boolean;
   lastChar(): string | undefined;
   replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
@@ -441,17 +447,24 @@ export class OutputWriter implements OutputWriter {
     return false;
   }
 
-  preview(fn: () => string | void, preserveSegments = false): string {
+  preview(fn: () => string | void, preserveSegments?: boolean): string;
+  preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
+  preview(fn: () => MaybePromise<string | void>, preserveSegments = false): MaybePromise<string> {
     const mark = this.mark();
     const segmentsBefore = this._segments.length;
+    const finish = (out: string | void): string => {
+      const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
+      const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
+      this.restore(mark);
+      if (preserveSegments) {
+        this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+      }
+      return text;
+    };
     const out = fn();
-    const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
-    const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
-    this.restore(mark);
-    if (preserveSegments) {
-      this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
-    }
-    return text;
+    return isThenable(out)
+      ? out.then(finish)
+      : finish(out);
   }
 
   endsWith(suffix: string): boolean {

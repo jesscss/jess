@@ -7,6 +7,7 @@ import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
+import type { BitSetLibrary } from './util/bitset.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
@@ -22,7 +23,59 @@ export type PseudoSelectorValue = {
    */
   name: string;
   arg?: Node;
+  generatedPseudoPlacementOverride?: GeneratedPseudoPlacementOverrideState;
 };
+
+type GeneratedPseudoPlacementState = {
+  source: PseudoSelector;
+  name: ':is';
+  arg: Selector;
+  keySetLibrary?: BitSetLibrary<string>;
+  omitWrapperForSingleSelectorList: boolean;
+};
+
+type GeneratedPseudoPlacementOverrideState = {
+  omitWrapperForSingleSelectorList?: boolean;
+};
+
+function setGeneratedPseudoPlacementOverride(
+  source: PseudoSelector,
+  override: GeneratedPseudoPlacementOverrideState
+): void {
+  source.value.generatedPseudoPlacementOverride = override;
+}
+
+function getGeneratedPseudoPlacementState(source: PseudoSelector): GeneratedPseudoPlacementState | undefined {
+  const { name, arg } = source.value;
+  if (source.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
+    const override = source.value.generatedPseudoPlacementOverride;
+    return {
+      source,
+      name,
+      arg,
+      keySetLibrary: source.keySetLibrary,
+      omitWrapperForSingleSelectorList: override?.omitWrapperForSingleSelectorList ?? isNode(arg, N.SelectorList)
+    };
+  }
+  return undefined;
+}
+
+function createEvaluatedPseudoSelector(
+  source: PseudoSelector,
+  arg: Node
+): PseudoSelector {
+  const node = new PseudoSelector(
+    {
+      ...source.value,
+      arg
+    },
+    source._options ? { ...source._options } : undefined,
+    source.location.length ? source.location : undefined,
+    source.treeContext
+  ).inherit(source);
+  node.generated = source.generated;
+  return node;
+}
 
 /**
  * A pseudo selector
@@ -35,12 +88,17 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const w = options.writer!;
     let { name, arg } = this.value;
     const mark = w.mark();
-    if (this.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
+    const generatedState = getGeneratedPseudoPlacementState(this);
+    if (generatedState) {
+      ({ name, arg } = generatedState);
+      if (generatedState.keySetLibrary) {
+        attachSelectorBitLibrary(arg, generatedState.keySetLibrary);
+      }
       const argMark = w.mark();
       arg.toString(options);
       w.replaceSince(argMark, normalizeSelectorArg, arg);
       const out = w.getSince(argMark);
-      if (isNode(arg, N.SelectorList) && !out.includes(',')) {
+      if (generatedState.omitWrapperForSingleSelectorList && !out.includes(',')) {
         return w.getSince(mark);
       }
       w.restore(argMark);
@@ -184,15 +242,19 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         if (evaluatedArg === currentArg) {
           return this;
         }
-        const node = new PseudoSelector(
-          {
-            ...this.value,
-            arg: evaluatedArg
-          },
-          this._options ? { ...this._options } : undefined,
-          this.location.length ? this.location : undefined,
-          this.treeContext
-        ).inherit(this);
+        const node = createEvaluatedPseudoSelector(this, evaluatedArg);
+        if (
+          this.generated
+          && (
+            isNode(currentArg, N.SelectorList)
+            || isNode(evaluatedArg, N.SelectorList)
+            || (evaluatedArg !== currentArg && isNode(evaluatedArg, N.Selector))
+          )
+        ) {
+          setGeneratedPseudoPlacementOverride(node, {
+            omitWrapperForSingleSelectorList: true
+          });
+        }
         attachSelectorBitLibrary(node, context.selectorBits);
         return node;
       }

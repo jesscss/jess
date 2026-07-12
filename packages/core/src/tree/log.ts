@@ -1,8 +1,13 @@
 import { type Context } from '../context.js';
 import { Node, F_VISIBLE, defineType, type LocationInfo, type NodeOptions, type TreeContext } from './node.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import { logger } from '../logger.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import type { PrintOptions } from './util/print.js';
+import {
+  type RenderBuffer,
+  renderInvisibleEffect
+} from './util/render-buffer.js';
 
 export type LogLevel = 'debug' | 'warn' | 'error';
 
@@ -43,25 +48,31 @@ export class Log extends Node<LogValue, NodeOptions> {
     return '';
   }
 
-  override evalNode(context: Context): MaybePromise<Nil> {
-    // Evaluate the message expression
+  private runLogEffect(context: Context): MaybePromise<void> {
     const messageResult = this.value.message.eval(context);
-
-    // Handle async evaluation if needed
     if (isThenable(messageResult)) {
       return (messageResult as Promise<Node>).then((evaluatedMessage) => {
         this._logMessage(evaluatedMessage);
-        return new Nil();
       });
     }
-
-    // Synchronous evaluation
     this._logMessage(messageResult as Node);
-    return new Nil();
+  }
+
+  override evalNode(context: Context): MaybePromise<Nil> {
+    const effect = this.runLogEffect(context);
+    return isThenable(effect)
+      ? (effect as Promise<void>).then(createPublicNil)
+      : createPublicNil();
   }
 
   override resolve(context: Context): MaybePromise<Nil> {
     return this.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
+    return renderInvisibleEffect(this.runLogEffect(context), bufferOrOptions);
   }
 
   private _logMessage(message: Node): void {

@@ -8,12 +8,20 @@ export type StepErrorOptions<TIn, R> = {
   rethrow?: boolean;
 };
 
+type StepFallbackFactory<TIn, R> = (error: unknown, input: TIn) => R;
+
+function isStepFallbackFactory<TIn, R>(
+  fallback: StepErrorOptions<TIn, R>['fallback']
+): fallback is StepFallbackFactory<TIn, R> {
+  return typeof fallback === 'function';
+}
+
 function resolveStepFallback<TIn, R>(
   fallback: StepErrorOptions<TIn, R>['fallback'],
   error: unknown,
   input: TIn
 ): R | undefined {
-  return typeof fallback === 'function'
+  return isStepFallbackFactory(fallback)
     ? fallback(error, input)
     : fallback;
 }

@@ -17,7 +17,7 @@ import {
   emitCommentTriviaBeforeDelimiter,
   emitTriviaTokens
 } from './util/trivia.js';
-import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves, ownCollapsedSourceChild, reuseLeaf } from './util/cloning.js';
 
 function emitSelectorListItem(
   item: Selector,
@@ -55,6 +55,18 @@ export class SelectorList extends Selector<Selector[]> {
       ]
     );
     return node.inherit(this);
+  }
+
+  private createEvaluatedSelectorListSurface(value: Selector[], sourceValue: readonly Selector[]): this {
+    return this.withSelectors(value, sourceValue);
+  }
+
+  private collapsedSelector(item: Selector, sourceValue: readonly Selector[]): Selector {
+    const owned = ownCollapsedSourceChild(item, sourceValue, this);
+    if (!(owned instanceof Selector)) {
+      throw new TypeError('Expected selector result');
+    }
+    return owned;
   }
 
   private renderSelectorListSyntax(options?: PrintOptions): string {
@@ -234,7 +246,7 @@ export class SelectorList extends Selector<Selector[]> {
           flattened.push(item);
         }
         if (flattened.length === 1) {
-          return flattened[0]!;
+          return list.collapsedSelector(flattened[0]!, currentValue);
         }
         const changed = (
           flattened.length !== currentValue.length
@@ -243,12 +255,12 @@ export class SelectorList extends Selector<Selector[]> {
         if (!changed) {
           return list;
         }
-        return list.withSelectors(flattened, currentValue);
+        return list.createEvaluatedSelectorListSurface(flattened, currentValue);
       }
     );
   }
 
-  override resolve(context: Context): MaybePromise<Node> {
+  protected override resolveForRender(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
     return pipe(
       () => {
@@ -308,7 +320,7 @@ export class SelectorList extends Selector<Selector[]> {
           flattened.push(item);
         }
         if (flattened.length === 1) {
-          return flattened[0]!;
+          return list.collapsedSelector(flattened[0]!, currentValue);
         }
         const changed = (
           flattened.length !== currentValue.length
@@ -320,6 +332,10 @@ export class SelectorList extends Selector<Selector[]> {
         return list.withSelectors(flattened, currentValue);
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveForRender(context);
   }
 }
 

@@ -1,6 +1,6 @@
 import { type Context } from '../context.js';
-import { defineType, Node } from './node.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { defineType, F_STATIC, Node } from './node.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
 import {
@@ -8,10 +8,11 @@ import {
   emitCommentTriviaBetweenNodes,
   emitTriviaTokens
 } from './util/trivia.js';
-import { isThenable, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
+import { isThenable, pipe, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -28,6 +29,48 @@ function emitListItem<T extends Node>(
   } finally {
     options.suppressBoundaryTrivia = saved;
   }
+}
+
+export function renderListValueSyntax<T extends Node>(
+  value: T[],
+  options: PrintOptions,
+  sep: ListOptions['sep'] = ','
+): string {
+  const printOptions = getPrintOptions(options);
+  const w = printOptions.writer;
+  let length = value.length;
+  const mark = w.mark();
+  if (value.length === 0) {
+    return '';
+  }
+  let item = value[0]!;
+  emitListItem(item, printOptions);
+  for (let i = 1; i < length; i++) {
+    const prev = item;
+    item = value[i]!;
+    emitCommentTriviaBetweenNodes(prev, item, printOptions);
+    const leadingTrivia = printOptions.trivia
+      ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
+      : undefined;
+    const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
+      ? leadingTrivia[0].image
+      : '';
+    const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
+    if (sep === '/') {
+      w.add(preserveLeadingWhitespace ? ' /' : ' / ');
+    } else {
+      w.add(preserveLeadingWhitespace ? sep : `${sep} `);
+    }
+    if (leadingTrivia) {
+      emitTriviaTokens(
+        leadingTrivia,
+        printOptions,
+        { skipLeadingWhitespace: !preserveLeadingWhitespace }
+      );
+    }
+    emitListItem(item, printOptions, true);
+  }
+  return w.getSince(mark);
 }
 
 export type ListOptions = {
@@ -68,44 +111,25 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     ).inherit(this);
   }
 
-  private renderListSyntax(options?: PrintOptions): string {
-    const printOptions = getPrintOptions(options);
-    const w = printOptions.writer;
-    const sep = this._options?.sep ?? ',';
-    let { value } = this;
-    let length = value.length;
-    const mark = w.mark();
-    if (value.length === 0) {
-      return '';
-    }
-    let item = value[0]!;
-    emitListItem(item, printOptions);
-    for (let i = 1; i < length; i++) {
-      const prev = item;
-      item = value[i]!;
-      emitCommentTriviaBetweenNodes(prev, item, printOptions);
-      const leadingTrivia = printOptions.trivia
-        ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
-        : undefined;
-      const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
-        ? leadingTrivia[0].image
-        : '';
-      const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
-      if (sep === '/') {
-        w.add(preserveLeadingWhitespace ? ' /' : ' / ');
-      } else {
-        w.add(preserveLeadingWhitespace ? sep : `${sep} `);
+  private renderListSyntax(value = this.value, options?: PrintOptions): string {
+    return renderListValueSyntax(value, getPrintOptions(options), this._options?.sep ?? ',');
+  }
+
+  private resolveItems(context: Context): MaybePromise<Node[]> {
+    const values = new Array<Node>(this.value.length);
+    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
+      const out = item.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((resolved) => {
+          values[index] = resolved;
+        });
       }
-      if (leadingTrivia) {
-        emitTriviaTokens(
-          leadingTrivia,
-          printOptions,
-          { skipLeadingWhitespace: !preserveLeadingWhitespace }
-        );
-      }
-      emitListItem(item, printOptions, true);
+      values[index] = out as Node;
+    });
+    if (isThenable(maybe)) {
+      return (maybe as Promise<void>).then(() => values);
     }
-    return w.getSince(mark);
+    return values;
   }
 
   get length() {
@@ -123,16 +147,19 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderListSyntax(options);
+    return this.renderListSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    if (this.hasFlag(F_STATIC)) {
+      return this.renderResolvedListValue(context, this.value, bufferOrOptions, options);
     }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.resolveItems(context),
+      value => this.renderResolvedListValue(context, value, bufferOrOptions, options)
+    );
   }
 
   override compare(other: Node) {
@@ -164,26 +191,38 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
-    const values = new Array<Node>(this.value.length);
-    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
-      const out = item.resolve(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node>).then((resolved) => {
-          values[index] = resolved;
-        });
-      }
-      values[index] = out as Node;
-    });
+    return this.resolveValue(context);
+  }
 
-    const finalize = (): Node => {
-      const unchanged = values.every((node, index) => node === this.value[index]);
-      return unchanged ? this : this.withResolvedValue(values);
-    };
+  private renderResolvedListValue(
+    context: Context,
+    value: Node[],
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.renderListSyntax(value, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
 
-    if (isThenable(maybe)) {
-      return (maybe as Promise<void>).then(finalize);
+  private resolveValue(context: Context): MaybePromise<List<Node>> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
     }
-    return finalize();
+    const values = this.resolveItems(context);
+    if (isThenable(values)) {
+      return (values as Promise<Node[]>).then((resolvedValues) => {
+        const unchanged = resolvedValues.every((node, index) => node === this.value[index]);
+        return unchanged ? this : this.withResolvedValue(resolvedValues);
+      });
+    }
+    const unchanged = values.every((node, index) => node === this.value[index]);
+    return unchanged ? this : this.withResolvedValue(values);
   }
 
   /** @todo? Lists should collapse nested lists? */

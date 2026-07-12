@@ -189,8 +189,8 @@ function expectComplexComponents(value: Selector | Selector[] | ExtendErrorType)
  * Walk-and-consume eligibility check for extendSelector dispatch.
  * Returns true only when the walk path is known to produce correct results.
  *
- * Currently very conservative: only handles the simplest cases where
- * walk-and-consume is verified to produce identical output to the legacy path.
+ * Currently conservative: use only cases where walk-and-consume is verified to
+ * match the location-based extend implementation.
  */
 function canUseWalkAndConsumeForExtend(target: Selector, find: Selector): boolean {
   // Walk-and-consume doesn't handle extendOrderMap (dead code, but guard anyway)
@@ -210,7 +210,8 @@ function canUseWalkAndConsumeForExtend(target: Selector, find: Selector): boolea
 }
 
 /**
- * Bridge: attempt walk-and-consume, return null to fall through to legacy path.
+ * Attempt walk-and-consume, returning null when the location-based path should
+ * handle matching and errors.
  * Returns the extended selector, or null if walk couldn't handle it.
  */
 function walkAndExtendForExtendSelector(
@@ -221,8 +222,8 @@ function walkAndExtendForExtendSelector(
 ): Selector | null {
   const result = walkAndExtend(target, find, extendWith, partial);
   // walkAndExtend returns the original target when no match is found.
-  // The legacy path throws ExtendError('NOT_FOUND') in that case.
-  // Return null to let the legacy path handle it (including the throw).
+  // The location-based path throws ExtendError('NOT_FOUND') in that case.
+  // Return null to let that path handle it, including the throw.
   if (result === target) {
     return null;
   }
@@ -494,7 +495,7 @@ function applyBatchedExtend(
       return null;
     }
     const processedArray = isArray(processed) ? processed : [processed];
-    return SelectorList.create(processedArray).inherit(selector) as Selector;
+    return expectSelector(SelectorList.create(processedArray).inherit(selector));
   }
 
   // Generic fallback: apply each extendWith sequentially.
@@ -1386,7 +1387,7 @@ export function extendSelector(
     }
   }
 
-  // Walk-and-consume fast path for simple cases (Phase 1).
+  // Walk-and-consume fast path for simple cases.
   // Only for SimpleSelector find with no ampersands and no extra flags.
   // Also skip when extendWith contains element/ID selectors that need conflict validation.
   if (!skipAmpersandCheck && !hasMoreAfterIs
@@ -1396,7 +1397,7 @@ export function extendSelector(
     if (walkResult !== null) {
       return walkResult;
     }
-    // Walk path returned null → fall through to legacy path
+    // Walk path returned null; fall through to the location-based path.
   }
 
   // Use the unified ExtendLocation API for all selector matching.
@@ -2188,7 +2189,7 @@ function extendSelectorList(
         newSelectors.push(
           ...extended.value
             .slice(1)
-            .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template as Selector, s as Selector)))
+            .map(s => markExtended(maybePrefixNewSelectorWithImplicitParent(template, s)))
             .map(s => copySelectorForExtend(s))
         );
         appendedVariant = true;
@@ -2978,14 +2979,16 @@ function createIsWrapper(selectors: Selector[], inheritFrom: Selector): PseudoSe
   // Basic deduplication here to avoid obvious duplicates
   // Full normalization (flattening) will be handled by createProcessedSelector
   // when the result is processed through createExtendedSelectorList
+  // Callers pass owned selector copies so this helper can attach the list
+  // without another placement-copy pass.
   const deduplicated = deduplicateSelectors(selectors);
-  const selectorList = SelectorList.create(copySelectorsForPlacement(deduplicated));
+  const selectorList = SelectorList.create(deduplicated);
 
   // Create PseudoSelector using the create factory method - same signature as constructor but marks as generated
   const pseudoSelector = PseudoSelector.create({
     name: ':is',
     arg: selectorList
-  }).inherit(inheritFrom) as PseudoSelector;
+  }).inherit(inheritFrom);
   // Ensure downstream normalization can unwrap/merge this wrapper when appropriate.
   pseudoSelector.generated = true;
 
@@ -3499,23 +3502,27 @@ function findParentOfNode(
   return null;
 }
 
+type SelectorContainerParent = CompoundSelector | ComplexSelector | SelectorList | PseudoSelector;
+
 /**
  * Replaces a node within its parent container
  * @param parent - The parent container
  * @param oldNode - The node to replace
  * @param newNode - The replacement node
  */
-function replaceNodeInParent(parent: any, oldNode: any, newNode: any): void {
+function replaceNodeInParent(parent: SelectorContainerParent, oldNode: Node, newNode: Node): void {
   if (isNode(parent, N.CompoundSelector) || isNode(parent, N.ComplexSelector) || isNode(parent, N.SelectorList)) {
     for (let i = 0; i < parent.value.length; i++) {
       if (parent.value[i] === oldNode) {
-        parent.set(i, newNode);
+        parent.adopt(newNode);
+        parent.value[i] = newNode;
         parent.invalidateCache?.();
         break;
       }
     }
   } else if (isNode(parent, N.PseudoSelector) && parent.value.arg === oldNode) {
-    parent.set(null, { ...parent.value, arg: newNode });
+    parent.adopt(newNode);
+    parent.value.arg = newNode;
     parent.invalidateCache?.();
   }
 }
@@ -3695,14 +3702,14 @@ function collectSelectorSubtreeValues(
 
   if (isNode(selector, N.SelectorList)) {
     for (const item of selector.value) {
-      collectSelectorSubtreeValues(item as Selector, values);
+      collectSelectorSubtreeValues(item, values);
     }
     return values;
   }
 
   if (isNode(selector, N.CompoundSelector)) {
     for (const item of selector.value) {
-      collectSelectorSubtreeValues(item as Selector, values);
+      collectSelectorSubtreeValues(item, values);
     }
     return values;
   }
@@ -3712,7 +3719,9 @@ function collectSelectorSubtreeValues(
       if (isNode(item, N.Combinator)) {
         continue;
       }
-      collectSelectorSubtreeValues(item as Selector, values);
+      if (isSelectorNode(item)) {
+        collectSelectorSubtreeValues(item, values);
+      }
     }
     return values;
   }
@@ -3741,14 +3750,14 @@ function collectNewSelectorCandidates(
 
   if (isNode(selector, N.SelectorList)) {
     for (const item of selector.value) {
-      collectNewSelectorCandidates(item as Selector, originalValues, candidates, seenValues);
+      collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
     }
     return candidates;
   }
 
   if (isNode(selector, N.CompoundSelector)) {
     for (const item of selector.value) {
-      collectNewSelectorCandidates(item as Selector, originalValues, candidates, seenValues);
+      collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
     }
     return candidates;
   }
@@ -3758,7 +3767,9 @@ function collectNewSelectorCandidates(
       if (isNode(item, N.Combinator)) {
         continue;
       }
-      collectNewSelectorCandidates(item as Selector, originalValues, candidates, seenValues);
+      if (isSelectorNode(item)) {
+        collectNewSelectorCandidates(item, originalValues, candidates, seenValues);
+      }
     }
     return candidates;
   }
@@ -4045,20 +4056,22 @@ function applyExtensionAtPath(
       // Direct match in the argument - create a list or extend existing list
       let newArg: Selector;
       if (isNode(arg, N.SelectorList)) {
-        const newSelectors = [...arg.value, extendWith];
+        const newSelectors = copySelectorsForPlacement([...arg.value, extendWith]);
         newArg = SelectorList.create(newSelectors).inherit(arg);
       } else {
-        newArg = SelectorList.create([arg as Selector, extendWith]);
+        newArg = SelectorList.create(copySelectorsForPlacement([arg, extendWith]));
       }
 
-      const processedArg = createProcessedSelector(newArg as Selector, true);
+      const processedArg = createProcessedSelector(newArg, true);
       if (typeof processedArg === 'string') {
         return processedArg;
       }
-      const normalizedArg = isArray(processedArg) ? SelectorList.create(processedArg as Selector[]) : processedArg;
+      const normalizedArg = isArray(processedArg)
+        ? SelectorList.create(expectSelectorArray(processedArg))
+        : expectSelector(processedArg);
       const result = PseudoSelector.create({
         name: current.value.name,
-        arg: normalizedArg as Selector
+        arg: normalizedArg
       }).inherit(current);
       return result;
     } else {
@@ -4067,14 +4080,16 @@ function applyExtensionAtPath(
       if (typeof newArg === 'string') {
         return newArg;
       }
-      const processedArg = createProcessedSelector(newArg as Selector, true);
+      const processedArg = createProcessedSelector(newArg, true);
       if (typeof processedArg === 'string') {
         return processedArg;
       }
-      const normalizedArg = isArray(processedArg) ? SelectorList.create(processedArg as Selector[]) : processedArg;
+      const normalizedArg = isArray(processedArg)
+        ? SelectorList.create(expectSelectorArray(processedArg))
+        : expectSelector(processedArg);
       const nestedResult = PseudoSelector.create({
         name: current.value.name,
-        arg: normalizedArg as Selector
+        arg: normalizedArg
       }).inherit(current);
       return nestedResult;
     }

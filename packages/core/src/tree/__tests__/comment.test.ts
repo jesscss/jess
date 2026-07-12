@@ -32,15 +32,34 @@ describe('Comment', () => {
 
     expect(node.render(context)).toBe('/* keep me */');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('writes visible comment render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const node = comment('/* keep me */');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('/* keep me */');
     expect(buffer.parts).toEqual(['/* keep me */']);
+    expect(resolveCalls).toBe(0);
+  });
+
+  it('keeps source-only line comments out of render buffers unless full render is enabled', () => {
+    const hiddenBuffer = createRenderBuffer('flat');
+    const fullBuffer = createRenderBuffer('flat');
+    const hidden = comment('// source-only', { lineComment: true });
+    const full = comment('// source-only', { lineComment: true });
+    full.fullRender = true;
+
+    expect(hidden.render(context, hiddenBuffer)).toBe('');
+    expect(hiddenBuffer.parts).toEqual([]);
+    expect(full.render(context, fullBuffer)).toBe('// source-only');
+    expect(fullBuffer.parts).toEqual(['// source-only']);
   });
 
   it('preserves printable block trivia before invisible nodes', () => {
@@ -200,7 +219,7 @@ describe('Comment', () => {
 
     expect(resolved.toTrimmedString()).toBe('/* keep me */');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

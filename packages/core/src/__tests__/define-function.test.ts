@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { defineFunction, callWithContext } from '../define-function.js';
 import { Context } from '../context.js';
 import { expectTypeOf } from 'vitest';
-import { Color, Dimension, F_MAY_ASYNC } from '../tree/index.js';
+import { Any, Color, Dimension, F_MAY_ASYNC } from '../tree/index.js';
 
 describe('defineFunction', () => {
   const args = [
@@ -490,6 +490,38 @@ describe('defineFunction', () => {
       expect(result).toBe(a);
       // Only first element evaluated lazily upon access
       expect(calls).toEqual(['#000']);
+    });
+
+    it('does not copy raw args for functions without params metadata', async () => {
+      class CopyBomb extends Any<string> {
+        static copyShouldThrow = false;
+
+        constructor(
+          value: string,
+          options?: ConstructorParameters<typeof Any<string>>[1],
+          location?: ConstructorParameters<typeof Any<string>>[2],
+          treeContext?: ConstructorParameters<typeof Any<string>>[3]
+        ) {
+          if (CopyBomb.copyShouldThrow) {
+            throw new Error('unexpected raw arg copy');
+          }
+          super(value, options, location, treeContext);
+        }
+      }
+
+      const value = new CopyBomb('red', undefined, [0, 1, 1, 2, 1, 3]);
+      CopyBomb.copyShouldThrow = true;
+      try {
+        const ctx = new Context();
+        const result = await callWithContext(ctx, function echo(this: Context, arg: CopyBomb) {
+          expect(this).toBe(ctx);
+          return arg;
+        }, value);
+
+        expect(result).toBe(value);
+      } finally {
+        CopyBomb.copyShouldThrow = false;
+      }
     });
 
     it('should support lazy evaluation of object parameters', async () => {

@@ -1,8 +1,9 @@
 import type { IToken } from 'chevrotain';
-import { any, attr, co, compound, el, pseudo, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { amp, any, attr, co, compound, el, pseudo, ref, rules, Rules, sel, sellist, vardecl } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -25,6 +26,15 @@ const token = (image: string): IToken => ({
 });
 
 let context: Context;
+
+async function useEvaluatedRules(node: Rules): Promise<void> {
+  const evald = await node.eval(context);
+  if (!(evald instanceof Rules)) {
+    throw new TypeError('Expected Rules');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 describe('Complex selector', () => {
   beforeEach(() => {
@@ -61,9 +71,7 @@ describe('Complex selector', () => {
           value: any('foo')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      await useEvaluatedRules(node);
 
       const rendered = sel([
         compound([
@@ -79,6 +87,45 @@ describe('Complex selector', () => {
       ]).render(context);
 
       expect(rendered).toBe('a[data=foo] > .foo');
+    });
+
+    test('writes resolved complex selector output into segmented buffers', async () => {
+      const node = rules([
+        vardecl({
+          name: any('attr-name'),
+          value: any('foo')
+        })
+      ]);
+      await useEvaluatedRules(node);
+      const buffer = createRenderBuffer('segmented');
+
+      const selectorNode = sel([
+        compound([
+          el('a'),
+          attr({
+            name: 'data',
+            op: '=',
+            value: ref({ key: 'attr-name' }, { type: 'variable' })
+          })
+        ]),
+        co('>'),
+        el('.foo')
+      ]);
+      const originalResolve = selectorNode.resolve;
+      let resolveCalls = 0;
+      selectorNode.resolve = function countResolveCalls(
+        this: typeof selectorNode,
+        ...args: Parameters<typeof originalResolve>
+      ): ReturnType<typeof originalResolve> {
+        resolveCalls++;
+        return originalResolve.apply(this, args);
+      };
+
+      const rendered = selectorNode.render(context, buffer);
+
+      expect(rendered).toBe('a[data=foo] > .foo');
+      expect(buffer.segments).toEqual(['a[data=foo] > .foo']);
+      expect(resolveCalls).toBe(0);
     });
 
     test('does not consume reordered source trivia between generated selector parts', () => {
@@ -106,9 +153,7 @@ describe('Complex selector', () => {
           value: any('foo')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      await useEvaluatedRules(node);
 
       const selector = sel([
         compound([
@@ -127,7 +172,7 @@ describe('Complex selector', () => {
 
       expect(resolved.toTrimmedString()).toBe('a[data=foo] > .foo');
       expect(selector.evaluated).toBe(false);
-      expect(selector.preEvaluated).toBe(false);
+      expect(selector.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
 
@@ -138,9 +183,7 @@ describe('Complex selector', () => {
           value: any('foo')
         })
       ]);
-      const evald = await node.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      await useEvaluatedRules(node);
 
       const selector = sel([
         compound([
@@ -164,6 +207,23 @@ describe('Complex selector', () => {
       expect(sourceCombinator.parent).toBe(selector);
       expect(sourceChild.parent).toBe(selector);
       expect(selector.toTrimmedString()).toBe('a[data=$attr-name] > .foo');
+    });
+
+    test('keeps source complex child canonical when eval collapses to one selector', async () => {
+      const selector = sel([
+        amp(),
+        el('.keep')
+      ]);
+      const sourceChild = selector.value[1]!;
+      const sourceParent = sourceChild.parent;
+      const sourceLocation = sourceChild.location;
+      const resolved = await selector.eval(context);
+
+      expect(resolved.toTrimmedString()).toBe('.keep');
+      expect(resolved).not.toBe(sourceChild);
+      expect(sourceChild.parent).toBe(sourceParent);
+      expect(sourceChild.location).toBe(sourceLocation);
+      expect(selector.toTrimmedString()).toBe('&.keep');
     });
   });
 

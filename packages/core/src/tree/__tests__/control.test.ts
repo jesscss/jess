@@ -15,6 +15,7 @@ import {
   any,
   bool,
   call,
+  condition,
   decl,
   expr,
   interpolated,
@@ -24,11 +25,14 @@ import {
   ref,
   rules,
   ruleset,
-  sel
+  sel,
+  num,
+  op,
+  vardecl
 } from '../index.js';
 import { Context } from '../../context.js';
 import { OutputWriter } from '../util/print.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -128,7 +132,7 @@ describe('Control Nodes', () => {
     `);
   });
 
-  it('keeps direct $if render(context) on source syntax until parent Rules owns evaluated emission', () => {
+  it('renders selected $if branch through direct render(context)', async () => {
     const context = new Context();
     const node = new If({
       branches: [
@@ -142,20 +146,8 @@ describe('Control Nodes', () => {
       ]
     });
 
-    expect(node.render(context)).toBeString(`
-      $if (true) {
-        color: red;
-      } $else {
-        color: blue;
-      }
-    `);
-    expect(context.printState.writer?.toString()).toBeString(`
-      $if (true) {
-        color: red;
-      } $else {
-        color: blue;
-      }
-    `);
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 
   it('keeps direct $if resolve(context) on source syntax without eval stamping', () => {
@@ -176,8 +168,140 @@ describe('Control Nodes', () => {
 
     expect(resolved).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes evaluated $if output into render buffers without public resolve/eval wrapper', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const selectedRules = rules([decl({ name: 'color', value: any('blue') })]);
+    const originalSelectedRender = selectedRules.render;
+    let selectedRulesRenderCalls = 0;
+    selectedRules.render = function countSelectedRulesRender(
+      this: typeof selectedRules,
+      ...args: Parameters<typeof originalSelectedRender>
+    ): ReturnType<typeof originalSelectedRender> {
+      selectedRulesRenderCalls++;
+      return originalSelectedRender.apply(this, args);
+    };
+    const node = new If({
+      branches: [
+        {
+          condition: bool(false),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        },
+        {
+          condition: bool(true),
+          rules: selectedRules
+        },
+        {
+          rules: rules([decl({ name: 'color', value: any('green') })])
+        }
+      ]
+    });
+    node.resolve = () => {
+      throw new Error('$if buffer render should use evalNode');
+    };
+    node.evalNode = () => {
+      throw new Error('$if buffer render should evaluate the selected branch directly');
+    };
+
+    await expect(node.render(context, buffer)).resolves.toBe('color: blue;');
+    expect(buffer.parts).toEqual(['color: blue;']);
+    expect(selectedRulesRenderCalls).toBe(1);
+  });
+
+  it('evaluates $if output through root render', async () => {
+    const context = new Context();
+    const root = rules([
+      new If({
+        branches: [
+          {
+            condition: bool(false),
+            rules: rules([decl({ name: 'color', value: any('red') })])
+          },
+          {
+            rules: rules([decl({ name: 'color', value: any('green') })])
+          }
+        ]
+      })
+    ]);
+
+    await expect(renderNodeToString(root, context)).resolves.toBe('color: green;\n');
+  });
+
+  it('resolves unmatched $if output as a generated empty rules surface', async () => {
+    const context = new Context();
+    const node = new If({
+      branches: [
+        {
+          condition: bool(false),
+          rules: rules([decl({ name: 'color', value: any('red') })])
+        }
+      ]
+    });
+
+    const resolved = await node.evalNode(context);
+
+    expect(resolved).toBeInstanceOf(Rules);
+    if (!(resolved instanceof Rules)) {
+      throw new Error('Expected unmatched $if output to be Rules');
+    }
+    expect(resolved.location).toHaveLength(0);
+    expect(resolved.treeContextIfSet).toBeUndefined();
+    expect(resolved.scopeFrame).toBeUndefined();
+    expect(resolved.parent).toBeUndefined();
+    expect(resolved.toTrimmedString()).toBe('');
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('evaluates nested control blocks inside ruleset render', async () => {
+    const context = new Context();
+    let whileCalls = 0;
+    const root = rules([
+      ruleset({
+        selector: sel([el('.a')]),
+        rules: rules([
+          new If({
+            branches: [
+              {
+                condition: bool(true),
+                rules: rules([decl({ name: 'color', value: any('red') })])
+              }
+            ]
+          }),
+          makeLoop(
+            makePattern(['value'], 'single'),
+            list([new Any('10px'), new Any('20px')]),
+            rules([decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })])
+          ),
+          new While({
+            condition: call({
+              name: new JsFunction({
+                name: 'keep-going',
+                fn: () => bool(++whileCalls <= 2)
+              }),
+              args: list([])
+            }),
+            rules: rules([decl({ name: 'height', value: any('1px') })])
+          })
+        ])
+      })
+    ]);
+
+    await expect(renderNodeToString(root, context)).resolves.toBeString(`
+      .a {
+        color: red;
+        width: 10px;
+        width: 20px;
+        height: 1px;
+        height: 1px;
+      }
+    `);
+    expect(whileCalls).toBe(3);
   });
 
   it('serializes $for source syntax through toTrimmedString()', () => {
@@ -217,7 +341,7 @@ describe('Control Nodes', () => {
     expect(writer.captures).toBe(0);
   });
 
-  it('keeps direct $for render(context) on source syntax until parent Rules owns evaluated emission', () => {
+  it('renders $for iterations through direct render(context)', async () => {
     const context = new Context();
     const node = makeLoop(
       makePattern(['value'], 'single'),
@@ -225,16 +349,10 @@ describe('Control Nodes', () => {
       rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
     );
 
-    expect(node.render(context)).toBeString(`
-      $for ($value of a, b) {
-        item: $value;
-      }
-    `);
-    expect(context.printState.writer?.toString()).toBeString(`
-      $for ($value of a, b) {
-        item: $value;
-      }
-    `);
+    const rendered = await Promise.resolve(node.render(context));
+
+    expect(rendered).toContain('item: a');
+    expect(rendered).toContain('item: b');
   });
 
   it('resolves $for output without touching render state', async () => {
@@ -250,8 +368,39 @@ describe('Control Nodes', () => {
     expect(resolved.toTrimmedString()).toContain('item: a');
     expect(resolved.toTrimmedString()).toContain('item: b');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes evaluated $for output into render buffers without public resolve/eval wrapper', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('segmented');
+    const node = makeLoop(
+      makePattern(['value'], 'single'),
+      list([any('a'), any('b')]),
+      rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+    );
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+    node.evalNode = () => {
+      throw new Error('$for buffer render should stream iterations');
+    };
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toContain('item: a');
+    expect(rendered).toContain('item: b');
+    expect(buffer.segments.join('')).toBe(rendered);
+    expect(resolveCalls).toBe(0);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('serializes $while source syntax through toTrimmedString()', () => {
@@ -267,38 +416,492 @@ describe('Control Nodes', () => {
     `);
   });
 
-  it('keeps direct $while render(context) on source syntax', () => {
+  it('renders false $while output through direct render(context)', async () => {
     const context = new Context();
     const node = new While({
-      condition: bool(true),
+      condition: bool(false),
       rules: rules([decl({ name: 'color', value: any('red') })])
     });
 
-    expect(node.render(context)).toBeString(`
-      $while (true) {
-        color: red;
-      }
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+  });
+
+  it('resolves false $while output without touching render state', async () => {
+    const context = new Context();
+    const node = new While({
+      condition: bool(false),
+      rules: rules([decl({ name: 'color', value: any('red') })])
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved).toBeInstanceOf(Rules);
+    if (!(resolved instanceof Rules)) {
+      throw new Error('Expected false $while output to be Rules');
+    }
+    expect(resolved.location).toHaveLength(0);
+    expect(resolved.treeContextIfSet).toBeUndefined();
+    expect(resolved.scopeFrame).toBeUndefined();
+    expect(resolved.toTrimmedString()).toBe('');
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('does not prepare $while body registration when the condition is false', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    const colorDecl = decl({ name: 'color', value: any('red') });
+    const originalPrepareRegistration = colorDecl.prepareRegistration.bind(colorDecl);
+    colorDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const node = new While({
+      condition: bool(false),
+      rules: rules([colorDecl])
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+
+    expect(sourcePrepCalls).toBe(0);
+  });
+
+  it('evaluates repeated $while body output through root render', async () => {
+    const context = new Context();
+    let calls = 0;
+    const root = rules([
+      new While({
+        condition: call({
+          name: new JsFunction({
+            name: 'keep-going',
+            fn: () => bool(++calls <= 2)
+          }),
+          args: list([])
+        }),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+
+    await expect(Promise.resolve(renderNodeToString(root, context))).resolves.toBeString(`
+      color: red;
+      color: red;
     `);
-    expect(context.printState.writer?.toString()).toBeString(`
-      $while (true) {
-        color: red;
-      }
+    expect(calls).toBe(3);
+  });
+
+  it('lets $while body mutation advance the next condition', async () => {
+    const context = new Context();
+    const root = rules([
+      vardecl({ name: 'i', value: num(0) }),
+      new While({
+        condition: condition([
+          ref({ key: 'i' }, { type: 'variable' }),
+          '<',
+          num(3)
+        ]),
+        rules: rules([
+          vardecl({
+            name: 'i',
+            value: op([
+              ref({ key: 'i' }, { type: 'variable' }),
+              '+',
+              num(1)
+            ])
+          }),
+          decl({ name: 'tick', value: any('yes') })
+        ])
+      })
+    ]);
+
+    await expect(Promise.resolve(renderNodeToString(root, context))).resolves.toBeString(`
+      tick: yes;
+      tick: yes;
+      tick: yes;
     `);
   });
 
-  it('keeps direct $while resolve(context) on source syntax without eval stamping', () => {
+  it('keeps native loop render aligned with eval serialization for stateful loops', async () => {
+    const makeRoot = () => rules([
+      vardecl({ name: 'i', value: num(0) }),
+      new While({
+        condition: condition([
+          ref({ key: 'i' }, { type: 'variable' }),
+          '<',
+          num(3)
+        ]),
+        rules: rules([
+          vardecl({
+            name: 'i',
+            value: op([
+              ref({ key: 'i' }, { type: 'variable' }),
+              '+',
+              num(1)
+            ])
+          }),
+          decl({ name: 'tick', value: ref({ key: 'i' }, { type: 'variable' }) })
+        ])
+      }),
+      makeLoop(
+        makePattern(['value'], 'single'),
+        list([any('a'), any('b')]),
+        rules([decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })])
+      )
+    ]);
+
+    const renderCss = await renderNodeToString(makeRoot(), new Context());
+    const evald = await makeRoot().eval(new Context());
+
+    expect(renderCss.trim()).toBe(evald.toTrimmedString().trim());
+    expect(renderCss).toBeString(`
+      tick: 1;
+      tick: 1;
+      tick: 2;
+      item: a;
+      item: b;
+    `);
+  });
+
+  it('restores rulesContext when $while streaming throws', async () => {
     const context = new Context();
+    const scope = rules([]);
+    const buffer = createRenderBuffer('flat');
     const node = new While({
       condition: bool(true),
+      rules: rules([
+        decl({
+          name: 'color',
+          value: call({
+            name: new JsFunction({
+              name: 'explode',
+              fn: () => {
+                throw new Error('boom');
+              }
+            }),
+            args: list([])
+          })
+        })
+      ])
+    });
+    context.rulesContext = scope;
+
+    await expect(Promise.resolve(node.render(context, buffer))).rejects.toThrow('boom');
+    expect(context.rulesContext).toBe(scope);
+  });
+
+  it('writes evaluated $while output into render buffers without public resolve/eval wrapper', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    let calls = 0;
+    const node = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going',
+          fn: () => bool(++calls <= 2)
+        }),
+        args: list([])
+      }),
       rules: rules([decl({ name: 'color', value: any('red') })])
     });
+    node.resolve = () => {
+      throw new Error('$while buffer render should use evalNode');
+    };
+    node.evalNode = () => {
+      throw new Error('$while buffer render should stream iterations');
+    };
 
-    const resolved = node.resolve(context);
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+      color: red;
+      color: red;
+    `);
+    expect(buffer.parts.join('')).toBeString(`
+      color: red;
+      color: red;
+    `);
+    expect(calls).toBe(3);
+  });
 
-    expect(resolved).toBe(node);
-    expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
-    expect(context.printState.writer).toBeUndefined();
+  it('builds $while iteration render surfaces without calling Rules.clone()', async () => {
+    const context = new Context();
+    const buffer = createRenderBuffer('flat');
+    const originalClone = Rules.prototype.clone;
+    let clonedLoopRules = 0;
+    Rules.prototype.clone = function cloneForCounting(
+      this: Rules,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.value.some(node => (
+        node.type === 'Declaration'
+        && node.value?.name?.valueOf?.() === 'tick'
+      ))) {
+        clonedLoopRules++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      let calls = 0;
+      const loopRules = rules([
+        decl({ name: 'tick', value: any('yes') })
+      ]);
+      const node = new While({
+        condition: call({
+          name: new JsFunction({
+            name: 'keep-going',
+            fn: () => bool(++calls <= 2)
+          }),
+          args: list([])
+        }),
+        rules: loopRules
+      });
+
+      const css = await Promise.resolve(node.render(context, buffer));
+
+      expect(css).toContain('tick: yes');
+      expect(calls).toBe(3);
+      expect(clonedLoopRules).toBe(0);
+      expect(loopRules.parent).toBe(node);
+    } finally {
+      Rules.prototype.clone = originalClone;
+    }
+  });
+
+  it('reuses childless source-free scalar leaves in $while per-iteration body copies', async () => {
+    const context = new Context();
+    const originalCopy = Any.prototype.copy;
+    const originalClone = Any.prototype.clone;
+    let scalarCopies = 0;
+    let scalarClones = 0;
+    Any.prototype.copy = function copyForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      if (this.valueOf() === 'red') {
+        scalarCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+    Any.prototype.clone = function cloneForCounting(
+      this: Any,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.valueOf() === 'red') {
+        scalarClones++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      let calls = 0;
+      const node = new While({
+        condition: call({
+          name: new JsFunction({
+            name: 'keep-going',
+            fn: () => bool(++calls <= 2)
+          }),
+          args: list([])
+        }),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+
+      const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
+
+      expect(css).toBeString(`
+        color: red;
+        color: red;
+      `);
+      expect(calls).toBe(3);
+      expect(scalarCopies).toBe(0);
+      expect(scalarClones).toBe(0);
+    } finally {
+      Any.prototype.copy = originalCopy;
+      Any.prototype.clone = originalClone;
+    }
+  });
+
+  it('reuses static direct $while body children instead of deriving per-iteration copies', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    let calls = 0;
+    const tickDecl = decl({ name: 'tick', value: any('yes') });
+    const originalPrepareRegistration = tickDecl.prepareRegistration.bind(tickDecl);
+    tickDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([tickDecl]);
+    const node = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going',
+          fn: () => bool(++calls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: loopRules
+    });
+
+    const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
+
+    expect(css).toBeString(`
+      tick: yes;
+      tick: yes;
+    `);
+    expect(sourcePrepCalls).toBe(0);
+    expect(tickDecl.parent).toBe(loopRules);
+  });
+
+  it('reuses dynamic direct $while body children while re-evaluating each iteration', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    let calls = 0;
+    const tickDecl = decl({ name: 'tick', value: ref({ key: 'tick' }, { type: 'variable' }) });
+    const originalPrepareRegistration = tickDecl.prepareRegistration.bind(tickDecl);
+    tickDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([
+      vardecl({ name: any('tick'), value: call({
+        name: new JsFunction({
+          name: 'next-tick',
+          fn: () => any(String(calls))
+        }),
+        args: list([])
+      }) }),
+      tickDecl
+    ]);
+    const node = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going',
+          fn: () => bool(++calls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: loopRules
+    });
+
+    const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
+
+    expect(css).toBeString(`
+      tick: 1;
+      tick: 2;
+    `);
+    expect(sourcePrepCalls).toBe(0);
+    expect(tickDecl.parent).toBe(loopRules);
+  });
+
+  it('updates dynamic-name $while body mutations without preparing the body surface', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    let calls = 0;
+    const tickDecl = decl({ name: 'tick', value: ref({ key: 'tick' }, { type: 'variable' }) });
+    const originalPrepareRegistration = tickDecl.prepareRegistration.bind(tickDecl);
+    tickDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([
+      vardecl({ name: 'target', value: any('tick') }),
+      vardecl({ name: interpolated({
+        source: INTERPOLATION_PLACEHOLDER,
+        replacements: [ref({ key: 'target' }, { type: 'variable' })]
+      }), value: call({
+        name: new JsFunction({
+          name: 'next-dynamic-tick',
+          fn: () => any(String(calls))
+        }),
+        args: list([])
+      }) }),
+      tickDecl
+    ]);
+    const node = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going',
+          fn: () => bool(++calls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: loopRules
+    });
+
+    const css = await Promise.resolve(node.render(context, createRenderBuffer('flat')));
+
+    expect(css).toBeString(`
+      tick: 1;
+      tick: 2;
+    `);
+    expect(sourcePrepCalls).toBe(0);
+    expect(tickDecl.parent).toBe(loopRules);
+  });
+
+  it('keeps canonical $while body children parented to the source wrapper', async () => {
+    const renderContext = new Context();
+    const renderBuffer = createRenderBuffer('flat');
+    const renderDecl = decl({ name: 'tick', value: any('yes') });
+    const renderRules = rules([renderDecl]);
+    let renderCalls = 0;
+    const renderNode = new While({
+      condition: call({
+        name: new JsFunction({
+          name: 'keep-going-render',
+          fn: () => bool(++renderCalls <= 2)
+        }),
+        args: list([])
+      }),
+      rules: renderRules
+    });
+
+    const rendered = await Promise.resolve(renderNode.render(renderContext, renderBuffer));
+
+    expect(rendered).toBeString(`
+      tick: yes;
+      tick: yes;
+    `);
+    expect(renderCalls).toBe(3);
+    expect(renderDecl.parent).toBe(renderRules);
+
+    const evalContext = new Context();
+    const evalDecl = decl({ name: 'tick', value: any('yes') });
+    const evalRules = rules([evalDecl]);
+    let evalCalls = 0;
+    const evalRoot = rules([
+      new While({
+        condition: call({
+          name: new JsFunction({
+            name: 'keep-going-eval',
+            fn: () => bool(++evalCalls <= 2)
+          }),
+          args: list([])
+        }),
+        rules: evalRules
+      })
+    ]);
+
+    const evald = await evalRoot.eval(evalContext);
+
+    expect(evald.toTrimmedString()).toBeString(`
+      tick: yes;
+      tick: yes;
+    `);
+    expect(evalCalls).toBe(3);
+    expect(evalDecl.parent).toBe(evalRules);
+  });
+
+  it('throws when $while exceeds its iteration guard', async () => {
+    const context = new Context();
+    const root = rules([
+      new While({
+        condition: bool(true),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+
+    await expect(Promise.resolve().then(() => renderNodeToString(root, context))).rejects.toThrow('$while exceeded 10000 iterations');
   });
 
   it('adopts $while condition and rules as children', () => {
@@ -412,11 +1015,11 @@ describe('Control Nodes', () => {
     expect(css).toContain('item: a');
   });
 
-  it('derives zero-iteration $for output from the canonical loop body wrapper', async () => {
+  it('uses a generated zero-iteration $for output wrapper', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
-    ]);
+    ], { local: true });
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
 
     const evald = await root.eval(context);
@@ -428,8 +1031,50 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.value).toEqual([]);
+    expect(loopOutput.location).toHaveLength(0);
+    expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput.scopeFrame).toBeUndefined();
     expect(await renderNodeToString(root, new Context())).toBe('');
+  });
+
+  it('does not carry function registries on zero-iteration $for output wrappers', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    loopRules.register('function', new JsFunction({
+      name: 'make-blue',
+      fn: () => any('blue')
+    }));
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+
+    const evald = await root.eval(context);
+    const loopOutput = evald.at(0);
+
+    expect(loopRules.functionRegistry).toBeDefined();
+    expect(loopOutput).toBeInstanceOf(Rules);
+    if (!(loopOutput instanceof Rules)) {
+      throw new Error('Expected loop output to be Rules');
+    }
+    expect(loopOutput.functionRegistry).toBeUndefined();
+  });
+
+  it('does not prepare $for body registration when the iterable is empty', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
+    const originalPrepareRegistration = itemDecl.prepareRegistration.bind(itemDecl);
+    itemDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([itemDecl]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([]), loopRules)]);
+
+    await expect(renderNodeToString(root, context)).resolves.toBe('');
+
+    expect(sourcePrepCalls).toBe(0);
+    expect(itemDecl.parent).toBe(loopRules);
   });
 
   it('does not shallow-clone loop body children to create zero-iteration output wrappers', async () => {
@@ -522,11 +1167,11 @@ describe('Control Nodes', () => {
     }
   });
 
-  it('derives multi-iteration $for output from the canonical loop body wrapper', async () => {
+  it('uses a generated multi-iteration $for output wrapper', async () => {
     const context = new Context();
     const loopRules = rules([
       decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
-    ]);
+    ], { local: true });
     const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
 
     const evald = await root.eval(context);
@@ -538,10 +1183,55 @@ describe('Control Nodes', () => {
     }
     expect(loopOutput).not.toBe(loopRules);
     expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.location).toHaveLength(0);
+    expect(loopOutput.options.local).toBeUndefined();
     expect(loopOutput.scopeFrame).toBeUndefined();
     const css = await renderNodeToString(root, new Context());
     expect(css).toContain('item: a');
     expect(css).toContain('item: b');
+  });
+
+  it('does not carry function registries on multi-iteration $for output wrappers', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    loopRules.register('function', new JsFunction({
+      name: 'make-blue',
+      fn: () => any('blue')
+    }));
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const evald = await root.eval(context);
+    const loopOutput = evald.at(0);
+
+    expect(loopRules.functionRegistry).toBeDefined();
+    expect(loopOutput).toBeInstanceOf(Rules);
+    if (!(loopOutput instanceof Rules)) {
+      throw new Error('Expected loop output to be Rules');
+    }
+    expect(loopOutput.value).toHaveLength(2);
+    expect(loopOutput.functionRegistry).toBeUndefined();
+  });
+
+  it('preserves function registries on runtime $for iteration surfaces', async () => {
+    const context = new Context();
+    const loopRules = rules([
+      decl({
+        name: 'color',
+        value: call({
+          name: ref({ key: 'make-blue' }, { type: 'function' }),
+          args: list([])
+        })
+      })
+    ]);
+    loopRules.register('function', new JsFunction({
+      name: 'make-blue',
+      fn: () => any('blue')
+    }));
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a')]), loopRules)]);
+
+    await expect(renderNodeToString(root, context)).resolves.toContain('color: blue');
   });
 
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
@@ -613,6 +1303,50 @@ describe('Control Nodes', () => {
     } finally {
       Any.prototype.clone = originalClone;
     }
+  });
+
+  it('reuses static direct $for body children instead of deriving per-iteration copies', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    const colorDecl = decl({ name: 'color', value: any('red') });
+    const originalPrepareRegistration = colorDecl.prepareRegistration.bind(colorDecl);
+    colorDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([
+      colorDecl,
+      decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) })
+    ]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toContain('color: red');
+    expect(css).toContain('item: a');
+    expect(css).toContain('item: b');
+    expect(sourcePrepCalls).toBe(1);
+    expect(colorDecl.parent).toBe(loopRules);
+  });
+
+  it('reuses dynamic direct $for body children while re-evaluating each iteration', async () => {
+    const context = new Context();
+    let sourcePrepCalls = 0;
+    const itemDecl = decl({ name: 'item', value: ref({ key: 'value' }, { type: 'variable' }) });
+    const originalPrepareRegistration = itemDecl.prepareRegistration.bind(itemDecl);
+    itemDecl.prepareRegistration = (renderContext: Context) => {
+      sourcePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const loopRules = rules([itemDecl]);
+    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
+
+    const css = await renderNodeToString(root, context);
+
+    expect(css).toContain('item: a');
+    expect(css).toContain('item: b');
+    expect(sourcePrepCalls).toBe(1);
+    expect(itemDecl.parent).toBe(loopRules);
   });
 
   it('binds source-free scalar $for values without copying or cloning them first', async () => {

@@ -1,8 +1,30 @@
 import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
-import { MixinRegistry } from '../util/registry-utils.js';
+import { getRulesEntryTraversalState, MixinRegistry } from '../util/registry-utils.js';
 import { renderNodeToString } from '../util/render-buffer.js';
+import {
+  attachMixinOutputSlot,
+  canEnterMixinOutputForLookup,
+  canEnterRulesEntryForLookup,
+  getMixinOutputChildForSource,
+  getMixinOutputPlacementChildren,
+  getMixinOutputReferenceMode,
+  getMixinOutputRulesVisibility,
+  getMixinOutputScopeFrame,
+  getMixinOutputSourceChild,
+  getMixinOutputSourceChildren,
+  getMixinOutputSourceIndex,
+  getMixinOutputChildPlacementState,
+  getMixinOutputPlacementRecord,
+  getMixinOutputLookupState,
+  getMixinOutputRuleIndex,
+  getRulesetMixinPlacementSourceIndex,
+  isFromRestrictedMixinOutput,
+  isPublicRulesEntry,
+  keepsDuplicateMixinOutputDeclaration
+} from '../util/mixin-output-slot.js';
+import { createCallableOuterRules, createMixinOutputRulesWrapper } from '../rules.js';
 
 let context: Context;
 
@@ -91,7 +113,7 @@ describe('Mixin', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -105,9 +127,38 @@ describe('Mixin', () => {
 
     const prepared = await node.prepareRegistration(context);
 
-    expect(prepared.preEvaluated).toBe(true);
-    expect(body.preEvaluated).toBe(false);
-    expect(bodyDecl.preEvaluated).toBe(false);
+    expect(prepared.registrationPrepared).toBe(true);
+    expect(body.registrationPrepared).toBe(false);
+    expect(bodyDecl.registrationPrepared).toBe(false);
+  });
+
+  it('creates generated mixin output wrappers through a named helper', () => {
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+
+    const output = createMixinOutputRulesWrapper(body, true);
+
+    expect(output).not.toBe(body);
+    expect(output.options.mixinOutputSlot?.sourceRules).toBe(body);
+    expect(output.options.mixinOutputSlot?.ambientLookup).toBe(false);
+    expect(output.value).toEqual([]);
+  });
+
+  it('creates callable outer rules wrappers through a named helper', () => {
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const output = createCallableOuterRules(body, {
+      rulesVisibility: {
+        Declaration: 'public'
+      }
+    });
+
+    expect(output).not.toBe(body);
+    expect(output.options.rulesVisibility?.Declaration).toBe('public');
+    expect(output.value).toEqual([]);
+    expect(body.value).toHaveLength(1);
   });
 
   describe('calling', () => {
@@ -172,6 +223,35 @@ describe('Mixin', () => {
         }
         .second {
           /**/
+          color: red;
+        }
+      `);
+    });
+
+    it('emits repeated direct declarations for each mixin output placement', async () => {
+      const mixinDef = mixin({
+        name: any('.repeat'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const root = rules([
+        mixinDef,
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.repeat' }, { type: 'mixin' }) }),
+            call({ name: ref({ key: '.repeat' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .use {
+          color: red;
           color: red;
         }
       `);
@@ -294,6 +374,93 @@ describe('Mixin', () => {
       } finally {
         Any.prototype.clone = originalClone;
       }
+    });
+
+    it('keeps ruleset-as-mixin placement children owned while reusing reusable leaves', async () => {
+      const sourceValue = any('red');
+      const sourceDecl = decl({ name: 'color', value: sourceValue });
+      const sourceBody = rules([sourceDecl]);
+      const sourceRuleset = ruleset({
+        selector: el('.my-mixin'),
+        rules: sourceBody
+      });
+      const callerRules = rules([]);
+      const root = rules([
+        sourceRuleset,
+        ruleset({
+          selector: el('.test'),
+          rules: callerRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = callerRules;
+
+      const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
+      callerRules.adopt(mixinCall);
+      const result = await mixinCall.eval(context);
+
+      expect(result).toBeInstanceOf(RulesClass);
+      if (!(result instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      const outputDecl = result.value[0];
+      expect(outputDecl).not.toBe(sourceDecl);
+      expect(getMixinOutputSourceChild(result, outputDecl!)).toBe(sourceDecl);
+      expect(getMixinOutputChildForSource(result, sourceDecl)).toBe(outputDecl);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.sourceRules).toBe(sourceBody);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.outputRules).toBe(result);
+      expect(outputDecl?.parent).toBe(result);
+      expect(sourceDecl.parent).toBe(sourceBody);
+      expect(sourceValue.parent).toBe(sourceDecl);
+    });
+
+    it('keeps ruleset-as-mixin nested placement order mapped through the slot', async () => {
+      const sourceComment = comment('/* placement */');
+      const sourceNested = ruleset({
+        selector: el('.nested'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const sourceBody = rules([
+        sourceComment,
+        sourceNested
+      ]);
+      const sourceRuleset = ruleset({
+        selector: el('.my-mixin'),
+        rules: sourceBody
+      });
+      const callerRules = rules([]);
+      const root = rules([
+        sourceRuleset,
+        ruleset({
+          selector: el('.test'),
+          rules: callerRules
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = callerRules;
+
+      const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
+      callerRules.adopt(mixinCall);
+      const result = await mixinCall.eval(context);
+
+      expect(result).toBeInstanceOf(RulesClass);
+      if (!(result instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      expect(getMixinOutputSourceChildren(result)).toEqual(sourceBody.value);
+      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(sourceBody.value);
+      expect(sourceBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.source)).toEqual(sourceBody.value);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map(segment => segment.output)).toEqual(result.value);
+      expect(result.value.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
+      expect(result.value.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
+      expect(result.value[0]).not.toBe(sourceComment);
+      expect(result.value[1]).not.toBe(sourceNested);
+      expect(sourceComment.parent).toBe(sourceBody);
+      expect(sourceNested.parent).toBe(sourceBody);
+      expect(result.value.map(child => child.parent)).toEqual([result, result]);
     });
 
     it('should call a mixin with parameters', async () => {
@@ -906,6 +1073,7 @@ describe('Mixin', () => {
         ]),
         rules: rules([
           decl({ name: 'default', value: ref({ key: 'parameter' }, { type: 'variable' }) }),
+          comment('/* source order */'),
           decl({ name: 'scope', value: ref({ key: 'anotherVariable' }, { type: 'variable' }) }),
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
         ])
@@ -934,7 +1102,7 @@ describe('Mixin', () => {
       expect(css).toContain('sub-scope-only: inside;');
     });
 
-    it('does not stamp call-site back-pointers on ordinary mixin body output while preserving caller fallback', async () => {
+    it('keeps ordinary mixin output as a runtime wrapper without stamping source body parents', async () => {
       const mixinNoParam = mixin({
         name: any('.mixinNoParam'),
         params: list([
@@ -951,6 +1119,7 @@ describe('Mixin', () => {
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
         ])
       });
+      const mixinBody = mixinNoParam.value.rules;
 
       const callerRules = rules([
         vardecl({ name: 'parameterDefault', value: any('inside') }),
@@ -980,10 +1149,151 @@ describe('Mixin', () => {
         throw new Error('Expected Rules result');
       }
       expect(Reflect.has(result, 'sourceParent')).toBe(false);
+      expect(result).not.toBe(mixinBody);
+      expect(result.sourceNode).toBe(mixinBody);
+      expect(result.options.referenceMode).toBe(false);
+      expect(result.options.mixinOutputSlot?.ambientLookup).toBe(true);
+      expect(canEnterMixinOutputForLookup({ node: result }, { type: 'Mixin', hasTarget: false })).toBe(true);
+      expect(canEnterRulesEntryForLookup({ node: result }, { type: 'Mixin', hasTarget: false })).toBe(true);
+      expect(result.options.mixinOutputSlot?.sourceRules).toBe(mixinBody);
+      expect(result.options.mixinOutputSlot?.outputRules).toBe(result);
+      expect(result.options.mixinOutputSlot?.childSegments.map(segment => ({
+        kind: segment.kind,
+        source: segment.source,
+        output: segment.output,
+        index: segment.index
+      }))).toEqual(mixinBody.value.map((source, index) => ({
+        kind: 'source-child',
+        source,
+        output: result.value[index],
+        index
+      })));
+      expect(result.value.map(child => getMixinOutputSourceChild(result, child))).toEqual(mixinBody.value);
+      expect(getMixinOutputSourceChildren(result)).toEqual(mixinBody.value);
+      expect(getMixinOutputPlacementChildren(result)).toEqual(result.value);
+      expect(getMixinOutputChildPlacementState(result, result.value[0]!)).toEqual({
+        outputChild: result.value[0],
+        outputRules: result,
+        sourceChild: mixinBody.value[0],
+        sourceIndex: 0
+      });
+      expect(getMixinOutputPlacementRecord(result)?.source).toBe(mixinBody);
+      expect(getMixinOutputPlacementRecord(result)?.output).toBe(result);
+      expect(getMixinOutputScopeFrame(result)).toBe(result.getScopeFrame());
+      expect(mixinBody.value.map(source => getMixinOutputChildForSource(result, source))).toEqual(result.value);
+      expect(result.value.map(child => result.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
+      expect(result.value.map(child => getMixinOutputSourceIndex(result, child))).toEqual([0, 1, 2]);
+      expect(result.value.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
+      expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
+      expect(result.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
+      expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
+      expect(mixinBody.parent).toBe(mixinNoParam);
       const css = await result.render(context);
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
       expect(css).toContain('sub-scope-only: inside;');
+
+      const secondMixinCall = call({ name: ref({ key: '.mixinNoParam' }, { type: 'mixin' }) });
+      callerRules.adopt(secondMixinCall);
+      const secondResult = await secondMixinCall.eval(context);
+      expect(secondResult).toBeInstanceOf(RulesClass);
+      if (!(secondResult instanceof RulesClass)) {
+        throw new Error('Expected Rules result');
+      }
+      expect(secondResult).not.toBe(result);
+      expect(secondResult.value).not.toBe(result.value);
+      expect(secondResult.options.referenceMode).toBe(false);
+      expect(secondResult.options.mixinOutputSlot?.ambientLookup).toBe(true);
+      expect(secondResult.value.map(child => getMixinOutputSourceChild(secondResult, child))).toEqual(mixinBody.value);
+      expect(getMixinOutputSourceChildren(secondResult)).toEqual(mixinBody.value);
+      expect(getMixinOutputPlacementChildren(secondResult)).toEqual(secondResult.value);
+      expect(getMixinOutputScopeFrame(secondResult)).toBe(secondResult.getScopeFrame());
+      expect(mixinBody.value.map(source => getMixinOutputChildForSource(secondResult, source))).toEqual(secondResult.value);
+      expect(secondResult.value.map(child => secondResult.options.mixinOutputSlot?.sourceIndexByOutput.get(child))).toEqual([0, 1, 2]);
+      expect(secondResult.value.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
+      expect(secondResult.value.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
+      expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
+      expect(secondResult.value.map(child => Reflect.get(child, 'index'))).toEqual([0, 1, 2]);
+      expect(secondResult.value.map((child, index) => child === result.value[index])).toEqual(
+        mixinBody.value.map(() => false)
+      );
+    });
+
+    it('keeps mixin-output entry traversal lookup-owned and type-specific', () => {
+      const source = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      const fallbackRules = rules([]);
+      const fallbackFrame = fallbackRules.getScopeFrame();
+      const output = rules([
+        decl({ name: 'color', value: any('red') })
+      ], {
+        rulesVisibility: {
+          Declaration: 'public',
+          Mixin: 'public',
+          Ruleset: 'public',
+          VarDeclaration: 'private'
+        }
+      });
+      attachMixinOutputSlot(output, source, true, { fallbackFrame });
+      const entry = { node: output };
+
+      expect(output.options.referenceMode).toBe(false);
+      expect(getMixinOutputReferenceMode(output)).toBe(false);
+      expect(output.options.mixinOutputSlot?.fallbackFrame).toBe(fallbackFrame);
+      expect(getMixinOutputRulesVisibility(output)).toBe(output.options.rulesVisibility);
+      expect(getMixinOutputPlacementChildren(output)).toEqual(output.value);
+      expect(getMixinOutputScopeFrame(output)).toBe(output.getScopeFrame());
+      expect(output.getScopeFrame().fallbackFrame).toBe(fallbackFrame);
+      expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: false })).toBe(false);
+      expect(canEnterMixinOutputForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
+      expect(getMixinOutputLookupState(entry, { type: 'Mixin', hasTarget: true })).toEqual({
+        ambientLookup: false,
+        canEnter: true,
+        hasTarget: true,
+        referenceMode: false,
+        visibility: 'public'
+      });
+      expect(getRulesEntryTraversalState(entry, { type: 'Mixin', hasTarget: true })?.mixinOutput).toEqual({
+        ambientLookup: false,
+        canEnter: true,
+        hasTarget: true,
+        referenceMode: false,
+        visibility: 'public'
+      });
+      expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(false);
+      expect(canEnterRulesEntryForLookup(entry, { type: 'Mixin', hasTarget: true })).toBe(true);
+
+      output.options.rulesVisibility.VarDeclaration = 'public';
+      expect(canEnterRulesEntryForLookup(entry, { type: 'VarDeclaration', hasTarget: true })).toBe(true);
+
+      const slotVisibility = output.options.rulesVisibility;
+      delete output.options.referenceMode;
+      delete output.options.rulesVisibility;
+      expect(getMixinOutputRulesVisibility(output)).toBe(slotVisibility);
+      expect(getMixinOutputReferenceMode(output)).toBe(false);
+      expect(canEnterRulesEntryForLookup(entry, { type: 'Declaration', hasTarget: true })).toBe(true);
+      expect(isPublicRulesEntry(entry, 'Declaration')).toBe(true);
+    });
+
+    it('detects restricted mixin-output ancestry through the slot helper', () => {
+      const source = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      const restrictedOutput = rules([
+        decl({ name: 'color', value: any('red') })
+      ]);
+      attachMixinOutputSlot(restrictedOutput, source, true);
+
+      const ambientOutput = rules([
+        decl({ name: 'color', value: any('blue') })
+      ]);
+      attachMixinOutputSlot(ambientOutput, source, false);
+
+      expect(isFromRestrictedMixinOutput(restrictedOutput.value[0])).toBe(true);
+      expect(isFromRestrictedMixinOutput(ambientOutput.value[0])).toBe(false);
+      expect(keepsDuplicateMixinOutputDeclaration(restrictedOutput.value[0])).toBe(true);
+      expect(keepsDuplicateMixinOutputDeclaration(ambientOutput.value[0])).toBe(false);
     });
 
     it('does not shallow-clone mixin body children to create param guard wrappers', async () => {
@@ -2420,6 +2730,182 @@ describe('Mixin', () => {
       expect('setRuntimeVarBinding' in RulesClass.prototype).toBe(false);
     });
 
+    it('does not prepare unused mixin parameter containers before lookup', async () => {
+      const originalDetachTrivia = Node.prototype.detachTrivia;
+      let detachedArgContainers = 0;
+      Node.prototype.detachTrivia = function detachTriviaForCounting(
+        this: Node,
+        ...args: Parameters<typeof originalDetachTrivia>
+      ): ReturnType<typeof originalDetachTrivia> {
+        if (this.type === 'Sequence' && this.valueOf() === 'red 10px') {
+          detachedArgContainers++;
+        }
+        return originalDetachTrivia.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.unused'),
+            params: list([
+              any('space', { role: 'property' })
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.unused' }, { type: 'mixin' }),
+                args: list([seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toContain('color: blue;');
+        expect(detachedArgContainers).toBe(0);
+      } finally {
+        Node.prototype.detachTrivia = originalDetachTrivia;
+      }
+    });
+
+    it('does not prepare unused rest parameter containers before lookup', async () => {
+      const originalDetachTrivia = Node.prototype.detachTrivia;
+      let detachedArgContainers = 0;
+      Node.prototype.detachTrivia = function detachTriviaForCounting(
+        this: Node,
+        ...args: Parameters<typeof originalDetachTrivia>
+      ): ReturnType<typeof originalDetachTrivia> {
+        if (this.type === 'Sequence' && this.valueOf() === 'red 10px') {
+          detachedArgContainers++;
+        }
+        return originalDetachTrivia.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.unused-rest'),
+            params: list([
+              any('first', { role: 'property' }),
+              rest('rest')
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.unused-rest' }, { type: 'mixin' }),
+                args: list([any('0'), seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toContain('color: blue;');
+        expect(detachedArgContainers).toBe(0);
+      } finally {
+        Node.prototype.detachTrivia = originalDetachTrivia;
+      }
+    });
+
+    it('does not prepare @arguments containers before @arguments lookup', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+      const originalDetachTrivia = Node.prototype.detachTrivia;
+      let detachedArgContainers = 0;
+      Node.prototype.detachTrivia = function detachTriviaForCounting(
+        this: Node,
+        ...args: Parameters<typeof originalDetachTrivia>
+      ): ReturnType<typeof originalDetachTrivia> {
+        if (this.type === 'Sequence' && this.valueOf() === 'red 10px') {
+          detachedArgContainers++;
+        }
+        return originalDetachTrivia.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.unused-arguments'),
+            params: list([
+              any('space', { role: 'property' })
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('blue') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.unused-arguments' }, { type: 'mixin' }),
+                args: list([seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toContain('color: blue;');
+        expect(detachedArgContainers).toBe(0);
+      } finally {
+        Node.prototype.detachTrivia = originalDetachTrivia;
+      }
+    });
+
+    it('evaluates named argument values in the caller scope when preparing lazy bindings', async () => {
+      context.treeContext = new TreeContext({
+        file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
+      });
+      const root = rules([
+        mixin({
+          name: any('.named'),
+          params: list([
+            vardecl({ name: 'a', value: any('1px') }, { paramVar: true }),
+            vardecl({ name: 'b', value: any('50%') }, { paramVar: true })
+          ]),
+          rules: rules([
+            decl({ name: 'height', value: ref({ key: 'b' }, { type: 'variable' }) }),
+            decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            vardecl({ name: 'var', value: any('20%') }),
+            call({
+              name: ref({ key: '.named' }, { type: 'mixin' }),
+              args: list([
+                vardecl({ name: 'b', value: ref({ key: 'var' }, { type: 'variable' }) }, { paramVar: true })
+              ])
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toContain('height: 20%;');
+      expect(css).toContain('args: 1px 20%;');
+    });
+
     it('frame live slots resolve mixin params via frame chain after runtimeVarBindings removal', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
@@ -2543,6 +3029,36 @@ describe('Mixin', () => {
       }
     });
 
+    it('restores caller rulesContext when static guard evaluation throws', async () => {
+      context = new Context({ leakyRules: false });
+      const savedRulesContext = rules([]);
+      const guard = bool(true);
+      guard.eval = (evalContext: Context) => {
+        expect(evalContext.rulesContext).not.toBe(savedRulesContext);
+        throw new Error('guard eval failed');
+      };
+      const root = rules([
+        mixin({
+          name: any('.guarded'),
+          guard,
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+      context.rulesContext = savedRulesContext;
+
+      await expect(renderNodeToString(root, context)).rejects.toThrow('guard eval failed');
+      expect(context.rulesContext).toBe(savedRulesContext);
+    });
+
     it('keeps dynamic guards on a copied eval surface', async () => {
       context = new Context({ leakyRules: false });
       const guard = condition([
@@ -2572,7 +3088,7 @@ describe('Mixin', () => {
 
       expect(css).toContain('color: red;');
       expect(guard.evaluated).toBe(false);
-      expect(guard.preEvaluated).toBe(false);
+      expect(guard.registrationPrepared).toBe(false);
     });
 
     it('does not clone source-free scalar leaves inside copied dynamic guards', async () => {

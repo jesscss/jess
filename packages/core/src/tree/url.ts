@@ -1,14 +1,11 @@
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, defineType } from './node.js';
 import type { Context } from '../context.js';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import {
-  isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
-} from './util/render-buffer.js';
+import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
+import { prepareRenderPrintState } from './util/print.js';
 
 /**
  * e.g. url('foo.png')
@@ -18,23 +15,23 @@ export class Url extends Node<Node> {
     return new Url(value).inherit(this);
   }
 
-  private renderUrlSyntax(options?: PrintOptions): string {
+  private renderUrlSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     w.add('url(');
     if (options.context) {
       const valueMark = w.mark();
-      this.value.toString(options);
+      value.toString(options);
       w.replaceSince(
         valueMark,
         value => value
           .replace(/^[ \t\r\n\f]+|[ \t\r\n\f]+$/g, '')
           .replace(/\n[ \t\r\f]+/g, '\n  '),
-        this.value
+        value
       );
     } else {
-      this.value.toString(options);
+      value.toString(options);
     }
     w.add(')');
     return w.getSince(mark);
@@ -56,19 +53,45 @@ export class Url extends Node<Node> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderUrlSyntax(options);
+    return this.renderUrlSyntax(this.value, options);
   }
 
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
-    }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.resolveRenderValue(context),
+      value => this.renderResolvedUrlValue(context, value, bufferOrOptions, options)
+    );
   }
 
-  override resolve(context: Context): MaybePromise<Node> {
+  private renderResolvedUrlValue(
+    context: Context,
+    value: Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.renderUrlSyntax(value, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
+  }
+
+  private resolveRenderValue(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this.value;
+    }
+    return this.value.resolve(context);
+  }
+
+  private resolveValue(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     const value = this.value.resolve(context);
     const finalize = (resolvedValue: Node): Node => {
       if (resolvedValue === this.value) {
@@ -80,6 +103,10 @@ export class Url extends Node<Node> {
       return (value as Promise<Node>).then(finalize);
     }
     return finalize(value as Node);
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveValue(context);
   }
 }
 

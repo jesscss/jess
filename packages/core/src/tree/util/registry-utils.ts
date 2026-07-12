@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import type { Ruleset } from '../ruleset.js';
 import type { Selector } from '../selector.js';
 import type { Rules } from '../rules.js';
@@ -13,10 +14,38 @@ import type { Context } from '../../context.js';
 import { atIndex } from './collections.js';
 import { comparePosition } from './compare.js';
 import { type BitSet } from './bitset.js';
+import {
+  canEnterRulesEntryForLookup,
+  getMixinOutputLookupState,
+  type LookupVisibility,
+  type MixinOutputLookupState,
+  type RulesEntryLike,
+  isOptionalRulesEntry,
+  isPublicRulesEntry
+} from './mixin-output-slot.js';
 
 const { isArray } = Array;
 
 type SelectorKeySet = Set<string> | BitSet<string>;
+
+export type RulesEntryTraversalState = {
+  canEnter: boolean;
+  mixinOutput?: MixinOutputLookupState;
+};
+
+export function getRulesEntryTraversalState(
+  entry: RulesEntryLike,
+  lookup: {
+    type?: LookupVisibility;
+    hasTarget?: boolean;
+  }
+): RulesEntryTraversalState {
+  const mixinOutput = getMixinOutputLookupState(entry, lookup);
+  return {
+    canEnter: mixinOutput?.canEnter ?? canEnterRulesEntryForLookup(entry, lookup),
+    ...(mixinOutput ? { mixinOutput } : {})
+  };
+}
 
 function getSelectorKeyValues(keySet: SelectorKeySet | string[] | undefined): string[] {
   if (!keySet) {
@@ -109,11 +138,7 @@ export type FindOptions = DeclarationFindOptions & {
   childFilterType?: 'Mixin' | 'Ruleset' | undefined;
   context?: Context;
   searchedRules?: Set<Rules>;
-  /**
-   * Whether this lookup has an explicit target (e.g., #ns[@foo]).
-   * When true, Rules with isMixinOutput=true will be searchable.
-   * When false or undefined, mixin output Rules will be excluded.
-   */
+  /** Whether this lookup has an explicit target, e.g. #ns[@foo]. */
   hasTarget?: boolean;
 };
 
@@ -182,21 +207,10 @@ export abstract class Registry<
        * and before the start position (if relevant)
        */
       rulesSet = rulesSet.filter((n) => {
-        // Check RulesEntry visibility first, then fall back to the actual Rules node's visibility
-        // Rules constructor sets defaults, so visibility should always be defined
-        const entryVisibility = filterType ? n.rulesVisibility?.[filterType] : undefined;
-        const nodeVisibility = filterType ? n.node.options.rulesVisibility?.[filterType] : undefined;
-        const visibility = entryVisibility ?? nodeVisibility;
-
-        const isMixinOutput = n.node.options?.isMixinOutput === true;
-        // Mixin output Rules should never participate in untargeted lookups.
-        // They are only searchable when the lookup has an explicit target.
-        if (isMixinOutput) {
-          return options?.hasTarget === true;
-        }
-        // Otherwise, follow normal visibility rules
-        // Only 'public' and 'optional' are visible (not 'private' or undefined)
-        const isVisible = visibility === 'public' || visibility === 'optional';
+        const isVisible = getRulesEntryTraversalState(n, {
+          type: filterType,
+          hasTarget: options?.hasTarget
+        }).canEnter;
         /**
          * Sass `@forward`:
          * Forwarded Rules should not be visible to lookups within the current stylesheet scope
@@ -260,10 +274,7 @@ export abstract class Registry<
           // filterType parameter is used to SELECT registry, actualChildFilterType is used to FILTER results
           let result = r.node.find(findType, key, actualChildFilterType as any, newOpts);
           if (result) {
-            // Check if this Rules has optional visibility (from RulesEntry or the actual Rules node)
-            const entryVisibility = filterType ? r.rulesVisibility?.[filterType] : undefined;
-            const nodeVisibility = filterType ? r.node.options.rulesVisibility?.[filterType] : undefined;
-            const isOptional = entryVisibility === 'optional' || nodeVisibility === 'optional';
+            const isOptional = filterType !== undefined && isOptionalRulesEntry(r, filterType);
             const optionalCandidates = options?.optionalCandidates;
 
             /**
@@ -271,7 +282,7 @@ export abstract class Registry<
              * it wins.
              * Rules constructor sets defaults, so visibility should always be defined.
              */
-            const isPublic = entryVisibility === 'public' || nodeVisibility === 'public';
+            const isPublic = filterType !== undefined && isPublicRulesEntry(r, filterType);
             if (!findAll && isPublic) {
               if (options && newOpts.readonly) {
                 options.readonly = true;
@@ -536,7 +547,6 @@ export class MixinRegistry extends Registry<
           && ownSelector
           && !isNode(ownSelector, N.Nil)
         ) {
-          const ownSelectorText = String((ownSelector as Selector).valueOf?.() ?? '');
           const evaluatedKeys = orderedKeysToUse ?? getSelectorKeyValues(keySetToUse);
           const parentSelector = isNode(mixin.parent?.parent, N.Ruleset)
             ? (mixin.parent.parent as Ruleset).value.selector
@@ -556,7 +566,7 @@ export class MixinRegistry extends Registry<
           }
         }
         // When the resolved selector is an Ampersand (implicit &), visibleKeySet is empty so we
-        // would not index. Use the ruleset's ownSelector (set in preEval before getImplicitSelector)
+        // would not index. Use the ruleset's ownSelector from registration prep
         // to index by the callable selector that was explicitly authored.
         if (keySetToUse !== undefined) {
           if (
@@ -564,8 +574,8 @@ export class MixinRegistry extends Registry<
             && ownSelector
             && !isNode(ownSelector, N.Nil)
           ) {
-              const ownKeySet = (ownSelector as Selector).visibleKeySet;
-              if (selectorKeySetSize(ownKeySet)) {
+            const ownKeySet = (ownSelector as Selector).visibleKeySet;
+            if (selectorKeySetSize(ownKeySet)) {
               const ownKeys = getOrderedSelectorKeys(ownSelector as Selector);
               const selectorText = String(selectorToIndex.valueOf?.() ?? '');
               if (selectorText.startsWith('&') && ownKeys.length > 1) {

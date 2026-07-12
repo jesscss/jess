@@ -98,6 +98,52 @@ describe('CallMap', () => {
       expect(callMap.add(call1, list1)).toBe(true);
     });
 
+    it('should prevent a call from calling itself with the same string signature', () => {
+      const callMap = new CallMap();
+      const call1 = call({
+        name: ref('mixin'),
+        args: undefined
+      });
+
+      expect(callMap.add(call1, '1px;2px')).toBe(false);
+      expect(callMap.add(call1, '1px;2px')).toBe(true);
+    });
+
+    it('should allow the same call with a different string signature', () => {
+      const callMap = new CallMap();
+      const call1 = call({
+        name: ref('mixin'),
+        args: undefined
+      });
+
+      expect(callMap.add(call1, '1px;2px')).toBe(false);
+      expect(callMap.add(call1, '1px;3px')).toBe(false);
+    });
+
+    it('should compare string and list signatures by value', () => {
+      const callMap = new CallMap();
+      const list1 = list([num(1), num(2)]);
+      const call1 = call({
+        name: ref('mixin'),
+        args: list1.value
+      });
+
+      expect(callMap.add(call1, list1)).toBe(false);
+      expect(callMap.add(call1, '1;2')).toBe(true);
+    });
+
+    it('should treat string signatures as removable stack entries', () => {
+      const callMap = new CallMap();
+      const call1 = call({
+        name: ref('mixin'),
+        args: undefined
+      });
+
+      expect(callMap.add(call1, '1px;2px')).toBe(false);
+      expect(callMap.delete(call1)).toBe(true);
+      expect(callMap.add(call1, '1px;2px')).toBe(false);
+    });
+
     it('should prevent different calls from calling each other with the same params', () => {
       const callMap = new CallMap();
       const list1 = list([num(1), num(2)]);
@@ -144,10 +190,9 @@ describe('CallMap', () => {
       expect(callMap.add(call1, list1)).toBe(false);
     });
 
-    it('should handle multiple entries for a call', () => {
+    it('should allow a call signature after its stack entry is deleted', () => {
       const callMap = new CallMap();
       const list1 = list([num(1), num(2)]);
-      const list2 = list([num(3), num(4)]);
       const call1 = call({
         name: ref('mixin'),
         args: list1.value
@@ -156,19 +201,11 @@ describe('CallMap', () => {
       // Add first list
       callMap.add(call1, list1);
 
-      // Manually add second list to the set (simulating multiple calls)
-      // Note: The current implementation doesn't add new args on subsequent calls,
-      // so we need to test the delete behavior with multiple entries differently
-      const set = (callMap as any)._callMap.get(call1);
-      if (set) {
-        set.push(list2);
-      }
-
-      // Delete once - should remove the last entry (list2)
+      // Delete once - should remove the active stack entry.
       expect(callMap.delete(call1)).toBe(true);
 
-      // Should still return true for list1
-      expect(callMap.add(call1, list1)).toBe(true);
+      // The same call/signature can be entered again after deletion.
+      expect(callMap.add(call1, list1)).toBe(false);
     });
 
     it('should return false when deleting a non-existent call', () => {

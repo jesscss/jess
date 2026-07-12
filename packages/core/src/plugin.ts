@@ -4,7 +4,12 @@ import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
+import type { Node } from './tree/node.js';
 import { type ErrorDiagnostic, type WarningDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
+
+export type PluginVisitor = Partial<Omit<Visitor, 'visit'>> & {
+  visit?: (node: Node) => unknown;
+};
 
 export type ISafeParseResult = {
   /**
@@ -87,14 +92,18 @@ export interface PluginInterface {
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
 
   /** Post-parse or post-eval visitor(s) */
-  visitor?: Visitor | Visitor[];
-  /** Pre-eval visitor(s) - called before node.eval() during the preEval phase */
-  preEvalVisitor?: Visitor | Visitor[];
+  visitor?: PluginVisitor | PluginVisitor[];
+  /** Early visitor(s), called before eval for compatibility with Less-style plugins. */
+  beforeEvalVisitor?: PluginVisitor | PluginVisitor[];
+  /**
+   * Visitors that run after eval and immediately before render serialization.
+   */
+  preRenderVisitor?: PluginVisitor | PluginVisitor[];
   /**
    * Compatibility hook name for visitors that run after eval and immediately
    * before render serialization.
    */
-  postEvalVisitor?: Visitor | Visitor[];
+  postEvalVisitor?: PluginVisitor | PluginVisitor[];
 
   /** Optional lifecycle hooks used by lazy plugin loading. */
   prewarm?(): void | Promise<void>;

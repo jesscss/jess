@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, coll, decl } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Collection', () => {
   let context: Context;
@@ -33,6 +34,47 @@ describe('Collection', () => {
     `);
   });
 
+  it('writes collection output into render buffers', async () => {
+    const buffer = createRenderBuffer('segmented');
+    const node = coll([
+      decl({ name: any('color'), value: any('red') })
+    ]);
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toBeString(`
+      {
+        color: red;
+      }
+    `);
+    expect(buffer.segments).toEqual([rendered]);
+    expect(resolveCalls).toBe(0);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders collection output directly without public resolve', () => {
+    const node = coll([
+      decl({ name: any('color'), value: any('red') })
+    ]);
+    node.resolve = () => {
+      throw new Error('Collection direct render should serialize source syntax');
+    };
+
+    expect(node.render(context)).toBeString(`
+      {
+        color: red;
+      }
+    `);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('resolves collections without touching render state', async () => {
     const node = coll([
       decl({ name: any('color'), value: any('red') })
@@ -46,7 +88,7 @@ describe('Collection', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

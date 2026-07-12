@@ -1,6 +1,7 @@
 import { vardecl, coll, decl, any, rules, Node } from '../index.js';
 import { Context } from '../../context.js';
 import { nil } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -76,6 +77,31 @@ describe('Let', () => {
       expect(rule.render(context)).toBe('$tone');
     });
 
+    it('writes visible parameter vars into render buffers through Declaration', () => {
+      const buffer = createRenderBuffer('segmented');
+      const rule = vardecl({
+        name: 'tone',
+        value: nil()
+      }, {
+        paramVar: true
+      });
+      const originalResolve = rule.resolve;
+      let resolveCalls = 0;
+      rule.resolve = function countResolveCalls(
+        this: typeof rule,
+        ...args: Parameters<typeof originalResolve>
+      ): ReturnType<typeof originalResolve> {
+        resolveCalls++;
+        return originalResolve.apply(this, args);
+      };
+
+      expect(rule.render(context, buffer)).toBe('$tone');
+      expect(buffer.segments).toEqual(['$tone']);
+      expect(resolveCalls).toBe(0);
+      expect(rule.evaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
+    });
+
     it('resolves visible parameter vars without touching render state', async () => {
       const rule = vardecl({
         name: 'tone',
@@ -88,7 +114,7 @@ describe('Let', () => {
 
       expect(resolved.toTrimmedString()).toBe('$tone');
       expect(rule.evaluated).toBe(false);
-      expect(rule.preEvaluated).toBe(false);
+      expect(rule.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });

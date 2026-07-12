@@ -7,6 +7,8 @@ import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
 
 const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   image,
@@ -18,6 +20,15 @@ const token = (image: string, tokenTypeName = 'WS'): IToken => ({
   startColumn: 1,
   endColumn: image.length
 });
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -125,19 +136,27 @@ describe('List', () => {
         value: any('four')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const listNode = list([
       spaced([num(1), any('2'), any('3')]),
       ref({ key: 'item' }, { type: 'variable' })
     ]);
+    const originalResolve = listNode.resolve;
+    let resolveCalls = 0;
+    listNode.resolve = function countResolveCalls(
+      this: typeof listNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
     const rendered = listNode.render(context);
 
     expect(rendered).toBe('1 2 3, four');
+    expect(resolveCalls).toBe(0);
     expect(listNode.evaluated).toBe(false);
-    expect(listNode.preEvaluated).toBe(false);
+    expect(listNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved list render output into flat buffers', async () => {
@@ -147,20 +166,58 @@ describe('List', () => {
         value: any('four')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const listNode = list([
       spaced([num(1), any('2'), any('3')]),
       ref({ key: 'item' }, { type: 'variable' })
     ]);
+    const originalResolve = listNode.resolve;
+    let resolveCalls = 0;
+    listNode.resolve = function countResolveCalls(
+      this: typeof listNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
 
     expect(await listNode.render(context, buffer)).toBe('1 2 3, four');
     expect(buffer.parts).toEqual(['1 2 3, four']);
+    expect(resolveCalls).toBe(0);
     expect(listNode.evaluated).toBe(false);
-    expect(listNode.preEvaluated).toBe(false);
+    expect(listNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders dynamic list values without materializing a replacement list', async () => {
+    const node = rules([
+      vardecl({
+        name: any('item'),
+        value: any('four')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const descriptor = Object.getOwnPropertyDescriptor(List.prototype, 'withResolvedValue');
+    if (!descriptor) {
+      throw new Error('Expected List.withResolvedValue for render materialization proof');
+    }
+    const listNode = list([
+      any('one'),
+      ref({ key: 'item' }, { type: 'variable' })
+    ]);
+
+    Object.defineProperty(List.prototype, 'withResolvedValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('List render should stream resolved values without a replacement list');
+      }
+    });
+    try {
+      expect(listNode.render(context)).toBe('one, four');
+    } finally {
+      Object.defineProperty(List.prototype, 'withResolvedValue', descriptor);
+    }
   });
 
   it('resolves list values without touching render state', async () => {
@@ -170,9 +227,7 @@ describe('List', () => {
         value: any('four')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const listNode = list([
       spaced([num(1), any('2'), any('3')]),
@@ -182,8 +237,25 @@ describe('List', () => {
 
     expect(resolved.toTrimmedString()).toBe('1 2 3, four');
     expect(listNode.evaluated).toBe(false);
-    expect(listNode.preEvaluated).toBe(false);
+    expect(listNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('returns static lists without resolving child values', async () => {
+    const first = any('one');
+    const second = any('two');
+    const listNode = list([first, second]);
+    first.resolve = () => {
+      throw new Error('static list children should not resolve');
+    };
+    second.resolve = () => {
+      throw new Error('static list children should not resolve');
+    };
+
+    const resolved = await listNode.resolve(context);
+
+    expect(resolved).toBe(listNode);
+    expect(resolved.toTrimmedString()).toBe('one, two');
   });
 
   it('keeps source list values canonical after resolve(context)', async () => {
@@ -193,9 +265,7 @@ describe('List', () => {
         value: any('four')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const listNode = list([
       any('one'),

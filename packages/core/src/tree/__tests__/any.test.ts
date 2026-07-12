@@ -14,12 +14,12 @@ describe('Any and Keyword', () => {
 
     expect(node.render(renderContext)).toBe('foo');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
 
     const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('foo');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });
 
@@ -27,9 +27,29 @@ describe('Any and Keyword', () => {
     const context = new Context();
     const buffer = createRenderBuffer('flat');
     const node = any('foo');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('foo');
     expect(buffer.parts).toEqual(['foo']);
+    expect(resolveCalls).toBe(0);
+  });
+
+  it('renders custom-property Any values from source without result inheritance', async () => {
+    const context = new Context();
+    const node = any('var(--tone)', { role: 'customprop' });
+    const originalLocation = [4, 1, 5, 15, 1, 16] as const;
+    node._location = [...originalLocation];
+    node.resolve = () => {
+      throw new Error('Any.render should not resolve static custom property fragments');
+    };
+
+    expect(node.render(context)).toBe('var(--tone)');
+    expect(node.location).toEqual([...originalLocation]);
+    expect(node.sourceNode ?? node).toBe(node);
   });
 
   it('renders Keyword syntax through toTrimmedString()', () => {
@@ -43,12 +63,12 @@ describe('Any and Keyword', () => {
 
     expect(node.render(renderContext)).toBe('inherit');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
 
     const resolved = await node.resolve(resolveContext);
     expect(resolved.toTrimmedString()).toBe('inherit');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(resolveContext.printState.writer).toBeUndefined();
   });
 });

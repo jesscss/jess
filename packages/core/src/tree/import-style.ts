@@ -1,10 +1,11 @@
-import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, defineType } from './node.js';
+import { basename, dirname } from 'node:path';
+import { Node, F_MAY_ASYNC, F_NON_STATIC, F_VISIBLE, TreeContext, defineType, type NodeLocation } from './node.js';
 import { type Reference } from './reference.js';
 import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Url } from './url.js';
 import { type Context } from '../context.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import type { Ruleset } from './ruleset.js';
@@ -14,7 +15,14 @@ import { Any } from './any.js';
 import { Sequence } from './sequence.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { buildScopeFrame, type BindingCell } from './scope-frame.js';
-import { cloneChildrenWithReusableLeaves } from './util/cloning.js';
+import { canReuseLeaf, reuseLeaf } from './util/cloning.js';
+import { Comment } from './comment.js';
+import {
+  isRenderBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
+import type { PrintOptions } from './util/print.js';
+import { createPlacementChildSegment, type PlacementChildSegment } from './util/placement-state.js';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -32,6 +40,94 @@ function isParseError(error: unknown): boolean {
   }
   return error.phase === 'parse'
     || (typeof error.code === 'string' && error.code.startsWith('parse/'));
+}
+
+function throwMissingImportSourceGetter(): never {
+  throw new Error('No source getter found');
+}
+
+function throwInvalidImportedRulesRegistrationPrep(): never {
+  throw new TypeError('Expected imported rules registration prep to return Rules');
+}
+
+function copyImportPlacementValue(value: unknown): unknown {
+  if (value instanceof Node) {
+    return copyImportPlacementNode(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => copyImportPlacementValue(item));
+  }
+  if (isObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const key in value) {
+      if (Object.hasOwn(value, key)) {
+        out[key] = copyImportPlacementValue(value[key]);
+      }
+    }
+    return out;
+  }
+  return value;
+}
+
+function constructImportPlacementNode(node: Node, value: unknown): Node {
+  const copy = Reflect.construct(
+    node.constructor,
+    [
+      value,
+      node.options ? { ...node.options } : undefined,
+      node.location.length === 0 ? undefined : node.location,
+      node.treeContext
+    ]
+  );
+  if (!(copy instanceof Node)) {
+    throw new TypeError('Expected import placement copy to remain a node');
+  }
+  return copy.inherit(node);
+}
+
+function copyImportPlacementAmpersand(node: Node): Node | undefined {
+  if (node.type !== 'Ampersand') {
+    return undefined;
+  }
+  const derive: unknown = Reflect.get(node, 'derive');
+  if (typeof derive !== 'function') {
+    return undefined;
+  }
+  const derived = derive.call(node);
+  return derived instanceof Node ? derived : undefined;
+}
+
+function copyImportPlacementNode(node: Node): Node {
+  if (isNode(node, N.Comment)) {
+    return new Comment(
+      node.value,
+      node.options ? { ...node.options } : undefined,
+      node.location.length === 0 ? undefined : node.location,
+      node.treeContext
+    ).inherit(node);
+  }
+  const derivedAmpersand = copyImportPlacementAmpersand(node);
+  if (derivedAmpersand) {
+    return derivedAmpersand;
+  }
+  if (canReuseLeaf(node)) {
+    return reuseLeaf(node);
+  }
+  return constructImportPlacementNode(node, copyImportPlacementValue(node.value));
+}
+
+function getInlineSourceLocation(source: string): NodeLocation {
+  let line = 1;
+  let column = 1;
+  for (let index = 0; index < source.length; index++) {
+    if (source.charCodeAt(index) === 10) {
+      line++;
+      column = 1;
+    } else {
+      column++;
+    }
+  }
+  return [0, 1, 1, source.length, line, column];
 }
 
 /**
@@ -148,6 +244,227 @@ export type StyleImportValue = {
 export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> {
   eval(context: Context): MaybePromise<Rules>;
 }
+
+type ImportPlacementState = {
+  source: Rules;
+  children: Node[];
+  childSegments: readonly ImportPlacementChildSegment[];
+  sourceByPlacement: ReadonlyMap<Node, Node>;
+  preservesDirectCommentChildren: true;
+};
+
+export type ImportPlacementChildSegment = PlacementChildSegment;
+
+type ImportPlacementOptionsState = {
+  referenceMode: RulesOptions['referenceMode'];
+  rulesVisibility: RulesOptions['rulesVisibility'];
+};
+
+export type ImportPlacementRenderState = {
+  referenceMode: RulesOptions['referenceMode'];
+  rulesVisibility: RulesOptions['rulesVisibility'];
+};
+
+const importPlacementStates = new WeakMap<Rules, ImportPlacementState>();
+const importPlacementOptionsStates = new WeakMap<Rules, ImportPlacementOptionsState>();
+
+export type ImportPostludePlacementState = {
+  sourceRules: Rules;
+  outputRules: Rules;
+  postludeNames: readonly string[];
+  postludeNodes: readonly Node[];
+};
+
+export type ImportPostludeRenderState = {
+  sourceRules: Rules;
+  outputRules: Rules;
+  order: readonly string[];
+};
+
+const importPostludePlacementStates = new WeakMap<Rules, ImportPostludePlacementState>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function findImportPlacementState(placementRules: Rules): ImportPlacementState | undefined {
+  let cursor: Rules | undefined = placementRules;
+  for (let depth = 0; cursor && depth < 4; depth++) {
+    const state = importPlacementStates.get(cursor);
+    if (state) {
+      return state;
+    }
+    cursor = isNode(cursor.sourceNode, N.Rules) ? cursor.sourceNode : undefined;
+  }
+  return undefined;
+}
+
+function collectImportPlacementSourceMap(
+  source: unknown,
+  placement: unknown,
+  sourceByPlacement: Map<Node, Node>,
+  seen = new Set<unknown>()
+): void {
+  if (!(source instanceof Node) || !(placement instanceof Node) || seen.has(placement)) {
+    return;
+  }
+  seen.add(placement);
+  sourceByPlacement.set(placement, source);
+  collectImportPlacementSourceMapForValue(source.value, placement.value, sourceByPlacement, seen);
+}
+
+function collectImportPlacementSourceMapForValue(
+  source: unknown,
+  placement: unknown,
+  sourceByPlacement: Map<Node, Node>,
+  seen: Set<unknown>
+): void {
+  if (source instanceof Node || placement instanceof Node) {
+    collectImportPlacementSourceMap(source, placement, sourceByPlacement, seen);
+    return;
+  }
+  if (Array.isArray(source) && Array.isArray(placement)) {
+    for (let index = 0; index < source.length; index++) {
+      collectImportPlacementSourceMap(source[index], placement[index], sourceByPlacement, seen);
+    }
+    return;
+  }
+  if (isRecord(source) && isRecord(placement)) {
+    for (const key of Object.keys(source)) {
+      collectImportPlacementSourceMap(source[key], placement[key], sourceByPlacement, seen);
+    }
+  }
+}
+
+function findImportPlacementSourceDescendant(
+  source: unknown,
+  placement: unknown,
+  target: Node,
+  seen = new Set<unknown>()
+): Node | undefined {
+  if (placement === target) {
+    return source instanceof Node ? source : undefined;
+  }
+  if (placement instanceof Node) {
+    if (seen.has(placement)) {
+      return undefined;
+    }
+    seen.add(placement);
+    return findImportPlacementSourceDescendant(source instanceof Node ? source.value : undefined, placement.value, target, seen);
+  }
+  if (Array.isArray(source) && Array.isArray(placement)) {
+    for (let index = 0; index < placement.length; index++) {
+      const found = findImportPlacementSourceDescendant(source[index], placement[index], target, seen);
+      if (found) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+  if (isRecord(source) && isRecord(placement)) {
+    for (const key of Object.keys(placement)) {
+      const found = findImportPlacementSourceDescendant(source[key], placement[key], target, seen);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return undefined;
+}
+
+export function getImportPlacementSourceChild(
+  placementRules: Rules,
+  placementChild: Node
+): Node | undefined {
+  const state = findImportPlacementState(placementRules);
+  if (!state) {
+    return undefined;
+  }
+  const segmentSource = getImportPlacementSegmentSourceChild(placementRules, placementChild);
+  if (segmentSource) {
+    return segmentSource;
+  }
+  const directSource = state.sourceByPlacement.get(placementChild);
+  if (directSource) {
+    return directSource;
+  }
+  if (isNode(placementChild.sourceNode)) {
+    for (const [stateChild, sourceChild] of state.sourceByPlacement) {
+      if (stateChild === placementChild.sourceNode || sourceChild === placementChild.sourceNode) {
+        return sourceChild;
+      }
+    }
+  }
+  for (const [stateChild, sourceChild] of state.sourceByPlacement) {
+    const sourceDescendant = findImportPlacementSourceDescendant(sourceChild, stateChild, placementChild);
+    if (sourceDescendant) {
+      return sourceDescendant;
+    }
+  }
+  const index = placementRules.value.indexOf(placementChild);
+  return index >= 0 ? state.source.value[index] : undefined;
+}
+
+export function getImportPlacementSegmentSourceChild(
+  placementRules: Rules,
+  placementChild: Node
+): Node | undefined {
+  return getImportPlacementChildSegments(placementRules)
+    ?.find(segment => segment.output === placementChild)
+    ?.source;
+}
+
+export function getImportPlacementChildSegments(placementRules: Rules): readonly ImportPlacementChildSegment[] | undefined {
+  const state = findImportPlacementState(placementRules);
+  if (!state) {
+    return undefined;
+  }
+  return state.childSegments.map(segment => (
+    createPlacementChildSegment(segment.source, placementRules.value[segment.index], segment.index)
+  ));
+}
+
+function readImportPlacementRenderState(placementRules: Rules): ImportPlacementRenderState {
+  return {
+    referenceMode: importPlacementOptionsStates.get(placementRules)?.referenceMode
+      ?? placementRules.options.referenceMode,
+    rulesVisibility: importPlacementOptionsStates.get(placementRules)?.rulesVisibility
+      ?? placementRules.options.rulesVisibility
+  };
+}
+
+export function getImportPlacementReferenceMode(placementRules: Rules): RulesOptions['referenceMode'] | undefined {
+  return readImportPlacementRenderState(placementRules).referenceMode;
+}
+
+export function getImportPlacementRulesVisibility(placementRules: Rules): RulesOptions['rulesVisibility'] | undefined {
+  return readImportPlacementRenderState(placementRules).rulesVisibility;
+}
+
+export function getImportPlacementRenderState(placementRules: Rules): ImportPlacementRenderState {
+  return readImportPlacementRenderState(placementRules);
+}
+
+export function getImportPostludePlacement(outputRules: Rules): ImportPostludePlacementState | undefined {
+  return importPostludePlacementStates.get(outputRules);
+}
+
+export function getImportPostludeRenderOrder(outputRules: Rules): readonly string[] | undefined {
+  return getImportPostludeRenderState(outputRules)?.order;
+}
+
+export function getImportPostludeRenderState(outputRules: Rules): ImportPostludeRenderState | undefined {
+  const placement = getImportPostludePlacement(outputRules);
+  if (!placement) {
+    return undefined;
+  }
+  return {
+    sourceRules: placement.sourceRules,
+    outputRules: placement.outputRules,
+    order: placement.postludeNames
+  };
+}
+
 /**
  * This is a generic class for:
  *   - Sass+ `@use` (for stylesheets)
@@ -192,7 +509,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       wrapped.sourceNode = anchorRules.sourceNode ?? anchorRules;
     }
     if (childNodes) {
-      wrapped.set(null, []);
       for (const childNode of childNodes) {
         wrapped.adopt(childNode);
         wrapped.value.push(childNode);
@@ -203,6 +519,46 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private createImportAnchorSurface(context: Context, childNodes?: Node[]): Rules {
     return this.deriveRulesSurface(this.getImportAnchorRules(context), childNodes ?? [], { resetScopeFrame: true });
+  }
+
+  private createInlineSourceNode(source: string, resolvedPath: string): Any<'any'> {
+    const treeContext = new TreeContext({
+      file: {
+        name: basename(resolvedPath),
+        path: dirname(resolvedPath),
+        fullPath: resolvedPath,
+        source
+      }
+    });
+    return new Any(source, { role: 'any' }, getInlineSourceLocation(source), treeContext);
+  }
+
+  private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
+    const children = sourceRules.value.map(node => this.copyImportPlacementChild(node));
+    const childSegments = sourceRules.value.map((source, index) => (
+      createPlacementChildSegment(source, children[index], index)
+    ));
+    const sourceByPlacement = new Map<Node, Node>();
+    for (let index = 0; index < children.length; index++) {
+      collectImportPlacementSourceMap(sourceRules.value[index], children[index], sourceByPlacement);
+    }
+    return {
+      source: sourceRules,
+      children,
+      childSegments,
+      sourceByPlacement,
+      preservesDirectCommentChildren: true
+    };
+  }
+
+  private materializeImportPlacementState(state: ImportPlacementState): Rules {
+    const placement = this.deriveRulesSurface(state.source, state.children);
+    importPlacementStates.set(placement, state);
+    return placement;
+  }
+
+  private copyImportPlacementChild(node: Node): Node {
+    return copyImportPlacementNode(node);
   }
 
   private getPostludeNodes(postlude?: Node): Node[] {
@@ -235,16 +591,16 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
   }
 
-  private async resolveConfiguredRulesInput(context: Context, withNode: Reference | Collection): Promise<Rules> {
+  private async resolveConfiguredRulesInput(context: Context, withNode: Reference | Collection): Promise<Collection> {
     if (isNode(withNode, N.Reference)) {
       const evaluated = await withNode.eval(context);
       if (!isNode(evaluated, N.Collection)) {
         throw new Error('with/set node must evaluate to a Collection');
       }
-      return evaluated as Rules;
+      return evaluated;
     }
 
-    return withNode as Rules;
+    return withNode;
   }
 
   private partitionConfiguredNodes(sourceRules: Rules, withRules: Rules): {
@@ -295,7 +651,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       return importedRules;
     }
 
-    importedRules.set(null, []);
+    importedRules.value.length = 0;
     for (let index = 0; index < sourceRules.value.length; index++) {
       const originalNode = sourceRules.value[index]!;
       const nextNode = replacementsByIndex.get(index) ?? originalNode;
@@ -440,7 +796,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
   }
 
-  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: any, treeContext?: any) {
+  constructor(value: StyleImportValue, options?: StyleImportOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Style imports are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_NON_STATIC);
@@ -499,8 +855,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       this.adopt(evaluatedRules);
       return evaluatedRules;
     }
-    // Shallow clone the Rules wrapper. The children are shared with the
-    // canonical tree/session result for this import placement — per-render
+    // Derive an import-owned Rules wrapper. The children are shared with the
+    // canonical tree/session result for this import placement; per-render
     // options (visibility, reference mode) are set on the wrapper below;
     // downstream serialization propagates `referenceMode` via PrintOptions,
     // so we don't need to mutate every child's `options.referenceMode`.
@@ -517,6 +873,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       referenceMode: isReferenceMode,
       readonly
     };
+    importPlacementOptionsStates.set(out, {
+      referenceMode: isReferenceMode,
+      rulesVisibility: out.options.rulesVisibility
+    });
     out._hasReferenceImports = isReferenceMode || evaluatedRules._hasReferenceImports;
     // Forwarded modules should never render output at this scope.
     if (isForward) {
@@ -530,10 +890,6 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
    * Defer import-path interpolation to evalNode so unresolved vars can be retried
    * after later imports/assignments in the same Rules scope have evaluated.
    */
-  override preEval(context: Context): MaybePromise<this> {
-    return this.prepareRegistration(context);
-  }
-
   override prepareRegistration(_context: Context): MaybePromise<this> {
     return this;
   }
@@ -544,20 +900,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     } catch (e) {
       // Tag path-resolution errors so the eval-queue retry policy can
       // distinguish "path interpolation not ready" (cheap, worth retrying)
-      // from "content evaluation failed" (expensive clone, not worth retrying).
+      // from "import content evaluation failed" (expensive and not worth retrying).
       markPathResolutionError(e);
       throw e;
     }
   }
 
   /**
-   * @note
-   * When imports are evaluated, they should be deeply cloned. The reason is that
-   * they can be used in multiple places, and can be evaluated differently
-   * each time, so they are more like a function call.
-   *
-   * @todo
-   * How do extends work then?
+   * Import evaluation reuses the canonical source/evaluated rules whenever the
+   * placement does not need different semantics. Placement-local behavior
+   * belongs on a derived rules surface or explicit runtime state, not in a
+   * routine deep clone of the imported body.
    */
   override evalNode(context: Context): MaybePromise<Rules> {
     let node = this;
@@ -616,10 +969,10 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           resolvedPath = resolved.resolvedPath;
           const sourceGetter = context.plugins.find(plugin => plugin.getSource);
           if (!sourceGetter) {
-            throw new Error('No source getter found');
+            throwMissingImportSourceGetter();
           }
           const source = await sourceGetter.getSource!(resolvedPath);
-          const sourceNode = new Any(source, { role: 'any' });
+          const sourceNode = this.createInlineSourceNode(source, resolvedPath);
           const sourceRules = this.createImportAnchorSurface(context, [sourceNode]);
           rules = this.wrapRulesWithPostlude(sourceRules, importOptions!.postlude);
         } else {
@@ -648,7 +1001,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           // preparation/eval. Reusing the canonical source tree here lets the first
           // import site become the parent of later `multiple` / `reference`
           // imports, which leaks the wrong selector/context into repeated uses.
-          rules = this.deriveRulesSurface(rules, cloneChildrenWithReusableLeaves(rules.value));
+          rules = this.materializeImportPlacementState(
+            this.createFirstUseImportPlacementState(rules)
+          );
         }
 
         // Compose caching semantics:
@@ -733,11 +1088,11 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
             }
 
             try {
-              // Prepare registration first to get the cloned Rules (if cloning occurs)
-              // sourceNode is already set above, so the cloned Rules will have it
+              // Prepare registration first so any owned registration wrapper
+              // keeps source identity from the import placement.
               const preparedRules = await rules.prepareRegistration(context);
               if (!(preparedRules instanceof Rules)) {
-                throw new TypeError('Expected imported rules registration prep to return Rules');
+                throwInvalidImportedRulesRegistrationPrep();
               }
               rules = preparedRules;
               if (type === 'import') {
@@ -789,8 +1144,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         }
 
         // For import type, register the final Rules as a child root of the parent
-        // so extends from the parent can find rulesets in the imported Rules
-        // Do this AFTER getFinalRules because it returns a cloned Rules
+        // so extends from the parent can find rulesets in the imported Rules.
+        // Do this after getFinalRules because it may return a placement-owned Rules.
         if (type === 'import') {
           const currentParentExtendRoot = context.extendRoots.getCurrentExtendRoot();
           // Import type is mutable by default (unless explicitly mutable: false)
@@ -808,7 +1163,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
           // For imports that evaluated under a local extend root (protected import or implicit _dedupe
           // reference traversal), rulesets were registered against the pre-finalized Rules root. Since
-          // getFinalRules can clone, re-register all descendant rulesets under finalRules' extend root set.
+          // getFinalRules can derive a placement wrapper; re-register all descendant rulesets
+          // under finalRules' extend root set.
           if (shouldReRegisterLocalRootRulesets) {
             for (const maybeRuleset of finalRules.nodes()) {
               if (isNode(maybeRuleset, N.Ruleset)) {
@@ -845,6 +1201,17 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return this.evalNode(context);
   }
 
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    return pipe(
+      () => this.evalNode(context),
+      node => isRenderBuffer(bufferOrOptions)
+        ? node.render(context, bufferOrOptions, options)
+        : node.render(context, bufferOrOptions)
+    );
+  }
+
   private wrapRulesWithPostlude(rules: Rules, postlude?: Node): Rules {
     if (!postlude) {
       return rules;
@@ -852,6 +1219,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     const postludeNodes = this.getPostludeNodes(postlude);
     const anchorRules = rules;
     let wrappedRules: Rules = rules;
+    const postludeNames: string[] = [];
     for (let i = postludeNodes.length - 1; i >= 0; i--) {
       const current = postludeNodes[i]!;
       if (isNode(current, N.Call)) {
@@ -861,14 +1229,22 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           const prelude = args.length <= 1 ? args[0] : current.value.args;
           if (prelude) {
             wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, `@${callName}`, prelude);
+            postludeNames.unshift(`@${callName}`);
             continue;
           }
         }
       }
 
       wrappedRules = this.wrapRulesInAtRuleSurface(anchorRules, wrappedRules, '@media', current);
+      postludeNames.unshift('@media');
     }
 
+    importPostludePlacementStates.set(wrappedRules, {
+      sourceRules: rules,
+      outputRules: wrappedRules,
+      postludeNames,
+      postludeNodes
+    });
     return wrappedRules;
   }
 }

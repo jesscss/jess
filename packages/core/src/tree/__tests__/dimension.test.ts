@@ -1,4 +1,4 @@
-import { dimension, num } from '../index.js';
+import { color, dimension, num } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { type Operator } from '../util/calculate.js';
@@ -49,17 +49,23 @@ describe('Dimension', () => {
       expect(sized.render(context)).toBe('10px');
       expect(unitless.render(context)).toBe('10');
       expect(sized.evaluated).toBe(false);
-      expect(sized.preEvaluated).toBe(false);
+      expect(sized.registrationPrepared).toBe(false);
       expect(unitless.evaluated).toBe(false);
-      expect(unitless.preEvaluated).toBe(false);
+      expect(unitless.registrationPrepared).toBe(false);
     });
 
     it('writes dimension render output into flat buffers', async () => {
       const buffer = createRenderBuffer('flat');
       const node = dimension([10, 'px']);
+      let resolveCalls = 0;
+      node.resolve = () => {
+        resolveCalls++;
+        return node;
+      };
 
       expect(await node.render(context, buffer)).toBe('10px');
       expect(buffer.parts).toEqual(['10px']);
+      expect(resolveCalls).toBe(0);
     });
 
     it('resolves dimensions without touching render state', async () => {
@@ -69,7 +75,7 @@ describe('Dimension', () => {
 
       expect(resolved.toTrimmedString()).toBe('10px');
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });
@@ -103,6 +109,31 @@ describe('Dimension', () => {
       let left = num(10);
       let right = dimension([20, 'px']);
       await expect(renderOperate(left, right, '-')).resolves.toBe('-10px');
+    });
+
+    it('keeps inherited source metadata on public arithmetic results', () => {
+      const left = dimension([10, 'px']);
+      const right = dimension([20, 'px']);
+      left._location = [10, 1, 11, 14, 1, 15];
+
+      const result = left.operate(right, '+', context);
+
+      expect(result).not.toBe(left);
+      expect(result.location).toEqual(left.location);
+      expect(result.sourceNode).toBe(result);
+    });
+
+    it('keeps inherited source metadata on dimension-to-color operation results', () => {
+      const left = dimension(10);
+      const right = color('#010203');
+      left._location = [20, 1, 21, 24, 1, 25];
+
+      const result = left.operate(right, '+', context);
+
+      expect(result).not.toBe(left);
+      expect(result).not.toBe(right);
+      expect(result.location).toEqual(left.location);
+      expect(result.sourceNode).toBe(result);
     });
   });
 
@@ -214,6 +245,19 @@ describe('Dimension', () => {
       expect(output).toContain('calc');
       expect(output).toContain('px');
       expect(output).toContain('rem');
+    });
+
+    it('keeps preserve-mode compound dimension results as public node surfaces', async () => {
+      const left = dimension([10, 'px']);
+      const right = dimension([2, 'rem']);
+      left._location = [20, 2, 1, 24, 2, 5];
+
+      const result = left.operate(right, '+', context);
+
+      expect(result).not.toBe(left);
+      expect(result.location).toEqual(left.location);
+      expect(result.sourceNode).toBe(result);
+      expect(await result.render(context)).toContain('calc');
     });
     it('should create calc() when dividing a number by a unit', async () => {
       let left = num(10);

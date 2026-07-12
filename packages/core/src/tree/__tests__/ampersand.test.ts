@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
+  extend,
+  ExtendFlag,
   Ampersand,
   BasicSelector,
   type SimpleSelector, type Combinator
@@ -105,7 +107,7 @@ describe('Ampersand', () => {
 
     expect(resolved.toTrimmedString()).toBe('.foo-bar');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -143,6 +145,102 @@ describe('Ampersand', () => {
     } finally {
       sourceSelector.clone = originalClone;
     }
+  });
+
+  it('derives appended framed complex selectors without reparenting source selector children', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo'), co(' '), el('.bar')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const sourceSelector = frame.value.selector;
+    expect(sourceSelector).toBeInstanceOf(Selector);
+    if (!(sourceSelector instanceof Selector)) {
+      throw new Error(`Expected Selector, got ${sourceSelector.type}`);
+    }
+    const sourceChildren = [...sourceSelector.value];
+
+    const resolved = await amp('-baz').resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('.foo .bar-baz');
+    expect(resolved).not.toBe(sourceSelector);
+    expect(frame.value.selector).toBe(sourceSelector);
+    expect(sourceSelector.toTrimmedString()).toBe('.foo .bar');
+    expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
+  });
+
+  it('renders appended generated selectors without reparenting source selectors', async () => {
+    const parentSelector = sel([el('.button')]);
+    const nestedSelector = sel([amp('-primary')]);
+    const sourceParentChildren = [...parentSelector.value];
+    const sourceNestedChildren = [...nestedSelector.value];
+    const node = rules([
+      ruleset({
+        selector: parentSelector,
+        rules: rules([
+          ruleset({
+            selector: nestedSelector,
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context);
+
+    expect(css).toBeString(`
+      .button-primary {
+        color: red;
+      }
+    `);
+    expect(parentSelector.value).toEqual(sourceParentChildren);
+    expect(nestedSelector.value).toEqual(sourceNestedChildren);
+    expect(sourceParentChildren.map(child => child.parent)).toEqual(sourceParentChildren.map(() => parentSelector));
+    expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
+  });
+
+  it('extends appended generated selectors without reparenting source selectors', async () => {
+    const parentSelector = sel([el('.button')]);
+    const nestedSelector = sel([amp('-primary')]);
+    const sourceParentChildren = [...parentSelector.value];
+    const sourceNestedChildren = [...nestedSelector.value];
+    const node = rules([
+      ruleset({
+        selector: parentSelector,
+        rules: rules([
+          ruleset({
+            selector: nestedSelector,
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          })
+        ])
+      }),
+      ruleset({
+        selector: el('.theme'),
+        rules: rules([
+          extend({
+            target: el('.button-primary'),
+            flag: ExtendFlag.Exact
+          })
+        ])
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context);
+
+    expect(css).toBeString(`
+      .button-primary,
+      .theme {
+        color: red;
+      }
+    `);
+    expect(parentSelector.value).toEqual(sourceParentChildren);
+    expect(nestedSelector.value).toEqual(sourceNestedChildren);
+    expect(sourceParentChildren.map(child => child.parent)).toEqual(sourceParentChildren.map(() => parentSelector));
+    expect(sourceNestedChildren.map(child => child.parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
   });
 
   it('derives framed ampersand wrappers without shallow-cloning the source ampersand', async () => {
@@ -336,6 +434,39 @@ describe('Ampersand', () => {
     expect(css).toContain('.fruit-quoted-pear');
     // Each item should get the prefix — verify no bare (unprefixed) items
     expect(css).not.toMatch(/[,\n]\s*satsuma[,\s{]/m);
+  });
+
+  it('derives complex selector-list merge templates with hoist and selector metadata', async () => {
+    const sourceSelector = sellist([
+      sel([el('.one'), co('>'), el('.child')]),
+      sel([el('.two'), co(' '), el('.child')])
+    ]);
+    const sourceChildren = [...sourceSelector.value];
+    const frame = ruleset({
+      selector: sourceSelector,
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+
+    const resolved = await amp('&-theme').resolve(context);
+
+    expect(resolved).toBeInstanceOf(Selector);
+    if (!(resolved instanceof Selector)) {
+      throw new Error(`Expected Selector, got ${resolved.type}`);
+    }
+    expect(resolved.toTrimmedString()).toBe('.one > .child-theme,\n.two .child-theme');
+    expect(resolved.hoistToRoot).toBe(true);
+    const keySet = resolved.getKeySet(context);
+    expect(context.selectorBits.hasBit(keySet, '.one')).toBe(true);
+    expect(context.selectorBits.hasBit(keySet, '.two')).toBe(true);
+    expect(context.selectorBits.hasBit(keySet, '.child-theme')).toBe(true);
+    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.one')).toBe(true);
+    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.two')).toBe(true);
+    expect(context.selectorBits.hasBit(resolved.visibleKeySet, '.child-theme')).toBe(true);
+    expect(frame.value.selector).toBe(sourceSelector);
+    expect(sourceSelector.toTrimmedString()).toBe('.one > .child,\n.two .child');
+    expect(sourceSelector.value).toEqual(sourceChildren);
+    expect(sourceChildren.map(child => child.parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
   it('should validate each item individually when distributing template', async () => {

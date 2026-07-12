@@ -1,4 +1,4 @@
-import { serializeTypes } from '@jesscss/core';
+import { Bool, Context, serializeTypes } from '@jesscss/core';
 import { Parser } from '../src/index.js';
 
 const parser = new Parser();
@@ -110,5 +110,77 @@ describe('guardDefault', () => {
             )
         )
       `);
+  });
+
+  it('evaluates parsed default() guards without using public Bool rendering', async () => {
+    const { errors, tree } = parse(`
+      .mixin() when (default()) { color: green; }
+      .mixin();
+    `, 'stylesheet');
+    const context = new Context();
+    const originalToTrimmedString = Bool.prototype.toTrimmedString;
+    let boolStringCalls = 0;
+    Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: Bool,
+      ...args: Parameters<Bool['toTrimmedString']>
+    ) {
+      boolStringCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+    try {
+      expect(errors.length).toBe(0);
+
+      const rendered = await tree.render(context, { context });
+
+      expect(rendered).toContain('color: green;');
+      expect(boolStringCalls).toBe(0);
+    } finally {
+      Bool.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('evaluates parsed negated default() guards without using public Bool rendering', async () => {
+    const { errors, tree } = parse(`
+      .mixin() when (default()) { color: green; }
+      .mixin() { color: blue; }
+      .mixin() when not (default()) { color: red; }
+      .mixin();
+    `, 'stylesheet');
+    const context = new Context();
+    const originalToTrimmedString = Bool.prototype.toTrimmedString;
+    let boolStringCalls = 0;
+    Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: Bool,
+      ...args: Parameters<Bool['toTrimmedString']>
+    ) {
+      boolStringCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+    try {
+      expect(errors.length).toBe(0);
+
+      const rendered = await tree.render(context, { context });
+
+      expect(rendered).toContain('color: blue;');
+      expect(rendered).toContain('color: red;');
+      expect(rendered).not.toContain('color: green;');
+      expect(boolStringCalls).toBe(0);
+    } finally {
+      Bool.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('keeps ambiguous parsed default() guard pairs as a public matching error', async () => {
+    const { errors, tree } = parse(`
+      .mixin() when (default()) { color: green; }
+      .mixin() when not (default()) { color: red; }
+      .mixin();
+    `, 'stylesheet');
+    expect(errors.length).toBe(0);
+    const context = new Context();
+
+    await expect(tree.render(context, { context }))
+      .rejects
+      .toThrow('Ambiguous use of default() while matching mixins.');
   });
 });

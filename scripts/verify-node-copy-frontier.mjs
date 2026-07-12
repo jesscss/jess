@@ -3,12 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const rootDir = path.resolve(import.meta.dirname, '..');
-const scanRoots = [
-  'packages/core/src',
-  'packages/jess/src',
-  'packages/less-parser/src',
-  'packages/scss-parser/src'
-];
+const packagesDir = path.join(rootDir, 'packages');
 const ignoredSegments = new Set([
   '__tests__',
   'lib'
@@ -20,11 +15,38 @@ const patterns = [
   /cloneWithReusableLeaves\(/u
 ];
 const ordinaryCopyPattern = /\.copy\(/u;
+const ordinaryClonePattern = /\.clone\(/u;
+const loopEvalSurfaceCopyPattern = /return copyWithReusableLeaves\(node\);/u;
 const infrastructureFiles = new Set([
   'packages/core/src/tree/node-base.ts',
   'packages/core/src/tree/util/cloning.ts'
 ]);
+const allowedOrdinaryClonePatterns = [
+  {
+    file: 'packages/core/src/tree/ampersand.ts',
+    pattern: /\bsuper\.clone\(/u
+  },
+  {
+    file: 'packages/core/src/tree/rules.ts',
+    pattern: /\bsuper\.clone\(/u
+  },
+  {
+    file: 'packages/core/src/tree/selector.ts',
+    pattern: /\bsuper\.clone\(/u
+  }
+];
 const expectedRemaining = new Set();
+const expectedLoopEvalSurfaceCopies = new Set();
+
+function getScanRoots() {
+  if (!fs.existsSync(packagesDir)) {
+    return [];
+  }
+  return fs.readdirSync(packagesDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => path.join(packagesDir, dirent.name, 'src'))
+    .filter(sourceDir => fs.existsSync(sourceDir));
+}
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -44,14 +66,33 @@ function walk(dir) {
   return files;
 }
 
+function isBitSetCloneLine(relativeFile, line) {
+  return relativeFile === 'packages/core/src/tree/util/bitset.ts'
+    || /\.keySet\.clone\(\)/u.test(line)
+    || /\.visibleKeySet\.clone\(\)/u.test(line)
+    || /\.requiredKeySet\.clone\(\)/u.test(line)
+    || /\bchildKeySet\.clone\(\)/u.test(line)
+    || /\b_bitset\.clone\(\)/u.test(line);
+}
+
+function isAllowedOrdinaryCloneLine(relativeFile, line) {
+  if (infrastructureFiles.has(relativeFile)) {
+    return true;
+  }
+  return allowedOrdinaryClonePatterns.some(allowed => (
+    allowed.file === relativeFile && allowed.pattern.test(line)
+  ));
+}
+
 const matches = [];
 const ordinaryCopyMatches = [];
-for (const scanRoot of scanRoots) {
-  const absoluteRoot = path.join(rootDir, scanRoot);
-  if (!fs.existsSync(absoluteRoot)) {
+const ordinaryCloneMatches = [];
+const loopEvalSurfaceCopyMatches = [];
+for (const scanRoot of getScanRoots()) {
+  if (!fs.existsSync(scanRoot)) {
     continue;
   }
-  for (const file of walk(absoluteRoot)) {
+  for (const file of walk(scanRoot)) {
     const relative = path.relative(rootDir, file);
     const source = fs.readFileSync(file, 'utf8');
     source.split(/\r?\n/u).forEach((line, index) => {
@@ -60,6 +101,12 @@ for (const scanRoot of scanRoots) {
       }
       if (ordinaryCopyPattern.test(line)) {
         ordinaryCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (ordinaryClonePattern.test(line) && !isBitSetCloneLine(relative, line)) {
+        ordinaryCloneMatches.push({ file: relative, line: index + 1, text: line.trim() });
+      }
+      if (loopEvalSurfaceCopyPattern.test(line)) {
+        loopEvalSurfaceCopyMatches.push({ file: relative, line: index + 1, text: line.trim() });
       }
     });
   }
@@ -78,6 +125,13 @@ const unexpected = frontierFiles.filter(file => !expectedRemaining.has(file));
 const missingExpected = [...expectedRemaining].filter(file => !frontierFiles.includes(file));
 const unexpectedOrdinaryCopy = ordinaryCopyMatches
   .filter(match => !infrastructureFiles.has(match.file));
+const unexpectedOrdinaryClone = ordinaryCloneMatches
+  .filter(match => !isAllowedOrdinaryCloneLine(match.file, match.text));
+const unexpectedLoopEvalSurfaceCopies = loopEvalSurfaceCopyMatches
+  .filter(match => !expectedLoopEvalSurfaceCopies.has(match.file));
+const filesWithLoopEvalSurfaceCopies = new Set(loopEvalSurfaceCopyMatches.map(match => match.file));
+const missingLoopEvalSurfaceCopies = [...expectedLoopEvalSurfaceCopies]
+  .filter(file => !filesWithLoopEvalSurfaceCopies.has(file));
 
 console.log('Node copy frontier scan');
 console.log('');
@@ -93,6 +147,12 @@ for (const file of frontierFiles.filter(file => expectedRemaining.has(file))) {
     console.log(`  ${match.line}: ${match.text}`);
   }
 }
+console.log('');
+console.log('Expected loop eval-surface child-copy seams:');
+for (const match of loopEvalSurfaceCopyMatches.filter(match => expectedLoopEvalSurfaceCopies.has(match.file))) {
+  console.log(`- ${match.file}`);
+  console.log(`  ${match.line}: ${match.text}`);
+}
 
 if (unexpected.length > 0) {
   console.log('');
@@ -106,10 +166,39 @@ if (unexpected.length > 0) {
   process.exitCode = 1;
 }
 
+if (unexpectedLoopEvalSurfaceCopies.length > 0) {
+  console.log('');
+  console.log('Unexpected loop eval-surface child-copy seams:');
+  for (const match of unexpectedLoopEvalSurfaceCopies) {
+    console.log(`- ${match.file}`);
+    console.log(`  ${match.line}: ${match.text}`);
+  }
+  process.exitCode = 1;
+}
+
+if (missingLoopEvalSurfaceCopies.length > 0) {
+  console.log('');
+  console.log('Expected loop eval-surface child-copy seams with no remaining matches:');
+  for (const file of missingLoopEvalSurfaceCopies) {
+    console.log(`- ${file}`);
+  }
+  process.exitCode = 1;
+}
+
 if (unexpectedOrdinaryCopy.length > 0) {
   console.log('');
   console.log('Unexpected ordinary production .copy() sites:');
   for (const match of unexpectedOrdinaryCopy) {
+    console.log(`- ${match.file}`);
+    console.log(`  ${match.line}: ${match.text}`);
+  }
+  process.exitCode = 1;
+}
+
+if (unexpectedOrdinaryClone.length > 0) {
+  console.log('');
+  console.log('Unexpected ordinary production .clone() sites:');
+  for (const match of unexpectedOrdinaryClone) {
     console.log(`- ${match.file}`);
     console.log(`  ${match.line}: ${match.text}`);
   }

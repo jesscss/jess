@@ -26,6 +26,27 @@ function getInternalFunction(fn: object): InternalFunction {
   return internal;
 }
 
+async function countColorClones<T>(callback: () => Promise<T>): Promise<{ result: T; cloneCalls: number }> {
+  const originalClone = Color.prototype.clone;
+  let cloneCalls = 0;
+  Color.prototype.clone = function countCloneCalls(
+    this: Color,
+    ...args: Parameters<typeof originalClone>
+  ): ReturnType<typeof originalClone> {
+    cloneCalls++;
+    return originalClone.apply(this, args);
+  };
+
+  try {
+    return {
+      result: await callback(),
+      cloneCalls
+    };
+  } finally {
+    Color.prototype.clone = originalClone;
+  }
+}
+
 describe('Color Functions', () => {
   describe('RGB Function', () => {
     it('should handle absolute RGB values', async () => {
@@ -69,7 +90,7 @@ describe('Color Functions', () => {
       expect(result.rgb).toEqual([255, 0, 0]);
     });
 
-    it('should clone a Color and set format to RGB when passed just a Color', async () => {
+    it('should output a Color as RGB without cloning when passed just a Color', async () => {
       const inputColor = new Color({
         format: ColorFormat.HSL,
         hsl: [180, 0.5, 0.5],
@@ -77,9 +98,11 @@ describe('Color Functions', () => {
       });
       const context = new Context();
 
-      const result = await callWithContext(context, rgb, inputColor);
+      const { result, cloneCalls } = await countColorClones(() =>
+        callWithContext(context, rgb, inputColor)
+      );
 
-      // Should be a different instance (cloned)
+      // Should be a different generated output instance.
       expect(result).not.toBe(inputColor);
       // Should have RGB format
       expect(result.options.format).toBe(ColorFormat.RGB);
@@ -88,9 +111,10 @@ describe('Color Functions', () => {
       expect(result.rgb).toEqual([64, 191, 191]);
       // Should preserve alpha
       expect(result.alpha).toBe(0.8);
+      expect(cloneCalls).toBe(0);
     });
 
-    it('should clone a Color, set format to RGB, and update alpha when passed Color and opacity', async () => {
+    it('should output a Color as RGB and update alpha without cloning', async () => {
       const inputColor = new Color({
         format: ColorFormat.HEX,
         rgb: [255, 0, 0],
@@ -99,9 +123,11 @@ describe('Color Functions', () => {
       const opacity = new Dimension({ number: 50, unit: '%' });
       const context = new Context();
 
-      const result = await callWithContext(context, rgb, inputColor, opacity);
+      const { result, cloneCalls } = await countColorClones(() =>
+        callWithContext(context, rgb, inputColor, opacity)
+      );
 
-      // Should be a different instance (cloned)
+      // Should be a different generated output instance.
       expect(result).not.toBe(inputColor);
       // Should have RGB format
       expect(result.options.format).toBe(ColorFormat.RGB);
@@ -109,6 +135,7 @@ describe('Color Functions', () => {
       expect(result.rgb).toEqual([255, 0, 0]);
       // Should update alpha to 0.5 (50%)
       expect(result.alpha).toBe(0.5);
+      expect(cloneCalls).toBe(0);
     });
   });
 
@@ -255,7 +282,7 @@ describe('Color Functions', () => {
       expect(result.hsl[2]).toBe(0.5);
     });
 
-    it('should clone a Color and set format to HSL when passed just a Color', async () => {
+    it('should output a Color as HSL without cloning when passed just a Color', async () => {
       const inputColor = new Color({
         format: ColorFormat.RGB,
         rgb: [255, 0, 0],
@@ -263,9 +290,11 @@ describe('Color Functions', () => {
       });
       const context = new Context();
 
-      const result = await callWithContext(context, hsl, inputColor);
+      const { result, cloneCalls } = await countColorClones(() =>
+        callWithContext(context, hsl, inputColor)
+      );
 
-      // Should be a different instance (cloned)
+      // Should be a different generated output instance.
       expect(result).not.toBe(inputColor);
       // Should have HSL format
       expect(result.options.format).toBe(ColorFormat.HSL);
@@ -275,9 +304,10 @@ describe('Color Functions', () => {
       expect(result.hsl[2]).toBeCloseTo(0.5, 1); // 50% lightness
       // Should preserve alpha
       expect(result.alpha).toBe(0.8);
+      expect(cloneCalls).toBe(0);
     });
 
-    it('should clone a Color, set format to HSL, and update alpha when passed Color and opacity', async () => {
+    it('should output a Color as HSL and update alpha without cloning', async () => {
       const inputColor = new Color({
         format: ColorFormat.HEX,
         rgb: [0, 255, 0],
@@ -286,9 +316,11 @@ describe('Color Functions', () => {
       const opacity = new Dimension({ number: 75, unit: '%' });
       const context = new Context();
 
-      const result = await callWithContext(context, hsl, inputColor, opacity);
+      const { result, cloneCalls } = await countColorClones(() =>
+        callWithContext(context, hsl, inputColor, opacity)
+      );
 
-      // Should be a different instance (cloned)
+      // Should be a different generated output instance.
       expect(result).not.toBe(inputColor);
       // Should have HSL format
       expect(result.options.format).toBe(ColorFormat.HSL);
@@ -296,6 +328,7 @@ describe('Color Functions', () => {
       expect(result.hsl[0]).toBeCloseTo(120, 1); // Green hue
       // Should update alpha to 0.75 (75%)
       expect(result.alpha).toBe(0.75);
+      expect(cloneCalls).toBe(0);
     });
   });
 

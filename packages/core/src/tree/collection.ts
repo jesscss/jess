@@ -1,8 +1,9 @@
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { defineType } from './node.js';
+import { defineType, Node } from './node.js';
 import { Rules } from './rules.js';
 import type { PrintOptions } from './util/print.js';
 import type { Context } from '../context.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { isRenderBuffer, type RenderBuffer } from './util/render-buffer.js';
 
 /**
  * A collection is essentially like an anonymous mixin,
@@ -24,24 +25,22 @@ export class Collection extends Rules {
    * Collection rules aren't evaluated by default. They're evaluated
    * at access time OR if assigned to a property.
    */
-  override evalNode(_context: Context): MaybePromise<this> {
+  override evalNode(_context: Context): this {
     return this;
   }
 
-  override resolve(context: Context): MaybePromise<this> {
+  override resolve(context: Context): this {
     return this.evalNode(context);
   }
 
-  override preEval(context: Context): this | Promise<this> {
-    return this.prepareRegistration(context);
-  }
-
-  override prepareRegistration(_context: Context): this | Promise<this> {
-    if (this.preEvaluated) {
-      return this;
-    }
-    this.preEvaluated = true;
-    return this;
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    // Collection is source-only even though it inherits from Rules, whose render
+    // path evaluates child rules. Opt back into the base Node source renderer.
+    return isRenderBuffer(bufferOrOptions)
+      ? Node.prototype.render.call(this, context, bufferOrOptions, options)
+      : Node.prototype.render.call(this, context, bufferOrOptions);
   }
 }
 

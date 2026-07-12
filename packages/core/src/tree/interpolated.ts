@@ -1,4 +1,4 @@
-import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType } from './node.js';
+import { Node, F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC, defineType, type NodeLocation, type TreeContext } from './node.js';
 import { Any, type AnyRole, type AnyOptions } from './any.js';
 import type { Context } from '../context.js';
 import { BasicSelector } from './selector-basic.js';
@@ -7,11 +7,12 @@ import type { Selector } from './selector.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { OutputWriter, type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, serialForEach, isThenable } from '@jesscss/awaitable-pipe';
+import { OutputWriter, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type MaybePromise, serialForEach, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
@@ -104,7 +105,7 @@ export interface Interpolated<
 export class Interpolated<
   Role extends AnyRole = AnyRole
 > extends Node<InterpolatedValue, InterpolatedOptions<Role>> {
-  constructor(value: InterpolatedValue, options?: InterpolatedOptions<Role>, location?: any, treeContext?: any) {
+  constructor(value: InterpolatedValue, options?: InterpolatedOptions<Role>, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     // Interpolated nodes are always non-static and may be async
     this.addFlags(F_VISIBLE, F_MAY_ASYNC, F_NON_STATIC);
@@ -165,6 +166,14 @@ export class Interpolated<
     }
   }
 
+  writeWithReplacements(replacements: Node[], options?: PrintOptions): string {
+    options = getPrintOptions(options);
+    const w = options.writer!;
+    const mark = w.mark();
+    this.writeInterpolated(replacements, options);
+    return w.getSince(mark);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -176,10 +185,26 @@ export class Interpolated<
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
-    }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.resolveRenderReplacements(context),
+      replacements => this.renderResolvedReplacements(context, replacements, bufferOrOptions, options)
+    );
+  }
+
+  private renderResolvedReplacements(
+    context: Context,
+    replacements: Node[],
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): string {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.writeWithReplacements(replacements, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   /**
@@ -268,6 +293,10 @@ export class Interpolated<
   }
 
   override resolve(context: Context): MaybePromise<Any> {
+    return this.resolveValue(context);
+  }
+
+  private resolveValue(context: Context): MaybePromise<Any<Role>> {
     const out = this._evalToInterpolated(context, 'resolve');
     if (isThenable(out)) {
       return (out as Promise<Interpolated<Role>>).then((node) => {
@@ -276,6 +305,24 @@ export class Interpolated<
     }
     const result = (out as Interpolated<Role>).createGeneric();
     return result;
+  }
+
+  private resolveRenderReplacements(context: Context): MaybePromise<Node[]> {
+    const evaluatedReplacements = [...this.value.replacements];
+    let maybe = serialForEach(evaluatedReplacements, (n, idx) => {
+      const out = n.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((result) => {
+          evaluatedReplacements[idx] = result;
+        });
+      }
+      evaluatedReplacements[idx] = out as Node;
+      return undefined;
+    });
+    if (isThenable(maybe)) {
+      return maybe.then(() => evaluatedReplacements);
+    }
+    return evaluatedReplacements;
   }
 
   /**

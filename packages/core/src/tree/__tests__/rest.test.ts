@@ -22,17 +22,23 @@ describe('Rest', () => {
     expect(named.render(context)).toBe('...$$items');
     expect(nodeNamed.render(context)).toBe('...$items');
     expect(named.evaluated).toBe(false);
-    expect(named.preEvaluated).toBe(false);
+    expect(named.registrationPrepared).toBe(false);
     expect(nodeNamed.evaluated).toBe(false);
-    expect(nodeNamed.preEvaluated).toBe(false);
+    expect(nodeNamed.registrationPrepared).toBe(false);
   });
 
   it('writes rest render output into flat buffers', async () => {
     const buffer = createRenderBuffer('flat');
     const node = rest('items');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      return node;
+    };
 
     expect(await node.render(context, buffer)).toBe('...$$items');
     expect(buffer.parts).toEqual(['...$$items']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('resolves rest values without touching render state', async () => {
@@ -42,7 +48,7 @@ describe('Rest', () => {
 
     expect(resolved.toTrimmedString()).toBe('...$$items');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

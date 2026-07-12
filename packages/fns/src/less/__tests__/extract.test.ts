@@ -15,15 +15,19 @@ describe('extract()', () => {
     expect(() => extract(list, new Dimension({ number: 2, unit: '' }))).toThrow('out of range');
   });
 
-  it('returns sequence items without mutating spacing metadata', () => {
+  it('returns an owned sequence while reusing inert source-free leaves', () => {
     const seq = new Sequence([new Any('a'), new Any('b')]);
     const list = new List([seq, new Any('c')]);
 
     const result = extract(list, new Dimension({ number: 1, unit: '' }));
 
     expect(result).toBeInstanceOf(Sequence);
+    if (!(result instanceof Sequence)) {
+      throw new TypeError('Expected extract result to be a Sequence');
+    }
     expect(result).not.toBe(seq);
-    expect((result as Sequence).value[0]).not.toBe(seq.value[0]);
+    expect(result.value[0]).toBe(seq.value[0]);
+    expect(result.value[0]!.frozen).toBe(true);
     expect(String(result)).toBe('a b');
   });
 

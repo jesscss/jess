@@ -1,12 +1,13 @@
 import { Interpolated } from './interpolated.js';
 import { Any } from './any.js';
-import { Node, F_STATIC, F_NON_STATIC, defineType } from './node.js';
+import { Node, F_STATIC, F_NON_STATIC, defineType, type NodeLocation, type TreeContext } from './node.js';
 import type { Context } from '../context.js';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
+  prepareBufferPrintState,
+  writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
 
@@ -33,7 +34,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     ).inherit(this);
   }
 
-  private renderQuotedSyntax(options?: PrintOptions): string {
+  private renderQuotedSyntax(value = this.value, options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
@@ -44,7 +45,6 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
       w.add(escapeChar, this);
     }
     w.add(quote);
-    const value = this.value;
     if (value instanceof Node) {
       value.toTrimmedString(options);
     } else {
@@ -54,7 +54,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return w.getSince(mark);
   }
 
-  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: any, treeContext?: any) {
+  constructor(value: string | Any | Interpolated, options?: QuotedOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     if (typeof value === 'string' && !options?.escaped) {
       this.addFlag(F_STATIC);
@@ -64,7 +64,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   }
 
   override toTrimmedString(options?: PrintOptions) {
-    return this.renderQuotedSyntax(options);
+    return this.renderQuotedSyntax(this.value, options);
   }
 
   override valueOf(): string {
@@ -75,10 +75,38 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    return pipe(
+      () => this.resolveRenderValue(context),
+      value => this.renderResolvedQuotedValue(context, value, bufferOrOptions, options)
+    );
+  }
+
+  private renderResolvedQuotedValue(
+    context: Context,
+    value: string | Any | Interpolated | Node,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    if (this._options?.escaped) {
+      if (value instanceof Node) {
+        return this.renderOutput(context, value, bufferOrOptions, options);
+      }
+      const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+      return buffer
+        ? writeRenderText(buffer, value)
+        : value;
     }
-    return super.render(context, bufferOrOptions);
+    if (value instanceof Node && !(value instanceof Any) && !(value instanceof Interpolated)) {
+      return this.renderOutput(context, value, bufferOrOptions, options);
+    }
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.renderQuotedSyntax(value, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
@@ -93,7 +121,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return typeof other.toString === 'function' && this.toString() === other.toString() ? 0 : undefined;
   }
 
-  override evalNode(context: Context): MaybePromise<Quoted | Node> {
+  private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Quoted | Node> {
     const cont = (value: string | Any | Interpolated | Node): Quoted | Node => {
       if (this._options?.escaped) {
         if (value instanceof Node) {
@@ -111,7 +139,7 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     };
     const { value } = this;
     if (value instanceof Node) {
-      const out = value.eval(context);
+      const out = mode === 'eval' ? value.eval(context) : value.resolve(context);
       if (isThenable(out)) {
         return (out as Promise<Node | Any | Interpolated>).then(cont);
       }
@@ -120,31 +148,20 @@ export class Quoted extends Node<string | Any | Interpolated, QuotedOptions> {
     return cont(value);
   }
 
-  override resolve(context: Context): MaybePromise<Quoted | Node> {
-    const cont = (value: string | Any | Interpolated | Node): Quoted | Node => {
-      if (this._options?.escaped) {
-        if (value instanceof Node) {
-          return value;
-        }
-        return new Any(value);
-      }
-      if (value === this.value) {
-        return this;
-      }
-      if (value instanceof Node && !(value instanceof Any) && !(value instanceof Interpolated)) {
-        return value;
-      }
-      return this.withValue(value);
-    };
+  private resolveRenderValue(context: Context): MaybePromise<string | Any | Interpolated | Node> {
     const { value } = this;
-    if (value instanceof Node) {
-      const out = value.resolve(context);
-      if (isThenable(out)) {
-        return (out as Promise<Node | Any | Interpolated>).then(cont);
-      }
-      return cont(out as Node | Any | Interpolated);
+    if (!(value instanceof Node)) {
+      return value;
     }
-    return cont(value);
+    return value.resolve(context);
+  }
+
+  override evalNode(context: Context): MaybePromise<Quoted | Node> {
+    return this.evaluateValue(context, 'eval');
+  }
+
+  override resolve(context: Context): MaybePromise<Quoted | Node> {
+    return this.evaluateValue(context, 'resolve');
   }
 }
 export const quoted = defineType(Quoted, 'Quoted');

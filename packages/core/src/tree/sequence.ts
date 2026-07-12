@@ -6,11 +6,13 @@ import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  prepareBufferPrintState,
+  type RenderBuffer,
+  writeRenderText,
+  writeRenderTextResult
 } from './util/render-buffer.js';
 import { copyWithReusableLeaves } from './util/cloning.js';
 
@@ -101,14 +103,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return undefined;
   }
 
-  override toTrimmedString(options?: PrintOptions): string {
+  private renderSequenceSyntax(value = this.value, options?: PrintOptions): string {
     const printOptions = getPrintOptions(options);
     if (printOptions.inCustom) {
-      return super.toTrimmedString(printOptions);
+      const w = printOptions.writer!;
+      const mark = w.mark();
+      for (const node of value) {
+        node.toString(printOptions);
+      }
+      return w.getSince(mark);
     }
     const w = printOptions.writer;
     const mark = w.mark();
-    const { value } = this;
     const length = value.length;
 
     if (length === 0) {
@@ -162,13 +168,48 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     return w.getSince(mark);
   }
 
+  override toTrimmedString(options?: PrintOptions): string {
+    return this.renderSequenceSyntax(this.value, options);
+  }
+
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    if (this.hasFlag(F_STATIC)) {
+      return this.renderResolvedValue(context, this.value, bufferOrOptions, options);
     }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.evaluateValues(context, 'resolve'),
+      value => this.renderResolvedValue(context, value, bufferOrOptions, options)
+    );
+  }
+
+  private renderResolvedValue(
+    context: Context,
+    value: Node | Node[],
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    if (value instanceof Node) {
+      return buffer
+        ? writeRenderTextResult(buffer, value.render(context, options))
+        : value.render(context, bufferOrOptions);
+    }
+    const filtered = value.filter(n => n && !(n instanceof Nil));
+    if (filtered.length === 1 && !this._options?.preserveWhitespace) {
+      const node = filtered[0]!;
+      return buffer
+        ? writeRenderTextResult(buffer, node.render(context, options))
+        : node.render(context, bufferOrOptions);
+    }
+    const prepared = buffer
+      ? prepareBufferPrintState(context, options)
+      : prepareRenderPrintState(context, bufferOrOptions);
+    const out = this.renderSequenceSyntax(filtered, prepared);
+    return buffer
+      ? writeRenderText(buffer, out)
+      : out;
   }
 
   override operate(b: Node, op: string, _context: Context): Sequence | List {
@@ -215,6 +256,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   override resolve(context: Context): MaybePromise<Node> {
+    return this.resolveValue(context);
+  }
+
+  private resolveValue(context: Context): MaybePromise<Node> {
     if (this.hasFlag(F_STATIC)) {
       return this;
     }

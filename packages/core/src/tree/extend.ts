@@ -1,9 +1,20 @@
-import { defineType, Node, F_VISIBLE, F_NON_STATIC, F_IMPLICIT_AMPERSAND, F_MAY_ASYNC } from './node.js';
+import {
+  defineType,
+  Node,
+  F_VISIBLE,
+  F_NON_STATIC,
+  F_IMPLICIT_AMPERSAND,
+  F_MAY_ASYNC,
+  type NodeLocation,
+  type NodeOptions,
+  type TreeContext
+} from './node.js';
 import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Ampersand } from './ampersand.js';
+import type { Rules } from './rules.js';
 import type { Ruleset } from './ruleset.js';
-import { Nil } from './nil.js';
+import { createPublicNil, Nil } from './nil.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { Combinator } from './combinator.js';
 import { PseudoSelector } from './selector-pseudo.js';
@@ -13,6 +24,10 @@ import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { copyOwnedWithReusableLeaves } from './util/cloning.js';
+import {
+  renderInvisibleEffect,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export enum ExtendFlag {
   /** Sass and Jess default */
@@ -48,7 +63,7 @@ export interface Extend extends Node<ExtendValue> {
 }
 
 export class Extend extends Node<ExtendValue> {
-  constructor(value: ExtendValue, options?: any, location?: any, treeContext?: any) {
+  constructor(value: ExtendValue, options?: NodeOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.removeFlag(F_VISIBLE);
     this.addFlags(F_NON_STATIC, F_MAY_ASYNC);
@@ -93,7 +108,7 @@ export class Extend extends Node<ExtendValue> {
   // Don't prepare Extend early; evaluate it when the ruleset is in the frame.
   // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
 
-  override evalNode(context: Context): MaybePromise<Nil> {
+  private runExtendEffect(context: Context): MaybePromise<void> {
     let { selector, target, flag } = this.value;
     const { selectorBits } = context;
     attachSelectorBitLibrary(target, selectorBits);
@@ -117,172 +132,139 @@ export class Extend extends Node<ExtendValue> {
     // Get current extend root from registry stack
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (!extendRoot) {
-      /** Throw error? */
-      return new Nil();
+      return undefined;
     }
 
     const maybeSel = selector.eval(context);
-    if (isThenable(maybeSel)) {
-      return (maybeSel as Promise<Selector | Nil>).then((sel) => {
-        if (sel instanceof Nil) {
-          return new Nil();
-        }
-        // Resolve ampersand to its current parent selector if needed (live resolution for extend)
-        let resolvedSel: Selector = sel;
-        if (isNode(sel, N.Ampersand)) {
-          const ampResolved = sel.getResolvedSelector();
-          if (ampResolved && !(ampResolved instanceof Nil)) {
-            resolvedSel = ampResolved;
-          }
-        }
-        // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
-        // selector (e.g. .issue-2586-somepage .content not just .content).
-        if (currentFrame && isNode(currentFrame, N.Ruleset)) {
-          const rs = currentFrame;
-          const fullSel = rs.value?.selector;
-          let usedParentListComposition = false;
-          if (!this.value.selector) {
-            const ownSel = getRulesetOwnSelector(rs);
-            const parentFrame = context.rulesetFrames.at(-2);
-            const parentSel = (
-              parentFrame && isNode(parentFrame, N.Ruleset)
-                ? parentFrame.value?.selector
-                : undefined
-            );
-            if (
-              ownSel
-              && parentSel
-              && !(parentSel instanceof Nil)
-              && isNode(parentSel, N.SelectorList)
-            ) {
-              const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
-                name: ':is',
-                arg: copySelectorForExtendRecord(parentSel, selectorBits)
-              }), selectorBits);
-              parentIs.generated = true;
-              resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-                parentIs,
-                Combinator.create(' '),
-                copySelectorForExtendRecord(ownSel, selectorBits)
-              ]), selectorBits);
-              usedParentListComposition = true;
-            }
-          }
-          if (!this.value.selector && !usedParentListComposition) {
-            if (fullSel && !(fullSel instanceof Nil)) {
-              resolvedSel = fullSel;
-            } else {
-              // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
-              // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-              if (isNode(currentFrame, N.Ruleset)) {
-                const parentSel = currentFrame.value?.selector;
-                if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
-                  resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-                    copySelectorForExtendRecord(parentSel, selectorBits),
-                    Combinator.create(' '),
-                    copySelectorForExtendRecord(resolvedSel, selectorBits)
-                  ]), selectorBits);
-                }
-              }
-            }
-          }
-        }
-        resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
-        attachSelectorBitLibrary(resolvedSel, selectorBits);
-        const rs = currentFrame;
-        const docOrder = getDocumentOrderForExtend(rs, context);
-        const extendRootOptions = extendRoot.options;
-        // Extends declared while traversing a reference branch are tagged so the
-        // extend resolver can keep them non-side-effecting outside that branch.
-        const fromReferenceScope = (
-          context.inReferenceImportScope
-          || ('referenceMode' in extendRootOptions && extendRootOptions.referenceMode === true)
-        );
-        context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
-        return new Nil();
+    const register = (sel: Selector | Nil): void => {
+      if (sel instanceof Nil) {
+        return;
+      }
+      registerExtendRecord({
+        context,
+        extendNode: this,
+        extendRoot,
+        target,
+        selector: sel,
+        authoredSelector: this.value.selector,
+        flag,
+        currentFrame: currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame : undefined
       });
-    }
-    const sel = maybeSel as Selector | Nil;
-    if (sel instanceof Nil) {
-      return new Nil();
-    }
-    // Resolve ampersand to its current parent selector if needed (live resolution for extend)
-    let resolvedSel: Selector = sel;
-    if (isNode(sel, N.Ampersand)) {
-      const ampResolved = sel.getResolvedSelector();
-      if (ampResolved && !(ampResolved instanceof Nil)) {
-        resolvedSel = ampResolved;
-      }
-    }
-    // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
-    // selector (e.g. .issue-2586-somepage .content not just .content).
-    if (currentFrame && isNode(currentFrame, N.Ruleset)) {
-      const rs = currentFrame;
-      const fullSel = rs.value?.selector;
-      let usedParentListComposition = false;
-      if (!this.value.selector) {
-        const ownSel = getRulesetOwnSelector(rs);
-        const parentFrame = context.rulesetFrames.at(-2);
-        const parentSel = (
-          parentFrame && isNode(parentFrame, N.Ruleset)
-            ? parentFrame.value?.selector
-            : undefined
-        );
-        if (
-          ownSel
-          && parentSel
-          && !(parentSel instanceof Nil)
-          && isNode(parentSel, N.SelectorList)
-        ) {
-          const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
-            name: ':is',
-            arg: copySelectorForExtendRecord(parentSel, selectorBits)
-          }), selectorBits);
-          parentIs.generated = true;
-          resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-            parentIs,
-            Combinator.create(' '),
-            copySelectorForExtendRecord(ownSel, selectorBits)
-          ]), selectorBits);
-          usedParentListComposition = true;
-        }
-      }
-      if (!this.value.selector && !usedParentListComposition) {
-        if (fullSel && !(fullSel instanceof Nil)) {
-          resolvedSel = fullSel;
-        } else {
-          // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
-          // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
-          if (isNode(currentFrame, N.Ruleset)) {
-            const parentSel = currentFrame.value?.selector;
-            if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
-              resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-                copySelectorForExtendRecord(parentSel, selectorBits),
-                Combinator.create(' '),
-                copySelectorForExtendRecord(resolvedSel, selectorBits)
-              ]), selectorBits);
-            }
-          }
-        }
-      }
-    }
-    resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
-    attachSelectorBitLibrary(resolvedSel, selectorBits);
-    const rs = currentFrame && isNode(currentFrame, N.Ruleset) ? currentFrame : undefined;
-    const docOrder = getDocumentOrderForExtend(rs, context);
-    const extendRootOptions = extendRoot.options;
-    // Same reference-scope tagging for sync path.
-    const fromReferenceScope = (
-      context.inReferenceImportScope
-      || ('referenceMode' in extendRootOptions && extendRootOptions.referenceMode === true)
-    );
-    context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, this, docOrder, fromReferenceScope]);
-    return new Nil();
+    };
+    return isThenable(maybeSel)
+      ? (maybeSel as Promise<Selector | Nil>).then(register)
+      : register(maybeSel as Selector | Nil);
+  }
+
+  override evalNode(context: Context): MaybePromise<Nil> {
+    const effect = this.runExtendEffect(context);
+    return isThenable(effect)
+      ? (effect as Promise<void>).then(createPublicNil)
+      : createPublicNil();
   }
 
   override resolve(context: Context): MaybePromise<Nil> {
     return this.evalNode(context);
   }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string | MaybePromise<string> {
+    return renderInvisibleEffect(this.runExtendEffect(context), bufferOrOptions);
+  }
+}
+
+type RegisterExtendRecordArgs = {
+  context: Context;
+  extendNode: Extend;
+  extendRoot: Rules;
+  target: Selector;
+  selector: Selector;
+  authoredSelector: Selector | undefined;
+  flag: ExtendFlag | undefined;
+  currentFrame: Ruleset | undefined;
+};
+
+function registerExtendRecord(args: RegisterExtendRecordArgs): void {
+  const {
+    context,
+    extendNode,
+    extendRoot,
+    target,
+    selector,
+    authoredSelector,
+    flag,
+    currentFrame
+  } = args;
+  const { selectorBits } = context;
+  // Resolve ampersand to its current parent selector if needed (live resolution for extend)
+  let resolvedSel: Selector = selector;
+  if (isNode(selector, N.Ampersand)) {
+    const ampResolved = selector.getResolvedSelector();
+    if (ampResolved && !(ampResolved instanceof Nil)) {
+      resolvedSel = ampResolved;
+    }
+  }
+  // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
+  // selector (e.g. .issue-2586-somepage .content not just .content).
+  if (currentFrame) {
+    const rs = currentFrame;
+    const fullSel = rs.value?.selector;
+    let usedParentListComposition = false;
+    if (!authoredSelector) {
+      const ownSel = getRulesetOwnSelector(rs);
+      const parentFrame = context.rulesetFrames.at(-2);
+      const parentSel = (
+        parentFrame && isNode(parentFrame, N.Ruleset)
+          ? parentFrame.value?.selector
+          : undefined
+      );
+      if (
+        ownSel
+        && parentSel
+        && !(parentSel instanceof Nil)
+        && isNode(parentSel, N.SelectorList)
+      ) {
+        const parentIs = attachSelectorBitLibrary(PseudoSelector.create({
+          name: ':is',
+          arg: copySelectorForExtendRecord(parentSel, selectorBits)
+        }), selectorBits);
+        parentIs.generated = true;
+        resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
+          parentIs,
+          Combinator.create(' '),
+          copySelectorForExtendRecord(ownSel, selectorBits)
+        ]), selectorBits);
+        usedParentListComposition = true;
+      }
+    }
+    if (!authoredSelector && !usedParentListComposition) {
+      if (fullSel && !(fullSel instanceof Nil)) {
+        resolvedSel = fullSel;
+      } else {
+        // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
+        // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
+        const parentSel = currentFrame.value?.selector;
+        if (parentSel && !(parentSel instanceof Nil) && resolvedSel.valueOf() !== parentSel.valueOf()) {
+          resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
+            copySelectorForExtendRecord(parentSel, selectorBits),
+            Combinator.create(' '),
+            copySelectorForExtendRecord(resolvedSel, selectorBits)
+          ]), selectorBits);
+        }
+      }
+    }
+  }
+  resolvedSel = materializeImplicitAmpersands(resolvedSel, flag !== ExtendFlag.All);
+  attachSelectorBitLibrary(resolvedSel, selectorBits);
+  const docOrder = getDocumentOrderForExtend(currentFrame, context);
+  const extendRootOptions = extendRoot.options;
+  // Same reference-scope tagging for sync path.
+  const fromReferenceScope = (
+    context.inReferenceImportScope
+    || ('referenceMode' in extendRootOptions && extendRootOptions.referenceMode === true)
+  );
+  context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, extendNode, docOrder, fromReferenceScope]);
 }
 
 function getRulesetOwnSelector(ruleset: Ruleset): Selector | undefined {
@@ -380,7 +362,7 @@ function getDocumentOrderForExtend(rs: Ruleset | undefined, context: Context): n
   if (!rs) {
     return context.extends.length;
   }
-  const loc = (rs as Node).location;
+  const loc = rs.location;
   const fromLoc = Array.isArray(loc) && loc.length >= 1 && typeof loc[0] === 'number' ? loc[0] : undefined;
   if (fromLoc !== undefined) {
     return fromLoc;

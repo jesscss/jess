@@ -15,7 +15,8 @@ import {
   logger,
   type Deprecation,
   type Visitor,
-  renderNodeToString
+  createRenderBuffer,
+  finalizeFlatRenderBuffer
 } from '@jesscss/core';
 import {
   getOptions,
@@ -714,7 +715,7 @@ export class Compiler {
     return this.createContextFromResolved(resolved, plugins);
   }
 
-  private applyPreEvalVisitors(context: Context, tree: Rules, currentFilePath: string): Rules {
+  private applyBeforeEvalVisitors(context: Context, tree: Rules, currentFilePath: string): Rules {
     if (!tree || !context.plugins?.length) {
       return tree;
     }
@@ -736,7 +737,7 @@ export class Compiler {
             // ignore
           }
         }
-        const pre = plugin.preEvalVisitor;
+        const pre = plugin.beforeEvalVisitor;
         if (!pre) {
           continue;
         }
@@ -765,11 +766,14 @@ export class Compiler {
     }
     let current = tree;
     for (const plugin of context.plugins) {
-      const post = plugin.postEvalVisitor;
-      if (!post) {
+      const hooks = [
+        plugin.preRenderVisitor,
+        plugin.postEvalVisitor
+      ].filter((hook): hook is NonNullable<typeof hook> => Boolean(hook));
+      if (hooks.length === 0) {
         continue;
       }
-      const visitors = Array.isArray(post) ? post : [post];
+      const visitors = hooks.flatMap(hook => Array.isArray(hook) ? hook : [hook]);
       for (const visitor of visitors) {
         if (!isVisitor(visitor)) {
           continue;
@@ -795,7 +799,7 @@ export class Compiler {
         return result;
       }
       const resolvedPath = result?.resolvedPath ?? currentFilePathFromImport(importPath, filePath);
-      const processedTree = this.applyPreEvalVisitors(context, result.node, resolvedPath);
+      const processedTree = this.applyBeforeEvalVisitors(context, result.node, resolvedPath);
       if (processedTree && processedTree !== result.node) {
         result.node = processedTree;
         if (result.resolvedPath) {
@@ -838,8 +842,8 @@ export class Compiler {
       if (!parsedNode) {
         throw new Error(`Failed to parse ${filePath ?? '<input>'}`);
       }
-      tree = measureProfileSync(profile, 'applyPreEvalVisitors', () =>
-        this.applyPreEvalVisitors(context, parsedNode, filePath ?? '<input>')
+      tree = measureProfileSync(profile, 'applyBeforeEvalVisitors', () =>
+        this.applyBeforeEvalVisitors(context, parsedNode, filePath ?? '<input>')
       );
     } else {
       const loaded = await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
@@ -847,8 +851,8 @@ export class Compiler {
       if (!loadedNode) {
         throw new Error(`Failed to load ${filePath!}`);
       }
-      tree = measureProfileSync(profile, 'applyPreEvalVisitors', () =>
-        this.applyPreEvalVisitors(context, loadedNode, filePath!)
+      tree = measureProfileSync(profile, 'applyBeforeEvalVisitors', () =>
+        this.applyBeforeEvalVisitors(context, loadedNode, filePath!)
       );
     }
 
@@ -864,7 +868,11 @@ export class Compiler {
       context
     };
 
-    let css = await measureProfileAsync(profile, 'render', async () => renderNodeToString(tree, context, printOptions));
+    let css = await measureProfileAsync(profile, 'render', async () => {
+      const buffer = createRenderBuffer('flat');
+      await tree.render(context, buffer, printOptions);
+      return finalizeFlatRenderBuffer(buffer);
+    });
     css = measureProfileSync(profile, 'postProcessCss', () => {
       let nextCss = css;
       for (const plugin of context.plugins || []) {

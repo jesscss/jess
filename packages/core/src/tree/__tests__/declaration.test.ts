@@ -1,11 +1,13 @@
 import type { IToken } from 'chevrotain';
-import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, List, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any } from '../index.js';
+import { decl, spaced, color, rules, any, ref, atrule, ruleset, el, forNode, list, List, Sequence, VarDeclaration, op, num, dimension, AssignmentType, vardecl, interpolated, call, JsFunction, customdecl, Node, Any } from '../index.js';
 import { Context } from '../../context.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+import { Nil } from '../nil.js';
+import { collectDeclarationMergeAdapterItems, createDeclarationMergeAdapterState, finalizeContextualImportantPublicState, finalizeContextualImportantState } from '../declaration.js';
 
 class CountingWriter extends OutputWriter {
   captures = 0;
@@ -74,6 +76,196 @@ describe('Declaration', () => {
     expect(rendered).toBe('color: red');
   });
 
+  it('writes resolved declaration output into segmented buffers', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    expect(node.render(context, buffer)).toBe('color: red');
+    expect(buffer.segments).toEqual(['color: red']);
+    expect(resolveCalls).toBe(0);
+  });
+
+  it('renders resolved declaration output directly without public resolve', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+    node.resolve = () => {
+      throw new Error('Declaration direct render should evaluate natively');
+    };
+
+    expect(node.render(context)).toBe('color: red');
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders declaration output without materializing a prepared declaration surface', async () => {
+    const root = rules([
+      vardecl({ name: any('brand'), value: any('red') })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    const node = decl({
+      name: any('color'),
+      value: ref({ key: 'brand' }, { type: 'variable' })
+    });
+    const originalWithParts = Reflect.get(node, 'withParts');
+    if (typeof originalWithParts !== 'function') {
+      throw new TypeError('Expected declaration withParts method');
+    }
+    let materializedSurfaces = 0;
+    Reflect.set(node, 'withParts', function countWithParts(this: unknown, ...args: unknown[]) {
+      materializedSurfaces++;
+      return Reflect.apply(originalWithParts, this, args);
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red');
+    expect(materializedSurfaces).toBe(0);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders declaration output without copying source-backed registration parts', async () => {
+    const root = rules([
+      vardecl({ name: any('brand'), value: any('red') })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    const sourceName = any('color');
+    const sourceValue = ref({ key: 'brand' }, { type: 'variable' });
+    const node = decl({
+      name: sourceName,
+      value: sourceValue
+    });
+    const originalNameCopy = sourceName.copy;
+    const originalValueCopy = sourceValue.copy;
+    let sourcePartCopies = 0;
+    sourceName.copy = function copyNameForCounting(
+      this: typeof sourceName,
+      ...args: Parameters<typeof originalNameCopy>
+    ): ReturnType<typeof originalNameCopy> {
+      sourcePartCopies++;
+      return originalNameCopy.apply(this, args);
+    };
+    sourceValue.copy = function copyValueForCounting(
+      this: typeof sourceValue,
+      ...args: Parameters<typeof originalValueCopy>
+    ): ReturnType<typeof originalValueCopy> {
+      sourcePartCopies++;
+      return originalValueCopy.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red');
+      expect(sourcePartCopies).toBe(0);
+      expect(sourceName.parent).toBe(node);
+      expect(sourceValue.parent).toBe(node);
+      expect(node.registrationPrepared).toBe(false);
+    } finally {
+      sourceName.copy = originalNameCopy;
+      sourceValue.copy = originalValueCopy;
+    }
+  });
+
+  it('renders assignment families without reparenting authored declaration values', async () => {
+    const makePrior = (assign: AssignmentType | '+:') => decl({
+      name: any('background-color'),
+      value: any('red')
+    }, {
+      assign: assign === AssignmentType.CondAssign ? undefined : assign
+    });
+    const cases: Array<[AssignmentType | '+:', string]> = [
+      ['+:', 'background-color: red, blue'],
+      [AssignmentType.MergeList, 'background-color: red, blue'],
+      [AssignmentType.MergeSequence, 'background-color: red blue'],
+      [AssignmentType.CondAssign, 'background-color: red']
+    ];
+
+    for (const [assign, expected] of cases) {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      const prior = makePrior(assign);
+      const root = rules([prior]);
+      await root.prepareRegistration(context);
+      context.root = root;
+      context.rulesContext = root;
+
+      const value = any('blue');
+      const sourceDeclaration = decl({
+        name: any('background-color'),
+        value
+      }, { assign });
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'blue') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        expect(await Promise.resolve(sourceDeclaration.render(context))).toBe(expected);
+        expect(scalarCopies).toBe(0);
+        expect(value.parent).toBe(sourceDeclaration);
+        expect(sourceDeclaration.registrationPrepared).toBe(false);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    }
+  });
+
+  it('renders nil declaration eval results through native node render', () => {
+    const originalRender = Nil.prototype.render;
+    let renderCalls = 0;
+    Nil.prototype.render = function renderForCounting(
+      this: Nil,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      renderCalls++;
+      return originalRender.apply(this, args);
+    };
+
+    try {
+      const value = ref({ key: 'missing' }, { type: 'variable', fallbackValue: new Nil() });
+      const node = decl({ name: any('color'), value });
+      const buffer = createRenderBuffer('segmented');
+
+      expect(node.render(context)).toBe('');
+      expect(node.render(context, buffer)).toBe('');
+      expect(buffer.segments).toEqual([]);
+      expect(renderCalls).toBe(2);
+    } finally {
+      Nil.prototype.render = originalRender;
+    }
+  });
+
   it('keeps toTrimmedString canonical even when a render context is present', async () => {
     const root = rules([
       vardecl({ name: any('tone'), value: any('red') })
@@ -110,8 +302,84 @@ describe('Declaration', () => {
     expect(resolved.toTrimmedString()).toBe('color: red');
     expect(sourceValue.parent).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('evaluates declaration values without deriving a lazy eval mutation surface', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const sourceName = any('color');
+    const sourceValue = ref({ key: 'tone' }, { type: 'variable' });
+    const node = decl({
+      name: sourceName,
+      value: sourceValue
+    });
+    const originalDerive = Reflect.get(node, 'derive');
+    if (typeof originalDerive !== 'function') {
+      throw new TypeError('Expected declaration derive method');
+    }
+    let deriveCalls = 0;
+    Reflect.set(node, 'derive', function countDerive(this: unknown, ...args: unknown[]) {
+      deriveCalls++;
+      return Reflect.apply(originalDerive, this, args);
+    });
+
+    const output = await node.evalNode(context);
+
+    expect(output.toTrimmedString()).toBe('color: red');
+    expect(output).not.toBe(node);
+    expect(deriveCalls).toBe(0);
+    expect(sourceName.parent).toBe(node);
+    expect(sourceValue.parent).toBe(node);
+  });
+
+  it('normalizes assignment registration without preparing value subtrees', async () => {
+    const value = any('one');
+    let valuePrepCalls = 0;
+    const originalPrepareRegistration = value.prepareRegistration.bind(value);
+    value.prepareRegistration = (renderContext: Context) => {
+      valuePrepCalls++;
+      return originalPrepareRegistration(renderContext);
+    };
+    const node = decl({
+      name: any('src'),
+      value
+    }, { assign: AssignmentType.MergeSequence });
+
+    const prepared = await Promise.resolve(node.prepareRegistration(context));
+
+    expect(prepared.value.value.type).toBe('Sequence');
+    expect(prepared.value.value.toTrimmedString()).toBe('$.src one');
+    expect(valuePrepCalls).toBe(0);
+    expect(value.registrationPrepared).toBe(false);
+  });
+
+  it('normalizes assignment registration without deriving a declaration surface', async () => {
+    const node = decl({
+      name: any('src'),
+      value: any('one')
+    }, { assign: AssignmentType.MergeSequence });
+    const originalDerive = Reflect.get(node, 'derive');
+    if (typeof originalDerive !== 'function') {
+      throw new TypeError('Expected declaration derive method');
+    }
+    let deriveCalls = 0;
+    Reflect.set(node, 'derive', function countDerive(this: unknown, ...args: unknown[]) {
+      deriveCalls++;
+      return Reflect.apply(originalDerive, this, args);
+    });
+
+    const prepared = await Promise.resolve(node.prepareRegistration(context));
+
+    expect(prepared.value.value.toTrimmedString()).toBe('$.src one');
+    expect(deriveCalls).toBe(0);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('reuses source-free scalar leaves when deriving interpolated declaration names', async () => {
@@ -172,9 +440,36 @@ describe('Declaration', () => {
 
     expect(resolved.toTrimmedString()).toBe('--color:red');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.inCustom).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes resolved custom declaration output into segmented buffers', async () => {
+    const root = rules([
+      vardecl({ name: any('tone'), value: any('red') })
+    ]);
+    const evald = await root.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+    const buffer = createRenderBuffer('segmented');
+    const node = customdecl({
+      name: any('--color'),
+      value: ref({ key: 'tone' }, { type: 'variable' })
+    });
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    expect(node.render(context, buffer)).toBe('--color:red');
+    expect(buffer.segments).toEqual(['--color:red']);
+    expect(resolveCalls).toBe(0);
   });
 
   it('renders indexed references inside custom property values through render(context)', async () => {
@@ -208,19 +503,23 @@ describe('Declaration', () => {
     context.root = evald;
     context.rulesContext = evald;
 
+    const value = interpolated({
+      source: `prefix-${INTERPOLATION_PLACEHOLDER}`,
+      replacements: [ref({ key: 'tone' }, { type: 'variable' })]
+    });
     const node = decl({
       name: any('--custom'),
-      value: interpolated({
-        source: `prefix-${INTERPOLATION_PLACEHOLDER}`,
-        replacements: [ref({ key: 'tone' }, { type: 'variable' })]
-      })
+      value
     });
 
     expect(node.toTrimmedString()).toBe('--custom:prefix-$tone');
+    value.createGeneric = function createGenericShouldNotRun(): never {
+      throw new Error('Custom property interpolation render should not materialize a generic output node');
+    };
     expect(node.render(context)).toBe('--custom:prefix-red');
   });
 
-  it('keeps a single space before block-comment custom property values after evaluation', async () => {
+  it('keeps custom property value spacing raw after evaluation', async () => {
     const root = rules([
       vardecl({
         name: any('commentText'),
@@ -233,8 +532,28 @@ describe('Declaration', () => {
     ]);
 
     expect(await renderNodeToString(root, context)).toBeString(`
-      --comment: /* // Not commented out // */;
+      --comment:/* // Not commented out // */;
     `);
+  });
+
+  it('does not insert custom property value spacing around adjacent comments', () => {
+    const node = decl({
+      name: any('--custom'),
+      value: any('a/* kept raw */b')
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom:a/* kept raw */b');
+    expect(node.render(context)).toBe('--custom:a/* kept raw */b');
+  });
+
+  it('preserves authored custom property value leading space', () => {
+    const node = decl({
+      name: any('--custom'),
+      value: any(' red')
+    });
+
+    expect(node.toTrimmedString()).toBe('--custom: red');
+    expect(node.render(context)).toBe('--custom: red');
   });
 
   it('preserves generic calls in custom property values during render(context)', () => {
@@ -270,7 +589,8 @@ describe('Declaration', () => {
       }, { silentFail: true })
     });
 
-    expect(node.render(context)).toBe(node.toTrimmedString());
+    expect(node.toTrimmedString()).toBe('--custom:rgba(0, 30, 0, 238)');
+    expect(node.render(context)).toBe('--custom:rgba(0, 30, 0, 238)');
   });
 
   it('streams custom declaration values without capture scaffolding', () => {
@@ -415,6 +735,225 @@ describe('Declaration', () => {
     }
   });
 
+  it('renders merged declaration lists without a temporary list surface', () => {
+    const node = decl({
+      name: any('background-color'),
+      value: new List([
+        new Nil(),
+        any('red'),
+        any('foo')
+      ])
+    }, { normalizedFromAssign: AssignmentType.Add });
+    const originalToTrimmedString = List.prototype.toTrimmedString;
+    let listPrinterCalls = 0;
+    List.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: List,
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      listPrinterCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+
+    try {
+      expect(node.render(context)).toBe('background-color: red, foo');
+      expect(listPrinterCalls).toBe(0);
+    } finally {
+      List.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('renders merged declaration sequences without a temporary sequence surface', () => {
+    const node = decl({
+      name: any('background-color'),
+      value: spaced([
+        new Nil(),
+        any('red'),
+        any('foo')
+      ])
+    }, { normalizedFromAssign: AssignmentType.MergeSequence });
+    const originalToTrimmedString = Sequence.prototype.toTrimmedString;
+    let sequencePrinterCalls = 0;
+    Sequence.prototype.toTrimmedString = function toTrimmedStringForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalToTrimmedString>
+    ): ReturnType<typeof originalToTrimmedString> {
+      sequencePrinterCalls++;
+      return originalToTrimmedString.apply(this, args);
+    };
+
+    try {
+      expect(node.render(context)).toBe('background-color: red foo');
+      expect(sequencePrinterCalls).toBe(0);
+    } finally {
+      Sequence.prototype.toTrimmedString = originalToTrimmedString;
+    }
+  });
+
+  it('renders assignment merges without evaluating temporary sequence containers', async () => {
+    const root = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+_:' })
+    ]);
+    await root.prepareRegistration(context);
+    const prior = root;
+    context.root = prior;
+    context.rulesContext = prior;
+    const node = decl({
+      name: any('background-color'),
+      value: any('blue')
+    }, { assign: '+_:' });
+    const originalSequenceEvalNode = Sequence.prototype.evalNode;
+    let sequenceEvalCalls = 0;
+    Sequence.prototype.evalNode = function evalNodeForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalSequenceEvalNode>
+    ): ReturnType<typeof originalSequenceEvalNode> {
+      if (this.value.some(item => item.valueOf() === 'blue')) {
+        sequenceEvalCalls++;
+      }
+      return originalSequenceEvalNode.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('background-color: red blue');
+      expect(sequenceEvalCalls).toBe(0);
+    } finally {
+      Sequence.prototype.evalNode = originalSequenceEvalNode;
+    }
+  });
+
+  it('renders assignment item state with contextual important through buffers', async () => {
+    const root = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    context.pushImportantSource();
+    const node = decl({
+      name: any('background-color'),
+      value: any('blue')
+    }, { assign: '+:' });
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('background-color: red, blue !important');
+    expect(buffer.segments).toEqual(['background-color: red, blue !important']);
+    expect(context.hasImportantSource).toBe(false);
+    expect(node.value.value.parent).toBe(node);
+  });
+
+  it('keeps custom property assignment render state raw through buffers', async () => {
+    const root = rules([
+      decl({
+        name: any('--tokens'),
+        value: any('red')
+      }, { assign: '+:' })
+    ]);
+    await root.prepareRegistration(context);
+    context.root = root;
+    context.rulesContext = root;
+    const node = decl({
+      name: any('--tokens'),
+      value: any('blue')
+    }, { assign: '+:' });
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('--tokens:blue');
+    expect(buffer.segments).toEqual(['--tokens:blue']);
+    expect(node.value.value.parent).toBe(node);
+  });
+
+  it('renders contextual important flags without materializing a flag node', () => {
+    const node = decl({
+      name: any('color'),
+      value: any('red')
+    });
+    context.pushImportantSource();
+
+    expect(node.render(context)).toBe('color: red !important');
+    expect(context.hasImportantSource).toBe(false);
+    expect(node.value.important).toBeUndefined();
+  });
+
+  it('finalizes contextual important state without creating a flag node', () => {
+    context.pushImportantSource();
+
+    expect(finalizeContextualImportantState(context, undefined)).toEqual({
+      importantText: '!important'
+    });
+    expect(context.hasImportantSource).toBe(false);
+  });
+
+  it('finalizes public contextual important state as a flag node', () => {
+    context.pushImportantSource();
+
+    const state = finalizeContextualImportantPublicState(context, undefined);
+
+    expect(state.important?.valueOf()).toBe('!important');
+    expect(state.importantText).toBeUndefined();
+    expect(context.hasImportantSource).toBe(false);
+  });
+
+  it('collects declaration merge adapter items without empty placeholders', () => {
+    expect(collectDeclarationMergeAdapterItems(list([new Nil(), any(''), any('1px')])).map(item => item.valueOf())).toEqual(['1px']);
+  });
+
+  it('creates declaration merge adapter state for render-side list output', () => {
+    const value = list([new Nil(), any('1px'), list([any('2px')])]);
+
+    expect(createDeclarationMergeAdapterState(value, 'list')).toEqual({
+      kind: 'list',
+      value,
+      items: [value.value[1], value.value[2].value[0]]
+    });
+  });
+
+  it('creates declaration merge adapter state for render-side space output', () => {
+    const value = new Sequence([new Nil(), any('1px'), new Sequence([any('2px')])]);
+
+    expect(createDeclarationMergeAdapterState(value, 'space')).toEqual({
+      kind: 'space',
+      value,
+      items: [value.value[1], value.value[2].value[0]]
+    });
+  });
+
+  it('skips declaration merge adapter state for scalar values', () => {
+    const value = any('1px');
+
+    expect(createDeclarationMergeAdapterState(value, 'space')).toBeUndefined();
+  });
+
+  it('returns a single merged declaration replacement without adapter state', () => {
+    const value = list([new Nil(), any('1px')]);
+
+    expect(createDeclarationMergeAdapterState(value, 'list')).toBe(value.value[1]);
+  });
+
+  it('keeps root merged declaration output unchanged without recopying scalar leaves', async () => {
+    const node = rules([
+      decl({
+        name: any('background-color'),
+        value: any('red')
+      }, { assign: '+:' }),
+      decl({
+        name: any('background-color'),
+        value: any('foo')
+      }, { assign: '+:' })
+    ]);
+
+    const css = await renderNodeToString(node, context);
+
+    expect(css).toBeString(`
+      background-color: red, foo;
+    `);
+  });
+
   it('resolves merged declaration lookups without duplicating or keeping empty placeholders', async () => {
     const node = rules([
       decl({
@@ -532,6 +1071,79 @@ describe('Declaration', () => {
       expect(srcValueCopies).toBe(0);
     } finally {
       Node.prototype.copy = originalCopy;
+    }
+  });
+
+  it('renders source-free assignment list inputs without copying the input container', async () => {
+    const sourceValue = list([any('blue'), any('green')]);
+    const node = rules([
+      decl({
+        name: any('src'),
+        value: any('red')
+      }),
+      decl({
+        name: any('src'),
+        value: sourceValue
+      }, { assign: AssignmentType.Add })
+    ]);
+    const sourceParent = sourceValue.parent;
+    const originalCopy = List.prototype.copy;
+    let sourceListCopies = 0;
+    List.prototype.copy = function copyForCounting(
+      this: List,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      if (this === sourceValue) {
+        sourceListCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+
+    try {
+      expect(await renderNodeToString(node, context)).toBeString(`
+        src: red;
+        src: red, blue, green;
+      `);
+      expect(sourceListCopies).toBe(0);
+      expect(sourceValue.parent).toBe(sourceParent);
+    } finally {
+      List.prototype.copy = originalCopy;
+    }
+  });
+
+  it('renders source-free assignment sequence inputs without copying the input container', async () => {
+    const sourceValue = spaced([any('blue'), any('green')]);
+    const node = rules([
+      decl({
+        name: any('src'),
+        value: any('red')
+      }, { assign: AssignmentType.MergeSequence }),
+      decl({
+        name: any('src'),
+        value: sourceValue
+      }, { assign: AssignmentType.MergeSequence })
+    ]);
+    const sourceParent = sourceValue.parent;
+    const originalCopy = Sequence.prototype.copy;
+    let sourceSequenceCopies = 0;
+    Sequence.prototype.copy = function copyForCounting(
+      this: Sequence,
+      ...args: Parameters<typeof originalCopy>
+    ): ReturnType<typeof originalCopy> {
+      if (this === sourceValue) {
+        sourceSequenceCopies++;
+      }
+      return originalCopy.apply(this, args);
+    };
+
+    try {
+      expect(await renderNodeToString(node, context)).toBeString(`
+        src: red blue green;
+      `);
+      expect(sourceSequenceCopies).toBe(0);
+      expect(sourceValue.parent).toBe(sourceParent);
+    } finally {
+      Sequence.prototype.copy = originalCopy;
     }
   });
 

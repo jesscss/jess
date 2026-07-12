@@ -11,7 +11,7 @@ describe('JS host wrapper nodes', () => {
 
     expect(resolved).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('resolves JS objects without eval stamping host values', () => {
@@ -22,7 +22,7 @@ describe('JS host wrapper nodes', () => {
 
     expect(resolved).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('resolves JS arrays without eval stamping host values', () => {
@@ -33,6 +33,6 @@ describe('JS host wrapper nodes', () => {
 
     expect(resolved).toBe(node);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 });

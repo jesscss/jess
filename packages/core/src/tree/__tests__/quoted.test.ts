@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { quoted, ref, rules, vardecl, any, Rules as RulesClass, color, interpolated, list } from '../index.js';
+import { quoted, ref, rules, vardecl, any, Rules as RulesClass, color, interpolated, list, Quoted } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap } from '../util/trivia.js';
@@ -15,6 +15,16 @@ class CountingWriter extends OutputWriter {
     this.captures++;
     return super.capture(fn);
   }
+}
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  expect(evald).toBeInstanceOf(RulesClass);
+  if (!(evald instanceof RulesClass)) {
+    throw new Error('Expected Rules root');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
 }
 
 describe('quoted', () => {
@@ -51,16 +61,21 @@ describe('quoted', () => {
         value: any('hello')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    const resolveQuoted = quotedNode.resolve.bind(quotedNode);
+    let quotedResolveCalls = 0;
+    quotedNode.resolve = (renderContext: Context) => {
+      quotedResolveCalls++;
+      return resolveQuoted(renderContext);
+    };
     const rendered = quotedNode.render(context);
 
     expect(rendered).toBe('"hello"');
+    expect(quotedResolveCalls).toBe(0);
     expect(quotedNode.evaluated).toBe(false);
-    expect(quotedNode.preEvaluated).toBe(false);
+    expect(quotedNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved quoted render output into flat buffers', async () => {
@@ -70,17 +85,50 @@ describe('quoted', () => {
         value: any('hello')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
+    const resolveQuoted = quotedNode.resolve.bind(quotedNode);
+    let quotedResolveCalls = 0;
+    quotedNode.resolve = (renderContext: Context) => {
+      quotedResolveCalls++;
+      return resolveQuoted(renderContext);
+    };
 
     expect(await quotedNode.render(context, buffer)).toBe('"hello"');
     expect(buffer.parts).toEqual(['"hello"']);
+    expect(quotedResolveCalls).toBe(0);
     expect(quotedNode.evaluated).toBe(false);
-    expect(quotedNode.preEvaluated).toBe(false);
+    expect(quotedNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders resolved quoted values without materializing a replacement quote', async () => {
+    const node = rules([
+      vardecl({
+        name: any('asset'),
+        value: any('image.png')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const descriptor = Object.getOwnPropertyDescriptor(Quoted.prototype, 'withValue');
+    if (!descriptor) {
+      throw new Error('Expected Quoted.withValue for render materialization proof');
+    }
+
+    Object.defineProperty(Quoted.prototype, 'withValue', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Quoted render should not materialize a replacement quote');
+      }
+    });
+    try {
+      const quotedNode = quoted(ref({ key: 'asset' }, { type: 'variable' }));
+
+      expect(await quotedNode.render(context)).toBe('"image.png"');
+    } finally {
+      Object.defineProperty(Quoted.prototype, 'withValue', descriptor);
+    }
   });
 
   it('does not emit source trivia from resolved quoted value children', () => {
@@ -116,16 +164,14 @@ describe('quoted', () => {
         value: any('hello')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const quotedNode = quoted(ref({ key: 'message' }, { type: 'variable' }));
     const resolved = await quotedNode.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('"hello"');
     expect(quotedNode.evaluated).toBe(false);
-    expect(quotedNode.preEvaluated).toBe(false);
+    expect(quotedNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -136,9 +182,7 @@ describe('quoted', () => {
         value: any('hello')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const quotedNode = quoted(interpolated({
       source: `say-${INTERPOLATION_PLACEHOLDER}`,

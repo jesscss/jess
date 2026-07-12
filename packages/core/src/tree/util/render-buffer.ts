@@ -1,9 +1,14 @@
 import type { Context } from '../../context.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { prepareRenderPrintState, type PrintOptions } from './print.js';
+import { prepareRenderPrintState, type FinalPrintOptions, type PrintOptions } from './print.js';
 
 export type RenderBufferNode = {
   resolve(context: Context): MaybePromise<RenderableOutput>;
+};
+
+type NativeRenderOutput = {
+  render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  render(context: Context, options?: PrintOptions): MaybePromise<string>;
 };
 
 export type RenderableOutput = {
@@ -34,6 +39,9 @@ export type RenderBuffer = FlatRenderBuffer | SegmentedRenderBuffer;
 export type RenderBufferFlags = {
   hasExtends?: boolean;
   hasReferenceImports?: boolean;
+  hasHoists?: boolean;
+  hasMerges?: boolean;
+  hasPendingRefs?: boolean;
 };
 
 export type FlatRenderBuffer = {
@@ -100,26 +108,94 @@ export function createRenderBuffer(kind: RenderBuffer['kind']): RenderBuffer {
 }
 
 export function createRenderBufferForFlags(flags: RenderBufferFlags): RenderBuffer {
-  return createRenderBuffer(flags.hasExtends || flags.hasReferenceImports ? 'segmented' : 'flat');
+  return createRenderBuffer(
+    flags.hasExtends
+    || flags.hasReferenceImports
+    || flags.hasHoists
+    || flags.hasMerges
+    || flags.hasPendingRefs
+      ? 'segmented'
+      : 'flat'
+  );
 }
 
 export function isRenderBuffer(value: unknown): value is RenderBuffer {
   if (typeof value !== 'object' || value === null || !('kind' in value)) {
     return false;
   }
-  const { kind } = value as { kind?: unknown };
-  return kind === 'flat' || kind === 'segmented';
+  const candidate = value;
+  return (
+    candidate.kind === 'flat'
+    && 'parts' in candidate
+    && Array.isArray(candidate.parts)
+  ) || (
+    candidate.kind === 'segmented'
+    && 'segments' in candidate
+    && 'extendRecords' in candidate
+    && Array.isArray(candidate.segments)
+    && Array.isArray(candidate.extendRecords)
+  );
 }
 
-export function writeRenderText(buffer: RenderBuffer, text: string): void {
+export function writeRenderText(buffer: RenderBuffer, text: string): string {
   if (text === '') {
-    return;
+    return text;
   }
   if (buffer.kind === 'flat') {
     buffer.parts.push(text);
-    return;
+    return text;
   }
   buffer.segments.push(text);
+  return text;
+}
+
+export function writeRenderTextResult(buffer: RenderBuffer, text: MaybePromise<string>): MaybePromise<string> {
+  return isThenable(text)
+    ? text.then(resolved => writeRenderText(buffer, resolved))
+    : writeRenderText(buffer, text);
+}
+
+export function prepareBufferPrintState(context: Context, options?: PrintOptions): FinalPrintOptions {
+  if (!options) {
+    return prepareRenderPrintState(context);
+  }
+  const detached = { ...options };
+  delete detached.writer;
+  return prepareRenderPrintState(context, detached);
+}
+
+export function renderInvisibleEffect(
+  effect: MaybePromise<unknown>,
+  bufferOrOptions?: RenderBuffer | PrintOptions
+): MaybePromise<string> {
+  const rendered = isThenable(effect)
+    ? effect.then(() => '')
+    : '';
+  return isRenderBuffer(bufferOrOptions)
+    ? writeRenderTextResult(bufferOrOptions, rendered)
+    : rendered;
+}
+
+export function renderedOutputToString(
+  source: RenderBufferNode,
+  node: RenderableOutput,
+  context: Context,
+  options?: PrintOptions
+): string {
+  const prepared = prepareRenderPrintState(context, options);
+  return renderedOutputToPreparedString(source, node, context, prepared);
+}
+
+function renderedOutputToPreparedString(
+  source: RenderBufferNode,
+  node: RenderableOutput,
+  context: Context,
+  prepared: FinalPrintOptions
+): string {
+  if (isRootRulesOutput(source, node, context)) {
+    return node.toString(prepared);
+  }
+  return node.toTrimmedString(prepared);
 }
 
 export function createSegmentBody(): Segment[] {
@@ -174,17 +250,27 @@ export function renderNodeToBuffer(
   buffer: RenderBuffer,
   options?: PrintOptions
 ): MaybePromise<string> {
-  if (buffer.kind !== 'flat') {
-    throw new Error('renderNodeToBuffer(...) can only use the default bridge with flat RenderBuffer; segmented rendering needs explicit segment handling.');
+  if (hasNativeBufferRender(node)) {
+    return node.render(context, buffer, options);
   }
-  const rendered = renderNodeToString(node, context, options);
-  const writeRendered = (text: string): string => {
-    writeRenderText(buffer, text);
-    return text;
+  return writeRenderTextResult(buffer, renderNodeToWriter(node, context, prepareBufferPrintState(context, options)));
+}
+
+export function renderNodeToWriter(
+  node: RenderBufferNode,
+  context: Context,
+  options?: PrintOptions
+): MaybePromise<string> {
+  // Test/internal adapter: serialize a node through its explicit resolve
+  // contract when a native render override is not available. Production render
+  // paths should prefer node-local render methods and flat buffers.
+  const writeResolved = (resolved: RenderableOutput): string => {
+    return renderedOutputToString(node, resolved, context, options);
   };
-  return isThenable(rendered)
-    ? rendered.then(writeRendered)
-    : writeRendered(rendered);
+  const resolved = node.resolve(context);
+  return isThenable(resolved)
+    ? (resolved as Promise<RenderableOutput>).then(writeResolved)
+    : writeResolved(resolved);
 }
 
 export function renderNodeToString(
@@ -192,20 +278,34 @@ export function renderNodeToString(
   context: Context,
   options?: PrintOptions
 ): MaybePromise<string> {
-  // Track 5 bridge only: this adapts current node serializers to evaluated
-  // string output. Nodes with delayed-output semantics must write explicit
-  // segments instead of growing a second AST.
-  const prepared = prepareRenderPrintState(context, options);
-  const writeResolved = (resolved: RenderableOutput): string => {
-    if (isRootRulesOutput(node, resolved, context)) {
-      return resolved.toString(prepared);
+  const buffer = createRenderBuffer('flat');
+  const rendered = renderNodeToBuffer(node, context, buffer, options);
+  const finalize = (): string => finalizeFlatRenderBuffer(buffer);
+  return isThenable(rendered)
+    ? rendered.then(finalize)
+    : finalize();
+}
+
+function hasNativeBufferRender(node: object): node is NativeRenderOutput {
+  const ownDescriptor = Object.getOwnPropertyDescriptor(node, 'render');
+  if (typeof ownDescriptor?.value === 'function' && ownDescriptor.value.length >= 2) {
+    return true;
+  }
+
+  let proto = getObjectPrototype(node);
+  while (proto) {
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'render');
+    if (typeof descriptor?.value === 'function') {
+      return descriptor.value.length >= 3;
     }
-    return resolved.toTrimmedString(prepared);
-  };
-  const resolved = node.resolve(context);
-  return isThenable(resolved)
-    ? (resolved as Promise<RenderableOutput>).then(writeResolved)
-    : writeResolved(resolved);
+    proto = getObjectPrototype(proto);
+  }
+  return false;
+}
+
+function getObjectPrototype(value: object): object | null {
+  const proto: unknown = Object.getPrototypeOf(value);
+  return typeof proto === 'object' ? proto : null;
 }
 
 function isRootRulesOutput(
@@ -234,6 +334,10 @@ export function finalizeRenderBuffer(buffer: RenderBuffer, finalizers: SegmentFi
   return buffer.kind === 'flat'
     ? buffer.parts.join('')
     : finalizeSegments(buffer.segments, finalizers);
+}
+
+export function finalizeFlatRenderBuffer(buffer: FlatRenderBuffer): string {
+  return buffer.parts.join('');
 }
 
 export function finalizeSegments(segments: readonly Segment[], finalizers: SegmentFinalizers): string {

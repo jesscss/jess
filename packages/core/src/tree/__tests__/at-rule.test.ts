@@ -6,7 +6,11 @@ import {
 } from '../index.js';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
-import { AtRule } from '../at-rule.js';
+import {
+  AtRule,
+  createAtRuleBodyPublicResultState,
+  createAtRuleBodyRuntimeUpdate
+} from '../at-rule.js';
 import { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
@@ -15,7 +19,7 @@ import { createTriviaMap } from '../util/trivia.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import * as path from 'path';
 import * as fs from 'fs';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -55,11 +59,11 @@ describe('AtRule', () => {
     expect(prepared).toBe(node);
   });
 
-  it('keeps static at-rules canonical in registration prep when child rules are already preEvaluated', async () => {
+  it('keeps static at-rules canonical in registration prep when child rules are already registration-prepared', async () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
-    body.preEvaluated = true;
+    body.registrationPrepared = true;
     const node = atrule({
       name: any('@media', { role: 'atkeyword' }),
       prelude: seq([any('screen', { role: 'keyword' })]),
@@ -91,6 +95,35 @@ describe('AtRule', () => {
     }
     expect(prepared.value.name.valueOf()).toBe('@media');
     expect(prelude.parent).toBe(node);
+  });
+
+  it('derives at-rule registration prep only when child rules return a prepared replacement', async () => {
+    const sourcePrelude = seq([any('screen', { role: 'keyword' })]);
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const preparedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    sourceRules.prepareRegistration = () => preparedRules;
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: sourceRules
+    });
+
+    const prepared = await node.prepareRegistration(context);
+
+    expect(prepared).not.toBe(node);
+    expect(prepared).toBeInstanceOf(AtRule);
+    if (!(prepared instanceof AtRule)) {
+      throw new Error('Expected AtRule result');
+    }
+    expect(prepared.value.rules).toBe(preparedRules);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(node.registrationPrepared).toBe(false);
+    expect(prepared.registrationPrepared).toBe(true);
   });
 
   it('restores at-rule body registration context when child registration prep throws', () => {
@@ -141,6 +174,32 @@ describe('AtRule', () => {
     expect(context.rulesContext).toBe(savedRulesContext);
   });
 
+  it('keeps lifted rules context until async at-rule prelude eval settles', async () => {
+    const savedRulesContext = rules([]);
+    const parentAtRule = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: savedRulesContext
+    });
+    const outerRulesContext = rules([parentAtRule]);
+    const prelude = any('screen');
+    prelude.addFlags(F_MAY_ASYNC);
+    prelude.eval = async (evalContext: Context) => {
+      await Promise.resolve();
+      expect(evalContext.rulesContext).toBe(outerRulesContext);
+      return any('print');
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude,
+      rules: rules([])
+    });
+    context.rulesContext = savedRulesContext;
+
+    await expect(Promise.resolve(node.eval(context))).resolves.toBe(node);
+    expect(node.value.prelude?.toTrimmedString()).toBe('print');
+    expect(context.rulesContext).toBe(savedRulesContext);
+  });
+
   it('restores at-rule frame when body eval throws', () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
@@ -160,6 +219,50 @@ describe('AtRule', () => {
     expect(context.frames).toEqual([savedFrame]);
   });
 
+  it('restores hoist runtime compatibility state when body eval throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => {
+      throw new Error('body eval failed');
+    };
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: body
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [savedFrame];
+
+    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
+    expect(node.getRenderFrames()).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+  });
+
+  it('restores cleared ruleset frames when hoisted body eval throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = (evalContext: Context) => {
+      expect(evalContext.rulesetFrames).toEqual([]);
+      throw new Error('body eval failed');
+    };
+    const node = atrule({
+      name: any('@keyframes', { role: 'atkeyword' }),
+      rules: body
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [savedFrame];
+    context.rulesetFrames = [savedFrame];
+
+    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(context.rulesetFrames).toEqual([savedFrame]);
+  });
+
   it('restores at-rule frame when body eval rejects', async () => {
     const savedFrame = ruleset({
       selector: el('.frame'),
@@ -176,6 +279,27 @@ describe('AtRule', () => {
 
     await expect(node.eval(context)).rejects.toThrow('body eval failed');
     expect(context.frames).toEqual([savedFrame]);
+  });
+
+  it('restores hoist runtime compatibility state when body eval rejects', async () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => Promise.reject(new Error('body eval failed'));
+    body.addFlag(F_MAY_ASYNC);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: body
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [savedFrame];
+
+    await expect(node.eval(context)).rejects.toThrow('body eval failed');
+    expect(node.isHoisted({ collapseNesting: false })).toBe(false);
+    expect(node.getRenderFrames()).toBeUndefined();
+    expect(node.frames).toBeUndefined();
   });
 
   it('renders resolved at-rules through render(context)', async () => {
@@ -202,6 +326,804 @@ describe('AtRule', () => {
         color: red;
       }
     `);
+  });
+
+  it('writes finalized at-rule output into segmented buffers', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+
+    const buffer = createRenderBuffer('segmented');
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    const rendered = await Promise.resolve(node.render(context, buffer));
+
+    expect(rendered).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(buffer.segments).toHaveLength(1);
+    expect(buffer.segments[0]).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(resolveCalls).toBe(0);
+  });
+
+  it('renders resolved at-rule output directly without public resolve', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    node.resolve = () => {
+      throw new Error('AtRule direct render should evaluate a derived surface');
+    };
+
+    expect(node.render(context)).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('registers nested layer names from invocation records without mutating source children', async () => {
+    const nestedBody = rules([
+      ruleset({
+        selector: el('.inner'),
+        rules: rules([decl({ name: 'color', value: any('red') })])
+      })
+    ]);
+    const nestedLayer = atrule({
+      name: any('@layer', { role: 'atkeyword' }),
+      prelude: any('child'),
+      rules: nestedBody
+    });
+    const outerBody = rules([nestedLayer]);
+    const outerLayer = atrule({
+      name: any('@layer', { role: 'atkeyword' }),
+      prelude: any('parent'),
+      rules: outerBody
+    });
+    const registeredLayers: Array<string | undefined> = [];
+    const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
+    context.extendRoots.registerRoot = function registerRootWithLayerCapture(
+      ...args: Parameters<typeof originalRegisterRoot>
+    ): ReturnType<typeof originalRegisterRoot> {
+      registeredLayers.push(args[2]?.layerName);
+      return originalRegisterRoot(...args);
+    };
+
+    const root = rules([outerLayer]);
+
+    await Promise.resolve(root.render(context));
+
+    expect(registeredLayers).toContain('parent');
+    expect(registeredLayers).toContain('parent.child');
+    expect(outerBody.parent).toBe(outerLayer);
+    expect(nestedLayer.parent).toBe(outerBody);
+    expect(nestedBody.parent).toBe(nestedLayer);
+    expect(outerLayer.value.rules).toBe(outerBody);
+    expect(nestedLayer.value.rules).toBe(nestedBody);
+  });
+
+  it('renders already evaluated at-rules without deriving another eval surface', async () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen')]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const evald = await node.eval(context);
+    const originalEval = AtRule.prototype.eval;
+    let evalCalls = 0;
+    AtRule.prototype.eval = function countEvalCalls(
+      this: AtRule,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      expect(evald.render(context)).toBeString(`
+        @media screen {
+          color: red;
+        }
+      `);
+      expect(evalCalls).toBe(0);
+    } finally {
+      AtRule.prototype.eval = originalEval;
+    }
+  });
+
+  it('renders evaluated at-rules with owned body state without reading source runtime render rules', async () => {
+    const originalRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const originalEval = originalRules.eval;
+    originalRules.eval = function evalReplacementBody(
+      this: Rules,
+      ..._args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evaluatedRules.evaluated = true;
+      return evaluatedRules;
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen')]),
+      rules: originalRules
+    });
+    const evaluated = await node.eval(context);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected evaluated AtRule result');
+    }
+    node.getRenderRules = () => {
+      throw new Error('evaluated render should not read source runtime render rules');
+    };
+
+    expect(evaluated).not.toBe(node);
+    expect(evaluated.render(context)).toBeString(`
+      @media screen {
+        color: blue;
+      }
+    `);
+  });
+
+  it('renders static at-rules without deriving or evaluating', () => {
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: seq([any('svg')])
+    });
+    const originalEval = AtRule.prototype.eval;
+    let evalCalls = 0;
+    AtRule.prototype.eval = function countEvalCalls(
+      this: AtRule,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      expect(node.render(context)).toBe('@namespace svg;');
+      expect(evalCalls).toBe(0);
+      expect(node.evaluated).toBe(false);
+    } finally {
+      AtRule.prototype.eval = originalEval;
+    }
+  });
+
+  it('renders dynamic leaf at-rule preludes without evaluating an at-rule surface', async () => {
+    const root = rules([
+      vardecl({
+        name: 'namespace',
+        value: any('svg')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const prelude = seq([ref({ key: 'namespace' }, { type: 'variable' })]);
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude
+    });
+    const originalEval = AtRule.prototype.eval;
+    AtRule.prototype.eval = () => {
+      throw new Error('leaf at-rule render should not evaluate an at-rule surface');
+    };
+
+    try {
+      expect(await Promise.resolve(node.render(context))).toBe('@namespace svg;');
+      const buffer = createRenderBuffer('flat');
+      expect(await Promise.resolve(node.render(context, buffer))).toBe('@namespace svg;');
+      expect(buffer.parts).toEqual(['@namespace svg;']);
+      const resolved = await Promise.resolve(node.resolve(context));
+      expect(resolved.toTrimmedString()).toBe('@namespace svg;');
+      expect(prelude.parent).toBe(node);
+      expect(prelude.evaluated).toBe(false);
+      expect(node.evaluated).toBe(false);
+    } finally {
+      AtRule.prototype.eval = originalEval;
+    }
+  });
+
+  it('keeps source at-rule bodies canonical during dynamic direct render', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourcePrelude = seq([ref({ key: 'mode' }, { type: 'variable' })]);
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: sourceRules
+    });
+    const buffer = createRenderBuffer('segmented');
+
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(await Promise.resolve(node.render(context, buffer))).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(buffer.segments[0]).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(sourcePrelude.evaluated).toBe(false);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+    expect(node.getRenderRules()).toBe(sourceRules);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('keeps dynamic body eval on an owned rules target instead of the canonical source rules', async () => {
+    const sourceRules = rules([
+      decl({
+        name: 'color',
+        value: call({ name: 'rgb', args: list([num(1), num(2), num(3)]) })
+      })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: any('screen'),
+      rules: sourceRules
+    });
+    sourceRules.eval = () => {
+      throw new Error('Dynamic at-rule render must not eval canonical source rules');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      @media screen {
+        color: rgb(1, 2, 3);
+      }
+    `);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+  });
+
+  it('renders plain static body rules without an owned body eval target', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: sourceRules
+    });
+    const originalEval = Rules.prototype.eval;
+    let rulesEvalCalls = 0;
+    Rules.prototype.eval = function countRulesEval(
+      this: Rules,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      rulesEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+    try {
+      expect(await Promise.resolve(node.render(context))).toBeString(`
+        @media print {
+          color: red;
+        }
+      `);
+    } finally {
+      Rules.prototype.eval = originalEval;
+    }
+    expect(rulesEvalCalls).toBe(0);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+  });
+
+  it('renders static invisible var body rules without an owned body eval target', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const variable = vardecl({ name: 'brand', value: any('red') });
+    const sourceRules = rules([
+      variable,
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: sourceRules
+    });
+    const originalRulesEval = Rules.prototype.eval;
+    const originalVarEval = variable.eval;
+    let rulesEvalCalls = 0;
+    let varEvalCalls = 0;
+    Rules.prototype.eval = function countRulesEval(
+      this: Rules,
+      ...args: Parameters<typeof originalRulesEval>
+    ): ReturnType<typeof originalRulesEval> {
+      rulesEvalCalls++;
+      return originalRulesEval.apply(this, args);
+    };
+    variable.eval = function countVarEval(
+      this: typeof variable,
+      ...args: Parameters<typeof originalVarEval>
+    ): ReturnType<typeof originalVarEval> {
+      varEvalCalls++;
+      return originalVarEval.apply(this, args);
+    };
+    try {
+      expect(await Promise.resolve(node.render(context))).toBeString(`
+        @media print {
+          color: red;
+        }
+      `);
+    } finally {
+      Rules.prototype.eval = originalRulesEval;
+      variable.eval = originalVarEval;
+    }
+    expect(rulesEvalCalls).toBe(0);
+    expect(varEvalCalls).toBe(0);
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+    expect(variable.parent).toBe(sourceRules);
+    expect(variable.evaluated).toBe(false);
+  });
+
+  it('renders static root-only body rules with hoist side state without an owned body eval target', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [parentFrame];
+    const sourceRules = rules([
+      decl({ name: 'font-family', value: any('Jess') })
+    ]);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+    const originalEval = Rules.prototype.eval;
+    let rulesEvalCalls = 0;
+    Rules.prototype.eval = function countRulesEval(
+      this: Rules,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      rulesEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+    try {
+      expect(await Promise.resolve(node.render(context))).toBeString(`
+        @font-face {
+          font-family: Jess;
+        }
+      `);
+    } finally {
+      Rules.prototype.eval = originalEval;
+    }
+    expect(rulesEvalCalls).toBe(0);
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+    expect(sourceRules.parent).toBe(node);
+    expect(sourceRules.evaluated).toBe(false);
+  });
+
+  it('keeps direct body-render visibility off the source at-rule', async () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: any('screen'),
+      rules: rules([
+        vardecl({ name: 'hidden', value: any('yes') })
+      ])
+    });
+
+    expect(await Promise.resolve(node.render(context))).toBe('');
+    expect(node.visible).toBe(true);
+    expect(node.value.rules?.parent).toBe(node);
+    expect(node.value.rules?.evaluated).toBe(false);
+  });
+
+  it('keeps public body-resolve visibility on the owned result', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('screen')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourceRules = rules([
+      vardecl({ name: 'hidden', value: any('yes') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: sourceRules
+    });
+
+    const resolved = await Promise.resolve(node.resolve(context));
+
+    expect(resolved.toString()).toBe('');
+    expect(node.visible).toBe(true);
+    expect(node.value.rules).toBe(sourceRules);
+    expect(sourceRules.parent).toBe(node);
+    if (resolved instanceof AtRule) {
+      expect(resolved).not.toBe(node);
+      expect(resolved.visible).toBe(false);
+    }
+  });
+
+  it('keeps direct body-render hoist facts off the source at-rule', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@keyframes', { role: 'atkeyword' }),
+      prelude: seq([any('spin', { role: 'keyword' })]),
+      rules: rules([
+        ruleset({
+          selector: el('to'),
+          rules: rules([
+            decl({ name: 'opacity', value: dimension([1]) })
+          ])
+        })
+      ])
+    });
+
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @keyframes spin {
+        to {
+          opacity: 1;
+        }
+      }
+    `);
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+    expect(node.evaluated).toBe(false);
+    expect(node.getRenderRules()).toBe(node.value.rules);
+  });
+
+  it('keeps body eval output frames in runtime state instead of mutating at-rule fields', async () => {
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [parentFrame];
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: rules([
+        decl({ name: 'font-family', value: any('Jess') })
+      ])
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBe(node);
+    expect(node.frames).toBeUndefined();
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(node.toTrimmedString()).toBeString(`
+      @font-face {
+        font-family: Jess;
+      }
+    `);
+  });
+
+  it('carries direct body-render prelude evaluation through body state once', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('print')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourcePrelude = seq([ref({ key: 'mode' }, { type: 'variable' })]);
+    const originalEval = sourcePrelude.eval;
+    let preludeEvalCalls = 0;
+    sourcePrelude.eval = function evalPreludeForCounting(
+      this: typeof sourcePrelude,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      preludeEvalCalls++;
+      return originalEval.apply(this, args);
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    expect(await Promise.resolve(node.render(context))).toBeString(`
+      @media print {
+        color: red;
+      }
+    `);
+    expect(preludeEvalCalls).toBe(1);
+    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(sourcePrelude.evaluated).toBe(false);
+    expect(node.evaluated).toBe(false);
+  });
+
+  it('returns owned evaluated at-rule body output without mutating source value.rules', async () => {
+    const originalRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const originalEval = originalRules.eval;
+    originalRules.eval = function evalReplacementBody(
+      this: Rules,
+      ..._args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evaluatedRules.evaluated = true;
+      return evaluatedRules;
+    };
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: originalRules
+    });
+
+    const evaluated = await Promise.resolve(node.eval(context));
+
+    expect(evaluated).toBeInstanceOf(AtRule);
+    if (!(evaluated instanceof AtRule)) {
+      throw new Error('Expected evaluated AtRule result');
+    }
+    expect(evaluated).not.toBe(node);
+    expect(node.value.rules).toBe(originalRules);
+    expect(node.getRenderRules()).toBe(originalRules);
+    expect(evaluated.value.rules).toBe(evaluatedRules);
+    expect(evaluated.getRenderRules()).toBe(evaluatedRules);
+    expect(node.toTrimmedString()).toBeString(`
+      @font-face {
+        color: red;
+      }
+    `);
+    expect(evaluated.toTrimmedString()).toBeString(`
+      @font-face {
+        color: blue;
+      }
+    `);
+    expect(originalRules.parent).toBe(node);
+  });
+
+  it('restores evaluated body runtime compatibility state when post-eval visibility checks throw', async () => {
+    const originalRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const originalEval = originalRules.eval;
+    const originalVisibleRules = evaluatedRules.visibleRules;
+    originalRules.eval = function evalReplacementBody(
+      this: Rules,
+      ..._args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evaluatedRules.evaluated = true;
+      return evaluatedRules;
+    };
+    evaluatedRules.visibleRules = function throwAfterEval(
+      this: Rules,
+      ..._args: Parameters<typeof originalVisibleRules>
+    ): ReturnType<typeof originalVisibleRules> {
+      throw new Error('visibleRules failed');
+    };
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: originalRules
+    });
+
+    expect(() => node.eval(context)).toThrow('visibleRules failed');
+    expect(node.value.rules).toBe(originalRules);
+    expect(node.getRenderRules()).toBe(originalRules);
+    expect(node.toTrimmedString()).toBeString(`
+      @font-face {
+        color: red;
+      }
+    `);
+  });
+
+  it('builds render runtime updates from body invocation state', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+
+    expect(createAtRuleBodyRuntimeUpdate(node, {
+      evaluatedBody: evaluatedRules,
+      output: { hoistToRoot: true }
+    })).toEqual({
+      evaluatedBody: evaluatedRules,
+      hoistToRoot: true
+    });
+  });
+
+  it('skips render runtime update allocation when body state matches source', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+
+    expect(createAtRuleBodyRuntimeUpdate(node, {
+      evaluatedBody: sourceRules
+    })).toBeUndefined();
+  });
+
+  it('skips render output runtime updates when hoist facts already live on the source', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const frames = [] as AtRule['frames'];
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+    node.hoistToRoot = true;
+    node.frames = frames;
+
+    expect(createAtRuleBodyRuntimeUpdate(node, {
+      output: {
+        hoistToRoot: true,
+        frames
+      }
+    })).toBeUndefined();
+  });
+
+  it('builds flattened runtime updates for hoist frames without an output wrapper', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const frames = [] as AtRule['frames'];
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+
+    expect(createAtRuleBodyRuntimeUpdate(node, {
+      output: {
+        hoistToRoot: true,
+        frames
+      }
+    })).toEqual({
+      hoistToRoot: true,
+      frames
+    });
+  });
+
+  it('builds public body result state from a narrow public adapter input', () => {
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: sourceRules
+    });
+    const prelude = any('screen');
+
+    expect(createAtRuleBodyPublicResultState({
+      node,
+      evaluatedPrelude: prelude,
+      evaluatedBody: evaluatedRules,
+      visible: false,
+      output: { hoistToRoot: true }
+    })).toEqual({
+      node,
+      evaluatedPrelude: prelude,
+      evaluatedBody: evaluatedRules,
+      visible: false,
+      output: { hoistToRoot: true }
+    });
+  });
+
+  it('builds public nil body result state without an eval-frame fallback', () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: rules([])
+    });
+
+    expect(createAtRuleBodyPublicResultState({
+      node,
+      visible: false
+    })).toEqual({
+      node,
+      evaluatedPrelude: undefined,
+      evaluatedBody: undefined,
+      visible: false,
+      output: undefined
+    });
   });
 
   it('resolves at-rules without touching render state', async () => {
@@ -236,9 +1158,256 @@ describe('AtRule', () => {
     expect(sourceName.parent).toBe(node);
     expect(sourcePrelude?.parent).toBe(node);
     expect(sourceRules?.parent).toBe(node);
+    expect(node.value.prelude).toBe(sourcePrelude);
+    if (resolved instanceof AtRule) {
+      expect(resolved.value.prelude).not.toBe(sourcePrelude);
+    }
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('resolves body at-rule output through a public result adapter', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('screen')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const originalRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const evaluatedRules = rules([
+      decl({ name: 'color', value: any('blue') })
+    ]);
+    originalRules.prepareRegistration = function prepareReplacementBody() {
+      evaluatedRules.registrationPrepared = true;
+      return evaluatedRules;
+    };
+    evaluatedRules.eval = function evalReplacementBody(
+      this: Rules,
+      ..._args: Parameters<typeof evaluatedRules.eval>
+    ): ReturnType<typeof evaluatedRules.eval> {
+      evaluatedRules.evaluated = true;
+      return evaluatedRules;
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: originalRules
+    });
+
+    const resolved = await Promise.resolve(node.resolve(context));
+
+    expect(resolved).toBeInstanceOf(AtRule);
+    if (!(resolved instanceof AtRule)) {
+      throw new Error('Expected AtRule result');
+    }
+    expect(resolved).not.toBe(node);
+    expect(resolved.getRenderRules()).not.toBe(originalRules);
+    expect(resolved.toTrimmedString()).toBeString(`
+      @media screen {
+        color: red;
+      }
+    `);
+    expect(node.value.rules).toBe(originalRules);
+    expect(originalRules.parent).toBe(node);
+  });
+
+  it('resolves body at-rules with the source frame while owning the public result at the adapter', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('screen')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourceRules = rules([
+      ruleset({
+        selector: el('.box'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([ref({ key: 'mode' }, { type: 'variable' })]),
+      rules: sourceRules
+    });
+    const sourcePrelude = node.value.prelude;
+    const originalPrepareRegistration = Rules.prototype.prepareRegistration;
+    const bodyPrepFrames: Node[] = [];
+    Rules.prototype.prepareRegistration = function countBodyPrepFrame(
+      this: Rules,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      if (this !== context.root) {
+        bodyPrepFrames.push(context.frames.at(-1)!);
+      }
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    let resolved: Node;
+    try {
+      resolved = await Promise.resolve(node.resolve(context));
+    } finally {
+      Rules.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+
+    expect(bodyPrepFrames).toContain(node);
+    expect(resolved).toBeInstanceOf(AtRule);
+    if (!(resolved instanceof AtRule)) {
+      throw new Error('Expected AtRule result');
+    }
+    expect(resolved).not.toBe(node);
+    expect(resolved.toTrimmedString()).toBeString(`
+      @media screen {
+        .box {
+          color: red;
+        }
+      }
+    `);
+    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(sourcePrelude?.parent).toBe(node);
+    expect(node.value.rules).toBe(sourceRules);
+    expect(sourceRules.parent).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.visible).toBe(true);
+  });
+
+  it('keeps public body at-rule resolve results mutable and isolated even when output is unchanged', async () => {
+    const root = rules([
+      vardecl({
+        name: any('mode'),
+        value: any('screen')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourcePrelude = seq([ref({ key: 'mode' }, { type: 'variable' })]);
+    const sourceRules = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: sourceRules
+    });
+
+    const first = await Promise.resolve(node.resolve(context));
+    const second = await Promise.resolve(node.resolve(context));
+
+    expect(first).toBeInstanceOf(AtRule);
+    expect(second).toBeInstanceOf(AtRule);
+    if (!(first instanceof AtRule) || !(second instanceof AtRule)) {
+      throw new Error('Expected public at-rule results');
+    }
+
+    first.value.prelude = any('print');
+
+    expect(first).not.toBe(node);
+    expect(first).not.toBe(second);
+    expect(second.value.prelude?.toTrimmedString()).toBe('screen');
+    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.value.rules).toBe(sourceRules);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(sourceRules.parent).toBe(node);
+  });
+
+  it('stores public body resolve facts directly on the owned result node', async () => {
+    const root = rules([
+      vardecl({
+        name: 'mode',
+        value: any('spin')
+      })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context = new Context({ bubbleRootAtRules: true });
+    context.frames = [parentFrame];
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const sourcePrelude = seq([ref({ key: 'mode' }, { type: 'variable' })]);
+    const sourceRules = rules([
+      ruleset({
+        selector: el('to'),
+        rules: rules([
+          decl({ name: 'opacity', value: dimension([1]) })
+        ])
+      })
+    ]);
+    const node = atrule({
+      name: any('@keyframes', { role: 'atkeyword' }),
+      prelude: sourcePrelude,
+      rules: sourceRules
+    });
+
+    const resolved = await Promise.resolve(node.resolve(context));
+
+    expect(resolved).toBeInstanceOf(AtRule);
+    if (!(resolved instanceof AtRule)) {
+      throw new Error('Expected public at-rule result');
+    }
+
+    expect(resolved).not.toBe(node);
+    expect(resolved.value.rules).not.toBe(sourceRules);
+    expect(resolved.getRenderRules()).toBe(resolved.value.rules);
+    expect(resolved.hoistToRoot).toBe(true);
+    expect(resolved.isHoisted({ collapseNesting: false })).toBe(true);
+    expect(resolved.getRenderFrames()).toBeUndefined();
+    expect(resolved.frames).toBeUndefined();
+    expect(resolved.toTrimmedString()).toBeString(`
+      @keyframes spin {
+        to {
+          opacity: 1;
+        }
+      }
+    `);
+    expect(node.value.prelude).toBe(sourcePrelude);
+    expect(node.value.rules).toBe(sourceRules);
+    expect(sourcePrelude.parent).toBe(node);
+    expect(sourceRules.parent).toBe(node);
+    expect(node.hoistToRoot).toBeUndefined();
+    expect(node.frames).toBeUndefined();
+  });
+
+  it('resolves static at-rules without deriving or evaluating', () => {
+    const node = atrule({
+      name: any('@namespace', { role: 'atkeyword' }),
+      prelude: seq([any('svg')])
+    });
+    const originalEval = AtRule.prototype.eval;
+    let evalCalls = 0;
+    AtRule.prototype.eval = function countEvalCalls(
+      this: AtRule,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    try {
+      const resolved = node.resolve(context);
+
+      expect(resolved).toBe(node);
+      expect(evalCalls).toBe(0);
+      expect(node.evaluated).toBe(false);
+      expect(context.printState.writer).toBeUndefined();
+    } finally {
+      AtRule.prototype.eval = originalEval;
+    }
   });
 
   it('serializes comment trivia between at-rule preludes and blocks', () => {
@@ -311,6 +1480,23 @@ describe('AtRule', () => {
     } finally {
       preludeLeaf.clone = originalClone;
     }
+  });
+
+  it('strips structural comments from comment-free at-rule frame headers only when needed', () => {
+    const sourceComment = comment('/* frame note */');
+    const prelude = seq([
+      any('screen', { role: 'keyword' }),
+      sourceComment
+    ]);
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude,
+      rules: rules([])
+    });
+
+    expect(node.getHeaderString(getPrintOptions(), true)).toBe('@media screen {\n');
+    expect(sourceComment.parent).toBe(prelude);
+    expect(prelude.parent).toBe(node);
   });
 
   it('normalizes leading prelude whitespace at the at-rule name boundary', () => {

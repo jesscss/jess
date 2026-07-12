@@ -3,13 +3,9 @@ import { defineType } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
 import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { Interpolated } from './interpolated.js';
-import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { isThenable, pipe, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { PrintOptions } from './util/print.js';
-import {
-  isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
-} from './util/render-buffer.js';
+import type { RenderBuffer } from './util/render-buffer.js';
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
   eval(context: Context): MaybePromise<Selector>;
@@ -43,6 +39,10 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override resolve(context: Context): MaybePromise<Selector> {
+    return this.resolveValue(context);
+  }
+
+  private resolveValue(context: Context): MaybePromise<Selector> {
     const { selectorBits } = context;
     this.keySetLibrary ??= selectorBits;
     const out = this.value.evalToSelector(context, 'resolve');
@@ -55,10 +55,10 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
-    }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.resolveValue(context),
+      node => this.renderOutput(context, node, bufferOrOptions, options)
+    );
   }
 
   override valueOf(): string {

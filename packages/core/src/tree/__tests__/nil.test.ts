@@ -22,7 +22,7 @@ describe('Nil', () => {
 
     expect(node.render(context)).toBe('');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
   });
 
   it('keeps flat buffers empty for nil render output', () => {
@@ -41,7 +41,7 @@ describe('Nil', () => {
     expect(resolved).toBeInstanceOf((nil()).constructor);
     expect(resolved.value).toBe('');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

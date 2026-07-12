@@ -1,4 +1,4 @@
-import { any, bool, condition, dimension, list, num, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, Bool, bool, call, condition, dimension, list, num, ref, rules, Rules, vardecl } from '../index.js';
 import { Context } from '../../context.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 
@@ -62,10 +62,106 @@ describe('Condition', () => {
         '=',
         bool(false)
       ]);
+      let conditionResolveCalls = 0;
+      node.resolve = (renderContext: Context) => {
+        conditionResolveCalls++;
+        return node.evalNode(renderContext);
+      };
 
       expect(node.render(context)).toBe('false');
+      expect(conditionResolveCalls).toBe(0);
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
+    });
+
+    it('renders boolean results without allocating a Bool output node', () => {
+      const originalToTrimmedString = Bool.prototype.toTrimmedString;
+      let boolStringCalls = 0;
+      Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+        this: Bool,
+        ...args: Parameters<Bool['toTrimmedString']>
+      ) {
+        boolStringCalls++;
+        return originalToTrimmedString.apply(this, args);
+      };
+      try {
+        const node = condition([
+          bool(true),
+          '=',
+          bool(false)
+        ]);
+
+        expect(node.render(context)).toBe('false');
+        expect(boolStringCalls).toBe(0);
+      } finally {
+        Bool.prototype.toTrimmedString = originalToTrimmedString;
+      }
+    });
+
+    it('renders default() conditions without allocating temporary Bool nodes', async () => {
+      const originalToTrimmedString = Bool.prototype.toTrimmedString;
+      let boolStringCalls = 0;
+      Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+        this: Bool,
+        ...args: Parameters<Bool['toTrimmedString']>
+      ) {
+        boolStringCalls++;
+        return originalToTrimmedString.apply(this, args);
+      };
+      try {
+        context.isDefault = true;
+        const node = condition([call({ name: 'default' })]);
+
+        expect(await node.render(context)).toBe('true');
+        expect(boolStringCalls).toBe(0);
+      } finally {
+        Bool.prototype.toTrimmedString = originalToTrimmedString;
+      }
+    });
+
+    it('renders async comparisons without allocating temporary Bool nodes', async () => {
+      const originalToTrimmedString = Bool.prototype.toTrimmedString;
+      let boolStringCalls = 0;
+      const asyncLeft = bool(true);
+      const asyncRight = bool(true);
+      asyncLeft.resolve = () => Promise.resolve(bool(true));
+      asyncRight.resolve = () => Promise.resolve(bool(true));
+      Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
+        this: Bool,
+        ...args: Parameters<Bool['toTrimmedString']>
+      ) {
+        boolStringCalls++;
+        return originalToTrimmedString.apply(this, args);
+      };
+      try {
+        const node = condition([
+          asyncLeft,
+          '=',
+          asyncRight
+        ]);
+
+        expect(await node.render(context)).toBe('true');
+        expect(boolStringCalls).toBe(0);
+      } finally {
+        Bool.prototype.toTrimmedString = originalToTrimmedString;
+      }
+    });
+
+    it('renders negated default() conditions through text-only boolean output', async () => {
+      context.isDefault = true;
+      const node = condition([call({ name: 'default' })], { negate: true });
+      const originalEvalNode = node.evalNode;
+      let evalCalls = 0;
+      node.evalNode = function countEvalNode(
+        this: typeof node,
+        ...args: Parameters<typeof originalEvalNode>
+      ): ReturnType<typeof originalEvalNode> {
+        evalCalls++;
+        return originalEvalNode.apply(this, args);
+      };
+
+      expect(await node.render(context)).toBe('false');
+      expect(evalCalls).toBe(0);
     });
 
     it('writes evaluated condition render output into flat buffers', async () => {
@@ -75,11 +171,17 @@ describe('Condition', () => {
         '=',
         bool(false)
       ]);
+      let conditionResolveCalls = 0;
+      node.resolve = (renderContext: Context) => {
+        conditionResolveCalls++;
+        return node.evalNode(renderContext);
+      };
 
       expect(await node.render(context, buffer)).toBe('false');
       expect(buffer.parts).toEqual(['false']);
+      expect(conditionResolveCalls).toBe(0);
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
     });
 
     it('resolves conditions without touching render state', async () => {
@@ -93,8 +195,23 @@ describe('Condition', () => {
 
       expect(resolved.toTrimmedString()).toBe('false');
       expect(node.evaluated).toBe(false);
-      expect(node.preEvaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
+    });
+
+    it('returns fresh public Bool nodes because resolved values are mutable', async () => {
+      const node = condition([
+        bool(true),
+        '=',
+        bool(true)
+      ]);
+
+      const first = await node.resolve(context);
+      const second = await node.resolve(context);
+      first.value = false;
+
+      expect(first).not.toBe(second);
+      expect(second.value).toBe(true);
     });
 
     it('keeps source condition child containers canonical after resolve(context)', async () => {
@@ -105,8 +222,12 @@ describe('Condition', () => {
         })
       ]);
       const evald = await root.eval(context);
-      context.root = evald as RulesClass;
-      context.rulesContext = evald as RulesClass;
+      expect(evald).toBeInstanceOf(Rules);
+      if (!(evald instanceof Rules)) {
+        throw new Error('Expected Rules');
+      }
+      context.root = evald;
+      context.rulesContext = evald;
 
       const node = condition([
         list([

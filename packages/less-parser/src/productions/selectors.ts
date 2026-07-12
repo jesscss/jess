@@ -9,6 +9,7 @@ import {
   Block,
   Any,
   type LocationInfo,
+  type TreeContext,
   BasicSelector,
   Combinator,
   type Combinators,
@@ -29,13 +30,13 @@ import {
   SelectorCapture,
   ComplexSelector,
   CompoundSelector,
+  Selector,
   SelectorList,
   Url,
   Nil,
   Collection,
   type ComplexSelectorValue,
   type ComplexSelectorComponent,
-  type Selector,
   type SimpleSelector,
   isNode,
   N,
@@ -49,6 +50,21 @@ import { all } from 'known-css-properties';
 type P = any;
 type Alt = IOrAlt<any>[];
 type AltContext = (ctx?: RuleContext) => Alt;
+const COMBINATORS = new Set<string>([' ', '>', '+', '~', '|', '||']);
+
+function toCombinator(image: string): Combinators {
+  if (COMBINATORS.has(image)) {
+    return image;
+  }
+  throw new Error(`Unexpected selector combinator "${image}".`);
+}
+
+function isComplexSelectorComponentNode(node: Node | undefined): node is ComplexSelectorComponent {
+  return node instanceof Call
+    || (node instanceof Selector
+      && !(node instanceof SelectorList)
+      && !(node instanceof ComplexSelector));
+}
 
 export function attributeSelector(this: P, T: TokenMap, valueAlt?: AltContext) {
   const $ = this;
@@ -332,9 +348,11 @@ export function relativeSelector(this: P, T: TokenMap) {
         ALT: () => {
           let co = $.CONSUME(T.Combinator);
           let node: ComplexSelector | Extend = $.SUBRULE2($.complexSelector, { ARGS: [ctx] });
+          if ($.RECORDING_PHASE) {
+            return node;
+          }
 
-          const coImage: Combinators = co.image;
-          let combinator = new Combinator(coImage, undefined, $.getLocationInfo(co), $.context);
+          let combinator = new Combinator(toCombinator(co.image), undefined, $.getLocationInfo(co), $.context);
           let targetNode =
             node instanceof Extend
               ? node.value.selector
@@ -343,7 +361,10 @@ export function relativeSelector(this: P, T: TokenMap) {
             targetNode.set(null, [combinator, ...targetNode.value]);
             targetNode._location = $.getLocationFromNodes(targetNode.value);
           } else {
-            let nodes = [combinator, targetNode as ComplexSelectorComponent];
+            if (!isComplexSelectorComponentNode(targetNode)) {
+              throw new Error(`Expected selector component after relative combinator; got ${targetNode?.type ?? 'none'}.`);
+            }
+            let nodes = [combinator, targetNode];
             let complex = new ComplexSelector(nodes, undefined, $.getLocationFromNodes(nodes), $.context);
             if (node instanceof Extend) {
               node.set('selector', complex);
@@ -517,7 +538,7 @@ export function complexSelector(this: P, T: TokenMap) {
 
         if (!RECORDING_PHASE) {
           if (co) {
-            const coImg = co.image as Combinators;
+            const coImg = toCombinator(co.image);
             combinator = new Combinator(coImg, undefined, $.getLocationInfo(co), $.context);
           } else {
             const ws = $.claimSpaceCombinator($.LA(1).startOffset);
@@ -536,7 +557,7 @@ export function complexSelector(this: P, T: TokenMap) {
     if (!RECORDING_PHASE) {
       const location = $.endRule();
       selector = selectors!.length === 1
-        ? selectors![0] as Selector
+        ? selectors![0]
         : new ComplexSelector(selectors!, undefined, location, $.context);
     }
 
@@ -1117,7 +1138,7 @@ export function varDeclarationOrCall(this: P, T: TokenMap) {
     }
 
     return new VarDeclaration({
-      name: nameNode as any,
+      name: nameNode,
       value: value,
       important: important ? new Any(important.image, { role: 'flag' }, $.getLocationInfo(important), $.context) : undefined
     }, undefined, location, $.context);

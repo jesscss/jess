@@ -1,10 +1,10 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector, Nil, atrule, vardecl, Rules as RulesClass, condition, bool, comment, ref } from '../index.js';
 import { Context } from '../../context.js';
 import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -90,6 +90,698 @@ describe('Rule', () => {
     `);
   });
 
+  it('writes finalized ruleset output into segmented buffers', async () => {
+    const buffer = createRenderBuffer('segmented');
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    const rendered = await Promise.resolve(node.render(context, buffer));
+
+    expect(rendered).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(buffer.segments).toHaveLength(1);
+    expect(buffer.segments[0]).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(resolveCalls).toBe(0);
+  });
+
+  it('renders finalized ruleset output directly without public resolve', async () => {
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    node.resolve = () => {
+      throw new Error('Ruleset direct render should evaluate natively');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders plain static rulesets from source without preparing an owned body surface', async () => {
+    const selector = sellist([sel([el('foo')])]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+    node.prepareRegistration = () => {
+      throw new Error('Static ruleset direct render should not prepare registration');
+    };
+    node.eval = () => {
+      throw new Error('Static ruleset direct render should not evaluate a ruleset surface');
+    };
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(buffer.segments[0]).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders static rulesets with leaf at-rules from source without preparing output', async () => {
+    const selector = sellist([sel([el('foo')])]);
+    const leaf = atrule({
+      name: any('@custom-media', { role: 'atkeyword' }),
+      prelude: spaced([any('--narrow'), any('(max-width: 30em)')])
+    });
+    const body = rules([
+      leaf,
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+    node.prepareRegistration = () => {
+      throw new Error('Static ruleset with leaf at-rule should not prepare registration');
+    };
+    node.eval = () => {
+      throw new Error('Static ruleset with leaf at-rule should not evaluate a ruleset surface');
+    };
+    leaf.eval = () => {
+      throw new Error('Static leaf at-rule should not evaluate during source-direct ruleset render');
+    };
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        @custom-media --narrow (max-width: 30em);
+        color: red;
+      }
+    `);
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+      foo {
+        @custom-media --narrow (max-width: 30em);
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(leaf.parent).toBe(body);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('source-direct renders static rulesets with invisible variable declarations from source', async () => {
+    const selector = sellist([sel([el('foo')])]);
+    const variable = vardecl({ name: 'brand', value: any('red') });
+    const body = rules([
+      variable,
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+    node.prepareRegistration = () => {
+      throw new Error('Static ruleset with invisible variable should not prepare registration');
+    };
+    node.eval = () => {
+      throw new Error('Static ruleset with invisible variable should not evaluate a ruleset surface');
+    };
+    variable.eval = () => {
+      throw new Error('Static invisible variable should not evaluate during source-direct ruleset render');
+    };
+    const buffer = createRenderBuffer('segmented');
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(buffer.segments[0]).toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(variable.parent).toBe(body);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('source-direct renders static rulesets with root-only body at-rules when hoist is inactive', async () => {
+    const selector = sellist([sel([el('foo')])]);
+    const bodyAtRule = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: rules([
+        decl({ name: 'font-family', value: any('Body') })
+      ])
+    });
+    const node = ruleset({
+      selector,
+      rules: rules([
+        bodyAtRule,
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    node.prepareRegistration = () => {
+      throw new Error('Static ruleset with root-only body at-rule should not prepare registration');
+    };
+    node.eval = () => {
+      throw new Error('Static ruleset with root-only body at-rule should not evaluate a ruleset surface');
+    };
+    bodyAtRule.eval = () => {
+      throw new Error('Static root-only body at-rule should not evaluate during source-direct ruleset render');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        @font-face {
+          font-family: Body;
+        }
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(bodyAtRule.parent).toBe(node.value.rules);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('does not source-direct render static rulesets with root-only body at-rules when hoist is active', async () => {
+    context = new Context({ bubbleRootAtRules: true });
+    const parentFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    context.frames = [parentFrame];
+    const selector = sellist([sel([el('foo')])]);
+    const bodyAtRule = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: rules([
+        decl({ name: 'font-family', value: any('Body') })
+      ])
+    });
+    const node = ruleset({
+      selector,
+      rules: rules([
+        bodyAtRule,
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      @font-face {
+        font-family: Body;
+      }
+      foo {
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(bodyAtRule.parent).toBe(node.value.rules);
+  });
+
+  it('hoists root-only body at-rules in sibling order when hoist is active', async () => {
+    context = new Context({ bubbleRootAtRules: true });
+    const bodyAtRule = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: rules([
+        decl({ name: 'font-family', value: any('Body') })
+      ])
+    });
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') }),
+        bodyAtRule
+      ])
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+      @font-face {
+        font-family: Body;
+      }
+    `);
+    expect(bodyAtRule.parent).toBe(node.value.rules);
+  });
+
+  it('keeps source selector and body parentage canonical during direct render', async () => {
+    const root = rules([
+      decl({ name: 'tone', value: any('red') })
+    ]);
+    const evaldRoot = await root.eval(context);
+    context.root = evaldRoot;
+    context.rulesContext = evaldRoot;
+    const selector = sellist([sel([el('.foo')])]);
+    const body = rules([
+      decl({ name: 'color', value: interpolated({
+        source: INTERPOLATION_PLACEHOLDER,
+        replacements: [any('blue')]
+      }) })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let ownedBodyPrepCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countDynamicBodyPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      if (this === body) {
+        throw new Error('Dynamic ruleset direct render must not prepare the source body');
+      }
+      if (this.sourceNode === body) {
+        ownedBodyPrepCalls++;
+      }
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        .foo {
+          color: blue;
+        }
+      `);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+
+    expect(ownedBodyPrepCalls).toBe(0);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(body.value[0]?.parent).toBe(body);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders already evaluated rulesets without re-entering eval', async () => {
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const evald = await node.eval(context);
+    const originalEval = evald.eval;
+    let evalCalls = 0;
+    evald.eval = function countEvalCalls(
+      this: typeof evald,
+      ...args: Parameters<typeof originalEval>
+    ): ReturnType<typeof originalEval> {
+      evalCalls++;
+      return originalEval.apply(this, args);
+    };
+
+    await expect(Promise.resolve(evald.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(evalCalls).toBe(0);
+  });
+
+  it('renders registration-prepared rulesets without deriving another prep surface', async () => {
+    const node = ruleset({
+      selector: sellist([sel([el('foo')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const prepared = await node.prepareRegistration(context);
+    const originalPrepareRegistration = prepared.prepareRegistration;
+    let prepareCalls = 0;
+    prepared.prepareRegistration = function countPrepareCalls(
+      this: typeof prepared,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      prepareCalls++;
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    await expect(Promise.resolve(prepared.render(context))).resolves.toBeString(`
+      foo {
+        color: red;
+      }
+    `);
+    expect(prepareCalls).toBe(0);
+  });
+
+  it('streams unguarded static nil-selector ruleset bodies directly from source', async () => {
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const originalRender = body.render;
+    let bodyRenderCalls = 0;
+    body.render = function countBodyRender(
+      this: typeof body,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      bodyRenderCalls++;
+      return originalRender.apply(this, args);
+    };
+    const node = ruleset({
+      selector: new Nil(),
+      rules: body
+    });
+    node.resolve = () => {
+      throw new Error('Ruleset nil-selector render should evaluate natively');
+    };
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let prepareCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      prepareCalls++;
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+      const buffer = createRenderBuffer('flat');
+      await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
+      expect(buffer.parts).toEqual(['color: red;\n']);
+      expect(bodyRenderCalls).toBe(2);
+      expect(prepareCalls).toBe(0);
+      expect(body.parent).toBe(node);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+  });
+
+  it('streams static nil-selector comments and invisible vars directly from source', async () => {
+    const body = rules([
+      comment('/* keep */'),
+      vardecl({ name: any('private'), value: any('red') }),
+      decl({ name: 'color', value: any('red') }),
+      new Nil()
+    ]);
+    const originalRender = body.render;
+    let bodyRenderCalls = 0;
+    body.render = function countBodyRender(
+      this: typeof body,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      bodyRenderCalls++;
+      return originalRender.apply(this, args);
+    };
+    const node = ruleset({
+      selector: new Nil(),
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let prepareCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      prepareCalls++;
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        /* keep */
+        color: red;
+      `);
+      const buffer = createRenderBuffer('flat');
+      await expect(Promise.resolve(node.render(context, buffer))).resolves.toBeString(`
+        /* keep */
+        color: red;
+      `);
+      expect(bodyRenderCalls).toBe(2);
+      expect(prepareCalls).toBe(0);
+      expect(body.parent).toBe(node);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+  });
+
+  it('keeps nested nil-selector rulesets on the owned body path', async () => {
+    const nestedBody = rules([
+      ruleset({
+        selector: sellist([sel([el('.child')])]),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      })
+    ]);
+    const node = ruleset({
+      selector: new Nil(),
+      rules: nestedBody
+    });
+    const originalRender = nestedBody.render;
+    let sourceBodyRenderCalls = 0;
+    nestedBody.render = function countSourceBodyRender(
+      this: typeof nestedBody,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      sourceBodyRenderCalls++;
+      return originalRender.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        .child {
+          color: red;
+        }
+      `);
+    } finally {
+      nestedBody.render = originalRender;
+    }
+
+    expect(sourceBodyRenderCalls).toBe(0);
+    expect(nestedBody.parent).toBe(node);
+    expect(nestedBody.value[0]?.parent).toBe(nestedBody);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('keeps dynamic nil-selector bodies on an owned body path', async () => {
+    const dynamicBody = rules([
+      vardecl({ name: any('shade'), value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'shade' }, { type: 'variable' }) })
+    ]);
+    const node = ruleset({
+      selector: new Nil(),
+      rules: dynamicBody
+    });
+    const originalRender = dynamicBody.render;
+    let sourceBodyRenderCalls = 0;
+    dynamicBody.render = function countSourceBodyRender(
+      this: typeof dynamicBody,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      sourceBodyRenderCalls++;
+      return originalRender.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+      const buffer = createRenderBuffer('flat');
+      await expect(Promise.resolve(node.render(context, buffer))).resolves.toBe('color: red;\n');
+      expect(buffer.parts).toEqual(['color: red;\n']);
+    } finally {
+      dynamicBody.render = originalRender;
+    }
+
+    expect(sourceBodyRenderCalls).toBe(0);
+    expect(dynamicBody.parent).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders guarded nil-selector rulesets through owned guard and body output', async () => {
+    const guard = condition([bool(true)]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector: new Nil(),
+      guard,
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let prepareCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      prepareCalls++;
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+      expect(prepareCalls).toBe(0);
+      expect(guard.parent).toBe(node);
+      expect(body.parent).toBe(node);
+      expect(guard.evaluated).toBe(false);
+      expect(body.evaluated).toBe(false);
+      expect(node.evaluated).toBe(false);
+      expect(node.registrationPrepared).toBe(false);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+  });
+
+  it('skips failed guarded nil-selector rulesets without mutating source state', async () => {
+    const guard = condition([bool(false)]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector: new Nil(),
+      guard,
+      rules: body
+    });
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+    expect(guard.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(guard.evaluated).toBe(false);
+    expect(body.evaluated).toBe(false);
+    expect(node.value.guard).toBe(guard);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('keeps guarded nested rulesets on an owned body path while preserving source parentage', async () => {
+    const selector = sellist([sel([el('.parent')])]);
+    const child = ruleset({
+      selector: sellist([sel([el('.child')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const body = rules([child]);
+    const node = ruleset({
+      selector,
+      guard: condition([bool(true)]),
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let sourceBodyPrepCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      if (this === body) {
+        sourceBodyPrepCalls++;
+      }
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBeString(`
+        .parent {
+          .child {
+            color: red;
+          }
+        }
+      `);
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+
+    expect(sourceBodyPrepCalls).toBe(0);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(child.parent).toBe(body);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('keeps failed guarded rulesets off source-direct render while preserving source body parentage', async () => {
+    const selector = sellist([sel([el('.parent')])]);
+    const child = ruleset({
+      selector: sellist([sel([el('.child')])]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const body = rules([child]);
+    const node = ruleset({
+      selector,
+      guard: condition([bool(false)]),
+      rules: body
+    });
+    const originalPrepareRegistration = RulesClass.prototype.prepareRegistration;
+    let sourceBodyPrepCalls = 0;
+    RulesClass.prototype.prepareRegistration = function countRulesPrep(
+      this: RulesClass,
+      ...args: Parameters<typeof originalPrepareRegistration>
+    ): ReturnType<typeof originalPrepareRegistration> {
+      if (this === body) {
+        sourceBodyPrepCalls++;
+      }
+      return originalPrepareRegistration.apply(this, args);
+    };
+
+    try {
+      await expect(Promise.resolve(node.render(context))).resolves.toBe('');
+    } finally {
+      RulesClass.prototype.prepareRegistration = originalPrepareRegistration;
+    }
+
+    expect(sourceBodyPrepCalls).toBe(0);
+    expect(selector.parent).toBe(node);
+    expect(body.parent).toBe(node);
+    expect(child.parent).toBe(body);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
   it('restores parent ruleset frame when child registration prep throws', () => {
     const savedFrame = ruleset({
       selector: el('.saved'),
@@ -160,6 +852,7 @@ describe('Rule', () => {
       return originalClone.apply(this, args);
     };
     const selector = sellist([sel([selectorLeaf])]);
+    const sourceLeafParent = selectorLeaf.parent;
     const node = ruleset({
       selector,
       rules: rules([])
@@ -168,7 +861,7 @@ describe('Rule', () => {
     try {
       expect(node.getHeaderString(getPrintOptions(), true)).toBe('.foo {\n');
       expect(selectorLeafClones).toBe(0);
-      expect(selectorLeaf.parent?.valueOf()).toBe('.foo');
+      expect(selectorLeaf.parent).toBe(sourceLeafParent);
     } finally {
       selectorLeaf.clone = originalClone;
     }
@@ -241,11 +934,11 @@ describe('Rule', () => {
       }
     `);
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
-  it('keeps source selector canonical while reusing body registration surface after resolve(context)', async () => {
+  it('keeps source selector and body canonical after resolve(context)', async () => {
     const selector = sellist([sel([el('.foo')])]);
     const body = rules([
       decl({ name: 'color', value: any('red') })
@@ -263,7 +956,8 @@ describe('Rule', () => {
       }
     `);
     expect(selector.parent).toBe(node);
-    expect(resolved.value.rules).toBe(body);
+    expect(body.parent).toBe(node);
+    expect(resolved.value.rules).not.toBe(body);
   });
 
   it('getHeaderString keeps reference target filtering render-local', () => {
@@ -299,6 +993,7 @@ describe('Rule', () => {
     target.addFlag(F_EXTEND_TARGET);
     const added = sel([addedLeaf]);
     added.addFlag(F_EXTENDED);
+    const addedLeafParent = addedLeaf.parent;
     const node = ruleset({
       selector: sellist([target, added]),
       rules: rules([])
@@ -312,7 +1007,7 @@ describe('Rule', () => {
     try {
       expect(node.getHeaderString(options)).toBe('.added {\n');
       expect(addedLeafClones).toBe(0);
-      expect(addedLeaf.parent?.valueOf()).toBe('.added');
+      expect(addedLeaf.parent).toBe(addedLeafParent);
     } finally {
       addedLeaf.clone = originalClone;
     }
@@ -404,6 +1099,39 @@ describe('Rule', () => {
     expect(out).toContain('.parent .child');
     expect(options.composedSelectorStack).toBe(composedSelectorStack);
     expect(options.composedSelectorStack).toEqual([parentSelector]);
+  });
+
+  it('serializeRulesContainer uses the ruleset header composition path', () => {
+    const parentSelector = sel([el('.parent')]);
+    const node = ruleset({
+      selector: sel([el('.child')]),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+    const originalComposeHeaderSelector = node.composeHeaderSelector;
+    let composeHeaderSelectorCalls = 0;
+    node.composeHeaderSelector = function countHeaderComposition(
+      this: typeof node,
+      ...args: Parameters<typeof originalComposeHeaderSelector>
+    ): ReturnType<typeof originalComposeHeaderSelector> {
+      composeHeaderSelectorCalls++;
+      return originalComposeHeaderSelector.apply(this, args);
+    };
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      collapseNesting: true,
+      composedSelectorStack: [parentSelector]
+    });
+
+    try {
+      const out = serializeRulesContainer(node, options);
+
+      expect(out).toContain('.parent .child');
+      expect(composeHeaderSelectorCalls).toBeGreaterThan(0);
+    } finally {
+      node.composeHeaderSelector = originalComposeHeaderSelector;
+    }
   });
 
   it('getHeaderString does not cache uncomposed selectors onto the ruleset', () => {

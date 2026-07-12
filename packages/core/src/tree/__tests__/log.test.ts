@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Log, Any, Quoted, Nil } from '../index.js';
 import { Context } from '../../context.js';
 import { logger } from '../../logger.js';
+import { createRenderBuffer, renderNodeToBuffer } from '../util/render-buffer.js';
 
 describe('Log node', () => {
   let context: Context;
@@ -104,7 +105,66 @@ describe('Log node', () => {
     expect(logSpy).toHaveBeenCalledWith('test message');
     expect(resolved).toBeInstanceOf(Nil);
     expect(logNode.evaluated).toBe(false);
-    expect(logNode.preEvaluated).toBe(false);
+    expect(logNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('writes no CSS for log buffers while evaluating without public resolve', async () => {
+    const logSpy = vi.fn();
+    logger.log = logSpy;
+    const buffer = createRenderBuffer('flat');
+    const logNode = new Log({
+      level: 'debug',
+      message: new Any('buffer message')
+    });
+    logNode.resolve = () => {
+      throw new Error('Log buffer render should use evalNode');
+    };
+
+    await expect(Promise.resolve(renderNodeToBuffer(logNode, context, buffer))).resolves.toBe('');
+
+    expect(logSpy).toHaveBeenCalledWith('buffer message');
+    expect(buffer.parts).toEqual([]);
+    expect(logNode.evaluated).toBe(false);
+  });
+
+  it('renders log side effects without calling public evalNode()', async () => {
+    const logSpy = vi.fn();
+    logger.log = logSpy;
+    const logNode = new Log({
+      level: 'debug',
+      message: new Any('direct message')
+    });
+    logNode.evalNode = () => {
+      throw new Error('Log.render should run the invisible effect directly');
+    };
+
+    await expect(Promise.resolve(logNode.render(context))).resolves.toBe('');
+
+    expect(logSpy).toHaveBeenCalledWith('direct message');
+    expect(logNode.evaluated).toBe(false);
+    expect(logNode.registrationPrepared).toBe(false);
+  });
+
+  it('writes async log side effects into buffers without calling public evalNode()', async () => {
+    const warnSpy = vi.fn();
+    logger.warn = warnSpy;
+    const buffer = createRenderBuffer('flat');
+    const message = new Any('async direct message');
+    message.eval = () => Promise.resolve(new Any('async direct message'));
+    const logNode = new Log({
+      level: 'warn',
+      message
+    });
+    logNode.evalNode = () => {
+      throw new Error('Log buffer render should run the invisible effect directly');
+    };
+
+    await expect(Promise.resolve(logNode.render(context, buffer))).resolves.toBe('');
+
+    expect(warnSpy).toHaveBeenCalledWith('async direct message');
+    expect(buffer.parts).toEqual([]);
+    expect(logNode.evaluated).toBe(false);
+    expect(logNode.registrationPrepared).toBe(false);
   });
 });

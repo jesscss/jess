@@ -12,12 +12,7 @@ import { type Operator, calculate } from './util/calculate.js';
 import { logger } from '../logger.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import {
-  isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
-} from './util/render-buffer.js';
-import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import { finalizeOperationMetadataResult, finalizePublicOperationResult } from './util/operation-result.js';
 
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
@@ -37,6 +32,16 @@ type DurationUnit = 's' | 'ms';
 type AngleUnit = 'rad' | 'deg' | 'grad' | 'turn';
 type ConversionUnit = LengthUnit | DurationUnit | AngleUnit;
 type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>;
+const enum ConversionGroup {
+  Length = 0,
+  Duration = 1,
+  Angle = 2
+}
+const UNIT_TO_GROUP: ReadonlyMap<string, ConversionGroup> = new Map<ConversionUnit, ConversionGroup>(
+  (LENGTH_UNITS.map(unit => [unit, ConversionGroup.Length]) as UnitMapEntries)
+    .concat(DURATION_UNITS.map(unit => [unit, ConversionGroup.Duration]) as UnitMapEntries)
+    .concat(ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]) as UnitMapEntries)
+);
 
 export interface Dimension extends Node<DimensionValue> {
   eval(context: Context): Dimension;
@@ -51,21 +56,26 @@ export class Dimension extends Node<DimensionValue> {
     this.addFlag(F_STATIC);
   }
 
-  private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {
-    let unitToGroup = this._unitToGroup;
-    if (!unitToGroup) {
-      const lengthEntries: UnitMapEntries = LENGTH_UNITS.map(unit => [unit, ConversionGroup.Length]);
-      const durationEntries: UnitMapEntries = DURATION_UNITS.map(unit => [unit, ConversionGroup.Duration]);
-      const angleEntries: UnitMapEntries = ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]);
-      const entries = lengthEntries.concat(durationEntries).concat(angleEntries);
-      this._unitToGroup = unitToGroup = new Map(entries);
-    }
-    return unitToGroup;
+    return UNIT_TO_GROUP;
   }
 
   private isConversionUnit(unit: string): unit is ConversionUnit {
     return this.unitToGroup.has(unit);
+  }
+
+  private operateAsColor(b: Color, op: Operator, context?: Context): Color {
+    const { number, unit } = this.value;
+    const unitMode = context?.opts?.unitMode ?? 'loose';
+    const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
+    if (unit && isStrictLikeMode) {
+      throw new TypeError(`Cannot convert "${this}" to a color`);
+    }
+    const thisColor = finalizeOperationMetadataResult(this, new Color(
+      { rgb: [number, number, number] },
+      { format: b.options?.format ?? ColorFormat.RGB }
+    ));
+    return finalizePublicOperationResult(this, thisColor.operate(b, op, context));
   }
 
   override valueOf() {
@@ -79,17 +89,7 @@ export class Dimension extends Node<DimensionValue> {
     }
     let unitToGroup = this.unitToGroup;
     if (b instanceof Color) {
-      let { number, unit } = this.value;
-      const unitMode = context?.opts?.unitMode ?? 'loose';
-      const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
-      if (unit && isStrictLikeMode) {
-        throw new TypeError(`Cannot convert "${this}" to a color`);
-      }
-      let thisColor = new Color(
-        { rgb: [number, number, number] },
-        { format: b.options?.format ?? ColorFormat.RGB }
-      ).inherit(this);
-      return thisColor.operate(b, op, context).inherit(this);
+      return this.operateAsColor(b, op, context);
     }
     let { number: aVal, unit: aUnit } = this.value;
     let { number: bVal, unit: bUnit } = b.value;
@@ -105,36 +105,36 @@ export class Dimension extends Node<DimensionValue> {
       /** One or both doesn't have a unit, so just calculate the number */
       if ((isStrictMode || isPreserveMode) && bUnit && op === '/') {
         if (isPreserveMode) {
-          return new Dimension({
+          return finalizeOperationMetadataResult(this, new Dimension({
             number: calculate(aVal, op, bVal),
             unit: `1/${bUnit}`
-          }).inherit(this);
+          }));
         }
         throw new TypeError('Cannot divide a number by a unit');
       }
-      return new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }).inherit(this);
+      return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }));
     }
 
     if (aUnit === bUnit) {
       /** Both units match, so the now we have some choices */
       if (op === '+' || op === '-') {
-        return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
+        return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
       }
       if (isStrictMode || isPreserveMode) {
         if (op === '*') {
           if (isPreserveMode) {
-            return new Dimension({
+            return finalizeOperationMetadataResult(this, new Dimension({
               number: calculate(aVal, op, bVal),
               unit: `${aUnit}*${bUnit}`
-            }).inherit(this);
+            }));
           }
           throw new TypeError('Cannot multiply two units together');
         } else {
           /** Cancel units during division */
-          return new Dimension({ number: calculate(aVal, op, bVal) }).inherit(this);
+          return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal) }));
         }
       } else {
-        return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
+        return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
       }
     }
     const aGroup = unitToGroup.get(aUnit);
@@ -143,20 +143,20 @@ export class Dimension extends Node<DimensionValue> {
     if (aGroup === undefined || bGroup === undefined || aGroup !== bGroup) {
       if (isStrictMode || isPreserveMode) {
         if (isPreserveMode) {
-          return new Dimension({
+          return finalizeOperationMetadataResult(this, new Dimension({
             number: calculate(aVal, op, bVal),
             unit: (
               op === '+' || op === '-'
                 ? `${aUnit}±${bUnit}`
                 : `${aUnit}${op}${bUnit}`
             )
-          }).inherit(this);
+          }));
         }
         /** Units don't match, and can't be converted */
         throw new TypeError('Incompatible units. Change the units or use the unit function');
       }
       /** Just coerce to the left-hand unit */
-      return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
+      return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
     }
 
     if (!this.isConversionUnit(aUnit) || !this.isConversionUnit(bUnit)) {
@@ -170,14 +170,14 @@ export class Dimension extends Node<DimensionValue> {
     }
 
     if (isPreserveMode && (op === '*' || op === '/')) {
-      return new Dimension({
+      return finalizeOperationMetadataResult(this, new Dimension({
         number: calculate(aVal, op, bVal),
         unit: `${aUnit}${op}${bUnit}`
-      }).inherit(this);
+      }));
     }
 
     bVal = bVal / (atomicUnit / targetUnit);
-    return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
+    return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
   }
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
@@ -325,15 +325,6 @@ export class Dimension extends Node<DimensionValue> {
     return w.getSince(mark);
   }
 
-  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
-  override render(context: Context, options?: PrintOptions): string;
-  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
-    }
-    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
-  }
-
   override resolve(_context: Context): this {
     return this;
   }
@@ -350,12 +341,6 @@ export class Dimension extends Node<DimensionValue> {
   //     `})`
   //   , this.location)
   // }
-}
-
-const enum ConversionGroup {
-  Length = 0,
-  Duration = 1,
-  Angle = 2
 }
 
 const conversions: Record<ConversionGroup, Partial<Record<ConversionUnit, number>>> = {

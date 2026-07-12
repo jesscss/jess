@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, call, decl, dimension, list, num, op, paren, ref, rules, ruleset, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, call, decl, dimension, list, num, op, Operation, paren, ref, rules, Rules, ruleset, vardecl } from '../index.js';
 import { OutputWriter } from '../util/print.js';
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
@@ -11,6 +11,17 @@ class CountingWriter extends OutputWriter {
     this.captures++;
     return super.capture(fn);
   }
+}
+
+async function setEvaluatedRoot(context: Context, node: Rules): Promise<Rules> {
+  const evald = await node.eval(context);
+  expect(evald).toBeInstanceOf(Rules);
+  if (!(evald instanceof Rules)) {
+    throw new Error('Expected Rules result');
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+  return evald;
 }
 
 describe('Operation', () => {
@@ -41,9 +52,7 @@ describe('Operation', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const operationNode = op([
       num(10),
@@ -54,7 +63,7 @@ describe('Operation', () => {
 
     expect(rendered).toBe('30');
     expect(operationNode.evaluated).toBe(false);
-    expect(operationNode.preEvaluated).toBe(false);
+    expect(operationNode.registrationPrepared).toBe(false);
   });
 
   it('writes resolved operation render output into flat buffers', async () => {
@@ -64,9 +73,7 @@ describe('Operation', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const buffer = createRenderBuffer('flat');
     const operationNode = op([
@@ -74,11 +81,71 @@ describe('Operation', () => {
       '+',
       ref({ key: 'rhs' }, { type: 'variable' })
     ]);
+    let operationResolveCalls = 0;
+    operationNode.resolve = (renderContext: Context) => {
+      operationResolveCalls++;
+      return operationNode.evalNode(renderContext);
+    };
 
     expect(await operationNode.render(context, buffer)).toBe('30');
     expect(buffer.parts).toEqual(['30']);
+    expect(operationResolveCalls).toBe(0);
     expect(operationNode.evaluated).toBe(false);
-    expect(operationNode.preEvaluated).toBe(false);
+    expect(operationNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders resolved operation values directly without public resolve', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+
+    const operationNode = op([
+      num(10),
+      '+',
+      ref({ key: 'rhs' }, { type: 'variable' })
+    ]);
+    operationNode.resolve = () => {
+      throw new Error('Operation direct render should evaluate operands natively');
+    };
+
+    expect(operationNode.render(context)).toBe('30');
+    expect(operationNode.evaluated).toBe(false);
+    expect(operationNode.registrationPrepared).toBe(false);
+  });
+
+  it('renders unresolved operation syntax without materializing replacement operands', async () => {
+    const node = rules([
+      vardecl({
+        name: any('div-op'),
+        value: list([dimension([10, 'px']), num(2)], { sep: '/' })
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+    const descriptor = Object.getOwnPropertyDescriptor(Operation.prototype, 'withOperands');
+    if (!descriptor) {
+      throw new Error('Expected Operation.withOperands for render materialization proof');
+    }
+    const renderedOperation = op([
+      ref({ key: 'div-op' }, { type: 'variable' }),
+      '*',
+      num(2)
+    ]);
+
+    Object.defineProperty(Operation.prototype, 'withOperands', {
+      ...descriptor,
+      value: () => {
+        throw new Error('Operation render should stream evaluated operands without a replacement operation');
+      }
+    });
+    try {
+      expect(renderedOperation.render(context)).toBe('10px / 2 * 2');
+    } finally {
+      Object.defineProperty(Operation.prototype, 'withOperands', descriptor);
+    }
   });
 
   it('resolves operation values without touching render state', async () => {
@@ -88,9 +155,7 @@ describe('Operation', () => {
         value: num(20)
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const operationNode = op([
       num(10),
@@ -101,7 +166,7 @@ describe('Operation', () => {
 
     expect(resolved.toTrimmedString()).toBe('30');
     expect(operationNode.evaluated).toBe(false);
-    expect(operationNode.preEvaluated).toBe(false);
+    expect(operationNode.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -112,9 +177,7 @@ describe('Operation', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    const evald = await setEvaluatedRoot(context, node);
 
     const operationNode = op([
       list([
@@ -153,8 +216,8 @@ describe('Operation', () => {
     expect(renderedOperation.render(context)).toBe('10px / 2 * 2');
 
     const resolveContext = new Context();
-    resolveContext.root = evald as RulesClass;
-    resolveContext.rulesContext = evald as RulesClass;
+    resolveContext.root = evald;
+    resolveContext.rulesContext = evald;
     const resolvedOperation = op([
       ref({ key: 'div-op' }, { type: 'variable' }),
       '*',
@@ -193,9 +256,7 @@ describe('Operation', () => {
         value: list([dimension([50, 'vh']), num(2)], { sep: '/' })
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const calcNode = call({
       name: 'calc',

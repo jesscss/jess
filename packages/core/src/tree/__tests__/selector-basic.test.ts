@@ -1,5 +1,6 @@
 import { el, compound, sel } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -35,6 +36,21 @@ describe('BasicSelector', () => {
     expect(el('#id').render(context)).toBe('#id');
   });
 
+  it('renders basic selectors directly without public resolve', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = el('.foo');
+    let resolveCalls = 0;
+    node.resolve = () => {
+      resolveCalls++;
+      throw new Error('BasicSelector direct render should serialize source syntax');
+    };
+
+    expect(node.render(context)).toBe('.foo');
+    expect(await node.render(context, buffer)).toBe('.foo');
+    expect(buffer.parts).toEqual(['.foo']);
+    expect(resolveCalls).toBe(0);
+  });
+
   it('resolves selectors without touching render state', async () => {
     const node = el('.foo');
 
@@ -42,7 +58,7 @@ describe('BasicSelector', () => {
 
     expect(resolved.toTrimmedString()).toBe('.foo');
     expect(node.evaluated).toBe(false);
-    expect(node.preEvaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 

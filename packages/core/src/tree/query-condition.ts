@@ -1,7 +1,14 @@
-import type { PrintOptions } from '..';
-import { getPrintOptions } from './util/print.js';
+import type { Context } from '../context.js';
+import { getPrintOptions, prepareRenderPrintState, type PrintOptions } from './util/print.js';
 import { defineType, type Node } from './node.js';
 import { Sequence } from './sequence.js';
+import { isThenable, serialForEach, type MaybePromise } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  prepareBufferPrintState,
+  type RenderBuffer,
+  writeRenderText
+} from './util/render-buffer.js';
 
 /**
  * Used by `@media`, `@supports`, and `@container`
@@ -12,12 +19,28 @@ import { Sequence } from './sequence.js';
  * @todo - add more structure?
  */
 export class QueryCondition extends Sequence {
-  override toTrimmedString(options?: PrintOptions): string {
+  private resolveItems(context: Context): MaybePromise<Node[]> {
+    const values: Node[] = [];
+    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
+      const out = item.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((resolved) => {
+          values[index] = resolved;
+        });
+      }
+      values[index] = out as Node;
+    });
+    if (isThenable(maybe)) {
+      return (maybe as Promise<void>).then(() => values);
+    }
+    return values;
+  }
+
+  private renderQueryConditionSyntax(value: Node[], options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { value } = this;
-    let length = value.length;
+    const length = value.length;
 
     if (length === 0) {
       return '';
@@ -37,11 +60,36 @@ export class QueryCondition extends Sequence {
 
     // Space out sub-nodes
     for (let i = 1; i < length; i++) {
-      let node = value[i]!;
+      const node = value[i]!;
       w.add(' ');
       emitTrimmed(node);
     }
     return w.getSince(mark);
+  }
+
+  override toTrimmedString(options?: PrintOptions): string {
+    return this.renderQueryConditionSyntax(this.value, options);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+    const printOptions = buffer ? options : bufferOrOptions;
+    const resolved = this.resolveItems(context);
+    const write = (value: Node[]): string => {
+      const prepared = buffer
+        ? prepareBufferPrintState(context, options)
+        : prepareRenderPrintState(context, printOptions);
+      const out = this.renderQueryConditionSyntax(value, prepared);
+      return buffer
+        ? writeRenderText(buffer, out)
+        : out;
+    };
+    if (isThenable(resolved)) {
+      return (resolved as Promise<Node[]>).then(write);
+    }
+    return write(resolved as Node[]);
   }
 }
 export const query = defineType(QueryCondition, 'QueryCondition', 'query');

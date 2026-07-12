@@ -1,5 +1,6 @@
-import { any, attr, co, compound, el, ref, rules, sel, sellist, type Rules as RulesClass, vardecl } from '../index.js';
+import { any, attr, co, compound, el, pseudo, ref, rules, Rules as RulesClass, sel, sellist, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 /**
  * @todo - add tests for list bubbling
@@ -10,6 +11,14 @@ describe('Selector list', () => {
   beforeEach(() => {
     context = new Context();
   });
+
+  const setRoot = (node: unknown) => {
+    if (!(node instanceof RulesClass)) {
+      throw new TypeError('Expected evaluated rules root');
+    }
+    context.root = node;
+    context.rulesContext = node;
+  };
 
   describe('equality', () => {
     test('renders selector-list syntax through toTrimmedString()', () => {
@@ -63,8 +72,7 @@ describe('Selector list', () => {
       })
     ]);
     const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    setRoot(evald);
 
     const rendered = sellist([
       compound([
@@ -81,6 +89,45 @@ describe('Selector list', () => {
     expect(rendered).toBe('a[data=foo],\n.bar');
   });
 
+  test('writes resolved selector-list output into segmented buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('attr-name'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    setRoot(evald);
+    const buffer = createRenderBuffer('segmented');
+
+    const selectorNode = sellist([
+      compound([
+        el('a'),
+        attr({
+          name: 'data',
+          op: '=',
+          value: ref({ key: 'attr-name' }, { type: 'variable' })
+        })
+      ]),
+      el('.bar')
+    ]);
+    const originalResolve = selectorNode.resolve;
+    let resolveCalls = 0;
+    selectorNode.resolve = function countResolveCalls(
+      this: typeof selectorNode,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    const rendered = selectorNode.render(context, buffer);
+
+    expect(rendered).toBe('a[data=foo],\n.bar');
+    expect(buffer.segments).toEqual(['a[data=foo],\n.bar']);
+    expect(resolveCalls).toBe(0);
+  });
+
   test('resolves selector-list values without touching render state', async () => {
     const node = rules([
       vardecl({
@@ -89,8 +136,7 @@ describe('Selector list', () => {
       })
     ]);
     const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    setRoot(evald);
 
     const selector = sellist([
       compound([
@@ -108,7 +154,7 @@ describe('Selector list', () => {
 
     expect(resolved.toTrimmedString()).toBe('a[data=foo],\n.bar');
     expect(selector.evaluated).toBe(false);
-    expect(selector.preEvaluated).toBe(false);
+    expect(selector.registrationPrepared).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 
@@ -120,8 +166,7 @@ describe('Selector list', () => {
       })
     ]);
     const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    setRoot(evald);
 
     const selector = sellist([
       compound([
@@ -142,5 +187,19 @@ describe('Selector list', () => {
     expect(sourceFirst.parent).toBe(selector);
     expect(sourceSecond.parent).toBe(selector);
     expect(selector.toTrimmedString()).toBe('a[data=$attr-name],\n.bar');
+  });
+
+  test('owns single resolved selector-list output without reparenting the source child', async () => {
+    const inner = sellist([sel([el('.source'), co(' '), el('.child')])]);
+    const sourceChild = inner.value[0]!;
+    const selector = pseudo({ name: ':is', arg: inner });
+
+    const resolved = await selector.resolve(context);
+    const resolvedArg = resolved.value.arg;
+
+    expect(resolved.toTrimmedString()).toBe(':is(.source .child)');
+    expect(resolvedArg).not.toBe(sourceChild);
+    expect(sourceChild.parent).toBe(inner);
+    expect(inner.parent).toBe(selector);
   });
 });

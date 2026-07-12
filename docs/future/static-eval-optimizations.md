@@ -18,8 +18,9 @@ plan.
 ## Current Problem
 
 Today, `F_STATIC` bubbles correctly through many trees, including selectors,
-rulesets, and root `Rules`, but first eval still walks `preEval()` / `evalNode()`
-for the stylesheet.
+rulesets, and root `Rules`, but first render still has to run the eval/render
+setup needed for registration, imports, nesting, and other structural output
+rules.
 
 That mismatch exists because some trees are "static" in the value sense but
 still rely on eval-time structural work, for example:
@@ -46,8 +47,8 @@ Meaning:
 
 - the subtree needs no eval-time structural rewrite
 - serialization of the canonical tree is already semantically correct
-- root eval can return immediately after marking the tree as pre-evaluated /
-  evaluated for the active context
+- root eval/render can return immediately after the small setup needed for the
+  active context, without materializing a second evaluated tree
 
 This should be assigned and bubbled at construction time, just like the existing
  flag model, rather than discovered later by scanning.

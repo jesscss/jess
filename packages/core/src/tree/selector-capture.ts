@@ -1,12 +1,12 @@
 import { type Context } from '../context.js';
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, defineType } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
-  type RenderBuffer
+  type RenderBuffer,
+  writeRenderTextResult
 } from './util/render-buffer.js';
 
 export interface SelectorCapture extends Node<Selector> {
@@ -46,10 +46,21 @@ export class SelectorCapture extends Node<Selector> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
-    }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.resolveValue(context),
+      node => this.renderResolvedSelector(context, node, bufferOrOptions, options)
+    );
+  }
+
+  private renderResolvedSelector(
+    context: Context,
+    node: Selector,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    return isRenderBuffer(bufferOrOptions)
+      ? writeRenderTextResult(bufferOrOptions, node.render(context, options))
+      : node.render(context, bufferOrOptions);
   }
 
   private requireSelector(value: unknown): Selector {
@@ -68,6 +79,13 @@ export class SelectorCapture extends Node<Selector> {
   }
 
   override resolve(context: Context): MaybePromise<Selector> {
+    return this.resolveValue(context);
+  }
+
+  private resolveValue(context: Context): MaybePromise<Selector> {
+    if (this.hasFlag(F_STATIC)) {
+      return this.value;
+    }
     const out = this.value.resolve(context);
     if (isThenable(out)) {
       return out.then(value => this.requireSelector(value));

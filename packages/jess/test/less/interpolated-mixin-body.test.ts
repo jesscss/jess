@@ -11,8 +11,8 @@
  *   #each-color();
  *
  * The variables (@color etc.) are defined in the mixin body via extract()
- * and are only available at eval time. _resolveDynamicNodes must not fail
- * during preEval because these variables aren't in scope yet.
+ * and are only available at eval time. Dynamic-name prep must not fail before
+ * evaluation because these variables aren't in scope yet.
  */
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';

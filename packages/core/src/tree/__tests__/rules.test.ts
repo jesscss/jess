@@ -28,7 +28,7 @@ import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
-import { renderNodeToString } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -157,6 +157,141 @@ describe('Rules', () => {
     expect(options.referenceRenderEnabled).toBe(true);
   });
 
+  it('lets Rules.evalNode own registration prep', async () => {
+    const node = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+
+    const evaluated = await node.eval(context);
+
+    expect(evaluated.toTrimmedString()).toBe('color: red;');
+    expect(node.registrationPrepared).toBe(true);
+    expect(node.evaluated).toBe(true);
+  });
+
+  it('renders already evaluated rules without deriving another root surface', async () => {
+    const source = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+    const evaluated = await source.eval(context);
+    context.root = evaluated;
+    context.rulesContext = evaluated;
+
+    const originalDerive = evaluated.derive;
+    let deriveCalls = 0;
+    evaluated.derive = function countDeriveCalls(
+      this: typeof evaluated,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    expect(evaluated.render(context)).toBe('color: red;\n');
+    expect(deriveCalls).toBe(0);
+  });
+
+  it('renders registration-prepared rules without deriving another root surface', async () => {
+    const source = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+    const prepared = await source.prepareRegistration(context);
+    context.root = prepared;
+    context.rulesContext = prepared;
+
+    const originalDerive = prepared.derive;
+    let deriveCalls = 0;
+    prepared.derive = function countDeriveCalls(
+      this: typeof prepared,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    expect(await Promise.resolve(prepared.render(context))).toBe('color: red;\n');
+    expect(deriveCalls).toBe(0);
+  });
+
+  it('resolves static rules without deriving another root surface', () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const originalDerive = node.derive;
+    let deriveCalls = 0;
+    node.derive = function countDeriveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    expect(node.resolve(context)).toBe(node);
+    expect(deriveCalls).toBe(0);
+    expect(node.evaluated).toBe(false);
+  });
+
+  it('resolves registration-prepared rules without deriving another root surface', async () => {
+    const source = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+    const prepared = await source.prepareRegistration(context);
+    const originalDerive = prepared.derive;
+    let deriveCalls = 0;
+    prepared.derive = function countDeriveCalls(
+      this: typeof prepared,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    const resolved = await prepared.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('color: red;');
+    expect(deriveCalls).toBe(0);
+  });
+
+  it('drops empty derived scope frames while preserving fallback frames', () => {
+    const source = rules([
+      decl({ name: any('color'), value: any('red') })
+    ]);
+    const emptyFrame = source.getScopeFrame();
+    expect(emptyFrame.rulesNode).toBe(source);
+
+    const emptyDerived = source.derive([]);
+    expect(emptyDerived.scopeFrame).toBeUndefined();
+
+    const fallbackRules = rules([]);
+    source.getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
+
+    const fallbackDerived = source.derive([]);
+    expect(fallbackDerived.scopeFrame?.rulesNode).toBe(fallbackDerived);
+    expect(fallbackDerived.scopeFrame?.fallbackFrame).toBe(fallbackRules.getScopeFrame());
+  });
+
+  it('handles charset output-order bookkeeping without child registration prep', async () => {
+    const charset = any('@charset "utf-8";', { role: 'charset' });
+    charset.prepareRegistration = () => {
+      throw new Error('charset output-order handling should be owned by Rules');
+    };
+    const node = rules([
+      charset,
+      decl({ name: 'color', value: any('red') })
+    ]);
+
+    await node.eval(context);
+
+    expect(context.currentCharset).toBe(charset);
+    expect(node.value[0]?.type).toBe('Nil');
+    expect(node.render(context)).toBe('@charset "utf-8";\ncolor: red;\n');
+  });
+
   it('reuses context-owned render state without accumulating prior output', () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })
@@ -170,7 +305,164 @@ describe('Rules', () => {
     expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 
-  it('derives rules resolve wrappers without shallow-cloning the source rules', async () => {
+  it('writes rules body output into render buffers', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    context.root = rules([]);
+    const originalResolve = node.resolve;
+    let resolveCalls = 0;
+    node.resolve = function countResolveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toBe('color: red;\n');
+    expect(buffer.parts).toEqual(['color: red;\n']);
+    expect(resolveCalls).toBe(0);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('keeps non-root direct render as a body fragment while buffers keep emitted separators', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    context.root = rules([]);
+
+    expect(await Promise.resolve(node.render(context, buffer))).toBe('color: red;\n');
+    expect(buffer.parts).toEqual(['color: red;\n']);
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+  });
+
+  it('renders rules body output directly without public resolve', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    context.root = rules([]);
+    node.resolve = () => {
+      throw new Error('Rules direct body render should evaluate natively');
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('renders unprepared dynamic rules without deriving a wrapper tree', async () => {
+    const sourceVar = vardecl({ name: 'brand', value: any('red') });
+    const sourceDecl = decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) });
+    const node = rules([sourceVar, sourceDecl]);
+    context.root = rules([]);
+    context.rulesContext = undefined;
+    const originalDerive = node.derive;
+    let deriveCalls = 0;
+    node.derive = function countDeriveCalls(
+      this: typeof node,
+      ...args: Parameters<typeof originalDerive>
+    ): ReturnType<typeof originalDerive> {
+      deriveCalls++;
+      return originalDerive.apply(this, args);
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    expect(deriveCalls).toBe(0);
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+    expect(sourceVar.parent).toBe(node);
+    expect(sourceDecl.parent).toBe(node);
+    expect(context.rulesContext).toBeUndefined();
+  });
+
+  it('restores an empty root context after unprepared root render', async () => {
+    const node = rules([
+      vardecl({ name: 'brand', value: any('red') }),
+      decl({ name: 'color', value: ref({ key: 'brand' }, { type: 'variable' }) })
+    ]);
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
+    expect(context.root).toBeUndefined();
+    expect(context.rulesContext).toBeUndefined();
+    expect(context.treeRoot).toBeUndefined();
+  });
+
+  it('awaits native render children while preserving the source rules surface', async () => {
+    const child = decl({ name: 'color', value: any('red') });
+    const node = rules([child]);
+    context.root = rules([]);
+    const originalRender = child.render;
+    child.render = function countAsyncChildRender(
+      this: typeof child,
+      childContext: Context,
+      bufferOrOptions?: Parameters<typeof originalRender>[1],
+      options?: Parameters<typeof originalRender>[2]
+    ): ReturnType<typeof originalRender> {
+      return Promise.resolve().then(() => originalRender.call(this, childContext, bufferOrOptions, options));
+    };
+
+    await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;');
+    expect(node.evaluated).toBe(false);
+    expect(node.registrationPrepared).toBe(false);
+    expect(child.evaluated).toBe(false);
+  });
+
+  it('writes root-owned charset and imports into render buffers', async () => {
+    const root = rules([]);
+    const buffer = createRenderBuffer('segmented');
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    context.topImports = [
+      atrule({
+        name: any('@import', { role: 'atkeyword' }),
+        prelude: quoted(any('theme.css'))
+      })
+    ];
+    const originalResolve = root.resolve;
+    let resolveCalls = 0;
+    root.resolve = function countResolveCalls(
+      this: typeof root,
+      ...args: Parameters<typeof originalResolve>
+    ): ReturnType<typeof originalResolve> {
+      resolveCalls++;
+      return originalResolve.apply(this, args);
+    };
+
+    const rendered = await root.render(context, buffer);
+
+    expect(rendered).toBe('@charset "utf-8";\n@import "theme.css";\n');
+    expect(buffer.segments).toEqual([rendered]);
+    expect(resolveCalls).toBe(0);
+    expect(root.evaluated).toBe(false);
+    expect(root.registrationPrepared).toBe(false);
+  });
+
+  it('renders root-owned charset and imports directly without public resolve', async () => {
+    const root = rules([]);
+    context.root = root;
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    context.topImports = [
+      atrule({
+        name: any('@import', { role: 'atkeyword' }),
+        prelude: quoted(any('theme.css'))
+      })
+    ];
+    root.resolve = () => {
+      throw new Error('Root Rules direct render should keep root-aware output native');
+    };
+
+    await expect(Promise.resolve(root.render(context))).resolves.toBe('@charset "utf-8";\n@import "theme.css";\n');
+    expect(root.evaluated).toBe(false);
+    expect(root.registrationPrepared).toBe(false);
+  });
+
+  it('resolves unprepared rules without deriving a wrapper tree', async () => {
     const originalClone = Node.prototype.clone;
     let clonedRules = 0;
     Node.prototype.clone = function cloneForCounting(
@@ -188,12 +480,22 @@ describe('Rules', () => {
         vardecl({ name: any('tone'), value: any('red') }),
         decl({ name: any('color'), value: ref({ key: 'tone' }, { type: 'variable' }) })
       ]);
+      const originalDerive = root.derive;
+      let deriveCalls = 0;
+      root.derive = function countDeriveCalls(
+        this: typeof root,
+        ...args: Parameters<typeof originalDerive>
+      ): ReturnType<typeof originalDerive> {
+        deriveCalls++;
+        return originalDerive.apply(this, args);
+      };
 
       const resolved = await root.resolve(context);
 
       expect(resolved.toTrimmedString()).toContain('color: red;');
+      expect(deriveCalls).toBe(0);
       expect(clonedRules).toBe(0);
-      expect(root.evaluated).toBe(false);
+      expect(root.evaluated).toBe(true);
     } finally {
       Node.prototype.clone = originalClone;
     }
@@ -439,10 +741,11 @@ describe('Rules', () => {
         // Only path resolution errors (tagged with _isPathResolutionError)
         // should be retried — content errors mean the tree was already cloned
         // and retrying would wastefully re-clone it.
-        target.eval = (() => {
+        const failEval: typeof target.eval = () => {
           attempts += 1;
           throw new Error('content-eval-failure');
-        }) as typeof target.eval;
+        };
+        target.eval = failEval;
 
         await expect(async () => {
           await node.eval(context);

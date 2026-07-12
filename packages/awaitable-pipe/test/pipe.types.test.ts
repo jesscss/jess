@@ -38,17 +38,17 @@ describe('pipe type inference', () => {
   });
 
   it('contextually types steps-only form correctly', () => {
-    const out = pipe(() => 'x', (s) => s + '!');
+    const out = pipe(() => 'x', s => s + '!');
     expectTypeOf(out).toBeString();
   });
 
   it('contextually types input-first form without explicit generics', () => {
-    const out = pipe(() => Promise.resolve(1), (n) => n + 1, (n) => `${n}`);
+    const out = pipe(() => Promise.resolve(1), n => n + 1, n => `${n}`);
     expectTypeOf(out).toEqualTypeOf<Promise<string>>();
   });
 
   it('does not wrap MaybePromise when using tryStep (async first)', () => {
-    type Node = { type: string; operate?: (...args: any[]) => any };
+    type Node = { type: string; operate?: (...args: unknown[]) => unknown };
     const step = tryStep((v: Node) => v as MaybePromise<Node>, { rethrow: true });
     const out = pipe(() => Promise.resolve({ type: 'X' } as Node), step);
     // Was previously Promise<MaybePromise<Node>>; should be Promise<Node>
@@ -56,30 +56,34 @@ describe('pipe type inference', () => {
   });
 
   it('does not wrap MaybePromise when using tryStep (sync first)', () => {
-    type Node = { type: string; operate?: (...args: any[]) => any };
+    type Node = { type: string; operate?: (...args: unknown[]) => unknown };
     const step = tryStep((v: Node) => v as MaybePromise<Node>, { rethrow: true });
     const out = pipe(() => ({ type: 'Y' } as Node), step);
     // Overall type should be MaybePromise<Node>
     expectTypeOf(out).toEqualTypeOf<MaybePromise<Node>>();
   });
 
-  it('mirrors Node.evalStatic pattern and preserves MaybePromise-like union', () => {
+  it('mirrors explicit prepare/eval sequencing and preserves MaybePromise-like union', () => {
     type MaybePromise<T> = T | Promise<T>;
-    type Node = { preEvaluated?: boolean; evaluated?: boolean };
-    const context = {} as any;
-    function preEval(n: Node, _c: any): MaybePromise<Node> { return n; }
-    function evalNode(n: Node, _c: any): MaybePromise<Node> { return n; }
+    type Node = { prepared?: boolean; evaluated?: boolean };
+    const context: unknown = {};
+    function prepare(n: Node, _c: unknown): MaybePromise<Node> {
+      return n;
+    }
+    function evalNode(n: Node, _c: unknown): MaybePromise<Node> {
+      return n;
+    }
 
     const node: Node = {};
     const out = pipe(
       () => {
-        if (!node.preEvaluated) {
-          return preEval(node, context);
+        if (!node.prepared) {
+          return prepare(node, context);
         }
         return node;
       },
       (returnNode) => {
-        returnNode.preEvaluated = true;
+        returnNode.prepared = true;
         if (!returnNode.evaluated) {
           return evalNode(returnNode, context);
         }
@@ -93,5 +97,3 @@ describe('pipe type inference', () => {
     expectTypeOf(out).toEqualTypeOf<MaybePromise<Node>>();
   });
 });
-
-

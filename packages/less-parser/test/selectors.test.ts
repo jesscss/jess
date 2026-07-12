@@ -1,7 +1,8 @@
 import { Parser } from '../src/index.js';
-import { Ampersand, serializeTypes, TreeContext } from '@jesscss/core';
+import { Ampersand, Context, serializeTypes, TreeContext } from '@jesscss/core';
 
 const parser = new Parser();
+const isAmpersand = (node: unknown): node is Ampersand => node instanceof Ampersand;
 
 describe('Selector Productions', () => {
   describe('relativeSelector', () => {
@@ -258,11 +259,39 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
     });
 
+    it('keeps parsed ampersand prefix templates on the current parser-to-core semantics', async () => {
+      const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
+      const context = new Context({ collapseNesting: true });
+
+      expect(errors.length).toBe(0);
+      const css = await tree.render(context, { context, collapseNesting: true });
+
+      expect(css).toBeString(`
+        .parent {
+          color: red;
+        }
+      `);
+    });
+
+    it('keeps parsed ampersand mid-template forms on the current parser-to-core semantics', async () => {
+      const { errors, tree } = parser.parse('.parent { &(.foo-&-bar) { color: red; } }');
+      const context = new Context({ collapseNesting: true });
+
+      expect(errors.length).toBe(0);
+      const css = await tree.render(context, { context, collapseNesting: true });
+
+      expect(css).toBeString(`
+        .parent {
+          color: red;
+        }
+      `);
+    });
+
     it('should parse empty quoted ampersand template as an explicit empty parent template', () => {
       const { errors, tree } = parser.parse('.parent { &(\"\").utility { color: red; } }');
       expect(errors.length).toBe(0);
       expect(serializeTypes(tree)).toContainString('(Ampersand');
-      const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
+      const amp = [...tree.nodes(true)].find(isAmpersand);
       expect(amp).toBeDefined();
       expect(amp?.value.appendValue).toBe('');
     });
@@ -271,7 +300,7 @@ describe('Selector Productions', () => {
       const { errors, tree } = parser.parse('.parent { &(nil).utility { color: red; } }');
       expect(errors.length).toBe(0);
       expect(serializeTypes(tree)).toContainString('(Ampersand');
-      const amp = [...tree.nodes(true)].find(node => node instanceof Ampersand) as Ampersand | undefined;
+      const amp = [...tree.nodes(true)].find(isAmpersand);
       expect(amp).toBeDefined();
       expect(amp?.value.appendValue).toBe('');
     });

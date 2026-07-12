@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { Any, type Declaration, type VarDeclaration } from '@jesscss/core';
+import { Any, Rules, type Declaration, type VarDeclaration } from '@jesscss/core';
 
 describe('Compiler reuse', () => {
   let tempDir: string;
@@ -164,13 +164,36 @@ describe('Compiler reuse', () => {
     expect(css).not.toContain('color: red');
   });
 
-  it('runs typed preEvalVisitor before variable resolution', async () => {
+  it('runs preRenderVisitor before render serialization', async () => {
     const source = '@tone: red;\n.a { color: @tone; }';
     const compiler = new Compiler({
       compile: {
         plugins: [{
-          name: 'pre-eval-visitor-test',
-          preEvalVisitor: {
+          name: 'pre-render-visitor-test',
+          preRenderVisitor: {
+            declaration(node: Declaration) {
+              if (node.value.name.valueOf() === 'color') {
+                node.set('value', new Any('green', { role: 'keyword' }));
+              }
+            }
+          }
+        }]
+      }
+    });
+
+    const css = await compiler.renderString(source, { language: 'less' });
+
+    expect(css).toContain('color: green');
+    expect(css).not.toContain('color: red');
+  });
+
+  it('runs typed beforeEvalVisitor before variable resolution', async () => {
+    const source = '@tone: red;\n.a { color: @tone; }';
+    const compiler = new Compiler({
+      compile: {
+        plugins: [{
+          name: 'before-eval-visitor-test',
+          beforeEvalVisitor: {
             varDeclaration(node: VarDeclaration) {
               if (node.value.name.valueOf() === 'tone') {
                 node.set('value', new Any('blue', { role: 'keyword' }));
@@ -257,6 +280,47 @@ describe('Compiler reuse', () => {
       expect(css).toContain('@charset "UTF-8";');
       expect(css).toContain('@import url("test.css");');
       expect(css).toContain('.a');
+    }
+  });
+
+  it('public render APIs render evaluated root rules', async () => {
+    const source = '.a { color: red; }';
+    const testFile = path.join(tempDir, 'evaluated-render-root.less');
+    fs.writeFileSync(testFile, source);
+    const originalRender = Rules.prototype.render;
+    const renderStates: boolean[] = [];
+    Rules.prototype.render = function renderForCounting(
+      this: Rules,
+      ...args: Parameters<typeof originalRender>
+    ): ReturnType<typeof originalRender> {
+      renderStates.push(this.evaluated);
+      return originalRender.apply(this, args);
+    };
+
+    try {
+      const compiler = new Compiler({
+        output: { collapseNesting: true },
+        compile: {
+          plugins: [lessCompatPlugin()]
+        }
+      });
+
+      await compiler.render(testFile);
+      await compiler.renderString(source, {
+        filePath: testFile,
+        language: 'less',
+        extension: '.less'
+      });
+      await compiler.renderToResult({
+        source,
+        filePath: testFile,
+        language: 'less',
+        extension: '.less'
+      });
+
+      expect(renderStates).toEqual([true, true, true]);
+    } finally {
+      Rules.prototype.render = originalRender;
     }
   });
 });

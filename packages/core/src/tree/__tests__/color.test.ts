@@ -289,9 +289,9 @@ describe('Color Node', () => {
       expect(rgbColor.render(new Context())).toBe('rgb(255, 0, 0)');
       expect(hexColor.render(new Context())).toBe('#ff0000');
       expect(rgbColor.evaluated).toBe(false);
-      expect(rgbColor.preEvaluated).toBe(false);
+      expect(rgbColor.registrationPrepared).toBe(false);
       expect(hexColor.evaluated).toBe(false);
-      expect(hexColor.preEvaluated).toBe(false);
+      expect(hexColor.registrationPrepared).toBe(false);
     });
 
     it('writes color render output into flat buffers', async () => {
@@ -301,9 +301,15 @@ describe('Color Node', () => {
         rgb: [255, 0, 0],
         alpha: 1
       });
+      let resolveCalls = 0;
+      color.resolve = () => {
+        resolveCalls++;
+        return color;
+      };
 
       expect(await color.render(new Context(), buffer)).toBe('rgb(255, 0, 0)');
       expect(buffer.parts).toEqual(['rgb(255, 0, 0)']);
+      expect(resolveCalls).toBe(0);
     });
 
     it('resolves colors without touching render state', async () => {
@@ -318,7 +324,7 @@ describe('Color Node', () => {
 
       expect(resolved.toTrimmedString()).toBe('rgb(255, 0, 0)');
       expect(color.evaluated).toBe(false);
-      expect(color.preEvaluated).toBe(false);
+      expect(color.registrationPrepared).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
 

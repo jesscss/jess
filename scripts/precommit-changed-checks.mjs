@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
 
 const ROOT = process.cwd();
 const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
@@ -9,12 +10,13 @@ const SHOULD_BLOCK = MODE === 'staged';
 const TODO_REPORT_PATH = path.join(ROOT, '.cursor', 'PREPUSH_CHECK_TODOS.md');
 const failures = [];
 
-/** Packages that gate on full baseline (core + parsers + all-less.test.ts). Push blocked if baseline fails. */
+/** Packages that gate on the broad baseline. Push blocked if baseline fails. */
 const BASELINE_PACKAGES = new Set([
   'packages/core',
   'packages/less-parser',
   'packages/css-parser',
-  'packages/jess'
+  'packages/jess',
+  'packages/jess-plugin-less-compat'
 ]);
 
 const NON_SOURCE_PATH_PATTERNS = [
@@ -34,8 +36,12 @@ function run(command, args, packageDir, options = {}) {
   });
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
-  if (stdout) process.stdout.write(stdout);
-  if (stderr) process.stderr.write(stderr);
+  if (stdout) {
+    process.stdout.write(stdout);
+  }
+  if (stderr) {
+    process.stderr.write(stderr);
+  }
   if (result.status !== 0) {
     failures.push({
       packageDir,
@@ -50,7 +56,15 @@ function run(command, args, packageDir, options = {}) {
 }
 
 function writeTodoReport() {
-  if (failures.length === 0 || MODE !== 'upstream') return;
+  if (MODE !== 'upstream') {
+    return;
+  }
+  if (failures.length === 0) {
+    if (existsSync(TODO_REPORT_PATH)) {
+      rmSync(TODO_REPORT_PATH);
+    }
+    return;
+  }
   const now = new Date().toISOString();
   const lines = [
     '# Pre-push Check TODOs',
@@ -115,19 +129,34 @@ function changedFilesAgainstUpstream() {
       if (!base) {
         continue;
       }
-      const output = execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
-        cwd: ROOT,
-        encoding: 'utf8'
-      });
-      return output
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean);
+      return uniqueLines([
+        execSync(`git diff --name-only --diff-filter=ACMR ${base}..HEAD`, {
+          cwd: ROOT,
+          encoding: 'utf8'
+        }),
+        execSync('git diff --name-only --diff-filter=ACMR', {
+          cwd: ROOT,
+          encoding: 'utf8'
+        }),
+        execSync('git diff --cached --name-only --diff-filter=ACMR', {
+          cwd: ROOT,
+          encoding: 'utf8'
+        })
+      ]);
     } catch {
       // Try next fallback ref.
     }
   }
   return [];
+}
+
+function uniqueLines(outputs) {
+  return [...new Set(
+    outputs
+      .flatMap(output => output.split('\n'))
+      .map(line => line.trim())
+      .filter(Boolean)
+  )];
 }
 
 function packageDirs(files) {
@@ -150,7 +179,7 @@ function stagedLintableFiles(files, packageDir) {
 
 function hasCodeImpactingChanges(files, packageDir) {
   const prefix = `${packageDir}/`;
-  return files.some(file => {
+  return files.some((file) => {
     if (!file.startsWith(prefix)) {
       return false;
     }
@@ -221,7 +250,7 @@ function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyR
 }
 
 function runVerifyBaseline() {
-  console.log('\n==> Running verify:baseline (core + parsers + all-less.test.ts)');
+  console.log('\n==> Running verify:baseline (core + parsers + Less fixture and compatibility suites)');
   run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
 }
 
@@ -236,21 +265,27 @@ if (files.length === 0) {
 }
 
 const changedPackages = packageDirs(files);
-if (changedPackages.length === 0) {
-  console.log('No staged package changes. Skipping package checks.');
-  process.exit(0);
-}
-
-console.log(`Checking ${changedPackages.length} changed package(s) [mode=${MODE}]...`);
-
 let baselineRan = false;
 if (MODE === 'upstream') {
-  const needsBaseline = changedPackages.some((pkg) => BASELINE_PACKAGES.has(pkg));
+  const needsBaseline = shouldRunFullBaselineForFiles(files) || changedPackages.some(pkg => BASELINE_PACKAGES.has(pkg));
   if (needsBaseline) {
     runVerifyBaseline();
     baselineRan = true;
   }
 }
+
+if (changedPackages.length === 0) {
+  console.log(MODE === 'upstream'
+    ? 'No package changes against upstream. Skipping package checks.'
+    : 'No staged package changes. Skipping package checks.'
+  );
+  if (MODE === 'upstream' && baselineRan) {
+    console.log('\nPre-push package checks passed.');
+  }
+  process.exit(0);
+}
+
+console.log(`Checking ${changedPackages.length} changed package(s) [mode=${MODE}]...`);
 
 for (const packageDir of changedPackages) {
   const scripts = readPackageScripts(packageDir);

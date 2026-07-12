@@ -15,6 +15,17 @@ import {
   type Rules as RulesClass,
   vardecl
 } from '../index.js';
+import { isNode } from '../util/is-node.js';
+import { N } from '../node-type.js';
+
+async function setEvaluatedRoot(context: Context, node: RulesClass): Promise<void> {
+  const evald = await node.eval(context);
+  if (!isNode(evald, N.Rules)) {
+    throw new Error(`Expected Rules root, received ${evald.type}`);
+  }
+  context.root = evald;
+  context.rulesContext = evald;
+}
 
 describe('Selector render contract', () => {
   let context: Context;
@@ -30,15 +41,32 @@ describe('Selector render contract', () => {
         value: el('.foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
 
     expect(selector.toString()).toBe('*[$capture-selector]');
     expect(selector.toTrimmedString()).toBe('*[$capture-selector]');
     expect(selector.render(context)).toBe('.foo');
+  });
+
+  it('renders selector captures directly without public resolve', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: el('.foo')
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+
+    const selector = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    selector.resolve = () => {
+      throw new Error('SelectorCapture direct render should resolve its payload natively');
+    };
+
+    expect(selector.render(context)).toBe('.foo');
+    expect(selector.evaluated).toBe(false);
+    expect(selector.registrationPrepared).toBe(false);
   });
 
   it('keeps pseudo-selector source serializers canonical while render(context) resolves selector-list arguments', async () => {
@@ -48,9 +76,7 @@ describe('Selector render contract', () => {
         value: sellist([el('.foo'), el('.bar')])
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const selector = pseudo({
       name: ':is',
@@ -62,6 +88,28 @@ describe('Selector render contract', () => {
     expect(selector.render(context)).toBe(':is(.foo, .bar)');
   });
 
+  it('renders selector nodes directly without public resolve', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector-list'),
+        value: sellist([el('.foo'), el('.bar')])
+      })
+    ]);
+    await setEvaluatedRoot(context, node);
+
+    const selector = pseudo({
+      name: ':is',
+      arg: ref({ key: 'capture-selector-list' }, { type: 'variable' })
+    });
+    selector.resolve = () => {
+      throw new Error('Selector direct render should use resolveForRender');
+    };
+
+    expect(selector.render(context)).toBe(':is(.foo, .bar)');
+    expect(selector.evaluated).toBe(false);
+    expect(selector.registrationPrepared).toBe(false);
+  });
+
   it('keeps complex selector source serializers canonical while render(context) resolves nested selector values', async () => {
     const node = rules([
       vardecl({
@@ -69,9 +117,7 @@ describe('Selector render contract', () => {
         value: any('foo')
       })
     ]);
-    const evald = await node.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
+    await setEvaluatedRoot(context, node);
 
     const selector = sel([
       compound([

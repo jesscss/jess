@@ -1,34 +1,20 @@
 import { type Context } from '../context.js';
-import { Bool } from './bool.js';
+import { Bool, createPublicBool } from './bool.js';
 import { Expression } from './expression.js';
 import { Operation } from './operation.js';
-import { Node, defineType, F_NON_STATIC } from './node.js';
+import { Node, defineType, F_NON_STATIC, type NodeLocation, type TreeContext } from './node.js';
 import { Dimension } from './dimension.js';
 import { List } from './list.js';
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, pipe } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
 import {
   isRenderBuffer,
-  renderNodeToBuffer,
+  writeRenderText,
+  writeRenderTextResult,
   type RenderBuffer
 } from './util/render-buffer.js';
-
-function getCallReferenceKey(name: unknown): string {
-  if (!name || typeof name !== 'object' || Reflect.get(name, 'type') !== 'Reference') {
-    return '';
-  }
-  const value = Reflect.get(name, 'value');
-  if (!value || typeof value !== 'object') {
-    return '';
-  }
-  const key = Reflect.get(value, 'key');
-  return String(
-    key && typeof key === 'object' && 'valueOf' in key
-      ? Reflect.apply(Reflect.get(key, 'valueOf'), key, [])
-      : key ?? ''
-  );
-}
+import { getDefaultGuardValue } from './util/default-guard.js';
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
 
@@ -42,29 +28,13 @@ const isOpOrExpression = (node: Node): node is Operation | Expression => {
 };
 
 const getDefaultGuardBool = (node: Node | undefined, context: Context): Bool | undefined => {
-  if (!node) {
-    return;
-  }
-  if (node.type === 'DefaultGuard') {
-    return new Bool(Boolean(context.isDefault));
-  }
-  if (node instanceof Paren) {
-    return getDefaultGuardBool(node.value, context);
-  }
-  if (node.type !== 'Call') {
-    return;
-  }
-  const rawValue = node.value;
-  if (!rawValue || typeof rawValue !== 'object' || !('name' in rawValue)) {
-    return;
-  }
-  const rawName = rawValue.name;
-  const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
-  const refKey = getCallReferenceKey(rawName);
-  if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
-    return new Bool(Boolean(context.isDefault));
-  }
+  const value = getDefaultGuardValue(node, context);
+  return value === undefined ? undefined : createPublicBool(value);
 };
+
+function normalizeEscapedList(value: List): List {
+  return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
+}
 
 function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>): void {
   if (options.trivia) {
@@ -83,6 +53,11 @@ function emitParenValue(value: Node, options: ReturnType<typeof getPrintOptions>
   }
 }
 
+type ParenRenderValue = {
+  node: Node;
+  wrap: boolean;
+};
+
 /**
  * An expression in parenthesis
  */
@@ -96,7 +71,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     ).inherit(this);
   }
 
-  constructor(value?: Node, options?: ParenOptions, location?: any, treeContext?: any) {
+  constructor(value?: Node, options?: ParenOptions, location?: NodeLocation, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
@@ -129,13 +104,92 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    if (isRenderBuffer(bufferOrOptions)) {
-      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    const guardValue = getDefaultGuardValue(this.value, context);
+    if (guardValue !== undefined) {
+      const out = String(guardValue);
+      return isRenderBuffer(bufferOrOptions)
+        ? writeRenderText(bufferOrOptions, out)
+        : out;
     }
-    return super.render(context, bufferOrOptions);
+    return pipe(
+      () => this.evaluateRenderValue(context),
+      value => this.renderEvaluatedValue(context, value, bufferOrOptions, options)
+    );
   }
 
-  override evalNode(context: Context): MaybePromise<Node> {
+  private evaluateRenderValue(context: Context): MaybePromise<ParenRenderValue> {
+    const currentValue = this.value;
+    if (!currentValue) {
+      return { node: this, wrap: false };
+    }
+    const guardBool = getDefaultGuardBool(currentValue, context);
+    if (guardBool) {
+      return { node: guardBool, wrap: false };
+    }
+    const isOp = isOpOrExpression(currentValue);
+    if (isOp) {
+      context.parenFrames.push(true);
+    }
+    const maybeEvald = currentValue.resolve(context);
+    const after = (v: Node): ParenRenderValue => {
+      let value = v;
+      if (isOp) {
+        context.parenFrames.pop();
+      }
+      const evaluatedGuardBool = getDefaultGuardBool(value, context);
+      if (evaluatedGuardBool) {
+        return { node: evaluatedGuardBool, wrap: false };
+      }
+      if (this._options?.escaped) {
+        if (value instanceof List && value.options?.sep === ';') {
+          return { node: normalizeEscapedList(value), wrap: false };
+        }
+        return { node: value, wrap: false };
+      }
+      while (value instanceof Paren && value.value) {
+        value = value.value;
+      }
+      if (value instanceof Bool || value instanceof Dimension) {
+        return { node: value, wrap: false };
+      }
+      if (isOp && !isOpOrExpression(value)) {
+        return { node: value, wrap: false };
+      }
+      if (value === currentValue) {
+        return { node: this, wrap: false };
+      }
+      return { node: value, wrap: true };
+    };
+    if (isThenable(maybeEvald)) {
+      return (maybeEvald as Promise<Node>).then(after);
+    }
+    return after(maybeEvald as Node);
+  }
+
+  private renderEvaluatedValue(
+    context: Context,
+    value: ParenRenderValue,
+    bufferOrOptions?: RenderBuffer | PrintOptions,
+    options?: PrintOptions
+  ): MaybePromise<string> {
+    if (value.node === this || !value.wrap) {
+      return this.renderOutput(context, value.node, bufferOrOptions, options);
+    }
+    const rendered = value.node.render(context, isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions);
+    const wrapped = pipe(
+      () => rendered,
+      (out) => {
+        const open = this._options?.delimiter === 'square' ? '[' : '(';
+        const close = this._options?.delimiter === 'square' ? ']' : ')';
+        return `${open}${out}${close}`;
+      }
+    );
+    return isRenderBuffer(bufferOrOptions)
+      ? writeRenderTextResult(bufferOrOptions, wrapped)
+      : wrapped;
+  }
+
+  private evaluateValue(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Node> {
     const currentValue = this.value;
     if (currentValue) {
       const guardBool = getDefaultGuardBool(currentValue, context);
@@ -146,7 +200,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
       if (isOp) {
         context.parenFrames.push(true);
       }
-      const maybeEvald = currentValue.eval(context);
+      const maybeEvald = mode === 'eval' ? currentValue.eval(context) : currentValue.resolve(context);
       const after = (v: Node): Node => {
         let value = v;
         if (isOp) {
@@ -158,7 +212,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
         }
         if (this._options?.escaped && value instanceof Node) {
           if (value instanceof List && value.options?.sep === ';') {
-            return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
+            return normalizeEscapedList(value);
           }
           return value;
         }
@@ -191,53 +245,12 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return this;
   }
 
+  override evalNode(context: Context): MaybePromise<Node> {
+    return this.evaluateValue(context, 'eval');
+  }
+
   override resolve(context: Context): MaybePromise<Node> {
-    const currentValue = this.value;
-    if (currentValue) {
-      const guardBool = getDefaultGuardBool(currentValue, context);
-      if (guardBool) {
-        return guardBool;
-      }
-      const isOp = isOpOrExpression(currentValue);
-      if (isOp) {
-        context.parenFrames.push(true);
-      }
-      const maybeResolved = currentValue.resolve(context);
-      const after = (v: Node): Node => {
-        let value = v;
-        if (isOp) {
-          context.parenFrames.pop();
-        }
-        const evaluatedGuardBool = getDefaultGuardBool(value, context);
-        if (evaluatedGuardBool) {
-          return evaluatedGuardBool;
-        }
-        if (this._options?.escaped && value instanceof Node) {
-          if (value instanceof List && value.options?.sep === ';') {
-            return new List([...value.value], { ...value.options, sep: ',' }).inherit(value);
-          }
-          return value;
-        }
-        while (value instanceof Paren && value.value) {
-          value = value.value;
-        }
-        if (value instanceof Bool || value instanceof Dimension) {
-          return value;
-        }
-        if (isOp && !isOpOrExpression(value)) {
-          return value;
-        }
-        if (value === currentValue) {
-          return this;
-        }
-        return this.withValue(value);
-      };
-      if (isThenable(maybeResolved)) {
-        return (maybeResolved as Promise<Node>).then(after);
-      }
-      return after(maybeResolved as Node);
-    }
-    return this;
+    return this.evaluateValue(context, 'resolve');
   }
 
   // toCSS(context: Context, out: OutputCollector) {
