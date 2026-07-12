@@ -1,8 +1,8 @@
 /**
  * Sass list.separator() function
- * 
+ *
  * Returns the separator of a list as a string: "comma", "space", or "slash".
- * 
+ *
  * @example
  * separator(1, 2, 3) // "comma"
  * separator(1 2 3) // "space"

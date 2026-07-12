@@ -26,7 +26,7 @@ export function transformKeywordToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      return keyword.value;
+      return keyword.data;
     }
 
     // Map 'accept' method for visitor traversal

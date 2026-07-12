@@ -9,18 +9,7 @@ import {
 } from '@jesscss/core';
 import { createLessProxy } from '../transform/proxy.js';
 import { toLessNode } from '../transform/to-less.js';
-import { mapJessTypeToLessType } from '../transform/type-map.js';
 import type { LessNode } from '../types.js';
-
-// Debug logging helper (only in debug mode)
-const syncLog = process.env.DEBUG ? (data: object) => {
-  try {
-    // eslint-disable-next-line no-console
-    console.log('[Selector]', JSON.stringify(data, null, 2));
-  } catch {
-    // Ignore errors
-  }
-} : () => {};
 
 /**
  * Flatten a hierarchical Jess selector into Less's flat Element array
@@ -37,8 +26,8 @@ function flattenSelectorToElements(
   if (selector instanceof SelectorList) {
     // SelectorList contains multiple selectors - Less expects a single Selector
     // For now, we'll take the first selector, but this might need special handling
-    if (selector.value.length > 0) {
-      const first = selector.value[0];
+    if (selector.data.length > 0) {
+      const first = selector.data[0];
       if (first) {
         return flattenSelectorToElements(first, cache);
       }
@@ -48,7 +37,7 @@ function flattenSelectorToElements(
 
   if (selector instanceof ComplexSelector) {
     // ComplexSelector contains CompoundSelector[] with Combinators between them
-    const compounds = selector.value;
+    const compounds = selector.data;
 
     for (let i = 0; i < compounds.length; i++) {
       const compound = compounds[i];
@@ -68,10 +57,12 @@ function flattenSelectorToElements(
 
       // Flatten compound selector
       if (compound instanceof CompoundSelector) {
-        const basicSelectors = compound.value;
+        const basicSelectors = compound.data;
         for (let j = 0; j < basicSelectors.length; j++) {
           const basic = basicSelectors[j];
-          if (!basic) { continue; }
+          if (!basic) {
+            continue;
+          }
 
           // Use combinator only for first element of compound
           const elementCombinator = j === 0 ? combinator : new Combinator(' ');
@@ -90,7 +81,7 @@ function flattenSelectorToElements(
             }
 
             if (prop === 'value') {
-              return basicSel.value;
+              return basicSel.data;
             }
 
             if (prop === 'isVariable') {
@@ -99,26 +90,23 @@ function flattenSelectorToElements(
 
             if (prop === 'accept') {
               return function(visitor: any) {
-                // #region agent log
-                syncLog({location:'selector.ts:91',message:'Element accept() called',data:{nodeType:'Element'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'});
-                // #endregion
                 // Less Element's accept() ONLY traverses children (combinator and value)
                 // It does NOT call visitor.visit() on itself - that's already been done
-                // Less.js Element.accept() pattern: visitor.visit(this.combinator) and visitor.visit(this.value)
+                // Less.js Element.accept() pattern: visitor.visit(this.combinator) and visitor.visit(this.data)
                 const lessCombinator = toLessNode(elementCombinator, { cache });
                 if (lessCombinator && visitor.visit) {
                   visitor.visit(lessCombinator);
                 }
-                
+
                 // Visit value if it's an object/node
-                const value = basicSel.value;
+                const value = basicSel.data;
                 if (value && typeof value === 'object') {
                   const lessValue = toLessNode(value as Node, { cache });
                   if (lessValue && visitor.visit) {
                     visitor.visit(lessValue);
                   }
                 }
-                
+
                 return basicSel;
               };
             }
@@ -142,7 +130,7 @@ function flattenSelectorToElements(
           }
 
           if (prop === 'value') {
-            return basicSel.value;
+            return basicSel.data;
           }
 
           if (prop === 'isVariable') {
@@ -157,10 +145,12 @@ function flattenSelectorToElements(
     }
   } else if (selector instanceof CompoundSelector) {
     // Single compound selector - flatten to elements
-    const basicSelectors = selector.value;
+    const basicSelectors = selector.data;
     for (let i = 0; i < basicSelectors.length; i++) {
       const basic = basicSelectors[i];
-      if (!basic) { continue; }
+      if (!basic) {
+        continue;
+      }
       const combinator = new Combinator(' ');
 
       const element = createLessProxy(basic, cache, (prop, target) => {
@@ -175,7 +165,7 @@ function flattenSelectorToElements(
         }
 
         if (prop === 'value') {
-          return basicSel.value;
+          return basicSel.data;
         }
 
         if (prop === 'isVariable') {
@@ -202,7 +192,7 @@ function flattenSelectorToElements(
       }
 
       if (prop === 'value') {
-        return basicSel.value;
+        return basicSel.data;
       }
 
       if (prop === 'isVariable') {
@@ -231,7 +221,7 @@ export function transformSelectorToLess(
   const elements = flattenSelectorToElements(jessSelector, cache);
 
   // Create a proxy that represents a Less Selector (array of Elements)
-  return createLessProxy(jessSelector, cache, (prop, target) => {
+  return createLessProxy(jessSelector, cache, (prop, _target) => {
     // Map 'type' property
     if (prop === 'type') {
       return 'Selector';

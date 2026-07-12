@@ -16,6 +16,8 @@ export type ListOptions = {
 };
 
 export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
+  type: 'List';
+  shortType: 'list';
   eval(context: Context): Promise<this>;
 }
 
@@ -27,28 +29,25 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
-  type = 'List';
-  shortType = 'list';
-
   get length() {
-    return this.value.length;
+    return this.data.length;
   }
 
   * [Symbol.iterator]() {
-    yield* this.value.entries();
+    yield* this.data.entries();
   }
 
   private _valueOf: string | undefined;
 
   override valueOf() {
-    return (this._valueOf ??= this.value.map(v => v.valueOf()).join(';'));
+    return (this._valueOf ??= this.data.map(v => v.valueOf()).join(';'));
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     let { sep = ',' } = this.options ?? {};
-    let { value } = this;
+    let value = this.data;
     let length = value.length;
     const mark = w.mark();
     if (value.length === 0) {
@@ -74,9 +73,17 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   override compare(other: Node) {
     if (other instanceof List) {
-      return compareNodeArray(this.value, other.value);
+      const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
+      const result = compareNodeArray([...this.data], [...other.data], equalityMode);
+      return result;
     }
-    return super.compare(other);
+    if (other.type === 'Any') {
+      const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
+      const left = normalize(this.toString());
+      const right = normalize(other.toString());
+      return left === right ? 0 : undefined;
+    }
+    return undefined;
   }
 
   override operate(b: Node, op: Operator, context: Context): List<T> {
@@ -85,10 +92,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     }
     let newList = this.maybeClone(context);
     if (b instanceof List) {
-      newList.value.push(...b.value);
+      newList.push(...b.data);
     } else {
       /** @todo - do we need to verify the list type? */
-      newList.value.push(b as T);
+      newList.push(b as T);
     }
     return newList;
   }
@@ -99,10 +106,10 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   /** @todo move to ToCssVisitor */
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add('', this.location)
-  //   const length = this.value.length - 1
+  //   const length = this.data.length - 1
   //   const pre = context.pre
   //   const cast = context.cast
-  //   this.value.forEach((node, i) => {
+  //   this.data.forEach((node, i) => {
   //     const val = cast(node)
   //     val.toCSS(context, out)
 
@@ -121,8 +128,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   //   out.add('$J.list([\n', this.location)
   //   context.indent++
   //   let pre = context.pre
-  //   const length = this.value.length - 1
-  //   this.value.forEach((node, i) => {
+  //   const length = this.data.length - 1
+  //   this.data.forEach((node, i) => {
   //     out.add(pre)
   //     if (node instanceof Node) {
   //       node.toModule(context, out)

@@ -9,14 +9,16 @@ import { Dimension } from './dimension.js';
 import { Color } from './color.js';
 import { type Context } from '../context.js';
 import { type Operator } from './util/calculate.js';
-import isPlainObject from 'lodash-es/isPlainObject.js';
+import { isPlainObject } from './util/collections.js';
 
 /**
  * A number. Named `Num` to avoid conflict with the built-in `Number` class.
  */
+export interface Num {
+  type: 'Num';
+  shortType: 'num';
+}
 export class Num extends Dimension {
-  override type = 'Number' as const;
-  override shortType = 'num' as const;
   // Numbers are static and don't need evaluation
 
   constructor(value: number | { number: number }, options?: NodeOptions, location?: LocationInfo, treeContext?: TreeContext) {
@@ -33,8 +35,8 @@ export class Num extends Dimension {
     const result = super.operate(b, op, context);
 
     // If the result is a Dimension and has an empty unit, convert it to a Num
-    if (result instanceof Dimension && !result.value.unit) {
-      return new Num(result.value.number).inherit(this);
+    if (result instanceof Dimension && !result.data.unit) {
+      return new Num(result.data.number).inherit(this);
     }
 
     // Otherwise, pass through the result as-is

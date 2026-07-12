@@ -1,8 +1,8 @@
 /**
  * Sass str-insert() function (deprecated, use string.insert() instead)
- * 
+ *
  * Inserts a string into another string at a specific index (1-based).
- * 
+ *
  * @example
  * str-insert("Hello", "X", 3) // "HeXllo"
  */
@@ -12,11 +12,11 @@ import { toNumber } from '@jesscss/core';
 const strInsert = defineFunction(
   'str-insert',
   function(string: Quoted, insert: Quoted, index: Dimension): Quoted {
-    const strValue = typeof string.value === 'string' ? string.value : string.valueOf();
-    const insertValue = typeof insert.value === 'string' ? insert.value : insert.valueOf();
+    const strValue = typeof string.data === 'string' ? string.data : string.valueOf();
+    const insertValue = typeof insert.data === 'string' ? insert.data : insert.valueOf();
     const indexValue = toNumber()(index) as number;
     const indexInt = Math.floor(indexValue);
-    
+
     // Sass uses 1-based indexing
     // str-insert guarantees that $insert is at $index in the result
     // For negative: adjust index first, then convert to codepoint index
@@ -28,7 +28,7 @@ const strInsert = defineFunction(
     } else {
       adjustedIndex = indexInt;
     }
-    
+
     // Convert to 0-based codepoint index using _codepointForIndex logic
     let insertPos: number;
     if (adjustedIndex === 0) {
@@ -38,10 +38,10 @@ const strInsert = defineFunction(
     } else {
       insertPos = 0;
     }
-    
+
     // Clamp to valid range
     insertPos = Math.max(0, Math.min(insertPos, strValue.length));
-    
+
     const result = strValue.slice(0, insertPos) + insertValue + strValue.slice(insertPos);
     return new Quoted(result, string.options);
   },

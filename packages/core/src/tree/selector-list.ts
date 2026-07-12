@@ -1,34 +1,30 @@
 import {
-  defineType
+  defineType,
+  F_EXTENDED,
+  F_EXTEND_TARGET
 } from './node.js';
 import { type Context } from '../context.js';
 import { Selector } from './selector.js';
-import { PseudoSelector } from './selector-pseudo.js';
-import { CompoundSelector } from './selector-compound.js';
-import { ComplexSelector } from './selector-complex.js';
 import { getEntries } from './util/collections.js';
-import { type PrintOptions, getPrintOptions, OutputWriter } from './util/print.js';
-import { normalizeContinuationIndent } from './util/format.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
+import { selectorMatch } from './util/selector-match-core.js';
+
+export interface SelectorList {
+  type: 'SelectorList';
+  shortType: 'sellist';
+}
 
 /** Constructs */
 export class SelectorList extends Selector<Selector[]> {
-  type = 'SelectorList';
-  shortType = 'sellist';
+  get length() {
+    return this.data.length;
+  }
 
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    for (const selector of this.value) {
-      combinedKeySet = combinedKeySet.union(selector.keySet);
-      combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
-    }
-
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    // SelectorLists represent alternatives - can't use fast rejection
-    this._canFastReject = false;
+  get value() {
+    return this.data as Selector[];
   }
 
   /** Normalize selectors on separate lines with indentation */
@@ -41,39 +37,54 @@ export class SelectorList extends Selector<Selector[]> {
     // This matches Less output expectations when an extend created an :is() and it ended up being
     // the whole selector-list item.
     const value: Selector[] = [];
-    for (const item of this.value) {
+    for (const item of this.data) {
       // Flatten `:is(a, b)` selector-list items into `a, b`.
       // Also handle `:is(...)` wrapped in a single-item CompoundSelector.
-      if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
-        const arg = item.value.arg;
-        if (arg && isNode(arg, 'SelectorList')) {
-          value.push(...arg.value);
+      if (isNode(item, N.PseudoSelector) && item.data.name === ':is') {
+        const arg = item.data.arg;
+        if (arg && isNode(arg, N.SelectorList)) {
+          value.push(...arg.data);
           continue;
         }
       }
-      if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
-            value.push(...arg.value);
+      if (isNode(item, N.CompoundSelector) && item.data.length === 1) {
+        const only = item.data[0]!;
+        if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
+          const arg = only.data.arg;
+          if (arg && isNode(arg, N.SelectorList)) {
+            value.push(...arg.data);
             continue;
           }
         }
       }
-      if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
-            value.push(...arg.value);
+      if (isNode(item, N.ComplexSelector) && item.data.length === 1) {
+        const only = item.data[0]!;
+        if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
+          const arg = only.data.arg;
+          if (arg && isNode(arg, N.SelectorList)) {
+            value.push(...arg.data);
             continue;
           }
         }
       }
       value.push(item);
     }
+    if (
+      options.referenceMode === true
+      && options.referenceRenderEnabled === true
+      && options.referenceFilterTargets === true
+    ) {
+      const extendedOnly = value.filter(item =>
+        item.hasFlag(F_EXTENDED) && !item.hasFlag(F_EXTEND_TARGET)
+      );
+      if (extendedOnly.length > 0) {
+        value.splice(0, value.length, ...extendedOnly);
+      }
+    }
     let length = value.length;
+    if (length === 0) {
+      return '';
+    }
     const mark = w.mark();
     let item = value[0]!;
 
@@ -91,55 +102,41 @@ export class SelectorList extends Selector<Selector[]> {
   }
 
   override valueOf() {
-    // Keep valueOf consistent with toTrimmedString flattening
-    const out: string[] = [];
-    for (const item of this.value) {
-      if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
-        const arg = item.value.arg;
-        if (arg && isNode(arg, 'SelectorList')) {
-          out.push(...arg.value.map(v => v.valueOf()));
-          continue;
-        }
-      }
-      if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
-            out.push(...arg.value.map(v => v.valueOf()));
-            continue;
-          }
-        }
-      }
-      if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
-        const only = item.value[0]!;
-        if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-          const arg = only.value.arg;
-          if (arg && isNode(arg, 'SelectorList')) {
-            out.push(...arg.value.map(v => v.valueOf()));
-            continue;
-          }
-        }
-      }
-      out.push(item.valueOf());
+    const itemValues = this.data.map(item => item.valueOf());
+    return itemValues.join(',');
+  }
+
+  override computeKeySetAndFastReject(): void {
+    super.computeKeySetAndFastReject();
+    /** Selector lists represent alternates, so subsets can't fast reject */
+    this._canFastReject = false;
+  }
+
+  override compare(b: Selector): 0 | 1 | -1 | undefined {
+    if (!isNode(b, N.Selector)) {
+      return super.compare(b as unknown as Selector);
     }
-    return out.join(',');
+    const semantic = selectorMatch(this, b);
+    if (semantic.fullMatch) {
+      return 0;
+    }
+    return super.compare(b);
   }
 
   override evalNode(context: Context): MaybePromise<SelectorList | Selector> {
     return pipe(
       () => {
-        const list = this;
-        const { value } = list;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([item, i]) => {
+        const list = super.evalNode(context) as SelectorList;
+        const { data } = list;
+        const maybe = serialForEach(Array.from(getEntries(data)), ([item, i]) => {
           const out = item.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector>).then((res) => {
-              value[i] = res as Selector;
+              list.setData(i, res as Selector);
               return undefined;
             });
           }
-          value[i] = out as Selector;
+          list.setData(i, out as Selector);
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -148,45 +145,45 @@ export class SelectorList extends Selector<Selector[]> {
         return list;
       },
       (list) => {
-        const { value } = list;
+        const { data } = list;
         // Flatten top-level `:is(a, b)` items into the selector list.
         // This is safe in SelectorList context (it is equivalent to `a, b`).
         const flattened: Selector[] = [];
-        for (const item of value) {
-          if (isNode(item, 'PseudoSelector') && item.value.name === ':is') {
-            const arg = item.value.arg;
-            if (arg && isNode(arg, 'SelectorList')) {
-              flattened.push(...arg.value);
+        for (const item of data) {
+          if (isNode(item, N.PseudoSelector) && item.data.name === ':is') {
+            const arg = item.data.arg;
+            if (arg && isNode(arg, N.SelectorList)) {
+              flattened.push(...arg.data);
               continue;
             }
           }
-          if (isNode(item, 'CompoundSelector') && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-              const arg = only.value.arg;
-              if (arg && isNode(arg, 'SelectorList')) {
-                flattened.push(...arg.value);
+          if (isNode(item, N.CompoundSelector) && item.data.length === 1) {
+            const only = item.data[0]!;
+            if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
+              const arg = only.data.arg;
+              if (arg && isNode(arg, N.SelectorList)) {
+                flattened.push(...arg.data);
                 continue;
               }
             }
           }
-          if (isNode(item, 'ComplexSelector') && item.value.length === 1) {
-            const only = item.value[0]!;
-            if (isNode(only, 'PseudoSelector') && only.value.name === ':is') {
-              const arg = only.value.arg;
-              if (arg && isNode(arg, 'SelectorList')) {
-                flattened.push(...arg.value);
+          if (isNode(item, N.ComplexSelector) && item.data.length === 1) {
+            const only = item.data[0]!;
+            if (isNode(only, N.PseudoSelector) && only.data.name === ':is') {
+              const arg = only.data.arg;
+              if (arg && isNode(arg, N.SelectorList)) {
+                flattened.push(...arg.data);
                 continue;
               }
             }
           }
           flattened.push(item);
         }
-        if (flattened.length !== value.length) {
-          list.value = flattened;
+        if (flattened.length !== data.length) {
+          list.setData(flattened);
         }
-        if (value.length === 1) {
-          return value[0]!;
+        if (data.length === 1) {
+          return data[0]!;
         }
         return list;
       }

@@ -1,11 +1,16 @@
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, defineType, type NodeOptions } from './node.js';
 import { calculate, type Operator } from './util/calculate.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
-
 type ColorValues = [number, number, number, number] | number[];
+type ChannelTuple = [number, string];
+type ChannelValue = number | ChannelTuple;
+type AlphaValue = number | ChannelTuple;
+type RGBChannels = [ChannelValue, ChannelValue, ChannelValue];
+type HSLChannels = [ChannelValue, ChannelValue, ChannelValue];
 
 export enum ColorFormat {
   HEX,
@@ -49,13 +54,21 @@ const { isArray } = Array;
 
 export interface ColorData {
   node?: string | Node;
+  /** Legacy field; format now lives on Color options. */
   format?: ColorFormat;
-  rgb?: [number, number, number];
-  hsl?: [number, number, number];
-  alpha?: number;
+  rgb?: RGBChannels;
+  hsl?: HSLChannels;
+  alpha?: AlphaValue;
 }
 
-export interface Color extends Node<ColorData> {
+export interface ColorOptions extends NodeOptions {
+  format?: ColorFormat;
+  modernSyntax?: boolean;
+}
+
+export interface Color extends Node<ColorData, ColorOptions> {
+  type: 'Color';
+  shortType: 'color';
   eval(context: Context): Color;
 }
 
@@ -63,27 +76,26 @@ export interface Color extends Node<ColorData> {
  * Color's `value` will store RGB, HSL, and alpha separately to avoid unnecessary conversions.
  * Conversion only happens when modifying colors or when explicitly requested.
  */
-export class Color extends Node<ColorData> {
-  type = 'Color' as const;
-  shortType = 'color' as const;
-  // Color values are static and don't need evaluation
-
+export class Color extends Node<ColorData, ColorOptions> {
+  // type = 'Color' as const;
+  // shortType = 'color' as const;
   constructor(
     value: ColorData | string | ColorValues,
-    options?: ConstructorParameters<typeof Node<ColorData>>[1],
-    location?: ConstructorParameters<typeof Node<ColorData>>[2],
-    context?: ConstructorParameters<typeof Node<ColorData>>[3]
+    options?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[1],
+    location?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[2],
+    context?: ConstructorParameters<typeof Node<ColorData, ColorOptions>>[3]
   ) {
     let colorData: ColorData;
+    let colorOptions: ColorOptions = options ?? {};
 
     if (isArray(value)) {
       // Handle color array [r, g, b, a]
       const [r, g, b, a] = value as [number, number, number, number];
       colorData = {
         rgb: [r, g, b],
-        alpha: a,
-        format: ColorFormat.RGB
+        alpha: a
       };
+      colorOptions = { ...colorOptions, format: colorOptions.format ?? ColorFormat.RGB };
     } else if (typeof value === 'object' && value !== null && !isNode(value)) {
       // Handle ColorData object
       colorData = value as ColorData;
@@ -92,20 +104,114 @@ export class Color extends Node<ColorData> {
       if (!colorData.rgb && !colorData.hsl && !colorData.node) {
         throw new TypeError('Color constructor requires rgb, hsl, or node property');
       }
+      if (colorData.format !== undefined && colorOptions.format === undefined) {
+        colorOptions = { ...colorOptions, format: colorData.format };
+      }
     } else if (typeof value === 'string') {
       // Handle hex string - parse it immediately to set RGB values
       const { rgb, alpha } = parseHexString(value);
       colorData = {
         node: value,
-        format: ColorFormat.HEX,
         rgb,
         alpha
       };
+      colorOptions = { ...colorOptions, format: colorOptions.format ?? ColorFormat.HEX };
     } else {
       throw new TypeError('Color constructor requires ColorData object, hex string, or color array');
     }
 
-    super(colorData, options, location, context);
+    // Keep value focused on channels/node; rendering intent is held in options.
+    colorData.format = undefined;
+    super(colorData, colorOptions, location, context);
+    this.addFlag(F_STATIC);
+  }
+
+  private normalizeChannelValue(value: unknown): ChannelValue {
+    if (typeof value === 'number') {
+      return value;
+    }
+    if (isNode(value, N.Dimension)) {
+      const { number, unit } = value.data;
+      return unit ? [number, unit] : number;
+    }
+    return value as ChannelValue;
+  }
+
+  private hueToDegrees(value: ChannelValue): number {
+    value = this.normalizeChannelValue(value) as ChannelValue;
+    if (typeof value === 'number') {
+      return value;
+    }
+    const [number, unit] = value;
+    switch (unit) {
+      case 'turn':
+        return number * 360;
+      case 'rad':
+        return number * (180 / Math.PI);
+      case 'grad':
+        return number * 0.9;
+      default:
+        return number;
+    }
+  }
+
+  private percentToUnit(value: ChannelValue): number {
+    value = this.normalizeChannelValue(value) as ChannelValue;
+    if (typeof value === 'number') {
+      return value;
+    }
+    const [number, unit] = value;
+    return unit === '%' ? number / 100 : number;
+  }
+
+  private rgbChannelToNumber(value: ChannelValue): number {
+    value = this.normalizeChannelValue(value) as ChannelValue;
+    if (typeof value === 'number') {
+      return value;
+    }
+    const [number, unit] = value;
+    return unit === '%' ? (number * 255) / 100 : number;
+  }
+
+  private alphaToNumber(value: AlphaValue): number {
+    value = this.normalizeChannelValue(value) as AlphaValue;
+    if (typeof value === 'number') {
+      return value;
+    }
+    const [number, unit] = value;
+    return unit === '%' ? number / 100 : number;
+  }
+
+  private getSerializedAlphaText(compress: boolean): string {
+    const alphaSource = this.data.alpha;
+    if (compress && this.alpha === 0) {
+      return '0';
+    }
+    const normalizedAlphaSource = this.normalizeChannelValue(alphaSource) as AlphaValue;
+    if (Array.isArray(normalizedAlphaSource)) {
+      const [alphaValue, alphaUnit] = normalizedAlphaSource;
+      return `${round(alphaValue, 8)}${alphaUnit}`;
+    }
+    return `${this.alpha}`;
+  }
+
+  private getSerializedRgbText(): [string, string, string] {
+    const rgbSource = this.data.rgb;
+    if (!rgbSource) {
+      const [r, g, b] = this.rgb;
+      return [`${r}`, `${g}`, `${b}`];
+    }
+    return rgbSource.map((channel, idx) => {
+      channel = this.normalizeChannelValue(channel) as ChannelValue;
+      if (typeof channel === 'number') {
+        return `${this.rgb[idx]!}`;
+      }
+      const [number, unit] = channel;
+      if (unit === '%') {
+        return `${round(clamp(number, 100), 8)}%`;
+      }
+      return `${this.rgb[idx]!}`;
+    }) as [string, string, string];
   }
 
   /**
@@ -116,9 +222,9 @@ export class Color extends Node<ColorData> {
   get rgb(): [number, number, number] {
     const [r, g, b] = this._rgb;
     return [
-      Math.max(0, Math.min(255, round(r))),
-      Math.max(0, Math.min(255, round(g))),
-      Math.max(0, Math.min(255, round(b)))
+      clamp(round(r), 255),
+      clamp(round(g), 255),
+      clamp(round(b), 255)
     ];
   }
 
@@ -127,16 +233,21 @@ export class Color extends Node<ColorData> {
    * Use this for calculations and conversions.
    */
   get _rgb(): [number, number, number] {
-    if (this.value.rgb) {
-      return this.value.rgb;
+    if (this.data.rgb) {
+      const [r, g, b] = this.data.rgb;
+      return [
+        this.rgbChannelToNumber(r),
+        this.rgbChannelToNumber(g),
+        this.rgbChannelToNumber(b)
+      ];
     }
 
-    if (this.value.hsl) {
+    if (this.data.hsl) {
       // Convert HSL to RGB
-      const [h, s, l] = this.value.hsl;
-      const hue = h / 360;
-      const sat = s;
-      const light = l;
+      const [h, s, l] = this.data.hsl;
+      const hue = this.hueToDegrees(h) / 360;
+      const sat = this.percentToUnit(s);
+      const light = this.percentToUnit(l);
 
       let r, g, b;
 
@@ -172,29 +283,26 @@ export class Color extends Node<ColorData> {
 
       // Convert from 0-1 to 0-255 range
       const rgb = [r * 255, g * 255, b * 255] as [number, number, number];
-      this.value.rgb = rgb;
-      // Clear HSL - computed RGB might not match existing HSL
-      this.value.hsl = undefined;
+      this.setData('rgb', rgb);
+      this.setData('hsl', undefined);
       return rgb;
     }
 
     // If value has a node that's a string, parse it as hex
-    if (this.value.node && typeof this.value.node === 'string') {
-      const { rgb, alpha } = parseHexString(this.value.node);
-      this.value.rgb = rgb;
-      this.value.alpha = alpha;
-      // Clear HSL - parsed RGB might not match existing HSL
-      this.value.hsl = undefined;
+    if (this.data.node && typeof this.data.node === 'string') {
+      const { rgb, alpha } = parseHexString(this.data.node);
+      this.setData('rgb', rgb);
+      this.setData('alpha', alpha);
+      this.setData('hsl', undefined);
       return rgb;
     }
 
     throw new TypeError('Cannot convert color value to rgb');
   }
 
-  set rgb(rgb: [number, number, number]) {
-    this.value.rgb = rgb;
-    // Clear HSL since new RGB might not match the old HSL
-    this.value.hsl = undefined;
+  set rgb(rgb: [number, number, number] | RGBChannels) {
+    this.setData('rgb', rgb);
+    this.setData('hsl', undefined);
   }
 
   /**
@@ -206,8 +314,8 @@ export class Color extends Node<ColorData> {
     const [h, s, l] = this._hsl;
     return [
       ((h % 360) + 360) % 360, // Wrap hue to 0-360
-      Math.max(0, Math.min(1, s)), // Clamp saturation to 0-1
-      Math.max(0, Math.min(1, l))  // Clamp lightness to 0-1
+      clamp(s, 1), // Clamp saturation to 0-1
+      clamp(l, 1)  // Clamp lightness to 0-1
     ];
   }
 
@@ -216,8 +324,13 @@ export class Color extends Node<ColorData> {
    * Use this for calculations and conversions.
    */
   get _hsl(): [number, number, number] {
-    if (this.value.hsl) {
-      return this.value.hsl;
+    if (this.data.hsl) {
+      const [h, s, l] = this.data.hsl;
+      return [
+        this.hueToDegrees(h),
+        this.percentToUnit(s),
+        this.percentToUnit(l)
+      ];
     }
 
     // Convert RGB to HSL
@@ -256,16 +369,14 @@ export class Color extends Node<ColorData> {
     }
 
     const hsl = [h! * 360, s, l] as [number, number, number];
-    this.value.hsl = hsl;
-    // Clear RGB - computed HSL might not match existing RGB
-    this.value.rgb = undefined;
+    this.setData('hsl', hsl);
+    this.setData('rgb', undefined);
     return hsl;
   }
 
-  set hsl(hsl: [number, number, number]) {
-    this.value.hsl = hsl;
-    // Clear RGB since new HSL might not match the old RGB
-    this.value.rgb = undefined;
+  set hsl(hsl: [number, number, number] | HSLChannels) {
+    this.setData('hsl', hsl);
+    this.setData('rgb', undefined);
   }
 
   /**
@@ -274,7 +385,7 @@ export class Color extends Node<ColorData> {
    * For internal calculations, use _alpha instead.
    */
   get alpha(): number {
-    return Math.max(0, Math.min(1, this._alpha));
+    return clamp(this._alpha, 1);
   }
 
   /**
@@ -282,11 +393,12 @@ export class Color extends Node<ColorData> {
    * Use this for calculations and conversions.
    */
   get _alpha(): number {
-    return this.value.alpha ?? 1;
+    const alpha = this.data.alpha ?? 1;
+    return this.alphaToNumber(alpha);
   }
 
-  set alpha(alpha: number) {
-    this.value.alpha = alpha;
+  set alpha(alpha: AlphaValue) {
+    this.setData('alpha', alpha);
   }
 
   /**
@@ -299,10 +411,9 @@ export class Color extends Node<ColorData> {
 
   set rgba(rgba: ColorValues) {
     const [r, g, b, a] = rgba as [number, number, number, number];
-    this.value.rgb = [r, g, b];
-    this.value.alpha = a;
-    // Clear HSL since new RGB might not match the old HSL
-    this.value.hsl = undefined;
+    this.setData('rgb', [r, g, b]);
+    this.setData('alpha', a);
+    this.setData('hsl', undefined);
   }
 
   /**
@@ -315,10 +426,9 @@ export class Color extends Node<ColorData> {
 
   set hsla(hsla: [number, number, number, number]) {
     const [h, s, l, a] = hsla;
-    this.value.hsl = [h, s, l];
-    this.value.alpha = a;
-    // Clear RGB since new HSL might not match the old RGB
-    this.value.rgb = undefined;
+    this.setData('hsl', [h, s, l]);
+    this.setData('alpha', a);
+    this.setData('rgb', undefined);
   }
 
   toHSL(): [number, number, number] {
@@ -342,42 +452,79 @@ export class Color extends Node<ColorData> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
+    const compress = Boolean(options.compress);
 
     // If value has a node that's a Node, serialize it directly
-    if (this.value.node && isNode(this.value.node)) {
-      return this.value.node.toTrimmedString(options);
+    if (this.data.node && isNode(this.data.node)) {
+      return this.data.node.toTrimmedString(options);
     }
 
     // If value has a node that's a string, output it as-is
-    if (this.value.node && typeof this.value.node === 'string') {
-      w.add(this.value.node, this);
+    if (this.data.node && typeof this.data.node === 'string') {
+      w.add(this.data.node, this);
       return w.getSince(mark);
     }
 
     // Handle format-based serialization
-    const format = this.value.format;
+    const format = this.options.format ?? ColorFormat.HEX;
     if (format === ColorFormat.RGB) {
-      if (this.alpha < 1) {
-        w.add('rgba(', this);
-        w.add(this.rgb.join(', ') + ', ' + this.alpha);
-        w.add(')');
+      const useModernSyntax = Boolean(this.options.modernSyntax || compress);
+      const rgbText = this.getSerializedRgbText();
+      const alphaText = this.getSerializedAlphaText(compress);
+      if (useModernSyntax) {
+        if (this.alpha < 1) {
+          w.add('rgb(', this);
+          w.add(`${rgbText[0]} ${rgbText[1]} ${rgbText[2]} / ${alphaText}`);
+          w.add(')');
+        } else {
+          w.add('rgb(', this);
+          w.add(`${rgbText[0]} ${rgbText[1]} ${rgbText[2]}`);
+          w.add(')');
+        }
       } else {
-        w.add('rgb(', this);
-        w.add(this.rgb.join(', '));
-        w.add(')');
+        if (this.alpha < 1) {
+          w.add('rgba(', this);
+          w.add(`${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]}, ${alphaText}`);
+          w.add(')');
+        } else {
+          w.add('rgb(', this);
+          w.add(`${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]}`);
+          w.add(')');
+        }
       }
       return w.getSince(mark);
     } else if (format === ColorFormat.HSL) {
-      if (this.alpha < 1) {
-        w.add('hsla(', this);
-        const [h, s, l] = this.hsl;
-        w.add(`${round(h, 8)}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%, ${this.alpha}`);
-        w.add(')');
+      const [h, s, l] = this.hsl;
+      const hueSource = this.data.hsl?.[0];
+      const alphaText = this.getSerializedAlphaText(compress);
+      const authoredHueUnit = Array.isArray(hueSource) ? hueSource[1] : '';
+      const roundedHue = round(h, 8);
+      const canDropHueUnitForCompression = compress && roundedHue === 0;
+      const modernHueUnit = canDropHueUnitForCompression
+        ? ''
+        : (authoredHueUnit || 'deg');
+      const preservedHueUnit = canDropHueUnitForCompression ? '' : authoredHueUnit;
+      const useModernSyntax = Boolean(this.options.modernSyntax || compress);
+      if (useModernSyntax) {
+        if (this.alpha < 1) {
+          w.add('hsl(', this);
+          w.add(`${roundedHue}${modernHueUnit} ${round(s * 100, 8)}% ${round(l * 100, 8)}% / ${alphaText}`);
+          w.add(')');
+        } else {
+          w.add('hsl(', this);
+          w.add(`${roundedHue}${modernHueUnit} ${round(s * 100, 8)}% ${round(l * 100, 8)}%`);
+          w.add(')');
+        }
       } else {
-        w.add('hsl(', this);
-        const [h, s, l] = this.hsl;
-        w.add(`${round(h, 8)}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%`);
-        w.add(')');
+        if (this.alpha < 1) {
+          w.add('hsla(', this);
+          w.add(`${roundedHue}${preservedHueUnit}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%, ${alphaText}`);
+          w.add(')');
+        } else {
+          w.add('hsl(', this);
+          w.add(`${roundedHue}${preservedHueUnit}, ${round(s * 100, 8)}%, ${round(l * 100, 8)}%`);
+          w.add(')');
+        }
       }
       return w.getSince(mark);
     }
@@ -392,9 +539,11 @@ export class Color extends Node<ColorData> {
     let newColorValues: [number, number, number];
     let newAlpha = this._alpha;
 
-    if (isNode(b, 'Dimension')) {
-      const { number: bVal, unit: bUnit } = b.value;
-      if (bUnit) {
+    if (isNode(b, N.Dimension)) {
+      const { number: bVal, unit: bUnit } = b.data;
+      const unitMode = context?.opts?.unitMode ?? 'loose';
+      const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
+      if (bUnit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${b}" to a color`);
       }
       // Apply operation to each RGB component with the number
@@ -409,12 +558,13 @@ export class Color extends Node<ColorData> {
     }
 
     // Create new color with preserved data
-    let { format } = this.value;
-    let newColor = new Color({
+    const newColor = new Color({
       rgb: newColorValues,
-      alpha: newAlpha,
-      format: format
+      alpha: newAlpha
       // Don't preserve HSL - new RGB values represent a new color
+    }, {
+      format: this.options.format,
+      modernSyntax: this.options.modernSyntax
     }).inherit(this);
 
     return newColor;

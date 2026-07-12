@@ -11,9 +11,9 @@ export default defineFunction(
   'saturate',
   function(this: Context, color: Color, amount: Dimension, method?: Node) {
     const [h, s, l] = color._hsl;
-    let adjustAmount = amount.value.number / 100;
+    let adjustAmount = amount.data.number / 100;
 
-    if (method && method.value === 'relative') {
+    if (method && method.data === 'relative') {
       adjustAmount = s * adjustAmount;
     }
 
@@ -21,9 +21,10 @@ export default defineFunction(
 
     // Create new color with adjusted saturation, preserving original format
     return new Color({
-      format: color.value.format,
       hsl: [h, newSaturation, l],
       alpha: color._alpha
+    }, {
+      format: color.options.format
     }).inherit(color);
   },
   {

@@ -2,7 +2,7 @@
  * Import from node-base to avoid circular dependency.
  * The patching happens in node.ts
  */
-import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC, F_VISIBLE } from './node-base.js';
+import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from './node-base.js';
 import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
@@ -29,6 +29,8 @@ export type AnyOptions<T extends string> = NodeOptions & {
 export interface Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
+  type: 'Any' | 'Keyword';
+  shortType: 'any' | 'keyword';
   eval(context: Context): Any<Role>;
   valueOf(): string;
 }
@@ -45,9 +47,18 @@ export interface Any<
 export class Any<
   Role extends AnyRole = AnyRole
 > extends Node<string, AnyOptions<Role>> {
-  type = 'Any';
-  shortType = 'any';
-  override state = F_VISIBLE | F_STATIC;
+  constructor(...args: ConstructorParameters<typeof Node<string, AnyOptions<Role>>>) {
+    super(...args);
+    this.addFlag(F_STATIC);
+  }
+
+  get value() {
+    return this.data;
+  }
+
+  set value(val: string) {
+    this.setData(val);
+  }
 
   override preEval(context: Context): this | Nil {
     this.preEvaluated = true;
@@ -65,6 +76,37 @@ export class Any<
   // Any values are static and don't need evaluation
   override evalNode(context: Context): MaybePromise<Node> {
     return this;
+  }
+
+  override compare(other: Node): 0 | 1 | -1 | undefined {
+    // In Less guards, quoted strings are distinct from bare identifiers.
+    if (other.type === 'Quoted') {
+      return undefined;
+    }
+    if (other.type === 'Any' || other.type === 'Keyword') {
+      return this.data === String(other.valueOf?.() ?? '') ? 0 : undefined;
+    }
+    if (other.type === 'Num' || other.type === 'Dimension') {
+      const text = this.data.trim();
+      if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
+        return undefined;
+      }
+      const otherValue = (other as any).data;
+      const otherNumber = otherValue?.number;
+      const otherUnit = otherValue?.unit;
+      if (typeof otherNumber !== 'number') {
+        return undefined;
+      }
+      if (other.type === 'Dimension' && otherUnit) {
+        return undefined;
+      }
+      return Number(text) === otherNumber ? 0 : undefined;
+    }
+    if ((other as any).toString) {
+      const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
+      return normalize(this.toString()) === normalize((other as any).toString()) ? 0 : undefined;
+    }
+    return undefined;
   }
 }
 
@@ -93,10 +135,12 @@ defineType(Anonymous, 'Anonymous');
  * Note: In Jess, boolean values ('true', 'false') are represented as Bool nodes,
  * not Keyword nodes, unlike Less.js where they are Keyword instances.
  */
-export class Keyword extends Any<'keyword'> {
-  override type = 'Keyword' as const;
-  override shortType = 'keyword';
+export interface Keyword {
+  type: 'Keyword';
+  shortType: 'keyword';
+}
 
+export class Keyword extends Any<'keyword'> {
   constructor(
     value: string,
     options?: Omit<NodeOptions, 'role'>,

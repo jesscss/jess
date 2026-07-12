@@ -4,10 +4,11 @@ type Fn = (...args: any[]) => any;
 /**
  * A JS function.
  */
+export interface JsFunction {
+  type: 'JsFunction';
+  shortType: 'jsfunc';
+}
 export class JsFunction extends Node<Fn> {
-  type = 'JsFunction' as const;
-  shortType = 'jsfunc' as const;
-
   name?: string | undefined;
 
   constructor(

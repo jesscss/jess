@@ -1,15 +1,20 @@
 import {
   Color,
   type Context,
-  Dimension,
   defineFunction
 } from '@jesscss/core';
-import desaturate from './desaturate.js';
 
 const greyscale = defineFunction(
   'greyscale',
   function(this: Context, color: Color) {
-    return desaturate.call(this, color, new Dimension({ number: 100, unit: '%' }));
+    const [h, , l] = color._hsl;
+    const result = new Color({
+      hsl: [h, 0, l],
+      alpha: color._alpha
+    }, {
+      format: color.options.format
+    }).inherit(color);
+    return result;
   },
   {
     params: [{

@@ -1,0 +1,30 @@
+{
+  "name": "@jesscss/docs-less",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "scripts": {
+    "docusaurus": "docusaurus",
+    "dev": "docusaurus start",
+    "build": "docusaurus build",
+    "version:4x": "node ./scripts/refresh-4x-version.mjs",
+    "version:4x:refresh": "node ./scripts/refresh-4x-version.mjs",
+    "swizzle": "docusaurus swizzle",
+    "deploy": "docusaurus deploy",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.8.1",
+    "@docusaurus/preset-classic": "3.8.1",
+    "clsx": "^1.2.1",
+    "prism-react-renderer": "~2.4.1",
+    "react": "~19.1.0",
+    "react-dom": "~19.1.0"
+  },
+  "devDependencies": {
+    "@docusaurus/plugin-content-docs": "~3.8.1",
+    "@docusaurus/theme-classic": "~3.8.1",
+    "@docusaurus/types": "~3.8.1",
+    "@types/react": "~19.1.10"
+  }
+}

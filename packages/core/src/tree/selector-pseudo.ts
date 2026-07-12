@@ -5,13 +5,10 @@ import {
 import { SimpleSelector } from './selector-simple.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
-
-function isSelectorNode(value: Node | undefined): value is Selector {
-  return !!value && typeof value === 'object' && (value as any).isSelector === true;
-}
 
 export type PseudoSelectorValue = {
   /**
@@ -28,49 +25,54 @@ export type PseudoSelectorValue = {
  * @see https://developer.mozilla.org/en-US/docs/Learn/CSS/Building_blocks/Selectors/Pseudo-classes_and_pseudo-elements
  *   e.g. :hover, :focus, :active
 */
+export interface PseudoSelector {
+  type: 'PseudoSelector';
+  shortType: 'pseudo';
+}
 export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
-  type = 'PseudoSelector';
-  shortType = 'pseudo';
-
-  override get keySet(): Set<string> {
-    if (this._keySet === undefined) {
-      this._computeKeySetAndFastReject();
-    }
-    return this._keySet!;
+  get name() {
+    return this.data.name;
   }
 
-  protected override _computeKeySetAndFastReject(): void {
-    const { name, arg } = this.value;
+  set name(val: string) {
+    this.setData('name', val);
+  }
 
-    // Check if this is a pseudo-selector that contains selectors
-    const hasSelectorListArg = isNode(arg, 'SelectorList');
-    const hasSelectorArg = isSelectorNode(arg);
+  get arg() {
+    return this.data.arg;
+  }
 
-    if (hasSelectorArg || hasSelectorListArg) {
-      if (hasSelectorListArg) {
-        // SelectorList argument - union all selector keySets
-        let combinedKeySet = new Set<string>();
-        let combinedVisibleKeySet = new Set<string>();
-        for (const selector of arg.value) {
-          combinedKeySet = combinedKeySet.union(selector.keySet);
-          combinedVisibleKeySet = combinedVisibleKeySet.union(selector.visibleKeySet);
-        }
-        // Trust the SelectorList's canFastReject (should be false for alternatives)
-        this._keySet = combinedKeySet;
-        this._visibleKeySet = combinedVisibleKeySet;
-        this._canFastReject = arg.canFastReject;
-      } else if (hasSelectorArg) {
-        // Single Selector argument - use its keySet
+  set arg(val) {
+    this.setData('arg', val as any);
+  }
+
+  override computeKeySetAndFastReject(): void {
+    let keySet = this._keySet;
+    let visibleKeySet = this._visibleKeySet;
+    if (keySet && visibleKeySet) {
+      return;
+    }
+    let name = this.name;
+    let arg: unknown = this.arg;
+    let library = this.keySetLibrary;
+    if (!library) {
+      throw new Error('Selector keySet library not found');
+    }
+    if (isNode(arg, N.Selector)) {
+      if (name === ':is') {
         this._keySet = arg.keySet;
         this._visibleKeySet = arg.visibleKeySet;
-        // Trust the selector's canFastReject
-        this._canFastReject = arg.canFastReject;
+      } else {
+        let pos = library.add(name);
+        let keySet = this._keySet = arg.keySet.clone();
+        let visibleKeySet = this._visibleKeySet = arg.visibleKeySet.clone();
+        keySet.set(pos, 1);
+        visibleKeySet.set(pos, 1);
       }
+      this._canFastReject = arg.canFastReject;
     } else {
-      // For other pseudo-selectors (like :hover, :focus), use valueOf
-      this._keySet = new Set([this.valueOf()]);
+      this._keySet = library.getBitset([this.valueOf()]);
       this._visibleKeySet = this._keySet;
-      // Other pseudo-selectors are safe for fast rejection
       this._canFastReject = true;
     }
   }
@@ -78,12 +80,25 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { name, arg } = this.value;
+    let { name, arg } = this.data;
     const mark = w.mark();
+    if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
+      let out = w.capture(() => arg.toString(options));
+      out = out.replace(/\n\s*/g, ' ');
+      if (!out.includes(',')) {
+        w.add(out, arg);
+        return w.getSince(mark);
+      }
+      w.add(name, this);
+      w.add('(');
+      w.add(out, arg);
+      w.add(')');
+      return w.getSince(mark);
+    }
     w.add(name, this);
     if (arg) {
       w.add('(');
-      if (isNode(arg, 'SelectorList')) {
+      if (isNode(arg, N.SelectorList)) {
         let out = w.capture(() => arg.toString(options));
         out = out.replace(/\n\s*/g, ' ');
         w.add(out, arg);
@@ -95,59 +110,10 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     return w.getSince(mark);
   }
 
-  /**
-   * @todo - This should be vastly simplifiable. For
-   *
-   * Also, :is()
-   */
-  // get keys() {
-  //   let keys = this._keys
-  //   if (!keys) {
-  //     let { arg } = this
-  //     if (arg && (arg instanceof Selector || isNode(arg, 'SelectorList'))) {
-  //       if (isNode(arg, 'SelectorList')) {
-  //         /**
-  //          * If an :is starts with an ampersand with no eval'd selector,
-  //          * it's relative, and can't be flattened.
-  //          *
-  //          * @note As far as I can tell, starting with a combinator
-  //          * is allowed / legal for :is() and :where() but won't
-  //          * actually apply to anything.
-  //          */
-  //         /**
-  //          * Push the first selectors of the inner list to an array
-  //          * at the front of the return array.
-  //          */
-  //         const selKeys = arg.value.map(sel => {
-  //           const childKeys = sel.keys
-  //           return isArray(childKeys) ? childKeys.flat(Infinity) : [childKeys]
-  //         }) as string[][]
-  //         const returnKeys: [string[], ...string[]] = [[]]
-  //         selKeys.forEach(keys => {
-  //           const [first, ...rest] = keys
-  //           returnKeys[0].push(first!)
-  //           returnKeys.push(...rest)
-  //         })
-  //         keys = returnKeys
-  //       } else {
-  //         keys = arg.keys
-  //       }
-  //       Object.defineProperty(this, '_keys', { value: keys })
-  //       return keys
-  //     } else {
-  //       keys = this.valueOf()
-  //     }
-  //     Object.defineProperty(this, '_keys', { value: keys })
-  //   }
-  //   return keys
-  // }
-
   override valueOf(): string {
     let valueOf = this._valueOf;
     if (!valueOf) {
-      let { name, arg } = this.value;
-      // For :is() with SelectorList, use valueOf() to avoid newlines
-
+      let { name, arg } = this.data;
       /**
        * Normalizes :nth-child(n + 1) to match :nth-child(n+1)
        * That is, anything that doesn't hold a selector as a value
@@ -155,7 +121,12 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
        *
        * @todo 1n === n, 2n + 0 === 2n
        */
-      valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
+      if (name === ':is' && arg && isNode(arg, N.BasicSelector | N.CompoundSelector)) {
+        /** Simples and compounds can be normalized */
+        valueOf = String(arg.valueOf());
+      } else {
+        valueOf = `${name}${arg ? `(${arg.valueOf()})` : ''}`;
+      }
 
       this._valueOf = valueOf;
     }
@@ -163,8 +134,8 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 
   override evalNode(context: Context): MaybePromise<PseudoSelector> {
-    const currentArg = this.value.arg;
-    const node = this;
+    const currentArg = this.data.arg;
+    const node = super.evalNode(context) as PseudoSelector;
     if (!currentArg) {
       return node;
     }
@@ -175,7 +146,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
       },
       (evaluatedArg) => {
         context.parenFrames.pop();
-        node.value.arg = evaluatedArg;
+        node.setData('arg', evaluatedArg);
         return node;
       }
     );

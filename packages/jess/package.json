@@ -1,7 +1,7 @@
 {
   "name": "jess",
   "type": "module",
-  "version": "0.2.5",
+  "version": "2.0.0-alpha.5",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -18,9 +18,10 @@
     },
     "./package.json": "./package.json"
   },
-  "bin": "./bin/cli.js",
+  "bin": "./bin/cli.mjs",
   "files": [
-    "lib"
+    "lib",
+    "bin"
   ],
   "engines": {
     "node": ">=16"
@@ -30,16 +31,22 @@
     "@jesscss/patch-css": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
     "@jesscss/plugin-node-modules": "workspace:*",
-    "chalk": "^5.2.0",
     "linecraft": "0.2.5",
     "lodash-es": "^4.17.21",
-    "styles-config": "workspace:*",
-    "yargs": "^17.7.1"
+    "styles-config": "workspace:*"
+  },
+  "peerDependencies": {
+    "@jesscss/plugin-js": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@jesscss/plugin-js": {
+      "optional": true
+    }
   },
   "scripts": {
-    "ci": "pnpm build && pnpm test:all",
-    "prepublishOnly": "pnpm build && pnpm test:all",
-    "benchmark": "node bin/cli.js benchmark/benchmark.jess",
+    "ci": "pnpm build && pnpm test",
+    "prepublishOnly": "pnpm build && pnpm test",
+    "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
     "build": "pnpm compile",
     "compile": "tsc -b tsconfig.build.json",
     "dev": "tsc -b tsconfig.json -w",
@@ -55,10 +62,12 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "@jesscss/plugin-js": "workspace:*",
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "@types/lodash-es": "^4.17.8",
-    "less": "^4.0.0"
+    "bootstrap-less-port": "~2.5.1",
+    "clinic": "~13.0.0"
   },
   "keywords": [
     "css",

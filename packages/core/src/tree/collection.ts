@@ -15,10 +15,12 @@ import type { Context } from '../context.js';
  * Can be used like Sass property nesting.
  * @see https://sass-lang.com/documentation/style-rules/declarations/#nesting
  */
-export class Collection extends Rules {
-  override type = 'Collection' as const;
-  override shortType = 'coll' as const;
+export interface Collection {
+  type: 'Collection';
+  shortType: 'coll';
+}
 
+export class Collection extends Rules {
   override toTrimmedString(options?: PrintOptions) {
     return this.toBraced(options);
   }
@@ -29,6 +31,15 @@ export class Collection extends Rules {
    */
   override evalNode(context: Context): MaybePromise<this> {
     return this;
+  }
+
+  override preEval(context: Context): this | Promise<this> {
+    if (this.preEvaluated) {
+      return this;
+    }
+    const node = this.maybeClone(context) as this;
+    node.preEvaluated = true;
+    return node;
   }
 }
 

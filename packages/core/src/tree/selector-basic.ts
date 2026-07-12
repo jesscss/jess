@@ -1,9 +1,10 @@
 import type { Context } from '../context.js';
-import { defineType } from './node.js';
+import { defineType, F_STATIC } from './node.js';
 import { SimpleSelector } from './selector-simple.js';
-import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
 export interface BasicSelector extends SimpleSelector<string> {
+  type: 'BasicSelector';
+  shortType: 'el';
   eval(context: Context): BasicSelector;
 }
 
@@ -13,51 +14,57 @@ export interface BasicSelector extends SimpleSelector<string> {
  *   e.g. div, .foo, #bar
 */
 export class BasicSelector extends SimpleSelector<string> {
-  type = 'BasicSelector' as const;
-  shortType = 'el' as const;
+  constructor(...args: ConstructorParameters<typeof SimpleSelector<string>>) {
+    super(...args);
+    this.addFlag(F_STATIC);
+  }
+
+  get value() {
+    return this.data;
+  }
+
+  set value(val: string) {
+    this.setData(val);
+  }
 
   get isClass() {
-    return /^\./.test(this.value);
+    return /^\./.test(this.data);
   }
 
   get isId() {
-    return /^#/.test(this.value);
+    return /^#/.test(this.data);
   }
 
   /** A tag-type selector */
   get isTag() {
-    return /^[^.#*]/.test(this.value);
+    return /^[^.#*]/.test(this.data);
   }
 
   override evalNode(context: Context): BasicSelector {
-    return pipe(
-      () => super.evalNode(context) as BasicSelector,
-      (node: BasicSelector) => {
-        if (node.isClass) {
-          context.hashClass(node.value);
-        }
-        return node;
-      }
-    );
+    const node = super.evalNode(context) as BasicSelector;
+    if (node.isClass) {
+      context.hashClass(node.data);
+    }
+    return node;
   }
 
   override valueOf(): string {
-    return (this._valueOf ??= (this.isTag ? this.value.toLowerCase() : this.value));
+    return (this._valueOf ??= (this.isTag ? this.data.toLowerCase() : this.data));
   }
 
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   if (this.isClass) {
-  //     out.add(context.hashClass(this.value.value), this.location)
+  //     out.add(context.hashClass(this.data.value), this.location)
   //   } else {
-  //     out.add(this.value.value, this.location)
+  //     out.add(this.data.value, this.location)
   //   }
   // }
 
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.el(', loc)
-  //   this.value.toModule(context, out)
+  //   this.data.toModule(context, out)
   //   out.add(')')
   // }
 }

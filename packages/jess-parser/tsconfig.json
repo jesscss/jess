@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "references": [
+    { "path" : "../css-parser" }
+  ],
+  "compilerOptions": {
+    "noEmit": true,
+    "outDir": "./lib",
+    "rootDir": "./src"
+  },
+  "include": ["src/index.ts"],
+  "exclude": ["node_modules", "lib"]
+}

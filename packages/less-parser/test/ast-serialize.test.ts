@@ -30,30 +30,28 @@ describe('serializeTypes coverage', () => {
             name: 
               (Any [role=ident] 'ref')
             value: 
-              (Expression
-                (Reference
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          key:
-                            ['#ns', '.breakpoint']
-                        )
-                      args: 
-                        (List
-                          [
-                            (Reference
-                              target: 
-                                (Reference [role=name]
-                                  key: '.valToGet'
-                                )
-                              key: -1
-                            )
-                          ]
-                        )
-                    )
-                  key: 'max'
-                )
+              (Reference
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        key:
+                          ['#ns', '.breakpoint']
+                      )
+                    args: 
+                      (List
+                        [
+                          (Reference
+                            target: 
+                              (Reference [role=name]
+                                key: '.valToGet'
+                              )
+                            key: -1
+                          )
+                        ]
+                      )
+                  )
+                key: 'max'
               )
           )
         ]
@@ -70,7 +68,6 @@ describe('serializeTypes coverage', () => {
         value: 
           (Color
             node: 'red'
-            format: 0
             rgb:
             [255, 0, 0]
             alpha: 1
@@ -103,16 +100,28 @@ describe('serializeTypes coverage', () => {
                 name: 
                   (Any [role=property] 'color')
                 value: 
-                  (Expression
-                    (Reference
-                      key: 'color'
-                    )
+                  (Reference
+                    key: 'color'
                   )
               )
             ]
           )
       )
     `);
+  });
+
+  test('mixin default guard sets hasDefault and does not leak', () => {
+    const { errors, tree } = parser.parse(`
+      .withDefault(@x) when (default()) { a: 1; }
+      .plain(@x) { b: 1; }
+      .withNegatedDefault(@x) when not (default()) { c: 1; }
+    `);
+    expect(errors.length).toBe(0);
+    const mixins = (tree as any).data.filter((node: any) => node.type === 'Mixin');
+    expect(mixins).toHaveLength(3);
+    expect(mixins[0].options?.hasDefault).toBe(true);
+    expect(Boolean(mixins[1].options?.hasDefault)).toBe(false);
+    expect(mixins[2].options?.hasDefault).toBe(true);
   });
 
   test('mixin call', () => {
@@ -144,7 +153,6 @@ describe('serializeTypes coverage', () => {
             [
               (Color
                 node: 'red'
-                format: 0
                 rgb:
                 [255, 0, 0]
                 alpha: 1
@@ -183,7 +191,6 @@ describe('serializeTypes coverage', () => {
                     value: 
                       (Color
                         node: 'red'
-                        format: 0
                         rgb:
                         [255, 0, 0]
                         alpha: 1
@@ -199,16 +206,14 @@ describe('serializeTypes coverage', () => {
   test('property accessor', () => {
     const { errors, tree } = parser.parse('.test { color: @obj[prop]; }');
     expect(errors.length).toBe(0);
-    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj.~prop');
+    expect(tree.toString().replace(/\s+/g, '')).toContain('$obj[\'prop\']');
     expect(serializeTypes(tree)).toContainString(`
-      (Expression
-        (Reference
-          target: 
-            (Reference
-              key: 'obj'
-            )
-          key: 'prop'
-        )
+      (Reference
+        target: 
+          (Reference
+            key: 'obj'
+          )
+        key: 'prop'
       )
     `);
   });
@@ -256,7 +261,7 @@ describe('serializeTypes coverage', () => {
                   source: '${INTERPOLATION_PLACEHOLDER}'
                   replacements:
                   [
-                    (Reference
+                    (Reference [role=ident]
                       key: 'colorVar'
                     )
                   ]
@@ -293,7 +298,6 @@ test('rest parameter in mixin', () => {
                 value: 
                   (Color
                     node: 'red'
-                    format: 0
                     rgb:
                     [255, 0, 0]
                     alpha: 1
@@ -338,21 +342,8 @@ test('operation', () => {
     `);
 });
 
-test('static rgb() creates Color node', () => {
+test('static rgb() is preserved as Call node', () => {
   const { errors, tree } = parser.parse('.test { color: rgb(255, 0, 0); }');
-  expect(errors.length).toBe(0);
-  expect(serializeTypes(tree)).toContainString(`
-      (Color
-        format: 0
-        rgb:
-        [255, 0, 0]
-        alpha: 1
-      )
-    `);
-});
-
-test('rgb() with variable creates Call node', () => {
-  const { errors, tree } = parser.parse('.test { color: rgb(@r, 0, 0); }');
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
       (Call
@@ -363,26 +354,61 @@ test('rgb() with variable creates Call node', () => {
         args: 
           (List
             [
-              (Reference
-                key: 'r'
-              )
-              (Number 0)
-              (Number 0)
+              (Num 255)
+              (Num 0)
+              (Num 0)
             ]
           )
       )
     `);
 });
 
-test('static hsl() creates Color node', () => {
+test('rgb() with variable creates Call node', () => {
+  const { errors, tree } = parser.parse('.test { color: rgb(@r, 0, 0); }');
+  expect(errors.length).toBe(0);
+  expect(serializeTypes(tree)).toContainString(`
+      (Call
+        name:
+          (Reference
+            key: 'rgb'
+          )
+        args:
+          (List
+            [
+              (Reference
+                key: 'r'
+              )
+              (Num 0)
+              (Num 0)
+            ]
+          )
+      )
+    `);
+});
+
+test('static hsl() is preserved as Call node', () => {
   const { errors, tree } = parser.parse('.test { color: hsl(120, 50%, 50%); }');
   expect(errors.length).toBe(0);
   expect(serializeTypes(tree)).toContainString(`
-      (Color
-        format: 1
-        hsl:
-        [120, 0.5, 0.5]
-        alpha: 1
+      (Call
+        name: 
+          (Reference
+            key: 'hsl'
+          )
+        args: 
+          (List
+            [
+              (Num 120)
+              (Dimension
+                number: 50
+                unit: '%'
+              )
+              (Dimension
+                number: 50
+                unit: '%'
+              )
+            ]
+          )
       )
     `);
 });
@@ -396,6 +422,9 @@ test('@import "file.less" parsed as StyleImport', () => {
         importOptions: {
           reference: false
           once: true
+          multiple: false
+          optional: false
+          inline: false
         }
         path: 
           (Quoted
@@ -481,8 +510,12 @@ test('@import (less, reference) "file" with options', () => {
       (StyleImport
         type: 'import'
         importOptions: {
+          type: 'less'
           reference: true
           once: true
+          multiple: false
+          optional: false
+          inline: false
         }
         path: 
           (Quoted
@@ -525,6 +558,9 @@ test('@import (multiple) "file.less" with multiple option', () => {
         importOptions: {
           reference: false
           once: false
+          multiple: true
+          optional: false
+          inline: false
         }
         path: 
           (Quoted
@@ -539,6 +575,40 @@ test('@import (multiple) "file.less" with multiple option', () => {
     `);
 });
 
+test('@import "file" with media query parsed as StyleImport', () => {
+  const { errors, tree } = parser.parse('@import "file" screen and (max-width: 600px);');
+  expect(errors.length).toBe(0);
+  const out = serializeTypes(tree, { showOptions: true });
+  expect(out).toContain('(StyleImport');
+  expect(out).not.toContain('(AtRule');
+  expect(out).toContain('postlude');
+});
+
+test('@import (less, multiple) "file.css" with media query parsed as StyleImport', () => {
+  const { errors, tree } = parser.parse('@import (less, multiple) "file.css" screen and (max-width: 600px);');
+  expect(errors.length).toBe(0);
+  const out = serializeTypes(tree, { showOptions: true });
+  expect(out).toContain('(StyleImport');
+  expect(out).not.toContain('(AtRule');
+  expect(out).toContain('postlude');
+});
+
+test('@import "import/import-test-e" with media query parsed as StyleImport', () => {
+  const { errors, tree } = parser.parse('@import "import/import-test-e" screen and (max-width: 600px);');
+  expect(errors.length).toBe(0);
+  const out = serializeTypes(tree, { showOptions: true });
+  expect(out).toContain('(StyleImport');
+  expect(out).not.toContain('(AtRule');
+});
+
+test('@import (less, multiple) "import/import-test-d.css" with media query parsed as StyleImport', () => {
+  const { errors, tree } = parser.parse('@import (less, multiple) "import/import-test-d.css" screen and (max-width: 601px);');
+  expect(errors.length).toBe(0);
+  const out = serializeTypes(tree, { showOptions: true });
+  expect(out).toContain('(StyleImport');
+  expect(out).not.toContain('(AtRule');
+});
+
 /** If it has a colon and a space after it, it's a variable declaration */
 test('parse known at-rule as variable declaration', () => {
   const result = parser.parse('@property: foo;');
@@ -548,7 +618,7 @@ test('parse known at-rule as variable declaration', () => {
         name: 
           (Any [role=ident] 'property')
         value: 
-          (Any 'foo')
+          (Any [role=ident] 'foo')
       )
     `);
 });
@@ -562,7 +632,7 @@ test('parse known at-rule as variable declaration', () => {
         name: 
           (Any [role=ident] 'property')
         value: 
-          (Any 'foo')
+          (Any [role=ident] 'foo')
       )
     `);
 });
@@ -644,13 +714,11 @@ test('namespace call - simple id with parentheses', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  key: '#id'
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                key: '#id'
+              )
           )
       )
     `);
@@ -665,14 +733,12 @@ test('namespace call - complex selector with parentheses', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  key:
-                    ['#namespace', '.scoped-mixin']
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                key:
+                  ['#namespace', '.scoped-mixin']
+              )
           )
       )
     `);
@@ -707,23 +773,21 @@ test('variable reference with accessor', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Reference
-              target: 
-                (Reference
-                  key: 'config'
-                )
-              key: 
-                (Interpolated [role=ident]
-                  source: '${INTERPOLATION_PLACEHOLDER}'
-                  replacements:
-                  [
-                    (Reference [role=ident]
-                      key: 'prop'
-                    )
-                  ]
-                )
-            )
+          (Reference
+            target: 
+              (Reference
+                key: 'config'
+              )
+            key: 
+              (Interpolated [role=ident]
+                source: '${INTERPOLATION_PLACEHOLDER}'
+                replacements:
+                [
+                  (Reference [role=ident]
+                    key: 'prop'
+                  )
+                ]
+              )
           )
       )
     `);
@@ -759,18 +823,16 @@ test('namespace call with accessor and parentheses', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference
-                  target: 
-                    (Reference [role=name]
-                      key:
-                        ['#namespace', '.scoped-mixin']
-                    )
-                  key: 'ref'
-                )
-            )
+          (Call
+            name: 
+              (Reference
+                target: 
+                  (Reference [role=name]
+                    key:
+                      ['#namespace', '.scoped-mixin']
+                  )
+                key: 'ref'
+              )
           )
       )
     `);
@@ -785,20 +847,18 @@ test('chained mixin calls - simple chain', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          key: '.mixin1'
-                        )
-                    )
-                  key: '.mixin2'
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        key: '.mixin1'
+                      )
+                  )
+                key: '.mixin2'
+              )
           )
       )
     `);
@@ -813,31 +873,29 @@ test('chained mixin calls - with arguments', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          key: '.mixin1'
-                        )
-                      args: 
-                        (List
-                          [
-                            (VarDeclaration
-                              name: 
-                                (Any [role=property] 'foo')
-                              value: 
-                                (Any 'bar')
-                            )
-                          ]
-                        )
-                    )
-                  key: '.mixin2'
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        key: '.mixin1'
+                      )
+                    args: 
+                      (List
+                        [
+                          (VarDeclaration
+                            name: 
+                              (Any [role=property] 'foo')
+                            value: 
+                              (Any [role=ident] 'bar')
+                          )
+                        ]
+                      )
+                  )
+                key: '.mixin2'
+              )
           )
       )
     `);
@@ -852,47 +910,45 @@ test('chained mixin calls - complex chain with accessors', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Reference
-              target: 
-                (Reference [role=name]
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          target: 
-                            (Reference
-                              target: 
-                                (Reference [role=name]
-                                  target: 
-                                    (Call
-                                      name: 
-                                        (Reference [role=name]
-                                          key: '.mixin1'
-                                        )
-                                      args: 
-                                        (List
-                                          [
-                                            (VarDeclaration
-                                              name: 
-                                                (Any [role=property] 'foo')
-                                              value: 
-                                                (Any 'bar')
-                                            )
-                                          ]
-                                        )
-                                    )
-                                  key: '.mixin2'
-                                )
-                              key: 'val1'
-                            )
-                          key: '.ns'
-                        )
-                    )
-                  key: '.sub-mixin'
-                )
-              key: 'val2'
-            )
+          (Reference
+            target: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        target: 
+                          (Reference
+                            target: 
+                              (Reference [role=name]
+                                target: 
+                                  (Call
+                                    name: 
+                                      (Reference [role=name]
+                                        key: '.mixin1'
+                                      )
+                                    args: 
+                                      (List
+                                        [
+                                          (VarDeclaration
+                                            name: 
+                                              (Any [role=property] 'foo')
+                                            value: 
+                                              (Any [role=ident] 'bar')
+                                          )
+                                        ]
+                                      )
+                                  )
+                                key: '.mixin2'
+                              )
+                            key: 'val1'
+                          )
+                        key: '.ns'
+                      )
+                  )
+                key: '.sub-mixin'
+              )
+            key: 'val2'
           )
       )
     `);
@@ -907,34 +963,32 @@ test('chained mixin calls - deep nesting', () => {
         name: 
           (Any [role=ident] 'ref')
         value: 
-          (Expression
-            (Call
-              name: 
-                (Reference [role=name]
-                  target: 
-                    (Call
-                      name: 
-                        (Reference [role=name]
-                          target: 
-                            (Call
-                              name: 
-                                (Reference [role=name]
-                                  target: 
-                                    (Call
-                                      name: 
-                                        (Reference [role=name]
-                                          key: '.mixin1'
-                                        )
-                                    )
-                                  key: '.mixin2'
-                                )
-                            )
-                          key: '.mixin3'
-                        )
-                    )
-                  key: '.mixin4'
-                )
-            )
+          (Call
+            name: 
+              (Reference [role=name]
+                target: 
+                  (Call
+                    name: 
+                      (Reference [role=name]
+                        target: 
+                          (Call
+                            name: 
+                              (Reference [role=name]
+                                target: 
+                                  (Call
+                                    name: 
+                                      (Reference [role=name]
+                                        key: '.mixin1'
+                                      )
+                                  )
+                                key: '.mixin2'
+                              )
+                          )
+                        key: '.mixin3'
+                      )
+                  )
+                key: '.mixin4'
+              )
           )
       )
     `);
@@ -964,7 +1018,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1006,7 +1059,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1060,7 +1112,6 @@ describe('extend cases', () => {
                           value: 
                             (Color
                               node: 'blue'
-                              format: 0
                               rgb:
                               [0, 0, 255]
                               alpha: 1
@@ -1108,7 +1159,6 @@ describe('extend cases', () => {
                           value: 
                             (Color
                               node: 'blue'
-                              format: 0
                               rgb:
                               [0, 0, 255]
                               alpha: 1
@@ -1216,7 +1266,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1291,7 +1340,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1333,7 +1381,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1376,7 +1423,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1420,7 +1466,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1463,7 +1508,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1491,16 +1535,16 @@ describe('extend cases', () => {
     expect(errors).toHaveLength(0);
 
     // Find the extend node and check its selector
-    const ruleset = tree.value[0];
+    const ruleset = tree.data[0];
     expect(ruleset?.type).toBe('Ruleset');
     if (ruleset && ruleset.type === 'Ruleset') {
-      const rules = ruleset.value.rules;
-      if (rules && rules.value) {
-        for (const rule of rules.value) {
+      const rules = ruleset.data.rules;
+      if (rules && rules.data) {
+        for (const rule of rules.data) {
           if (rule.type === 'Extend') {
             // Check what selector the parser set
-            const selectorType = rule.value.selector?.type;
-            const selectorValueOf = rule.value.selector?.valueOf();
+            const selectorType = rule.data.selector?.type;
+            const selectorValueOf = rule.data.selector?.valueOf();
 
             // The parser should set the extend selector to undefined for extends inside rulesets
             // This allows it to default to ampersand and resolve to the ruleset's selector
@@ -1510,7 +1554,7 @@ describe('extend cases', () => {
         }
       }
     }
-    
+
     // Check the full S-expression structure
     // The parser sets extend.selector to undefined for extends inside rulesets
     const fullSExpr = serializeTypes(tree);
@@ -1520,7 +1564,7 @@ describe('extend cases', () => {
     if (extendMatch) {
       const extendStr = extendMatch[0];
       // Should not contain "selector:" followed by a BasicSelector
-      expect(extendStr).not.toContain("selector:\n                (BasicSelector '.c')");
+      expect(extendStr).not.toContain('selector:\n                (BasicSelector \'.c\')');
     }
   });
 
@@ -1542,13 +1586,13 @@ describe('extend cases', () => {
     expect(extendCount).toBe(2);
     // Extends should be inside the ruleset with selector: undefined
     expect(sExpr).toContainString('(SelectorList');
-    expect(sExpr).toContainString("(BasicSelector '.ext3')");
-    expect(sExpr).toContainString("(BasicSelector '.ext4')");
+    expect(sExpr).toContainString('(BasicSelector \'.ext3\')');
+    expect(sExpr).toContainString('(BasicSelector \'.ext4\')');
     // Targets should be present
     expect(sExpr).toContainString('(Extend');
     expect(sExpr).toContainString('target:');
-    expect(sExpr).toContainString("(BasicSelector '.foo')");
-    expect(sExpr).toContainString("(BasicSelector '.bar')");
+    expect(sExpr).toContainString('(BasicSelector \'.foo\')');
+    expect(sExpr).toContainString('(BasicSelector \'.bar\')');
   });
 
   test('extend with selector list target and all flag', () => {
@@ -1580,7 +1624,6 @@ describe('extend cases', () => {
                       value: 
                         (Color
                           node: 'blue'
-                          format: 0
                           rgb:
                           [0, 0, 255]
                           alpha: 1
@@ -1592,6 +1635,31 @@ describe('extend cases', () => {
           ]
         )
       `);
+  });
+
+  test('extend with mixed all/exact per target: .ee:extend(.dd all,.bb) {}', () => {
+    // Less: .dd gets "all", .bb gets no "all" (exact only). Two separate Extend nodes.
+    const { tree, errors, lexerResult } = parser.parse('.ee:extend(.dd all,.bb) {}');
+    expect(errors.length).toBe(0);
+    expect(lexerResult.errors.length).toBe(0);
+    const sExpr = serializeTypes(tree);
+    // First Extend: target .dd, flag 0 (All)
+    expect(sExpr).toContainString(`
+                    (Extend
+                      target: 
+                        (BasicSelector '.dd')
+                      flag: 0
+                    )`);
+    // Second Extend: target .bb, flag 1 (Exact) - no "all", so must not match inner .bb .bb
+    expect(sExpr).toContainString(`
+                    (Extend
+                      target: 
+                        (BasicSelector '.bb')
+                      flag: 1
+                    )`);
+    // Exactly two Extend nodes
+    const extendMatches = sExpr.match(/\(Extend\s/g);
+    expect(extendMatches?.length).toBe(2);
   });
 
   test('selector list with extend on one selector and all flag - extend should bubble', () => {

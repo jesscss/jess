@@ -1,8 +1,8 @@
 /**
  * Sass list.is-bracketed() function
- * 
+ *
  * Returns whether a list is bracketed.
- * 
+ *
  * @example
  * is-bracketed([1, 2, 3]) // true
  * is-bracketed(1, 2, 3) // false

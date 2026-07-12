@@ -126,7 +126,9 @@ Converts a single Less.js node back to a Jess node.
 
 ## Implementation Status
 
-This package is currently in **alpha**. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for detailed implementation status and roadmap.
+This package is currently in **alpha**.
+
+Developer notes and historical analyses live in [DESIGN.md](./DESIGN.md) and `_archive/`.
 
 ## Contributing
 

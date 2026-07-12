@@ -1,4 +1,4 @@
-import { expr, any } from '..';
+import { expr, any } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -9,11 +9,11 @@ describe('Expression', () => {
 
   it('should serialize an expression', () => {
     let rule = expr(any('foo'));
-    expect(`${rule}`).toBe('$foo');
+    expect(`${rule}`).toBe('$(foo)');
   });
 
-  it('should serialize an expression with parens', () => {
-    let rule = expr(any('foo'), { parens: true });
+  it('should serialize an expression consistently', () => {
+    let rule = expr(any('foo'));
     expect(`${rule}`).toBe('$(foo)');
   });
 

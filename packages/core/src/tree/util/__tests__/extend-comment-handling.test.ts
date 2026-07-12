@@ -1,5 +1,17 @@
-import { el, sel, sellist, compound, is, co, comment } from '../../index.js';
-import { extendSelector } from '../extend.js';
+import { expect, describe, it } from 'vitest';
+import { el, sel, sellist, compound, is, co, comment, type Selector } from '../../index.js';
+import { tryExtendSelector } from '../extend-core.js';
+
+function applyExtend(
+  selector: Selector,
+  target: Selector,
+  extendWith: Selector,
+  partial: boolean
+): Selector {
+  const result = tryExtendSelector(selector, target, extendWith, partial);
+  expect(result.error).toBeUndefined();
+  return result.value;
+}
 
 describe('Extend Comment and Whitespace Handling Tests', () => {
   describe('Comment duplication prevention', () => {
@@ -15,13 +27,13 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const extendWith = el('.c');
 
       // Extend with partial matching - this creates :is() wrapper
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = applyExtend(selector, target, extendWith, true);
 
       // toTrimmedString should not show duplicated comments
       const trimmedResult = result.toTrimmedString();
 
       // Assert the exact output - shows how compound selector extension works with comments
-      expect(trimmedResult).toBe('.a/* brand */:is(.b, .c)');
+      expect(trimmedResult).toBe('.a:is(/* brand */.b, .c)');
 
       // Should contain the comment only once, not multiple times
       const commentCount = (trimmedResult.match(/\/\* brand \*\//g) || []).length;
@@ -41,11 +53,11 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const target = el('.b');
       const extendWith = sel([el('.c'), el('.d')]);
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = applyExtend(selector as Selector, target, extendWith as Selector, true);
       const trimmed = result.toTrimmedString();
 
       // Assert the exact expected output - this shows how extension preserves comments
-      expect(trimmed).toBe('.a > /* b */:is(.b, .c.d)');
+      expect(trimmed).toBe('.a > :is(/* b */.b, .c.d)');
 
       // Verify comment handling - comment should be preserved on the original component
       expect(trimmed).toContain('/* b */');
@@ -73,11 +85,11 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const target = el('.b');
       const extendWith = el('.f');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = applyExtend(selector as Selector, target, extendWith as Selector, true);
       const trimmed = result.toTrimmedString();
 
       // Assert the exact output - shows how component-level extension uses :is() wrapper
-      expect(trimmed).toBe('.a > /* component */:is(.b, .f).c > .d.e');
+      expect(trimmed).toBe('.a > :is(/* component */.b, .f).c > .d.e');
 
       // Verify no comment duplication
       const commentCount = (trimmed.match(/\/\* component \*\//g) || []).length;
@@ -98,14 +110,14 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const target = el('.target');
       const extendWith = el('.extension');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = applyExtend(selector, target, extendWith, true);
 
       // The result should preserve the original spacing intent
       // without duplicating the comment structure
       const trimmed = result.toTrimmedString();
 
       // Assert exact output - shows how pre-comment whitespace works with compound selectors
-      expect(trimmed).toBe('.prefix/* spacing */:is(.target, .extension)');
+      expect(trimmed).toBe('.prefix:is(/* spacing */.target, .extension)');
 
       // Should not duplicate comments
       const commentCount = (trimmed.match(/\/\* spacing \*\//g) || []).length;
@@ -126,11 +138,11 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const target = el('.a');
       const extendWith = el('.c');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = applyExtend(selector, target, extendWith, true);
       const trimmed = result.toTrimmedString();
 
       // Assert exact output - shows how multiple comments are handled in compound selectors
-      expect(trimmed).toBe('/* first */:is(.a, .c)/* second */.b');
+      expect(trimmed).toBe(':is(/* first */.a, .c)/* second */.b');
 
       // Verify each comment appears exactly once
       expect((trimmed.match(/\/\* first \*\//g) || []).length).toBe(1);
@@ -144,7 +156,7 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const target = el('.b');
       const extendWith = el('.c');
 
-      const result = extendSelector(selector, target, extendWith, true);
+      const result = applyExtend(selector, target, extendWith, true);
       const trimmed = result.toTrimmedString();
 
       expect(trimmed).toBe('.a:is(.b, .c)');
@@ -160,7 +172,7 @@ describe('Extend Comment and Whitespace Handling Tests', () => {
       const target = el('.inner');
       const extendWith = el('.extended');
 
-      const result = extendSelector(selector, target, extendWith, false);
+      const result = applyExtend(selector, target, extendWith, false);
       const trimmed = result.toTrimmedString();
 
       // Assert exact output - shows how nested :is() extension works with full matching

@@ -9,10 +9,41 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
 export type UnitMode = 'loose' | 'preserve' | 'strict';
 
 /**
+ * Equality/coercion modes for guard comparisons.
+ */
+export type EqualityMode = 'coerce' | 'strict';
+export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+
+export interface JavaScriptSandboxConfig {
+  /**
+   * Allow network access for script execution runtime.
+   * @default false
+   */
+  allowHttp?: boolean;
+  /**
+   * Optional host allowlist when `allowHttp` is enabled.
+   */
+  allowNetHosts?: string[];
+  /**
+   * Optional explicit filesystem root for script reads.
+   * If omitted, compiler resolves using entry/config roots.
+   */
+  jsReadRoot?: string;
+}
+
+export type CompileJavaScriptOption = true | JavaScriptSandboxConfig;
+
+/**
  * Less compiler options
  * Based on less.js default-options.js and bin/lessc
  */
 export interface LessOptions {
+  /**
+   * Restrict which selector shapes are allowed in extend targets.
+   * When set, any other selector kind is a parse error.
+   */
+  allowExtendSelectors?: ExtendSelectorKind[];
+
   /**
    * Inline Javascript - @plugin still allowed
    * @default false
@@ -116,6 +147,14 @@ export interface LessOptions {
    * @default 'preserve'
    */
   unitMode?: UnitMode;
+
+  /**
+   * How to handle equality/coercion in guards and comparisons.
+   * - 'coerce': Less-compatible coercion behavior
+   * - 'strict': type-strict behavior
+   * @default 'coerce'
+   */
+  equalityMode?: EqualityMode;
 
   /**
    * @deprecated Use `mathMode` instead. This option maps to `mathMode` as follows:
@@ -227,6 +266,15 @@ export interface LessOptions {
   bubbleRootAtRules?: boolean;
 }
 
+export interface ScssOptions {
+  allowExtendSelectors?: ExtendSelectorKind[];
+  unitMode?: UnitMode;
+  equalityMode?: EqualityMode;
+  collapseNesting?: boolean;
+
+  [key: string]: any;
+}
+
 /**
  * Base interface for file-matching options
  */
@@ -245,6 +293,8 @@ export interface InputOptions extends FileMatchOptions {
   // Compile-level options that can be overridden per-input
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  equalityMode?: EqualityMode;
+  allowExtendSelectors?: ExtendSelectorKind[];
   searchPaths?: string[];
   enableJavaScript?: boolean;
 
@@ -299,8 +349,11 @@ export interface StylesConfig {
     plugins?: Array<any | string>;
     searchPaths?: string[];
     enableJavaScript?: boolean;
+    javascript?: CompileJavaScriptOption;
     mathMode?: MathMode;
     unitMode?: UnitMode;
+    equalityMode?: EqualityMode;
+    allowExtendSelectors?: ExtendSelectorKind[];
   };
   /**
    * Input file options. Can be a single object for defaults, or an array
@@ -316,9 +369,9 @@ export interface StylesConfig {
   output?: OutputOptions | OutputOptions[];
   language?: {
     less?: LessOptions;
-    scss?: Record<string, any>;
+    scss?: ScssOptions;
     css?: Record<string, any>;
     jess?: Record<string, any>;
-    [key: string]: LessOptions | Record<string, any> | undefined;
+    [key: string]: LessOptions | ScssOptions | Record<string, any> | undefined;
   };
 }

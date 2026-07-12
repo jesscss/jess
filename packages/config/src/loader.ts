@@ -1,6 +1,11 @@
 import { cosmiconfig, cosmiconfigSync, defaultLoadersSync } from 'cosmiconfig';
 import type { StylesConfig } from './types.js';
 
+export interface LoadedConfigMeta {
+  config: StylesConfig;
+  configFilePath?: string;
+}
+
 const explorer = cosmiconfig('styles', {
   searchPlaces: [
     'styles.config.ts',
@@ -61,6 +66,18 @@ export async function loadConfig(searchFrom?: string): Promise<StylesConfig | nu
 export function loadConfigSync(searchFrom?: string): StylesConfig {
   const result = explorerSync.search(searchFrom);
   return result?.config ? normalizeConfig(result.config) : {};
+}
+
+/**
+ * Load styles configuration with metadata (sync).
+ * Includes config file path when a config file is discovered.
+ */
+export function loadConfigSyncWithMeta(searchFrom?: string): LoadedConfigMeta {
+  const result = explorerSync.search(searchFrom);
+  return {
+    config: result?.config ? normalizeConfig(result.config) : {},
+    configFilePath: result?.filepath
+  };
 }
 
 /**

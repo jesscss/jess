@@ -63,39 +63,46 @@ describe('getOptions', () => {
       const config: StylesConfig = {
         compile: {
           mathMode: 'parens-division',
-          unitMode: 'loose'
+          unitMode: 'loose',
+          equalityMode: 'coerce',
+          allowExtendSelectors: ['simple']
         }
       };
       const options = getOptions(config);
       expect(options.mathMode).toBe('parens-division');
       expect(options.unitMode).toBe('loose');
+      expect(options.equalityMode).toBe('coerce');
+      expect(options.allowExtendSelectors).toEqual(['simple']);
     });
 
     it('should override compile options with language options', () => {
       const config: StylesConfig = {
         compile: {
-          mathMode: 'parens-division'
+          mathMode: 'parens-division',
+          allowExtendSelectors: ['simple']
         },
         language: {
-          less: { mathMode: 'strict' }
+          less: { mathMode: 'strict', allowExtendSelectors: ['compound'] }
         }
       };
       const options = getOptions(config, { language: 'less' });
       expect(options.mathMode).toBe('strict');
+      expect(options.allowExtendSelectors).toEqual(['compound']);
     });
 
     it('should override language options with matched input options', () => {
       const config: StylesConfig = {
         language: {
-          less: { mathMode: 'parens-division', leakyRules: true }
+          less: { mathMode: 'parens-division', leakyRules: true, allowExtendSelectors: ['compound'] }
         },
         input: [
-          { mathMode: 'strict' }
+          { mathMode: 'strict', allowExtendSelectors: ['basic'] }
         ]
       };
       const options = getOptions(config, { input: 'src/styles.less' });
       expect(options.mathMode).toBe('strict');
       expect(options.leakyRules).toBe(true); // from language.less
+      expect(options.allowExtendSelectors).toEqual(['basic']);
     });
 
     it('should override input options with matched output options', () => {
@@ -115,7 +122,8 @@ describe('getOptions', () => {
       const config: StylesConfig = {
         compile: {
           mathMode: 'always',
-          unitMode: 'loose'
+          unitMode: 'loose',
+          equalityMode: 'coerce'
         },
         language: {
           less: {
@@ -132,6 +140,7 @@ describe('getOptions', () => {
       };
       const options = getOptions(config, { input: 'src/styles.less', output: 'dist/styles.css' });
       expect(options.unitMode).toBe('loose'); // from compile
+      expect(options.equalityMode).toBe('coerce'); // from compile
       expect(options.leakyRules).toBe(true); // from language.less
       expect(options.mathMode).toBe('strict'); // from input (overrides language)
       expect(options.collapseNesting).toBe(false); // from input
@@ -250,4 +259,3 @@ describe('getOptions', () => {
     });
   });
 });
-

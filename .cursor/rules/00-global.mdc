@@ -1,0 +1,31 @@
+---
+description: "Global guardrails: evidence-first, no guessing, auto-scoped Cursor context"
+alwaysApply: true
+---
+
+# Global rules (Jess monorepo)
+
+## Evidence-first
+- Prefer **scan-first, questions-later**. If something matters and isn’t confirmed by repo evidence, label it **Unknown** and only then ask.
+- When explaining decisions, cite **file paths** (and specific sections if relevant).
+- Before asking clarification questions, perform at least one targeted scan/read pass for likely answers.
+
+## No “invoke the system”
+- Do not tell the user to “use” a Cursor system manually.
+- Rely on **glob-scoped rules** so guidance loads automatically based on edited paths.
+
+## Persistent state (debugging memory)
+- For debugging/build sessions, treat `.cursor/PROJECT_STATE.md` as the shared memory.
+- If you make meaningful progress during debugging, update `.cursor/PROJECT_STATE.md` section 4 and any active area notes.
+- Before starting debugging work, load `.cursor/PROJECT_STATE.md` plus relevant package/subtree rules for touched paths.
+
+## Debug logging standard
+- Use `syncLog()` for debugging output.
+- Do not use Cursor/debug-session `fetch(...)` instrumentation for runtime debugging.
+- Do not use `console.log()` for debugging output in tests (Vitest may suppress it).
+
+## Rule-miss recovery loop
+- If the user says a change ignored project rules, pause implementation immediately.
+- Identify the missed/ambiguous rule and confirm intent with the user if needed.
+- Strengthen the rule text right away (clear precedence + concrete do/don't language).
+- Then continue the original task from where it was interrupted.

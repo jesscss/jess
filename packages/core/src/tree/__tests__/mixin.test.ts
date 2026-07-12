@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound } from '..';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound } from '../index.js';
 import { Context } from '../../context.js';
 
 let context: Context;
@@ -543,13 +543,13 @@ describe('Mixin', () => {
       // }
       const node = rules([
         ruleset({
-          selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]),
+          selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]) as any,
           rules: rules([
             ruleset({
-              selector: sel([el('.sol'), co(' '), el('.la')]),
+              selector: sel([el('.sol'), co(' '), el('.la')]) as any,
               rules: rules([
                 ruleset({
-                  selector: sel([el('.si')]),
+                  selector: sel([el('.si')]) as any,
                   rules: rules([
                     decl({ name: 'color', value: any('cyan') })
                   ])
@@ -899,9 +899,6 @@ describe('Mixin', () => {
         }
         .test2 {
           $a: 10px;
-          $b: 20px;
-          color: red;
-          $a: 10px;
           $rest: 20px 30px;
           color: blue;
         }
@@ -992,6 +989,58 @@ describe('Mixin', () => {
 
       await expectRejects(root.eval(context), ReferenceError, /No matching mixins/);
     });
+
+    it('keeps param vars preferred over outer same-name vars in lazy nested mixin lookups', async () => {
+      const root = rules([
+        vardecl({ name: 'gender_', value: any('"Outer"') }),
+        mixin({
+          name: any('.Person'),
+          params: list([
+            any('name', { role: 'property' }),
+            any('gender_', { role: 'property' })
+          ]),
+          rules: rules([
+            ruleset({
+              selector: el('.person'),
+              rules: rules([
+                vardecl({
+                  name: 'gender',
+                  value: ref({ key: 'gender_' }, { type: 'variable' })
+                }),
+                mixin({
+                  name: any('.sayGender'),
+                  rules: rules([
+                    decl({
+                      name: 'gender',
+                      value: ref({ key: 'gender' }, { type: 'variable' })
+                    })
+                  ])
+                })
+              ])
+            })
+          ])
+        }),
+        ruleset({
+          selector: el('.test'),
+          rules: rules([
+            call({
+              name: ref({ key: '.Person' }, { type: 'mixin' }),
+              args: list([any('person'), any('"Male"')])
+            }),
+            call({
+              name: ref({ key: ['.person', '.sayGender'] }, { type: 'mixin-ruleset' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const evald = await root.eval(context);
+      const css = evald.toString();
+
+      expect(css).toContain('gender: "Male";');
+      expect(css).not.toContain('gender: "Outer";');
+    });
   });
 
   describe('serialization', () => {
@@ -1045,7 +1094,7 @@ describe('Mixin', () => {
         ])
       });
       expect(`${rule}`).toBeString(`
-        my-mixin($a: black; $b: white) when ($a = $b) {
+        my-mixin($a: black; $b: white) when ($($a) = $($b)) {
           color: black;
           background-color: white;
         }

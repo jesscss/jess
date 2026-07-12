@@ -1,9 +1,10 @@
-import { Node, defineType } from './node.js';
+import { Node, F_STATIC, defineType } from './node.js';
 import { Nil } from './nil.js';
 import { List } from './list.js';
 import type { Context } from '../context.js';
 import { compareNodeArray } from './util/compare.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 
@@ -23,15 +24,28 @@ export type SequenceOptions = {
  * an expression will yield a value, and a CSS value can
  * actually be a sequence of values (like for shorthand)
  */
+export interface Sequence {
+  type: 'Sequence' | 'QueryCondition';
+  shortType: 'seq' | 'query';
+}
 export class Sequence extends Node<Node[], SequenceOptions> {
-  type = 'Sequence';
-  shortType = 'seq';
+  get length() {
+    return this.data.length;
+  }
 
   override compare(other: Node) {
     if (other instanceof Sequence) {
-      return compareNodeArray(this.value, other.value);
+      const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
+      const result = compareNodeArray([...this.data], [...other.data], equalityMode);
+      return result;
     }
-    return super.compare(other);
+    if (other.type === 'Any') {
+      const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
+      const left = normalize(this.toString());
+      const right = normalize(other.toString());
+      return left === right ? 0 : undefined;
+    }
+    return undefined;
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -41,7 +55,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     const w = options.writer!;
     const mark = w.mark();
-    const { value } = this;
+    const value = this.data;
     const length = value.length;
 
     if (length === 0) {
@@ -49,7 +63,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
 
     // Serialize first node with toString() to preserve comments
-    value[0]!.toString(options);
+    const firstCaptured = w.captureWithMeta(() => value[0]!.toString(options));
+    w.add(firstCaptured.text);
+    let prevTrailingIntent = firstCaptured.trailingIntent;
 
     // Serialize subsequent nodes with normalized spacing
     for (let i = 1; i < length; i++) {
@@ -68,15 +84,21 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
         // Capture current node's output to check if it starts with space
         // This captures the serialized output including pre/post from child nodes
-        const currentNodeOut = w.capture(() => node.toString(options));
+        const currentCaptured = w.captureWithMeta(() => node.toString(options));
+        const currentNodeOut = currentCaptured.text;
         const currentStartsWithSpace = currentNodeOut.startsWith(' ');
+        const hasExplicitNoSpaceBoundary = (
+          prevTrailingIntent === 'explicit_none'
+          || currentCaptured.leadingIntent === 'explicit_none'
+        );
 
-        if (!prevEndsWithSpace && !currentStartsWithSpace) {
+        if (!prevEndsWithSpace && !currentStartsWithSpace && !hasExplicitNoSpaceBoundary) {
           // No space present - add single space before node
           w.add(' ');
         }
         // Write the captured output (node was already serialized in capture())
         w.add(currentNodeOut);
+        prevTrailingIntent = currentCaptured.trailingIntent;
       }
     }
 
@@ -89,18 +111,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     }
     let newSequence = this.maybeClone(context);
     if (b instanceof List) {
-      return new List([newSequence, ...b.value]).inherit(this);
-    } else if (isNode(b, 'Sequence')) {
+      return new List([newSequence, ...b.data]).inherit(this);
+    } else if (isNode(b, N.Sequence)) {
       /** Inference not working in this class? */
-      const values = b.value.map(v => v.maybeClone(context));
+      const values = b.data.map(v => v.maybeClone(context));
       if (values.length) {
         values[0]!.pre = 1;
       }
-      newSequence.value.push(...values);
+      newSequence.push(...values);
     } else {
       b = b.maybeClone(context);
       b.pre = 1;
-      newSequence.value.push(b);
+      newSequence.push(b);
     }
     return newSequence;
   }
@@ -119,17 +141,20 @@ export class Sequence extends Node<Node[], SequenceOptions> {
    * @todo - REWRITE
    */
   override evalNode(context: Context): MaybePromise<Node> {
+    if (this.hasFlag(F_STATIC)) {
+      return this;
+    }
     return pipe(
       () => {
         const node = this;
-        const maybe = serialForEach(node.value.map((n, i) => [n, i] as const), ([n, i]) => {
+        const maybe = serialForEach(node.data.map((n, i) => [n, i] as const), ([n, i]) => {
           const out = n.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Node>).then((res) => {
-              node.value[i] = res;
+              node.setData(i, res);
             });
           }
-          node.value[i] = out as Node;
+          node.setData(i, out as Node);
         });
         if (isThenable(maybe)) {
           return (maybe as Promise<void>).then(() => node);
@@ -137,9 +162,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         return node;
       },
       (node) => {
-        node.value = node.value.filter(n => n && !(n instanceof Nil));
-        if (node.value.length === 1 && !node.options.preserveWhitespace) {
-          return node.value[0]!;
+        node.setData(node.data.filter(n => n && !(n instanceof Nil)) as any);
+        if (node.data.length === 1 && !node.options.preserveWhitespace) {
+          return node.data[0]!;
         }
         return node;
       }
@@ -149,7 +174,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector): void {
   //   const cast = context.cast
-  //   this.value.forEach(n => {
+  //   this.data.forEach(n => {
   //     const val = cast(n)
   //     val.toCSS(context, out)
   //   })
@@ -158,8 +183,8 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   // toModule(context: Context, out: OutputCollector) {
   //   const loc = this.location
   //   out.add('$J.expr([', loc)
-  //   const length = this.value.length - 1
-  //   this.value.forEach((n, i) => {
+  //   const length = this.data.length - 1
+  //   this.data.forEach((n, i) => {
   //     n.toModule(context, out)
   //     if (i < length) {
   //       out.add(', ')

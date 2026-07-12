@@ -1,8 +1,8 @@
 /**
  * Sass str-slice() function (deprecated, use string.slice() instead)
- * 
+ *
  * Extracts a substring from a string.
- * 
+ *
  * @example
  * str-slice("Hello", 2, 4) // "ell"
  * str-slice("Hello", 2) // "ello"
@@ -13,21 +13,21 @@ import { toNumber } from '@jesscss/core';
 const strSlice = defineFunction(
   'str-slice',
   function(string: Quoted, startAt: Dimension, endAt?: Dimension): Quoted {
-    const strValue = typeof string.value === 'string' ? string.value : string.valueOf();
+    const strValue = typeof string.data === 'string' ? string.data : string.valueOf();
     const startValue = toNumber()(startAt) as number;
     const startInt = Math.floor(startValue);
-    
+
     // Track whether endAt was explicitly provided (not just the default)
     const endAtProvided = endAt !== undefined;
     // Default end is -1 (end of string)
     const endValue = endAt ? (toNumber()(endAt) as number) : -1;
     const endInt = Math.floor(endValue);
-    
+
     // Handle end index of 0 - always returns empty string
     if (endInt === 0) {
       return new Quoted('', string.options);
     }
-    
+
     // Convert 1-based to 0-based codepoint index using _codepointForIndex logic
     // For start: allowNegative = false
     let start: number;
@@ -40,7 +40,7 @@ const strSlice = defineFunction(
       const result = strValue.length + startInt;
       start = result < 0 ? 0 : result;
     }
-    
+
     // For end: allowNegative = true
     // Convert end index using _codepointForIndex with allowNegative=true
     let endCodepoint: number;
@@ -59,20 +59,20 @@ const strSlice = defineFunction(
         endCodepoint = Math.max(0, endCodepoint - 1);
       }
     }
-    
+
     // Sass behavior: if endCodepoint equals length, subtract 1
     // This happens when endInt is -1 (points to last character)
     if (endCodepoint === strValue.length) {
       endCodepoint -= 1;
     }
-    
+
     // endCodepoint is now the 0-based index of the last character to include (inclusive)
-    
+
     // If endCodepoint < start, return empty string
     if (endCodepoint < start) {
       return new Quoted('', string.options);
     }
-    
+
     // Extract substring
     // start and endCodepoint are 0-based codepoint indices
     // endCodepoint is inclusive, so slice(start, endCodepoint + 1)

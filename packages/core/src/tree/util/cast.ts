@@ -10,7 +10,7 @@ import { JsFunction } from '../js-function.js';
 import { JsObject } from '../js-object.js';
 import { Bool } from '../bool.js';
 import { isNode } from './is-node.js';
-import isPlainObject from 'lodash-es/isPlainObject.js';
+import { isPlainObject } from './collections.js';
 import { createRequire } from 'node:module';
 
 const { isArray } = Array;

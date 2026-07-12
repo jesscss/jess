@@ -13,7 +13,9 @@ import type { LessVisitor } from '../../src/types.js';
 
 // Helper to normalize visitor (PluginInterface allows Visitor | Visitor[])
 function normalizeVisitor(visitor: Visitor | Visitor[] | undefined): Visitor | undefined {
-  if (!visitor) return undefined;
+  if (!visitor) {
+    return undefined;
+  }
   if (Array.isArray(visitor)) {
     return visitor[0];
   }
@@ -80,8 +82,8 @@ describe('Less.js Visitor Integration', () => {
       } else if (visitor.enter) {
         // Fallback: manually traverse
         visitor.enter(tree);
-        if (tree.value && Array.isArray(tree.value)) {
-          for (const child of tree.value) {
+        if (tree.data && Array.isArray(tree.data)) {
+          for (const child of tree.data) {
             if (child && child.accept) {
               child.accept(visitor as any);
             }

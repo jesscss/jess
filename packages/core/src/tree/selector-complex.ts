@@ -8,13 +8,13 @@ import {
 import type { Context } from '../context.js';
 import { type Nil } from './nil.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import type { CompoundSelector } from './selector-compound.js';
 import { getEntries } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
-import { syncLog } from './util/__tests__/debug-log.js';
 
 // TODO - fix later
 export type ComplexSelectorComponent = SimpleSelector | CompoundSelector | Combinator | Ampersand;
@@ -30,78 +30,42 @@ export type ComplexSelectorValue = ComplexSelectorComponent[];
  * @note A complex selector may not always start with a selector. We also use this for a
  * relative selector, which means it may start with a combinator.
  */
+export interface ComplexSelector {
+  type: 'ComplexSelector';
+  shortType: 'sel';
+}
 export class ComplexSelector extends Selector<ComplexSelectorValue> {
-  type = 'ComplexSelector';
-  shortType = 'sel';
+  get length() {
+    return this.data.length;
+  }
+
   /**
    * Essentially, a#id.class === a.class#id as being identical selectors,
    * so we normalize groups and combinators
    *
    */
   override valueOf() {
-    if (!Array.isArray(this.value)) {
-      // Attempt to repair a malformed ComplexSelector that holds a single component directly.
-      // We treat the current `value` as a single component.
-      (this as any).value = [(this as any).value];
+    if (!Array.isArray(this.data)) {
+      this.setData([this.data as unknown as ComplexSelectorComponent]);
     }
-    return (this._valueOf ??= this.value.map(n => n.valueOf()).join(''));
-  }
-
-  protected override _computeKeySetAndFastReject(): void {
-    let combinedKeySet = new Set<string>();
-    let combinedVisibleKeySet = new Set<string>();
-    let canFastReject = true;
-
-    for (const component of this.value) {
-      // Skip combinators - they don't contribute keys
-      if (isNode(component, 'Combinator')) {
-        continue;
-      }
-
-      // Get keys from selector components
-      const selector = component as Selector;
-      const selectorKeySet = selector.keySet;
-      if (selectorKeySet instanceof Set) {
-        combinedKeySet = combinedKeySet.union(selectorKeySet);
-      }
-
-      // Only add to visibleKeySet if the component is visible AND not an implicit ampersand
-      // Implicit ampersands should be excluded from visibleKeySet for indexing purposes,
-      // regardless of visibility (they're added by getImplicitSelector, not written by user)
-      if (component.hasFlag(F_VISIBLE) && !component.hasFlag(F_IMPLICIT_AMPERSAND)) {
-        const selectorVisibleKeySet = selector.visibleKeySet;
-        if (selectorVisibleKeySet instanceof Set) {
-          combinedVisibleKeySet = combinedVisibleKeySet.union(selectorVisibleKeySet);
-        }
-      }
-      // If component is invisible (like an implicit ampersand), its visibleKeySet should be empty anyway
-
-      // If any selector component can't fast reject, this complex selector can't either
-      if (!selector.canFastReject) {
-        canFastReject = false;
-      }
-    }
-
-    this._keySet = combinedKeySet;
-    this._visibleKeySet = combinedVisibleKeySet;
-    this._canFastReject = canFastReject;
+    return (this._valueOf ??= this.data.map(n => n.valueOf()).join(''));
   }
 
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { value } = this;
-    let length = value.length;
+    let { data } = this;
+    let length = data.length;
     const mark = w.mark();
     for (let i = 0; i < length; i++) {
-      let component = value[i]!;
+      let component = data[i]!;
       /** Add some combinator spacing */
-      if (isNode(component, 'Combinator')) {
+      if (isNode(component, N.Combinator)) {
         /** Skip spacing if the previous node is a Nil */
-        if (isNode(value[i - 1], 'Nil')) {
+        if (isNode(data[i - 1], N.Nil)) {
           continue;
         }
-        let co = component.value;
+        let co = component.data;
         if (co !== ' ') {
           // For non-space combinators (>, +, ~, etc.), handle spacing explicitly
           // pre spacing (default to single space when no explicit pre)
@@ -124,106 +88,20 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     return w.getSince(mark);
   }
 
-  /**
-   * @todo - Re-write and simplify, now that we have a distinct CompoundSelector
-   */
   override evalNode(context: Context): MaybePromise<Selector | Nil> {
-    // #region agent log
-    const __agentDbg = process.env.DEBUG_EXTEND_BOOT === 'true';
-    const __agentFilePath = __agentDbg
-      ? (context.treeContext?.file?.fullPath
-        || (context.treeContext?.file?.path && context.treeContext?.file?.name
-          ? `${context.treeContext.file.path}/${context.treeContext.file.name}`
-          : context.treeContext?.file?.path)
-        || '')
-      : '';
-    const __agentShouldLog = __agentDbg
-      && typeof __agentFilePath === 'string'
-      && (
-        __agentFilePath.includes('tests-unit/extend-selector')
-        || __agentFilePath.includes('tests-unit/extend-exact')
-      )
-      && (this.valueOf().includes('@{') || this.valueOf().includes('&&') || this.valueOf().includes('.e'));
-    if (__agentShouldLog) {
-      syncLog({
-        sessionId: 'debug-session',
-        runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-        hypothesisId: 'H38',
-        location: 'selector-complex.ts:evalNode',
-        message: 'complex-eval-enter',
-        data: {
-          loc: this.location ?? null,
-          value: this.valueOf(),
-          len: this.value.length
-        },
-        timestamp: Date.now()
-      });
-    }
-    // #endregion
     return pipe(
       () => {
-        const selector = this;
-        let { value } = selector;
-        const maybe = serialForEach(Array.from(getEntries(value)), ([sel, i]) => {
-          // #region agent log
-          if (__agentShouldLog) {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-              hypothesisId: 'H12',
-              location: 'selector-complex.ts:evalNode',
-              message: 'complex-component-enter',
-              data: {
-                i,
-                type: (sel as any)?.type ?? null,
-                v: typeof (sel as any)?.valueOf === 'function' ? String((sel as any).valueOf()) : null
-              },
-              timestamp: Date.now()
-            });
-          }
-          // #endregion
+        const selector = super.evalNode(context) as ComplexSelector;
+        const { data } = selector;
+        const maybe = serialForEach(Array.from(getEntries(data)), ([sel, i]) => {
           const out = sel.eval(context);
           if (isThenable(out)) {
             return (out as Promise<Selector | Nil>).then((res) => {
-              value[i] = res as ComplexSelectorComponent;
-              // #region agent log
-              if (__agentShouldLog) {
-                syncLog({
-                  sessionId: 'debug-session',
-                  runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-                  hypothesisId: 'H12',
-                  location: 'selector-complex.ts:evalNode',
-                  message: 'complex-component-exit-async',
-                  data: {
-                    i,
-                    outType: (res as any)?.type ?? null,
-                    outV: typeof (res as any)?.valueOf === 'function' ? String((res as any).valueOf()) : null
-                  },
-                  timestamp: Date.now()
-                });
-              }
-              // #endregion
+              selector.setData(i, res as ComplexSelectorComponent);
               return undefined;
             });
           }
-          value[i] = out as ComplexSelectorComponent;
-          // #region agent log
-          if (__agentShouldLog) {
-            syncLog({
-              sessionId: 'debug-session',
-              runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-              hypothesisId: 'H12',
-              location: 'selector-complex.ts:evalNode',
-              message: 'complex-component-exit',
-              data: {
-                i,
-                outType: (out as any)?.type ?? null,
-                outV: typeof (out as any)?.valueOf === 'function' ? String((out as any).valueOf()) : null
-              },
-              timestamp: Date.now()
-            });
-          }
-          // #endregion
+          selector.setData(i, out as ComplexSelectorComponent);
           return undefined;
         });
         if (isThenable(maybe)) {
@@ -234,71 +112,14 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
         return selector;
       },
       (selector) => {
-        const { value } = selector;
-        // #region agent log
-        {
-          const runId = process.env.DEBUG_RUN_ID || 'pre-fix';
-          if (runId.startsWith('at-rule')) {
-            const anyHoist = Array.isArray(value) && value.some((c: any) => !!c?.hoistToRoot);
-            syncLog({
-              sessionId: 'debug-session',
-              runId,
-              hypothesisId: 'H1',
-              location: 'selector-complex.ts:evalNode',
-              message: 'complex selector hoist propagation check',
-              data: {
-                selectorV: selector.valueOf(),
-                selectorHoist: !!selector.hoistToRoot,
-                anyComponentHoist: anyHoist,
-                componentTypes: Array.isArray(value) ? value.map((c: any) => c?.type ?? null) : null,
-                componentHoists: Array.isArray(value) ? value.map((c: any) => !!c?.hoistToRoot) : null
-              },
-              timestamp: Date.now()
-            });
-          }
-        }
-        // #endregion
-        // Unwrap generated :is() PseudoSelectors that contain a single BasicSelector
-        // This handles cases where ampersands are replaced with :is(selector) during mixin evaluation
-        for (let i = 0; i < value.length; i++) {
-          const component = value[i];
-          if (
-            isNode(component, 'PseudoSelector')
-            && component.value.name === ':is'
-            && component.generated
-            && component.value.arg
-            && isNode(component.value.arg, 'BasicSelector')
-          ) {
-            // Unwrap :is(basicSelector) to just basicSelector
-            // Preserve hoist intent from the wrapper (e.g. `&-1` needs hoisting out of @media)
-            // by propagating `hoistToRoot` to both the ComplexSelector and the unwrapped arg.
-            if (component.hoistToRoot) {
-              selector.hoistToRoot = true;
-              (component.value.arg as any).hoistToRoot = true;
-            }
-            value[i] = component.value.arg as ComplexSelectorComponent;
-          }
-        }
-        if (value.length === 1) {
-          const only = value[0]!.inherit(selector);
+        const { data } = selector;
+        if (data.length === 1) {
+          const only = data[0]!.inherit(selector);
           if (selector.hoistToRoot) {
             (only as any).hoistToRoot = true;
           }
           return only;
         }
-        // #region agent log
-        if (__agentShouldLog) {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID || 'pre-fix',
-            hypothesisId: 'H12',
-            location: 'selector-complex.ts:evalNode',
-            message: 'complex-eval-exit',
-            data: { value: selector.valueOf(), len: value.length },
-            timestamp: Date.now()
-          });
-        }
-        // #endregion
         return selector;
       }
     );
@@ -387,13 +208,13 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
 
   /** @todo move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
-  //   this.value.forEach(node => node.toCSS(context, out))
+  //   this.data.forEach(node => node.toCSS(context, out))
   // }
 
   // toModule(context: Context, out: OutputCollector) {
   //   out.add('$J.sel([', this.location)
-  //   const length = this.value.length - 1
-  //   this.value.forEach((node, i) => {
+  //   const length = this.data.length - 1
+  //   this.data.forEach((node, i) => {
   //     node.toModule(context, out)
   //     if (i < length) {
   //       out.add(', ')

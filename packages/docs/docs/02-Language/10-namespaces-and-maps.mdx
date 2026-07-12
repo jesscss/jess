@@ -37,10 +37,10 @@ export const sizes = {
 ```
 
 ```less
-@-from "./tokens.js" import (sizes);
+@-use "./tokens.js";
 
 .box {
-  padding: $sizes.small;
+  padding: $tokens.sizes.small;
 }
 ```
 

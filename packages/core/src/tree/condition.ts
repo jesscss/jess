@@ -1,7 +1,6 @@
 import { type Context } from '../context.js';
 import { F_NON_STATIC, F_VISIBLE, Node, defineType } from './node.js';
 import { Bool } from './bool.js';
-import { Nil } from './nil.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
 
@@ -21,24 +20,47 @@ export type ConditionOptions = {
 };
 
 export interface Condition extends Node<ConditionValue, ConditionOptions> {
+  type: 'Condition';
+  shortType: 'condition';
   eval(context: Context): MaybePromise<Bool>;
 }
 
 export class Condition extends Node<ConditionValue, ConditionOptions> {
-  type = 'Condition' as const;
-  shortType = 'condition' as const;
-
   constructor(value: ConditionValue, options?: ConditionOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  get left() {
+    return this.data[0];
+  }
+
+  set left(val: Node) {
+    (this.data as ConditionValue)[0] = val;
+  }
+
+  get operator() {
+    return this.data[1];
+  }
+
+  set operator(val: ConditionOperator | undefined) {
+    (this.data as ConditionValue)[1] = val as any;
+  }
+
+  get right() {
+    return this.data[2];
+  }
+
+  set right(val: Node | undefined) {
+    (this.data as ConditionValue)[2] = val as any;
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let [left, op, right] = this.value;
+    let [left, op, right] = this.data;
     const needsParens = Boolean(right || this.options?.negate);
     if (this.options?.negate) {
       w.add('not ');
@@ -49,7 +71,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     left.toString(options);
     if (op && right) {
       w.add(' ');
-      w.add(op);
+      w.add(String(op));
       w.add(' ');
       right.toString(options);
     }
@@ -61,21 +83,17 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
 
   static getBool(node: Node, negated: boolean): Bool {
     if (node instanceof Bool) {
-      if (negated) {
-        node.value = !node.value;
-      }
-      return node;
+      return new Bool(negated ? !node.data : node.data);
     }
-    if (node instanceof Nil) {
-      return new Bool(negated);
-    }
-    return new Bool(true && !negated);
+    // Less guards treat only explicit booleans as truthy.
+    // Any non-boolean (number, quoted, keyword, list, nil, etc.) is false.
+    return new Bool(negated);
   }
 
   static getResult(a: Node, b: Node, op: ConditionOperator): boolean {
     switch (op) {
-      case 'and': return Condition.getBool(a, false).value && Condition.getBool(b, false).value;
-      case 'or': return Condition.getBool(a, false).value || Condition.getBool(b, false).value;
+      case 'and': return Condition.getBool(a, false).data && Condition.getBool(b, false).data;
+      case 'or': return Condition.getBool(a, false).data || Condition.getBool(b, false).data;
       default:
         switch (a.compare(b)) {
           case -1:
@@ -91,18 +109,15 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   }
 
   override evalNode(context: Context): MaybePromise<Bool> {
-    let [left, op, right] = this.value;
+    let [left, op, right] = this.data;
     let negated = !!this.options?.negate;
 
     return pipe(
       () => left.eval(context),
       (a) => {
         if (!right) {
-          /**
-           * If there's no right-hand side node,
-           * we coerce the left-hand side node to a boolean
-           */
-          return Condition.getBool(left, negated);
+          // Defer unary coercion to the final stage to avoid double-negation.
+          return a;
         }
         return a;
       },
@@ -118,8 +133,21 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       },
       ([a, b]) => {
         if (!b) {
-          return Condition.getBool(a, negated);
+          const unary = Condition.getBool(a, negated);
+          return unary;
         }
+        const normalizeDefaultCall = (node: Node): Node => {
+          if (node.type !== 'Call') {
+            return node;
+          }
+          const callName = String((node as any).value?.name?.valueOf?.() ?? (node as any).value?.name ?? '');
+          if (callName === 'default' || callName === '??') {
+            return new Bool(Boolean(context.isDefault));
+          }
+          return node;
+        };
+        a = normalizeDefaultCall(a);
+        b = normalizeDefaultCall(b);
         let result = Condition.getResult(a, b, op!);
         return new Bool(negated ? !result : result);
       }

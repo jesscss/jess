@@ -118,8 +118,6 @@ export interface Visitor {
   interpolatedExit?(n: tree.Interpolated, ctx?: VisitorContext): void;
   defaultGuard?(n: tree.DefaultGuard, ctx?: VisitorContext): VisitorReturn;
   defaultGuardExit?(n: tree.DefaultGuard, ctx?: VisitorContext): void;
-  jsExpression?(n: tree.JsExpression, ctx?: VisitorContext): VisitorReturn;
-  jsExpressionExit?(n: tree.JsExpression, ctx?: VisitorContext): void;
   rest?(n: tree.Rest, ctx?: VisitorContext): VisitorReturn;
   restExit?(n: tree.Rest, ctx?: VisitorContext): void;
 }
@@ -216,7 +214,9 @@ export abstract class TreeVisitor extends Visitor {
     // If node has accept() method, let it control traversal
     // This allows nodes to customize traversal (e.g., Less.js compatibility)
     // accept() will visit self and children, so we don't auto-visit here
-    if (n.accept && typeof n.accept === 'function') {
+    const hasAccept = n.accept && typeof n.accept === 'function';
+    const hasCustomAccept = hasAccept && n.accept !== Node.prototype.accept;
+    if (hasCustomAccept) {
       const returnVal = n.accept(this);
       if (!returnVal || typeof returnVal === 'symbol') {
         return returnVal;

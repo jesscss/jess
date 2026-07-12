@@ -4,8 +4,9 @@ import type { Operator } from './util/calculate.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { Call } from './call.js';
-import { List } from './list.js';
+import { list } from './list.js';
 
 export type { Operator };
 /** Operation is always a tuple */
@@ -15,26 +16,51 @@ export type OperationValue = [
   right: Node
 ];
 
+export interface Operation {
+  type: 'Operation';
+  shortType: 'op';
+}
 /**
  * A math operation OR a value with a slash. CSS is ambiguous
  * in syntax about which is which, so we just classify `value / value`
  * as an operation.
  */
 export class Operation extends Node<OperationValue> {
-  type = 'Operation' as const;
-  shortType = 'op' as const;
-
   constructor(value: OperationValue, options?: any, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
     // Operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
 
+  get left() {
+    return this.data[0];
+  }
+
+  set left(val: Node) {
+    (this.data as OperationValue)[0] = val;
+  }
+
+  get operator() {
+    return this.data[1];
+  }
+
+  set operator(val: Operator) {
+    (this.data as OperationValue)[1] = val;
+  }
+
+  get right() {
+    return this.data[2];
+  }
+
+  set right(val: Node) {
+    (this.data as OperationValue)[2] = val;
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let [left, op, right] = this.value;
+    let [left, op, right] = this.data;
     let leftStr = w.capture(() => left.toString(options));
     let rightStr = w.capture(() => right.toString(options));
     w.add(leftStr.trimEnd(), left);
@@ -45,15 +71,21 @@ export class Operation extends Node<OperationValue> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     let n = this;
-    let [left, op, right] = n.value;
+    let [left, op, right] = n.data;
     const maybeLeft = left.eval(context);
     const finalize = (l: Node, r: Node): MaybePromise<Node> => {
       if (context.shouldOperate(op, l, r)) {
+        if (isNode(l, N.Operation) || isNode(r, N.Operation)) {
+          // Preserve composite expressions such as `10px / 2 * 2` when a nested
+          // operation intentionally remains unevaluated under current math mode.
+          n.setData([l, op, r]);
+          return n;
+        }
         const unitMode = context?.opts?.unitMode ?? 'preserve';
         const isPreserveMode = unitMode === 'preserve';
 
         // In preserve mode, catch unit errors and return calc() call
-        if (isPreserveMode && isNode(l, 'Dimension') && isNode(r, 'Dimension')) {
+        if (isPreserveMode && isNode(l, N.Dimension) && isNode(r, N.Dimension)) {
           try {
             let out = l.operate(r, op, context);
             out.pre = left.pre;
@@ -63,14 +95,12 @@ export class Operation extends Node<OperationValue> {
             // If it's a unit error (TypeError), return calc(operation)
             if (error instanceof TypeError) {
               // Update the existing operation with evaluated nodes and mark as evaluated
-              n.value = [l, op, r];
+              n.setData([l, op, r]);
               n.evaluated = true;
               // Mark child nodes as evaluated too
               l.evaluated = true;
               r.evaluated = true;
-              // Re-parent operation to List (List will adopt it when we set value)
-              const args = new List([n], { sep: ',' });
-              const calcCall = new Call({ name: 'calc', args });
+              const calcCall = new Call({ name: 'calc', args: list([n]) });
               calcCall.pre = left.pre;
               calcCall.post = right.post;
               return calcCall;
@@ -80,12 +110,17 @@ export class Operation extends Node<OperationValue> {
           }
         }
 
-        let out = l.operate(r, op, context);
+        let out: Node;
+        try {
+          out = l.operate(r, op, context);
+        } catch (error) {
+          throw error;
+        }
         out.pre = left.pre;
         out.post = right.post;
         return out;
       }
-      n.value = [l, op, r];
+      n.setData([l, op, r]);
       return n;
     };
     const handleLeft = (l: Node): MaybePromise<Node> => {

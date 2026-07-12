@@ -1,10 +1,11 @@
 import { toHSL } from '../util/to-hsl.js';
-import { Color, defineFunction, Num } from '@jesscss/core';
+import { Color, defineFunction, Dimension } from '@jesscss/core';
 
 export default defineFunction(
   'saturation',
   function(color: Color) {
-    return new Num(toHSL(color).s * 100);
+    const result = new Dimension({ number: toHSL(color).s * 100, unit: '%' });
+    return result;
   },
   {
     params: [{

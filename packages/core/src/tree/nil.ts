@@ -5,6 +5,7 @@
 import {
   Node,
   F_VISIBLE,
+  F_STATIC,
   defineType,
   type LocationInfo,
   type NodeOptions
@@ -12,6 +13,8 @@ import {
 import type { Context, TreeContext } from '../context.js';
 
 export interface Nil extends Node<''> {
+  type: 'Nil';
+  shortType: 'nil';
   valueOf(): '';
   eval(context: Context): Nil;
 }
@@ -26,19 +29,15 @@ export interface Nil extends Node<''> {
  * `$var:;`
  */
 export class Nil extends Node<''> {
-  type = 'Nil';
-  shortType = 'nil';
-  override allowRoot = true;
-  override allowRuleRoot = true;
-  override state = 0b0000; // 0b0000 means no flags are set
-
   constructor(
     value?: any,
     options?: NodeOptions,
     location?: LocationInfo,
     treeContext?: TreeContext) {
     super('', options, location, treeContext);
-    // Nil nodes should not be visible (they serialize to empty strings)
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
+    this.addFlag(F_STATIC);
     this.removeFlag(F_VISIBLE);
     // Nil nodes should never render, even if fullRender is set on prototype (e.g., in tests)
     this.fullRender = false;

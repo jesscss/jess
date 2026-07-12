@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Auto-stage cursor state files so they're always included in commits
+git add .cursor/PREPUSH_CHECK_TODOS.md .cursor/PROJECT_STATE.md 2>/dev/null || true
+pnpm run precommit:staged

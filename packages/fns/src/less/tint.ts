@@ -11,11 +11,17 @@ const tint = defineFunction(
   'tint',
   function(this: Context, color: Color, amount: Dimension) {
     const white = new Color({
-      format: ColorFormat.RGB,
       rgb: [255, 255, 255],
       alpha: 1
+    }, {
+      format: ColorFormat.RGB
     });
-    return mix.call(this, white, color, amount);
+    const out = mix.call(this, white, color, amount);
+    out.options.format = color.options.format;
+    if (Math.abs(out._alpha - 1) < 1e-12) {
+      out.alpha = 1;
+    }
+    return out;
   },
   {
     params: [{

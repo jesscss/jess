@@ -5,21 +5,21 @@ import type {
   ImportOptions,
   Node,
   Any,
-  Selector,
-  Mixin
+  Selector
 } from './tree/index.js';
-import type { Visitor } from './visitor/index.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
 import type { PluginInterface } from './plugin.js';
-import { MathMode, UnitMode } from './types/modes.js';
+import { EqualityMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { isNode } from './tree/util/is-node.js';
+import { N } from './tree/node-type.js';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError } from './jess-error.js';
 import type { Call } from './tree/call.js';
-import type { List } from './tree/list.js';
 import { CallMap } from './tree/util/recursion-helper.js';
+import { createRequire } from 'node:module';
+import { BitSetLibrary } from './tree/util/bitset.js';
 
 export interface ContextOptions {
   /** Hash classes for module output */
@@ -40,6 +40,7 @@ export interface ContextOptions {
   enableJavaScript?: boolean;
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  equalityMode?: EqualityMode;
 
   /** Directories to search to resolve files */
   searchPaths?: string[];
@@ -142,6 +143,7 @@ export class TreeContext implements TreeContextOptions {
   bubbleRootAtRules: boolean | undefined;
   mathMode: MathMode | undefined;
   unitMode: UnitMode | undefined;
+  equalityMode: EqualityMode | undefined;
 
   /** @todo - Change how extend works based on this value */
   isModule: boolean | undefined;
@@ -161,6 +163,7 @@ export class TreeContext implements TreeContextOptions {
     let {
       mathMode,
       unitMode,
+      equalityMode,
       isModule,
       file,
       plugin,
@@ -170,6 +173,7 @@ export class TreeContext implements TreeContextOptions {
     } = opts;
     this.mathMode = mathMode;
     this.unitMode = unitMode;
+    this.equalityMode = equalityMode;
     this.isModule = isModule;
     this.file = file;
     this.plugin = plugin;
@@ -247,10 +251,20 @@ export class Context {
   extendRoots!: ExtendRootRegistry;
 
   /**
-   * Registered extends with their extend root context
-   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode]
+   * Depth-first document order of each Ruleset (assigned once per root before eval).
+   * Used so processExtends can apply extends in true source order.
+   *
+   * @todo - Probably remove once I fix extends
    */
-  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node]> = [];
+  documentOrderByRuleset?: WeakMap<Ruleset, number>;
+
+  /**
+   * Registered extends with their extend root context
+   * Format: [target, selectorWithExtend, partial, extendRoot, extendNode, documentOrder?]
+   *
+   * @todo - Probably remove once I fix extends
+   */
+  extends: Array<[target: Selector, selectorWithExtend: Selector, partial: boolean, extendRoot: Rules, extendNode: Node, documentOrder?: number, fromReferenceScope?: boolean]> = [];
 
   /**
    * When doing any kind of lookup, the current node and resolved
@@ -275,6 +289,9 @@ export class Context {
 
   /** Rules depth, used to figure out source order */
   depth = -1;
+
+  /** Selector valueOf() strings to bitset positions */
+  selectorBits = new BitSetLibrary<string>();
 
   private _classMap: Map<string, string> | undefined;
   get classMap() {
@@ -311,6 +328,46 @@ export class Context {
   private _referenceStack: number = 0;
   get referenceStack() {
     return this._referenceStack;
+  }
+
+  /**
+   * Import-evaluation scope stack.
+   *
+   * This intentionally models lexical import scope instead of global counters:
+   * - each import branch pushes its semantics on entry
+   * - each branch pops in `finally`
+   * - readers ask semantic questions (`inReferenceImportScope`) instead of
+   *   inspecting mutable depth values.
+   *
+   * Why this exists:
+   * some behaviors depend on "how we got here" (call-path scope), not only
+   * on the current node's own options. Example: suppressing top-level @import
+   * hoists while traversing a reference-only branch.
+   */
+  private _importScopeStack: Array<{ reference: boolean; multiple: boolean }> = [];
+  get importScope() {
+    return this._importScopeStack;
+  }
+
+  get inReferenceImportScope() {
+    return this._importScopeStack.some(scope => scope.reference);
+  }
+
+  get inMultipleImportScope() {
+    return this._importScopeStack.some(scope => scope.multiple);
+  }
+
+  pushImportScope(scope: { reference?: boolean; multiple?: boolean }) {
+    this._importScopeStack.push({
+      reference: scope.reference === true,
+      multiple: scope.multiple === true
+    });
+  }
+
+  popImportScope() {
+    if (this._importScopeStack.length > 0) {
+      this._importScopeStack.pop();
+    }
   }
 
   pushReference() {
@@ -462,12 +519,48 @@ export class Context {
     }
 
     if (!finalPath) {
-      /** @todo - Add messaging around tried paths */
-      throw new Error('File not found');
+      // Fallback for bare module specifiers (e.g. "@scope/pkg/path").
+      const looksBareSpecifier = (p: string) =>
+        !path.isAbsolute(p)
+        && !p.startsWith('./')
+        && !p.startsWith('../')
+        && !p.startsWith('/')
+        && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(p);
+      const tryResolveModule = (request: string, basedir: string): string | undefined => {
+        try {
+          const req = createRequire(path.join(basedir, '__jess_resolve__.js'));
+          return req.resolve(request);
+        } catch {
+          return undefined;
+        }
+      };
+      const moduleBaseDirs = [currentDirectory, ...searchPaths, process.cwd()];
+      for (const candidate of paths) {
+        if (!looksBareSpecifier(candidate)) {
+          continue;
+        }
+        for (const baseDir of moduleBaseDirs) {
+          const base = path.isAbsolute(baseDir) ? baseDir : path.resolve(currentDirectory, baseDir);
+          const resolved = tryResolveModule(candidate, base) ?? tryResolveModule(`${candidate}.less`, base);
+          if (resolved) {
+            finalPath = resolved;
+            break;
+          }
+        }
+        if (finalPath) {
+          break;
+        }
+      }
     }
 
-    const ext = path.extname(finalPath);
-    const friendlyPath = path.relative(process.cwd(), finalPath);
+    if (!finalPath) {
+      /** @todo - Add messaging around tried paths */
+      throw new Error(`File not found: ${importPath} (from: ${currentDirectory})`);
+    }
+
+    const normalizedFinalPath = finalPath.split(/[?#]/)[0]!;
+    const ext = path.extname(normalizedFinalPath);
+    const friendlyPath = path.relative(process.cwd(), normalizedFinalPath);
 
     if (!ext) {
       throw new Error(`File "${friendlyPath}" not supported`);
@@ -475,7 +568,7 @@ export class Context {
 
     return {
       triedPaths: paths,
-      resolvedPath: finalPath,
+      resolvedPath: normalizedFinalPath,
       friendlyPath
     };
   }
@@ -538,7 +631,9 @@ export class Context {
     } catch (error: any) {
       throw error;
     }
-    const parseResult = plugin.safeParse!(resolvedPath, source);
+    const parseResult = plugin.safeParse!(resolvedPath, source, {
+      compilerOptions: this.opts as Record<string, any>
+    });
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
@@ -568,7 +663,7 @@ export class Context {
     if (parseResult.tree) {
       // Set context.root so preEval visitors can check if this is the root
       // parseResult.tree should be a Rules node (the root of the parsed tree)
-      if (!this.root && isNode(parseResult.tree, 'Rules')) {
+      if (!this.root && isNode(parseResult.tree, N.Rules)) {
         this.root = parseResult.tree;
       }
 
@@ -604,6 +699,14 @@ export class Context {
   }
 
   /**
+   * Public path resolution for import nodes that need source-path lookups
+   * without triggering parse/eval.
+   */
+  async resolveImportPath(importPath: string) {
+    return this._getPath(importPath);
+  }
+
+  /**
    * Parse a string content directly using the appropriate plugin
    */
   async parseString(content: string, options: {
@@ -616,7 +719,9 @@ export class Context {
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
-    const tree = await plugin.parse!(virtualPath, content);
+    const tree = await plugin.parse!(virtualPath, content, {
+      compilerOptions: this.opts as Record<string, any>
+    });
 
     if (!tree) {
       throw new Error('Failed to parse content');
@@ -634,8 +739,14 @@ export class Context {
    * @param importOptions
    */
   async getModule(importPath: string, importOptions: ImportOptions = {}) {
+    const isFnsImport = importPath === '@jesscss/fns'
+      || importPath.startsWith('@jesscss/fns/')
+      || importPath === '#less'
+      || importPath.startsWith('#less/')
+      || importPath === '#sass'
+      || importPath.startsWith('#sass/');
     const { enableJavaScript } = this.opts;
-    if (enableJavaScript === false) {
+    if (enableJavaScript === false && !isFnsImport) {
       throw new Error('JavaScript evaluation is disabled');
     }
     const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
@@ -659,6 +770,9 @@ export class Context {
     if (!plugin) {
       plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(ext) && plugin.import);
       if (!plugin) {
+        if (['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'].includes(ext)) {
+          throw new Error('Feature not supported. Install @jesscss/plugin-js to enable script execution features.');
+        }
         throw new Error(`File "${friendlyPath}" not supported`);
       }
     }
@@ -679,7 +793,7 @@ export class Context {
   //   filePath: string,
   //   nodeOptions: StyleImportOptions,
   //   userOptions: Record<string, any> = {},
-  //   withValues?: StyleImportValue['with']
+  //   withNode?: StyleImportValue['withNode']
   // ) {
   //   let rules = await this.getTree(filePath, userOptions);
   //   if (withValues && isNode(withValues.node, 'Rules')) {

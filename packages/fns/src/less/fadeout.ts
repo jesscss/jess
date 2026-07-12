@@ -10,20 +10,27 @@ import {
 const fadeout = defineFunction(
   'fadeout',
   function(this: Context, color: Color, amount: Dimension, method?: Node) {
-    let adjustAmount = amount.value.number / 100;
+    let adjustAmount = amount.data.number / 100;
 
-    if (method && method.value === 'relative') {
+    if (method && method.data === 'relative') {
       adjustAmount = color._alpha * adjustAmount;
     }
 
     const newAlpha = color._alpha - adjustAmount;
+    const inputNode = typeof color.data.node === 'string' ? color.data.node : undefined;
+    const preserveHexFormat = color.options.format === ColorFormat.HEX
+      && !!inputNode
+      && inputNode.startsWith('#');
+    const outputFormat = preserveHexFormat ? ColorFormat.HEX : ColorFormat.RGB;
 
     // Create new color with adjusted alpha, preserving original format
     return new Color({
-      format: color.value.format,
       rgb: color._rgb,
       hsl: color._hsl,
       alpha: newAlpha
+    }, {
+      format: outputFormat,
+      modernSyntax: color.options.modernSyntax
     }).inherit(color);
   },
   {

@@ -1,13 +1,7 @@
 import type { Context } from '../context.js';
-import { Node, defineType } from './node.js';
+import { Node, F_NON_STATIC, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import { isNode } from './util/is-node.js';
-import { syncLog } from './util/__tests__/debug-log.js';
-
-export type ExpressionOptions = {
-  parens?: boolean;
-};
 
 /**
  * An expression is a node that returns a value.
@@ -16,35 +10,28 @@ export type ExpressionOptions = {
  * When parsing Less/Sass, everything containing an operation is
  * considered an expression.
  */
-export interface Expression extends Node<Node, ExpressionOptions> {
+export interface Expression extends Node<Node> {
+  type: 'Expression';
+  shortType: 'expr';
   eval(context: Context): MaybePromise<Node>;
 }
 
-export class Expression extends Node<Node, ExpressionOptions> {
-  type = 'Expression' as const;
-  shortType = 'expr' as const;
+export class Expression extends Node<Node> {
+  constructor(value: Node, options?: any, location?: any, treeContext?: any) {
+    super(value, options, location, treeContext);
+    this.addFlag(F_NON_STATIC);
+  }
+
+  get value() {
+    return this.data as Node;
+  }
+
+  set value(val: Node) {
+    this.setData(val);
+  }
 
   override evalNode(context: Context): MaybePromise<Node> {
-    const { value } = this;
-    // #region agent log
-    try {
-      if (isNode(value, 'Call') && isNode((value as any).value?.name, 'Reference')) {
-        const raw = (value as any).value.name.value?.key;
-        const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
-        if (keyStr.includes('my-mixins') || keyStr === 'ruleset') {
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID ?? 'run',
-            hypothesisId: 'H13',
-            location: 'expression.ts:evalNode',
-            message: 'eval-expression-call',
-            data: { keyStr },
-            timestamp: Date.now()
-          });
-        }
-      }
-    } catch {}
-    // #endregion
+    const value = this.data;
     const out = value.eval(context);
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
@@ -56,16 +43,11 @@ export class Expression extends Node<Node, ExpressionOptions> {
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
-    let { parens } = this.options;
     const mark = w.mark();
     w.add('$', this);
-    if (parens) {
-      w.add('(');
-    }
-    this.value.toString(options);
-    if (parens) {
-      w.add(')');
-    }
+    w.add('(');
+    this.data.toString(options);
+    w.add(')');
     return w.getSince(mark);
   }
 }

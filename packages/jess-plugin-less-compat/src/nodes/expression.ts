@@ -27,7 +27,7 @@ export function transformExpressionToLess(
 
     // Map 'value' property (Less expects array)
     if (prop === 'value') {
-      const value = expr.value;
+      const value = expr.data;
       if (value instanceof Node) {
         // Single node - wrap in array
         return [toLessNode(value, { cache })];

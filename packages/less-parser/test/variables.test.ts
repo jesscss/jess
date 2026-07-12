@@ -18,6 +18,18 @@ describe('varDeclarationOrCall', () => {
     const { errors } = parse('@var();', 'main');
     expect(errors.length).toBe(0);
   });
+
+  it('should parse selector capture with *[ ... ]', () => {
+    const { errors } = parse('@classes: *[.a, .b, .c];', 'stylesheet');
+    expect(errors.length).toBe(0);
+  });
+
+  it('should warn on legacy unquoted selector-like variables', () => {
+    const { errors, warnings } = parse('@classes: .a, .b, .c;', 'stylesheet');
+    expect(errors.length).toBe(0);
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+    expect(warnings[0]!.message).toMatch(/Unquoted selector capture/);
+  });
 });
 
 describe('varReference', () => {
@@ -50,4 +62,3 @@ describe('varName', () => {
     expect(errors.length).toBe(0);
   });
 });
-

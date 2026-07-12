@@ -26,7 +26,7 @@ export function transformCommentToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      return comment.value;
+      return comment.data;
     }
 
     // Map 'silent' property (Less uses this for /* */ vs // comments)

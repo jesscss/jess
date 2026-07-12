@@ -27,7 +27,7 @@ export function transformAttributeSelectorToLess(
 
     // Map 'key' property (Less uses 'key', Jess uses 'name')
     if (prop === 'key') {
-      const name = attr.value.name;
+      const name = attr.data.name;
       if (name instanceof Node) {
         return toLessNode(name, { cache });
       }
@@ -36,12 +36,12 @@ export function transformAttributeSelectorToLess(
 
     // Map 'op' property (operator)
     if (prop === 'op') {
-      return attr.value.op || '';
+      return attr.data.op || '';
     }
 
     // Map 'value' property
     if (prop === 'value') {
-      const value = attr.value.value;
+      const value = attr.data.value;
       if (value instanceof Node) {
         return toLessNode(value, { cache });
       }

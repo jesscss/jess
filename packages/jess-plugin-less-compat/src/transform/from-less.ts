@@ -1,4 +1,4 @@
-import { Any, Node, Quoted, Rules } from '@jesscss/core';
+import { Any, Collection, Declaration, Dimension, Node, Quoted, Rules } from '@jesscss/core';
 import { getJessNodeFromProxy, isLessProxy } from './proxy.js';
 
 // Less.js types
@@ -7,6 +7,8 @@ export type LessNode = any;
 export interface FromLessOptions {
   /** Cache conversions to avoid repeated work */
   cache?: WeakMap<any, Node>;
+  /** When true, boolean return values are treated as "no output" (Less statement context) */
+  statementContext?: boolean;
 }
 
 /**
@@ -69,6 +71,66 @@ export function fromLessNode(
       cache.set(lessNode, out);
       return out;
     }
+
+    if (lessNode.type === 'Dimension' || lessNode.type === 'Num') {
+      const n = typeof lessNode.value === 'number' ? lessNode.value : Number(lessNode.value);
+      const u = typeof lessNode.unit === 'string' ? lessNode.unit : '';
+      const out = new Dimension({ number: n, unit: u || undefined });
+      cache.set(lessNode, out);
+      return out;
+    }
+
+    if (lessNode.type === 'Declaration' || lessNode.type === 'Rule') {
+      const prop = String(lessNode.name ?? '');
+      const val = lessNode.value;
+      const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
+        ? val.value
+        : String(val ?? '');
+      const out = new Declaration({
+        name: new Any(prop, { role: 'property' as const }),
+        value: new Any(valueStr)
+      });
+      out.pre = 0;
+      out.post = 0;
+      cache.set(lessNode, out);
+      return out;
+    }
+
+    if (lessNode.type === 'DetachedRuleset') {
+      const ruleset = lessNode.ruleset;
+      const rules = (ruleset && Array.isArray(ruleset.rules)) ? ruleset.rules : [];
+      const nodes: Node[] = [];
+      for (const rr of rules) {
+        if (rr && typeof rr === 'object' && (rr.type === 'Declaration' || rr.type === 'Rule')) {
+          const prop = String(rr.name ?? '');
+          const val = (rr as any).value;
+          const valueStr = val && typeof val === 'object' && typeof val.value === 'string'
+            ? val.value
+            : String(val ?? '');
+          const decl = new Declaration({
+            name: new Any(prop, { role: 'property' as const }),
+            value: new Any(valueStr)
+          });
+          decl.pre = 0;
+          decl.post = 0;
+          nodes.push(decl);
+        }
+      }
+      const out = new Collection(nodes);
+      cache.set(lessNode, out);
+      return out;
+    }
+
+    if (lessNode.type === 'AtRule') {
+      const n = String(lessNode.name ?? '');
+      const v = String(lessNode.value ?? '');
+      const line = `${n} ${v};`;
+      const out = n === '@charset'
+        ? new Any(line, { role: 'charset' as const })
+        : new Any(line);
+      cache.set(lessNode, out);
+      return out;
+    }
   }
 
   // If we can't convert it, try to return the original node
@@ -78,6 +140,44 @@ export function fromLessNode(
     `Cannot convert Less node back to Jess: ${lessNode?.type || 'unknown type'}. `
     + `Less visitors should not create new nodes, only modify existing ones.`
   );
+}
+
+/**
+ * Convert a Less plugin function return value to a Jess node.
+ * Handles primitives (number, boolean), Less nodes (via fromLessNode), and toCSS() objects.
+ * Use this for @plugin-loaded function results so conversion is centralized here.
+ */
+export function fromLessPluginReturnValue(
+  value: unknown,
+  options?: FromLessOptions
+): Node | undefined {
+  if (value === null || value === undefined) {
+    return value as undefined;
+  }
+  if (typeof value === 'number') {
+    return new Any(String(value));
+  }
+  if (value === true || value === false) {
+    if (options?.statementContext) {
+      return undefined;
+    }
+    return new Any(String(value));
+  }
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.type === 'string') {
+      return fromLessNode(value as LessNode, options);
+    }
+    if (typeof obj.toCSS === 'function') {
+      try {
+        const css = (obj.toCSS as () => string)();
+        return new Any(typeof css === 'string' ? css : String(css));
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return value as Node;
 }
 
 /**

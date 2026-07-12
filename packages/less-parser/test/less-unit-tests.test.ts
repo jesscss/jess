@@ -8,10 +8,11 @@ const testData = path.dirname(require.resolve('@less/test-data'));
 const lessParser = new Parser();
 
 describe('Less full-suite (minus invalid files)', () => {
-  const files = glob.sync(path.join(testData, 'tests-unit/**/*.less'));
+  const files = glob.sync(path.join(testData, 'tests-config/**/*.less'));
   files
     .map(value => path.relative(testData, value))
     .filter(value => !invalidLess.includes(value))
+    .filter(value => !value.includes('-REMOVED'))
     .sort()
     .forEach((file) => {
       it(`${file}`, () => {

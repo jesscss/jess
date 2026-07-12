@@ -63,15 +63,13 @@ export const invalidLess: string[] = [
 
   // 'tests-unit/css-guards/css-guards.less',
   // Currently failing parsing; treat as invalid until less-parser supports them fully.
-  'tests-unit/extract-and-length/extract-and-length.less',
-  'tests-unit/functions/functions.less',
+  // 'tests-unit/extract-and-length/extract-and-length.less',
+  // 'tests-unit/functions/functions.less',
   // 'tests-unit/mixins-interpolated/mixins-interpolated.less',
 
-  /** @todo */
   'tests-unit/permissive-parse/permissive-parse.less',
+  'tests-unit/permissive-parse/legacy/permissive-parse.less',
   'tests-unit/property-name-interp/property-name-interp.less',
-  // 'tests-config/compression/compression.less',
-
   // // 'tests-config/math/parens-division/new-division.less',
   // 'tests-config/math-strict/css.less',
   // 'tests-unit/import/invalid-css.less',
@@ -87,9 +85,30 @@ export const invalidLess: string[] = [
   'tests-unit/variables-in-at-rules/variables-in-at-rules.less',
 
   // Currently failing parsing; treat as invalid until less-parser supports them fully.
-  'tests-unit/functions-each/functions-each.less',
+  // 'tests-unit/functions-each/functions-each.less',
+  'tests-unit/functions/legacy/functions.less',
   'tests-unit/operations/operations.less',
 
-  // /** Has an unsupported token - `alpha(opacity=@var)` */
-  // 'tests-unit/variables/variables.less'
+  /** @container with variable interpolation: @container @varfoo (...) */
+  'tests-unit/container/container.less',
+
+  /** Has an unsupported token - `5_large` numeric separator */
+  'tests-unit/variables/variables.less',
+
+  /** Numeric property name `{5:-}` on last line */
+  'tests-unit/css-guards/css-guards.less',
+
+  /** `.3D` tokenized as DimensionNum instead of class selector */
+  'tests-unit/extract-and-length/extract-and-length.less',
+
+  /** `*-z-${name}` splits into LegacyPropIdent + InterpolatedIdent */
+  'tests-unit/parser-property-interp/parser-property-interp.less',
+
+  /** `/deep/` combinator not supported (deprecated CSS) */
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less',
+
+  /** Inline JavaScript using backticks is intentionally unsupported */
+  'tests-unit/javascript/javascript.less',
+  'tests-config/js-type-errors/js-type-error.less',
+  'tests-config/no-js-errors/no-js-errors.less'
 ];

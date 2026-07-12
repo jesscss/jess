@@ -1,12 +1,12 @@
-import isPlainObject from 'lodash-es/isPlainObject.js';
+import { isPlainObject } from './tree/util/collections.js';
 import { AbstractClass, Class, OmitIndexSignature } from 'type-fest';
 import { isNode } from './tree/util/is-node.js';
+import { N } from './tree/node-type.js';
 import type { Context } from './context.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Sequence, Operation, Num, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
-
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
 export type Lazy<T> = () => MaybePromise<T>;
@@ -33,6 +33,8 @@ export type Lazy<T> = () => MaybePromise<T>;
 export type FunctionThis = {
   /** The evaluation context */
   context: Context;
+  /** The current call node that invoked this function, when available. */
+  caller?: Context['caller'];
   /**
    * The function arguments. Always returns a function that evaluates to MaybePromise<List>.
    * This provides a consistent API regardless of lazy parameter configuration.
@@ -309,6 +311,10 @@ export function defineFunction<
 
 /** This will be called internally by Jess to functions created with defineFunction */
 export async function callWithContext(context: Context, fn: (...args: any[]) => any, ...args: any[]): Promise<any> {
+  const listArg = args.length === 1 && isNode(args[0], N.List)
+    ? args[0] as List
+    : undefined;
+  args = listArg ? [...listArg.data] : args;
   // Only reject record-based calls (plain objects) when there's no params metadata
   // Collections are allowed as positional arguments even without params metadata
   // (e.g., detached rulesets passed to mixins)
@@ -316,16 +322,10 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
     throw new Error('Record-based call without params is not supported');
   }
 
-  let originalArgsList: List;
-
-  /** Use List arguments */
-  if (args[0] && isNode(args[0], 'List')) {
-    originalArgsList = args[0];
-    args = args[0].value;
-  } else {
-    /** Normalize into a List node for tracking original arguments */
-    originalArgsList = new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
-  }
+  /** Normalize positional args into a List node for tracking original arguments */
+  const originalArgsList: List = listArg
+    ? listArg.copy(true)
+    : new List(args.map(arg => isNode(arg) ? arg.clone() : arg));
 
   const hasParams = !!(fn as any)?.options?.params;
 
@@ -432,7 +432,8 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
   const functionThis: FunctionThis = {
     context,
     args: () => originalArgsList.eval(context),
-    rawArgs: originalArgsList
+    rawArgs: originalArgsList,
+    caller: context.caller
   };
 
   // Build positional arguments with evaluation, validation, and conversion
@@ -701,8 +702,11 @@ async function buildCallWithContextPositionalArgs(
       if ((def as any).lazy) {
         positionalArgs.push(...arr.map(item => createThunk(item, def, context)));
       } else {
-        positionalArgs.push(...arr.map((item) => {
+        for (const item of arr) {
           let processedItem: any = (isNode(item) && !item.evaluated) ? (item as any).eval(context) : item;
+          if (isThenable(processedItem)) {
+            processedItem = await processedItem;
+          }
 
           // Validate AFTER evaluation but BEFORE conversion
           validateArgumentIfNeeded(processedItem, def, 'Argument');
@@ -711,8 +715,8 @@ async function buildCallWithContextPositionalArgs(
           if (def.convert && processedItem instanceof Dimension) {
             processedItem = applyConversionPlugins(processedItem, def.convert);
           }
-          return processedItem;
-        }));
+          positionalArgs.push(processedItem);
+        }
       }
     } else {
       const v = record[name];
@@ -727,24 +731,21 @@ async function buildCallWithContextPositionalArgs(
       } else {
         let processedValue: any = (isNode(v) && !v.evaluated) ? (v as any).eval(context) : v;
 
-        // Handle async evaluation
+        // Handle async evaluation without truncating remaining parameters.
         if (isThenable(processedValue)) {
-          return (processedValue as Promise<any>).then(async (resolvedValue) => {
-            // Validate AFTER evaluation but BEFORE conversion
-            validateArgumentIfNeeded(resolvedValue, def, 'Argument');
-
-            // Apply conversion plugins if defined
-            if (def.convert && resolvedValue instanceof Dimension) {
-              resolvedValue = applyConversionPlugins(resolvedValue, def.convert);
-            }
-            positionalArgs.push(resolvedValue);
-            return positionalArgs;
-          });
+          processedValue = await processedValue;
         }
 
         // Validate AFTER evaluation but BEFORE conversion
         validateArgumentIfNeeded(processedValue, def, 'Argument');
 
+        const callerName = context.caller && isNode(context.caller, N.Call)
+          ? (typeof context.caller.data.name === 'string'
+              ? context.caller.data.name
+              : (isNode(context.caller.data.name, N.Reference)
+                  ? String(context.caller.data.name.data.key?.valueOf?.() ?? '')
+                  : ''))
+          : '';
         // Apply conversion plugins if defined
         if (def.convert && processedValue instanceof Dimension) {
           processedValue = applyConversionPlugins(processedValue, def.convert);

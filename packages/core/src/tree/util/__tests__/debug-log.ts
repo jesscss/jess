@@ -20,17 +20,28 @@ function findMonorepoRoot(start: string): string {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = findMonorepoRoot(__dirname);
-const LOG_DIR = join(ROOT, '.cursor');
-const LOG_PATH = process.env.DEBUG_LOG_PATH || join(LOG_DIR, 'debug.log');
 
-// Ensure directory exists
-try {
-  mkdirSync(LOG_DIR, { recursive: true });
-} catch {}
+function getLogPath(): string {
+  if (process.env.DEBUG_LOG_PATH) return process.env.DEBUG_LOG_PATH;
+  const logDir = process.env.DEBUG_LOG_DIR || join(ROOT, '.cursor');
+  return join(logDir, 'debug.log');
+}
 
-export const syncLog = (data: object) => {
+export function getDebugLogPath(): string {
+  return getLogPath();
+}
+
+export const syncLog = (data: Record<string, unknown>) => {
   try {
-    appendFileSync(LOG_PATH, JSON.stringify(data) + '\n');
+    const logPath = getLogPath();
+    const logDir = dirname(logPath);
+    mkdirSync(logDir, { recursive: true });
+    // Session ID is optional per debug run; omit it unless explicitly configured.
+    const payload = { ...data };
+    if (!process.env.DEBUG_SESSION_ID) {
+      delete payload.sessionId;
+    }
+    appendFileSync(logPath, JSON.stringify(payload) + '\n');
   } catch {
     // Ignore errors
   }

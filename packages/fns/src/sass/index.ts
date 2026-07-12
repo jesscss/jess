@@ -1,9 +1,9 @@
 /**
  * Sass global functions (legacy/deprecated)
- * 
+ *
  * These are the global functions that Sass provides for backward compatibility.
  * They are deprecated in favor of module-specific functions (e.g., use math.abs() instead of abs()).
- * 
+ *
  * Usage:
  * ```typescript
  * import { abs, red, mix } from '@jesscss/fns/sass';

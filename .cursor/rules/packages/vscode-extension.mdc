@@ -1,0 +1,13 @@
+---
+description: "Package: @jesscss/vscode-extension (VSCode/Cursor extension wrapper)"
+globs:
+  - "packages/vscode/**"
+---
+
+# `@jesscss/vscode-extension`
+
+- **Role**: VS Code / Cursor extension launching `@jesscss/language-service`.
+- **Docs**: `packages/vscode/README.md`
+- **Build**: `cd packages/vscode && pnpm build`
+- **Watch**: `cd packages/vscode && pnpm watch`
+

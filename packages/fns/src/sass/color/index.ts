@@ -1,9 +1,9 @@
 /**
  * Sass color module (sass:color)
- * 
+ *
  * Re-exports all color functions that are available in the sass:color module.
  * These are the modern, non-deprecated functions.
- * 
+ *
  * Usage:
  * ```typescript
  * import { red, green, blue, alpha, mix } from '@jesscss/fns/sass/color';

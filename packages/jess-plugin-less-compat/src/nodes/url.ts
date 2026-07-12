@@ -27,7 +27,7 @@ export function transformUrlToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      const value = url.value;
+      const value = url.data;
       if (value instanceof Quoted) {
         return toLessNode(value, { cache });
       }

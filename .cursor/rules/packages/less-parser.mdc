@@ -1,0 +1,16 @@
+---
+description: "Package: @jesscss/less-parser (LESS parser)"
+globs:
+  - "packages/less-parser/**"
+---
+
+# `@jesscss/less-parser`
+
+- **Role**: LESS parsing built atop core + css-parser.
+- **Build**: `cd packages/less-parser && pnpm build`
+- **Tests**: `cd packages/less-parser && pnpm test`
+
+## Note (repo anomaly)
+
+`packages/less-parser/vitest.config.ts` imports `../../vitest.config.js`, but the repo root contains `vitest.config.ts` (no `.js` found). Keep this in mind if test config resolution behaves oddly.
+

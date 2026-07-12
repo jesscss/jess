@@ -54,7 +54,8 @@ describe('Deprecation warnings', () => {
     it('should warn for un-interpolated @ident in custom property values', () => {
       const { warnings } = parser.parse('.foo { --custom: @var; }');
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]?.message).toContain('@[ident] in custom property values is treated as literal text');
+      expect(warnings[0]?.message).toContain('"@var" in custom property values is treated as literal text');
+      expect(warnings[0]?.message).toContain('@{var}');
       expect(warnings[0]?.deprecation).toBe('variable-in-unknown-value');
     });
 
@@ -63,7 +64,7 @@ describe('Deprecation warnings', () => {
       expect(warnings.length).toBeGreaterThan(0);
       const varWarning = warnings.find(w => w.deprecation === 'variable-in-unknown-value');
       expect(varWarning).toBeDefined();
-      expect(varWarning?.message).toContain('@[ident] in custom property values');
+      expect(varWarning?.message).toContain('"@var" in custom property values');
     });
 
     it('should not warn for interpolated @{ident} in custom property values', () => {
@@ -83,7 +84,8 @@ describe('Deprecation warnings', () => {
     it('should warn for un-interpolated $ident in custom property values', () => {
       const { warnings } = parser.parse('.foo { --custom: $prop; }');
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]?.message).toContain('$[ident] in custom property values is treated as literal text');
+      expect(warnings[0]?.message).toContain('"$prop" in custom property values is treated as literal text');
+      expect(warnings[0]?.message).toContain('${prop}');
       expect(warnings[0]?.deprecation).toBe('property-in-unknown-value');
     });
 
@@ -92,7 +94,7 @@ describe('Deprecation warnings', () => {
       expect(warnings.length).toBeGreaterThan(0);
       const propWarning = warnings.find(w => w.deprecation === 'property-in-unknown-value');
       expect(propWarning).toBeDefined();
-      expect(propWarning?.message).toContain('$[ident] in custom property values');
+      expect(propWarning?.message).toContain('"$prop" in custom property values');
     });
 
     it('should not warn for interpolated ${ident} in custom property values', () => {

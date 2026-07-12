@@ -1,0 +1,62 @@
+---
+id: audience-test
+title: Audience Test Page
+sidebar_label: Audience Test
+audiences:
+  - jess
+origin: jess
+---
+import AudienceGate from '@theme/AudienceGate';
+
+# Audience Test Page
+
+This page demonstrates the audience functionality.
+
+## Page Audience Filtering
+
+This page is configured with `audiences: ['jess', 'less']` in the frontmatter, which means:
+
+- **Jess audience**: This page will be visible in the sidebar
+- **Less audience**: This page will be visible in the sidebar  
+- **Sass audience**: This page will be hidden from the sidebar
+
+## Audience Toggle
+
+Look for the audience toggle in the top-right corner of the page. You can switch between:
+- **Jess**: Shows Jess-specific content
+- **Less**: Shows Less-specific content  
+- **Sass**: Shows Sass-specific content
+
+## Usage Examples
+
+### In Frontmatter
+```yaml
+---
+audiences: ['jess']  # Only show for Jess audience
+---
+```
+
+### In React Components
+```jsx
+<AudienceGate include={['jess', 'less']}>
+  Content for Jess and Less audiences
+</AudienceGate>
+
+<AudienceGate exclude={['sass']}>
+  Content for all audiences except Sass
+</AudienceGate>
+```
+
+<AudienceGate include={['jess', 'less']}>
+  Content for Jess and Less audiences
+</AudienceGate>
+
+<AudienceGate exclude={['sass']}>
+  Content for all audiences except Sass
+</AudienceGate>
+
+## Testing
+
+1. Use the toggle in the top-right to switch between audiences
+2. Notice how the sidebar navigation changes based on your selection
+3. Pages with `audiences` in their frontmatter will show/hide accordingly

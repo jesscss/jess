@@ -1,0 +1,12 @@
+---
+description: "Package: jess-plugin (private engine wrapper)"
+globs:
+  - "packages/jess-plugin/**"
+---
+
+# `jess-plugin` (private)
+
+- **Role**: “stylesheet engine for Jess” (core + parser consumer).
+- **Build**: `cd packages/jess-plugin && pnpm build`
+- **Tests**: `cd packages/jess-plugin && pnpm test` (often `--passWithNoTests`)
+

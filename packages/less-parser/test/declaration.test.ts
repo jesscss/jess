@@ -23,6 +23,11 @@ describe('declaration', () => {
     const { errors } = parse('--custom: value', 'declaration');
     expect(errors.length).toBe(0);
   });
+
+  it('should parse custom property declaration with generic function value', () => {
+    const { errors } = parse('--custom: rgba(0, 30, 0, 238)', 'declaration');
+    expect(errors.length).toBe(0);
+  });
 });
 
 describe('declarationList', () => {
@@ -36,4 +41,3 @@ describe('declarationList', () => {
     expect(errors.length).toBe(0);
   });
 });
-

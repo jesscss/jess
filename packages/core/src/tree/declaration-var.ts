@@ -26,13 +26,12 @@ export type VarDeclarationOptions = DeclarationOptions & {
  * @todo Support destructuring
  * e.g. `$(var1, var2): 1 2`
  */
-export class VarDeclaration extends Declaration<VarDeclarationOptions> {
-  override type = 'VarDeclaration';
-  override shortType = 'vardecl';
-  override allowRuleRoot = true;
-  override allowRoot = true;
-  override state = 0b0000; // 0b0000 means no flags are set
+export interface VarDeclaration {
+  type: 'VarDeclaration';
+  shortType: 'vardecl';
+}
 
+export class VarDeclaration extends Declaration<VarDeclarationOptions> {
   constructor(
     value: DeclarationValue,
     options?: VarDeclarationOptions,
@@ -40,6 +39,9 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     treeContext?: TreeContext
   ) {
     super(value, options, location, treeContext);
+    this.allowRoot = true;
+    this.allowRuleRoot = true;
+    this.removeFlag(F_VISIBLE);
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
       this.addFlag(F_VISIBLE);
@@ -54,10 +56,10 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     //
     // Special-case parameter vars (used in mixin signatures) that have no default value:
     // print `$name` (no `: <value>`).
-    if (this.options?.paramVar && this.value.value instanceof Nil) {
+    if (this.options?.paramVar && this.data.value instanceof Nil) {
       w.add('$', this);
-      const normalizedName = String(this.value.name).replace(/\s+$/, '');
-      w.add(normalizedName, this.value.name);
+      const normalizedName = String(this.data.name).replace(/\s+$/, '');
+      w.add(normalizedName, this.data.name);
       return w.getSince(mark);
     }
 

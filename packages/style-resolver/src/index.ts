@@ -38,7 +38,9 @@ function uniq<T>(items: T[]): T[] {
   const out: T[] = [];
   const seen = new Set<T>();
   for (const it of items) {
-    if (seen.has(it)) continue;
+    if (seen.has(it)) {
+      continue;
+    }
     seen.add(it);
     out.push(it);
   }
@@ -63,14 +65,16 @@ export function extractImports(sourceText: string, lang: StyleLang): ImportState
   // optional url(
   // then a quoted string
   const re = /@(import|use)\s*(?:\(([^)]*)\)\s*)*(?:url\(\s*)?(?:'([^']+)'|"([^"]+)")/g;
-  for (let m: RegExpExecArray | null; (m = re.exec(sourceText)); ) {
+  for (let m: RegExpExecArray | null; (m = re.exec(sourceText));) {
     const optionsRaw = m[2] ?? '';
     const options = optionsRaw
       ? optionsRaw.split(',').map(s => s.trim()).filter(Boolean)
       : undefined;
 
     const spec = m[3] ?? m[4] ?? '';
-    if (!spec) continue;
+    if (!spec) {
+      continue;
+    }
 
     const startInMatch = m[3] != null ? m[0].indexOf(m[3]) : m[0].indexOf(m[4] ?? '');
     const startOffset = m.index + startInMatch;
@@ -113,7 +117,9 @@ export function expandScssImportCandidates(importPath: string): string[] {
 
   const candidates: string[] = [];
   const pushUnique = (p: string) => {
-    if (!candidates.includes(p)) candidates.push(p);
+    if (!candidates.includes(p)) {
+      candidates.push(p);
+    }
   };
 
   const withExt = (p: string) => (p.endsWith('.scss') ? p : `${p}.scss`);
@@ -138,7 +144,9 @@ export function expandScssImportCandidates(importPath: string): string[] {
 
 export function resolveImport(fs: FsLike, opts: ResolveImportOptions): ResolveResult | null {
   const specifier = opts.specifier.trim();
-  if (!specifier) return null;
+  if (!specifier) {
+    return null;
+  }
 
   // Don’t resolve URLs here.
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(specifier) || specifier.startsWith('data:')) {
@@ -150,9 +158,15 @@ export function resolveImport(fs: FsLike, opts: ResolveImportOptions): ResolveRe
   const fromDir = path.dirname(opts.fromFilePath);
   const cfg = opts.config ?? {};
   const searchPaths: string[] = [fromDir];
-  if (opts.lang === 'less' && Array.isArray(cfg.includePaths)) searchPaths.push(...cfg.includePaths);
-  if (opts.lang === 'scss' && Array.isArray(cfg.loadPaths)) searchPaths.push(...cfg.loadPaths);
-  if (cfg.rootDir) searchPaths.push(cfg.rootDir);
+  if (opts.lang === 'less' && Array.isArray(cfg.includePaths)) {
+    searchPaths.push(...cfg.includePaths);
+  }
+  if (opts.lang === 'scss' && Array.isArray(cfg.loadPaths)) {
+    searchPaths.push(...cfg.loadPaths);
+  }
+  if (cfg.rootDir) {
+    searchPaths.push(cfg.rootDir);
+  }
 
   const candidatesRel =
     opts.lang === 'less'
@@ -177,4 +191,3 @@ export function resolveImport(fs: FsLike, opts: ResolveImportOptions): ResolveRe
 
   return null;
 }
-

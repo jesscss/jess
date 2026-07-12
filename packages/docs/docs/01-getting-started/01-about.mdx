@@ -7,13 +7,13 @@ slug: /
 ```scss
 // I am a Jess file
 
-@-from '#less' import * as less; // Use built-in modules!
-@-from './sizes.ts' import (width); // Use a custom module!
+@-use '#less'; // Use built-in modules!
+@-use './sizes.ts'; // Use a custom module!
 @-compose './theme.less'; // Compose a theme!
 @-compose './mixins.scss'; // Import mixins from Less and Sass!
 
 .container {
-  width: $less.unit(width);
+  width: $less.unit($sizes.width);
   color: $theme.primary-color;
   display: flex;
   $ > mixins.box();

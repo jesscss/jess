@@ -67,24 +67,24 @@ export function toLessNode(
     // typeIndex is handled automatically by the base proxy handler
 
     // For child nodes, convert them lazily
-    if (prop === 'value' && target.value) {
-      // If value is a Node, convert it
-      if (target.value instanceof Node) {
-        return toLessNode(target.value, options);
+    if (prop === 'value' && target.data) {
+      // If data is a Node, convert it
+      if (target.data instanceof Node) {
+        return toLessNode(target.data, options);
       }
-      // If value is an array, convert each element
-      if (Array.isArray(target.value)) {
-        return target.value.map((item: any) => {
+      // If data is an array, convert each element
+      if (Array.isArray(target.data)) {
+        return target.data.map((item: any) => {
           if (item instanceof Node) {
             return toLessNode(item, options);
           }
           return item;
         });
       }
-      // If value is an object, convert nested nodes
-      if (typeof target.value === 'object' && target.value !== null) {
+      // If data is an object, convert nested nodes
+      if (typeof target.data === 'object' && target.data !== null) {
         const converted: any = {};
-        for (const [key, val] of Object.entries(target.value)) {
+        for (const [key, val] of Object.entries(target.data)) {
           if (val instanceof Node) {
             converted[key] = toLessNode(val, options);
           } else if (Array.isArray(val)) {
@@ -111,11 +111,11 @@ export function toLessNode(
         // Check if the visitor is a Less visitor (has visitRuleset, visitDeclaration, etc.)
         // vs the less-compat visitor (has a visit method that converts to Less)
         const isLessVisitor = visitor && (
-          typeof visitor.visitRuleset === 'function' ||
-          typeof visitor.visitDeclaration === 'function' ||
-          typeof visitor.visitVariable === 'function' ||
-          typeof visitor.visitAtRule === 'function' ||
-          (typeof visitor.visit === 'function' && !visitor.atRule && !visitor.ruleset && !visitor.visit)
+          typeof visitor.visitRuleset === 'function'
+          || typeof visitor.visitDeclaration === 'function'
+          || typeof visitor.visitVariable === 'function'
+          || typeof visitor.visitAtRule === 'function'
+          || (typeof visitor.visit === 'function' && !visitor.atRule && !visitor.ruleset && !visitor.visit)
         );
 
         if (!isLessVisitor) {

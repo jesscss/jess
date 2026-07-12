@@ -40,6 +40,7 @@ interface StylesConfig {
     enableJavaScript?: boolean;
     mathMode?: 'always' | 'parens-division' | 'parens' | 'strict';
     unitMode?: 'loose' | 'strict';
+    equalityMode?: 'coerce' | 'strict';
   };
   input?: InputOptions | InputOptions[];
   output?: OutputOptions | OutputOptions[];
@@ -56,6 +57,7 @@ interface InputOptions {
   file?: string;  // Path or glob pattern to match input files
   mathMode?: MathMode;
   unitMode?: UnitMode;
+  equalityMode?: EqualityMode;
   // ... any compile or language options to override
 }
 
@@ -76,6 +78,7 @@ export default {
   compile: {
     mathMode: 'parens-division',
     unitMode: 'loose',
+    equalityMode: 'coerce',
     searchPaths: ['./src/styles', './node_modules']
   },
   input: [

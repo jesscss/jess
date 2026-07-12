@@ -1,0 +1,36 @@
+---
+id: install
+title: Installation
+audiences:
+  - jess
+origin: jess
+---
+:::caution
+
+Jess is in early alpha, so features and syntax are likely to change!
+
+:::
+
+
+If you just want to compile a file and keep moving, use install-on-demand:
+
+```bash
+npx --yes --package jess jess my-file.jess my-file.css
+```
+
+```bash
+pnpm --package=jess dlx jess my-file.jess my-file.css
+```
+
+For real project work, install locally:
+
+```bash
+pnpm add -D jess
+```
+
+### Bundlers
+
+- `rollup-plugin-jess` is available and compiles `.jess` files through the current Jess compiler.
+- Webpack-specific integration is still evolving.
+
+That split is intentional: stable core path first, then framework/bundler ergonomics on top.

@@ -1,4 +1,4 @@
-import { defineFunction, Node, Bool, type Lazy } from '@jesscss/core';
+import { defineFunction, Node, Bool, Anonymous, type Lazy } from '@jesscss/core';
 
 /**
  * if condition, return ifValue, else return elseValue
@@ -6,14 +6,14 @@ import { defineFunction, Node, Bool, type Lazy } from '@jesscss/core';
 const iif = defineFunction(
   'if',
   async function(condition: Bool | boolean, thenValue: Lazy<Node>, elseValue?: Lazy<Node>) {
-    let bool = typeof condition === 'boolean' ? condition : condition.value;
+    let bool = typeof condition === 'boolean' ? condition : condition.data;
     if (bool) {
       return await thenValue();
     }
     if (elseValue) {
       return await elseValue();
     }
-    return undefined;
+    return new Anonymous('');
   },
   {
     params: [{

@@ -28,6 +28,12 @@ describe('value', () => {
     const { errors } = parse('color: rgb(255, 0, 0)', 'declaration');
     expect(errors.length).toBe(0);
   });
+
+  it('should reject backtick javascript values', () => {
+    expect(() => parse('.a { js: `1 + 1`; esc: ~`2 + 5 + "px"`; }', 'stylesheet')).toThrow(
+      'Inline JavaScript using backticks is not supported. Use @use to import a JavaScript/TypeScript module instead. Script-module documentation is coming soon.'
+    );
+  });
 });
 
 describe('valueSequence', () => {
@@ -41,4 +47,3 @@ describe('valueSequence', () => {
     expect(errors.length).toBe(0);
   });
 });
-

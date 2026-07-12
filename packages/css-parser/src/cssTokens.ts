@@ -1,16 +1,7 @@
 /* eslint no-control-regex: "off" */
-import { type WritableDeep } from 'type-fest';
 import type { RawModeConfig } from './util/index.js';
 import { LexerType } from './util/index.js';
-import { SKIPPED_LABEL } from './advancedActionsParser.js';
-import {
-  Lexer,
-  createToken,
-  type ITokenConfig,
-  type TokenType,
-  type IMultiModeLexerDefinition,
-  type CustomPatternMatcherFunc
-} from 'chevrotain';
+export const SKIPPED_LABEL = 'Skipped';
 import { buildFragments, createLexerDefinition } from './util/index.js';
 
 /**
@@ -33,7 +24,7 @@ export const rawCssFragments = () => [
   ['hex', '[\\da-fA-F]'],
   ['unicode', '\\\\{{hex}}{1,6}{{whitespace}}?'],
   ['escape', '{{unicode}}|\\\\[^\\r\\n\\f0-9a-fA-F]'],
-  ['nonascii', '[\\u0240-\\uffff]'],
+  ['nonascii', '[\\u0080-\\uffff]'],
   ['nmstart', '[_a-zA-Z]|{{nonascii}}|{{escape}}'],
   ['nmchar', '[_a-zA-Z0-9-]|{{nonascii}}|{{escape}}'],
   ['ident', '-?{{nmstart}}{{nmchar}}*'],
@@ -43,8 +34,8 @@ export const rawCssFragments = () => [
    * which causes problems for Less / Sass.
    */
   ['unit', '(?:[a-zA-Z]|{{nonascii}}|{{escape}})+'],
-  ['string1', '\\"(\\\\"|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
-  ['string2', '\\\'(\\\\\'|[^\\n\\r\\f\\\']|{{newline}}|{{escape}})*\\\''],
+  ['string1', '\\"(\\\\"|\\\\{{newline}}|[^\\n\\r\\f\\"]|{{newline}}|{{escape}})*\\"'],
+  ['string2', '\\\'(\\\\\'|\\\\{{newline}}|[^\\n\\r\\f\\\']|{{newline}}|{{escape}})*\\\''],
 
   ['integer', '[+-]?\\d+'],
   /**
@@ -61,7 +52,7 @@ export const rawCssFragments = () => [
 //   index: number
 
 //   constructor(str: string, index: number) {
-//     this.value = str
+//     this.data = str
 //     this.index = index
 //   }
 // }
@@ -465,7 +456,10 @@ export const rawCssTokens = () => ({
       },
       {
         name: 'NthIdent',
-        pattern: /-?n/,
+        // Only match bare `n`/`-n` forms used by :nth-* grammar.
+        // Without this guard, identifiers like `negation` are tokenized as PlainIdent
+        // via longer_alt, preventing GenericFunctionStart tokenization.
+        pattern: '-?n(?!{{nmchar}})',
         longer_alt: 'PlainIdent',
         line_breaks: false,
         categories: ['Ident']
@@ -496,7 +490,7 @@ export const rawCssTokens = () => ({
        */
       {
         name: 'SingleQuoteStringContents',
-        pattern: '(?:[\\u0000-\\u0026\\u0028-\\u005B\\u005D-\\uFFFF]|\\\\\'|{{newline}}|{{escape}})+'
+        pattern: '(?:[\\u0000-\\u0026\\u0028-\\u005B\\u005D-\\uFFFF]|\\\\\'|\\\\{{newline}}|{{newline}}|{{escape}})+'
       },
       {
         name: 'SingleQuoteEnd',
@@ -507,7 +501,7 @@ export const rawCssTokens = () => ({
     DoubleQuoteString: [
       {
         name: 'DoubleQuoteStringContents',
-        pattern: '(?:[\\u0000-\\u0021\\u0023-\\u005B\\u005D-\\uFFFF]|\\\\"|{{newline}}|{{escape}})+'
+        pattern: '(?:[\\u0000-\\u0021\\u0023-\\u005B\\u005D-\\uFFFF]|\\\\"|\\\\{{newline}}|{{newline}}|{{escape}})+'
       },
       {
         name: 'DoubleQuoteEnd',

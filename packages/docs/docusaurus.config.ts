@@ -1,9 +1,9 @@
 import type { Config } from '@docusaurus/types';
-import { themes } from 'prism-react-renderer'
+import { themes } from 'prism-react-renderer';
 
 export default {
   future: {
-    v4: true,
+    v4: true
   },
   title: 'Jess',
   tagline: 'Jess is in alpha and currently seeking testers / collaborators!',
@@ -23,7 +23,7 @@ export default {
     prism: {
       theme: themes.oneLight,
       darkTheme: themes.oneDark,
-      additionalLanguages: ['javascript', 'typescript', 'scss', 'less'],
+      additionalLanguages: ['javascript', 'typescript', 'scss', 'less']
     },
     navbar: {
       title: 'Jess',
@@ -47,7 +47,7 @@ export default {
           href: 'https://github.com/jesscss/jess',
           label: 'GitHub',
           position: 'right'
-        },
+        }
       ]
     },
     footer: {
@@ -101,6 +101,7 @@ export default {
       'classic',
       {
         docs: {
+          path: '../docs-content/docs/jess',
           /** @todo - figure out path lowercasing later */
           // async sidebarItemsGenerator({defaultSidebarItemsGenerator, ...args}: any) {
           //   const sidebarItems = await defaultSidebarItemsGenerator(args);
@@ -126,13 +127,13 @@ export default {
           },
           // Please change this to your repo.
           editUrl:
-            'https://github.com/jesscss/jess/tree/master/packages/docs/'
+            'https://github.com/jesscss/jess/tree/master/packages/docs-content/docs/jess/'
         },
         blog: {
           showReadingTime: true,
           // Please change this to your repo.
           editUrl:
-            'https://github.com/jesscss/jess/tree/master/packages/docs/'
+            'https://github.com/jesscss/jess/tree/master/packages/docs-content/docs/jess/'
         },
         theme: {
           customCss: ['./src/css/custom.css']

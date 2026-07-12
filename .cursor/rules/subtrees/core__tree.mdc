@@ -1,0 +1,18 @@
+---
+description: "Core tree subsystem: AST nodes, selectors, rulesets, evaluation, printing"
+globs:
+  - "packages/core/src/tree/**"
+---
+
+# Core tree subsystem (`packages/core/src/tree`)
+
+## What’s here
+
+- AST node definitions + evaluation logic for selectors/rules/rulesets, printing/serialization, transforms.
+
+## Common hot files
+
+- Extend: `packages/core/src/tree/util/extend.ts`
+- Selector model: `packages/core/src/tree/selector-*.ts`
+- Rulesets/rules: `packages/core/src/tree/ruleset.ts`, `packages/core/src/tree/rules.ts`
+

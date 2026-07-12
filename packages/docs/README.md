@@ -1,33 +1,25 @@
-# Website
+# Jess Docs Site
 
-This website is built using [Docusaurus 2](https://v2.docusaurus.io/), a modern static website generator.
+This package is the Jess-facing Docusaurus renderer.
 
-## Installation
+Canonical docs content lives in `packages/docs-content` and is shared with the Less-facing site.
 
-```console
-yarn install
+## Local development
+
+```bash
+pnpm --filter jess-docs dev
 ```
-
-## Local Development
-
-```console
-yarn start
-```
-
-This command starts a local development server and open up a browser window. Most changes are reflected live without having to restart the server.
 
 ## Build
 
-```console
-yarn build
+```bash
+pnpm --filter jess-docs build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+## Canonical content workflow
 
-## Deployment
-
-```console
-GIT_USER=<Your GitHub username> USE_SSH=true yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+- Author docs in `packages/docs-content/docs/**`
+- Sync current Jess docs baseline into canonical package:
+  - `pnpm --filter @jesscss/docs-content run migrate:jess`
+- Validate docs metadata:
+  - `pnpm --filter @jesscss/docs-content run validate`

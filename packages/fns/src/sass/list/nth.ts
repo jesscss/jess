@@ -1,8 +1,8 @@
 /**
  * Sass list.nth() function
- * 
+ *
  * Returns the nth element of a list (1-based indexing).
- * 
+ *
  * @example
  * nth(1 2 3, 2) // 2
  * nth([a, b, c], 1) // a
@@ -21,7 +21,7 @@ const nth = defineFunction(
     }
     // Convert to 0-based index
     const zeroBasedIndex = sassIndex - 1;
-    return list.value[zeroBasedIndex];
+    return list.data[zeroBasedIndex];
   },
   {
     params: [

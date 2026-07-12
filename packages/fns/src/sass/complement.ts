@@ -1,9 +1,9 @@
 /**
  * Sass complement() function
- * 
+ *
  * Returns the complementary color (hue rotated by 180 degrees).
  * Available in both global namespace (deprecated) and color module.
- * 
+ *
  * @example
  * complement(hsl(10, 90%, 50%)) // hsl(190, 90%, 50%)
  */

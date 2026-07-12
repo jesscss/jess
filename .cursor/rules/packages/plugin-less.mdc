@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/plugin-less (Less engine for Jess)"
+globs:
+  - "packages/jess-plugin-less/**"
+---
+
+# `@jesscss/plugin-less`
+
+- **Role**: Less stylesheet engine for Jess (depends on core, fns, less-parser, style-resolver).
+- **Build**: `cd packages/jess-plugin-less && pnpm build`
+- **Tests**: `cd packages/jess-plugin-less && pnpm test`
+

@@ -3,8 +3,10 @@ import { Node, defineType } from './node.js';
 /**
  * A plain JS array.
  */
+export interface JsArray {
+  type: 'JsArray';
+  shortType: 'jsarray';
+}
 export class JsArray extends Node<readonly any[]> {
-  type = 'JsArray' as const;
-  shortType = 'jsarray' as const;
 }
 export const jsarray = defineType(JsArray, 'JsArray', 'jsarray');

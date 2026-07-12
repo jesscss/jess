@@ -27,7 +27,7 @@ export function transformNegativeToLess(
 
     // Map 'value' property
     if (prop === 'value') {
-      const value = negative.value;
+      const value = negative.data;
       if (value instanceof Node) {
         return toLessNode(value, { cache });
       }

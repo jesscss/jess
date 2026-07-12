@@ -43,9 +43,9 @@ Jess equivalent:
 
 Jess’s module import node is `StyleImport` (see `packages/core/src/tree/import-style.ts`). It supports namespaces, configuration, and export/protection flags.
 
-### `@use` (scripts) → `@-use` / `@-from` (by extension)
+### `@use` (scripts) → `@-use`
 
-In Jess, `@-use` and `@-from` are for importing JS/TS/JSON modules (see `packages/core/src/tree/import-js.ts`).
+In Jess, `@-use` is for importing JS/TS/JSON modules (see `packages/core/src/tree/import-js.ts`).
 
 When parsing SCSS, Jess will treat `@use` as a stylesheet import by default, but if the `@use` path clearly targets a script module (for example `./tokens.js`, `./tokens.ts`, `./tokens.json`), it will parse to a JS import node instead.
 

@@ -1,0 +1,12 @@
+---
+description: "Package: @jesscss/plugin-less-compat (Less.js compatibility layer)"
+globs:
+  - "packages/jess-plugin-less-compat/**"
+---
+
+# `@jesscss/plugin-less-compat`
+
+- **Role**: Less.js compatibility layer (nodes + transforms + plugin proxying).
+- **Build**: `cd packages/jess-plugin-less-compat && pnpm build`
+- **Tests**: `cd packages/jess-plugin-less-compat && pnpm test`
+

@@ -14,9 +14,10 @@ import {
 import { Parser } from '@jesscss/scss-parser';
 import path from 'node:path';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
-import type { UnitMode } from '@jesscss/core';
+import type { EqualityMode, UnitMode } from '@jesscss/core';
 
 export type ScssPluginOptions = {
+  allowExtendSelectors?: ExtendSelectorKind[];
   /**
    * Unit mode for handling unit arithmetic.
    * - 'loose': Convert units when possible (default for Less)
@@ -26,21 +27,31 @@ export type ScssPluginOptions = {
    */
   unitMode?: UnitMode;
   /**
+   * Equality mode for guard/comparison semantics.
+   * @default 'strict'
+   */
+  equalityMode?: EqualityMode;
+  /**
    * Whether to collapse nested selectors (flatten nesting during print).
    * This is a Jess output option, not a Sass option.
    */
   collapseNesting?: boolean;
 };
 
+type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
+type PluginParseOptions = { compilerOptions?: Record<string, any> };
+
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
   parser: Parser;
   unitMode: UnitMode;
+  equalityMode: EqualityMode;
 
   constructor(public opts: ScssPluginOptions = {}) {
     super();
     this.unitMode = opts.unitMode ?? 'preserve';
+    this.equalityMode = opts.equalityMode ?? 'strict';
     this.parser = new Parser();
   }
 
@@ -49,7 +60,11 @@ export class ScssPlugin extends AbstractPlugin {
     return expandScssImportCandidates(importPath);
   }
 
-  safeParse(filePath: string, source: string): ISafeParseResult {
+  safeParse(filePath: string, source: string, parseOptions?: PluginParseOptions): ISafeParseResult {
+    const allowExtendSelectors = this.opts.allowExtendSelectors
+      ?? parseOptions?.compilerOptions?.allowExtendSelectors
+      ?? ['simple'];
+
     const context = new TreeContext({
       file: {
         name: path.basename(filePath),
@@ -58,7 +73,9 @@ export class ScssPlugin extends AbstractPlugin {
         source
       },
       plugin: this,
+      allowExtendSelectors,
       unitMode: this.unitMode,
+      equalityMode: this.equalityMode,
       collapseNesting: this.opts.collapseNesting ?? false
     });
 
@@ -79,8 +96,11 @@ export class ScssPlugin extends AbstractPlugin {
           if (!diagnostic.lines) {
             diagnostic.lines = extractRelevantLines(source, line);
           }
-          if ('errors' in diagnostic) errors.push(diagnostic);
-          else warnings.push(diagnostic);
+          if ('errors' in diagnostic) {
+            errors.push(diagnostic);
+          } else {
+            warnings.push(diagnostic);
+          }
         }
       }
 
@@ -94,15 +114,21 @@ export class ScssPlugin extends AbstractPlugin {
           if (!diagnostic.lines) {
             diagnostic.lines = extractRelevantLines(source, line);
           }
-          if ('errors' in diagnostic) errors.push(diagnostic);
-          else warnings.push(diagnostic);
+          if ('errors' in diagnostic) {
+            errors.push(diagnostic);
+          } else {
+            warnings.push(diagnostic);
+          }
         }
       }
     } catch (error: unknown) {
       if (error && typeof error === 'object' && 'severity' in error) {
         const diagnostic = toDiagnostic(error as JessError);
-        if ('errors' in diagnostic) errors.push(diagnostic);
-        else warnings.push(diagnostic);
+        if ('errors' in diagnostic) {
+          errors.push(diagnostic);
+        } else {
+          warnings.push(diagnostic);
+        }
       } else {
         const message = error instanceof Error ? error.message : 'Unknown parsing error';
         errors.push({

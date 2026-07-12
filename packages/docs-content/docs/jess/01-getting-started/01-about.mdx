@@ -1,0 +1,70 @@
+---
+id: about
+title: About Jess
+slug: /
+audiences:
+  - jess
+origin: jess
+---
+```scss
+// I am a Jess file
+
+@-use '#less'; // Use built-in modules!
+@-use './sizes.ts'; // Use a custom module!
+@-compose './theme.less'; // Compose a theme!
+@-compose './mixins.scss'; // Import mixins from Less and Sass!
+
+.container {
+  width: $less.unit($sizes.width);
+  color: $theme.primary-color;
+  display: flex;
+  $ > mixins.box();
+}
+```
+
+## What is Jess?
+
+Jess is a stylesheet language + compiler designed for teams that want modern CSS ergonomics without giving up compile-time power.
+
+In practice, it can cover most day-to-day use cases people typically reach for:
+ - Sass
+ - Less (Node.js and in-browser compilation)
+- the Tailwind compiler (especially when you'd like the utility speed without turning every class attribute into a novella)
+ - CSS-in-JS
+ - CSS modules
+
+Jess is both a compiler and a language. It started as a re-write of Less from the ground up (and now powers Less 5+), then kept evolving into its own language model. That means you can migrate `.scss` and `.less` incrementally to `.jess` while still using cross-language composition when needed.
+
+[^1]: Sass is quite a bloated language, so there is some lesser-used syntax that is not supported, and some Jess features are exposed while compiling `.scss` files. Therefore, Jess defines the supported language as "Sass+".
+
+## Speed and build ergonomics
+
+Jess is built to keep build-time CSS workflows fast and predictable:
+
+- static CSS output by default
+- patch-friendly output paths when you need dynamic behavior
+- language-service tooling that targets real editor workflows (including Cursor/VSCode)
+
+
+## How is Jess different from CSS-in-JS?
+
+CSS-in-JS, for a long time, was thought to be the only way to produce "dynamic" styles, but it comes with trade-offs. Jess has these advantages over CSS-in-JS:
+1. You can keep stylesheet authoring in stylesheet files instead of moving all styling into JS runtime code.
+2. Many CSS-in-JS libraries don't produce static CSS at build-time (or take some effort to do so). Not only can Jess produce static CSS, but it can produce "patch-able" CSS, along with a module that can patch your CSS at any time. **It's kinda magic.**
+3. Many CSS-in-JS libraries give you dynamic styles at the cost of performance. Jess focuses on making CSS updates fast with minimal overhead.
+
+## Where to next
+
+- For day-to-day setup, start with [Installation](/docs/getting-started/install) and [Configuration](/docs/getting-started/config).
+- If you're migrating an existing codebase, see [Migrating to Jess](/docs/getting-started/migrating).
+- For editor experience, see [VSCode & Cursor Support](/docs/getting-started/vscode).
+
+## Why am I not already using Jess?
+
+Honestly? Usually one of three reasons:
+
+1. You already have a working Sass/Less setup and migration takes planning.
+2. You need one or two ecosystem integrations that are still maturing.
+3. You have not looked at Jess in a while and assumed it was still in "just an experiment" mode.
+
+If that sounds familiar, start small: convert one folder, wire editor support, and keep shipping.

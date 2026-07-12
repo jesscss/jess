@@ -12,15 +12,15 @@ describe('Dimension', () => {
     // it.only('should make a dimension from a string', () => {
     //   let rule = dimension('10px');
     //   let clone = rule.clone();
-    //   expect(rule.value.number).toBe(10);
+    //   expect(rule.data.number).toBe(10);
     //   expect(clone.value.number).toBe(10);
-    //   expect(rule.value.unit).toBe('px');
+    //   expect(rule.data.unit).toBe('px');
     //   expect(rule.value).not.toBe(clone.value);
     //   expect(rule.toString()).toBe('10px');
     // });
     it('should make a dimension from a number', () => {
       let rule = num(10);
-      expect(rule.value.number).toBe(10);
+      expect(rule.data.number).toBe(10);
       expect(rule.toString()).toBe('10');
     });
   });

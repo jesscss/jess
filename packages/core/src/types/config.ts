@@ -1,6 +1,7 @@
-import type { MathMode, UnitMode } from './modes.js';
+import type { EqualityMode, MathMode, UnitMode } from './modes.js';
 
-export type { MathMode, UnitMode };
+export type { EqualityMode, MathMode, UnitMode };
+export type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
 /**
  * Less compiler options.
@@ -9,6 +10,21 @@ export type { MathMode, UnitMode };
  * Based on less.js default-options.js and bin/lessc.
  */
 export interface LessOptions {
+  /**
+   * Restrict which selector shapes are allowed in extend targets.
+   * When set, any other selector kind is a parse error.
+   *
+   * Supported kinds mirror selector node types in lowercase:
+   * - `simple`
+   * - `basic`
+   * - `pseudo`
+   * - `compound`
+   * - `complex`
+   *
+   * @default undefined
+   */
+  allowExtendSelectors?: ExtendSelectorKind[];
+
   /**
    * Inline Javascript - @plugin still allowed
    * @default false
@@ -112,6 +128,14 @@ export interface LessOptions {
    * @default 'loose'
    */
   unitMode?: UnitMode;
+
+  /**
+   * How to handle equality/coercion in guards and comparisons.
+   * - 'coerce': Less-compatible coercion behavior
+   * - 'strict': type-strict behavior
+   * @default 'coerce'
+   */
+  equalityMode?: EqualityMode;
 
   /**
    * @deprecated Use `mathMode` instead. This option maps to `mathMode` as follows:

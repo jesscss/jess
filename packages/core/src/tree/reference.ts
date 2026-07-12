@@ -5,6 +5,7 @@ import type { FindOptions } from './util/registry-utils.js';
 import { Any, type AnyRole } from './any.js';
 import { Selector } from './selector.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import type { Call } from './call.js';
 import type { Quoted } from './quoted.js';
 import { atIndex } from './util/collections.js';
@@ -15,16 +16,20 @@ import { getFunctionFromMixins } from './rules.js';
 import type { MixinEntry, Rules } from './rules.js';
 import type { Interpolated } from './interpolated.js';
 import { freezeChildren } from './util/cloning.js';
-import { syncLog } from './util/__tests__/debug-log.js';
-
+import type { Ruleset } from './ruleset.js';
+import type { Declaration } from './declaration.js';
+import type { Color } from './color.js';
+import type { BitSet } from './util/bitset.js';
 /**
  * The type is determined by syntax
  * and location.
  *   e.g. in Jess
  *    - `$foo` refers to a variable
- *    - `$.foo` is a prop or var
- *    - `$foo$(bar)` is a var var
- *    - `$foo.bar` is a prop or var `bar` in `foo`
+ *    - `$.foo` or `$target.foo` is a named member lookup (variable or property)
+ *    - `$[foo]` or `$target[foo]` is a braced variable reference
+ *    - `$['foo']` or `$target['foo']` is a braced property reference
+ *    - `$[$var]` is a variable member name lookup
+ *    - `$foo[0]` is an index lookup
  *    - in `$|.foo()`, `.foo` is a mixin
  *    - in `$foo|.mixin()`, `.mixin` is a mixin in `$foo`
  *    - Resolution:
@@ -74,14 +79,34 @@ export type ReferenceOptions = {
 };
 const { isArray } = Array;
 
+function getSelectorReferenceKeys(selector: Selector): string[] {
+  const keySet = selector.keySet as Set<string> | BitSet<string>;
+  if (keySet instanceof Set) {
+    return [...keySet];
+  }
+  return keySet._library?.valuesOf(keySet) ?? [];
+}
+
+function isInsideSelectorCapture(node: Node | undefined): boolean {
+  let cursor: Node | undefined = node;
+  while (cursor) {
+    if (cursor.type === 'SelectorCapture') {
+      return true;
+    }
+    cursor = cursor.parent;
+  }
+  return false;
+}
+
 /**
  * This is a variable or property reference,
  * which can itself contain a reference (a variable variable).
  */
+export interface Reference {
+  type: 'Reference';
+  shortType: 'ref';
+}
 export class Reference extends Node<ReferenceValue, ReferenceOptions> {
-  type = 'Reference';
-  shortType = 'ref';
-
   constructor(value: ReferenceValue | string, options?: ReferenceOptions, location?: LocationInfo, treeContext?: TreeContext) {
     if (typeof value === 'string') {
       value = { key: value };
@@ -89,6 +114,22 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     super(value, options, location, treeContext);
     // References are always non-static and may be async
     this.addFlags(F_MAY_ASYNC, F_VISIBLE, F_NON_STATIC);
+  }
+
+  get target() {
+    return this.data.target;
+  }
+
+  set target(val) {
+    this.setData('target', val as any);
+  }
+
+  get key() {
+    return this.data.key;
+  }
+
+  set key(val) {
+    this.setData('key', val);
   }
 
   override valueOf() {
@@ -103,8 +144,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { type = 'variable', resolution, fallbackValue } = this.options;
-    let { target, key } = this.value;
+    let { type = 'variable', resolution, fallbackValue, role } = this.options;
+    let { target, key } = this.data;
     const emitKey = (k: any) => {
       if (typeof k === 'string' || typeof k === 'number') {
         w.add(String(k), this);
@@ -124,6 +165,21 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
     } else if (resolution === 'call-time') {
       w.add('~');
     }
+    /**
+     * Reference serialization forms:
+     *   1. `$[key]` — braced variable reference (or `$target[key]` with a target)
+     *   2. `$['key']` — braced property reference (or `$target['key']` with a target)
+     *   3. `$.key` or `$target.key` — dot syntax for named member lookup (variable or property)
+     *   4. `$[$var]` — variable member name lookup (key is itself a reference)
+     *   5. `$[0]` — index (or `$target[0]` with a target)
+     *   6. `$[-1]` — negative index
+     */
+    if (role === 'ident' && (type === 'variable' || type === 'property') && !target) {
+      w.add('$[');
+      emitKey(key);
+      w.add(']');
+      return w.getSince(mark);
+    }
     switch (type) {
       case 'index':
         w.add('[');
@@ -132,22 +188,36 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         break;
       case 'variable':
         if (target) {
-          w.add('.$');
+          // Braced variable: $target[key]
+          w.add('[');
+          emitKey(key);
+          w.add(']');
+        } else {
+          w.add('$');
+          emitKey(key);
         }
-        emitKey(key);
         break;
       case 'declaration':
+        // Dot syntax for named member lookup: $.key or $target.key
+        if (!target) {
+          w.add('$');
+        }
         w.add('.');
         emitKey(key);
         break;
       case 'property':
-        w.add('.~');
+        // Braced property: $['key'] or $target['key']
+        if (!target) {
+          w.add('$');
+        }
+        w.add('[\'');
         emitKey(key);
+        w.add('\']');
         break;
       case 'mixin':
         // If this mixin reference has a target (e.g. `ns.foo`), render it as a scoped lookup:
-        // `ns > foo`. The `$` prefix is the responsibility of the parent `Expression`.
-        w.add(' > ');
+        // `ns > foo`. Without target, keep the legacy mixin marker form (`|foo`).
+        w.add(target ? ' > ' : '|');
         emitKey(key);
         break;
       case 'ruleset':
@@ -171,7 +241,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
    * should never resolve to itself
    */
   override evalNode(context: Context): MaybePromise<Node> {
-    let { target, key } = this.value;
+    let { target, key } = this.data;
     let { type, fallbackValue, filter: originalFilter } = this.options;
     // Track reference chain for clearing remainders at outermost level
     context.pushReference();
@@ -196,8 +266,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         if (isThenable(out)) {
           return out.then((k: any) => {
             // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
-            if (isNode(k, 'Selector')) {
-              const keyArray = Array.from(k.keySet);
+            if (isNode(k, N.Selector)) {
+              const keyArray = getSelectorReferenceKeys(k as Selector);
               return [resolvedTarget, keyArray] as [any, string[]];
             }
             // If k is already an array, preserve it
@@ -208,15 +278,16 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           });
         }
         // If key is a Selector (CompoundSelector, ComplexSelector, etc.), extract keySet as array
-        if (isNode(out, 'Selector')) {
-          const keyArray = Array.from(out.keySet);
+        if (isNode(out, N.Selector)) {
+          const keyArray = getSelectorReferenceKeys(out as Selector);
           return [resolvedTarget, keyArray] as [any, string[]];
         }
         // If key is already an array, preserve it
         if (Array.isArray(out)) {
           return [resolvedTarget, out] as [any, string[]];
         }
-        return [resolvedTarget, out] as [any, string];
+        const normalizedKey = isNode(out) ? out.valueOf() : out;
+        return [resolvedTarget, normalizedKey] as [any, string];
       },
       ([resolvedTarget, valueKey]) => {
         /**
@@ -228,9 +299,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * (We have to do this for Less.)
          */
         if (resolvedTarget instanceof Node) {
-          let type = resolvedTarget.type;
-          if (type !== 'Rules' && type !== 'JsFunction' && type !== 'Mixin') {
-            let targetKey = isNode(resolvedTarget, 'Color') ? String(resolvedTarget.value.node) : resolvedTarget.valueOf();
+          if (!isNode(resolvedTarget, N.Rules | N.Ruleset | N.JsFunction | N.Mixin)) {
+            let targetKey = isNode(resolvedTarget as Node, N.Color) ? String((resolvedTarget as Color).data.node) : (resolvedTarget as Node).valueOf();
             if (typeof targetKey === 'string') {
               let ref = new Reference(targetKey, { type: 'mixin-ruleset' });
               this.adopt(ref);
@@ -248,8 +318,8 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * If we're looking something up on a function, we presume
          * it needs to be called first, and that it has no arguments.
          */
-        if (isNode(resolvedTarget, 'JsFunction')) {
-          const jsResult = resolvedTarget.value.call(context);
+        if (isNode(resolvedTarget, N.JsFunction)) {
+          const jsResult = (resolvedTarget.data as (...args: any[]) => any).call(context);
           if (isThenable(jsResult)) {
             return (jsResult as Promise<any>).then((result) => {
               return [result, valueKey] as [any, string | string[]];
@@ -259,12 +329,6 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             return [resolvedTarget, valueKey] as [any, string | string[]];
           }
         }
-        // if (typeof resolvedTarget === 'function') {
-        //   return Promise.all([
-        //     resolvedTarget.call(context),
-        //     valueKey
-        //   ]);
-        // }
 
         /**
          * If we're looking something up on a mixin or ruleset (namespace lookup),
@@ -274,15 +338,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
          * (for chained calls like .jo.ki() where .jo finds .jo.ki with matched keys [".jo"])
          * We accumulate the new key and use registry lookup to verify the compound match
          */
-        if (isNode(resolvedTarget, ['Mixin', 'Ruleset'])) {
-          const mixinResult = resolvedTarget.value.rules.eval(context);
+        if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
+          const mixinResult = (resolvedTarget as Ruleset).data.rules.eval(context);
           if (isThenable(mixinResult)) {
             return (mixinResult as Promise<Rules>).then((rules) => {
-              rules.inherit(resolvedTarget.value.rules);
+              rules.inherit((resolvedTarget as Ruleset).data.rules);
               return [rules, valueKey] as [Node, string | string[]];
             });
           } else {
-            mixinResult.inherit(resolvedTarget.value.rules);
+            mixinResult.inherit((resolvedTarget as Ruleset).data.rules);
             resolvedTarget = mixinResult as Rules;
             return [resolvedTarget, valueKey] as [Node, string | string[]];
           }
@@ -292,19 +356,39 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       },
       ([resolvedTarget, valueKey]) => {
         originalFilter ??= () => true;
-        const filter = (n: Node) => originalFilter!(n) && !context.searchScope.has(n);
-        // If this Reference has a target, mark hasTarget=true so 'targeted' Rules are searchable
+        const isInterpolatedVariable =
+          this.options.type === 'variable'
+          && this.parent?.type === 'Interpolated';
+        const isWithinParamVarScope = (paramParent: Node | undefined, activeRules: Node | undefined): boolean => {
+          let cursor: Node | undefined = activeRules;
+          while (cursor) {
+            if (cursor === paramParent) {
+              return true;
+            }
+            cursor = cursor.parent;
+          }
+          return false;
+        };
+        const filter = (n: Node) => {
+          const passesOriginal = originalFilter!(n);
+          const blockedParamVar = isNode(n, N.VarDeclaration)
+            && Boolean(n.options?.paramVar)
+            && !isWithinParamVarScope(n.parent, context.rulesContext);
+          const blockedBySearchScope = context.searchScope.has(n);
+          return passesOriginal && !blockedBySearchScope && !blockedParamVar;
+        };
         const hasTarget = !!target;
 
-        // Helper function to perform lookup with a given target Rules
         const performLookup = (targetRules: Rules | Node | undefined): any => {
           if (!targetRules) {
             return undefined;
           }
-
           const opts: FindOptions = { filter, context, hasTarget };
+          if (!target && targetRules.options?.isMixinOutput === true) {
+            opts.local = true;
+          }
 
-          if (this.options.resolution === 'linear') {
+          if (this.options.resolution === 'linear' && !isInterpolatedVariable) {
             // For linear resolution, climb up the parent chain until we find a node with a Rules parent
             // and use that node's index for linear lookup
             let startIndex = this.index;
@@ -321,7 +405,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
 
             // Now climb up until we find a node that has a Rules parent
-            while (currentNode && currentNode.parent && !isNode(currentNode.parent, 'Rules')) {
+            while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
               currentNode = currentNode.parent;
               if (currentNode && currentNode.index !== undefined) {
                 startIndex = currentNode.index;
@@ -331,7 +415,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             if (startIndex !== undefined) {
               opts.start = startIndex;
             }
-          } else if (this.options.resolution === 'call-time') {
+          } else if (this.options.resolution === 'call-time' && !isInterpolatedVariable) {
             // For call-time resolution, use the call site's position (context.callSiteIndex)
             // instead of the definition position. This allows mixins to resolve variables
             // at the time they're called, not when they're defined.
@@ -351,7 +435,7 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
                 }
               }
 
-              while (currentNode && currentNode.parent && !isNode(currentNode.parent, 'Rules')) {
+              while (currentNode && currentNode.parent && !isNode(currentNode.parent, N.Rules)) {
                 currentNode = currentNode.parent;
                 if (currentNode && currentNode.index !== undefined) {
                   startIndex = currentNode.index;
@@ -366,30 +450,34 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           switch (type) {
             case 'index':
               if (typeof valueKey === 'number') {
-                if (isNode(targetRules, 'Rules')) {
+                if (isNode(targetRules, N.Rules)) {
                   return targetRules.at(valueKey);
-                } else if (isNode(targetRules, 'JsArray')) {
-                  return atIndex((targetRules as any).value, valueKey);
+                } else if (isNode(targetRules, N.JsArray)) {
+                  return atIndex((targetRules as any).data, valueKey);
                 }
               } else {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                if (isNode(targetRules, 'Rules')) {
+                if (isNode(targetRules, N.Rules)) {
                   return targetRules.find('declaration', `${keyStr}`, undefined, opts);
-                } else if (isNode(targetRules, 'JsObject')) {
-                  return (targetRules as any).value[keyStr];
+                } else if (isNode(targetRules, N.JsObject)) {
+                  return (targetRules as any).data[keyStr];
                 }
               }
               break;
             case 'variable':
-              if (isNode(targetRules, 'Rules')) {
+              if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                return targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                const found = targetRules.find('declaration', `${keyStr}`, 'VarDeclaration', opts);
+                if (found !== undefined) {
+                  return found;
+                }
+                return undefined;
               }
               break;
             case 'function':
-              if (isNode(targetRules, 'Rules')) {
+              if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
-                const inCall = isNode(this.parent, 'Call');
+                const inCall = isNode(this.parent, N.Call);
                 // When called (e.g. `ns.func(...)`), prefer function lookup first, then fall back to a declaration.
                 // When not called, parsers should generally use `index`/`variable` references for `ns.func` so
                 // declarations win; but if we are here, keep behavior predictable.
@@ -407,29 +495,51 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               }
               break;
             case 'property':
-              if (isNode(targetRules, 'Rules')) {
+              if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                return targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
-              } else if (isNode(targetRules, 'JsObject')) {
+                const declaration = targetRules.find('declaration', `${keyStr}`, 'Declaration', opts);
+                if (declaration !== undefined) {
+                  return declaration;
+                }
+                return undefined;
+              } else if (isNode(targetRules, N.JsObject)) {
                 const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
-                return (targetRules as any).value[keyStr];
+                return (targetRules as any).data[keyStr];
               }
               break;
             case 'mixin':
-              if (isNode(targetRules, 'Rules')) {
+              if (isNode(targetRules, N.Rules)) {
                 // valueKey can be string or string[] - find() accepts both
-                return targetRules.find('mixin', valueKey, 'Mixin', opts);
+                const mixin = targetRules.find('mixin', valueKey, 'Mixin', opts);
+                if (mixin) {
+                  return mixin;
+                }
+                // Some Less built-ins are invoked in mixin-like call positions.
+                // If a mixin lookup misses during a Call, allow function fallback.
+                if (isNode(this.parent, N.Call)) {
+                  const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                  return targetRules.find('function', `${keyStr}`, undefined, opts);
+                }
+                return undefined;
               }
               break;
             case 'ruleset':
-              if (isNode(targetRules, 'Rules')) {
+              if (isNode(targetRules, N.Rules)) {
                 const keyStr = Array.isArray(valueKey) ? valueKey[0] : valueKey;
                 return targetRules.find('mixin', `${keyStr}`, 'Ruleset', opts);
               }
               break;
             case 'mixin-ruleset':
-              if (isNode(targetRules, 'Rules')) {
-                return targetRules.find('mixin', valueKey, undefined, opts);
+              if (isNode(targetRules, N.Rules)) {
+                const mixinOrRuleset = targetRules.find('mixin', valueKey, undefined, opts);
+                if (mixinOrRuleset) {
+                  return mixinOrRuleset;
+                }
+                if (isNode(this.parent, N.Call)) {
+                  const keyStr = Array.isArray(valueKey) ? (valueKey[0] ?? '') : valueKey;
+                  return targetRules.find('function', `${keyStr}`, undefined, opts);
+                }
+                return undefined;
               }
               break;
           }
@@ -439,49 +549,12 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         // Lookup is driven by the resolved target scope.
         // In mixin/at-rule nesting cases, `this.rulesParent` can point at a narrower scope (e.g. the
         // nested @media Rules) while the variable lives on an ancestor Rules (e.g. mixin param wrapper).
+        const lookupTarget = isNode(resolvedTarget, N.Ruleset)
+          ? resolvedTarget.data.rules
+          : resolvedTarget;
         let returnVal: any;
-        if (isNode(resolvedTarget, 'Rules')) {
-          returnVal = performLookup(resolvedTarget);
-
-          // For variable and mixin lookups, allow walking up the parent Rules chain to find
-          // definitions in ancestor scopes.
-          //
-          // Less mixins are lexically scoped and should be callable from nested rulesets.
-          if (returnVal === undefined && (type === 'variable' || type === 'mixin' || type === 'mixin-ruleset')) {
-            let cursor: any = resolvedTarget.parent;
-            let depth = 0;
-            while (cursor && depth++ < 20) {
-              // Skip non-Rules nodes (e.g. AtRule/Ruleset wrappers) while walking upwards.
-              if (!isNode(cursor, 'Rules')) {
-                cursor = cursor.parent;
-                continue;
-              }
-              // #region agent log
-              try {
-                if (type === 'mixin-ruleset' && (Array.isArray(valueKey) ? valueKey.join('') : String(valueKey)) === '.mixin') {
-                  syncLog({
-                    sessionId: 'debug-session',
-                    runId: process.env.DEBUG_RUN_ID ?? 'run',
-                    hypothesisId: 'H10',
-                    location: 'reference.ts:parent-walk',
-                    message: 'mixin-parent-walk-check',
-                    data: {
-                      depth,
-                      cursorIndex: (cursor as any)?.index,
-                      cursorRulesSetLen: Array.isArray((cursor as any)?.rulesSet) ? (cursor as any).rulesSet.length : -1
-                    },
-                    timestamp: Date.now()
-                  });
-                }
-              } catch {}
-              // #endregion
-              returnVal = performLookup(cursor);
-              if (returnVal !== undefined) {
-                break;
-              }
-              cursor = cursor.parent;
-            }
-          }
+        if (isNode(lookupTarget, N.Rules)) {
+          returnVal = performLookup(lookupTarget);
 
           // If leakyRules is true, try caller scope as a secondary pass (historical behavior).
           if (returnVal === undefined && context.leakyRules) {
@@ -491,124 +564,18 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
           }
         }
-
-        // #region agent log
-        try {
-          if (type === 'variable') {
-            const keyStr = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
-            if (keyStr === 'ruleset' || keyStr.includes('mixins')) {
-              let foundNodeType = '';
-              let valueType = '';
-              let collLen = -1;
-              let firstDecl = '';
-              try {
-                if (returnVal && typeof returnVal === 'object' && 'type' in (returnVal as any)) {
-                  foundNodeType = String((returnVal as any).type ?? '');
-                  const vv = (returnVal as any).value?.value;
-                  if (vv && typeof vv === 'object' && 'type' in vv) {
-                    valueType = String((vv as any).type ?? '');
-                    if (valueType === 'Collection') {
-                      collLen = Array.isArray((vv as any).value) ? (vv as any).value.length : -1;
-                      const first: any = Array.isArray((vv as any).value) ? (vv as any).value[0] : undefined;
-                      if (first?.type === 'Declaration') {
-                        const nm = first.value?.name;
-                        const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
-                        const valStr = String(first.value?.value?.valueOf?.() ?? '');
-                        firstDecl = `${nameStr}=${valStr}`;
-                      }
-                    } else if (valueType === 'Mixin') {
-                      // For detached ruleset-as-mixin, grab first declaration from its rules body if present.
-                      const body: any = (vv as any).value?.rules;
-                      const arr: any[] | undefined = Array.isArray(body?.value) ? body.value : undefined;
-                      const first: any = arr ? arr[0] : undefined;
-                      if (first?.type === 'Declaration') {
-                        const nm = first.value?.name;
-                        const nameStr = typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '');
-                        const valStr = String(first.value?.value?.valueOf?.() ?? '');
-                        firstDecl = `${nameStr}=${valStr}`;
-                      }
-                    }
-                  }
-                }
-              } catch {}
-              syncLog({
-                sessionId: 'debug-session',
-                runId: process.env.DEBUG_RUN_ID ?? 'run',
-                hypothesisId: 'H16',
-                location: 'reference.ts:lookup',
-                message: 'variable-lookup-result',
-                data: {
-                  key: keyStr,
-                  foundNodeType,
-                  valueType,
-                  collLen,
-                  firstDecl
-                },
-                timestamp: Date.now()
-              });
-            }
-          }
-        } catch {}
-        // #endregion
         return { returnVal, valueKey };
       },
       ({ returnVal, valueKey }) => {
+        const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
         if (returnVal === undefined) {
-          const valueKeyStr2 = Array.isArray(valueKey) ? valueKey.join('') : String(valueKey);
-          // #region agent log
-          syncLog({
-            sessionId: 'debug-session',
-            runId: process.env.DEBUG_RUN_ID ?? 'run',
-            hypothesisId: 'H3',
-            location: 'reference.ts:489',
-            message: 'lookup-miss',
-            data: {
-              type,
-              key: valueKeyStr2,
-              hasTarget: !!this.value.target,
-              leakyRules: !!context.leakyRules,
-              rulesParentType: (this.rulesParent as any)?.type,
-              sourceRulesParentType: (this.sourceRulesParent as any)?.type,
-              resolvedTargetType: (resolvedTarget as any)?.type,
-              resolvedTargetIndex: (resolvedTarget as any)?.index,
-              resolvedTargetValueLen: Array.isArray((resolvedTarget as any)?.value) ? (resolvedTarget as any).value.length : -1,
-              resolvedTargetRulesSetLen: Array.isArray((resolvedTarget as any)?.rulesSet) ? (resolvedTarget as any).rulesSet.length : -1,
-              resolvedTargetChild0: (() => {
-                try {
-                  const first: any = Array.isArray((resolvedTarget as any)?.value) ? (resolvedTarget as any).value[0] : undefined;
-                  if (!first) {return '';}
-                  if (first.type === 'Ruleset') {return `Ruleset:${String(first.value?.selector?.valueOf?.() ?? '')}`;}
-                  if (first.type === 'Mixin') {return `Mixin:${String(first.value?.name?.valueOf?.() ?? '')}`;}
-                  if (first.type === 'Declaration' || first.type === 'VarDeclaration') {
-                    const nm = first.value?.name;
-                    return `${first.type}:${typeof nm === 'string' ? nm : String(nm?.valueOf?.() ?? '')}`;
-                  }
-                  return String(first.type ?? '');
-                } catch {
-                  return '';
-                }
-              })(),
-              ancestorRulesSetLens: (() => {
-                try {
-                  const lens: number[] = [];
-                  let cur: any = (resolvedTarget as any)?.parent;
-                  let depth = 0;
-                  while (cur && depth++ < 6) {
-                    if (isNode(cur, 'Rules')) {
-                      lens.push(Array.isArray(cur.rulesSet) ? cur.rulesSet.length : -1);
-                    }
-                    cur = cur.parent;
-                  }
-                  return lens.join(',');
-                } catch {
-                  return '';
-                }
-              })()
-            },
-            timestamp: Date.now()
-          });
-          // #endregion
           if (!fallbackValue) {
+            if (
+              (type === 'mixin' || type === 'mixin-ruleset')
+              && isInsideSelectorCapture(this)
+            ) {
+              return new Any(valueKeyStr2, { role: 'ident' });
+            }
             switch (type) {
               case 'mixin':
                 throw new ReferenceError(`No matching mixins found for '${valueKeyStr2}'`);
@@ -631,9 +598,13 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
           }
           return out;
         }
-        if (isNode(returnVal, ['Declaration', 'VarDeclaration'])) {
-          context.searchScope.add(returnVal);
-          const hasImportant = isNode(returnVal, 'Declaration') && !!returnVal.value.important;
+        if (isNode(returnVal, N.Declaration | N.VarDeclaration)) {
+          context.searchScope.add(returnVal as Node);
+          const hasImportant = isNode(returnVal, N.Declaration) && !!(returnVal as Declaration).data.important;
+          const declValue = (returnVal as Declaration).data.value;
+          // Mixin references (e.g. @foo: .a) are not resolved at lookup time; they are
+          // resolved only when called (@foo();) or used as target of a lookup (@foo[prop]).
+          const isMixinRef = isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset';
           return pipe(
             () => {
               // Track that this value came from an important declaration
@@ -641,12 +612,14 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
               if (hasImportant) {
                 context.pushImportantSource();
               }
-              const declValue = returnVal.value.value;
               declValue.frozen = true;
+              if (isMixinRef) {
+                return declValue;
+              }
               return declValue.eval(context);
             },
             (evald) => {
-              context.searchScope.delete(returnVal);
+              context.searchScope.delete(returnVal as Node);
               // DON'T pop important source here - let the consuming Declaration pop it
               // after it has checked and merged the important flag
               let out = evald.copy(true, freezeChildren).inherit(evald);
@@ -658,14 +631,30 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
             }
           );
         } else if (isArray(returnVal)) {
+          // When a mixin-ruleset reference is used as the target of another
+          // Reference (e.g. #theme -> .dark -> .navbar), preserve the resolved
+          // scope entry instead of eagerly converting it into a callable mixin.
+          if (type === 'mixin-ruleset' && !isNode(this.parent, N.Call) && context.referenceStack > 1) {
+            const first = returnVal[0];
+            if (first && isNode(first, N.Mixin | N.Ruleset)) {
+              first.sourceParent = this;
+              context.popReference();
+              return cast(first);
+            }
+            context.popReference();
+            return cast(undefined);
+          }
+
           // Only pass Mixins and Rulesets to getFunctionFromMixins
           for (let item of returnVal) {
             item.sourceParent = this;
-            if (!isNode(item, ['Mixin', 'Ruleset'])) {
+            if (!isNode(item, N.Mixin | N.Ruleset)) {
+              context.popReference();
               return cast(undefined);
             }
           }
           const func = getFunctionFromMixins(returnVal as MixinEntry[]);
+          context.popReference();
           return cast(func);
         }
         const result = cast(returnVal);
@@ -675,22 +664,15 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
         return result;
       }
     );
-    // Handle both sync and async results to ensure cleanup
     if (isThenable(result)) {
-      return result.then(
-        (res) => {
-          // context.stopEvaluatingReference(this);
-          return res;
-        },
+      return (result as Promise<Node>).then(
+        res => res,
         (err) => {
-          // context.stopEvaluatingReference(this);
           throw err;
         }
       );
-    } else {
-      // context.stopEvaluatingReference(this);
-      return result;
     }
+    return result as Node;
   }
 }
 

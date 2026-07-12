@@ -37,6 +37,22 @@ describe('functionCallArgs', () => {
     const { errors } = parse('color: func(a; b; c)', 'declaration');
     expect(errors.length).toBe(0);
   });
+
+  it('should parse space-delimited first argument as Sequence in positional args', () => {
+    const { errors, tree } = parser.parse('extract(1 2 3, 2)');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Call');
+    expect(out).toContainString('(Sequence');
+  });
+
+  it('should parse single space-delimited argument as one positional Sequence', () => {
+    const { errors, tree } = parser.parse('length(1 2 3)');
+    expect(errors.length).toBe(0);
+    const out = serializeTypes(tree, { showOptions: true });
+    expect(out).toContainString('(Call');
+    expect(out).toContainString('(Sequence');
+  });
 });
 
 describe('knownFunctions', () => {

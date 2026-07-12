@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Color, ColorFormat, Dimension, Num } from '../index.js';
 import { Call, List } from '../index.js';
+import { Context } from '../../context.js';
 
 describe('Color Node', () => {
   describe('Constructor and Basic Properties', () => {
@@ -11,7 +12,7 @@ describe('Color Node', () => {
         alpha: 1
       });
 
-      expect(color.value.format).toBe(ColorFormat.RGB);
+      expect(color.options.format).toBe(ColorFormat.RGB);
       expect(color.rgb).toEqual([255, 0, 0]);
       expect(color.alpha).toBe(1);
     });
@@ -23,7 +24,7 @@ describe('Color Node', () => {
         alpha: 1
       });
 
-      expect(color.value.format).toBe(ColorFormat.HSL);
+      expect(color.options.format).toBe(ColorFormat.HSL);
       expect(color.hsl).toEqual([0, 1, 0.5]); // Clamped values (decimals)
       expect(color.alpha).toBe(1);
     });
@@ -31,7 +32,7 @@ describe('Color Node', () => {
     it('should create color from hex string', () => {
       const color = new Color('#ff0000');
 
-      expect(color.value.format).toBe(ColorFormat.HEX);
+      expect(color.options.format).toBe(ColorFormat.HEX);
       expect(color.rgb).toEqual([255, 0, 0]);
       expect(color.alpha).toBe(1);
     });
@@ -39,7 +40,7 @@ describe('Color Node', () => {
     it('should create color from hex string with alpha', () => {
       const color = new Color('#ff000080');
 
-      expect(color.value.format).toBe(ColorFormat.HEX);
+      expect(color.options.format).toBe(ColorFormat.HEX);
       expect(color.rgb).toEqual([255, 0, 0]);
       expect(color.alpha).toBeCloseTo(0.5, 2);
     });
@@ -52,7 +53,7 @@ describe('Color Node', () => {
         alpha: 1
       });
 
-      expect(color.value.format).toBe(ColorFormat.HEX);
+      expect(color.options.format).toBe(ColorFormat.HEX);
       expect(color.rgb).toEqual([255, 0, 0]);
       expect(color.alpha).toBe(1);
     });
@@ -216,7 +217,7 @@ describe('Color Node', () => {
 
       const result = color1.operate(color2, '+');
 
-      expect(result.value.format).toBe(ColorFormat.HSL);
+      expect(result.options.format).toBe(ColorFormat.HSL);
     });
   });
 
@@ -351,34 +352,44 @@ describe('Color Node', () => {
     });
   });
 
-  describe('fromFunctionCall', () => {
-    it('should create color with Call node for RGB function', () => {
+  describe('call-backed colors', () => {
+    it('should preserve Call node for RGB function colors', () => {
       const args = [
         new Dimension({ number: 255, unit: '' }),
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
+      const callNode = new Call({ name: 'rgb', args: args as any });
 
-      const color = Color.fromFunctionCall(ColorFormat.RGB, args, 1);
+      const color = new Color({
+        node: callNode,
+        rgb: [255, 0, 0],
+        alpha: 1
+      }, { format: ColorFormat.RGB });
 
-      expect(color.value.format).toBe(ColorFormat.RGB);
-      expect(color.value.node).toBeInstanceOf(Call);
-      expect((color.value.node as Call).value.name).toBe('rgb');
+      expect(color.options.format).toBe(ColorFormat.RGB);
+      expect(color.data.node).toBeInstanceOf(Call);
+      expect((color.data.node as Call).data.name).toBe('rgb');
       expect(color.alpha).toBe(1);
     });
 
-    it('should create color with Call node for HSL function', () => {
+    it('should preserve Call node for HSL function colors', () => {
       const args = [
         new Dimension({ number: 0, unit: 'deg' }),
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
+      const callNode = new Call({ name: 'hsl', args: args as any });
 
-      const color = Color.fromFunctionCall(ColorFormat.HSL, args, 1);
+      const color = new Color({
+        node: callNode,
+        hsl: [[0, 'deg'], [100, '%'], [50, '%']],
+        alpha: 1
+      }, { format: ColorFormat.HSL });
 
-      expect(color.value.format).toBe(ColorFormat.HSL);
-      expect(color.value.node).toBeInstanceOf(Call);
-      expect((color.value.node as Call).value.name).toBe('hsl');
+      expect(color.options.format).toBe(ColorFormat.HSL);
+      expect(color.data.node).toBeInstanceOf(Call);
+      expect((color.data.node as Call).data.name).toBe('hsl');
       expect(color.alpha).toBe(1);
     });
   });
@@ -449,9 +460,10 @@ describe('Color Node', () => {
         alpha: 1
       });
       const dimension = new Dimension({ number: 10, unit: 'px' });
+      const context = new Context({ unitMode: 'strict' });
 
       expect(() => {
-        color.operate(dimension, '+');
+        color.operate(dimension, '+', context);
       }).toThrow('Cannot convert "10px" to a color');
     });
 

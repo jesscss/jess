@@ -1,0 +1,174 @@
+---
+title: Unsupported Sass+ Features
+sidebar_label: Sass+ Unsupported
+audiences:
+  - jess
+origin: jess
+---
+This document lists Sass and SCSS features that are **parsed correctly** by Jess but are **intentionally not supported** during evaluation/compilation. These features represent design decisions that Jess avoids in favor of better alternatives.
+
+## What is Sass+?
+
+**Sass+** is Sass without the bad parts. Jess supports the core Sass/SCSS syntax and features that provide real value, while intentionally omitting features that exist only because Sass painted itself into architectural corners.
+
+Jess provides better alternatives through:
+- **Real AST ownership** - Control evaluation order and structure without tree violations
+- **Explicit visibility controls** - Use `rulesVisibility` options to control what's exported
+- **Module boundaries** - Use `@-compose` with protection flags for clear module APIs
+- **Intentional structure** - Write code where it belongs instead of teleporting it around
+
+## Intentionally Unsupported Features
+
+### `@at-root`
+
+The `@at-root` directive allows you to "teleport" rules to the root level even when nested inside other rules or at-rules.
+
+**Sass syntax:**
+```scss
+@media print {
+  .page {
+    width: 8in;
+    @at-root (without: media) {
+      color: #111;
+    }
+  }
+}
+```
+
+**Why Sass needed it (and Jess doesn't):**
+
+Sass's constraints:
+- Single-pass-ish evaluation
+- Everything is text expansion
+- No real AST ownership
+- No phase separation
+- No registration APIs
+
+**Why Jess doesn't need it:**
+
+Jess's advantages:
+- You have an AST - you control the structure from the start
+- You control evaluation order - no need to move things around after the fact
+- You can organize code intentionally - write things where they belong
+
+**How to avoid needing `@at-root` in Jess:**
+
+1. **Write utilities at the top level:**
+   Instead of nesting utilities inside other rules and trying to "teleport" them out, simply write them at the root level where they belong:
+   
+   ```scss
+   // Instead of this (Sass):
+   @media print {
+     .page {
+       @at-root .utility { color: red; }
+     }
+   }
+   
+   // Do this (Jess):
+   .utility { color: red; }
+   @media print {
+     .page { /* ... */ }
+   }
+   ```
+
+2. **Use separate files/modules:**
+   If you need utilities that should be at the root level, put them in a separate file and compose it:
+   
+   ```scss
+   // utilities.jess
+   .utility { color: red; }
+   .another-utility { background: blue; }
+   
+   // main.jess
+   @-compose "utilities";
+   @media print {
+     .page { /* ... */ }
+   }
+   ```
+
+3. **Structure your code intentionally:**
+   Jess gives you full control over your AST structure. If something needs to be at the root, write it at the root. If it needs to be nested, nest it. There's no need for "teleportation" because you control the structure from the start.
+
+4. **Use visibility controls when needed:**
+   If you need to conditionally include/exclude rules, use Jess's `rulesVisibility` options or control flow (`@if`) rather than trying to move rules around the tree.
+
+**Status:** Parsed as an `AtRule` node, but will never be supported. A warning is emitted when this directive is encountered.
+
+**Verdict:** There is no use case where `@at-root` is fundamentally necessary in a language designed sanely from the start. It only exists because Sass lacked proper AST control and forced developers to work around its limitations. Jess gives you full control over structure from the beginning, eliminating the need for tree manipulation hacks.
+
+### `@forward` with `show`/`hide` lists
+
+Sass's `@forward` directive supports `show` and `hide` keywords to selectively re-export members from a module.
+
+**Sass syntax:**
+```scss
+@forward "theme" show $colors, mixin-button;
+@forward "utils" hide $internal-var, private-mixin;
+```
+
+**Why this isn't supported:**
+
+Visibility control is the **module's responsibility**, not the forwarding module's. Each module should define its own public vs private API using `rulesVisibility` options. External modules shouldn't be able to override or filter another module's visibility decisions.
+
+**Jess alternative:**
+
+Modules control their own visibility. Use `rulesVisibility` options on declarations within the module itself:
+
+```scss
+// theme.jess - module defines its own public API
+$colors: /* ... */;  // public by default
+@mixin button { /* ... */ }  // public by default
+
+// Private implementation details
+$internal-var: /* ... */;  // marked as private via rulesVisibility
+@mixin _internal-mixin { /* ... */ }  // marked as private
+
+// main.jess
+@-compose "theme";
+// Only public members from theme.jess are accessible
+```
+
+**Status:** Parsed and metadata is captured (`forwardShow`/`forwardHide` on `StyleImport.importOptions`), but the filtering semantics are not implemented and will not be.
+
+**Verdict:** Visibility is a module's own concern. External filtering violates encapsulation and makes it harder to reason about what a module actually exports.
+
+### `@forward` with `as <prefix>-*` prefixing
+
+Sass's `@forward` supports automatic prefixing of all exported members.
+
+**Sass syntax:**
+```scss
+@forward "theme" as theme-*;
+// Exports $theme-colors, mixin-theme-button, etc.
+```
+
+**Why this is problematic:**
+
+- **String manipulation at module boundaries** - Relies on prefix matching and string concatenation
+- **Unclear ownership** - The forwarding module controls naming of forwarded members
+- **Hard to refactor** - Changing prefixes requires updating all consumers
+
+**Jess alternative:**
+
+Use explicit namespacing:
+```jess
+@-compose "theme" as theme;
+// Then access as $theme.colors, theme.button(), etc.
+```
+
+**Status:** Parsed and metadata is captured (`forwardAsPrefix` on `StyleImport.importOptions`), but the prefixing semantics are not implemented and will not be.
+
+**Verdict:** Explicit namespacing is clearer and more maintainable than automatic string prefixing.
+
+## Philosophy
+
+Jess supports Sass/SCSS syntax for **conversion and compatibility**, but makes unsupported features **explicit and ugly** (via warnings). We do not encourage these patterns and will not build new features around them.
+
+Every "legit" Sass use case for these features is only legit because Sass painted itself into architectural corners. Jess solves the underlying problems by giving you proper AST control and explicit visibility mechanisms from the start.
+
+## Reporting Issues
+
+If you encounter a Sass feature that you believe should be supported, please [open an issue](https://github.com/jesscss/jess/issues) with:
+- The Sass/SCSS code that uses the feature
+- Your use case and why you need it
+- Whether any of the Jess alternatives above would work for you

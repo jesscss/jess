@@ -29,5 +29,8 @@ export function colorBlend(mode: (c1: number, c2: number) => number, color1: Col
   }
   rgba[3] = ar;
 
-  return new Color(rgba);
+  const out = new Color(rgba);
+  // Preserve color1 style for blend outputs (Less-like form continuity).
+  out.options.format = color1.options.format;
+  return out;
 }

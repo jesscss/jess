@@ -1,39 +1,27 @@
-import { Node, defineType, type LocationInfo, type TreeContext, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
-import { type List } from './list.js';
+import { Node, defineType, F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC } from './node.js';
 import { type Context } from '../context.js';
 import { isNode } from './util/is-node.js';
+import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable } from '@jesscss/awaitable-pipe';
-import { getFunctionFromMixins, type Rules } from './rules.js';
+import { getFunctionFromMixins, type MixinEntry, type Rules } from './rules.js';
 import { Any } from './any.js';
 import { freezeChildren } from './util/cloning.js';
-import { createRequire } from 'node:module';
-import { syncLog } from './util/__tests__/debug-log.js';
-
-const require = createRequire(import.meta.url);
+import { List, list } from './list.js';
+import type { AtRule } from './at-rule.js';
+let rulesCtorPromise: Promise<(typeof import('./rules.js'))['Rules']> | undefined;
 
 // Lazy getter for Rules to break circular dependency:
 // rules.ts → cast.ts → color.ts → call.ts → rules.ts
-function getRules() {
-  return require('./rules.js').Rules;
+async function getRules() {
+  if (!rulesCtorPromise) {
+    rulesCtorPromise = import('./rules.js').then(({ Rules }) => Rules);
+  }
+  return rulesCtorPromise;
 }
-
-// #region agent log
-function __agentDbgPost(location: string, message: string, data: Record<string, any>) {
-  syncLog({
-    sessionId: 'debug-session',
-    runId: process.env.DEBUG_RUN_ID ?? 'run',
-    hypothesisId: 'H1',
-    location,
-    message,
-    data,
-    timestamp: Date.now()
-  });
-}
-// #endregion
 
 export type CallValue = {
   /**
@@ -41,7 +29,7 @@ export type CallValue = {
    *   e.g. $|#mixin|.class() is -> [Call name: [Ref (#mixin.class)], args: []]
    */
   name: string | Node;
-  args?: List;
+  args?: List<Node>;
   /**
    * Optional content node, used for passing blocks to mixins/functions.
    * This is how Jess represents "call with content block" forms like:
@@ -59,6 +47,8 @@ export type CallOptions = {
    */
   markImportant?: boolean;
   silentFail?: boolean;
+  /** Parser-provided hint for modern color-call syntax (space/slash form). */
+  modernSyntax?: boolean;
 };
 
 /**
@@ -82,15 +72,41 @@ export type ExtendedFn<T extends any[] = any[], R = any> = ((this: Context, ...a
  * @note In Less, the ref for something like `rgb`
  * is not a string, but is an (optional) variable reference.
  */
-export class Call extends Node<CallValue, CallOptions> {
-  type = 'Call' as const;
-  shortType = 'call' as const;
-  override _requiredSemi = true;
+export interface Call {
+  type: 'Call';
+  shortType: 'call';
+}
 
+export class Call extends Node<CallValue, CallOptions> {
   constructor(value: CallValue, options?: CallOptions, location?: any, treeContext?: any) {
     super(value, options, location, treeContext);
+    this.requiredSemi = true;
     // Function calls are always non-static and may be async
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+  }
+
+  get name() {
+    return this.data.name;
+  }
+
+  set name(val: CallValue['name']) {
+    this.setData('name', val);
+  }
+
+  get args() {
+    return this.data.args;
+  }
+
+  set args(val: CallValue['args']) {
+    this.setData('args', val as any);
+  }
+
+  get contentNode() {
+    return this.data.contentNode;
+  }
+
+  set contentNode(val: CallValue['contentNode']) {
+    this.setData('contentNode', val as any);
   }
 
   override toTrimmedString(options?: PrintOptions) {
@@ -98,7 +114,8 @@ export class Call extends Node<CallValue, CallOptions> {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    const { name, args, contentNode } = this.value;
+    const { name, contentNode } = this.data;
+    const args = this.data.args;
     if (typeof name === 'string') {
       w.add(name, this);
     } else {
@@ -109,7 +126,17 @@ export class Call extends Node<CallValue, CallOptions> {
     }
     w.add('(');
     if (args) {
-      args.toString(options);
+      const normalizedArgs = args.data.filter(Boolean);
+      const last = normalizedArgs.length - 1;
+      for (let i = 0; i <= last; i++) {
+        const arg = normalizedArgs[i]!;
+        const argOut = w.capture(() => arg.toString(options));
+        // Normalize boundary whitespace so calls serialize with stable comma spacing.
+        w.add(argOut.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), arg);
+        if (i < last) {
+          w.add(', ');
+        }
+      }
     }
     w.add(')');
     if (this.options?.markImportant) {
@@ -125,14 +152,14 @@ export class Call extends Node<CallValue, CallOptions> {
   /** Recursively makes declarations important */
   makeImportant(rules: Rules): Rules {
     let important = Any.create('!important', { role: 'flag' }) as Any<'flag'>;
-    for (const rule of rules.value) {
-      if (isNode(rule, 'Declaration')) {
-        rule.value.important = important;
-      } else if (isNode(rule, 'Rules')) {
+    for (const rule of rules.data) {
+      if (isNode(rule, N.Declaration)) {
+        rule.setData('important', important);
+      } else if (isNode(rule, N.Rules)) {
         this.makeImportant(rule);
-      } else if (isNode(rule, ['AtRule', 'Ruleset'])) {
-        if (rule.value.rules) {
-          this.makeImportant(rule.value.rules);
+      } else if (isNode(rule, N.AtRule | N.Ruleset)) {
+        if ((rule as AtRule).data.rules) {
+          this.makeImportant((rule as AtRule).data.rules!);
         }
       }
     }
@@ -141,253 +168,195 @@ export class Call extends Node<CallValue, CallOptions> {
 
   /** Come back and redo -- too hard to reason about as a MaybePromise */
   override async evalNode(context: Context): Promise<Node> {
-    let { name, args } = this.value;
+    let { name } = this.data;
+    let args = this.data.args;
     let { markImportant } = this.options;
+    const adoptCallWhitespace = <T extends Node>(node: T): T => {
+      node.pre = this.pre;
+      node.post = this.post;
+      node.sourceParent = this;
+      return node;
+    };
+    const evalArgNodes = async (nodes?: List<Node>) => {
+      if (!nodes) {
+        return undefined;
+      }
+      const out: Node[] = [];
+      for (const node of nodes.data) {
+        out.push(await node.eval(context) as Node);
+      }
+      return list(out, nodes.options);
+    };
 
     context.callStack.push(this);
     context.parenFrames.push(false);
 
-    // #region agent log
-    try {
-      if (isNode(name, 'Reference')) {
-        const raw = (name as any).value?.key;
-        const keyStr = Array.isArray(raw) ? raw.join('') : String(raw?.valueOf?.() ?? raw ?? '');
-        if (keyStr.includes('my-mixins')) {
-          __agentDbgPost('call.ts:evalNode', 'enter-my-mixins-call', { keyStr });
-        }
-      }
-    } catch {}
-    // #endregion
-
     let n = typeof name === 'string' ? name : await name.eval(context);
-    // #region agent log
-    try {
-      let key = '';
-      let rawStr = '';
-      let rawValOfStr = '';
-      if (isNode(name, 'Reference')) {
-        const raw = (name as any).value?.key;
-        rawStr = String(raw ?? '');
-        rawValOfStr = raw && typeof raw === 'object' && typeof (raw as any).valueOf === 'function'
-          ? String((raw as any).valueOf())
-          : '';
-        if (Array.isArray(raw)) {
-          key = raw.join('');
-        } else if (raw && typeof raw === 'object' && typeof (raw as any).valueOf === 'function') {
-          key = String((raw as any).valueOf());
-        } else {
-          key = String(raw ?? '');
-        }
-      } else if (typeof name === 'string') {
-        key = name;
-      }
-      const resolvedType = typeof n === 'string' ? 'string' : String((n as any)?.type ?? typeof n);
-      if (
-        key.includes('mix')
-        || resolvedType === 'Mixin'
-        || resolvedType === 'Collection'
-        || resolvedType === 'Rules'
-        || (isNode(name, 'Reference') && ((rawStr?.includes?.('mix') ?? false) || (rawValOfStr?.includes?.('mix') ?? false)))
-      ) {
-        __agentDbgPost('call.ts:evalNode', 'call-name-resolved', {
-          key,
-          rawStr: isNode(name, 'Reference') ? rawStr : undefined,
-          rawValOfStr: isNode(name, 'Reference') ? rawValOfStr : undefined,
-          resolvedType,
-          leakyRules: !!context.leakyRules
-        });
-      }
-    } catch {}
-    // #endregion
-
+    // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
+    if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
+      n = await n.eval(context);
+    }
     // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
     // by parsers that support them. We intentionally avoid implicit string→function lookup here
     // to prevent surprising behavior for plain CSS function-like calls.
     // If the evaluated name is a Call node, execute it directly
     // This handles cases like @alias: .something(foo); @alias();
-    if (isNode(n, 'Call')) {
-      try {
-        // Execute the inner Call node (it will handle its own callStack push/pop)
-        const result = await n.eval(context);
-        // Apply markImportant if needed
-        if (markImportant && isNode(result, 'Rules')) {
-          this.makeImportant(result);
-        }
-        // Always pop the outer call's stack entries
-        context.callStack.pop();
-        context.parenFrames.pop();
-        return result;
-      } finally {}
-    } else if (isNode(n, 'Mixin')) {
-      n = cast(getFunctionFromMixins(n));
-    } else if (isNode(n, 'Func')) {
+    if (isNode(n, N.Call)) {
+      // Execute the inner Call node (it will handle its own callStack push/pop)
+      const result = await n.eval(context);
+      // Apply markImportant if needed
+      if (markImportant && isNode(result, N.Rules)) {
+        this.makeImportant(result);
+      }
+      // Always pop the outer call's stack entries
+      context.callStack.pop();
+      context.parenFrames.pop();
+      return result;
+    } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
+      n = cast(getFunctionFromMixins(n as MixinEntry | MixinEntry[]));
+    } else if (isNode(n, N.Func)) {
       // Execute stylesheet-defined functions via their evalCall behavior.
-      try {
-        const evaluatedArgs = args ? await args.eval(context) : undefined;
-        const argNodes = evaluatedArgs ? (evaluatedArgs as List).value as unknown as Node[] : [];
-        const result = await (n as any).evalCall(context, argNodes);
-        context.callStack.pop();
-        context.parenFrames.pop();
-        return result;
-      } finally {}
-    } else if (isNode(n, 'Collection')) {
+      const argNodes = await evalArgNodes(args) ?? list([]);
+      const result = await (n as any).evalCall(context, argNodes);
+      context.callStack.pop();
+      context.parenFrames.pop();
+      return result;
+    } else if (isNode(n, N.Collection)) {
       // If the evaluated name is Rules or Collection (detached rulesets),
       // return those rules directly, but only if args are empty
       // If args are provided, throw an error - you can't call Rules/Collection with arguments
-      if (args && args.value.length > 0) {
+      if (args && args.data.length > 0) {
         context.callStack.pop();
         context.parenFrames.pop();
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
-      const Rules = getRules();
-      let rules = Rules.create(n.value, n.options);
-      // #region agent log
-      __agentDbgPost('call.ts:CollectionCall', 'collection-call-create-rules', {
-        hasArgs: !!args && args.value.length > 0,
-        collLen: Array.isArray(n.value) ? n.value.length : -1,
-        rulesLen: Array.isArray(rules.value) ? rules.value.length : -1,
-        collHasRulesVisibility: !!(n as any)?.options?.rulesVisibility,
-        collChildTypes: Array.isArray(n.value)
-          ? n.value.slice(0, 3).map((x: any) => String(x?.type ?? '')).join(',')
-          : '',
-        collChild0Key: (() => {
-          try {
-            const first: any = Array.isArray(n.value) ? n.value[0] : undefined;
-            if (!first) return '';
-            if (first.type === 'Ruleset') return String(first.value?.selector?.valueOf?.() ?? '');
-            if (first.type === 'Mixin') return String(first.value?.name?.valueOf?.() ?? '');
-            if (first.type === 'Declaration') {
-              const name = first.value?.name;
-              return typeof name === 'string' ? name : String(name?.valueOf?.() ?? '');
-            }
-            return '';
-          } catch {
-            return '';
-          }
-        })()
-      });
-      // #endregion
+      const Rules = await getRules();
+      let rules = Rules.create([...n.data], n.options);
       // Inherit from Collection (n) to preserve definition-scope parent chain
       // This ensures variables like @a resolve from where the detached ruleset was defined
       // Also copies sourceParent from the Collection (which was set by Reference when it resolved)
       rules.inherit(n);
+      // Keep definition-site `parent` for primary lookup, but anchor `sourceParent`
+      // to this call so leaky fallback can resolve call-site variables (e.g. @d).
+      rules.sourceParent = this;
       rules = await rules.eval(context);
-      // #region agent log
-      __agentDbgPost('call.ts:CollectionCall', 'collection-call-eval-rules-done', {
-        evaldRulesLen: Array.isArray(rules.value) ? rules.value.length : -1,
-        evaldRulesSetLen: (rules as any).rulesSet ? (rules as any).rulesSet.length : -1,
-        evaldIsMixinOutput: !!(rules as any).options?.isMixinOutput
-      });
-      // #endregion
       context.callStack.pop();
       context.parenFrames.pop();
       // Apply markImportant if needed
       if (markImportant) {
-        this.makeImportant(n);
+        this.makeImportant(n as unknown as Rules);
       }
       return rules;
     }
 
-    let fn = isNode(n, 'JsFunction') ? n.value : n;
-
+    let fn = isNode(n, N.JsFunction) ? n.data : n;
     if (typeof fn === 'function') {
+      const originalCaller = context.caller;
+      context.caller = this;
+      let didPopCallStack = false;
       try {
-        if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
-          console.log('[Call.evalNode] pi() resolved to function', { silentFail: this.options?.silentFail });
-        }
         /** Freeze args */
         if (args) {
-          args = args.copy(true, freezeChildren);
-          args.frozen = true;
+          const copiedArgs = args.copy(true, freezeChildren);
+          for (const copied of copiedArgs.data) {
+            // Anchor copied references to this Call so nested property refs
+            // (e.g. $list-1) can walk back to call-site Rules.
+            // Also anchor copied Mixin callback args to call-site source scope
+            // so callback bodies can resolve surrounding variables.
+            if (isNode(copied, N.Reference) && copied.options?.type === 'property') {
+              copied.sourceParent = this;
+            } else if (isNode(copied, N.Mixin)) {
+              copied.sourceParent = this;
+            }
+            copied.frozen = true;
+          }
+          args = copiedArgs;
         }
-        let originalCaller = context.caller;
-        context.caller = this;
+        const shouldPassListArgs = Boolean((fn as any)?._internal || (fn as any)?.options?.params);
+        const fnCallable = fn as (...args: any[]) => any;
         const result = await (
           args
-            ? callWithContext(context, fn, args)
-            : callWithContext(context, fn)
+            ? (
+                shouldPassListArgs
+                  ? callWithContext(context, fnCallable, args)
+                  : callWithContext(context, fnCallable, ...[...args.data])
+              )
+            : callWithContext(context, fnCallable)
         );
         context.caller = originalCaller;
         context.callStack.pop();
+        didPopCallStack = true;
         if (isNode(result)) {
           let evald = result.eval(context);
           if (isThenable(evald)) {
             evald = await evald;
-            if (markImportant && isNode(evald, 'Rules')) {
+            if (markImportant && isNode(evald, N.Rules)) {
               this.makeImportant(evald);
             }
-            return evald;
+            return adoptCallWhitespace(evald);
           }
-          if (markImportant && isNode(evald, 'Rules')) {
+          if (markImportant && isNode(evald, N.Rules)) {
             this.makeImportant(evald);
           }
-          return evald;
+          return adoptCallWhitespace(evald);
         }
         let castResult = cast(result);
-        if (isNode(castResult, 'Rules') && castResult.value.length === 1) {
-          return castResult.value[0]!;
+        if (isNode(castResult, N.Rules) && castResult.data.length === 1) {
+          return adoptCallWhitespace(castResult.data[0]!);
         }
-        return castResult;
+        return adoptCallWhitespace(castResult);
       } catch (e) {
-        // #region agent log
-        try {
-          const key = typeof name === 'string'
-            ? name
-            : (isNode(name, 'Reference')
-              ? String((name as any).value?.key?.valueOf?.() ?? (name as any).value?.key ?? '')
-              : (isNode(name) ? name.type : 'unknown'));
-          if (key.includes('wrap') || key.includes('ruleset') || key.includes('mixin')) {
-            __agentDbgPost('call.ts:evalNode', 'call-exception', {
-              key,
-              silentFail: !!this.options?.silentFail,
-              markImportant: !!this.options?.markImportant,
-              err: e ? String((e as any).message ?? e) : 'unknown'
-            });
-          }
-        } catch {}
-        // #endregion
-        if (process.env.DEBUG && (typeof name === 'string' ? name : (isNode(name, 'Reference') ? name.value.key?.valueOf?.() : undefined)) === 'pi') {
-          console.log('[Call.evalNode] pi() threw', { silentFail: this.options?.silentFail, message: (e as any)?.message });
-        }
+        const unitMode = context?.opts?.unitMode ?? 'loose';
+        const shouldRethrowForMode = unitMode === 'strict';
         if (e instanceof ReferenceError && e.message.includes('No matching mixins')) {
-          if (isNode(name, 'Reference')) {
-            throw new ReferenceError(`No matching mixins found for '${name.value.key.valueOf()}'`);
+          if (this.parent?.type === 'SelectorCapture') {
+            return adoptCallWhitespace(new Any(String(n.valueOf()), { role: 'ident' }).inherit(this));
+          }
+          if (isNode(name, N.Reference)) {
+            throw new ReferenceError(`No matching mixins found for '${name.data.key.valueOf()}'`);
           }
           throw e;
         }
-        if (!this.options?.silentFail) {
+        if (!this.options?.silentFail || shouldRethrowForMode) {
           throw e;
         }
         let newCall = this.clone().inherit(this);
         /** Remove this flag for serialization */
         newCall.options.silentFail = false;
-        newCall.value.name = isNode(name, 'Reference') && name.options.fallbackValue === true
-          ? String(name.value.key)
-          : String(n.valueOf());
-        newCall.value.args = await args?.eval(context);
-        // #region agent log
-        try {
-          const key = typeof name === 'string'
-            ? name
-            : (isNode(name, 'Reference')
-              ? String((name as any).value?.key?.valueOf?.() ?? (name as any).value?.key ?? '')
-              : (isNode(name) ? name.type : 'unknown'));
-          __agentDbgPost('call.ts:evalNode', 'call-silentFail-return-callnode', {
-            key,
-            newName: String(newCall.value.name),
-            hasArgs: !!newCall.value.args && (newCall.value.args as any).value?.length != null
-          });
-        } catch {}
-        // #endregion
-        context.callStack.pop();
+        newCall.setData('name', isNode(name, N.Reference) && name.options.fallbackValue === true
+          ? String(name.data.key)
+          : String(n.valueOf()));
+        newCall.setData('args', await evalArgNodes(args));
+        newCall.data.args?.data.forEach((arg, argIndex) => {
+          // Normalize fallback-call arg spacing to Less-style call serialization.
+          arg.pre = argIndex === 0 ? 0 : 1;
+          if (isNode(arg, N.Sequence)) {
+            arg.data.forEach((child, childIndex) => {
+              child.pre = childIndex === 0 ? 0 : 1;
+            });
+          } else if (isNode(arg, N.List)) {
+            arg.data.forEach((child) => {
+              if (isNode(child, N.Sequence)) {
+                child.data.forEach((nested, nestedIndex) => {
+                  nested.pre = nestedIndex === 0 ? 0 : 1;
+                });
+              }
+            });
+          }
+        });
+        return adoptCallWhitespace(newCall);
+      } finally {
+        context.caller = originalCaller;
         context.parenFrames.pop();
-        return newCall;
+        if (!didPopCallStack) {
+          context.callStack.pop();
+        }
       }
     } else {
       if (n === 'calc') {
         context.calcFrames++;
       }
-      args = await args?.eval(context);
+      const evaluatedArgs = await evalArgNodes(args);
 
       if (n === 'calc') {
         context.calcFrames--;
@@ -397,17 +366,17 @@ export class Call extends Node<CallValue, CallOptions> {
       const node = this.clone();
       node.options.silentFail = false;
       if (
-        n === 'calc' && args
+        n === 'calc' && evaluatedArgs
       ) {
-        if (isNode((args as List).value[0], 'Dimension')) {
-          return args.value[0]!;
+        if (isNode(evaluatedArgs.data[0], N.Dimension)) {
+          return evaluatedArgs.data[0]!;
         } else if (context.calcFrames !== 0) {
-          return new Paren(args.value[0]);
+          return new Paren(evaluatedArgs.data[0]!);
         }
       }
-      node.value.name = n;
-      node.value.args = args;
-      return node;
+      node.setData('name', n);
+      node.setData('args', evaluatedArgs);
+      return adoptCallWhitespace(node);
     };
   }
 }

@@ -1,0 +1,80 @@
+import { Lexer } from 'chevrotain';
+import { createLexerDefinition } from '@jesscss/css-parser';
+import type { Node, Rules, IParseResult, TreeContext } from '@jesscss/core';
+import { type IToken, MismatchedTokenError } from '@jesscss/parser';
+
+import { jessFragments, jessTokens } from './jessTokens.js';
+import { JessRecursiveParser, type JessParserConfig, type TokenMap } from './jessRecursiveParser.js';
+
+export type JessRules = keyof {
+  [K in keyof JessRecursiveParser as JessRecursiveParser[K] extends (...args: any[]) => Node ? K : never]: true;
+};
+
+export type SyntacticContentAssistSuggestion = {
+  nextTokenType: string;
+  nextTokenLabel?: string;
+  ruleStack: string[];
+};
+
+export class JessParser {
+  lexer: Lexer;
+  parser: JessRecursiveParser;
+
+  constructor(config: JessParserConfig = {}) {
+    const { lexer, T } = createLexerDefinition(
+      jessFragments() as unknown as ReadonlyArray<Readonly<[string, string]>>,
+      jessTokens()
+    );
+    this.lexer = new Lexer(lexer, {
+      ensureOptimizations: true,
+      skipValidations: process.env.TEST !== 'true'
+    });
+    this.parser = new JessRecursiveParser(T as TokenMap, config);
+    this.parse = this.parse.bind(this);
+  }
+
+  parse(text: string): IParseResult<Rules>;
+  parse(text: string, rule: 'stylesheet'): IParseResult<Rules>;
+  parse(text: string, rule?: JessRules, options?: { context?: TreeContext }): IParseResult;
+  parse(text: string, rule: JessRules = 'stylesheet', options?: { context?: TreeContext }): IParseResult {
+    const parser = this.parser;
+    const lexerResult = this.lexer.tokenize(text);
+    parser.warnings = [];
+    if (options?.context) {
+      parser.context = options.context;
+    }
+    parser.input = lexerResult.tokens as IToken[];
+    let tree: Node | undefined;
+    try {
+      tree = (parser as any)[rule]() as Node;
+    } catch (e: any) {
+      if (e && e.token) {
+        parser.errors.push(e);
+      } else {
+        throw e;
+      }
+    }
+
+    if (parser.errors.length === 0 && (parser as any).pos < (parser as any).tokens.length) {
+      const unconsumed = (parser as any).tokens[(parser as any).pos] as IToken;
+      parser.errors.push(new MismatchedTokenError(
+        unconsumed,
+        { name: 'EOF', PATTERN: undefined as any },
+        ['stylesheet']
+      ));
+    }
+
+    const warnings = [...parser.warnings];
+
+    return {
+      tree: tree!,
+      lexerResult,
+      errors: parser.errors as any,
+      warnings
+    };
+  }
+
+  suggest(_text: string, _init: { offset: number; rule?: JessRules }): SyntacticContentAssistSuggestion[] {
+    return [];
+  }
+}

@@ -8,8 +8,10 @@ export default defineConfig({
     circleDependency()
   ],
   resolve: {
-    // Prefer "source" so imports from @acme/* pull TS from src/
-    mainFields: ['source', 'module', 'exports', 'main']
+    // Use built output (import/main) so workspace packages pick up built lib/ after pnpm build.
+    // Run tests from each package directory (e.g. cd packages/jess && pnpm test) after building
+    // dependencies (e.g. pnpm --filter @jesscss/core build) so tests run against built code.
+    mainFields: ['import', 'module', 'exports', 'main']
   },
   test: {
     watch: false,
@@ -30,21 +32,16 @@ export default defineConfig({
     environment: 'node',
     // Run tests sequentially to reduce memory usage
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-        maxForks: 1,
-        minForks: 1
-      }
-    },
-    // Set low concurrency - run one test at a time
+    fileParallelism: false,
+    maxWorkers: 1,
+    // Set low concurrency - run one test at a time within a file
     maxConcurrency: 1,
     // Increase timeout since we're running sequentially
     testTimeout: 30_000,
     // Reduce memory usage
     isolate: true,
-    // Keep output manageable; custom reporter prints per “test type” lines.
-    reporters: ['default', new TestTypeReporter()],
+    // Use Vitest's built-in tree reporter for grouped console output.
+    reporters: [['tree', { summary: true }], new TestTypeReporter()],
     // Enable globals for describe, test, etc.
     globals: true,
     // Include all test files from all packages - use absolute paths relative to config file
@@ -64,7 +61,8 @@ export default defineConfig({
             'test/setup.ts',
             'node_modules/**',
             'dist/**',
-            'lib/**'
+            'lib/**',
+            '**/*bench*'
           ]
         }
       }

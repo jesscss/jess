@@ -37,7 +37,7 @@ export class CustomDeclaration extends Declaration {
   //    * @todo - test this
   //    */
   //   out.add(':', loc)
-  //   this.value.toCSS(context, out)
+  //   this.data.toCSS(context, out)
   //   out.add(';', loc)
   // }
 
@@ -48,7 +48,7 @@ export class CustomDeclaration extends Declaration {
   //   out.add(`  ${pre}name: `)
   //   this.name.toModule(context, out)
   //   out.add(`\n  ${pre}value: `)
-  //   this.value.toModule(context, out)
+  //   this.data.toModule(context, out)
   //   out.add(`\n${pre}})`)
   // }
 }

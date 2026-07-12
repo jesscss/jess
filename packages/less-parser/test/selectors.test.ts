@@ -1,5 +1,5 @@
 import { Parser } from '../src/index.js';
-import { serializeTypes } from '@jesscss/core';
+import { serializeTypes, TreeContext } from '@jesscss/core';
 
 const parser = new Parser();
 
@@ -141,6 +141,18 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(Ampersand');
     });
 
+    it('should parse ampersand merge template from class suffix form', () => {
+      const { errors, tree } = parser.parse('.parent { .foo-& { color: red; } }');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
+    });
+
+    it('should parse ampersand merge template with explicit insertion point', () => {
+      const { errors, tree } = parser.parse('.parent { &(.foo-&) { color: red; } }');
+      expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Ampersand');
+    });
+
     it('should parse pseudo selector', () => {
       // Pseudo selectors need an element or be nested
       const { errors, tree } = parser.parse('.test:hover { color: red; }');
@@ -224,6 +236,15 @@ describe('Selector Productions', () => {
     it('should parse &:extend() with multiple targets', () => {
       const { errors, tree } = parser.parse('.parent { &:extend(.base, .other); }');
       expect(errors.length).toBe(0);
+      expect(serializeTypes(tree)).toContainString('(Extend');
+    });
+
+    it('allows selector lists when each extend target is allowed', () => {
+      const context = new TreeContext({ allowExtendSelectors: ['simple'] });
+      const localParser = new Parser();
+      const { errors, tree } = localParser.parse('.parent { &:extend(.base, .other); }', 'stylesheet', { context });
+
+      expect(errors).toHaveLength(0);
       expect(serializeTypes(tree)).toContainString('(Extend');
     });
   });

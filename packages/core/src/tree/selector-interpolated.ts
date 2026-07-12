@@ -6,6 +6,8 @@ import { Interpolated } from './interpolated.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 
 export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
+  type: 'InterpolatedSelector';
+  shortType: 'interpolated-selector';
   eval(context: Context): MaybePromise<Selector>;
 }
 
@@ -14,9 +16,6 @@ export interface InterpolatedSelector extends SimpleSelector<Interpolated> {
  * This allows interpolation to be used in selector contexts
  */
 export class InterpolatedSelector extends SimpleSelector<Interpolated> {
-  type = 'InterpolatedSelector' as const;
-  shortType = 'interpolated-selector' as const;
-
   get isClass() {
     return /^\./.test(this.valueOf());
   }
@@ -30,11 +29,11 @@ export class InterpolatedSelector extends SimpleSelector<Interpolated> {
   }
 
   override evalNode(context: Context): MaybePromise<Selector> {
-    return this.value.evalToSelector(context);
+    return this.data.evalToSelector(context);
   }
 
   override valueOf(): string {
-    return this.value.valueOf();
+    return this.data.valueOf();
   }
 }
 

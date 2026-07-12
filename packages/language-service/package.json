@@ -36,10 +36,10 @@
   },
   "devDependencies": {
     "@jesscss/shared": "workspace:*",
-    "@types/node": "^18.15.13",
+    "@types/node": "^20.0.0",
     "cross-env": "~7.0.3",
     "typescript": "~5.8.2",
-    "vitest": "^3.2.3"
+    "vitest": "^4.1.0"
   },
   "scripts": {
     "build": "pnpm compile",
@@ -48,4 +48,3 @@
     "test": "vitest --watch=false"
   }
 }
-

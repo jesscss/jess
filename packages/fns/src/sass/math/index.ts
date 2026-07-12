@@ -1,9 +1,9 @@
 /**
  * Sass math module (sass:math)
- * 
+ *
  * Re-exports all math functions that are available in the sass:math module.
  * These are the modern, non-deprecated functions.
- * 
+ *
  * Usage:
  * ```typescript
  * import { abs, ceil, floor } from '@jesscss/fns/sass/math';

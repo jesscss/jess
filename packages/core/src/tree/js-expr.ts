@@ -10,19 +10,18 @@ import { type MaybePromise } from '@jesscss/awaitable-pipe';
  * @deprecated - use `@-use` instead
  */
 export interface JsExpression extends Node<string> {
+  type: 'JsExpression';
+  shortType: 'jsexpr';
   eval(context: Context): Promise<Node>;
 }
 
 export class JsExpression extends Node<string> {
-  type = 'JsExpression' as const;
-  shortType = 'jsexpr' as const;
-
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     w.add('`', this);
-    w.add(this.value);
+    w.add(this.data);
     w.add('`');
     return w.getSince(mark);
   }
@@ -33,7 +32,7 @@ export class JsExpression extends Node<string> {
    */
   override evalNode(context: Context): Promise<Node> {
     return (async () => {
-      const result = await eval(this.value);
+      const result = await eval(this.data);
       return cast(result);
     })();
   }

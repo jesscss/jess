@@ -1,0 +1,113 @@
+---
+title: Expressions
+audiences:
+  - jess
+origin: jess
+---
+Jess supports expressions, which are used to evaluate values, perform calculations, and more.
+
+In Jess, an `Expression` is always written as `$(`...`)`.
+
+- `$var` is a variable `Reference` (not an `Expression`).
+- `$(...)` is an `Expression`.
+
+If you need to evaluate a variable inside an expression, use `$($var)`.
+
+## Examples
+
+### 1. Basic arithmetic
+
+```less
+value: $(1 + 2); // 3
+value: $(1 - 2); // -1
+value: $(1 * 2); // 2
+value: $(1 / 2); // 0.5
+value: $(1 % 2); // 1 (modulus)
+```
+
+### 2. String concatenation
+
+```less
+value: $("Hello, " + "world!"); // "Hello, world!"
+```
+
+### 3. Comparison operations
+
+```less
+value: $(1 > 2); // false
+value: $(1 < 2); // true
+value: $(1 >= 2); // false
+value: $(1 <= 2); // true
+```
+
+### 4. Support for unique CSS values
+
+```less
+value: $(#222 / 2); // #111
+```
+
+### 5. Use with Jess variables
+
+```less
+$width: 10px;
+$height: $(width + 10px);
+
+#header {
+  width: $width;
+  height: $height;
+}
+```
+
+## References vs expressions
+
+Inside an expression, plain identifiers are treated as normal values/keywords when possible.
+
+```less
+$color: red;
+value: $(red); // red (color keyword literal)
+value: $($color); // red (variable reference inside Expression)
+value: $less.iscolor($color); // true
+```
+```less
+$num: 10;
+value: $($num + 1); // 11
+```
+
+## Other operators
+
+### `?` operator
+
+Jess uses `?` to represent optionality. In many cases, that means that a variable that isn't found will not trigger an error, but will instead return a `nil` node.
+
+```less
+border: 1px solid red;
+color: $some-undefined-variable?; // nil
+background: black;
+```
+→
+```css
+border: 1px solid red;
+background: black;
+```
+
+#### `?` with CSS-like functions
+
+Both Less and Sass allow "function fallbacks". In other words, function calls will look up a respective Less/Sass function, and if it doesn't exist, it will output the function as-is.
+
+Jess supports this with a `?` operator after the function name.
+
+```less
+// If a variable exists named `rgb`, call the variable as a function, passing these values to the function. Otherwise, output the function as-is.
+value: rgb?(10, 20, 30);
+```
+→
+```
+value: rgb(10, 20, 30);
+```
+
+Note that this is distinct from:
+```less
+// If the variable `rgb` does not exist, resolve to `nil`.
+value: $rgb?(10, 20, 30);
+```
+→ (no output)

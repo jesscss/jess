@@ -1,7 +1,9 @@
 {
   "name": "@jesscss/style-resolver",
-  "version": "0.0.0",
-  "private": true,
+  "version": "2.0.0-alpha.5",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -23,7 +25,6 @@
   },
   "devDependencies": {
     "typescript": "~5.8.2",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.0"
   }
 }
-

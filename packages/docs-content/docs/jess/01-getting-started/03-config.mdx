@@ -1,0 +1,28 @@
+---
+id: config
+title: Configuration
+audiences:
+  - jess
+origin: jess
+---
+Jess reads config from a `styles.config.{ts,js}` file at your project root. Keep it small at first; grow it only when your build needs it.
+
+```js
+// styles.config.js
+export default {
+  options: {}
+}
+```
+
+## options
+
+### dynamic
+
+Changes compilation mode so dynamic content is represented as CSS custom properties and patch-friendly output. Reach for this when you need runtime theme switching or app-level style updates.
+### module
+
+Overrides whether Jess files compile as modules globally. By default, files named `[filename].module.jess` or `[filename].m.jess` are treated as modules and class names are hashed.
+
+## compile.plugins
+
+Add compile-time plugins used by the compiler (for language/runtime extensions). This is separate from bundler plugins such as `rollup-plugin-jess`.

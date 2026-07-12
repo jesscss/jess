@@ -1,0 +1,13 @@
+/* Minimal example: extend from inside @media targeting a rule at root.
+ * Run: npx lessc docs/extend-ancestor-minimal-example.less
+ * Expected: .a stays at root unchanged; .b inside @media gets .a's declarations. */
+
+.a {
+  color: red;
+}
+
+@media screen {
+  .b:extend(.a) {
+    background: blue;
+  }
+}

@@ -1,9 +1,10 @@
 {
   "name": "@jesscss/css-parser",
+  "type": "module",
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.5",
   "description": "Jess CSS base parser",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -29,6 +30,8 @@
     "build": "pnpm compile",
     "compile": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json -w",
+    "bench": "tsx test/bench.ts",
+    "bench:save": "tsx test/bench.ts --save",
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
@@ -36,6 +39,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
+    "@jesscss/parser": "workspace:*",
     "chevrotain": "^11.0.3",
     "chevrotain-allstar": "~0.3.0",
     "color-name": "~2.0.0",
@@ -46,7 +50,8 @@
     "@jesscss/shared": "workspace:*",
     "@types/color-name": "^1.1.1",
     "@types/lodash-es": "~4.17.8",
-    "@types/xregexp": "^4.4.0"
+    "@types/xregexp": "^4.4.0",
+    "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

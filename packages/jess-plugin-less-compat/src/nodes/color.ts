@@ -25,27 +25,28 @@ export function transformColorToLess(
 
     // Map 'rgb' property
     if (prop === 'rgb') {
-      return color.value.rgb || [0, 0, 0];
+      return color.data.rgb || [0, 0, 0];
     }
 
     // Map 'alpha' property
     if (prop === 'alpha') {
-      return color.value.alpha ?? 1;
+      return color._alpha;
     }
 
     // Map 'value' property (Less expects string representation)
     if (prop === 'value') {
       // Convert color to string representation
       // Less uses format like '#rrggbb' or 'rgba(r, g, b, a)'
-      const rgb = color.value.rgb;
-      const alpha = color.value.alpha;
+      const rgb = color.data.rgb;
+      const alpha = color._alpha;
       if (rgb && alpha !== undefined && alpha < 1) {
         return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
       }
       if (rgb) {
         // Convert to hex
         const hex = rgb.map((v) => {
-          const h = Math.round(v).toString(16).padStart(2, '0');
+          const numericValue = Array.isArray(v) ? v[0] : v;
+          const h = Math.round(numericValue).toString(16).padStart(2, '0');
           return h;
         }).join('');
         return `#${hex}`;

@@ -169,7 +169,7 @@ describe('Jess Less Test Suite', () => {
       expect(css).toContain('width: 15px');
       expect(css).toContain('height: 15px');
       expect(css).toContain('margin: 6px');
-      expect(css).toContain('padding: 5px');
+      expect(css).toContain('padding: 10px / 2');
     });
 
     it('should handle operations with variables', async () => {

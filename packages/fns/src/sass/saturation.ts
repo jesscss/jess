@@ -1,9 +1,9 @@
 /**
  * Sass saturation() function
- * 
+ *
  * Extracts the saturation channel from a color.
  * Returns a Dimension with '%' unit (unlike Less which returns unitless).
- * 
+ *
  * @example
  * saturation(hsl(120, 50%, 50%)) // 50%
  */

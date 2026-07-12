@@ -6,6 +6,26 @@ import { splitSequence } from '../conversions.js';
 
 describe('defineFunction - splitSequence', () => {
   describe('splitSequence functionality', () => {
+    it('should preserve parser-equivalent positional shape: Sequence argument', async () => {
+      const func = defineFunction(
+        'probe',
+        function(value: Sequence) {
+          return `type:${value.type};len:${value.data.length}`;
+        },
+        {
+          params: [
+            { name: 'value', type: Sequence }
+          ]
+        }
+      );
+
+      const parserEquivalentArg = new Sequence([new Num(1), new Num(2), new Num(3)]);
+
+      const context = new Context();
+      const result = await callWithContext(context, func, parserEquivalentArg);
+      expect(result).toBe('type:Sequence;len:3');
+    });
+
     it('should split a sequence into individual arguments', async () => {
       const rgb = defineFunction(
         'rgb',
@@ -348,8 +368,10 @@ describe('defineFunction - splitSequence', () => {
         // Create a Jess node that evaluates to the wrong type
         const dimensionNode = new Dimension({ number: 10, unit: 'px' });
 
-        // This should throw when the thunk is called
-        const result = (func as any)(dimensionNode);
+        // callWithContext should supply a lazy thunk for lazy params;
+        // the thunk then fails type validation when invoked.
+        const ctx = new Context();
+        const result = callWithContext(ctx, func as any, dimensionNode);
         await expect(result).rejects.toThrow('Argument \'a\' must be of type \'Color\'');
       });
 
@@ -395,7 +417,7 @@ describe('defineFunction - splitSequence', () => {
 
         // This should work because Num extends Dimension
         const result = (dimensionFunc as any)(num);
-        expect(result).toBe('received: Number');
+        expect(result).toBe('received: Num');
       });
 
       it('should validate primitive types correctly', () => {
@@ -451,7 +473,7 @@ describe('defineFunction - splitSequence', () => {
         // This should work
         const num = new Num(10);
         const result = func(num);
-        expect(result).toBe('received: Number');
+        expect(result).toBe('received: Num');
       });
     });
 

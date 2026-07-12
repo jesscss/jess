@@ -5,7 +5,7 @@ import {
   Dimension,
   defineFunction
 } from '@jesscss/core';
-import { toNumber } from '@jesscss/core';
+import { percentOf, toNumber } from '@jesscss/core';
 import { getLuma } from '../util/get-luma.js';
 
 const contrast = defineFunction(
@@ -13,16 +13,18 @@ const contrast = defineFunction(
   function(this: Context, color: Color, dark?: Color, light?: Color, threshold?: number) {
     if (!light) {
       light = new Color({
-        format: ColorFormat.RGB,
         rgb: [255, 255, 255],
         alpha: 1
+      }, {
+        format: ColorFormat.RGB
       });
     }
     if (!dark) {
       dark = new Color({
-        format: ColorFormat.RGB,
         rgb: [0, 0, 0],
         alpha: 1
+      }, {
+        format: ColorFormat.RGB
       });
     }
     // Figure out which is actually light and dark:
@@ -37,11 +39,9 @@ const contrast = defineFunction(
     } else {
       thresholdNum = threshold;
     }
-    if (getLuma(color) < thresholdNum) {
-      return light;
-    } else {
-      return dark;
-    }
+    const out = getLuma(color) < thresholdNum ? light : dark;
+    out!.options.format = color.options.format;
+    return out;
   },
   {
     params: [{
@@ -58,7 +58,7 @@ const contrast = defineFunction(
     }, {
       name: 'threshold',
       type: Dimension,
-      convert: [toNumber()],
+      convert: [percentOf(1), toNumber()],
       optional: true
     }]
   }

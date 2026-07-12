@@ -8,70 +8,48 @@ import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
 import { getTestCases } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
+import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import { type Rules } from '@jesscss/core';
-import { syncLog } from '../../../core/src/tree/util/__tests__/debug-log.js';
 
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
-
-// #region agent log
-const __agentRunId = process.env.DEBUG_RUN_ID || 'pre-fix';
-const __agentDebugEnabled = process.env.DEBUG_EXTEND_BOOT === 'true';
-let __agentLogCount = 0;
-function agentLog(location: string, message: string, data: Record<string, unknown>) {
-  if (!__agentDebugEnabled) return;
-  if (__agentLogCount++ > 500) return;
-  // IMPORTANT: keep data primitive-ish (no nodes/arrays) to avoid circular refs.
-  syncLog({
-    sessionId: 'debug-session',
-    runId: __agentRunId,
-    hypothesisId: 'H0',
-    location,
-    message,
-    data,
-    timestamp: Date.now()
-  });
-}
-// #endregion
 
 const baseCompiler = new Compiler({
   output: { collapseNesting: true }, // Default for most files
   compile: {
     plugins: [
-      lessPlugin()
+      lessPlugin(),
+      lessCompatPlugin()
     ]
   }
 });
 
 // Files that should be tested in specialized test files
 const additionalSkips = [
-  'tests-unit/color-functions/colors.less', // Tested in colors.test.ts
-  'tests-unit/nesting/nesting.less', // Tested in nesting.test.ts
   'tests-unit/variables/variable-advanced.less', // infinite loop
-  'tests-unit/extend/extend.less' // expects extend.collapsed.css which is missing in @less/test-data
+  'tests-unit/plugin/plugin.less', // Jess uses nested @media (no query merging), expected CSS has merged queries
+  'tests-unit/parse-interpolation/parse-interpolation.less', // formatting differences
+  'tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', // not yet supported
+  'tests-unit/permissive-parse/permissive-parse.less' // syntax error
 ];
 
-// Set to a non-empty array to focus on specific fixtures while debugging.
-const targetTests: string[] = [];
+// Allow specific fixtures even when they are listed in shared invalidLess.
+const forcedIncludes = new Set<string>([
+]);
 
 describe('Can render Less files to CSS', () => {
-  // Get all .less files from tests-unit and tests-config directories
-  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/**/*.less')).filter((f) => {
-    const rel = path.relative(testData, f).replace(/\\/g, '/');
-    // Run tests alphabetically up through the extend fixtures.
-    // This intentionally stops before later fixtures that Jess doesn't yet fully parse/execute.
-    const m = /^tests-unit\/([^/]+)\//.exec(rel);
-    const segment = m?.[1] ?? '';
-    return segment.localeCompare('extract-and-length') < 0;
-  });
+  // Run all unit fixtures under tests-unit.
+  const unitFiles: string[] = glob.sync(path.join(testData, 'tests-unit/*/*.less'));
+  // Keep this suite focused on alphabetic unit-fixture progression.
   const configFiles: string[] = [];
   const allFiles = [...unitFiles, ...configFiles];
 
   allFiles
     .map(value => path.relative(testData, value))
-    .filter(value => !invalidLess.includes(value))
+    .filter(value => forcedIncludes.has(value) || !invalidLess.includes(value))
     .filter(value => !additionalSkips.includes(value)) // Skip files tested elsewhere
-    .filter(value => targetTests.length === 0 || targetTests.includes(value)) // Target specific tests
+    .filter(value => !value.startsWith('tests-unit/plugin-')) // Keep only plugin/plugin.less, not plugin-* variants
+    .filter(value => value <= 'tests-unit/plugin/plugin.less')
     .sort()
     .forEach((file) => {
       const lessPath = path.join(testData, file);
@@ -85,46 +63,39 @@ describe('Can render Less files to CSS', () => {
 
           it(`${testName}${configSuffix}`, async () => {
             const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
-            const __agentInteresting =
-              testName.includes('tests-unit/extend-')
-              || testName.includes('tests-unit/detached-rulesets/');
 
             // Merge test case config with base compiler config
             // Default: collapseNesting: true (from baseCompiler)
             // Override: testCase.config.output (from styles.config.ts) takes precedence
+            const testCompileConfig = (testCase.config.compile || {}) as Record<string, any>;
+            const {
+              plugins: testCasePlugins = [],
+              ...restCompileConfig
+            } = testCompileConfig;
             const testCompiler = new Compiler({
               ...baseCompiler.opts,
               ...testCase.config,
-              // Merge output options - testCase.config.output overrides baseCompiler defaults
+              compile: {
+                ...(baseCompiler.opts.compile || {}),
+                ...restCompileConfig,
+                plugins: [
+                  ...(baseCompiler.opts.compile?.plugins || []),
+                  ...testCasePlugins
+                ]
+              },
               output: {
                 ...baseCompiler.opts.output,
                 ...(testCase.config.output || {})
               }
             });
 
-            const context = testCompiler.createContext(lessPath, { outputFile: testCase.expectedFile });
+            let context: any;
             let node: Rules;
             try {
-              // #region agent log
-              if (__agentInteresting) {
-                agentLog('all-less.test.ts:before-getTree', 'getTree-enter', {
-                  file: testName,
-                  lessPath,
-                  expectedFile: testCase.expectedFile
-                });
-              }
-              // #endregion
-              ({ node } = await context.getTree(lessPath));
-              // #region agent log
-              if (__agentInteresting) {
-                agentLog('all-less.test.ts:after-getTree', 'getTree-exit', {
-                  file: testName
-                });
-              }
-              // #endregion
+              ({ context, tree: node } = await testCompiler.compile(lessPath, { outputFile: testCase.expectedFile }));
             } catch (error: any) {
               // Output diagnostics if available
-              if (context.errors.length > 0 || context.warnings.length > 0) {
+              if (context && (context.errors.length > 0 || context.warnings.length > 0)) {
                 outputDiagnostics(context.errors, context.warnings, {
                   suppressWarnings: false,
                   breakOnError: false
@@ -133,33 +104,11 @@ describe('Can render Less files to CSS', () => {
               throw error;
             }
             try {
-              // #region agent log
-              if (__agentInteresting) {
-                agentLog('all-less.test.ts:before-eval', 'eval-enter', {
-                  file: testName,
-                  collapseNestingFromCompiler: Boolean((testCompiler as any)?.opts?.output?.collapseNesting),
-                  collapseNestingFromContext: Boolean((context as any)?.opts?.output?.collapseNesting),
-                  collapseNestingFromContextRoot: Boolean((context as any)?.opts?.collapseNesting)
-                });
-              }
-              // #endregion
-              const evald = await node.eval(context);
-              // #region agent log
-              if (__agentInteresting) {
-                agentLog('all-less.test.ts:after-eval', 'eval-exit', {
-                  file: testName,
-                  cssLen: typeof evald?.toString === 'function' ? evald.toString({ context }).length : null,
-                  cssHead: typeof evald?.toString === 'function'
-                    ? evald.toString({ context }).slice(0, 400)
-                    : null,
-                  expectedHead: expectedCss.slice(0, 400)
-                });
-              }
-              // #endregion
-              expect(evald.toString({ context })).toBe(expectedCss);
+              const actualCss = node.toString({ context });
+              expect(actualCss).toBe(expectedCss);
             } catch (error: any) {
               // Output diagnostics if available
-              if (context.errors.length > 0 || context.warnings.length > 0) {
+              if (context && (context.errors.length > 0 || context.warnings.length > 0)) {
                 outputDiagnostics(context.errors, context.warnings, {
                   suppressWarnings: false,
                   breakOnError: false

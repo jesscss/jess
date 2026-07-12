@@ -1,8 +1,8 @@
 import { type Context } from '../context.js';
-import { UnitMode } from '../types/modes.js';
 import { Color, ColorFormat } from './color.js';
 import {
   Node,
+  F_STATIC,
   type LocationInfo,
   type NodeOptions,
   type TreeContext,
@@ -30,6 +30,8 @@ type ConversionUnit = LengthUnit | DurationUnit | AngleUnit;
 type UnitMapEntries = Array<[ConversionUnit, ConversionGroup]>;
 
 export interface Dimension extends Node<DimensionValue> {
+  type: 'Dimension' | 'Num';
+  shortType: 'dimension' | 'num';
   eval(context: Context): Dimension;
 }
 
@@ -37,9 +39,26 @@ export interface Dimension extends Node<DimensionValue> {
  * A number or dimension
  */
 export class Dimension extends Node<DimensionValue> {
-  type = 'Dimension';
-  shortType = 'dimension';
-  // Dimensions are static and don't need evaluation
+  constructor(...args: ConstructorParameters<typeof Node<DimensionValue>>) {
+    super(...args);
+    this.addFlag(F_STATIC);
+  }
+
+  get number() {
+    return this.data.number;
+  }
+
+  set number(val: number) {
+    this.setData('number', val);
+  }
+
+  get unit() {
+    return this.data.unit;
+  }
+
+  set unit(val: string | undefined) {
+    this.setData('unit', val as any);
+  }
 
   private _unitToGroup: Map<string, ConversionGroup> | undefined;
   get unitToGroup() {
@@ -55,7 +74,7 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   override valueOf() {
-    let { number, unit } = this.value;
+    let { number, unit } = this.data;
     return unit ? `${number}${unit}` : number;
   }
 
@@ -65,16 +84,20 @@ export class Dimension extends Node<DimensionValue> {
     }
     let unitToGroup = this.unitToGroup;
     if (b instanceof Color) {
-      let { number, unit } = this.value;
-      if (unit) {
+      let { number, unit } = this.data;
+      const unitMode = context?.opts?.unitMode ?? 'loose';
+      const isStrictLikeMode = unitMode === 'strict' || unitMode === 'preserve';
+      if (unit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${this}" to a color`);
       }
-      let thisColor = new Color({ format: ColorFormat.RGB }).inherit(this);
-      thisColor.rgb = [number, number, number];
+      let thisColor = new Color(
+        { rgb: [number, number, number] },
+        { format: b.options?.format ?? ColorFormat.RGB }
+      ).inherit(this);
       return thisColor.operate(b, op, context).inherit(this);
     }
-    let { number: aVal, unit: aUnit } = this.value;
-    let { number: bVal, unit: bUnit } = b.value;
+    let { number: aVal, unit: aUnit } = this.data;
+    let { number: bVal, unit: bUnit } = b.data;
     let unitMode = context?.opts.unitMode ?? 'loose';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
@@ -86,6 +109,12 @@ export class Dimension extends Node<DimensionValue> {
       let outUnit = aUnit ?? bUnit;
       /** One or both doesn't have a unit, so just calculate the number */
       if ((isStrictMode || isPreserveMode) && bUnit && op === '/') {
+        if (isPreserveMode) {
+          return new Dimension({
+            number: calculate(aVal, op, bVal),
+            unit: `1/${bUnit}`
+          }).inherit(this);
+        }
         throw new TypeError('Cannot divide a number by a unit');
       }
       return new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }).inherit(this);
@@ -98,6 +127,12 @@ export class Dimension extends Node<DimensionValue> {
       }
       if (isStrictMode || isPreserveMode) {
         if (op === '*') {
+          if (isPreserveMode) {
+            return new Dimension({
+              number: calculate(aVal, op, bVal),
+              unit: `${aUnit}*${bUnit}`
+            }).inherit(this);
+          }
           throw new TypeError('Cannot multiply two units together');
         } else {
           /** Cancel units during division */
@@ -112,33 +147,62 @@ export class Dimension extends Node<DimensionValue> {
 
     if (aGroup === undefined || bGroup === undefined || aGroup !== bGroup) {
       if (isStrictMode || isPreserveMode) {
+        if (isPreserveMode) {
+          return new Dimension({
+            number: calculate(aVal, op, bVal),
+            unit: (
+              op === '+' || op === '-'
+                ? `${aUnit}±${bUnit}`
+                : `${aUnit}${op}${bUnit}`
+            )
+          }).inherit(this);
+        }
         /** Units don't match, and can't be converted */
         throw new TypeError('Incompatible units. Change the units or use the unit function');
       }
       /** Just coerce to the left-hand unit */
       return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
     }
-    
+
     const group = conversions[bGroup];
     // @ts-expect-error - set up proper indexing later
     let atomicUnit = group[aUnit] as number;
     // @ts-expect-error - set up proper indexing later
     let targetUnit = group[bUnit] as number;
 
+    if (isPreserveMode && (op === '*' || op === '/')) {
+      return new Dimension({
+        number: calculate(aVal, op, bVal),
+        unit: `${aUnit}${op}${bUnit}`
+      }).inherit(this);
+    }
+
     bVal = bVal / (atomicUnit / targetUnit);
     return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
   }
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
+    if (b.type === 'Any') {
+      const text = String((b as any).data ?? '').trim();
+      if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
+        return undefined;
+      }
+      return this.data.number === Number(text) ? 0 : undefined;
+    }
+    if (b.type === 'Quoted') {
+      return undefined;
+    }
+    if (b.type === 'Bool') {
+      return undefined;
+    }
     if (!(b instanceof Dimension || b instanceof Color)) {
-      /** Do a string comparison */
-      return super.compare(b, context);
+      return undefined;
     }
     let unitToGroup = this.unitToGroup;
     let unitMode = context?.opts?.unitMode ?? 'loose';
     let isStrictMode = unitMode === 'strict';
     let isPreserveMode = unitMode === 'preserve';
-    let { number: aVal, unit: aUnit } = this.value;
+    let { number: aVal, unit: aUnit } = this.data;
 
     /** Normalize percentages to a number for numerical comparison */
     if (aUnit === '%') {
@@ -155,20 +219,23 @@ export class Dimension extends Node<DimensionValue> {
         }
         return super.compare(b, context);
       }
-      let thisColor = new Color({ format: ColorFormat.RGB }).inherit(this);
-      thisColor.rgb = [aVal, aVal, aVal];
+      let thisColor = new Color({ rgb: [aVal, aVal, aVal] }, { format: ColorFormat.RGB }).inherit(this);
       return thisColor.compare(b);
     }
-    let { number: bVal, unit: bUnit } = b.value;
+    let { number: bVal, unit: bUnit } = b.data;
     if (bUnit === '%') {
       bVal = bVal / 100;
       bUnit = undefined;
     }
 
-    if (
-      (!aUnit && !bUnit)
-      || (aUnit && bUnit)
-    ) {
+    if (!aUnit && !bUnit) {
+      return Node.numericCompare(aVal, bVal);
+    }
+    if (!aUnit || !bUnit) {
+      // Less guards allow unitless numbers to compare directly with dimensions.
+      return Node.numericCompare(aVal, bVal);
+    }
+    if (aUnit && bUnit) {
       /** These are the only truly comparable dimensions */
       if (!aUnit) {
         return Node.numericCompare(aVal, bVal);
@@ -181,8 +248,7 @@ export class Dimension extends Node<DimensionValue> {
           /** Units don't match, and can't be converted */
           throw new TypeError('Incompatible units. Change the units or use the unit function');
         }
-        /** Just compare numbers but not units */
-        return Node.numericCompare(aVal, bVal);
+        return undefined;
       }
       const group = conversions[bGroup];
       // @ts-expect-error - set up proper indexing later
@@ -193,26 +259,25 @@ export class Dimension extends Node<DimensionValue> {
       bVal = bVal / (atomicUnit / targetUnit);
 
       return Node.numericCompare(aVal, bVal);
-    } else {
-      return super.compare(b, context);
     }
+    return super.compare(b, context);
   }
 
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
-    let { number, unit = '' } = this.value;
-    
+    let { number, unit = '' } = this.data;
+
     // Check if unit is compound (contains '/', '*', or '±')
     const isCompoundUnit = unit && (unit.includes('/') || unit.includes('*') || unit.includes('±'));
-    
+
     if (isCompoundUnit) {
       // Output as calc() for compound units
       // Parse the compound unit to reconstruct a valid calc() expression
       w.add('calc(', this);
       const numberStr = `${round(number, 8)}`.toLowerCase();
-      
+
       // Parse compound unit to create calc expression
       if (unit.includes('/')) {
         // Division: "px/s" or "1/s" → calc(number * 1px / 1s) or calc(number / 1s)
@@ -265,7 +330,7 @@ export class Dimension extends Node<DimensionValue> {
   // toModule(context: Context, out: OutputCollector) {
   //   const pre = context.pre
   //   out.add('$J.num({\n' +
-  //     `  ${pre}value: ${this.value},\n` +
+  //     `  ${pre}value: ${this.data},\n` +
   //     `  ${pre}unit: "${this.unit ?? ''}"\n` +
   //     `${pre}})`
   //   , this.location)

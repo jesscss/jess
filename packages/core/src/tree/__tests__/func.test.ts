@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Context } from '../../context.js';
-import { rules, decl, any, list, vardecl, call, fn, nil } from '..';
+import { rules, decl, any, list, vardecl, call, fn, nil } from '../index.js';
 
 describe('Func', () => {
   it('evaluates a stylesheet function and returns return: value', async () => {

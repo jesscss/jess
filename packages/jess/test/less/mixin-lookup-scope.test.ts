@@ -111,4 +111,3 @@ describe('Less mixin lookup scope behavior', () => {
     // Expected: What @color does inner-mixin use?
   });
 });
-

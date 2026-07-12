@@ -4,7 +4,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.1",
+  "version": "2.0.0-alpha.5",
   "description": "The Jess Core Library",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -31,6 +31,7 @@
     "@jesscss/awaitable-pipe": "workspace:*",
     "@jridgewell/gen-mapping": "~0.3.12",
     "@ungap/set-methods": "~0.1.1",
+    "bitset": "~5.2.3",
     "chalk": "^5.2.0",
     "combinate": "^1.1.11",
     "data-structure-typed": "~2.0.0",
@@ -38,13 +39,14 @@
     "lodash-es": "^4.17.21"
   },
   "scripts": {
-    "ci": "pnpm build && pnpm test:all",
-    "prepublishOnly": "pnpm build && pnpm test:all",
+    "ci": "pnpm build && pnpm test -- --run",
+    "prepublishOnly": "pnpm build && pnpm test -- --run",
     "build": "pnpm compile",
     "visualize": "vite build",
     "compile": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json -w",
     "test": "cross-env TEST=true vitest",
+    "test:bench": "cross-env TEST=true vitest --run --include '**/bench*'",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
