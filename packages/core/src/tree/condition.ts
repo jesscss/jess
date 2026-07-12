@@ -3,6 +3,27 @@ import { F_NON_STATIC, F_VISIBLE, Node, defineType } from './node.js';
 import { Bool } from './bool.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
+
+function getCallReferenceKey(name: unknown): string {
+  if (!name || typeof name !== 'object' || Reflect.get(name, 'type') !== 'Reference') {
+    return '';
+  }
+  const value = Reflect.get(name, 'value');
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+  const key = Reflect.get(value, 'key');
+  return String(
+    key && typeof key === 'object' && 'valueOf' in key
+      ? Reflect.apply(Reflect.get(key, 'valueOf'), key, [])
+      : key ?? ''
+  );
+}
 
 /** @note Less will parse =< but it will be stored as <= */
 export type ConditionOperator = 'and' | 'or' | '=' | '>' | '<' | '>=' | '<=';
@@ -56,6 +77,15 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     return w.getSince(mark);
   }
 
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
+  }
+
   static getBool(node: Node, negated: boolean): Bool {
     if (node instanceof Bool) {
       return new Bool(negated ? !node.value : node.value);
@@ -83,7 +113,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     }
   }
 
-  override evalNode(context: Context): MaybePromise<Bool> {
+  private evaluateCondition(context: Context, mode: 'eval' | 'resolve'): MaybePromise<Bool> {
     let [left, op, right] = this.value;
     let negated = this._options?.negate === true;
     const normalizeDefaultCall = (node: Node): Node => {
@@ -103,9 +133,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
       }
       const rawName = rawValue.name;
       const callName = String(rawName?.valueOf?.() ?? rawName ?? '');
-      const refKey = rawName?.type === 'Reference'
-        ? String(rawName?.value?.key?.valueOf?.() ?? rawName?.value?.key ?? '')
-        : '';
+      const refKey = getCallReferenceKey(rawName);
       if (callName === 'default' || callName === '??' || refKey === 'default' || refKey === '??') {
         return new Bool(Boolean(context.isDefault));
       }
@@ -113,7 +141,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     };
 
     return pipe(
-      () => left.eval(context),
+      () => mode === 'eval' ? left.eval(context) : left.resolve(context),
       (a) => {
         a = normalizeDefaultCall(a);
         if (!right) {
@@ -126,7 +154,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (!right) {
           return [a];
         }
-        let b = right.eval(context);
+        let b = mode === 'eval' ? right.eval(context) : right.resolve(context);
         if (isThenable(b)) {
           return (b as Promise<Node>).then(bb => [a, bb] as const);
         }
@@ -143,6 +171,14 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         return new Bool(negated ? !result : result);
       }
     );
+  }
+
+  override evalNode(context: Context): MaybePromise<Bool> {
+    return this.evaluateCondition(context, 'eval');
+  }
+
+  override resolve(context: Context): MaybePromise<Bool> {
+    return this.evaluateCondition(context, 'resolve');
   }
 }
 export const condition = defineType(Condition, 'Condition');

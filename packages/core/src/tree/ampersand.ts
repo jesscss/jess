@@ -5,11 +5,14 @@ import { SimpleSelector } from './selector-simple.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import { SelectorList } from './selector-list.js';
 import { BasicSelector } from './selector-basic.js';
+import { CompoundSelector } from './selector-compound.js';
+import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
-import { type Selector } from './selector.js';
+import { Selector } from './selector.js';
 import { atIndex } from './util/collections.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { copyOwnedWithReusableLeaves, copyWithReusableLeaves } from './util/cloning.js';
 import { WARN, toDiagnostic } from '../jess-error.js';
 export type AmpersandValue = {
   /**
@@ -66,7 +69,7 @@ export type AmpersandValue = {
   appendValue?: string;
 
   /**
-   * When set (e.g. by ruleset preEval), returns the current parent ruleset's selector ("pointer").
+   * When set (e.g. by ruleset prep), returns the current parent ruleset's selector ("pointer").
    * Prefer this over value.selector so extend sees the parent after it has been mutated (e.g. by extend).
    */
   selectorContainer?: { selector?: Selector | Nil | undefined };
@@ -81,6 +84,105 @@ const isSingleAmpersandWrapper = (node: Node | undefined): boolean => {
   }
   return false;
 };
+
+type AppendSelectorResult<T extends Selector = Selector> = {
+  selector: T;
+  appended: boolean;
+};
+
+function ownSelectorForAppend(selector: Selector): Selector {
+  const owned = copyWithReusableLeaves(selector);
+  if (!(owned instanceof Selector)) {
+    throw new TypeError('Expected selector copy');
+  }
+  return owned;
+}
+
+function createSimpleSelectorLike(selector: SimpleSelector, value: unknown): SimpleSelector {
+  const node = Reflect.construct(
+    selector.constructor,
+    [
+      value,
+      { ...selector.options },
+      selector.location.length === 0 ? undefined : selector.location,
+      selector.treeContext
+    ]
+  );
+  if (!(node instanceof SimpleSelector)) {
+    throw new TypeError('Expected simple selector copy');
+  }
+  return node.inherit(selector);
+}
+
+function appendSimpleSelector(selector: SimpleSelector, appendValue: string): AppendSelectorResult<SimpleSelector> {
+  if (typeof selector.value !== 'string') {
+    throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+  }
+  return {
+    selector: createSimpleSelectorLike(selector, selector.value + appendValue),
+    appended: true
+  };
+}
+
+function appendSelector(selector: Selector, appendValue: string): AppendSelectorResult {
+  if (isNode(selector, N.SelectorList)) {
+    const items = selector.value.map((item) => {
+      const result = appendSelector(item as Selector, appendValue);
+      if (!result.appended) {
+        throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
+      }
+      return result.selector;
+    });
+    return {
+      selector: SelectorList.create(items).inherit(selector),
+      appended: true
+    };
+  }
+
+  if (isNode(selector, N.ComplexSelector)) {
+    for (let i = selector.value.length - 1; i >= 0; i--) {
+      const component = selector.value[i]!;
+      if (isNode(component, N.Combinator)) {
+        continue;
+      }
+      const result = appendSelector(component as Selector, appendValue);
+      if (!result.appended) {
+        continue;
+      }
+      const components = selector.value.map((item, idx) => (
+        idx === i
+          ? result.selector as ComplexSelectorComponent
+          : ownSelectorForAppend(item as Selector) as ComplexSelectorComponent
+      ));
+      return {
+        selector: ComplexSelector.create(components).inherit(selector),
+        appended: true
+      };
+    }
+    return { selector, appended: false };
+  }
+
+  if (isNode(selector, N.CompoundSelector)) {
+    for (let i = selector.value.length - 1; i >= 0; i--) {
+      const part = selector.value[i]!;
+      const result = appendSimpleSelector(part, appendValue);
+      const parts = selector.value.map((item, idx) => (
+        idx === i ? result.selector : ownSelectorForAppend(item)
+      ));
+      return {
+        selector: CompoundSelector.create(parts).inherit(selector),
+        appended: true
+      };
+    }
+    return { selector, appended: false };
+  }
+
+  if (isNode(selector, N.SimpleSelector)) {
+    return appendSimpleSelector(selector, appendValue);
+  }
+
+  return { selector, appended: false };
+}
 
 /**
  * The '&' selector element
@@ -175,7 +277,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   getResolvedSelector(): Selector | Nil | undefined {
     const selector = this._selectorContainer?.selector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      const wrapped = PseudoSelector.create({ name: ':is', arg: selector.copy(true) as Selector });
+      const arg = copyOwnedWithReusableLeaves(selector);
+      if (!isNode(arg, N.Selector)) {
+        throw new TypeError('Expected selector copy');
+      }
+      const wrapped = PseudoSelector.create({ name: ':is', arg });
       wrapped.generated = true;
       return wrapped;
     }
@@ -266,14 +372,6 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       if (!selector) {
         return new Nil();
       }
-      // Never mutate the frame selector in-place for append forms (&-foo / &()).
-      if (appendValue !== undefined && !isNode(selector, N.Nil)) {
-        selector = selector.clone(true) as Selector;
-      }
-      /** Remove any surrounding whitespace */
-      selector.pre = undefined;
-      selector.post = undefined;
-
       if (appendValue && !isNode(selector, N.Nil)) {
         const isTemplateMerge = appendValue.includes('&');
         if (isTemplateMerge) {
@@ -351,29 +449,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
             selector = mergeTemplate(selector);
           }
         } else {
-          let doAppendValue = (n: Selector) => {
-            let appended = false;
-            for (let s of n.nodes(true)) {
-              /** Find the last simple selector and attempt to append */
-              if (isNode(s, N.SimpleSelector)) {
-                if (typeof s.value === 'string') {
-                  s.set(null, s.value + appendValue);
-                  appended = true;
-                  break;
-                }
-                throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
-              }
-            }
-            if (!appended) {
-              throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
-            }
-          };
-
-          if (isNode(selector, N.SelectorList)) {
-            selector.value.forEach(doAppendValue);
-          } else {
-            doAppendValue(selector);
+          const result = appendSelector(selector, appendValue);
+          if (!result.appended) {
+            throw new SyntaxError(`Cannot append "${appendValue}" to this type of selector`);
           }
+          selector = result.selector;
         }
       }
 
@@ -397,8 +477,15 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
      * preserve it instead of overwriting with the frame selector.
      */
     if (!amp._selectorContainer && frame && frame.selector) {
-      amp = this.clone(false) as Ampersand;
-      amp._selectorContainer = frame;
+      amp = new Ampersand(
+        {
+          appendValue: this.value.appendValue,
+          selectorContainer: frame
+        },
+        this.options,
+        this.location.length === 0 ? undefined : this.location,
+        this.treeContext
+      ).inherit(this);
     } else if (!amp._selectorContainer) {
       const parentSelector = amp.parent;
       const isBareWrapperAmp = isSingleAmpersandWrapper(parentSelector);
@@ -427,6 +514,22 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       newNode._storedSelector = this._storedSelector;
     }
     return newNode;
+  }
+
+  derive(): Ampersand {
+    const node = new Ampersand(
+      {
+        appendValue: this.value.appendValue,
+        selectorContainer: this._selectorContainer
+      },
+      this._options ? { ...this._options } : undefined,
+      this.location.length === 0 ? undefined : this.location,
+      this.treeContext
+    ).inherit(this);
+    if (this._storedSelector) {
+      node._storedSelector = this._storedSelector;
+    }
+    return node;
   }
 
   /** @todo - move to ToModuleVisitor */

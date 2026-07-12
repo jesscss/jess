@@ -65,12 +65,12 @@ If two approaches both pass tests, prefer the one that better reduces object cre
 
 When working on the active evaluation-model refactor, use these docs as the canonical source:
 
-- `docs/future/node-copy-reduction/README.md` for the target model
-- `docs/future/node-copy-reduction/session-instance-architecture.md` for the runtime shape
+- `docs/future/node-copy-reduction/README.md` for the current direction and active seams
 - `docs/future/node-copy-reduction/HANDOFF.md` for execution constraints
-- `docs/future/node-copy-reduction/STAGES.md` or `docs/future/node-copy-reduction/dependency-graph.md` for current sequencing
 
-Use those docs to understand the direction. Do not restate their volatile status details in permanent agent rules.
+Use those docs to understand the direction. Do not add broad status trackers or
+stale architecture documents that mostly describe machinery the repo does not
+currently have.
 
 ## Testing And Verification
 

@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { Any, type Declaration, type VarDeclaration } from '@jesscss/core';
 
 describe('Compiler reuse', () => {
   let tempDir: string;
@@ -138,5 +139,124 @@ describe('Compiler reuse', () => {
 
     expect(rendered).toContain('postprocessed');
     expect(result.css).toBe(rendered);
+  });
+
+  it('runs postEvalVisitor before render serialization', async () => {
+    const source = '@tone: red;\n.a { color: @tone; }';
+    const compiler = new Compiler({
+      compile: {
+        plugins: [{
+          name: 'pre-render-visitor-test',
+          postEvalVisitor: {
+            declaration(node: Declaration) {
+              if (node.value.name.valueOf() === 'color') {
+                node.set('value', new Any('blue', { role: 'keyword' }));
+              }
+            }
+          }
+        }]
+      }
+    });
+
+    const css = await compiler.renderString(source, { language: 'less' });
+
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('color: red');
+  });
+
+  it('runs typed preEvalVisitor before variable resolution', async () => {
+    const source = '@tone: red;\n.a { color: @tone; }';
+    const compiler = new Compiler({
+      compile: {
+        plugins: [{
+          name: 'pre-eval-visitor-test',
+          preEvalVisitor: {
+            varDeclaration(node: VarDeclaration) {
+              if (node.value.name.valueOf() === 'tone') {
+                node.set('value', new Any('blue', { role: 'keyword' }));
+              }
+            }
+          }
+        }]
+      }
+    });
+
+    const css = await compiler.renderString(source, { language: 'less' });
+
+    expect(css).toContain('color: blue');
+    expect(css).not.toContain('color: red');
+  });
+
+  it('renders root kept output through safeRender', async () => {
+    const testFile = path.join(tempDir, 'root-output.less');
+    fs.writeFileSync(testFile, '@charset "UTF-8";\n@import url("test.css");\n.a { color: red; }');
+
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessCompatPlugin()]
+      }
+    });
+
+    const result = await compiler.safeRender(testFile);
+
+    expect(result.css).toContain('@charset "UTF-8";');
+    expect(result.css).toContain('@import url("test.css");');
+    expect(result.css).toContain('.a');
+  });
+
+  it('safeRender owns render without delegating through safeCompile', async () => {
+    const testFile = path.join(tempDir, 'safe-render.less');
+    fs.writeFileSync(testFile, '.a { color: red; }');
+
+    class RenderOnlyCompiler extends Compiler {
+      override async safeCompile(): Promise<never> {
+        throw new Error('safeRender should not call safeCompile');
+      }
+    }
+
+    const compiler = new RenderOnlyCompiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessCompatPlugin()]
+      }
+    });
+
+    const result = await compiler.safeRender(testFile);
+
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('color: red');
+  });
+
+  it('keeps root output on public render APIs', async () => {
+    const source = '@charset "UTF-8";\n@import url("test.css");\n.a { color: red; }';
+    const testFile = path.join(tempDir, 'public-root-output.less');
+    fs.writeFileSync(testFile, source);
+
+    const compiler = new Compiler({
+      output: { collapseNesting: true },
+      compile: {
+        plugins: [lessCompatPlugin()]
+      }
+    });
+
+    const rendered = await compiler.render(testFile);
+    const renderedString = await compiler.renderString(source, {
+      filePath: testFile,
+      language: 'less',
+      extension: '.less'
+    });
+    const result = await compiler.renderToResult({
+      source,
+      filePath: testFile,
+      language: 'less',
+      extension: '.less'
+    });
+
+    for (const css of [rendered, renderedString, result.css]) {
+      expect(css).toContain('@charset "UTF-8";');
+      expect(css).toContain('@import url("test.css");');
+      expect(css).toContain('.a');
+    }
   });
 });

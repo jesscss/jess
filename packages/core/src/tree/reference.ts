@@ -13,11 +13,13 @@ import type { Num } from './number.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { isThenable, type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 import { MixinCollection } from './rules.js';
-import type { Rules, RuntimeVarBinding, MixinEntry } from './rules.js';
+import type { Rules, RulesOptions, RuntimeVarBinding, MixinEntry } from './rules.js';
 import type { Interpolated } from './interpolated.js';
-import { freezeChildren } from './util/cloning.js';
+import { canReuseLeaf, copyWithReusableLeaves } from './util/cloning.js';
 import type { Declaration } from './declaration.js';
 import type { Color } from './color.js';
+import { JsArray } from './js-array.js';
+import { JsObject } from './js-object.js';
 import { List } from './list.js';
 import { Nil } from './nil.js';
 import { comparePosition } from './util/compare.js';
@@ -90,6 +92,18 @@ export type ReferenceOptions = {
   role?: AnyRole;
   preserveRulesLike?: boolean;
 };
+
+type PreservedRulesLikeValue = Node & { sourceNode?: Node };
+type NodeValueConstructor = new (
+  value: unknown,
+  options?: unknown,
+  location?: LocationInfo,
+  treeContext?: TreeContext
+) => Node;
+
+function isNodeValueConstructor(value: unknown): value is NodeValueConstructor {
+  return typeof value === 'function';
+}
 
 const isRuntimeVarBinding = (value: unknown): value is RuntimeVarBinding => (
   value !== null
@@ -174,13 +188,13 @@ function findVarDeclarationFast(
     scope: Rules,
     frame: ScopeFrame
   ): void => {
-    if (frame.pendingDynamicDecls.length === 0) {
+    if (frame.pendingDeclarationNames.length === 0) {
       return;
     }
     const remaining: VarDeclaration[] = [];
     let mutated = false;
 
-    for (const decl of frame.pendingDynamicDecls) {
+    for (const decl of frame.pendingDeclarationNames) {
       if (decl.parent !== scope) {
         remaining.push(decl);
         continue;
@@ -218,7 +232,7 @@ function findVarDeclarationFast(
     }
 
     if (mutated) {
-      frame.pendingDynamicDecls = remaining;
+      frame.pendingDeclarationNames = remaining;
     }
   };
 
@@ -227,7 +241,7 @@ function findVarDeclarationFast(
     scopeStart: number | undefined,
     localContext: boolean | undefined,
     visited: Set<Rules>,
-    visibilityOverride?: RulesOptions['rulesVisibility']['VarDeclaration'],
+    visibilityOverride?: NonNullable<RulesOptions['rulesVisibility']>['VarDeclaration'],
     includeChildSurfaces = true
   ): {
     publicMatch: Node | undefined;
@@ -399,12 +413,13 @@ function findVarDeclarationFast(
         publicMatch = laterOf(publicMatch, result.publicMatch);
         optionalMatch = laterOf(optionalMatch, result.optionalMatch);
       }
-      const nextFallbackRules = isNode(cursor, N.Rules)
+      const fallbackCandidate: unknown = isNode(cursor, N.Rules)
         ? cursor.scopeFrame?.fallbackFrame?.rulesNode
         : undefined;
-      cursor = isNode(nextFallbackRules, N.Rules)
-        ? nextFallbackRules
-        : cursor.parent;
+      const nextFallbackRules: Rules | undefined = isNode(fallbackCandidate, N.Rules)
+        ? fallbackCandidate as Rules
+        : undefined;
+      cursor = nextFallbackRules ?? cursor.parent;
     }
   }
   if (publicMatch !== undefined) {
@@ -445,7 +460,8 @@ function normalizeSelectorReferenceKey(selector: Selector): string | string[] {
   if (isNode(selector, N.ComplexSelector)) {
     for (const node of selector.value as Node[]) {
       if (
-        isNode(node, N.BasicSelector | N.CompoundSelector)
+        isNode(node, N.BasicSelector)
+        || isNode(node, N.CompoundSelector)
         || node.type === 'InterpolatedSelector'
       ) {
         continue;
@@ -491,6 +507,10 @@ function getLookupStartIndex(node: Node): number | undefined {
 type LookupType = NonNullable<ReferenceOptions['type']>;
 type NormalizedLookupKey = string | string[] | number;
 type RulesLookupResult = RuntimeVarBinding | Node | MixinEntry[] | undefined;
+
+function isRulesLookupResult(value: unknown): value is Exclude<RulesLookupResult, undefined> {
+  return isRuntimeVarBinding(value) || isNode(value) || Array.isArray(value);
+}
 
 type RulesLookupAdapterEnv = {
   context: Context;
@@ -826,7 +846,8 @@ function lookupCallableReference(
   env: RulesLookupAdapterEnv,
   filterType?: 'Mixin'
 ): RulesLookupResult {
-  const callable = targetRules.find('mixin', valueKey, filterType, opts);
+  const callableKey = Array.isArray(valueKey) ? valueKey : getLookupKeyString(valueKey);
+  const callable = targetRules.find('mixin', callableKey, filterType, opts);
   if (callable) {
     return callable;
   }
@@ -880,7 +901,7 @@ function lookupAcrossRulesScopes(
       const result = performLookup(scope);
       if (isThenable(result)) {
         return Promise.resolve(result).then((resolved) => {
-          if (resolved !== undefined) {
+          if (isRulesLookupResult(resolved)) {
             return resolved;
           }
           return walk(i + 1);
@@ -1078,11 +1099,10 @@ function lookupDirectArrayIndexTarget(
   targetNode: Node,
   valueKey: number
 ): RulesLookupResult {
-  if (!isNode(targetNode, N.JsArray)) {
+  if (!(targetNode instanceof JsArray)) {
     return undefined;
   }
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return atIndex((targetNode as any).value, valueKey);
+  return atIndex(targetNode.value, valueKey);
 }
 
 function getDirectRulesIndexFilterType(
@@ -1104,9 +1124,8 @@ function lookupDirectNamedTarget(
   key: string,
   keyNode: ReferenceValue['key']
 ): RulesLookupResult {
-  if (isNode(targetNode, N.JsObject)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    return (targetNode as any).value[key];
+  if (targetNode instanceof JsObject) {
+    return targetNode.value[key];
   }
   if (isNode(targetNode, N.Rules)) {
     return lookupDirectRulesTarget(targetNode, key, keyNode);
@@ -1166,7 +1185,12 @@ function getRedirectReferenceTargetKey(resolvedTarget: unknown): string | undefi
   if (!(resolvedTarget instanceof Node)) {
     return undefined;
   }
-  if (resolvedTarget instanceof MixinCollection || isNode(resolvedTarget, N.Rules | N.JsFunction | N.Mixin)) {
+  if (
+    resolvedTarget instanceof MixinCollection
+    || isNode(resolvedTarget, N.Rules)
+    || isNode(resolvedTarget, N.JsFunction)
+    || isNode(resolvedTarget, N.Mixin)
+  ) {
     return undefined;
   }
   const targetKey = isNode(resolvedTarget, N.Color)
@@ -1198,8 +1222,11 @@ function materializeMixinCollectionTarget(
   return Promise.resolve(resolvedTarget.evalCall(context)).then(r => [r, valueKey]);
 }
 
+type JsFunctionTarget = Node<(...args: unknown[]) => unknown>;
+type RulesLikeTarget = Node<{ rules: Rules }>;
+
 function materializeJsFunctionTarget(
-  resolvedTarget: Node,
+  resolvedTarget: JsFunctionTarget,
   valueKey: NormalizedLookupKey,
   context: Context
 ): MaybePromise<[unknown, NormalizedLookupKey]> {
@@ -1211,7 +1238,7 @@ function materializeJsFunctionTarget(
 }
 
 function materializeRulesLikeTarget(
-  resolvedTarget: Rules | Node,
+  resolvedTarget: RulesLikeTarget,
   valueKey: NormalizedLookupKey,
   context: Context
 ): MaybePromise<[Rules, NormalizedLookupKey]> {
@@ -1240,8 +1267,8 @@ function materializeReferenceTarget(args: {
   if (isNode(resolvedTarget, N.JsFunction)) {
     return materializeJsFunctionTarget(resolvedTarget, valueKey, context);
   }
-  if (isNode(resolvedTarget, N.Mixin | N.Ruleset)) {
-    return materializeRulesLikeTarget(resolvedTarget, valueKey, context);
+  if (isNode(resolvedTarget, N.Mixin) || isNode(resolvedTarget, N.Ruleset)) {
+    return materializeRulesLikeTarget(resolvedTarget as RulesLikeTarget, valueKey, context);
   }
 
   return [resolvedTarget, valueKey];
@@ -1272,9 +1299,7 @@ function applyReferenceResultMetadata(
   if (options?.frozen) {
     node.frozen = true;
   }
-  node.pre = referenceNode.pre;
-  node.post = referenceNode.post;
-  return node;
+  return node.inherit(referenceNode);
 }
 
 function cloneReferenceResultNode(
@@ -1283,9 +1308,37 @@ function cloneReferenceResultNode(
 ): Node {
   return applyReferenceResultMetadata(
     referenceNode,
-    node.copy(true, freezeChildren).inherit(node),
+    copyReferenceValue(node),
     { frozen: true }
   );
+}
+
+function copyReferenceValue(node: Node): Node {
+  return copyWithReusableLeaves(node).inherit(node);
+}
+
+function canReuseReferenceValue(node: Node): boolean {
+  return canReuseLeaf(node);
+}
+
+function canReuseFallbackValue(node: Node): boolean {
+  return node.hasFlag(F_STATIC)
+    && canReuseReferenceValue(node);
+}
+
+function evaluateFallbackValue(
+  referenceNode: Reference,
+  fallbackValue: Node,
+  context: Context
+): MaybePromise<Node> {
+  if (canReuseFallbackValue(fallbackValue)) {
+    return applyReferenceResultMetadata(referenceNode, fallbackValue, { frozen: true });
+  }
+  const out = copyReferenceValue(fallbackValue).eval(context);
+  if (isThenable(out)) {
+    return Promise.resolve(out).then(node => node);
+  }
+  return out;
 }
 
 function finalizeFallbackReferenceResult(args: {
@@ -1312,11 +1365,7 @@ function finalizeFallbackReferenceResult(args: {
     any.options.role = referenceNode.options.role;
     return any;
   }
-  const out = fallbackValue.eval(context);
-  if (isThenable(out)) {
-    return Promise.resolve(out).then(node => node);
-  }
-  return out;
+  return evaluateFallbackValue(referenceNode, fallbackValue, context);
 }
 
 function finalizeDirectReferenceResult(
@@ -1336,18 +1385,29 @@ function createDirectCallableReferenceResult(
 ): Node {
   const callableItems: MixinEntry[] = [];
   for (const item of returnVal) {
-    if (!isNode(item, N.Mixin | N.Ruleset)) {
+    if (!isNode(item, N.Mixin) && !isNode(item, N.Ruleset)) {
       return cast(undefined);
     }
+    const callableItem = item as Extract<MixinEntry, Node>;
     if (referenceNode.options?.type === 'mixin-ruleset') {
-      item.frozen = true;
-      if ('sourceNode' in item && isNode(item.sourceNode)) {
-        item.sourceNode.frozen = true;
+      callableItem.frozen = true;
+      if ('sourceNode' in callableItem && isNode(callableItem.sourceNode)) {
+        callableItem.sourceNode.frozen = true;
       }
-      callableItems.push(preserveRulesLikeValue(item));
-      continue;
+      const preserved = preserveRulesLikeValue(callableItem);
+      if (isNode(preserved, N.Mixin)) {
+        callableItems.push(preserved);
+        continue;
+      }
+      if (isNode(preserved, N.Ruleset)) {
+        callableItems.push(preserved);
+        continue;
+      }
+      {
+        return cast(undefined);
+      }
     }
-    callableItems.push(item);
+    callableItems.push(callableItem);
   }
   const collection = new MixinCollection(callableItems);
   return collection;
@@ -1385,6 +1445,17 @@ function finalizeRuntimeVarBindingResult(
     if (bindingSource) {
       context.searchScope.delete(bindingSource);
     }
+    if (
+      referenceNode.options?.preserveRulesLike === true
+      && isNode(evald, N.Rules | N.Collection | N.Mixin | N.Ruleset)
+    ) {
+      evald.frozen = true;
+      return evald;
+    }
+    if (canReuseReferenceValue(evald)) {
+      evald.frozen = true;
+      return evald;
+    }
     return cloneReferenceResultNode(referenceNode, evald);
   };
   const evaluatedBinding = (() => {
@@ -1401,7 +1472,8 @@ function finalizeRuntimeVarBindingResult(
     }
     try {
       return evaluateReferenceValueNode(binding.value, context, {
-        preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset'
+        preserveRulesLike: referenceNode.options?.type === 'mixin-ruleset',
+        reuseSourceFreeLeaves: true
       });
     } catch (error) {
       context.rulesContext = savedRulesContext;
@@ -1477,10 +1549,13 @@ function finalizeEvaluatedDeclarationReference(
   evaluatedNode: Node,
   isMergedAssign: boolean
 ): Node {
+  const resultNode = isMergedAssign
+    ? evaluatedNode
+    : cloneReferenceResultNode(referenceNode, evaluatedNode);
   return applyReferenceResultMetadata(
     referenceNode,
     normalizeMergedAssignReferenceResult(
-      cloneReferenceResultNode(referenceNode, evaluatedNode),
+      resultNode,
       isMergedAssign
     ),
     { frozen: true }
@@ -1513,9 +1588,24 @@ function finalizeDeclarationReferenceResult(
   ));
 }
 
-function preserveRulesLikeValue<T extends Node>(directValue: T): T {
-  const preservedValue = directValue.clone(false) as T & { sourceNode?: Node };
-  preservedValue.parent = directValue.parent;
+function preserveRulesLikeValue(directValue: Node): PreservedRulesLikeValue {
+  const options = Object.getOwnPropertyDescriptor(directValue, '_options')?.value;
+  const nodeConstructor = directValue.constructor;
+  if (!isNodeValueConstructor(nodeConstructor)) {
+    throw new TypeError('Preserved rules-like value must have a constructable node type');
+  }
+  const constructed = new nodeConstructor(
+    directValue.value,
+    options && typeof options === 'object' ? { ...options } : undefined,
+    directValue.location.length === 0 ? undefined : directValue.location,
+    directValue.treeContext
+  );
+  if (!(constructed instanceof Node)) {
+    throw new TypeError('Preserved rules-like value must remain a Node');
+  }
+  const preservedValue: PreservedRulesLikeValue = constructed;
+  preservedValue.inherit(directValue);
+  Reflect.set(preservedValue, 'parent', directValue.parent);
   preservedValue.sourceNode = directValue;
   return preservedValue;
 }
@@ -1536,16 +1626,14 @@ function evaluateCalcSlashListValue(
   const [left, right] = declValue.value;
   const finalize = (l: Node, r: Node): Node => {
     if (
-      !isNode(l, N.Number | N.Dimension)
-      || !isNode(r, N.Number | N.Dimension)
+      !isNode(l, N.Dimension)
+      || !isNode(r, N.Dimension)
     ) {
       return declValue;
     }
     try {
       const out = l.operate(r, '/', context);
-      out.pre = left?.pre;
-      out.post = right?.post;
-      return out;
+      return out.inherit(declValue);
     } catch {
       return declValue;
     }
@@ -1581,6 +1669,7 @@ function evaluateReferenceValueNode(
   context: Context,
   options: {
     preserveRulesLike?: boolean;
+    reuseSourceFreeLeaves?: boolean;
   } = {}
 ): MaybePromise<Node> {
   if (
@@ -1606,7 +1695,13 @@ function evaluateReferenceValueNode(
     if (isNode(declValue, N.Reference) && declValue.options?.type === 'mixin-ruleset') {
       return declValue;
     }
-    return declValue.eval(context);
+    if (options.reuseSourceFreeLeaves === true && canReuseReferenceValue(declValue)) {
+      return declValue;
+    }
+    if (options.reuseSourceFreeLeaves === true) {
+      return copyReferenceValue(declValue).eval(context);
+    }
+    return copyReferenceValue(declValue).eval(context);
   } finally {
     context.calcFrames = savedCalcFrames;
   }
@@ -1644,7 +1739,7 @@ function normalizeMergedAssignReferenceResult(
       || String(child.valueOf?.() ?? '') === ''
     );
     if (!isEmptyPlaceholder) {
-      mergedItems.push(child.copy(true, freezeChildren));
+      mergedItems.push(child);
     }
   };
   collect(node);
@@ -1680,22 +1775,23 @@ function finalizeReferenceLookupResult(args: {
 }): MaybePromise<Node> {
   const { referenceNode, returnVal, valueKey, lookupType, fallbackValue, context } = args;
 
-  switch (classifyReferenceLookupResult(returnVal)) {
-    case 'fallback':
-      return finalizeFallbackReferenceResult({
-        referenceNode,
-        valueKey,
-        lookupType,
-        fallbackValue,
-        context
-      });
-    case 'runtime-binding':
-      return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context);
-    case 'declaration':
-      return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
-    case 'direct':
-      return finalizeDirectReferenceResult(referenceNode, returnVal, context);
+  const resultKind = classifyReferenceLookupResult(returnVal);
+  if (resultKind === 'fallback') {
+    return finalizeFallbackReferenceResult({
+      referenceNode,
+      valueKey,
+      lookupType,
+      fallbackValue,
+      context
+    });
   }
+  if (isRuntimeVarBinding(returnVal)) {
+    return finalizeRuntimeVarBindingResult(referenceNode, returnVal, context);
+  }
+  if (isNode(returnVal, N.Declaration) || isNode(returnVal, N.VarDeclaration)) {
+    return finalizeDeclarationReferenceResult(referenceNode, returnVal, context);
+  }
+  return finalizeDirectReferenceResult(referenceNode, returnVal, context);
 }
 
 function evaluateReferenceNode(args: {
@@ -1864,6 +1960,10 @@ export class Reference extends Node<ReferenceValue, ReferenceOptions> {
       );
     }
     return result as Node;
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 }
 

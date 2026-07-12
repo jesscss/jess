@@ -1,5 +1,6 @@
-import { expr, any, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
+import { expr, any, list, ref, rules, vardecl, type Rules as RulesClass } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
 describe('Expression', () => {
@@ -24,9 +25,32 @@ describe('Expression', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = expr(ref({ key: 'value' }, { type: 'variable' })).render(context);
+    const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+    const rendered = renderedNode.render(context);
 
     expect(rendered).toBe('foo');
+    expect(renderedNode.evaluated).toBe(false);
+    expect(renderedNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved expression render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const renderedNode = expr(ref({ key: 'value' }, { type: 'variable' }));
+
+    expect(await renderedNode.render(context, buffer)).toBe('foo');
+    expect(buffer.parts).toEqual(['foo']);
+    expect(renderedNode.evaluated).toBe(false);
+    expect(renderedNode.preEvaluated).toBe(false);
   });
 
   it('resolves expression values without touching render state', async () => {
@@ -40,20 +64,44 @@ describe('Expression', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await expr(ref({ key: 'value' }, { type: 'variable' })).resolve(context);
+    const nodeToResolve = expr(ref({ key: 'value' }, { type: 'variable' }));
+    const resolved = await nodeToResolve.resolve(context);
 
-    expect(`${resolved}`).toBe('foo');
+    expect(resolved.toTrimmedString()).toBe('foo');
+    expect(nodeToResolve.evaluated).toBe(false);
+    expect(nodeToResolve.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source expression child containers canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('value'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const nodeToResolve = expr(list([
+      any('one'),
+      ref({ key: 'value' }, { type: 'variable' })
+    ]));
+    const resolved = await nodeToResolve.resolve(context);
+
+    expect(resolved.render(context)).toBe('one, foo');
+    expect(nodeToResolve.toTrimmedString()).toBe('$(one, $value)');
   });
 
   it('should serialize an expression', () => {
     let rule = expr(any('foo'));
-    expect(`${rule}`).toBe('$(foo)');
+    expect(rule.toTrimmedString()).toBe('$(foo)');
   });
 
   it('should serialize an expression consistently', () => {
     let rule = expr(any('foo'));
-    expect(`${rule}`).toBe('$(foo)');
+    expect(rule.toTrimmedString()).toBe('$(foo)');
   });
 
   // it('should serialize to a module', () => {

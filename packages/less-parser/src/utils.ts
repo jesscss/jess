@@ -1,4 +1,5 @@
 import {
+  InterpolatedSelector,
   Interpolated,
   Quoted,
   Reference,
@@ -49,7 +50,7 @@ export const getInterpolatedNode = (
 };
 
 export const normalizeMixinReferenceKey = (selector: Selector): { key: string | string[]; rawKey: Selector } => {
-  if (isNode(selector, N.BasicSelector | N.InterpolatedSelector)) {
+  if (isNode(selector, N.BasicSelector) || selector instanceof InterpolatedSelector) {
     return { key: selector.valueOf(), rawKey: selector };
   }
 
@@ -65,7 +66,7 @@ export const normalizeMixinReferenceKey = (selector: Selector): { key: string | 
     let canUsePath = true;
 
     for (const node of selector.value) {
-      if (isNode(node, N.BasicSelector | N.InterpolatedSelector)) {
+      if (isNode(node, N.BasicSelector) || node instanceof InterpolatedSelector) {
         path.push(node.valueOf());
         continue;
       }

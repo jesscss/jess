@@ -87,8 +87,6 @@ export function fromLessNode(
         name: new Any(prop, { role: 'property' as const }),
         value: new Any(valueStr)
       });
-      out.pre = 0;
-      out.post = 0;
       cache.set(lessNode, out);
       return out;
     }
@@ -108,8 +106,6 @@ export function fromLessNode(
             name: new Any(prop, { role: 'property' as const }),
             value: new Any(valueStr)
           });
-          decl.pre = 0;
-          decl.post = 0;
           nodes.push(decl);
         }
       }

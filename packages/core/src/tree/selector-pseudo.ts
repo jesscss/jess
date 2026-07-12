@@ -10,6 +10,10 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, pipe } from '@jesscss/awaitable-pipe';
 
+function normalizeSelectorArg(text: string): string {
+  return text.replace(/\n\s*/g, ' ').trim();
+}
+
 export type PseudoSelectorValue = {
   /**
    * The name of the pseudo-selector
@@ -31,13 +35,15 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     const w = options.writer!;
     let { name, arg } = this.value;
     const mark = w.mark();
-    if (this.generated && name === ':is' && arg && isNode(arg, N.SelectorList)) {
-      let out = w.capture(() => arg.toString(options));
-      out = out.replace(/\n\s*/g, ' ').trim();
-      if (!out.includes(',')) {
-        w.add(out, arg);
+    if (this.generated && name === ':is' && arg && isNode(arg, N.Selector)) {
+      const argMark = w.mark();
+      arg.toString(options);
+      w.replaceSince(argMark, normalizeSelectorArg, arg);
+      const out = w.getSince(argMark);
+      if (isNode(arg, N.SelectorList) && !out.includes(',')) {
         return w.getSince(mark);
       }
+      w.restore(argMark);
       w.add(name, this);
       w.add('(');
       w.add(out, arg);
@@ -48,9 +54,9 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (arg) {
       w.add('(');
       if (isNode(arg, N.SelectorList)) {
-        let out = w.capture(() => arg.toString(options));
-        out = out.replace(/\n\s*/g, ' ').trim();
-        w.add(out, arg);
+        const argMark = w.mark();
+        arg.toString(options);
+        w.replaceSince(argMark, normalizeSelectorArg, arg);
       } else {
         arg.toString(options);
       }
@@ -178,12 +184,23 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
         if (evaluatedArg === currentArg) {
           return this;
         }
-        const node = this.clone();
-        node.value.arg = evaluatedArg;
+        const node = new PseudoSelector(
+          {
+            ...this.value,
+            arg: evaluatedArg
+          },
+          this._options ? { ...this._options } : undefined,
+          this.location.length ? this.location : undefined,
+          this.treeContext
+        ).inherit(this);
         attachSelectorBitLibrary(node, context.selectorBits);
         return node;
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<PseudoSelector> {
+    return this.evalNode(context);
   }
 }
 

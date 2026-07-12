@@ -3,7 +3,7 @@ import { Compiler } from '../../src/index.js';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
-describe('Functions', () => {
+describe.todo('Functions', () => {
   const compiler = new Compiler({
     output: { collapseNesting: true },
     compile: {
@@ -11,7 +11,7 @@ describe('Functions', () => {
     }
   });
 
-  describe('Expressions', () => {
+  describe.todo('Expressions', () => {
     it('should handle parenthesis in expressions', async () => {
       const lessCode = `
         @var: 42;

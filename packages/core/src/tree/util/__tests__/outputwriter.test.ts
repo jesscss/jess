@@ -1,6 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import { OutputWriter } from '../print.js';
 
+type WriterPosition = {
+  line: number;
+  column: number;
+  segments: number;
+  length: number;
+};
+
+function isWriterPosition(value: unknown): value is WriterPosition {
+  return typeof value === 'object'
+    && value !== null
+    && typeof Reflect.get(value, 'line') === 'number'
+    && typeof Reflect.get(value, 'column') === 'number'
+    && typeof Reflect.get(value, 'segments') === 'number'
+    && typeof Reflect.get(value, 'length') === 'number';
+}
+
+function positionsFor(writer: OutputWriter): WriterPosition[] {
+  const positions: unknown = Reflect.get(writer, '_positions');
+  if (!Array.isArray(positions) || !positions.every(isWriterPosition)) {
+    throw new TypeError('Expected OutputWriter positions');
+  }
+  return positions;
+}
+
 describe('OutputWriter', () => {
   describe('position tracking', () => {
     it('properly advances output position with plain add', () => {
@@ -96,31 +120,29 @@ describe('OutputWriter', () => {
       expect(w.toString()).toBe('line1\n');
       expect(captured).toBe('line2\nline3\n');
     });
+  });
 
-    it('captureWithMeta defaults to implicit boundary intent', () => {
+  describe('preview behavior', () => {
+    it('previews content without advancing output or storing captured segments', () => {
       const w = new OutputWriter();
-      const captured = w.captureWithMeta(() => {
-        w.add('abc');
+
+      w.add('start');
+      const previewed = w.preview(() => {
+        w.add('middle');
       });
-      expect(captured).toEqual({
-        text: 'abc',
-        leadingIntent: 'implicit',
-        trailingIntent: 'implicit'
-      });
+      w.add('end');
+
+      expect(previewed).toBe('middle');
+      expect(w.toString()).toBe('startend');
     });
 
-    it('captureWithMeta preserves explicit boundary intent signals', () => {
+    it('uses the callback return value when the callback writes elsewhere', () => {
       const w = new OutputWriter();
-      const captured = w.captureWithMeta(() => {
-        w.signalBoundaryIntent('pre', 'explicit_none');
-        w.add('abc');
-        w.signalBoundaryIntent('post', 'explicit_none');
-      });
-      expect(captured).toEqual({
-        text: 'abc',
-        leadingIntent: 'explicit_none',
-        trailingIntent: 'explicit_none'
-      });
+
+      const previewed = w.preview(() => 'returned');
+
+      expect(previewed).toBe('returned');
+      expect(w.toString()).toBe('');
     });
   });
 
@@ -144,6 +166,91 @@ describe('OutputWriter', () => {
       w.add('chunk3');
 
       expect(w.getSince(mark1)).toBe('chunk2chunk3');
+    });
+
+    it('checks whether content was emitted since a mark without materializing it', () => {
+      const w = new OutputWriter();
+
+      expect(w.hasContentSince(w.mark())).toBe(false);
+      w.add('chunk1');
+      const mark = w.mark();
+      expect(w.hasContentSince(mark)).toBe(false);
+      w.add('chunk2');
+      expect(w.hasContentSince(mark)).toBe(true);
+      w.restore(mark);
+      expect(w.hasContentSince(mark)).toBe(false);
+    });
+
+    it('checks suffixes without materializing the buffer', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      w.add('\n');
+      w.add('two');
+
+      expect(w.endsWith('two')).toBe(true);
+      expect(w.endsWith('\ntwo')).toBe(true);
+      expect(w.endsWith('one\ntwo')).toBe(true);
+      expect(w.endsWith('three')).toBe(false);
+      expect(w.endsWith('')).toBe(true);
+    });
+
+    it('reads the last emitted character without materializing the buffer', () => {
+      const w = new OutputWriter();
+
+      expect(w.lastChar()).toBeUndefined();
+      w.add('one');
+      expect(w.lastChar()).toBe('e');
+      w.add('\n');
+      expect(w.lastChar()).toBe('\n');
+      w.add('two');
+      expect(w.lastChar()).toBe('o');
+    });
+
+    it('replaces a marked range while keeping earlier chunks', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add('one\n  two');
+
+      w.replaceSince(mark, text => text.replace(/\n\s*/u, ' '));
+
+      expect(w.toString()).toBe('before one two');
+      expect(w.line).toBe(0);
+      expect(w.column).toBe(14);
+    });
+
+    it('queues a spacer before the next non-whitespace chunk', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      w.queueSpacer(' ');
+      w.add('two');
+
+      expect(w.toString()).toBe('one two');
+    });
+
+    it('drops a queued spacer when the next chunk already starts with whitespace', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      w.queueSpacer(' ');
+      w.add(' two');
+
+      expect(w.toString()).toBe('one two');
+    });
+
+    it('uses a queued spacer predicate to protect identifier boundaries', () => {
+      const w = new OutputWriter();
+
+      w.add('one');
+      w.queueSpacer(' ', nextText => /^[A-Za-z0-9_-]/u.test(nextText));
+      w.add('.two');
+      w.queueSpacer(' ', nextText => /^[A-Za-z0-9_-]/u.test(nextText));
+      w.add('three');
+
+      expect(w.toString()).toBe('one.two three');
     });
 
     it('restore reverts to mark position', () => {
@@ -177,6 +284,73 @@ describe('OutputWriter', () => {
       expect(w.column).toBe(originalColumn);
       expect(w.toString()).toBe(originalString);
     });
+
+    it('trimEndSince removes trailing whitespace after a mark', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add('value');
+      w.add(' \n\t');
+
+      w.trimEndSince(mark);
+
+      expect(w.toString()).toBe('before value');
+      expect(w.line).toBe(0);
+      expect(w.column).toBe(12);
+    });
+
+    it('trimEndSince does not trim before the mark', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add(' \n\t');
+
+      w.trimEndSince(mark);
+
+      expect(w.toString()).toBe('before ');
+      expect(w.line).toBe(0);
+      expect(w.column).toBe(7);
+    });
+
+    it('trims all whitespace at the start of a marked range', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add(' \n\tvalue');
+
+      w.trimStartSince(mark);
+
+      expect(w.toString()).toBe('before value');
+      expect(w.line).toBe(0);
+      expect(w.column).toBe(12);
+    });
+
+    it('trims horizontal whitespace at the start of a marked range', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add(' \t\r\fvalue');
+
+      w.trimHorizontalStartSince(mark);
+
+      expect(w.toString()).toBe('before value');
+    });
+
+    it('trims horizontal whitespace at the end of a marked range', () => {
+      const w = new OutputWriter();
+
+      w.add('before ');
+      const mark = w.mark();
+      w.add('value \t\r\f');
+
+      w.trimHorizontalEndSince(mark);
+
+      expect(w.toString()).toBe('before value');
+    });
   });
 
   describe('_positions array behavior', () => {
@@ -188,7 +362,7 @@ describe('OutputWriter', () => {
       w.add('\nnew line');
 
       // Access private _positions array for testing
-      const positions = (w as any)._positions;
+      const positions = positionsFor(w);
       expect(positions).toHaveLength(3);
       expect(positions[0]).toEqual({ line: 0, column: 5, segments: 0, length: 5 });
       expect(positions[1]).toEqual({ line: 0, column: 11, segments: 0, length: 11 });
@@ -199,14 +373,14 @@ describe('OutputWriter', () => {
       const w = new OutputWriter();
 
       w.add('before');
-      const beforePositions = [...(w as any)._positions];
+      const beforePositions = [...positionsFor(w)];
 
       const captured = w.capture(() => {
         w.add('captured\ncontent');
       });
 
       // _positions should be unchanged after capture
-      expect((w as any)._positions).toEqual(beforePositions);
+      expect(positionsFor(w)).toEqual(beforePositions);
       expect(captured).toBe('captured\ncontent');
     });
 
@@ -215,13 +389,13 @@ describe('OutputWriter', () => {
 
       w.add('line1\n');
       const mark = w.mark();
-      const positionsAtMark = [...(w as any)._positions];
+      const positionsAtMark = [...positionsFor(w)];
 
       w.add('line2\nline3\n');
-      expect((w as any)._positions).toHaveLength(2); // Only 2 chunks: 'line2\n' and 'line3\n'
+      expect(positionsFor(w)).toHaveLength(2); // Only 2 chunks: 'line2\n' and 'line3\n'
 
       w.restore(mark);
-      expect((w as any)._positions).toEqual(positionsAtMark);
+      expect(positionsFor(w)).toEqual(positionsAtMark);
     });
 
     it('_positions tracks segments count', () => {
@@ -234,7 +408,7 @@ describe('OutputWriter', () => {
       };
 
       w.add('content', mockOrigin);
-      const positions = (w as any)._positions;
+      const positions = positionsFor(w);
       expect(positions[0].segments).toBe(1);
     });
   });

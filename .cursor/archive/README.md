@@ -14,3 +14,6 @@ Canonical “live” docs are typically:
 - `.cursor/DEBUGGING_ORCHESTRATION.md`
 - Small area notes only when necessary; prefer Cursor-native rules and canonical package docs
 
+The 2026-05-09 archive batch moved old root-level extend/debug session notes out
+of startup context. Use the canonical package docs and current handoffs before
+consulting those files.

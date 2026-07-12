@@ -3,6 +3,11 @@ import { Node, defineType } from './node.js';
 import { Selector } from './selector.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export interface SelectorCapture extends Node<Selector> {
   eval(context: Context): MaybePromise<Selector>;
@@ -38,19 +43,36 @@ export class SelectorCapture extends Node<Selector> {
     return this.renderCaptureSyntax(options);
   }
 
-  override evalNode(context: Context): MaybePromise<Selector> {
-    const requireSelector = (value: unknown): Selector => {
-      if (isSelectorNode(value)) {
-        return value;
-      }
-      throw new Error('SelectorCapture requires a selector-valued payload');
-    };
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
+  }
 
+  private requireSelector(value: unknown): Selector {
+    if (isSelectorNode(value)) {
+      return value;
+    }
+    throw new Error('SelectorCapture requires a selector-valued payload');
+  }
+
+  override evalNode(context: Context): MaybePromise<Selector> {
     const out = this.value.eval(context);
     if (isThenable(out)) {
-      return out.then(requireSelector);
+      return out.then(value => this.requireSelector(value));
     }
-    return requireSelector(out);
+    return this.requireSelector(out);
+  }
+
+  override resolve(context: Context): MaybePromise<Selector> {
+    const out = this.value.resolve(context);
+    if (isThenable(out)) {
+      return out.then(value => this.requireSelector(value));
+    }
+    return this.requireSelector(out);
   }
 }
 

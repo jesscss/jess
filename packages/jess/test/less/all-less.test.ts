@@ -9,7 +9,6 @@ import { outputDiagnostics } from '../../src/diagnostics.js';
 import { getTestCases } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
-import { type Rules } from '@jesscss/core';
 
 const readNumericFunctionArg = (value: any): number => {
   if (typeof value?.value === 'number') {
@@ -144,27 +143,18 @@ describe('Can render Less files to CSS', () => {
               }
             });
 
-            let context: any;
-            let node: Rules;
+            let result: Awaited<ReturnType<Compiler['renderToResult']>> | undefined;
             try {
-              ({ context, tree: node } = await testCompiler.compile(lessPath, { outputFile: testCase.expectedFile }));
+              result = await testCompiler.renderToResult(lessPath, { outputFile: testCase.expectedFile });
             } catch (error: any) {
-              // Output diagnostics if available
-              if (context && (context.errors.length > 0 || context.warnings.length > 0)) {
-                outputDiagnostics(context.errors, context.warnings, {
-                  suppressWarnings: false,
-                  breakOnError: false
-                });
-              }
               throw error;
             }
             try {
-              const actualCss = node.toString({ context });
-              expect(actualCss).toBe(expectedCss);
+              expect(result.css).toBe(expectedCss);
             } catch (error: any) {
               // Output diagnostics if available
-              if (context && (context.errors.length > 0 || context.warnings.length > 0)) {
-                outputDiagnostics(context.errors, context.warnings, {
+              if (result && (result.errors.length > 0 || result.warnings.length > 0)) {
+                outputDiagnostics(result.errors, result.warnings, {
                   suppressWarnings: false,
                   breakOnError: false
                 });

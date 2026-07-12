@@ -2,6 +2,7 @@ import type { AtRule } from '../at-rule.js';
 import type { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
 import { F_AMPERSAND, F_EXTENDED, type Node } from '../node.js';
+import type { IToken } from 'chevrotain';
 import type { TriviaMap } from '../../types/index.js';
 import {
   type FinalPrintOptions,
@@ -11,6 +12,8 @@ import {
   restorePrintState,
   saveArrayState,
   restoreArrayState,
+  saveSetState,
+  restoreSetState,
   getCachedComposedSelector,
   setCachedComposedSelector
 } from './print.js';
@@ -19,22 +22,24 @@ import { N } from '../node-type.js';
 import { Nil } from '../nil.js';
 import type { Selector } from '../selector.js';
 import { SelectorList } from '../selector-list.js';
-import { emitTriviaTokens, getPrintableTriviaTokens } from './trivia.js';
+import { consumeTriviaText, getPrintableTriviaTokens, isBlockCommentTriviaToken } from './trivia.js';
 
-export function hasPrintableBoundaryTrivia(
+type TriviaSide = 'before' | 'after';
+
+function boundaryOffset(node: Node, side: TriviaSide): number | undefined {
+  return side === 'before' ? node.location[0] : node.location[3];
+}
+
+export function hasPrintableTriviaAt(
   node: Node,
-  key: 'pre' | 'post',
+  side: TriviaSide,
   options?: Pick<FinalPrintOptions, 'context' | 'trivia'>
 ): boolean {
-  if (node[key] !== undefined) {
-    return Boolean(String(node[key]).trim());
-  }
   const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
   if (!trivia) {
     return false;
   }
-  const offset = key === 'pre' ? node.location[0] : node.location[3];
-  const tokens = key === 'pre' ? trivia.before.get(offset) : trivia.after.get(offset);
+  const tokens = trivia.lookup(boundaryOffset(node, side), side);
   const printable = getPrintableTriviaTokens(tokens, options);
   return Boolean(printable?.some(token => token.image.trim() !== ''));
 }
@@ -43,29 +48,27 @@ function hasPrintableTrivia(
   node: Node,
   options?: Pick<FinalPrintOptions, 'context' | 'trivia'>
 ): boolean {
-  return hasPrintableBoundaryTrivia(node, 'pre', options)
-    || hasPrintableBoundaryTrivia(node, 'post', options);
+  return hasPrintableTriviaAt(node, 'before', options)
+    || hasPrintableTriviaAt(node, 'after', options);
 }
 
-function captureNodeBoundary(
+function captureNodeTrivia(
   node: Node,
-  key: 'pre' | 'post',
+  side: TriviaSide,
   options: FinalPrintOptions
 ): string {
-  const writer = options.writer!;
   const trivia: TriviaMap | undefined = options.trivia ?? node.treeContext?.opts?.trivia;
   if (trivia && options.trivia !== trivia) {
     options.trivia = trivia;
   }
-  if (node[key] !== undefined) {
-    return writer.capture(() => node.processPrePost(key, undefined, options));
-  }
   if (!trivia) {
     return '';
   }
-  const offset = key === 'pre' ? node.location[0] : node.location[3];
-  const tokens = key === 'pre' ? trivia.before.get(offset) : trivia.after.get(offset);
-  return writer.capture(() => emitTriviaTokens(tokens, options));
+  return consumeTriviaText(trivia, boundaryOffset(node, side), side, options);
+}
+
+function renderNodeText(node: Node, options: FinalPrintOptions): string {
+  return options.writer.preview(() => node.toTrimmedString(options));
 }
 
 function isBareAmpersandSelectorForSerialize(sel: Selector | Nil | undefined): boolean {
@@ -95,23 +98,11 @@ type RenderRuleEntry = {
 
 function hasLeadingBlockComment(node: Node, options?: Pick<FinalPrintOptions, 'context' | 'trivia'>): boolean {
   const trivia = options?.trivia ?? node.treeContext?.opts?.trivia;
-  const tokens = getPrintableTriviaTokens(trivia?.before.get(node.location[0]), options);
+  const tokens = getPrintableTriviaTokens(trivia?.lookup(node.location[0], 'before'), options);
   if (!tokens) {
     return false;
   }
-  return tokens.some(token => token.image.trimStart().startsWith('/*'));
-}
-
-function getLeadingSelectorComment(node: Node): string | undefined {
-  if (!isNode(node, N.Ruleset)) {
-    return undefined;
-  }
-  const selector = node.value.selector;
-  if (!selector || selector instanceof Nil) {
-    return undefined;
-  }
-  const match = String(selector).match(/^(\/\*[\s\S]*?\*\/\s*)/u);
-  return match?.[1];
+  return tokens.some(isBlockCommentTriviaToken);
 }
 
 function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boolean {
@@ -123,6 +114,39 @@ function isAncestorFrame(frame: AtRule | Ruleset, node: AtRule | Ruleset): boole
     current = current.parent;
   }
   return false;
+}
+
+function containsNodeType(value: unknown, type: string): boolean {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const node = value as { type?: unknown; value?: unknown };
+  if (node.type === type) {
+    return true;
+  }
+  const childValue = node.value;
+  if (Array.isArray(childValue)) {
+    return childValue.some(child => containsNodeType(child, type));
+  }
+  return containsNodeType(childValue, type);
+}
+
+function canMergeSameHeaderRuleset(
+  currentFrame: Ruleset,
+  priorFrame: Ruleset
+): boolean {
+  const currentOwn = (currentFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  const priorOwn = (priorFrame.options as { ownSelector?: Selector | Nil } | undefined)?.ownSelector;
+  const currentSelector = currentOwn ?? currentFrame.value.selector;
+  const priorSelector = priorOwn ?? priorFrame.value.selector;
+  return (
+    rulesetHasExtendedTopLevelSelector(currentFrame)
+    || rulesetHasExtendedTopLevelSelector(priorFrame)
+    || isNode(currentOwn, N.Ampersand)
+    || isNode(priorOwn, N.Ampersand)
+    || containsNodeType(currentSelector, 'InterpolatedSelector')
+    || containsNodeType(priorSelector, 'InterpolatedSelector')
+  );
 }
 
 export function flattenVisibleRulesForRender(
@@ -243,6 +267,37 @@ export function normalizeIndent(multiLineString: string, indent: string, maintai
   });
 }
 
+export function normalizeBlockTrivia(trivia: string, idt: string): string {
+  const comments = trivia.match(/\/\*[\s\S]*?\*\//gu);
+  if (!comments?.length) {
+    return normalizeIndent(trivia, idt);
+  }
+  const out = comments.join('\n');
+  return idt ? normalizeIndent(out, idt, true) : out;
+}
+
+export function normalizeLeadingBlockTrivia(text: string, idt: string): string {
+  let pos = 0;
+  const comments: string[] = [];
+  while (pos < text.length) {
+    const whitespace = /^[ \t\r\n\f]*/u.exec(text.slice(pos))?.[0] ?? '';
+    pos += whitespace.length;
+    const comment = /^\/\*[\s\S]*?\*\//u.exec(text.slice(pos))?.[0];
+    if (!comment) {
+      pos -= whitespace.length;
+      break;
+    }
+    comments.push(comment);
+    pos += comment.length;
+  }
+  if (!comments.length) {
+    return normalizeIndent(text, idt);
+  }
+  const rest = text.slice(pos).replace(/^[ \t\r\n\f]+/u, '');
+  const trivia = normalizeBlockTrivia(comments.join('\n'), idt);
+  return rest ? `${trivia}\n${normalizeIndent(rest, idt)}` : trivia;
+}
+
 export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
@@ -266,7 +321,7 @@ function rulesetHasExtendedTopLevelSelector(node: Ruleset): boolean {
   return selector.hasFlag(F_EXTENDED);
 }
 
-function getHoistedRulesetCarrier(
+function getHoistedParent(
   node: AtRule | Ruleset,
   options: FinalPrintOptions
 ): { frame: Ruleset; selector: Selector } | undefined {
@@ -282,7 +337,7 @@ function getHoistedRulesetCarrier(
     return undefined;
   }
   const frame = rulesetFrames[rulesetFrames.length - 1]!;
-  let carriedSelector: Selector | undefined;
+  let parentSelector: Selector | undefined;
   for (let i = 0; i < rulesetFrames.length; i++) {
     const currentFrame = rulesetFrames[i]!;
     const currentSelector = currentFrame.value.selector;
@@ -290,29 +345,26 @@ function getHoistedRulesetCarrier(
       continue;
     }
     const nextSelector = currentSelector as Selector;
-    carriedSelector = carriedSelector
-      ? Ruleset.composeSelector(nextSelector, carriedSelector)
+    parentSelector = parentSelector
+      ? Ruleset.composeSelector(nextSelector, parentSelector)
       : nextSelector;
   }
-  return carriedSelector ? { frame, selector: carriedSelector } : undefined;
+  return parentSelector ? { frame, selector: parentSelector } : undefined;
 }
 
-function getCarriedRulesetHeader(
-  carrier: { frame: Ruleset; selector: Selector },
+function renderHoistedParentHeader(
+  parent: { frame: Ruleset; selector: Selector },
   options: FinalPrintOptions,
   depth: number
 ): string {
-  const previousComposedSelectorStack = options.composedSelectorStack;
-  const saved = savePrintState(options, ['collapseNesting', 'composedSelectorStack']);
-  options.collapseNesting = false;
-  options.composedSelectorStack = previousComposedSelectorStack ?? [];
-  const savedStack = saveArrayState(options.composedSelectorStack);
-  if (options.composedSelectorStack) {
-    options.composedSelectorStack.length = 0;
-  }
-  const selectorOut = options.writer.capture(() => carrier.selector.toString(options));
-  restoreArrayState(options.composedSelectorStack, savedStack);
-  restorePrintState(options, saved);
+  const writer = new OutputWriter();
+  parent.selector.toString({
+    ...options,
+    writer,
+    collapseNesting: false,
+    composedSelectorStack: []
+  });
+  const selectorOut = writer.toString();
   return normalizeIndent(selectorOut.replace(/\s+$/, '') + ' {', indent(depth)) + '\n';
 }
 
@@ -362,7 +414,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         const structuralParent = isNode(structuralParentFrame, N.Ruleset)
           ? structuralParentFrame.value.selector
           : null;
-        const composeParent = parentComposed ?? (
+        const composeParent = (parentComposed && !(parentComposed instanceof Nil) ? parentComposed : null) ?? (
           structuralParent && !(structuralParent instanceof Nil) ? structuralParent : null
         );
         const hasExtendedComposeContext = Boolean(
@@ -375,6 +427,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         );
         const composeInput = (
           ownSelector
+          && !(ownSelector instanceof Nil)
           && ownSelector.hasFlag(F_AMPERSAND)
           && !isBareAmpersandSelectorForSerialize(ownSelector)
           && composeParent
@@ -428,9 +481,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       rules,
       options,
       options.collapseNesting === true
-      && (isNode(node, N.Ruleset) || Boolean(getHoistedRulesetCarrier(node, options)))
+      && (isNode(node, N.Ruleset) || Boolean(getHoistedParent(node, options)))
     );
     const declarationOutputCache = new Map<number, string>();
+    const declarationTriviaCache = new Map<number, Set<IToken[]>>();
     const skippedDuplicateDeclarations = new Set<number>();
     const seenDeclarationsByProp = new Map<string, Set<string>>();
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
@@ -472,11 +526,22 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       const declWriter = new OutputWriter();
       const declSaved = savePrintState(options, ['writer', 'depth']);
+      const declEmittedTrivia = saveSetState(options.emittedTrivia);
       options.writer = declWriter;
       options.depth = options.depth + 1;
       const declOut = node.toTrimmedString(options);
+      const emittedDuringCapture = new Set<IToken[]>();
+      if (options.emittedTrivia) {
+        for (const tokens of options.emittedTrivia) {
+          if (!declEmittedTrivia?.has(tokens)) {
+            emittedDuringCapture.add(tokens);
+          }
+        }
+      }
+      restoreSetState(options.emittedTrivia, declEmittedTrivia);
       restorePrintState(options, declSaved);
       declarationOutputCache.set(i, declOut);
+      declarationTriviaCache.set(i, emittedDuringCapture);
       const declKey = `${declOut}${node.requiredSemi ? ';' : ''}`;
       const declProp = node.value.name.valueOf();
       let seenValues = seenDeclarationsByProp.get(declProp);
@@ -506,33 +571,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // Note: in the hoisted branch above, `node` is already included.
 
       let lastRenderedFrames = options.lastRenderedFrames;
-      const carriedRuleset = getHoistedRulesetCarrier(node, options);
-      if (!closeFramesOnExit && isNode(node, N.Ruleset)) {
-        const firstSelectorComment = rulesToRender
-          .map(entry => getLeadingSelectorComment(entry.node))
-          .find(Boolean);
-        if (firstSelectorComment) {
-          while (lastRenderedFrames.length > 0) {
-            const topFrame = lastRenderedFrames[lastRenderedFrames.length - 1]!;
-            if (isAncestorFrame(topFrame, node)) {
-              break;
-            }
-            const depthToClose = lastRenderedFrames.length - 1;
-            w.add(indent(depthToClose) + '}\n');
-            frameHeaders.pop();
-            lastRenderedFrames.pop();
-          }
-          w.add(node.getHeaderString(options, false));
-          const normalized = firstSelectorComment
-            .replace(/\s+$/u, '')
-            .replace(/^\s*/, indent(options.depth + 1));
-          w.add(normalized);
-          if (!/\n$/.test(normalized)) {
-            w.add('\n');
-          }
-          w.add(indent(options.depth) + '}\n');
-        }
-      }
+      const hoistedParent = getHoistedParent(node, options);
       const ensureRenderedFrames = (leafFrames: Array<AtRule | Ruleset>) => {
         let matches = -1;
         for (let i = 0; i < lastRenderedFrames.length; i++) {
@@ -541,18 +580,36 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           if (!currentFrame || priorHeader === undefined) {
             break;
           }
-          options.depth = i;
-          const currentHeader = (
-            carriedRuleset && i === leafFrames.length - 1 && currentFrame === carriedRuleset.frame
-          )
-            ? getCarriedRulesetHeader(carriedRuleset, options, i)
-            : currentFrame.getHeaderString(options);
           const priorFrame = lastRenderedFrames[i];
-          const sameHeader = (
-            currentHeader === priorHeader
+          if (!priorFrame) {
+            break;
+          }
+          options.depth = i;
+          const headerProbeEmittedTrivia = saveSetState(options.emittedTrivia);
+          const currentHeader = (
+            hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
+          )
+            ? renderHoistedParentHeader(hoistedParent, options, i)
+            : currentFrame.getHeaderString(options, true);
+          const priorComparableHeader = (
+            hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
+          )
+            ? renderHoistedParentHeader(hoistedParent, options, i)
+            : priorFrame.getHeaderString(options, true);
+          restoreSetState(options.emittedTrivia, headerProbeEmittedTrivia);
+          const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
+            && isNode(priorFrame, N.Ruleset)
             && (
-              !isNode(currentFrame, N.AtRule)
-              || currentFrame === priorFrame
+              currentFrame === priorFrame
+              || isAncestorFrame(priorFrame, currentFrame)
+              || isAncestorFrame(currentFrame, priorFrame)
+              || canMergeSameHeaderRuleset(currentFrame, priorFrame)
+            );
+          const sameHeader = (
+            currentHeader === priorComparableHeader
+            && (
+              currentFrame === priorFrame
+              || sameRenderedRulesetFrame
             )
           );
           if (!sameHeader) {
@@ -574,16 +631,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           options.depth = i;
           if (s === undefined) {
             s = (
-              carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
+              hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
             )
-              ? getCarriedRulesetHeader(carriedRuleset, options, i)
+              ? renderHoistedParentHeader(hoistedParent, options, i)
               : leafFrames[i]!.getHeaderString(options);
             frameHeaders[i] = s;
           } else if (s === '') {
             s = (
-              carriedRuleset && i === leafFrames.length - 1 && f === carriedRuleset.frame
+              hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
             )
-              ? getCarriedRulesetHeader(carriedRuleset, options, i)
+              ? renderHoistedParentHeader(hoistedParent, options, i)
               : leafFrames[i]!.getHeaderString(options, true);
             frameHeaders[i] = s;
           }
@@ -603,14 +660,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
           continue;
         }
-        if (
-          isNode(n, N.Any)
-          && String(n.valueOf?.() ?? '').trimStart().startsWith('/*')
-          && originatesFromReferenceImport(n)
-          && !originatesFromCall(n)
-        ) {
-          continue;
-        }
         if (inReferenceMode && !renderEnabled && !isContainer) {
           continue;
         }
@@ -620,20 +669,24 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
         const isLeafAtRule = isNode(n, N.AtRule) && !(n as AtRule).value.rules;
         if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-          const preSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+          const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
           options.depth = options.depth + 1;
           options.referenceMode = inReferenceMode;
           options.referenceRenderEnabled = renderEnabled;
-          const pre = captureNodeBoundary(n, 'pre', options);
-          restorePrintState(options, preSaved);
-          if (!/^\s*$/.test(pre)) {
+          const leading = captureNodeTrivia(n, 'before', options);
+          restorePrintState(options, leadingSaved);
+          if (!/^\s*$/.test(leading)) {
             let leafFrames = inFrames;
-            if (carriedRuleset) {
-              leafFrames = [...inFrames, carriedRuleset.frame];
+            if (hoistedParent) {
+              leafFrames = [...inFrames, hoistedParent.frame];
             }
             ensureRenderedFrames(leafFrames);
             const idt = indent(lastRenderedFrames.length);
-            w.add(normalizeIndent(pre, idt));
+            const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
+            w.add(normalized);
+            if (/\/\*/u.test(leading) && normalized && !normalized.endsWith('\n')) {
+              w.add('\n');
+            }
           }
           const childOut = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
           if (!childOut && !hasPrintableTrivia(n, options)) {
@@ -667,10 +720,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const previewLastRenderedFramesLength = options.lastRenderedFrames.length;
           const previewFrameHeadersLength = options.frameHeaders.length;
           const previewComposedSelectorStackLength = options.composedSelectorStack?.length;
+          const previewEmittedTrivia = saveSetState(options.emittedTrivia);
           options.depth = options.depth + 1;
           options.referenceMode = childReferenceMode;
           options.referenceRenderEnabled = childReferenceRenderEnabled;
-          const previewOut = w.capture(() => nn.toTrimmedString(getPrintOptions(options)));
+          const previewOut = renderNodeText(nn, getPrintOptions(options));
+          restoreSetState(options.emittedTrivia, previewEmittedTrivia);
           options.inFrames.length = previewInFramesLength;
           options.treeFrames.length = previewTreeFramesLength;
           options.lastRenderedFrames.length = previewLastRenderedFramesLength;
@@ -684,8 +739,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
         }
         let leafFrames = inFrames;
-        if (carriedRuleset) {
-          leafFrames = [...inFrames, carriedRuleset.frame];
+        if (hoistedParent) {
+          leafFrames = [...inFrames, hoistedParent.frame];
         }
         ensureRenderedFrames(leafFrames);
 
@@ -716,53 +771,63 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         options.referenceMode = childReferenceMode;
         options.referenceRenderEnabled = childReferenceRenderEnabled;
         const isHiddenStructuralNode = !nn.visible && !nn.fullRender;
-        const pre = captureNodeBoundary(nn, 'pre', options);
+        const leading = captureNodeTrivia(nn, 'before', options);
         const out = isHiddenStructuralNode
           ? ''
           : isNode(nn, N.Declaration)
-            ? (declarationOutputCache.get(idx) ?? w.capture(() => nn.toTrimmedString(options)))
+            ? (declarationOutputCache.get(idx) ?? renderNodeText(nn, options))
             : isNode(nn, N.Rules)
-              ? w.capture(() => nn.toTrimmedString(options))
-              : w.capture(() => nn.toTrimmedString(options));
+              ? renderNodeText(nn, options)
+              : renderNodeText(nn, options);
+        if (isNode(nn, N.Declaration) && declarationOutputCache.has(idx)) {
+          const emittedTrivia = options.emittedTrivia ?? (options.emittedTrivia = new Set());
+          const cachedTrivia = declarationTriviaCache.get(idx);
+          if (cachedTrivia) {
+            for (const tokens of cachedTrivia) {
+              emittedTrivia.add(tokens);
+            }
+          }
+        }
         restorePrintState(options, leafSaved);
         // Suppress pure-void Any nodes from generating blank output lines.
         if (
           isNode(nn, N.Any)
           && !nn.requiredSemi
           && !out.trim()
-          && !pre.trim()
+          && !leading.trim()
         ) {
           continue;
         }
         if (isHiddenStructuralNode) {
-          if (!/^\s*$/.test(pre)) {
-            w.add(normalizeIndent(pre, idt).replace(/[ \t]+$/u, ''));
-          }
-          const post = captureNodeBoundary(nn, 'post', options);
-          if (!/^\s*$/.test(post)) {
-            w.add(normalizeIndent(post, idt).replace(/[ \t]+$/u, ''));
+          if (!/^\s*$/.test(leading)) {
+            const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
+            const trimmed = normalized.replace(/[ \t]+$/u, '');
+            w.add(trimmed);
+            if (/\/\*/u.test(leading) && trimmed && !trimmed.endsWith('\n')) {
+              w.add('\n');
+            }
           }
           continue;
         }
         if (isNode(nn, N.Declaration)) {
-          const hasLeadingDeclarationBlockComment = /\/\*/u.test(pre.trimStart());
+          const hasLeadingDeclarationBlockComment = /\/\*/u.test(leading.trimStart());
           if (hasLeadingDeclarationBlockComment) {
-            const normalizedStandalonePre = normalizeIndent(pre, idt).replace(/[ \t]+$/u, '');
-            if (normalizedStandalonePre) {
-              w.add(normalizedStandalonePre);
-              if (!normalizedStandalonePre.endsWith('\n')) {
+            const normalizedStandaloneLeading = normalizeBlockTrivia(leading, idt).replace(/[ \t]+$/u, '');
+            if (normalizedStandaloneLeading) {
+              w.add(normalizedStandaloneLeading);
+              if (!normalizedStandaloneLeading.endsWith('\n')) {
                 w.add('\n');
               }
             }
           }
-          const normalizedPre = hasLeadingDeclarationBlockComment
-            ? (pre.match(/\n([ \t]*)$/u)?.[1] ?? '')
-            : pre.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-          const declIn = normalizedPre + out;
+          const normalizedLeading = hasLeadingDeclarationBlockComment
+            ? (leading.match(/\n([ \t]*)$/u)?.[1] ?? '')
+            : leading.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+          const declIn = normalizedLeading + out;
           const hasEmptyValue = /:\s*$/.test(out);
           // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
           // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
-          const declNormalized = hasEmptyValue && (!normalizedPre || normalizedPre.trim() === '')
+          const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
             ? `${idt}${out}`
             : normalizeIndent(declIn, idt, true);
           if (nn.value.name.valueOf().startsWith('--')) {
@@ -772,8 +837,8 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             w.add(declNormalized, nn);
           }
         } else if (isNode(nn, N.Rules)) {
-          if (!/^\s*$/.test(pre)) {
-            w.add(normalizeIndent(pre, idt));
+          if (!/^\s*$/.test(leading)) {
+            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }
           /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
@@ -782,13 +847,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
        */
           w.add(out, nn);
         } else if (isLeafAtRule) {
-          if (!/^\s*$/.test(pre)) {
-            w.add(normalizeIndent(pre, idt));
+          if (!/^\s*$/.test(leading)) {
+            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }
           w.add(out, nn);
         } else {
-          if (!/^\s*$/.test(pre)) {
-            w.add(normalizeIndent(pre, idt));
+          if (!/^\s*$/.test(leading)) {
+            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
           }
           w.add(idt);
           w.add(out, nn);
@@ -802,10 +867,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         }
 
         w.add('\n');
-        let post = captureNodeBoundary(nn, 'post', options);
+        const trailing = captureNodeTrivia(nn, 'after', options);
 
-        if (!/^\s*$/.test(post)) {
-          w.add(normalizeIndent(post, idt));
+        if (!/^\s*$/.test(trailing)) {
+          w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
         }
       // }
       // else {
@@ -813,12 +878,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       // }
       }
       if (
-        carriedRuleset
+        hoistedParent
         && !closeFramesOnExit
-        && lastRenderedFrames[lastRenderedFrames.length - 1] === carriedRuleset.frame
+        && lastRenderedFrames[lastRenderedFrames.length - 1] === hoistedParent.frame
       ) {
-        const carriedDepth = lastRenderedFrames.length - 1;
-        w.add(indent(carriedDepth) + '}\n');
+        const parentDepth = lastRenderedFrames.length - 1;
+        w.add(indent(parentDepth) + '}\n');
         frameHeaders.pop();
         lastRenderedFrames.pop();
       }

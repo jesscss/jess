@@ -34,6 +34,8 @@ describe('Func', () => {
         return: 42;
       }
     `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(ctx.printState.writer).toBeUndefined();
   });
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { defineFunction, callWithContext } from '../define-function.js';
 import { Context } from '../context.js';
 import { expectTypeOf } from 'vitest';
-import { Color, Dimension } from '../tree/index.js';
+import { Color, Dimension, F_MAY_ASYNC } from '../tree/index.js';
 
 describe('defineFunction', () => {
   const args = [
@@ -15,6 +15,7 @@ describe('defineFunction', () => {
     (name: string, value: number) => `${name}: ${value}`,
     { params: args }
   );
+  const uncheckedMyFunc: (...args: any[]) => unknown = myFunc;
 
   describe('positional calls', () => {
     it('should work with valid positional arguments', () => {
@@ -31,20 +32,20 @@ describe('defineFunction', () => {
 
     it('should throw error for invalid first argument type', () => {
       expect(() => {
-        (myFunc as any)(1, 42);
+        uncheckedMyFunc(1, 42);
       }).toThrow('Argument \'name\' must be of type \'string\'. Got: number');
     });
 
     it('should throw error for invalid second argument type', () => {
       expect(() => {
-        (myFunc as any)('hello', 'not a number');
+        uncheckedMyFunc('hello', 'not a number');
       }).toThrow('Argument \'value\' must be of type \'number\'. Got: string');
     });
 
     it('should handle undefined arguments gracefully', () => {
       // With the new validation, undefined arguments for required parameters should throw
       expect(() => {
-        myFunc('hello', undefined as any);
+        uncheckedMyFunc('hello', undefined);
       }).toThrow('Required argument \'value\' is missing');
     });
   });
@@ -57,19 +58,19 @@ describe('defineFunction', () => {
     it('should work with partial record (missing optional parameters)', () => {
       // With the new validation, missing required parameters should throw
       expect(() => {
-        (myFunc as any)({ name: 'hello' });
+        uncheckedMyFunc({ name: 'hello' });
       }).toThrow('Required argument \'value\' is missing');
     });
 
     it('should throw error for invalid property type in record', () => {
       expect(() => {
-        (myFunc as any)({ name: 123, value: 42 });
+        uncheckedMyFunc({ name: 123, value: 42 });
       }).toThrow('Argument \'name\' must be of type \'string\'. Got: number');
     });
 
     it('should throw error for invalid second property type in record', () => {
       expect(() => {
-        (myFunc as any)({ name: 'hello', value: 'not a number' });
+        uncheckedMyFunc({ name: 'hello', value: 'not a number' });
       }).toThrow('Argument \'value\' must be of type \'number\'. Got: string');
     });
   });
@@ -91,20 +92,20 @@ describe('defineFunction', () => {
 
     it('should handle record with extra properties', () => {
       // Extra properties in record should be ignored
-      (myFunc as any)('hello', { value: 42, extra: 'ignored' });
+      uncheckedMyFunc('hello', { value: 42, extra: 'ignored' });
       // The function should still work correctly despite extra properties
       expect(myFunc('hello', { value: 42 })).toBe('hello: 42');
     });
 
     it('should throw error for invalid positional argument in hybrid call', () => {
       expect(() => {
-        (myFunc as any)(123, { value: 42 });
+        uncheckedMyFunc(123, { value: 42 });
       }).toThrow('Argument \'name\' must be of type \'string\'. Got: number');
     });
 
     it('should throw error for invalid record property in hybrid call', () => {
       expect(() => {
-        (myFunc as any)('hello', { value: 'not a number' });
+        uncheckedMyFunc('hello', { value: 'not a number' });
       }).toThrow('Argument \'value\' must be of type \'number\'. Got: string');
     });
   });
@@ -113,19 +114,19 @@ describe('defineFunction', () => {
     it('should handle empty record', () => {
       // With the new validation, empty record should throw for missing required parameters
       expect(() => {
-        (myFunc as any)({});
+        uncheckedMyFunc({});
       }).toThrow('Required argument \'name\' is missing');
     });
 
     it('should handle null values', () => {
       expect(() => {
-        (myFunc as any)(null, 42);
+        uncheckedMyFunc(null, 42);
       }).toThrow('Argument \'name\' must be of type \'string\'. Got: object');
     });
 
     it('should handle boolean values', () => {
       expect(() => {
-        (myFunc as any)(true, 42);
+        uncheckedMyFunc(true, 42);
       }).toThrow('Argument \'name\' must be of type \'string\'. Got: boolean');
     });
   });
@@ -195,13 +196,14 @@ describe('defineFunction', () => {
         (name: string, value: number) => `${name}: ${value}`,
         { params: requiredArgs }
       );
+      const uncheckedRequiredFunc: (...args: any[]) => unknown = requiredFunc;
 
       expect(() => {
-        (requiredFunc as any)();
+        uncheckedRequiredFunc();
       }).toThrow('Required argument \'name\' is missing');
 
       expect(() => {
-        (requiredFunc as any)('hello');
+        uncheckedRequiredFunc('hello');
       }).toThrow('Required argument \'value\' is missing');
     });
 
@@ -428,6 +430,7 @@ describe('defineFunction', () => {
         },
         { params: treeNodeArgs }
       );
+      const uncheckedTreeNodeFunc: (...args: any[]) => unknown = treeNodeFunc;
 
       const testColor = new Color('#ff0000');
       const testDimension = new Dimension({ number: 10, unit: 'px' });
@@ -450,15 +453,20 @@ describe('defineFunction', () => {
 
       // Test that runtime validation works with instanceof checks
       expect(() => {
-        treeNodeFunc('not a color' as any, testDimension);
+        uncheckedTreeNodeFunc('not a color', testDimension);
       }).toThrow('Argument \'color\' must be of type \'Color\'');
     });
 
     it('should support rest parameters and lazy evaluation', async () => {
       const calls: string[] = [];
       class TestNode extends Color {
-        override async evalNode(context: any): Promise<any> {
-          calls.push(`${(this as any).value.node}`);
+        constructor(value: string) {
+          super(value);
+          this.addFlag(F_MAY_ASYNC);
+        }
+
+        override async evalNode(_context: Context): Promise<this> {
+          calls.push(String(this.value.node));
           return this;
         }
       }
@@ -467,7 +475,7 @@ describe('defineFunction', () => {
         'rest',
         async (...values: Array<() => Promise<Color>>) => {
           const firstThunk = values[0]!;
-          const first = await firstThunk() as TestNode;
+          const first = await firstThunk();
           return first;
         },
         { params: [{ name: 'values', type: Color, rest: true, lazy: true }] }
@@ -478,7 +486,7 @@ describe('defineFunction', () => {
       const b = new TestNode('#111');
       const c = new TestNode('#222');
       const ctx = new Context();
-      const result = await callWithContext(ctx, restFunc as any, a, b, c);
+      const result = await callWithContext(ctx, restFunc, a, b, c);
       expect(result).toBe(a);
       // Only first element evaluated lazily upon access
       expect(calls).toEqual(['#000']);
@@ -487,8 +495,13 @@ describe('defineFunction', () => {
     it('should support lazy evaluation of object parameters', async () => {
       const calls: string[] = [];
       class TestNode extends Color {
-        override async evalNode(context: any): Promise<any> {
-          calls.push(`${(this as any).value.node}`);
+        constructor(value: string) {
+          super(value);
+          this.addFlag(F_MAY_ASYNC);
+        }
+
+        override async evalNode(_context: Context): Promise<this> {
+          calls.push(String(this.value.node));
           return this;
         }
       }
@@ -496,7 +509,7 @@ describe('defineFunction', () => {
       const objFunc = defineFunction(
         'obj',
         async (aThunk: () => Promise<Color>, bThunk: () => Promise<Color>) => {
-          const a = await aThunk() as TestNode;
+          const a = await aThunk();
           return a;
         },
         { params: [
@@ -508,7 +521,7 @@ describe('defineFunction', () => {
       const a = new TestNode('#000');
       const b = new TestNode('#111');
       const ctx = new Context();
-      const result = await callWithContext(ctx, objFunc as any, { a, b });
+      const result = await callWithContext(ctx, objFunc, { a, b });
       expect(result).toBe(a);
       expect(calls).toEqual(['#000']);
     });
@@ -531,7 +544,7 @@ describe('defineFunction', () => {
       // Should throw when function returns wrong type - validation happens when thunk is called
       // This would previously fail with "Got: function" but now correctly validates the resolved value
       await expect(
-        directFunc(() => new Color('#000') as any)
+        directFunc(() => new Color('#000'))
       ).rejects.toThrow('Argument \'value\' must be of type \'Dimension\'');
     });
   });
@@ -744,19 +757,21 @@ describe('defineFunction', () => {
   describe('error messages', () => {
     it('should provide descriptive error messages', () => {
       try {
-        (myFunc as any)(123, 'invalid');
+        uncheckedMyFunc(123, 'invalid');
       } catch (error) {
-        expect((error as Error).message).toContain('Argument \'name\' must be of type \'string\'');
-        expect((error as Error).message).toContain('Got: number');
+        const message = error instanceof Error ? error.message : '';
+        expect(message).toContain('Argument \'name\' must be of type \'string\'');
+        expect(message).toContain('Got: number');
       }
     });
 
     it('should provide error messages for record calls', () => {
       try {
-        (myFunc as any)({ name: 456, value: 'invalid' });
+        uncheckedMyFunc({ name: 456, value: 'invalid' });
       } catch (error) {
-        expect((error as Error).message).toContain('Argument \'name\' must be of type \'string\'');
-        expect((error as Error).message).toContain('Got: number');
+        const message = error instanceof Error ? error.message : '';
+        expect(message).toContain('Argument \'name\' must be of type \'string\'');
+        expect(message).toContain('Got: number');
       }
     });
   });

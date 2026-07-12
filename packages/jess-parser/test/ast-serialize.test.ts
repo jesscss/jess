@@ -36,10 +36,10 @@ describe('jess-parser (ast serialize)', () => {
     const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const varDecl = rules.data.find(n => isNode(n, N.VarDeclaration));
+      const varDecl = rules.value.find(n => isNode(n, N.VarDeclaration));
       expect(varDecl && isNode(varDecl, N.VarDeclaration)).toBe(true);
       if (varDecl && isNode(varDecl, N.VarDeclaration)) {
-        expect(varDecl.data.name.valueOf()).toBe('foo');
+        expect(varDecl.value.name.valueOf()).toBe('foo');
       }
     }
   });
@@ -50,7 +50,7 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(Reference');
-    expect(String(tree)).toContain('$foo');
+    expect(tree.toString()).toContain('$foo');
   });
 
   it('serializes dollar expression with property access', () => {
@@ -59,8 +59,8 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(Reference');
-    expect(String(tree)).toContain('$foo');
-    expect(String(tree)).toContain('bar');
+    expect(tree.toString()).toContain('$foo');
+    expect(tree.toString()).toContain('bar');
   });
 
   it('serializes dollar expression with function call', () => {
@@ -69,7 +69,7 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(Call');
-    expect(String(tree)).toContain('$foo');
+    expect(tree.toString()).toContain('$foo');
   });
 
   it('serializes dollar expression with array access', () => {
@@ -78,7 +78,7 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(Reference');
-    expect(String(tree)).toContain('$foo');
+    expect(tree.toString()).toContain('$foo');
   });
 
   it('serializes parenthesized dollar expression', () => {
@@ -87,7 +87,7 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(Expression');
-    expect(String(tree)).toContain('$(1 + 1)');
+    expect(tree.toString()).toContain('$(1 + 1)');
   });
 
   it('serializes mixin definition', () => {
@@ -103,10 +103,10 @@ describe('jess-parser (ast serialize)', () => {
     const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const mixin = rules.data.find(n => isNode(n, N.Mixin));
+      const mixin = rules.value.find(n => isNode(n, N.Mixin));
       expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
       if (mixin && isNode(mixin, N.Mixin)) {
-        expect(String(mixin.data.name)).toBe('mixin');
+        expect(mixin.value.name.toTrimmedString()).toBe('mixin');
       }
     }
   });
@@ -117,7 +117,7 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(Call');
-    expect(String(tree)).toContain('$ > .mixin()');
+    expect(tree.toString()).toContain('$ > .mixin()');
   });
 
   it('serializes $if conditional', () => {
@@ -126,11 +126,11 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(If');
-    expect(String(tree)).toContain('$if');
+    expect(tree.toString()).toContain('$if');
     const rules = isNode(tree, N.Rules) ? tree : null;
     expect(rules).not.toBeNull();
     if (rules) {
-      const ifNode = rules.data.find(n => n.type === 'If');
+      const ifNode = rules.value.find(n => n.type === 'If');
       expect(ifNode && ifNode.type === 'If').toBe(true);
     }
   });
@@ -144,8 +144,8 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(If');
-    expect(String(tree)).toContain('$if');
-    expect(String(tree)).toContain('$else');
+    expect(tree.toString()).toContain('$if');
+    expect(tree.toString()).toContain('$else');
   });
 
   it('serializes @-compose as StyleImport', () => {
@@ -161,7 +161,7 @@ describe('jess-parser (ast serialize)', () => {
           )
       `);
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const si = rules?.data.find(n => isNode(n, N.StyleImport));
+    const si = rules?.value.find(n => isNode(n, N.StyleImport));
     expect(isNode(si, N.StyleImport) && si.options.type).toBe('compose');
   });
 
@@ -189,8 +189,13 @@ describe('jess-parser (ast serialize)', () => {
             (Any [role=any] './tokens.js')
           )
       `);
-    expect(String(tree)).toContain('@-from');
-    expect(String(tree)).toContain('import * as foo');
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const imported = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(imported, N.JsImport)).toBe(true);
+    if (isNode(imported, N.JsImport)) {
+      expect(imported.value.path.valueOf()).toBe('./tokens.js');
+      expect(imported.options.namespace).toBe('foo');
+    }
   });
 
   it('serializes @-from with named imports', () => {
@@ -199,7 +204,13 @@ describe('jess-parser (ast serialize)', () => {
     expect(errors).toEqual([]);
     assertValidTree(tree);
     expect(serializeTypes(tree)).toContainString('(JsImport');
-    expect(String(tree)).toContain('import ( primary, secondary )');
+    const rules = isNode(tree, N.Rules) ? tree : null;
+    const imported = rules?.value.find(n => isNode(n, N.JsImport));
+    expect(isNode(imported, N.JsImport)).toBe(true);
+    if (isNode(imported, N.JsImport)) {
+      expect(imported.value.imports).toContain('primary');
+      expect(imported.value.imports).toContain('secondary');
+    }
   });
 
   it('serializes @-export as StyleImport with forward', () => {
@@ -224,10 +235,10 @@ describe('jess-parser (ast serialize)', () => {
     expect(serializeTypes(tree)).toContainString('(Collection');
     // VarDeclarations are invisible; check collection contents via AST
     const rules = isNode(tree, N.Rules) ? tree : null;
-    const varDecl = rules?.data.find(n => isNode(n, N.VarDeclaration));
+    const varDecl = rules?.value.find(n => isNode(n, N.VarDeclaration));
     expect(isNode(varDecl, N.VarDeclaration)).toBe(true);
     if (isNode(varDecl, N.VarDeclaration)) {
-      expect(isNode(varDecl.data.value, N.Collection)).toBe(true);
+      expect(isNode(varDecl.value.value, N.Collection)).toBe(true);
     }
   });
 
@@ -240,10 +251,10 @@ describe('jess-parser (ast serialize)', () => {
     // Guard should be present
     const rules = isNode(tree, N.Rules) ? tree : null;
     if (rules) {
-      const mixin = rules.data.find(n => isNode(n, N.Mixin));
+      const mixin = rules.value.find(n => isNode(n, N.Mixin));
       expect(mixin && isNode(mixin, N.Mixin)).toBe(true);
       if (mixin && isNode(mixin, N.Mixin)) {
-        expect(mixin.data.guard).toBeDefined();
+        expect(mixin.value.guard).toBeDefined();
       }
     }
   });

@@ -1,4 +1,5 @@
-import { Parser } from '../src/index.js';
+import { Parser, type LessParserConfig } from '../src/index.js';
+import { serializeTypes } from '@jesscss/core';
 
 const parser = new Parser();
 const parse = parser.parse;
@@ -31,6 +32,26 @@ describe('expressionProduct', () => {
     expect(errors.length).toBe(0);
   });
 
+  it('keeps keyword slash values as slash lists in always math mode', () => {
+    const alwaysParser = new Parser({ mathMode: 'always' } satisfies LessParserConfig);
+    const { errors, tree } = alwaysParser.parse('width: foo / 2', 'declaration');
+
+    expect(errors.length).toBe(0);
+    expect(serializeTypes(tree, { showOptions: true })).toContainString(`
+      value:
+        (List
+            sep: '/'
+          [
+            (Any [role=ident]
+                role: 'ident'
+              'foo'
+            )
+            (Num 2)
+          ]
+        )
+      `);
+  });
+
   it('should parse modulo', () => {
     const { errors } = parse('width: 10px % 3', 'declaration');
     expect(errors.length).toBe(0);
@@ -53,4 +74,3 @@ describe('expressionValue', () => {
     expect(errors.length).toBe(0);
   });
 });
-

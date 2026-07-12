@@ -1,30 +1,30 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 /**
  * CssRecursiveParser — Chevrotain EmbeddedActionsParser-based CSS parser
  *
  * Extends Chevrotain's EmbeddedActionsParser with Jess-specific infrastructure:
- * - Filtered input (skipped tokens removed) with pre/post trivia maps
- * - AST building helpers (getLocationInfo, wrap, getPrePost, startRule, endRule)
+ * - Filtered input (skipped tokens removed) with a file-context trivia map
+ * - AST building helpers (getLocationInfo, startRule, endRule)
  * - Token category matching via categoryMatchesMap for gate predicates
  */
 import { EmbeddedActionsParser, EOF, tokenMatcher } from 'chevrotain';
-import type { TokenType, ParserMethod } from '@chevrotain/types';
+import type { IToken, TokenType, ParserMethod } from 'chevrotain';
 
 export type Rule<F extends (...args: any[]) => void = (ctx?: RuleContext) => void> = ParserMethod<Parameters<F>, any>;
 
-import type { IParseResult, LocationInfo, OptionalLocation } from '@jesscss/core';
+import type { IParseResult, LocationInfo, TriviaMap } from '@jesscss/core';
 
 import {
   TreeContext,
   Node,
-  Comment,
-  F_VISIBLE,
   Color,
   ColorFormat,
+  createTriviaMap,
   Dimension,
   Num,
   Rules,
   Any,
-  type Nil
+  Comment
 } from '@jesscss/core';
 
 import colors from 'color-name';
@@ -37,8 +37,6 @@ export type TokenMap = Record<CssTokenType, TokenType>;
 
 // ── Import production rule implementations ──────────────────────────
 import * as productions from './productions/index.js';
-
-const { isArray } = Array;
 
 function isSkippedToken(t: IToken): boolean {
   return (t.tokenType as { LABEL?: string }).LABEL === SKIPPED_LABEL;
@@ -85,18 +83,9 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   legacyMode: boolean;
   ruleIndex = 0;
 
-  /** Maps token startOffset → preceding skipped tokens (WS/comments) */
-  preSkippedTokenMap: Map<number, IToken[]> = new Map();
-  /** Maps previous token endOffset → following skipped tokens */
-  postSkippedTokenMap: Map<number, IToken[]> = new Map();
-  usedSkippedTokens: Set<IToken[]> = new Set();
-  protected usedSkippedTokensLog: IToken[][] = [];
+  /** Single file-context trivia set with before/after lookup indexes. */
+  triviaMap: TriviaMap = createTriviaMap();
   originalInput: IToken[] = [];
-
-  protected hasWSBeforeByPos: Uint8Array = new Uint8Array(0);
-  protected hasSepBeforeByPos: Uint8Array = new Uint8Array(0);
-  protected skippedBeforeByPos: Array<IToken[] | undefined> = [];
-  protected skippedAfterByPos: Array<IToken[] | undefined> = [];
 
   locationStack: LocationInfo[] = [];
 
@@ -138,16 +127,11 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
 
   set input(value: IToken[]) {
     this.ruleIndex = 0;
-    const preSkippedTokenMap = (this.preSkippedTokenMap = new Map<number, IToken[]>());
-    const postSkippedTokenMap = (this.postSkippedTokenMap = new Map<number, IToken[]>());
+    const beforeIndex = new Map<number, IToken[]>();
+    const afterIndex = new Map<number, IToken[]>();
     const inputTokens: IToken[] = [];
-    const skippedBeforeByPos: Array<IToken[] | undefined> = [];
-    const skippedAfterByPos: Array<IToken[] | undefined> = [];
-    const hasWSBeforeByPos: number[] = [];
-    const hasSepBeforeByPos: number[] = [];
 
     let pendingSkipped: IToken[] | undefined;
-    let pendingHasWS = false;
     let prevFilteredIndex = -1;
 
     for (let i = 0; i < value.length; i++) {
@@ -158,9 +142,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
         } else {
           pendingSkipped = [token];
         }
-        if (token.tokenType.name === 'WS') {
-          pendingHasWS = true;
-        }
         continue;
       }
 
@@ -168,42 +149,27 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
       inputTokens.push(token);
 
       if (pendingSkipped) {
-        skippedBeforeByPos[filteredIndex] = pendingSkipped;
-        hasWSBeforeByPos[filteredIndex] = pendingHasWS ? 1 : 0;
-        hasSepBeforeByPos[filteredIndex] = 1;
-        preSkippedTokenMap.set(token.startOffset, pendingSkipped);
+        beforeIndex.set(token.startOffset, pendingSkipped);
         if (prevFilteredIndex >= 0) {
-          skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
           const prevToken = inputTokens[prevFilteredIndex]!;
-          postSkippedTokenMap.set(prevToken.endOffset!, pendingSkipped);
+          afterIndex.set(prevToken.endOffset!, pendingSkipped);
         }
         pendingSkipped = undefined;
-        pendingHasWS = false;
-      } else {
-        skippedBeforeByPos[filteredIndex] = undefined;
-        hasWSBeforeByPos[filteredIndex] = 0;
-        hasSepBeforeByPos[filteredIndex] = 0;
       }
       prevFilteredIndex = filteredIndex;
     }
 
     if (pendingSkipped) {
       if (prevFilteredIndex >= 0) {
-        skippedAfterByPos[prevFilteredIndex] = pendingSkipped;
         const prevToken = inputTokens[prevFilteredIndex]!;
-        postSkippedTokenMap.set(prevToken.endOffset!, pendingSkipped);
+        afterIndex.set(prevToken.endOffset!, pendingSkipped);
       }
-      preSkippedTokenMap.set(Infinity, pendingSkipped);
+      beforeIndex.set(Infinity, pendingSkipped);
     }
 
-    this.usedSkippedTokens = new Set();
-    this.usedSkippedTokensLog = [];
+    this.triviaMap = createTriviaMap({ before: beforeIndex, after: afterIndex });
     this.originalInput = value;
     this.locationStack = [];
-    this.skippedBeforeByPos = skippedBeforeByPos;
-    this.skippedAfterByPos = skippedAfterByPos;
-    this.hasWSBeforeByPos = Uint8Array.from(hasWSBeforeByPos);
-    this.hasSepBeforeByPos = Uint8Array.from(hasSepBeforeByPos);
 
     this.tokVector = inputTokens;
     this.tokVectorLength = inputTokens.length;
@@ -215,21 +181,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   }
 
   get trivia(): IParseResult['trivia'] {
-    return {
-      before: this.preSkippedTokenMap,
-      after: this.postSkippedTokenMap
-    };
-  }
-
-  protected addUsedSkippedTokens(tokens: IToken[] | undefined): void {
-    if (!tokens) {
-      return;
-    }
-    if (this.usedSkippedTokens.has(tokens)) {
-      return;
-    }
-    this.usedSkippedTokens.add(tokens);
-    this.usedSkippedTokensLog.push(tokens);
+    return this.triviaMap;
   }
 
   // ── Domain helpers ─────────────────────────────────────────────────
@@ -290,11 +242,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   }
 
   noSep(offset = 0): boolean {
-    const idx = this.currIdx + 1 + offset;
-    if (idx >= this.tokVectorLength) {
-      return true;
-    }
-    return this.hasSepBeforeByPos[idx] === 0;
+    return this.triviaBefore(offset) === undefined;
   }
 
   isToken(node: unknown): node is IToken {
@@ -302,11 +250,49 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
   }
 
   hasWS(offset = 0): boolean {
-    const idx = this.currIdx + 1 + offset;
-    if (idx >= this.tokVectorLength) {
-      return false;
+    return Boolean(this.triviaBefore(offset)?.some(token => token.tokenType.name === 'WS'));
+  }
+
+  private triviaBefore(offset: number): IToken[] | undefined {
+    const token = this.tokVector[this.currIdx + 1 + offset];
+    if (!token) {
+      return undefined;
     }
-    return this.hasWSBeforeByPos[idx] === 1;
+    return this.triviaMap.lookup(token.startOffset, 'before');
+  }
+
+  protected claimSpaceCombinator(offset: number | undefined): IToken | undefined {
+    if (offset === undefined) {
+      return undefined;
+    }
+    const skipped = this.triviaMap.lookup(offset, 'before');
+    if (!skipped) {
+      return undefined;
+    }
+    for (let i = skipped.length - 1; i >= 0; i--) {
+      const token = skipped[i]!;
+      if (token.tokenType.name !== 'WS' || token.image.length === 0) {
+        continue;
+      }
+      const claimed = {
+        ...token,
+        image: token.image.slice(-1),
+        startOffset: token.endOffset ?? token.startOffset,
+        startColumn: token.endColumn ?? token.startColumn,
+        startLine: token.endLine ?? token.startLine
+      };
+      const image = token.image.slice(0, -1);
+      if (image.length === 0) {
+        skipped.splice(i, 1);
+      } else {
+        skipped[i] = {
+          ...token,
+          image
+        };
+      }
+      return claimed;
+    }
+    return undefined;
   }
 
   /**
@@ -400,7 +386,7 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     ];
   }
 
-  getLocationFromNodes(nodes: Array<IToken | { location?: OptionalLocation }>): LocationInfo | undefined {
+  getLocationFromNodes(nodes: Array<IToken | { location?: LocationInfo | [] }>): LocationInfo | undefined {
     let startOffset = Infinity, startLine = Infinity, startColumn = Infinity;
     let endOffset = -Infinity, endLine = -Infinity, endColumn = -Infinity;
     let found = false;
@@ -462,39 +448,6 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     return location;
   }
 
-  protected getPrePost(offset: number, post?: boolean, ctx?: RuleContext): Node['pre'] {
-    const skipped = post ? this.postSkippedTokenMap.get(offset) : this.preSkippedTokenMap.get(offset);
-    if (!skipped) {
-      return 0;
-    }
-    if (this.usedSkippedTokens.has(skipped)) {
-      return 0;
-    }
-    this.addUsedSkippedTokens(skipped);
-
-    const pre: Node['pre'] = skipped.map((token: IToken) => {
-      const name = token.tokenType.name;
-      if (name === 'WS') {
-        return token.image;
-      }
-      const comment = new Comment(
-        token.image,
-        { lineComment: name.includes('Line') },
-        this.getLocationInfo(token),
-        this.context
-      );
-      if (ctx?.inCustomPropertyValue && comment.options.lineComment) {
-        comment.addFlag(F_VISIBLE);
-      }
-      return comment;
-    });
-
-    if (isArray(pre) && pre.length === 1 && pre[0] === ' ') {
-      return 1;
-    }
-    return pre;
-  }
-
   protected getRulesWithComments(
     existingRules: Node[] = [],
     nextTokenLocation?: LocationInfo
@@ -502,16 +455,65 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     if (!nextTokenLocation) {
       nextTokenLocation = this.getLocationInfo(this.LA(1));
     }
+    const rules = this.addStandaloneRuleComments(existingRules, nextTokenLocation);
     return new Rules(
-      existingRules,
+      rules,
       undefined,
-      existingRules.length ? this.getLocationFromNodes(existingRules) : nextTokenLocation,
+      rules.length ? this.getLocationFromNodes(rules) : nextTokenLocation,
       this.context
     );
   }
 
-  protected wrap<T extends Node = Node>(node: T, post?: boolean | 'both', ctx?: RuleContext): T {
-    return node;
+  private addStandaloneRuleComments(existingRules: Node[], nextTokenLocation: LocationInfo): Node[] {
+    const rules: Node[] = [];
+    const claimed = new Set<IToken>();
+    const processedRuns = new Set<IToken[]>();
+
+    const collect = (tokens: IToken[] | undefined, prev: Node | undefined, next: Node | undefined): Comment[] => {
+      if (!tokens) {
+        return [];
+      }
+      const comments: Comment[] = [];
+      const claimedFromRun = new Set<IToken>();
+      for (const token of tokens) {
+        if (
+          token.tokenType.name !== 'Comment'
+          || claimed.has(token)
+          || !this.isStandaloneRuleComment(token, prev, next)
+        ) {
+          continue;
+        }
+        claimed.add(token);
+        claimedFromRun.add(token);
+        comments.push(new Comment(token.image, undefined, this.getLocationInfo(token), this.context));
+      }
+      if (claimedFromRun.size > 0 && !processedRuns.has(tokens)) {
+        processedRuns.add(tokens);
+        for (let i = tokens.length - 1; i >= 0; i--) {
+          if (claimedFromRun.has(tokens[i]!)) {
+            tokens.splice(i, 1);
+          }
+        }
+      }
+      return comments;
+    };
+
+    let previous: Node | undefined;
+    for (const rule of existingRules) {
+      rules.push(...collect(this.triviaMap.lookup(rule.location[0], 'before'), previous, rule));
+      rules.push(rule);
+      previous = rule;
+    }
+    rules.push(...collect(this.triviaMap.lookup(nextTokenLocation[0], 'before'), previous, undefined));
+
+    return rules;
+  }
+
+  private isStandaloneRuleComment(token: IToken, _prev: Node | undefined, next: Node | undefined): boolean {
+    if (next?.location?.[1] === token.endLine) {
+      return false;
+    }
+    return true;
   }
 
   protected processValueToken(token: IToken, _ctx?: RuleContext): Node {
@@ -552,11 +554,21 @@ export class CssRecursiveParser extends EmbeddedActionsParser {
     }
     if (tokName === 'MathConstant') {
       switch (tokValue.toLowerCase()) {
-        case 'pi': numValue = Math.PI; break;
-        case 'infinity': numValue = Infinity; break;
-        case '-infinity': numValue = -Infinity; break;
-        case 'e': numValue = Math.E; break;
-        case 'nan': numValue = NaN; break;
+        case 'pi':
+          numValue = Math.PI;
+          break;
+        case 'infinity':
+          numValue = Infinity;
+          break;
+        case '-infinity':
+          numValue = -Infinity;
+          break;
+        case 'e':
+          numValue = Math.E;
+          break;
+        case 'nan':
+          numValue = NaN;
+          break;
       }
       return getNumber(numValue!);
     }

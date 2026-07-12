@@ -1,5 +1,5 @@
 import { type Context } from '../context.js';
-import { defineType, F_VISIBLE, Node, type TreeContext } from './node.js';
+import { defineType, F_VISIBLE, Node, type LocationInfo, type TreeContext } from './node.js';
 import type { Any, AnyRole } from './any.js';
 import { Interpolated } from './interpolated.js';
 import { callableRulesEntry, MixinCollection, Rules } from './rules.js';
@@ -64,6 +64,10 @@ export class Func extends Node<FuncValue, FuncOptions> {
     body.toBraced(options);
 
     return w.getSince(mark);
+  }
+
+  override resolve(_context: Context): this {
+    return this;
   }
 
   /**

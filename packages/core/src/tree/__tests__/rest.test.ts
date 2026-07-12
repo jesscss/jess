@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, rest } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Rest', () => {
   let context: Context;
@@ -15,14 +16,33 @@ describe('Rest', () => {
   });
 
   it('renders rest values through render(context)', () => {
-    expect(rest('items').render(context)).toBe('...$$items');
-    expect(rest(any('items')).render(context)).toBe('...$items');
+    const named = rest('items');
+    const nodeNamed = rest(any('items'));
+
+    expect(named.render(context)).toBe('...$$items');
+    expect(nodeNamed.render(context)).toBe('...$items');
+    expect(named.evaluated).toBe(false);
+    expect(named.preEvaluated).toBe(false);
+    expect(nodeNamed.evaluated).toBe(false);
+    expect(nodeNamed.preEvaluated).toBe(false);
+  });
+
+  it('writes rest render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = rest('items');
+
+    expect(await node.render(context, buffer)).toBe('...$$items');
+    expect(buffer.parts).toEqual(['...$$items']);
   });
 
   it('resolves rest values without touching render state', async () => {
-    const resolved = await rest('items').resolve(context);
+    const node = rest('items');
+
+    const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('...$$items');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

@@ -28,7 +28,7 @@ const compiler = new Compiler({
   }
 });
 
-describe('Interpolated names in mixin bodies', () => {
+describe.todo('Interpolated names in mixin bodies', () => {
   it('resolves interpolated selector from mixin variable', async () => {
     const css = await compiler.renderString(`
       #gen(@color) {

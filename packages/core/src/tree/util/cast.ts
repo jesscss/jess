@@ -42,10 +42,8 @@ function getNodeType(value: any): Node {
     return new Bool(value);
   }
   if (typeof value === 'function') {
-    // Hmm, the LLM added this, is it needed?
-    // Preserve function options (e.g., params metadata from getFunctionFromMixins)
-    const options = (value as any)?.options;
-    return new JsFunction(value, options);
+    const options = Reflect.get(value, 'options');
+    return new JsFunction(value, typeof options === 'object' && options !== null ? options : undefined);
   }
   if (isPlainObject(value)) {
     return new JsObject(value);
@@ -53,9 +51,13 @@ function getNodeType(value: any): Node {
   if (isArray(value)) {
     return new List(value.map(val => cast(val)));
   }
-  if (value.constructor === Number) {
+  if (typeof value === 'number') {
     const Num = getNum();
-    return new Num(value as unknown as number);
+    return new Num(value);
+  }
+  if (value instanceof Number) {
+    const Num = getNum();
+    return new Num(value.valueOf());
   }
   if (typeof value === 'string') {
     if (value.startsWith('#')) {

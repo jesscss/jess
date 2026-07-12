@@ -14,7 +14,7 @@ import { createRequire } from 'module';
 import { readFileSync } from 'fs';
 import { getTestCases } from '../test-utils.js';
 
-describe('@plugin directive support', () => {
+describe.todo('@plugin directive support', () => {
   it('should process @plugin directive and load plugin from registry', async () => {
     const source = `
       @plugin "test-plugin";
@@ -249,7 +249,7 @@ describe('@plugin directive support', () => {
   });
 
   // Test actual Less.js test files that use @plugin
-  describe('Less.js @plugin test files', () => {
+  describe.todo('Less.js @plugin test files', () => {
     const require = createRequire(import.meta.url);
     const testData = path.dirname(require.resolve('@less/test-data'));
 

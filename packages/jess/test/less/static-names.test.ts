@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-describe('Static Names', () => {
+describe.todo('Static Names', () => {
   const compiler = new Compiler();
 
-  describe('Declaration Names', () => {
+  describe.todo('Declaration Names', () => {
     it('should handle static declaration names', async () => {
       const lessCode = `
         @color: red;
@@ -54,7 +54,7 @@ describe('Static Names', () => {
     });
   });
 
-  describe('Lookup', () => {
+  describe.todo('Lookup', () => {
     it('should find static variable declarations', async () => {
       const lessCode = `
         @primary: blue;

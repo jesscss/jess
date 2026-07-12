@@ -16,7 +16,7 @@ describe('Diagnostic Output', () => {
 
     // Check that stderr was written to (diagnostics should have been output)
     expect(stderrSpy).toHaveBeenCalled();
-    
+
     stderrSpy.mockRestore();
   });
 
@@ -41,7 +41,7 @@ describe('Diagnostic Output', () => {
       // If no warnings, verify the test file actually produces warnings
       expect(result.warnings.length).toBeGreaterThan(0);
     }
-    
+
     stdoutSpy.mockRestore();
   });
 
@@ -63,12 +63,12 @@ describe('Diagnostic Output', () => {
     };
 
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    
+
     outputDiagnostics([error], [], { breakOnError: false });
 
     // Should have written to stderr (errors go to stderr)
     expect(stdoutSpy).not.toHaveBeenCalled();
-    
+
     stdoutSpy.mockRestore();
   });
 });

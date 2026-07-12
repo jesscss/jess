@@ -1,11 +1,10 @@
 import type { Rules } from './tree/rules.js';
+import type { Context } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Visitor } from './visitor/index.js';
-import type { IParseResult } from './types/index.js';
-import type { ILexingResult } from 'chevrotain';
-import { getErrorFromParser, type ErrorDiagnostic, type WarningDiagnostic, toDiagnostic, JessError } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
 
 export type ISafeParseResult = {
   /**
@@ -91,14 +90,29 @@ export interface PluginInterface {
   visitor?: Visitor | Visitor[];
   /** Pre-eval visitor(s) - called before node.eval() during the preEval phase */
   preEvalVisitor?: Visitor | Visitor[];
-  /** Post-eval visitor(s) - called after node.eval() (alternative to visitor for clarity) */
+  /**
+   * Compatibility hook name for visitors that run after eval and immediately
+   * before render serialization.
+   */
   postEvalVisitor?: Visitor | Visitor[];
+
+  /** Optional lifecycle hooks used by lazy plugin loading. */
+  prewarm?(): void | Promise<void>;
+  dispose?(): void | Promise<void>;
+
+  /** Optional compiler hooks used by compatibility plugins. */
+  setContext?(context: Context): void;
+  setCurrentFilePath?(filePath: string): void;
+  runPostProcessors?(css: string, opts: Record<string, unknown>): string;
+  postProcessCss?(css: string, context: Context): string;
 }
 
 const { isArray } = Array;
 
 export abstract class AbstractPlugin implements PluginInterface {
   abstract name: string;
+
+  declare safeParse: PluginInterface['safeParse'];
 
   /**
    * Does a basic path resolution. Node resolution is in other plugins.
@@ -123,12 +137,7 @@ export abstract class AbstractPlugin implements PluginInterface {
 
   /** Default source getter */
   async getSource(absoluteFilePath: string): Promise<string> {
-    try {
-      const result = await readFile(absoluteFilePath, 'utf8');
-      return result;
-    } catch (error: any) {
-      throw error;
-    }
+    return readFile(absoluteFilePath, 'utf8');
   }
 
   /** Gets the first match using from the filesystem that exists */
@@ -143,28 +152,14 @@ export abstract class AbstractPlugin implements PluginInterface {
   }
 
   parse(filePath: string, source: string): Rules {
-    const safeParse: PluginInterface['safeParse'] = (this as any).safeParse;
+    const safeParse = this.safeParse;
     if (!safeParse) {
       throw new Error(`Plugin "${this.name}" does not support parsing`);
     }
     const { tree, errors } = safeParse.call(this, filePath, source);
     if (errors.length > 0) {
       const firstError = errors[0]!;
-      throw new JessError({
-        code: firstError.code as any,
-        phase: firstError.phase,
-        severity: 'error',
-        ctx: firstError.file ? { file: firstError.file } : undefined,
-        filePath: firstError.filePath,
-        source: firstError.file?.source,
-        line: firstError.line,
-        column: firstError.column,
-        reason: firstError.reason,
-        fix: firstError.fix,
-        note: firstError.note,
-        errors: firstError.errors,
-        lexerErrors: firstError.lexerErrors
-      });
+      throw makeJessErrorFromDiagnostic(firstError);
     }
     if (!tree) {
       throw new Error(`Plugin "${this.name}" failed to parse "${filePath}"`);

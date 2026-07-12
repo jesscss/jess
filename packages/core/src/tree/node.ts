@@ -17,6 +17,8 @@ import { Any } from './any.js';
 import { TreeContext } from '../context.js';
 import { type Operator } from './util/calculate.js';
 
+export { TreeContext };
+
 /**
  * Patch Node.prototype.nil to return a Nil instance
  */

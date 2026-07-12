@@ -34,6 +34,7 @@ export type PrintOptions = {
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
   emittedTrivia?: Set<IToken[]>;
+  suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
 };
 
 export type FinalPrintOptions = PrintOptions & {
@@ -56,9 +57,19 @@ type RestorablePrintStateKey =
   | 'referenceFilterTargets'
   | 'referenceMode'
   | 'referenceRenderEnabled'
+  | 'suppressBoundaryTrivia'
   | 'writer';
 
-type RestorablePrintState = Pick<FinalPrintOptions, RestorablePrintStateKey>;
+function isTriviaMap(value: unknown): value is TriviaMap {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && Reflect.get(value, 'runs') instanceof Set
+    && typeof Reflect.get(value, 'lookup') === 'function'
+    && typeof Reflect.get(value, 'entries') === 'function'
+    && typeof Reflect.get(value, 'has') === 'function'
+  );
+}
 
 function ensureFinalPrintOptions(options: PrintOptions): asserts options is FinalPrintOptions {
   options.depth ??= 0;
@@ -76,28 +87,24 @@ function ensureFinalPrintOptions(options: PrintOptions): asserts options is Fina
 
 export interface OutputWriter {
   add(text: string, origin?: unknown): void;
+  markSource(origin?: unknown): void;
   addSpacer(text: string): void;
+  queueSpacer(text: string, shouldAdd?: (nextText: string) => boolean): void;
   mark(): number;
   getSince(mark: number): string;
-  captureWithMeta(fn: () => void): CapturedOutput;
-  signalBoundaryIntent(side: 'pre' | 'post', intent: BoundaryIntent): void;
+  hasContentSince(mark: number): boolean;
+  preview(fn: () => string | void, preserveSegments?: boolean): string;
+  endsWith(suffix: string): boolean;
+  lastChar(): string | undefined;
+  replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void;
+  trimStartSince(mark: number): void;
+  trimHorizontalStartSince(mark: number): void;
+  trimHorizontalEndSince(mark: number): void;
+  trimEndSince(mark: number): void;
   toString(): string;
   toSourceMapV3(): any;
   getSegments(): SourceSegment[];
 }
-
-export type BoundaryIntent = 'implicit' | 'explicit_none' | 'explicit_space';
-
-export type BoundaryIntentOptions = {
-  preIntent?: BoundaryIntent;
-  postIntent?: BoundaryIntent;
-};
-
-export type CapturedOutput = {
-  text: string;
-  leadingIntent: BoundaryIntent;
-  trailingIntent: BoundaryIntent;
-};
 
 export type SourceSegment = {
   genLine: number;     // 0-based
@@ -122,11 +129,30 @@ const isSourceMapOrigin = (value: unknown): value is SourceMapOrigin => {
   return typeof value === 'object' && value !== null;
 };
 
+function sourceSegmentFor(originParam: unknown, genLine: number, genColumn: number): SourceSegment | undefined {
+  const origin = isSourceMapOrigin(originParam) ? originParam : undefined;
+  const loc = origin?.location;
+  if (!loc || !Array.isArray(loc) || loc.length !== 6) {
+    return undefined;
+  }
+  const startLine = (loc[1] ?? 1) - 1;
+  const startColumn = (loc[2] ?? 1) - 1;
+  const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
+  return {
+    genLine,
+    genColumn,
+    source: file,
+    origLine: startLine,
+    origColumn: startColumn
+  };
+}
+
 export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   if (options?.context) {
     if (options !== options.context.printState) {
       const hasExplicitPrintState = (
-        options.inFrames !== undefined
+        options.writer !== undefined
+        || options.inFrames !== undefined
         || options.treeFrames !== undefined
         || options.lastRenderedFrames !== undefined
         || options.frameHeaders !== undefined
@@ -158,6 +184,22 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
   return resolved;
 }
 
+export function prepareRenderPrintState(context: Context, options?: PrintOptions): FinalPrintOptions {
+  const canReuseActivePrintState = (
+    options?.context === context
+    && (
+      options.writer !== undefined
+      || options.inFrames !== undefined
+      || options.treeFrames !== undefined
+      || options.lastRenderedFrames !== undefined
+      || options.frameHeaders !== undefined
+    )
+  );
+  return canReuseActivePrintState
+    ? getPrintOptions(options)
+    : prepareContextPrintState(context, options);
+}
+
 export function prepareContextPrintState(context: Context, seed?: PrintOptions): FinalPrintOptions {
   const state = context.printState;
 
@@ -177,7 +219,8 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   state.composedSelectorStack = seed?.composedSelectorStack;
   state.composedSelectorCache = new WeakMap();
   state.ampersandFirst = seed?.ampersandFirst;
-  state.trivia = seed?.trivia;
+  const contextTrivia = Reflect.get(context.opts, 'trivia');
+  state.trivia = seed?.trivia ?? (isTriviaMap(contextTrivia) ? contextTrivia : undefined);
   state.emittedTrivia = new Set();
 
   if (state.collapseNesting === undefined && context.opts.collapseNesting !== undefined) {
@@ -188,10 +231,10 @@ export function prepareContextPrintState(context: Context, seed?: PrintOptions):
   return state;
 }
 
-export type SavedPrintState = Array<[RestorablePrintStateKey, RestorablePrintState[RestorablePrintStateKey]]>;
+export type SavedPrintState = Array<[RestorablePrintStateKey, unknown]>;
 
 export function savePrintState(
-  options: FinalPrintOptions,
+  options: PrintOptions,
   keys: readonly RestorablePrintStateKey[]
 ): SavedPrintState {
   const saved: SavedPrintState = [];
@@ -202,12 +245,12 @@ export function savePrintState(
 }
 
 export function restorePrintState(
-  options: FinalPrintOptions,
+  options: PrintOptions,
   saved: SavedPrintState
 ): void {
   for (let i = 0; i < saved.length; i++) {
     const [key, value] = saved[i]!;
-    options[key] = value;
+    (options as Record<string, unknown>)[key] = value;
   }
 }
 
@@ -223,6 +266,23 @@ export function restoreArrayState<T>(
     return;
   }
   array.splice(0, array.length, ...(saved ?? []));
+}
+
+export function saveSetState<T>(set: Set<T> | undefined): Set<T> | undefined {
+  return set ? new Set(set) : undefined;
+}
+
+export function restoreSetState<T>(
+  set: Set<T> | undefined,
+  saved: ReadonlySet<T> | undefined
+): void {
+  if (!set || !saved) {
+    return;
+  }
+  set.clear();
+  for (const value of saved) {
+    set.add(value);
+  }
 }
 
 export function getCachedComposedSelector(
@@ -247,12 +307,11 @@ export class OutputWriter implements OutputWriter {
   private _column = 0;
   private _segments: SourceSegment[] = [];
   private _positions: Array<{ line: number; column: number; segments: number; length: number }> = [];
-  private _boundarySignals: Array<{ side: 'pre' | 'post'; intent: BoundaryIntent; offset: number }> = [];
-  private _signalPositions: number[] = [];
   /** Diagnostic: remember the origin that last wrote a trailing newline */
   private _lastNewlineOrigin: unknown = undefined;
   /** Store segments from the most recent capture for merging when content is added back */
   private _capturedSegments: SourceSegment[] | null = null;
+  private _queuedSpacer: { text: string; shouldAdd: (nextText: string) => boolean } | null = null;
 
   get line() {
     return this._line;
@@ -262,9 +321,23 @@ export class OutputWriter implements OutputWriter {
     return this._column;
   }
 
+  markSource(originParam?: unknown): void {
+    const segment = sourceSegmentFor(originParam, this._line, this._column);
+    if (segment) {
+      this._segments.push(segment);
+    }
+  }
+
   add(text: string, originParam?: unknown): void {
     if (!text) {
       return;
+    }
+    const queuedSpacer = this._queuedSpacer;
+    if (queuedSpacer) {
+      this._queuedSpacer = null;
+      if (queuedSpacer.shouldAdd(text)) {
+        this.addSpacer(queuedSpacer.text);
+      }
     }
     this.chunks.push(text);
     this._length += text.length;
@@ -292,20 +365,7 @@ export class OutputWriter implements OutputWriter {
     }
 
     // Record a mapping segment if we have origin location info
-    const origin = isSourceMapOrigin(originParam) ? originParam : undefined;
-    const loc = origin?.location;
-    if (loc && Array.isArray(loc) && loc.length === 6) {
-      const startLine = (loc[1] ?? 1) - 1;     // convert to 0-based
-      const startColumn = (loc[2] ?? 1) - 1;   // convert to 0-based
-      const file = origin?.treeContext?.file?.fullPath || origin?.treeContext?.file?.path || origin?.treeContext?.file?.name;
-      this._segments.push({
-        genLine: this._line,
-        genColumn: this._column,
-        source: file,
-        origLine: startLine,
-        origColumn: startColumn
-      });
-    }
+    this.markSource(originParam);
 
     // Track if the chunk ends with a newline and record its origin (for diagnostics)
     if (text.endsWith('\n')) {
@@ -317,7 +377,6 @@ export class OutputWriter implements OutputWriter {
     if (i === -1) {
       this._column += text.length;
       this._positions.push({ line: this._line, column: this._column, segments: this._segments.length, length: this._length });
-      this._signalPositions.push(this._boundarySignals.length);
       // Clear captured segments if we added content without origin (normal add, not merging captured content)
       if (!originParam) {
         this._capturedSegments = null;
@@ -337,7 +396,6 @@ export class OutputWriter implements OutputWriter {
     }
     this._column = text.length - (i + 1);
     this._positions.push({ line: this._line, column: this._column, segments: this._segments.length, length: this._length });
-    this._signalPositions.push(this._boundarySignals.length);
     // Clear captured segments if we added content without origin
     if (!originParam) {
       this._capturedSegments = null;
@@ -353,6 +411,13 @@ export class OutputWriter implements OutputWriter {
     this._capturedSegments = pendingSegments;
   }
 
+  queueSpacer(text: string, shouldAdd: (nextText: string) => boolean = nextText => !/^[ \t\r\n\f]/u.test(nextText)): void {
+    if (!text) {
+      return;
+    }
+    this._queuedSpacer = { text, shouldAdd };
+  }
+
   mark(): number {
     return this.chunks.length;
   }
@@ -362,6 +427,160 @@ export class OutputWriter implements OutputWriter {
       return '';
     }
     return this.chunks.slice(mark).join('');
+  }
+
+  hasContentSince(mark: number): boolean {
+    if (mark < 0 || mark > this.chunks.length) {
+      return false;
+    }
+    for (let i = mark; i < this.chunks.length; i++) {
+      if (this.chunks[i]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  preview(fn: () => string | void, preserveSegments = false): string {
+    const mark = this.mark();
+    const segmentsBefore = this._segments.length;
+    const out = fn();
+    const text = this.getSince(mark) || (typeof out === 'string' ? out : '');
+    const segmentsCreated = preserveSegments ? this._segments.slice(segmentsBefore) : [];
+    this.restore(mark);
+    if (preserveSegments) {
+      this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+    }
+    return text;
+  }
+
+  endsWith(suffix: string): boolean {
+    if (suffix === '') {
+      return true;
+    }
+    if (suffix.length > this._length) {
+      return false;
+    }
+    let suffixIndex = suffix.length;
+    for (let i = this.chunks.length - 1; i >= 0 && suffixIndex > 0; i--) {
+      const chunk = this.chunks[i]!;
+      const size = Math.min(chunk.length, suffixIndex);
+      const chunkStart = chunk.length - size;
+      const suffixStart = suffixIndex - size;
+      if (chunk.slice(chunkStart) !== suffix.slice(suffixStart, suffixIndex)) {
+        return false;
+      }
+      suffixIndex -= size;
+    }
+    return suffixIndex === 0;
+  }
+
+  lastChar(): string | undefined {
+    for (let i = this.chunks.length - 1; i >= 0; i--) {
+      const chunk = this.chunks[i]!;
+      if (chunk) {
+        return chunk.at(-1);
+      }
+    }
+    return undefined;
+  }
+
+  replaceSince(mark: number, replacer: (text: string) => string, origin?: unknown): void {
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
+    const segmentMark = mark > 0 ? (this._positions[mark - 1]?.segments ?? 0) : 0;
+    const segmentsCreated = this._segments.slice(segmentMark);
+    const replacement = replacer(this.getSince(mark));
+    this.restore(mark);
+    this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
+    this.add(replacement, origin);
+  }
+
+  trimStartSince(mark: number): void {
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
+    let first = mark;
+    while (first < this.chunks.length) {
+      const chunk = this.chunks[first]!;
+      const trimmed = chunk.replace(/^[ \t\r\n\f]+/u, '');
+      if (trimmed.length === chunk.length) {
+        break;
+      }
+      if (trimmed) {
+        this.chunks[first] = trimmed;
+        break;
+      }
+      this.chunks[first] = '';
+      first++;
+    }
+    this.refreshPositions();
+  }
+
+  trimHorizontalStartSince(mark: number): void {
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
+    let first = mark;
+    while (first < this.chunks.length) {
+      const chunk = this.chunks[first]!;
+      const trimmed = chunk.replace(/^[ \t\r\f]+/u, '');
+      if (trimmed.length === chunk.length) {
+        break;
+      }
+      if (trimmed) {
+        this.chunks[first] = trimmed;
+        break;
+      }
+      this.chunks[first] = '';
+      first++;
+    }
+    this.refreshPositions();
+  }
+
+  trimHorizontalEndSince(mark: number): void {
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
+    let last = this.chunks.length - 1;
+    while (last >= mark) {
+      const chunk = this.chunks[last]!;
+      const trimmed = chunk.replace(/[ \t\r\f]+$/u, '');
+      if (trimmed.length === chunk.length) {
+        break;
+      }
+      if (trimmed) {
+        this.chunks[last] = trimmed;
+        this.chunks.length = last + 1;
+        break;
+      }
+      this.chunks.length = last;
+      last--;
+    }
+    this.refreshPositions();
+  }
+
+  trimEndSince(mark: number): void {
+    if (mark < 0 || mark > this.chunks.length) {
+      return;
+    }
+    let last = this.chunks.length - 1;
+    while (last >= mark) {
+      const chunk = this.chunks[last]!;
+      const trimmed = chunk.replace(/[ \t\r\n\f]+$/u, '');
+      if (trimmed.length === chunk.length) {
+        break;
+      }
+      if (trimmed) {
+        this.chunks[last] = trimmed;
+        this.chunks.length = last + 1;
+        break;
+      }
+      this.chunks.length = last;
+      last--;
+    }
+    this.refreshPositions();
   }
 
   /** Restore writer state to a given mark, discarding appended chunks and segments */
@@ -383,9 +602,34 @@ export class OutputWriter implements OutputWriter {
       this._length = 0;
     }
     this._positions.length = mark;
-    const signalCount = this._signalPositions[mark - 1] ?? 0;
-    this._boundarySignals.length = signalCount;
-    this._signalPositions.length = mark;
+    this._queuedSpacer = null;
+  }
+
+  private refreshPositions(): void {
+    const segmentCounts = this._positions.map(pos => pos.segments);
+    this._positions = [];
+    this._length = 0;
+    this._line = 0;
+    this._column = 0;
+    for (let i = 0; i < this.chunks.length; i++) {
+      const text = this.chunks[i]!;
+      this._length += text.length;
+      const newline = text.lastIndexOf('\n');
+      if (newline === -1) {
+        this._column += text.length;
+      } else {
+        this._line += text.split('\n').length - 1;
+        this._column = text.length - (newline + 1);
+      }
+      this._positions.push({
+        line: this._line,
+        column: this._column,
+        segments: segmentCounts[i] ?? this._segments.length,
+        length: this._length
+      });
+    }
+    const last = this._positions.at(-1);
+    this._segments.length = last?.segments ?? 0;
   }
 
   /** Capture output from a function without committing to the main buffer */
@@ -400,41 +644,6 @@ export class OutputWriter implements OutputWriter {
     // Store captured segments for potential merging when content is added back
     this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
     return s;
-  }
-
-  captureWithMeta(fn: () => void): CapturedOutput {
-    const m = this.mark();
-    const segmentsBefore = this._segments.length;
-    const startLen = this._length;
-    const signalStart = this._boundarySignals.length;
-    fn();
-    const text = this.getSince(m);
-    const endLen = this._length;
-    const capturedSignals = this._boundarySignals.slice(signalStart);
-    const segmentsCreated = this._segments.slice(segmentsBefore);
-    this.restore(m);
-    this._capturedSegments = segmentsCreated.length > 0 ? segmentsCreated : null;
-
-    let leadingIntent: BoundaryIntent = 'implicit';
-    let trailingIntent: BoundaryIntent = 'implicit';
-    for (const signal of capturedSignals) {
-      if (signal.side === 'pre' && signal.offset === startLen) {
-        leadingIntent = signal.intent;
-        break;
-      }
-    }
-    for (let i = capturedSignals.length - 1; i >= 0; i--) {
-      const signal = capturedSignals[i]!;
-      if (signal.side === 'post' && signal.offset === endLen) {
-        trailingIntent = signal.intent;
-        break;
-      }
-    }
-    return { text, leadingIntent, trailingIntent };
-  }
-
-  signalBoundaryIntent(side: 'pre' | 'post', intent: BoundaryIntent): void {
-    this._boundarySignals.push({ side, intent, offset: this._length });
   }
 
   toString(): string {

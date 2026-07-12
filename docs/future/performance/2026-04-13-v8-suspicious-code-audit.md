@@ -8,6 +8,11 @@ Branch: `dev`
 This document is a centralized dumping ground for code that looks suspicious
 from a runtime performance / V8 optimization perspective.
 
+This is a historical audit snapshot. Some named mechanisms and line numbers have
+since moved or been removed. For TriviaMap / serializer ownership, prefer
+[docs/future/whitespace-token-proposal.md](/Users/matthew/git/oss/jess/docs/future/whitespace-token-proposal.md)
+over this file.
+
 This is intentionally broader than "confirmed benchmark root cause." A finding
 may be:
 

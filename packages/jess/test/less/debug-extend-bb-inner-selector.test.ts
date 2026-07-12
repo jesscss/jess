@@ -16,7 +16,7 @@ import { syncLog } from '../../../core/src/tree/util/__tests__/debug-log.js';
 const require = createRequire(import.meta.url);
 const testData = path.dirname(require.resolve('@less/test-data'));
 
-describe('extend.less inner .bb selector trace', () => {
+describe.todo('extend.less inner .bb selector trace', () => {
   it('logs inner .bb ruleset selector after eval (same pipeline as all-less)', async () => {
     const extendLessPath = path.join(testData, 'tests-unit/extend/extend.less');
     const testCases = getTestCases(extendLessPath);

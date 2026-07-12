@@ -1,195 +1,130 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { OutputWriter, getPrintOptions } from '../print.js';
-import { any, comment } from '../../../index.js';
+import { describe, expect, it } from 'vitest';
+import type { IToken } from 'chevrotain';
+import { Any } from '../../../index.js';
+import { Context } from '../../../context.js';
+import { consumeTrivia, createTriviaMap, emitTriviaTokens } from '../trivia.js';
+import { OutputWriter, getPrintOptions, prepareRenderPrintState } from '../print.js';
 
-describe('processPrePost with capture', () => {
-  let w: OutputWriter;
-  let options: ReturnType<typeof getPrintOptions>;
+const token = (image: string, name = 'WS'): IToken => ({
+  image,
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length,
+  tokenType: { name } as IToken['tokenType']
+});
 
-  beforeEach(() => {
-    w = new OutputWriter();
-    options = getPrintOptions({ writer: w });
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
+
+describe('TriviaMap serialization', () => {
+  it('resets context print state for fresh render traversals', () => {
+    const context = new Context();
+    const staleWriter = new OutputWriter();
+    context.printState.writer = staleWriter;
+    context.printState.frameHeaders = ['.stale'];
+
+    const prepared = prepareRenderPrintState(context, { context, compress: true });
+
+    expect(prepared).toBe(context.printState);
+    expect(prepared.writer).not.toBe(staleWriter);
+    expect(prepared.frameHeaders).toEqual([]);
+    expect(prepared.compress).toBe(true);
   });
 
-  it('processPrePost returns correct value for array with newline string', () => {
-    const node = any('test');
-    node.pre = ['\n  '];
+  it('reuses explicit active render print state for nested render bridges', () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+    const options = { context, writer, frameHeaders: ['.active'] };
 
-    const result = node.processPrePost('pre', '', options);
-    expect(result).toBe('\n  ');
+    const prepared = prepareRenderPrintState(context, options);
+
+    expect(prepared).toBe(options);
+    expect(prepared.writer).toBe(writer);
+    expect(prepared.frameHeaders).toEqual(['.active']);
+    expect(context.printState.writer).toBeUndefined();
   });
 
-  it('capture properly captures output from processPrePost with array containing newline string', () => {
-    const node = any('test');
-    node.pre = ['\n  '];
+  it('does not treat print state from another context as active', () => {
+    const context = new Context();
+    const otherContext = new Context();
+    const writer = new OutputWriter();
+    const options = { context: otherContext, writer };
 
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
+    const prepared = prepareRenderPrintState(context, options);
+
+    expect(prepared).toBe(context.printState);
+    expect(prepared).not.toBe(options);
+    expect(prepared.context).toBe(context);
+    expect(prepared.writer).toBe(writer);
+  });
+
+  it('keeps explicit writer print states detached from context print state', () => {
+    const context = new Context();
+    const writer = new OutputWriter();
+    const options = { context, writer };
+
+    const resolved = getPrintOptions(options);
+
+    expect(resolved).toBe(options);
+    expect(resolved.writer).toBe(writer);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('serializes trivia looked up before a node offset', () => {
+    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const trivia = createTriviaMap({
+      before: new Map([[10, [token('\n  '), token('/* keep */', 'BlockComment')]]]),
+      after: new Map<number, IToken[]>()
     });
 
-    expect(captured).toBe('\n  ');
-    expect(w.toString()).toBe('');
+    expect(node.toString({ trivia })).toBe('\n  /* keep */test');
   });
 
-  it('capture properly captures output from processPrePost with array containing multiple strings', () => {
-    const node = any('test');
-    node.pre = ['\n  ', '  more'];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
+  it('serializes generic node boundary trivia without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const trivia = createTriviaMap({
+      before: new Map([[10, [token('\n  '), token('/* keep */', 'BlockComment')]]]),
+      after: new Map<number, IToken[]>()
     });
 
-    expect(captured).toBe('\n    more');
-    expect(w.toString()).toBe('');
+    expect(node.toString({ trivia, writer })).toBe('\n  /* keep */test');
+    expect(writer.toString()).toBe('\n  /* keep */test');
+    expect(writer.captures).toBe(0);
   });
 
-  it('capture properly captures output from processPrePost with array containing single space string', () => {
-    const node = any('test');
-    node.pre = [' '];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
+  it('does not serialize trailing trivia from generic node output', () => {
+    const node = new Any('test', undefined, [10, 1, 11, 13, 1, 14]);
+    const trivia = createTriviaMap({
+      before: new Map<number, IToken[]>(),
+      after: new Map([[13, [token('\n  ')]]])
     });
 
-    expect(captured).toBe(' ');
-    expect(w.toString()).toBe('');
+    expect(node.toString({ trivia })).toBe('test');
   });
 
-  it('capture properly captures output from processPrePost with array containing empty string', () => {
-    const node = any('test');
-    node.pre = [''];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
+  it('consumes a shared trailing lookup once when a parent boundary emits it', () => {
+    const writer = new OutputWriter();
+    const options = getPrintOptions({ writer });
+    const tokens = [token(' '), token('/* keep me */', 'BlockComment')];
+    const trivia = createTriviaMap({
+      before: new Map<number, IToken[]>(),
+      after: new Map([[13, tokens]])
     });
 
-    expect(captured).toBe('');
-    expect(w.toString()).toBe('');
-  });
+    emitTriviaTokens(consumeTrivia(trivia, 13, 'after', options), options);
+    emitTriviaTokens(consumeTrivia(trivia, 13, 'after', options), options);
 
-  it('capture properly captures output from processPrePost with array containing only newline', () => {
-    const node = any('test');
-    node.pre = ['\n'];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('\n');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output from processPrePost with array containing tab and spaces', () => {
-    const node = any('test');
-    node.pre = ['\n\t  '];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('\n\t  ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output when processPrePost is called multiple times', () => {
-    const node = any('test');
-    node.pre = ['\n  '];
-
-    const captured1 = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    const captured2 = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured1).toBe('\n  ');
-    expect(captured2).toBe('\n  ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('capture properly captures output when there is existing content in writer', () => {
-    w.add('existing');
-    const node = any('test');
-    node.pre = ['\n  '];
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('\n  ');
-    expect(w.toString()).toBe('existing');
-  });
-
-  it('processPrePost with numeric value 1 returns single space', () => {
-    const node = any('test');
-    node.pre = 1;
-
-    const result = node.processPrePost('pre', '', options);
-    expect(result).toBe(' ');
-  });
-
-  it('capture properly captures output from processPrePost with numeric value 1', () => {
-    const node = any('test');
-    node.pre = 1;
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe(' ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('processPrePost with numeric value 0 returns empty string', () => {
-    const node = any('test');
-    node.pre = 0;
-
-    const result = node.processPrePost('pre', '', options);
-    expect(result).toBe('');
-  });
-
-  it('capture properly captures output from processPrePost with numeric value 0', () => {
-    const node = any('test');
-    node.pre = 0;
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('');
-    expect(w.toString()).toBe('');
-  });
-
-  it('processPrePost with string value returns that string', () => {
-    const node = any('test');
-    node.pre = '  ';
-
-    const result = node.processPrePost('pre', '', options);
-    expect(result).toBe('  ');
-  });
-
-  it('capture properly captures output from processPrePost with string value', () => {
-    const node = any('test');
-    node.pre = '  ';
-
-    const captured = w.capture(() => {
-      node.processPrePost('pre', '', options);
-    });
-
-    expect(captured).toBe('  ');
-    expect(w.toString()).toBe('');
-  });
-
-  it('copy strips comments from the copy without mutating source pre/post arrays', () => {
-    const node = any('test');
-    node.post = [' ', comment('/* keep me */')];
-
-    const copied = node.copy(true);
-
-    expect(String(node)).toBe('test /* keep me */');
-    expect(String(copied)).toBe('test ');
-    expect(node.post?.[1]?.type).toBe('Comment');
-    expect(copied.post?.[1]?.type).toBe('Nil');
+    expect(writer.toString()).toBe(' /* keep me */');
+    expect(tokens.map(item => item.image)).toEqual([' ', '/* keep me */']);
   });
 });

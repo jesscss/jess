@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { co } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Combinator', () => {
   let context: Context;
@@ -15,14 +16,33 @@ describe('Combinator', () => {
   });
 
   it('renders combinators through render(context)', () => {
-    expect(co('>').render(context)).toBe('>');
-    expect(co('+').render(context)).toBe('+');
+    const child = co('>');
+    const adjacent = co('+');
+
+    expect(child.render(context)).toBe('>');
+    expect(adjacent.render(context)).toBe('+');
+    expect(child.evaluated).toBe(false);
+    expect(child.preEvaluated).toBe(false);
+    expect(adjacent.evaluated).toBe(false);
+    expect(adjacent.preEvaluated).toBe(false);
+  });
+
+  it('writes combinator render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = co('>');
+
+    expect(await node.render(context, buffer)).toBe('>');
+    expect(buffer.parts).toEqual(['>']);
   });
 
   it('resolves combinators without touching render state', async () => {
-    const resolved = await co('>').resolve(context);
+    const node = co('>');
+
+    const resolved = await node.resolve(context);
 
     expect(resolved.toTrimmedString()).toBe('>');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

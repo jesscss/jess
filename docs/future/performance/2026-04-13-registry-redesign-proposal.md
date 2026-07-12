@@ -295,10 +295,10 @@ Current narrowing:
 - configured imports now carry variable-only `with/set` bindings through
   `ScopeFrame.liveSlotsByName` and keep replacement/configured surfaces rooted
   in imported `Rules` containers instead of synthetic top-level wrappers
-- the remaining work is structural shell cleanup:
-  dynamic/default-guard mixin wrappers, multi-output mixin carriers, additive
-  non-variable import child-surface wrappers, and the last postlude/import
-  carrier shells that still exist only to carry output shape
+- the remaining structural-shell cleanup was later narrowed and validated in
+  the handoff: the surviving mixin/import/loop derived `Rules` surfaces carry
+  semantic output, boundary, or lookup-gate state rather than fake
+  placement-local state
 
 They are all the same class of problem: evaluate a canonical tree against a
 runtime binding frame.
@@ -502,10 +502,33 @@ below. The post-step runs after the walk.
 The flag check is a single branch at render startup. `_indexRules` already pays
 the traversal cost; the flag is free.
 
+#### Buffer is not AST v2
+
+The buffer is a short-lived render artifact. It must not become a parallel AST
+with node identity, parent/child ownership, traversal APIs, lookup state, or
+semantic mutation rules. Segment types are allowed only for output that cannot
+be finalized immediately:
+
+- selector finalization for extends
+- reference-import visibility
+- hoisted at-rule output
+- merged declarations
+- explicit pending lookup slots
+
+Everything else should remain a plain string in the buffer. A proposed segment
+type must prove the delayed-finalization need it represents; "it might be
+useful later" is not enough.
+
+Delayed segments do not get to defer all of their children by default. The
+children of `RulesetBlock`, `HoistBlock`, `MergeSlot`, and pending slots should
+be serialized to strings as soon as they are final. Keep only the smallest
+structured wrapper needed for the delayed decision itself; do not retain
+renderable child nodes or expand segment trees when a string is enough.
+
 #### Segment types (segmented mode only)
 
 ```ts
-type Segment = string | RulesetBlock | MergeSlot | HoistBlock
+type Segment = string | RulesetBlock | MergeSlot | HoistBlock | PendingRefSlot
 
 interface RulesetBlock {
   selector: SelectorSet   // live reference — not yet stringified
@@ -525,6 +548,11 @@ interface HoistBlock {
 interface MergeSlot {
   property: string        // +: and +_: — collects all same-property decls in scope
   segments: Segment[]
+}
+
+interface PendingRefSlot {
+  key: string             // unresolved lookup key
+  segments: Segment[]     // replacement output after the pending lookup drains
 }
 ```
 
@@ -1455,23 +1483,31 @@ reason. The lookup strategy varies by call site, not by frame structure.
 
 [docs/future/whitespace-token-proposal.md](/Users/matthew/git/oss/jess/docs/future/whitespace-token-proposal.md)
 
+The whitespace-token proposal is now a current `TriviaMap` status note. Treat
+that file as the source of truth for trivia ownership. In particular:
+
+- trivia is file-context data, not node-owned data
+- `before` / `after` are lookup directions, not trivia kinds
+- direct rule-body block comments are `Comment` nodes
+- inline/value comments remain trivia
+- evaluated/copied values that move placement should use `detachTrivia(deep)`,
+  not copied formatting offsets
+
 ### Why declaration names are currently `Any` nodes
 
 `VarDeclaration.value.name` (and `Declaration.value.name`) is typed as
-`Any | Interpolated`, not a plain string. The reason is that `Any` carries
-`pre` / `post` properties — so a comment or whitespace between the name and
-the colon (`@color /* comment */: value`) can be stored on the name node
-itself rather than being discarded at parse time.
+`Any | Interpolated`, not a plain string. Historically, this was partly because
+formatting/comment trivia could be carried on nodes. With `TriviaMap`, that
+reason is gone: whitespace and inline/value comments are looked up from source
+offsets during serialization.
 
-This is the same root problem the whitespace-token-proposal solves: nodes
-carry formatting because there is nowhere else to put it.
+There may still be parser/runtime reasons to keep name nodes until that surface
+is audited, but trivia ownership should no longer be one of them.
 
-### What changes when pre/post is eliminated
+### What changes after trivia is file-context-owned
 
-Once `pre` / `post` are removed from nodes (replaced by the offset-keyed
-`FormattingMap`), the comment between `@color` and `:` lives in the
-`FormattingMap` at the appropriate source offset. The name node no longer needs
-to carry it.
+The comment between `@color` and `:` lives in the `TriviaMap` at the appropriate
+source boundary. The name node no longer needs to carry it.
 
 With that constraint lifted, declaration names that are plain identifiers can
 become plain strings in the AST rather than `Any` nodes. `Interpolated` names
@@ -1510,9 +1546,9 @@ that reinforce each other:
   removes a class of edge cases around interpolated names with static content.
 
 The render model here (`render(ctx)` writing to `ctx.outputBuffer`) is fully
-compatible with the whitespace proposal's `FormattingMap` — `emitFmt()` is
-just called at the start and end of each `render(ctx)` call exactly where the
-current `processPrePost()` sandwich is.
+compatible with `TriviaMap`: render code can consume trivia at explicit source
+boundaries through the shared print/render context, while generated or
+placement-moved values fall back to container formatting.
 
 ---
 
@@ -1617,13 +1653,11 @@ The practical boundary: transitive `_hasExtends` is the optimization you get for
 users who need incremental builds, migrating from `@import` to `@compose` is the
 correct path — not attempting deeper static analysis of Less import semantics.
 
-### Open question (exploratory): priority queue vs linear render with deferred misses
+### Eval shape decision: linear render with deferred misses
 
-The shape above assumes the existing priority queue in `Rules.evalNode()`
-continues to stage evaluation (imports → calls → declarations →
-mixins/rulesets → extends → at-rules). That is one of two plausible shapes
-for the render pass and should be chosen empirically before this track
-hardens.
+The Track 5 target is Shape B: a single source-order render/eval walk with
+typed pending segments for unresolved work. The existing priority queue in
+`Rules.evalNode()` is inherited machinery, not the target renderer.
 
 - **Shape A — Priority queue.** Classify children into buckets, evaluate in
   bucket order, requeue blocked nodes when dependencies resolve. Semantic
@@ -1640,11 +1674,12 @@ hardens.
   `_indexRules`, most forward references are expected to resolve on first
   touch, making the miss list small or empty in the common case.
 
-A hybrid — Shape B as default, Shape A only where it provably costs less — is
-likely the right final answer. See
+Use Shape B as default. Keep Shape A-like scheduling only where the current code
+already proves a blocker exists: `StyleImport` path interpolation retries and
+local fixed-point retries for dynamic declaration names. See
 [pre-eval-elimination.md](/Users/matthew/git/oss/jess/docs/future/pre-eval-elimination.md)
-("Open Question: Priority Queue vs Linear Render With Deferred Misses") for
-the full tradeoff and the measurements to take before committing.
+("Decision: Linear Render With Deferred Misses") for the full tradeoff and the
+measurements to keep taking while implementing.
 
 ### Post-step
 
@@ -1727,10 +1762,11 @@ These slices are about making the source tree shared and light:
   configured `with`/`set` bindings, reference imports, guarded imported mixins,
   detached closure visibility, and import-boundary ownership must all work from
   explicit frame/boundary state rather than copied provenance.
-- Slice 13e: remove the remaining structural shells that exist only to fake
-  placement-local state:
-  additive non-variable import child wrappers, postlude/media carrier shells,
-  and any leftover multi-output mixin carriers.
+- Slice 13e: remove or validate the remaining structural shells that exist only
+  to fake placement-local state. The current handoff records this as complete:
+  surviving import postlude, additive-config, loop-output, and multi-candidate
+  mixin result surfaces are semantic result/boundary surfaces, not a live
+  shell-cleanup queue.
 
 ### Track 1C — Eval / Render API Convergence
 
@@ -1758,8 +1794,9 @@ because they touch serialization:
 - **Track 3:** Less-compat adapter layer — explicit adapter classes replacing
   the transparent `Proxy` shim. Mostly done now; revisit once after Track 2
   lands so the direct-field API can simplify the adapters further.
-- **Track 4:** Whitespace/trivia token proposal — `FormattingMap` replaces
-  `pre`/`post` fields; static declaration names become plain `string`.
+- **Track 4:** TriviaMap cleanup — trivia is file-context data consumed by
+  source-boundary lookup; static declaration names may become plain `string`
+  after the remaining declaration-name shape is audited.
 - **Track 5:** Buffered render pass — typed `Segment[]` buffer with post-step
   for extend finalization, reference visibility, and `@media` bubbling.
   This consumes the Track 1C `render/resolve` work; it should not be used as a

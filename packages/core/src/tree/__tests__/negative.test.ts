@@ -9,6 +9,7 @@ import {
   type Rules as RulesClass,
   vardecl
 } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Negative', () => {
   let context: Context;
@@ -32,9 +33,32 @@ describe('Negative', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = negative(ref({ key: 'rhs' }, { type: 'variable' })).render(context);
+    const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+    const rendered = negativeNode.render(context);
 
     expect(rendered).toBe('-20');
+    expect(negativeNode.evaluated).toBe(false);
+    expect(negativeNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved negative render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+
+    expect(await negativeNode.render(context, buffer)).toBe('-20');
+    expect(buffer.parts).toEqual(['-20']);
+    expect(negativeNode.evaluated).toBe(false);
+    expect(negativeNode.preEvaluated).toBe(false);
   });
 
   it('resolves negative values without touching render state', async () => {
@@ -48,11 +72,12 @@ describe('Negative', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await negative(
-      ref({ key: 'rhs' }, { type: 'variable' })
-    ).resolve(context);
+    const negativeNode = negative(ref({ key: 'rhs' }, { type: 'variable' }));
+    const resolved = await negativeNode.resolve(context);
 
-    expect(`${resolved}`).toBe('-20');
+    expect(resolved.toTrimmedString()).toBe('-20');
+    expect(negativeNode.evaluated).toBe(false);
+    expect(negativeNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

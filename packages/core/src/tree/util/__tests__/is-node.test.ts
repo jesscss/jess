@@ -60,4 +60,18 @@ describe('is-node', () => {
     expect(isNode('string')).toBe(false);
     expect(isNode(42)).toBe(false);
   });
+
+  test('isNode accepts node-like objects for cross-module checks', () => {
+    expect(isNode({
+      type: 'ExternalNode',
+      children() {
+        return [];
+      }
+    })).toBe(true);
+  });
+
+  test('isNode returns false for malformed typed objects', () => {
+    expect(isNode({ type: 'NotNode' }, N.Selector)).toBe(false);
+    expect(isNode({ nodeType: 0 }, N.Selector)).toBe(false);
+  });
 });

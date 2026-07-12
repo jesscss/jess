@@ -1,5 +1,6 @@
-import { bool, condition, dimension, num } from '../index.js';
+import { any, bool, condition, dimension, list, num, ref, rules, type Rules as RulesClass, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -14,7 +15,7 @@ describe('Condition', () => {
         '=',
         bool(true)
       ]);
-      expect(`${node}`).toBe('(true = true)');
+      expect(node.toTrimmedString()).toBe('(true = true)');
     });
 
     it('should serialize an and', () => {
@@ -23,7 +24,7 @@ describe('Condition', () => {
         'and',
         bool(true)
       ]);
-      expect(`${node}`).toBe('(true and true)');
+      expect(node.toTrimmedString()).toBe('(true and true)');
     });
 
     it('should serialize an or', () => {
@@ -32,7 +33,7 @@ describe('Condition', () => {
         'or',
         bool(true)
       ]);
-      expect(`${node}`).toBe('(true or true)');
+      expect(node.toTrimmedString()).toBe('(true or true)');
     });
 
     it('should serialize a negated condition', () => {
@@ -41,7 +42,7 @@ describe('Condition', () => {
         '=',
         bool(true)
       ], { negate: true });
-      expect(`${node}`).toBe('not (true = true)');
+      expect(node.toTrimmedString()).toBe('not (true = true)');
     });
 
     it('does not allocate options when rendering a default condition', () => {
@@ -63,6 +64,22 @@ describe('Condition', () => {
       ]);
 
       expect(node.render(context)).toBe('false');
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
+    });
+
+    it('writes evaluated condition render output into flat buffers', async () => {
+      const buffer = createRenderBuffer('flat');
+      const node = condition([
+        bool(true),
+        '=',
+        bool(false)
+      ]);
+
+      expect(await node.render(context, buffer)).toBe('false');
+      expect(buffer.parts).toEqual(['false']);
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
     });
 
     it('resolves conditions without touching render state', async () => {
@@ -75,7 +92,32 @@ describe('Condition', () => {
       const resolved = await node.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('false');
+      expect(node.evaluated).toBe(false);
+      expect(node.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
+    });
+
+    it('keeps source condition child containers canonical after resolve(context)', async () => {
+      const root = rules([
+        vardecl({
+          name: any('item'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await root.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const node = condition([
+        list([
+          any('one'),
+          ref({ key: 'item' }, { type: 'variable' })
+        ])
+      ]);
+      const resolved = await node.resolve(context);
+
+      expect(resolved.toTrimmedString()).toBe('false');
+      expect(node.toTrimmedString()).toBe('one, $item');
     });
   });
 
@@ -87,7 +129,7 @@ describe('Condition', () => {
         bool(true)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
     });
 
     it('should evaluate a condition', async () => {
@@ -97,7 +139,7 @@ describe('Condition', () => {
         bool(false)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('false');
+      expect(evald.render(context)).toBe('false');
     });
 
     it('should evaluate a condition', async () => {
@@ -107,7 +149,7 @@ describe('Condition', () => {
         bool(false)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('false');
+      expect(evald.render(context)).toBe('false');
     });
 
     it('should compare dimensions', async () => {
@@ -117,7 +159,7 @@ describe('Condition', () => {
         num(10)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
     });
 
     it('should compare dimensions', async () => {
@@ -127,7 +169,7 @@ describe('Condition', () => {
         num(11)
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('false');
+      expect(evald.render(context)).toBe('false');
     });
 
     it('should compare dimensions', async () => {
@@ -137,7 +179,7 @@ describe('Condition', () => {
         dimension([10, 'px'])
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
     });
 
     it('should compare dimensions', async () => {
@@ -147,7 +189,7 @@ describe('Condition', () => {
         dimension([1000, 'ms'])
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBe('true');
+      expect(evald.render(context)).toBe('true');
     });
   });
 });

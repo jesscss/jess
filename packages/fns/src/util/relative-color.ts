@@ -1,6 +1,6 @@
 import {
   type Node,
-  type List,
+  List,
   Sequence,
   Any,
   Color,
@@ -8,8 +8,15 @@ import {
   Call,
   Dimension,
   Operation,
-  type Operator
+  type LocationInfo
 } from '@jesscss/core';
+
+type RGBChannelValues = { r: number; g: number; b: number; alpha: number };
+type HSLChannelValues = { h: number; s: number; l: number; alpha: number };
+
+function nodeLocation(node: Node): LocationInfo | undefined {
+  return node.location.length === 6 ? node.location : undefined;
+}
 
 function unwrapCalcChannelExpression(node: Node): Node {
   if (!(node instanceof Call)) {
@@ -101,84 +108,92 @@ export function getRGBChannelValues(originColor: Color): {
  */
 function substituteChannelVariables(
   node: Node,
-  channelValues: { r: number; g: number; b: number; alpha: number } | { h: number; s: number; l: number; alpha: number },
+  channelValues: RGBChannelValues | HSLChannelValues,
   format: 'rgb' | 'hsl'
 ): Node {
   // If it's an Any node representing a channel variable, replace it with a Dimension
   if (node instanceof Any && typeof node.value === 'string') {
     const channelName = node.value.toLowerCase();
-    // Handle location - it can be undefined, empty array, or proper LocationInfo
-    // TypeScript needs explicit narrowing to avoid [] type
-    let location: any = undefined;
-    if (node.location && Array.isArray(node.location) && node.location.length >= 6) {
-      location = node.location;
-    }
-    const context = (node as any).context;
+    const location = nodeLocation(node);
 
-    if (format === 'rgb') {
-      const values = channelValues as { r: number; g: number; b: number; alpha: number };
+    if (format === 'rgb' && 'r' in channelValues) {
       switch (channelName) {
         case 'r':
-          return new Dimension({ number: values.r, unit: '' }, node.options, location, context);
+          return new Dimension({ number: channelValues.r, unit: '' }, node.options, location, node.treeContext);
         case 'g':
-          return new Dimension({ number: values.g, unit: '' }, node.options, location, context);
+          return new Dimension({ number: channelValues.g, unit: '' }, node.options, location, node.treeContext);
         case 'b':
-          return new Dimension({ number: values.b, unit: '' }, node.options, location, context);
+          return new Dimension({ number: channelValues.b, unit: '' }, node.options, location, node.treeContext);
         case 'alpha':
           // For RGB context, alpha is 0-1, but when used in calc for r/g/b, it should be 0-255
           // However, according to spec, channel values are resolved first, so alpha stays 0-1
           // The conversion happens when the result is used for r/g/b output
-          return new Dimension({ number: values.alpha, unit: '' }, node.options, location, context);
+          return new Dimension({ number: channelValues.alpha, unit: '' }, node.options, location, node.treeContext);
       }
-    } else {
-      const values = channelValues as { h: number; s: number; l: number; alpha: number };
+    } else if (format === 'hsl' && 'h' in channelValues) {
       switch (channelName) {
         case 'h':
-          return new Dimension({ number: values.h, unit: 'deg' }, node.options, location, context);
+          return new Dimension({ number: channelValues.h, unit: 'deg' }, node.options, location, node.treeContext);
         case 's':
-          return new Dimension({ number: values.s * 100, unit: '%' }, node.options, location, context);
+          return new Dimension({ number: channelValues.s * 100, unit: '%' }, node.options, location, node.treeContext);
         case 'l':
-          return new Dimension({ number: values.l * 100, unit: '%' }, node.options, location, context);
+          return new Dimension({ number: channelValues.l * 100, unit: '%' }, node.options, location, node.treeContext);
         case 'alpha':
-          return new Dimension({ number: values.alpha, unit: '' }, node.options, location, context);
+          return new Dimension({ number: channelValues.alpha, unit: '' }, node.options, location, node.treeContext);
       }
     }
   }
 
   // If it's a Call node (like calc()), substitute channel variables and evaluate
   if (node instanceof Call) {
-    const cloned = node.clone();
-    // Recursively substitute in arguments
-    const { args: clonedArgs } = cloned.value;
-    if (clonedArgs) {
-      const { args: origArgs } = node.value;
-      const substitutedArgs = origArgs!.value.map((arg: Node) =>
-        substituteChannelVariables(arg, channelValues, format)
-      );
-      clonedArgs.set(null, substitutedArgs);
-    }
-    return cloned;
+    const { args } = node.value;
+    const substitutedArgs = args
+      ? new List(
+          args.value.map((arg: Node) =>
+            substituteChannelVariables(arg, channelValues, format)
+          ),
+          args.options,
+          nodeLocation(args),
+          args.treeContext
+        ).inherit(args)
+      : undefined;
+    return new Call({
+      ...node.value,
+      args: substitutedArgs
+    }, node.options, nodeLocation(node), node.treeContext).inherit(node);
   }
 
   // If it's an Operation, recursively substitute in its operands
   if (node instanceof Operation) {
-    const cloned = node.clone();
     const [left, op, right] = node.value;
-    cloned.set(null, [
+    return new Operation([
       substituteChannelVariables(left, channelValues, format),
       op,
       substituteChannelVariables(right, channelValues, format)
-    ]);
-    return cloned;
+    ], node.options, nodeLocation(node), node.treeContext).inherit(node);
   }
 
   // If it's a Sequence or List, recursively substitute in its values
-  if ('value' in node && Array.isArray((node as any).value)) {
-    const cloned = node.clone();
-    cloned.set(null, (node as any).value.map((item: Node) =>
-      substituteChannelVariables(item, channelValues, format)
-    ));
-    return cloned;
+  if (node instanceof Sequence) {
+    return new Sequence(
+      node.value.map((item: Node) =>
+        substituteChannelVariables(item, channelValues, format)
+      ),
+      node.options,
+      nodeLocation(node),
+      node.treeContext
+    ).inherit(node);
+  }
+
+  if (node instanceof List) {
+    return new List(
+      node.value.map((item: Node) =>
+        substituteChannelVariables(item, channelValues, format)
+      ),
+      node.options,
+      nodeLocation(node),
+      node.treeContext
+    ).inherit(node);
   }
 
   // For other node types, return as-is

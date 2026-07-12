@@ -1,4 +1,6 @@
-import type { OptionalLocation } from '@jesscss/core';
+import type { LocationInfo } from '@jesscss/core';
+
+type OptionalLocation = LocationInfo | undefined;
 
 export class OutputCollector {
   strings: string[] = [];

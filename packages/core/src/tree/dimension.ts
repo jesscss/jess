@@ -12,6 +12,12 @@ import { type Operator, calculate } from './util/calculate.js';
 import { logger } from '../logger.js';
 import round from 'lodash-es/round.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
 
 // import type { Context } from '../context.js'
 // import type { OutputCollector } from '../output'
@@ -22,6 +28,9 @@ export type DimensionValue = {
 };
 
 const { isArray } = Array;
+const LENGTH_UNITS: LengthUnit[] = ['m', 'cm', 'mm', 'in', 'px', 'pt', 'pc'];
+const DURATION_UNITS: DurationUnit[] = ['s', 'ms'];
+const ANGLE_UNITS: AngleUnit[] = ['rad', 'deg', 'grad', 'turn'];
 
 type LengthUnit = 'm' | 'cm' | 'mm' | 'in' | 'px' | 'pt' | 'pc';
 type DurationUnit = 's' | 'ms';
@@ -46,13 +55,17 @@ export class Dimension extends Node<DimensionValue> {
   get unitToGroup() {
     let unitToGroup = this._unitToGroup;
     if (!unitToGroup) {
-      const lengthEntries: UnitMapEntries = ['m', 'cm', 'mm', 'in', 'px', 'pt', 'pc'].map(unit => [unit as LengthUnit, ConversionGroup.Length]);
-      const durationEntries: UnitMapEntries = ['s', 'ms'].map(unit => [unit as DurationUnit, ConversionGroup.Duration]);
-      const angleEntries: UnitMapEntries = ['rad', 'deg', 'grad', 'turn'].map(unit => [unit as AngleUnit, ConversionGroup.Angle]);
+      const lengthEntries: UnitMapEntries = LENGTH_UNITS.map(unit => [unit, ConversionGroup.Length]);
+      const durationEntries: UnitMapEntries = DURATION_UNITS.map(unit => [unit, ConversionGroup.Duration]);
+      const angleEntries: UnitMapEntries = ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]);
       const entries = lengthEntries.concat(durationEntries).concat(angleEntries);
       this._unitToGroup = unitToGroup = new Map(entries);
     }
     return unitToGroup;
+  }
+
+  private isConversionUnit(unit: string): unit is ConversionUnit {
+    return this.unitToGroup.has(unit);
   }
 
   override valueOf() {
@@ -146,11 +159,15 @@ export class Dimension extends Node<DimensionValue> {
       return new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }).inherit(this);
     }
 
+    if (!this.isConversionUnit(aUnit) || !this.isConversionUnit(bUnit)) {
+      throw new TypeError('Incompatible units. Change the units or use the unit function');
+    }
     const group = conversions[bGroup];
-    // @ts-expect-error - set up proper indexing later
-    let atomicUnit = group[aUnit] as number;
-    // @ts-expect-error - set up proper indexing later
-    let targetUnit = group[bUnit] as number;
+    const atomicUnit = group[aUnit];
+    const targetUnit = group[bUnit];
+    if (atomicUnit === undefined || targetUnit === undefined) {
+      throw new TypeError('Incompatible units. Change the units or use the unit function');
+    }
 
     if (isPreserveMode && (op === '*' || op === '/')) {
       return new Dimension({
@@ -165,7 +182,7 @@ export class Dimension extends Node<DimensionValue> {
 
   override compare(b: Node, context?: Context): 0 | 1 | -1 | undefined {
     if (b.type === 'Any') {
-      const text = String((b as any).value ?? '').trim();
+      const text = String(b.value ?? '').trim();
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
@@ -232,11 +249,15 @@ export class Dimension extends Node<DimensionValue> {
         }
         return undefined;
       }
+      if (!this.isConversionUnit(aUnit) || !this.isConversionUnit(bUnit)) {
+        return undefined;
+      }
       const group = conversions[bGroup];
-      // @ts-expect-error - set up proper indexing later
-      let atomicUnit = group[aUnit] as number;
-      // @ts-expect-error - set up proper indexing later
-      let targetUnit = group[bUnit] as number;
+      const atomicUnit = group[aUnit];
+      const targetUnit = group[bUnit];
+      if (atomicUnit === undefined || targetUnit === undefined) {
+        return undefined;
+      }
 
       bVal = bVal / (atomicUnit / targetUnit);
 
@@ -304,17 +325,29 @@ export class Dimension extends Node<DimensionValue> {
     return w.getSince(mark);
   }
 
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
+  }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
+
   /** @todo - move to visitors */
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add(this.toString(), this.location)
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const pre = context.pre
   //   out.add('$J.num({\n' +
-  //     `  ${pre}value: ${this.value},\n` +
-  //     `  ${pre}unit: "${this.unit ?? ''}"\n` +
-  //     `${pre}})`
+  //     `  value: ${this.value},\n` +
+  //     `  unit: "${this.unit ?? ''}"\n` +
+  //     `})`
   //   , this.location)
   // }
 }
@@ -325,7 +358,7 @@ const enum ConversionGroup {
   Angle = 2
 }
 
-const conversions = {
+const conversions: Record<ConversionGroup, Partial<Record<ConversionUnit, number>>> = {
   [ConversionGroup.Length]: {
     m: 1,
     cm: 0.01,
@@ -334,17 +367,17 @@ const conversions = {
     px: 0.0254 / 96,
     pt: 0.0254 / 72,
     pc: 0.0254 / 72 * 12
-  } satisfies Record<LengthUnit, number>,
+  },
   [ConversionGroup.Duration]: {
     s: 1,
     ms: 0.001
-  } satisfies Record<DurationUnit, number>,
+  },
   [ConversionGroup.Angle]: {
     rad: 1 / (2 * Math.PI),
     deg: 1 / 360,
     grad: 1 / 400,
     turn: 1
-  } satisfies Record<AngleUnit, number>
+  }
 };
 
 defineType(Dimension, 'Dimension');

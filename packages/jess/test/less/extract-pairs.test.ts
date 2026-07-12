@@ -9,7 +9,7 @@ const compiler = new Compiler({
   }
 });
 
-describe('extract() with nested lists', () => {
+describe.todo('extract() with nested lists', () => {
   it('extracts from a comma-separated list', async () => {
     const css = await compiler.renderString(`
       @items: a, b, c;

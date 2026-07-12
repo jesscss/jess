@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import type {
   ITokenConfig,
   TokenType,
   IMultiModeLexerDefinition,
   TokenPattern,
   CustomPatternMatcherFunc
-} from '@chevrotain/types';
+} from 'chevrotain';
 import {
   Lexer,
   createToken

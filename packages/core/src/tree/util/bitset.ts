@@ -1,38 +1,45 @@
 import { default as OriginalBitSet } from 'bitset';
 
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'number');
+}
+
+function dataOf(bitset: OriginalBitSet): number[] | undefined {
+  const data: unknown = Reflect.get(bitset, 'data');
+  return isNumberArray(data) ? data : undefined;
+}
+
+function isInverted(bitset: OriginalBitSet): boolean {
+  return Reflect.get(bitset, '_') === 1;
+}
+
+function withLibrary<T>(bitset: OriginalBitSet, library: BitSetLibrary<T> | undefined): BitSet<T> {
+  const set = new BitSet<T>(bitset);
+  set._library = library;
+  return set;
+}
+
 export class BitSet<T = unknown> extends OriginalBitSet {
   _library: BitSetLibrary<T> | undefined;
 
   override or(other: BitSet<T>): BitSet<T> {
-    let set = super.or(other) as BitSet<T>;
-    set._library = this._library;
-    return set;
+    return withLibrary(super.or(other), this._library);
   }
 
   override clone(): BitSet<T> {
-    let set: any = new BitSet<T>();
-    set.data = (this as any).data.slice();
-    set._ = (this as any)._;
-    set._library = this._library;
-    return set;
+    return withLibrary(super.clone(), this._library);
   }
 
   override and(other: BitSet<T>): BitSet<T> {
-    let set = super.and(other) as BitSet<T>;
-    set._library = this._library;
-    return set;
+    return withLibrary(super.and(other), this._library);
   }
 
   override xor(other: BitSet<T>): BitSet<T> {
-    let set = super.xor(other) as BitSet<T>;
-    set._library = this._library;
-    return set;
+    return withLibrary(super.xor(other), this._library);
   }
 
   override not(): BitSet<T> {
-    let set = super.not() as BitSet<T>;
-    set._library = this._library;
-    return set;
+    return withLibrary(super.not(), this._library);
   }
 }
 
@@ -89,7 +96,7 @@ export class BitSetLibrary<T = unknown> {
   }
 
   forEachValue(bitset: BitSet<T>, fn: (value: T, position: number) => void): void {
-    const data = (bitset as { data?: number[] }).data;
+    const data = dataOf(bitset);
     if (!data) {
       return;
     }
@@ -130,14 +137,12 @@ export function isSubsetOf(a: BitSet, b: BitSet): boolean {
   if (a._library !== b._library) {
     throw new Error('Bitsets must be from the same library');
   }
-  const aInternal = a as { data?: number[]; _?: number };
-  const bInternal = b as { data?: number[]; _?: number };
-  if (aInternal._ || bInternal._) {
+  if (isInverted(a) || isInverted(b)) {
     return a.and(b).equals(a);
   }
 
-  const aData = aInternal.data;
-  const bData = bInternal.data;
+  const aData = dataOf(a);
+  const bData = dataOf(b);
   if (!aData) {
     return true;
   }
@@ -161,8 +166,8 @@ export function isDisjoint(a: BitSet, b: BitSet): boolean {
   if (a._library !== b._library) {
     throw new Error('Bitsets must be from the same library');
   }
-  const intersection = a.and(b) as BitSet;
-  const data = (intersection as { data?: number[] }).data;
+  const intersection = a.and(b);
+  const data = dataOf(intersection);
   if (!data) {
     return true;
   }

@@ -411,6 +411,25 @@ describe('RecursiveDescentParser', () => {
       // Second token has WS before it
       expect(p.hasWS()).toBe(true);
     });
+
+    test('indexes one trivia run for before and after lookups', () => {
+      const p = new RecursiveDescentParser();
+      p.input = [
+        tok(Ident, 'a', 0),
+        tok(WS, ' ', 1),
+        tok(Comment, '/* hi */', 2),
+        tok(Ident, 'b', 10)
+      ];
+
+      const before = p.triviaMap.lookup(10, 'before');
+      const after = p.triviaMap.lookup(0, 'after');
+      expect(before).toBe(after);
+      expect(before?.map(token => token.image)).toEqual([' ', '/* hi */']);
+      expect(p.noSep()).toBe(true);
+      p.CONSUME(Ident);
+      expect(p.noSep()).toBe(false);
+      expect(p.hasWS()).toBe(true);
+    });
   });
 
   describe('SUBRULE', () => {

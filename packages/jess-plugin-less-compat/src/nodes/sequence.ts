@@ -33,8 +33,7 @@ export const transformSequenceToLess = createFromAdapter<Sequence>({
         try {
           const jessReplacement = fromLessNode(visited, { cache: new WeakMap() });
           if (item instanceof Node) {
-            jessReplacement.pre = item.pre;
-            jessReplacement.post = item.post;
+            jessReplacement.inherit(item);
           }
           seq.adopt(jessReplacement);
           const seqArr = seq.value as Node[];

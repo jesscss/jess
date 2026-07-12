@@ -1,17 +1,27 @@
-import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated } from '../index.js';
+import { rules, sellist, sel, el, decl, ruleset, spaced, any, interpolated, F_MAY_ASYNC, BasicSelector } from '../index.js';
 import { Context } from '../../context.js';
-import { F_VISIBLE } from '../node.js';
+import { F_EXTENDED, F_EXTEND_TARGET, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
 import { serializeRulesContainer } from '../util/serialize-helper.js';
 import { INTERPOLATION_PLACEHOLDER } from '../interpolated.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('Rule', () => {
   beforeEach(() => {
     context = new Context();
   });
-  it('should serialize to CSS', () => {
+  it('should serialize to CSS', async () => {
     let node = ruleset({
       selector: sellist([sel([el('foo')])]),
       rules: rules([
@@ -20,7 +30,7 @@ describe('Rule', () => {
       ])
     });
     let nodes = rules([node, node]);
-    expect(`${nodes}`).toBeString(`
+    expect(nodes.toTrimmedString()).toBeString(`
       foo {
         border: 1px solid black;
         color: #eee;
@@ -30,7 +40,7 @@ describe('Rule', () => {
     `);
   });
 
-  it('coalesces adjacent identical headers for interpolated and literal rulesets', () => {
+  it('keeps authored literal and interpolated sibling rulesets separate without collapse', async () => {
     const node = rules([
       ruleset({
         selector: sellist([sel([el('.foo')])]),
@@ -53,9 +63,11 @@ describe('Rule', () => {
       })
     ]);
 
-    expect(`${node}`).toBeString(`
+    expect(await renderNodeToString(node, context)).toBeString(`
       .foo {
         a: 1;
+      }
+      .foo {
         a: 2;
       }
     `);
@@ -78,6 +90,139 @@ describe('Rule', () => {
     `);
   });
 
+  it('restores parent ruleset frame when child registration prep throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.saved'),
+      rules: rules([])
+    });
+    const throwingChild = ruleset({
+      selector: el('.child'),
+      rules: rules([])
+    });
+    throwingChild.prepareRegistration = () => {
+      throw new Error('child registration prep failed');
+    };
+    const node = ruleset({
+      selector: el('.parent'),
+      rules: rules([throwingChild])
+    });
+    context.rulesetFrames = [savedFrame];
+
+    expect(() => node.prepareRegistration(context)).toThrow('child registration prep failed');
+    expect(context.rulesetFrames).toEqual([savedFrame]);
+  });
+
+  it('restores parent ruleset frame when child registration prep rejects', async () => {
+    const savedFrame = ruleset({
+      selector: el('.saved'),
+      rules: rules([])
+    });
+    const throwingChild = ruleset({
+      selector: el('.child'),
+      rules: rules([])
+    });
+    throwingChild.prepareRegistration = () => Promise.reject(new Error('child registration prep failed'));
+    const node = ruleset({
+      selector: el('.parent'),
+      rules: rules([throwingChild])
+    });
+    context.rulesetFrames = [savedFrame];
+
+    await expect(node.prepareRegistration(context)).rejects.toThrow('child registration prep failed');
+    expect(context.rulesetFrames).toEqual([savedFrame]);
+  });
+
+  it('keeps source selector canonical after ruleset registration prep', async () => {
+    const selector = sellist([sel([el('.foo')])]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+
+    const prepared = await node.prepareRegistration(context);
+
+    expect(prepared).not.toBe(node);
+    expect(selector.parent).toBe(node);
+    expect(prepared.value.rules).toBe(body);
+  });
+
+  it('renders comment-free ruleset headers without cloning source-free selector leaves', () => {
+    const selectorLeaf = el('.foo');
+    const originalClone = selectorLeaf.clone;
+    let selectorLeafClones = 0;
+    selectorLeaf.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      selectorLeafClones++;
+      return originalClone.apply(this, args);
+    };
+    const selector = sellist([sel([selectorLeaf])]);
+    const node = ruleset({
+      selector,
+      rules: rules([])
+    });
+
+    try {
+      expect(node.getHeaderString(getPrintOptions(), true)).toBe('.foo {\n');
+      expect(selectorLeafClones).toBe(0);
+      expect(selectorLeaf.parent?.valueOf()).toBe('.foo');
+    } finally {
+      selectorLeaf.clone = originalClone;
+    }
+  });
+
+  it('restores eval frames when body eval throws', () => {
+    const savedRulesetFrame = ruleset({
+      selector: el('.saved'),
+      rules: rules([])
+    });
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => {
+      throw new Error('body eval failed');
+    };
+    const node = ruleset({
+      selector: el('.parent'),
+      rules: body
+    });
+    context.rulesetFrames = [savedRulesetFrame];
+    context.frames = [savedFrame];
+
+    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
+    expect(context.frames).toEqual([savedFrame]);
+  });
+
+  it('restores eval frames when body eval rejects', async () => {
+    const savedRulesetFrame = ruleset({
+      selector: el('.saved'),
+      rules: rules([])
+    });
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => Promise.reject(new Error('body eval failed'));
+    body.addFlag(F_MAY_ASYNC);
+    const node = ruleset({
+      selector: el('.parent'),
+      rules: body
+    });
+    context.rulesetFrames = [savedRulesetFrame];
+    context.frames = [savedFrame];
+
+    await expect(node.eval(context)).rejects.toThrow('body eval failed');
+    expect(context.rulesetFrames).toEqual([savedRulesetFrame]);
+    expect(context.frames).toEqual([savedFrame]);
+  });
+
   it('resolves a ruleset without touching render state', async () => {
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
@@ -95,7 +240,30 @@ describe('Rule', () => {
         color: #eee;
       }
     `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source selector canonical while reusing body registration surface after resolve(context)', async () => {
+    const selector = sellist([sel([el('.foo')])]);
+    const body = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const node = ruleset({
+      selector,
+      rules: body
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      .foo {
+        color: red;
+      }
+    `);
+    expect(selector.parent).toBe(node);
+    expect(resolved.value.rules).toBe(body);
   });
 
   it('getHeaderString keeps reference target filtering render-local', () => {
@@ -116,6 +284,53 @@ describe('Rule', () => {
     expect(options.referenceFilterTargets).toBe(false);
   });
 
+  it('filters reference-mode extended headers without cloning source-free selector leaves', () => {
+    const targetLeaf = el('.target');
+    const addedLeaf = el('.added');
+    const originalClone = addedLeaf.clone;
+    let addedLeafClones = 0;
+    addedLeaf.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      addedLeafClones++;
+      return originalClone.apply(this, args);
+    };
+    const target = sel([targetLeaf]);
+    target.addFlag(F_EXTEND_TARGET);
+    const added = sel([addedLeaf]);
+    added.addFlag(F_EXTENDED);
+    const node = ruleset({
+      selector: sellist([target, added]),
+      rules: rules([])
+    });
+    const options = getPrintOptions({
+      writer: new OutputWriter(),
+      referenceMode: true,
+      referenceRenderEnabled: true
+    });
+
+    try {
+      expect(node.getHeaderString(options)).toBe('.added {\n');
+      expect(addedLeafClones).toBe(0);
+      expect(addedLeaf.parent?.valueOf()).toBe('.added');
+    } finally {
+      addedLeaf.clone = originalClone;
+    }
+  });
+
+  it('streams header selectors without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = ruleset({
+      selector: sellist([sel([el('.foo')])]),
+      rules: rules([])
+    });
+    const options = getPrintOptions({ writer });
+
+    expect(node.getHeaderString(options)).toBe('.foo {\n');
+    expect(writer.toString()).toBe('');
+    expect(writer.captures).toBe(0);
+  });
+
   it('getHeaderString keeps selector visibility forcing render-local', () => {
     const selector = el('.foo');
     selector.removeFlag(F_VISIBLE);
@@ -126,11 +341,25 @@ describe('Rule', () => {
     const options = getPrintOptions({
       writer: new OutputWriter()
     });
+    const originalClone = BasicSelector.prototype.clone;
+    let basicSelectorCloneCalls = 0;
+    BasicSelector.prototype.clone = function cloneForCounting(
+      this: BasicSelector,
+      ...args: Parameters<BasicSelector['clone']>
+    ): ReturnType<BasicSelector['clone']> {
+      basicSelectorCloneCalls++;
+      return originalClone.apply(this, args);
+    };
 
-    const header = node.getHeaderString(options);
+    try {
+      const header = node.getHeaderString(options);
 
-    expect(header).toContain('.foo');
-    expect(selector.hasFlag(F_VISIBLE)).toBe(false);
+      expect(header).toContain('.foo');
+      expect(basicSelectorCloneCalls).toBe(0);
+      expect(selector.hasFlag(F_VISIBLE)).toBe(false);
+    } finally {
+      BasicSelector.prototype.clone = originalClone;
+    }
   });
 
   it('serializeRulesContainer keeps reference render flags render-local', () => {

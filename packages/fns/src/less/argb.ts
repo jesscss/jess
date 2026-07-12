@@ -1,16 +1,19 @@
-import { defineFunction, Color, Num } from '@jesscss/core';
+import { defineFunction, Color } from '@jesscss/core';
 
 export default defineFunction(
   'argb',
   function(color: Color) {
-    let newColor = color.clone();
     const values = color.rgb;
     values.unshift(Math.round(color.alpha * 255));
-    newColor.value.node = '#' + values.map(function(c) {
+    const node = '#' + values.map(function(c) {
       let hex = c.toString(16);
       return hex.length === 1 ? '0' + hex : hex;
     }).join('');
-    return newColor;
+    return new Color({
+      node,
+      rgb: color._rgb,
+      alpha: color.alpha
+    });
   },
   {
     params: [{

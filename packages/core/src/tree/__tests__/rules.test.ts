@@ -4,6 +4,7 @@ import {
   el,
   sellist,
   rules,
+  comment,
   decl,
   vardecl,
   spaced,
@@ -19,15 +20,31 @@ import {
   style,
   quoted,
   type Declaration,
-  type Selector
+  type Selector,
+  atrule
 } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import type { FindOptions } from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
 import { N } from '../node-type.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
+
+function expectRulesNode(node: Node | undefined): Rules {
+  if (!isNode(node, N.Rules)) {
+    throw new Error(`Expected Rules, got ${node?.type ?? 'undefined'}`);
+  }
+  return node;
+}
+
+function expectDeclarationNode(node: Node | undefined): Declaration {
+  if (!isNode(node, N.Declaration)) {
+    throw new Error(`Expected Declaration, got ${node?.type ?? 'undefined'}`);
+  }
+  return node;
+}
 
 function getPropWithContext(context: Context, n: Rules, key: string, opts: FindOptions = {}) {
   context.rulesContext = n;
@@ -46,6 +63,23 @@ function getDeclEitherWithContext(context: Context, n: Rules, key: string, opts:
   context.rulesContext = n;
   opts.searchParents = true;
   return n.find('declaration', key, undefined, opts);
+}
+
+class WholeBufferCountingWriter extends OutputWriter {
+  wholeBufferReads = 0;
+  captures = 0;
+
+  override getSince(mark: number): string {
+    if (mark === 0) {
+      this.wholeBufferReads++;
+    }
+    return super.getSince(mark);
+  }
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
 }
 
 // function getSelectorWithContext(context: Context, n: Rules, key: Selector, opts: FindOptions = {}, start?: number) {
@@ -96,10 +130,11 @@ describe('Rules', () => {
     index = node.at(1)?.index ?? index;
     expect(node.at(2)?.index).toBeGreaterThan(index);
     index = node.at(2)?.index ?? index;
-    expect((node.at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
-    index = (node.at(2) as Rules).at(1)?.index ?? index;
-    expect((node.at(2) as Rules).at(2)?.index).toBeGreaterThan(index);
-    expect(((node.at(2) as Rules).at(2) as Rules).at(0)?.index).toBeGreaterThan(index);
+    const childRules = expectRulesNode(node.at(2));
+    expect(childRules.at(0)?.index).toBeGreaterThan(index);
+    index = childRules.at(1)?.index ?? index;
+    expect(childRules.at(2)?.index).toBeGreaterThan(index);
+    expect(expectRulesNode(childRules.at(2)).at(0)?.index).toBeGreaterThan(index);
   });
 
   it('keeps Rules render flags render-local', () => {
@@ -135,6 +170,48 @@ describe('Rules', () => {
     expect(context.printState.writer?.toString()).toBe('color: red;');
   });
 
+  it('derives rules resolve wrappers without shallow-cloning the source rules', async () => {
+    const originalClone = Node.prototype.clone;
+    let clonedRules = 0;
+    Node.prototype.clone = function cloneForCounting(
+      this: Node,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      if (this.type === 'Rules') {
+        clonedRules++;
+      }
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const root = rules([
+        vardecl({ name: any('tone'), value: any('red') }),
+        decl({ name: any('color'), value: ref({ key: 'tone' }, { type: 'variable' }) })
+      ]);
+
+      const resolved = await root.resolve(context);
+
+      expect(resolved.toTrimmedString()).toContain('color: red;');
+      expect(clonedRules).toBe(0);
+      expect(root.evaluated).toBe(false);
+    } finally {
+      Node.prototype.clone = originalClone;
+    }
+  });
+
+  it('does not count direct comment children as numeric rule entries', () => {
+    const node = rules([
+      comment('/**/'),
+      decl({ name: 'color', value: any('red') }),
+      comment('/* two */'),
+      decl({ name: 'width', value: any('1px') })
+    ]);
+
+    expect(node.at(0)?.type).toBe('Declaration');
+    expect(node.at(1)?.type).toBe('Declaration');
+    expect(String(node.at(-1))).toBe('width: 1px');
+  });
+
   it('keeps source serialization separate from context-owned render state', async () => {
     const scope = await rules([
       vardecl({ name: 'tone', value: any('red') })
@@ -151,17 +228,47 @@ describe('Rules', () => {
     expect(node.toString()).toBe('$tone');
   });
 
-  it('reuses context-owned print state for explicit toString options with context', () => {
+  it('keeps explicit toString writers detached from context print state', () => {
     const node = rules([
       decl({ name: 'color', value: any('red') })
     ]);
+    const firstWriter = new OutputWriter();
+    const secondWriter = new OutputWriter();
 
-    const first = node.toString({ context, writer: new OutputWriter() });
-    const second = node.toString({ context, writer: new OutputWriter() });
+    const first = node.toString({ context, writer: firstWriter });
+    const second = node.toString({ context, writer: secondWriter });
 
     expect(first).toBe('color: red;\n');
     expect(second).toBe('color: red;\n');
-    expect(context.printState.writer?.toString()).toBe('color: red;');
+    expect(firstWriter.toString()).toBe('color: red;');
+    expect(secondWriter.toString()).toBe('color: red;');
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('does not inspect the whole output buffer for each emitted child boundary', () => {
+    const writer = new WholeBufferCountingWriter();
+    const declarations = Array.from({ length: 12 }, (_, index) => (
+      decl({ name: `p${index}`, value: any(String(index)) })
+    ));
+    const node = rules(declarations);
+
+    expect(node.toString({ writer })).toContain('p11: 11;');
+    expect(writer.wholeBufferReads).toBeLessThanOrEqual(declarations.length + 4);
+  });
+
+  it('streams root charset and imports without capture scaffolding', () => {
+    const writer = new WholeBufferCountingWriter();
+    context.currentCharset = any('@charset "utf-8";', { role: 'charset' });
+    context.topImports = [
+      atrule({
+        name: any('@import', { role: 'atkeyword' }),
+        prelude: quoted(any('theme.css'))
+      })
+    ];
+    const node = rules([]);
+
+    expect(node.toString({ context, writer })).toBe('@charset "utf-8";\n@import "theme.css";\n');
+    expect(writer.captures).toBe(0);
   });
 
   it('keeps sibling ruleset braces intact when declarations render values through active context output', async () => {
@@ -186,11 +293,9 @@ describe('Rules', () => {
       })
     ]);
 
-    const evald = await root.eval(context);
-    context.root = evald as Rules;
-    context.rulesContext = evald as Rules;
+    const css = await renderNodeToString(root, context, { context });
 
-    expect(evald.toString({ context })).toBeString(`
+    expect(css).toBeString(`
       .a {
         width: 10px;
       }
@@ -203,6 +308,34 @@ describe('Rules', () => {
     `);
   });
 
+  it('keeps separate sibling rulesets with the same selector in separate blocks', async () => {
+    const root = rules([
+      ruleset({
+        selector: any('.same'),
+        rules: rules([
+          decl({ name: 'color', value: any('red') })
+        ])
+      }),
+      ruleset({
+        selector: any('.same'),
+        rules: rules([
+          decl({ name: 'background', value: any('blue') })
+        ])
+      })
+    ]);
+
+    const css = await renderNodeToString(root, context, { context });
+
+    expect(css).toBeString(`
+      .same {
+        color: red;
+      }
+      .same {
+        background: blue;
+      }
+    `);
+  });
+
   describe('Scope / lookups', () => {
     describe('set / get vars & props', () => {
       it('can do a normal get / set of properties', async () => {
@@ -211,7 +344,7 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
 
-        expect(`${getProp(node, 'foo')}`).toBe('foo: bar');
+        expect(getProp(node, 'foo')?.toTrimmedString()).toBe('foo: bar');
       });
 
       it('can do a normal get / set of variables', async () => {
@@ -219,7 +352,7 @@ describe('Rules', () => {
           vardecl({ name: 'foo', value: any('bar') })
         ]);
         node = await node.eval(context);
-        expect(`${getVar(node, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: bar');
       });
 
       it('find(declaration, key, undefined) picks VarDeclaration or Declaration by source order', async () => {
@@ -245,7 +378,7 @@ describe('Rules', () => {
           vardecl({ name: 'foo', value: any('two') })
         ]);
         node = await node.eval(context);
-        expect(`${getVar(node, 'foo')}`).toBe('$foo: two');
+        expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: two');
       });
 
       it.skip('will not set if defined', async () => {
@@ -258,7 +391,7 @@ describe('Rules', () => {
         node = await node.eval(context);
         /** This won't have been resolved, so we need to evaluate it. */
         let result = await getVar(node, 'first')!.eval(context);
-        expect(`${result}`).toBe('$first: one');
+        expect(result.toTrimmedString()).toBe('$first: one');
       });
 
       // it('will skip normalization', () => {
@@ -329,7 +462,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(inherited, 'foo')?.toTrimmedString()).toBe('$foo: bar');
       });
 
       it('inherits values when set after', async () => {
@@ -340,7 +473,7 @@ describe('Rules', () => {
         node.push(vardecl({ name: 'foo', value: any('bar') }));
 
         node = await node.eval(context);
-        expect(`${getVar(inherited, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(inherited, 'foo')?.toTrimmedString()).toBe('$foo: bar');
       });
 
       it('peeks into optional child scope', async () => {
@@ -355,7 +488,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        expect(`${getVar(node, 'one')}`).toBe('$one: two');
+        expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: two');
       });
 
       it('fails to get private child scope', async () => {
@@ -386,7 +519,7 @@ describe('Rules', () => {
         ]);
 
         node = await node.eval(context);
-        expect(`${getVar(node, 'one')}`).toBe('$one: one');
+        expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: one');
       });
 
       it('returns optional value when no public value found', async () => {
@@ -405,9 +538,9 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find optional value since no public value exists
-        expect(`${getVar(node, 'one')}`).toBe('$one: optional-value');
+        expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: optional-value');
         // Should find public value
-        expect(`${getVar(node, 'two')}`).toBe('$two: public-value');
+        expect(getVar(node, 'two')?.toTrimmedString()).toBe('$two: public-value');
       });
 
       it('handles optional values with mixed positions and start parameter', async () => {
@@ -433,14 +566,14 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find the last public value (third), not optional values
-        expect(`${getVar(node, 'var')}`).toBe('$var: third');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: third');
 
         // Test with start parameter - should find value before start position
         const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'third');
         if (thirdVar && 'index' in thirdVar) {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
-          expect(`${result}`).toBe('$var: second');
+          expect(result?.toTrimmedString()).toBe('$var: second');
         }
       });
 
@@ -466,9 +599,9 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find public value, not optional nested value
-        expect(`${getVar(node, 'nested')}`).toBe('$nested: public-nested');
+        expect(getVar(node, 'nested')?.toTrimmedString()).toBe('$nested: public-nested');
         // Should find public value, not optional deep value
-        expect(`${getVar(node, 'deep')}`).toBe('$deep: public-deep');
+        expect(getVar(node, 'deep')?.toTrimmedString()).toBe('$deep: public-deep');
       });
 
       it('selects last optional value when multiple optionals found and no public', async () => {
@@ -498,7 +631,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find the last optional value by source order (comparePosition)
-        expect(`${getVar(node, 'var')}`).toBe('$var: optional-third');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: optional-third');
       });
 
       it('handles optional values with start parameter in different Rules', async () => {
@@ -517,7 +650,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Find the last public value
-        expect(`${getVar(node, 'var')}`).toBe('$var: root-third');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: root-third');
 
         // Test with start parameter pointing to root-third
         const thirdVar = node.value.find(n => isNode(n, N.VarDeclaration) && n.value.name.valueOf() === 'var' && n.value.value.valueOf() === 'root-third');
@@ -525,7 +658,7 @@ describe('Rules', () => {
           const result = getVar(node, 'var', { start: thirdVar.index });
           expect(result).toBeDefined();
           // Should find root-second (before start), not optional value
-          expect(`${result}`).toBe('$var: root-second');
+          expect(result?.toTrimmedString()).toBe('$var: root-second');
         }
       });
 
@@ -545,7 +678,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find the last public value, ignoring optional values
-        expect(`${getVar(node, 'var')}`).toBe('$var: public-2');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: public-2');
       });
 
       it('handles optional values in Rules with different indices from parent', async () => {
@@ -566,14 +699,14 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find parent-2 (last public), not child-optional
-        expect(`${getVar(node, 'var')}`).toBe('$var: parent-2');
+        expect(getVar(node, 'var')?.toTrimmedString()).toBe('$var: parent-2');
 
         // Test lookup from within child Rules - should find its own value
         // Optional declarations are fallback-only and should not overtake public declarations
         // that are reachable in the lookup chain.
         const childVar = getVar(childRules, 'var');
         expect(childVar).toBeDefined();
-        expect(`${childVar}`).toBe('$var: parent-2');
+        expect(childVar?.toTrimmedString()).toBe('$var: parent-2');
       });
 
       it('handles multiple optional Rules with declarations at different positions', async () => {
@@ -600,11 +733,11 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         // Should find public-a, ignoring optional-a-1
-        expect(`${getVar(node, 'a')}`).toBe('$a: public-a');
+        expect(getVar(node, 'a')?.toTrimmedString()).toBe('$a: public-a');
         // Should find public-b, ignoring optional-b-1 and optional-b-2
-        expect(`${getVar(node, 'b')}`).toBe('$b: public-b');
+        expect(getVar(node, 'b')?.toTrimmedString()).toBe('$b: public-b');
         // Should find optional-c since no public c exists
-        expect(`${getVar(node, 'c')}`).toBe('$c: optional-c');
+        expect(getVar(node, 'c')?.toTrimmedString()).toBe('$c: optional-c');
       });
 
       it('nested rulesets inherit nearer parent vars over globals in Less mode', async () => {
@@ -636,11 +769,20 @@ describe('Rules', () => {
 
         root = await root.eval(context);
         expect(context.searchScope.size).toBe(0);
-        const scope1 = root.at(1) as any;
-        const scope2 = scope1.value.rules.at(1) as any;
-        const scope3 = scope2.value.rules.at(0) as any;
-        const scope3Rules = scope3.value.rules as Rules;
-        expect(`${getVar(scope3Rules, 'z', { start: 0 })}`).toBe('$z: black');
+        const scope1 = root.at(1);
+        if (!isNode(scope1, N.Ruleset)) {
+          throw new Error(`Expected Ruleset at index 1, got ${scope1?.type ?? 'undefined'}`);
+        }
+        const scope2 = scope1.value.rules.at(1);
+        if (!isNode(scope2, N.Ruleset)) {
+          throw new Error(`Expected Ruleset at nested index 1, got ${scope2?.type ?? 'undefined'}`);
+        }
+        const scope3 = scope2.value.rules.at(0);
+        if (!isNode(scope3, N.Ruleset)) {
+          throw new Error(`Expected Ruleset at nested index 0, got ${scope3?.type ?? 'undefined'}`);
+        }
+        const scope3Rules = scope3.value.rules;
+        expect(getVar(scope3Rules, 'z', { start: 0 })?.toTrimmedString()).toBe('$z: black');
         const scope3Found = scope3Rules.find('declaration', 'z', 'VarDeclaration', {
           filter: () => true,
           context,
@@ -648,11 +790,11 @@ describe('Rules', () => {
           searchParents: true,
           start: 0
         });
-        expect(`${scope3Found}`).toBe('$z: black');
-        const border = scope3Rules.at(0) as Declaration;
+        expect(scope3Found?.toTrimmedString()).toBe('$z: black');
+        const border = expectDeclarationNode(scope3Rules.at(0));
         context.rulesContext = scope3Rules;
         const evald = await border.eval(context);
-        expect(`${evald}`).toBe('border-color: black');
+        expect(evald.toTrimmedString()).toBe('border-color: black');
       });
 
       it('preserves start when searching later child rules', async () => {
@@ -674,9 +816,9 @@ describe('Rules', () => {
         ]);
 
         root = await root.eval(context);
-        const color = root.at(1) as Declaration;
+        const color = expectDeclarationNode(root.at(1));
         const evald = await color.eval(context);
-        expect(`${evald}`).toBe('color: blue');
+        expect(evald.toTrimmedString()).toBe('color: blue');
       });
 
       it('still sees later same-scope vars in Less mode', async () => {
@@ -696,9 +838,9 @@ describe('Rules', () => {
         ]);
 
         root = await root.eval(context);
-        const width = root.at(0) as Declaration;
+        const width = expectDeclarationNode(root.at(0));
         const evald = await width.eval(context);
-        expect(`${evald}`).toBe('total-width: 96em');
+        expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });
 
       it('still sees later parent-scope vars from inside nested rulesets in Less mode', async () => {
@@ -723,13 +865,15 @@ describe('Rules', () => {
         ]);
 
         root = await root.eval(context);
-        const grid = root.at(0) as any;
-        const width = grid.value.rules.at(0) as Declaration;
+        const grid = root.at(0);
+        if (!isNode(grid, N.Ruleset)) {
+          throw new Error(`Expected Ruleset at index 0, got ${grid?.type ?? 'undefined'}`);
+        }
+        const width = expectDeclarationNode(grid.value.rules.at(0));
         context.rulesContext = grid.value.rules;
         const evald = await width.eval(context);
-        expect(`${evald}`).toBe('total-width: 96em');
+        expect(evald.toTrimmedString()).toBe('total-width: 96em');
       });
-
 
       it('shadows variables #1', async () => {
         let node = rules([
@@ -741,7 +885,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         let inherited = node.at(1);
-        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one: three');
+        expect(getVar(expectRulesNode(inherited), 'one')?.toTrimmedString()).toBe('$one: three');
       });
 
       it('shadows variables #2', async () => {
@@ -755,7 +899,7 @@ describe('Rules', () => {
 
         node = await node.eval(context);
         let inherited = node.at(1);
-        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one: three');
+        expect(getVar(expectRulesNode(inherited), 'one')?.toTrimmedString()).toBe('$one: three');
       });
 
       it.skip('sets existing variables', async () => {
@@ -769,8 +913,8 @@ describe('Rules', () => {
         node = await node.eval(context);
         // With registry-based setDefined, the Rules node stays at index 1 (no array changes)
         let inherited = node.at(1);
-        expect(`${getVar(node, 'one')}`).toBe('$one: three');
-        expect(`${getVar(inherited as Rules, 'one')}`).toBe('$one := three');
+        expect(getVar(node, 'one')?.toTrimmedString()).toBe('$one: three');
+        expect(getVar(expectRulesNode(inherited), 'one')?.toTrimmedString()).toBe('$one := three');
       });
 
       it.skip('demonstrates setDefined behavior like Sass !global', async () => {
@@ -797,19 +941,19 @@ describe('Rules', () => {
         node = await node.eval(context);
 
         // The first rule should use the original value (red) - setDefined shouldn't affect earlier references
-        let firstRule = node.at(1) as Rules; // First rule (background)
-        let firstDecl = firstRule.at(0) as Declaration;
+        let firstRule = expectRulesNode(node.at(1)); // First rule (background)
+        let firstDecl = expectDeclarationNode(firstRule.at(0));
         let firstResult = await firstDecl.eval(context);
-        expect(`${firstResult}`).toBe('background: red');
+        expect(firstResult.toTrimmedString()).toBe('background: red');
 
         // The last rule should also use the updated value (blue)
-        let lastRule = node.at(3) as Rules; // Last rule (border-color)
-        let lastDecl = lastRule.at(0) as Declaration;
+        let lastRule = expectRulesNode(node.at(3)); // Last rule (border-color)
+        let lastDecl = expectDeclarationNode(lastRule.at(0));
         let lastResult = await lastDecl.eval(context);
-        expect(`${lastResult}`).toBe('border-color: blue');
+        expect(lastResult.toTrimmedString()).toBe('border-color: blue');
 
         // The root should have the updated value
-        expect(`${getVar(node, 'color')}`).toBe('$color: blue');
+        expect(getVar(node, 'color')?.toTrimmedString()).toBe('$color: blue');
       });
 
       it.skip('demonstrates Sass !global behavior with mixins - mixin resolves variables at include time', async () => {
@@ -895,13 +1039,13 @@ describe('Rules', () => {
         }
         // Rules is a Node with a value array, so use .value.length or check if it's a Rules node
         if (!isNode(boxRules, N.Rules)) {
-          throw new Error(`Expected Rules, got ${(boxRules as any)?.type || 'undefined'}`);
+          throw new Error(`Expected Rules, got ${boxRules?.type ?? 'undefined'}`);
         }
         expect(boxRules.value.length).toBe(2);
 
         // First declaration: color: $color
         let boxDecl1 = await boxRules.at(0)!.eval(context);
-        expect(`${boxDecl1}`).toBe('color: red');
+        expect(boxDecl1.toTrimmedString()).toBe('color: red');
 
         // Second: mixin call
         let boxMixinCall = boxRules.at(1);
@@ -916,7 +1060,7 @@ describe('Rules', () => {
         let boxMixinRules = boxMixinResult;
         expect(boxMixinRules.value.length).toBeGreaterThan(0);
         let boxMixinDecl = await boxMixinRules.at(0)!.eval(context);
-        expect(`${boxMixinDecl}`).toBe('color: red');
+        expect(boxMixinDecl.toTrimmedString()).toBe('color: red');
 
         // Find the .box3 ruleset (index 4)
         let box3Ruleset = node.at(4);
@@ -928,13 +1072,13 @@ describe('Rules', () => {
           throw new Error('Expected .box3 ruleset to have rules');
         }
         if (!isNode(box3Rules, N.Rules)) {
-          throw new Error(`Expected Rules, got ${(box3Rules as any)?.type || 'undefined'}`);
+          throw new Error(`Expected Rules, got ${box3Rules?.type ?? 'undefined'}`);
         }
         expect(box3Rules.value.length).toBe(2);
 
         // First declaration: color: $color
         let box3Decl1 = await box3Rules.at(0)!.eval(context);
-        expect(`${box3Decl1}`).toBe('color: blue');
+        expect(box3Decl1.toTrimmedString()).toBe('color: blue');
 
         // Second: mixin call
         let box3MixinCall = box3Rules.at(1);
@@ -950,14 +1094,14 @@ describe('Rules', () => {
         let box3MixinDecl = await box3MixinRules.at(0)!.eval(context);
         // With live resolution ($~color), the mixin should resolve the variable
         // at the call site, so it should be 'blue' (the value after !global assignment)
-        expect(`${box3MixinDecl}`).toBe('color: blue');
+        expect(box3MixinDecl.toTrimmedString()).toBe('color: blue');
 
         // The root should have the updated value
         let rootColor = getVar(node, 'color');
         if (!rootColor) {
           throw new Error('Expected color variable to be defined');
         }
-        expect(`${rootColor}`).toBe('$color: blue');
+        expect(rootColor.toTrimmedString()).toBe('$color: blue');
       });
 
       it('fails to set if existing variable is readonly', async () => {
@@ -971,6 +1115,33 @@ describe('Rules', () => {
         await expect(async () => {
           await node.eval(context);
         }).rejects.toThrowError('"one" is readonly');
+      });
+
+      it('derives setDefined declarations without calling VarDeclaration.copy()', async () => {
+        const originalCopy = VarDeclaration.prototype.copy;
+        let copyCalls = 0;
+        VarDeclaration.prototype.copy = function copyForCounting(
+          ...args: Parameters<typeof originalCopy>
+        ): ReturnType<typeof originalCopy> {
+          copyCalls++;
+          return originalCopy.apply(this, args);
+        };
+        const assignment = vardecl(
+          { name: 'one', value: spaced([any('three'), any('px')]) },
+          { setDefined: true }
+        );
+        const node = rules([
+          vardecl({ name: 'one', value: any('one') }),
+          rules([assignment])
+        ]);
+
+        try {
+          await node.eval(context);
+
+          expect(copyCalls).toBe(0);
+        } finally {
+          VarDeclaration.prototype.copy = originalCopy;
+        }
       });
 
       // @todo: Fix nested readonly rules inheritance - variables in nested readonly Rules aren't being found
@@ -1074,9 +1245,9 @@ describe('Rules', () => {
         ]);
         node = await node.eval(context);
 
-        expect(`${getVar(node, 'one', { start: node.at(1)?.index })}`).toBe('$one: one');
-        expect(`${getVar(node, 'one', { start: node.at(2)?.index })}`).toBe('$one: two');
-        expect(`${getVar(node, 'one', { start: 10 })}`).toBe('$one: three');
+        expect(getVar(node, 'one', { start: node.at(1)?.index })?.toTrimmedString()).toBe('$one: one');
+        expect(getVar(node, 'one', { start: node.at(2)?.index })?.toTrimmedString()).toBe('$one: two');
+        expect(getVar(node, 'one', { start: 10 })?.toTrimmedString()).toBe('$one: three');
       });
 
       it('won\'t find variables in sub-rules of local rules', async () => {
@@ -1097,11 +1268,12 @@ describe('Rules', () => {
         node = await node.eval(context);
 
         // child1.jess should see child2.jess's vars because it owns the `@use`
-        expect(`${getVar(node.at(0) as Rules, 'one')}`).toBe('$one: two');
+        const childRules = expectRulesNode(node.at(0));
+        expect(getVar(childRules, 'one')?.toTrimmedString()).toBe('$one: two');
         // child1.jess can still see its own vars
-        expect(`${getVar(node.at(0) as Rules, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(childRules, 'foo')?.toTrimmedString()).toBe('$foo: bar');
         // root.jess can see child1.jess's vars but not child2.jess's
-        expect(`${getVar(node, 'foo')}`).toBe('$foo: bar');
+        expect(getVar(node, 'foo')?.toTrimmedString()).toBe('$foo: bar');
         expect(getVar(node, 'one')).toBeUndefined();
       });
     });
@@ -1137,6 +1309,6 @@ describe('Rules', () => {
       })
     ]);
     let evald = await node.eval(context);
-    expect(`${evald}`).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
+    expect(await renderNodeToString(evald, context)).toBe('.collapse {\n  chungus: foo bar;\n  bird: in hand;\n}\n');
   });
 });

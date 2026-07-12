@@ -10,14 +10,21 @@ import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { Nil } from '../nil.js';
 import { isNode } from './is-node.js';
 import { N } from '../node-type.js';
-// Some build targets for core do not include Node typings; keep debug gating type-safe.
-declare const process: { env: Record<string, string | undefined> };
+import { copyOwnedWithReusableLeaves } from './cloning.js';
 
 /** Container object whose .selector is read by the ampersand (e.g. ruleset value for live connection). */
 export type SelectorContainer = AmpersandValue['selectorContainer'];
 
 /** Parent ruleset (live container) or a snapshot { value: SelectorContainer } when no ruleset is available. */
 export type ParentSource = Ruleset | { value: SelectorContainer };
+
+function copySelectorForImplicit(selector: Selector): Selector {
+  const copied = copyOwnedWithReusableLeaves(selector);
+  if (!isNode(copied, N.Selector)) {
+    throw new TypeError('Expected selector copy');
+  }
+  return copied;
+}
 
 /**
  * Adds an implicit ampersand to a selector if it doesn't already have one.
@@ -53,30 +60,32 @@ export function addImplicitAmpersand(
   }
   if (isNode(selector, N.ComplexSelector)) {
     const complex = selector;
-    // Avoid moving live nodes from the existing selector into a new selector
-    // (which would reparent them). Work with a copy instead.
-    const complexCopy = complex.copy(true) as ComplexSelector;
+    const complexCopy = copySelectorForImplicit(complex);
+    if (!isNode(complexCopy, N.ComplexSelector)) {
+      throw new TypeError('Expected complex selector copy');
+    }
     if (isNode(complexCopy.value[0], N.Combinator)) {
       return ComplexSelector.create([amp, ...complexCopy.value]).inherit(selector);
     }
     return ComplexSelector.create([amp, comb, ...complexCopy.value]).inherit(selector);
   }
-  // Avoid self-parenting: if we include `selector` as a child and then call `.inherit(selector)`,
-  // the constructor will adopt `selector` first (setting selector.parent = newComplex),
-  // and then `.inherit()` would set newComplex.parent = selector.parent = newComplex.
-  return ComplexSelector.create([amp, comb, selector.copy(true)]).inherit(selector);
+  return ComplexSelector.create([amp, comb, copySelectorForImplicit(selector)]).inherit(selector);
 }
 
 /**
  * Builds a snapshot parent source from a selector when no parent ruleset is available (e.g. tests or Ruleset.getImplicitSelector(selector)).
  */
 function snapshotParentSource(parentSelector: Selector, collapseNesting: boolean): ParentSource {
-  const parentCopy = parentSelector.copy(true);
+  const parentCopy = copySelectorForImplicit(parentSelector);
   const sel: Selector | Nil | undefined = !collapseNesting && isNode(parentCopy, N.SelectorList)
     ? PseudoSelector.create({ name: ':is', arg: parentCopy })
     : parentCopy;
   const container: SelectorContainer = { selector: sel };
   return { value: container };
+}
+
+function isSnapshotParentSource(parent: ParentSource | Selector): parent is { value: SelectorContainer } {
+  return !isNode(parent) && typeof parent === 'object' && parent !== null && 'value' in parent;
 }
 
 /**
@@ -97,21 +106,24 @@ export function getImplicitSelector(
     return selector;
   }
   const parentSource: ParentSource | undefined = isNode(parent, N.Ruleset)
-    ? (parent as Ruleset)
-    : snapshotParentSource(parent as Selector, collapseNesting);
+    ? parent
+    : isSnapshotParentSource(parent)
+      ? parent
+      : snapshotParentSource(parent, collapseNesting);
   if (isNode(selector, N.SelectorList)) {
     let mutated = false;
     const value = selector.value;
+    const nextValue: Selector[] = [];
     for (let i = 0; i < value.length; i++) {
       const sel = value[i]!;
       const result = addImplicitAmpersand(sel, collapseNesting, parentSource);
+      nextValue.push(result);
       if (result !== sel) {
-        if (!mutated) {
-          selector = selector.clone(true);
-        }
-        (selector as SelectorList).value[i] = result;
         mutated = true;
       }
+    }
+    if (mutated) {
+      selector = SelectorList.create(nextValue).inherit(selector) as Selector;
     }
   } else {
     selector = addImplicitAmpersand(selector, collapseNesting, parentSource);

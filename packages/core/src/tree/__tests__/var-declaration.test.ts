@@ -23,7 +23,7 @@ describe('Let', () => {
         name: 'brandColor',
         value: any('#eee')
       });
-      expect(`${rule}`).toBe('$brandColor: #eee');
+      expect(rule.toTrimmedString()).toBe('$brandColor: #eee');
     // rule.toModule(context, out)
     // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
     });
@@ -40,7 +40,7 @@ describe('Let', () => {
           decl({ name: 'light', value: any('#eee') })
         ])
       });
-      expect(`${rule}`).toBeString(`
+      expect(rule.toTrimmedString()).toBeString(`
       $brandColor: {
         global: {
           dark: #000;
@@ -87,6 +87,8 @@ describe('Let', () => {
       const resolved = await rule.resolve(context);
 
       expect(resolved.toTrimmedString()).toBe('$tone');
+      expect(rule.evaluated).toBe(false);
+      expect(rule.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
     });
   });

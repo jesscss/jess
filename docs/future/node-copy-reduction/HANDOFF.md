@@ -1,232 +1,114 @@
 # Node Copy Reduction — Handoff
 
-## Read This First
+## Start Here
 
-1. [eval-state-sketch.md](./eval-state-sketch.md)
-2. [node-update-status.md](./node-update-status.md)
-3. [README.md](./README.md)
+Read this file and [README.md](./README.md). This folder is intentionally small:
+it is for current direction and next seams, not a historical pass log.
 
-## Current Direction
+## Rules
 
-The branch should move toward:
+- Preserve Jess behavior.
+- Work from repo evidence first.
+- Prefer small, verifiable production changes.
+- Do not weaken tests or fixture expectations to make migration work look done.
+- Reduce and, where possible, eliminate copy/clone from normal eval flow.
+- Keep pushing compile toward contextual resolve/render emission, not a full
+  evaluated-tree materialization followed by whole-tree serialization.
+- Improving a legacy copy path is only a stopgap when callers still require an
+  owned surface today.
+- Keep semantic wrapper surfaces when they carry real scope, registry,
+  import/reference, merge, or output ownership.
+- Keep render bridge state ownership centralized. Fresh render traversals reset
+  context-owned print state; nested bridges reuse active writer/frame/trivia
+  state through `prepareRenderPrintState(...)`.
+- Treat `Context.rulesContext`, `ScopeFrame.fallbackFrame`, deep clone, and
+  materialization as suspect surfaces, not automatic bugs.
+- When a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer
+  a parser-accurate focused core repro first when practical.
+- Update these docs only when the active frontier or rule set changes.
 
-- canonical nodes with canonical edges
-- alternate parent/child edges keyed by `RenderKey`
-- field-aligned child edge storage (`fooEdge` / `fooEdges`)
-- cursor-based traversal: `{ node, renderKey }`
-- shallow `Rules` wrappers as the owners of local declaration/mixin/ruleset registries
-- `parent` as the primary lookup path for the current placement
-- `sourceParent` as stable definition provenance, not invocation scope
-- `parentEdges` as the place to carry additional placement-specific lookup lanes
-  such as `leakyRules` caller fallback
-- `.parent` writes must stay disciplined too: derived/output nodes should keep
-  their current primary lookup path there, while secondary caller ancestry goes
-  in `parentEdges` under an explicit key such as `CALLER`
+## Current Evidence
 
-The branch should move away from:
+- `pnpm run verify:baseline` is green for core, parsers, and
+  `packages/jess/test/less/all-less.test.ts`.
+- `packages/jess/test/less/all-less.test.ts` now renders through
+  `Compiler.renderToResult(...)`, so the fixture baseline exercises the awaited
+  eval/render API instead of compiling a tree and then calling
+  `tree.toString({ context })` in the test harness.
+- The remaining Less helper tests that compare generated CSS now call public
+  render APIs (`render(...)`, `renderString(...)`, or `renderToResult(...)`)
+  instead of compiling a tree and manually serializing it.
+- Active public compiler coverage now proves `render(...)`, `renderString(...)`,
+  and `renderToResult(...)` preserve root-owned output such as first charset,
+  hoisted CSS imports, and final newline behavior through the render bridge.
+- `safeRender(...)` now owns its eval/render path directly instead of calling
+  `safeCompile(...)` and then serializing that compiled tree surface. Keep
+  safe diagnostic collection on the render path without restoring the old
+  compile-tree handoff.
+- Less function helper serialization in `packages/fns` now routes non-raw node
+  values through `node.render(context)` when a render context exists. `Quoted`
+  and `Any` remain raw value exceptions because Less string/function helpers
+  intentionally consume their literal function arguments.
+- Compiler coverage proves the compatibility hook named `postEvalVisitor` runs
+  after eval and before render serialization, including plain typed visitor
+  objects such as `{ declaration(...) { ... } }`, not only objects with a
+  generic `visit(...)` method.
+- `packages/core/src/tree/util/render-buffer.ts` has focused coverage for both
+  direct root rendering and the case where the source root resolves to an owned
+  root surface; the root serializer exception should stay limited to that
+  identity-backed case.
+- `pnpm run verify:node-copy-frontier` reports no production deep
+  copy/clone-style frontier outside clone infrastructure.
+- The same frontier check now also fails on ordinary production `.copy()`
+  callers outside the base `Node.copy()` API/infrastructure.
+- `packages/core/src/tree/util/extend-walk.ts` is whole-file lint-clean.
+- `packages/core/src/tree/util/extend.ts` no longer has the deep `.copy(true)`
+  generated-output frontier and no longer uses generic `selector.copy()` for
+  complex ampersand boundary replacement.
+- The remaining ordinary copy helpers should be audited by ownership purpose,
+  not by treating every local copy boundary as the same kind of bug.
 
-- `EvalState` / `NodeState` as the target model
-- field patches
-- render-root-owned patch tables
-- clone/materialize escape hatches for ordinary eval flow
+## Current Frontier
 
-Core tests no longer need to preserve old-model mutation APIs. Do not add new
-`activeState` / `setField` / `getField` test setup back into
-`packages/core/src/tree/__tests__` or `packages/core/src/tree/util/__tests__`.
-
-## Working Rules
-
-- preserve Jess behavior
-- prefer smaller targeted changes over broad rewrites
-- do not introduce new detached overlay concepts
-- keep `sourceParent` canonical/definition-owned; do not repurpose it as a per-eval scope channel
-- let eval scope vary through `parentEdges`, field child edges, and explicit lookup context
-- when `leakyRules` needs a secondary caller lookup lane, represent that through
-  placement parent edges, not through `sourceParent`
-- if caller fallback needs to be represented explicitly, prefer a dedicated
-  `CALLER` symbol entry in `parentEdges` rather than overloading the render-key
-  parent lane or `sourceParent`
-- detached-ruleset and similar call-produced wrappers should keep their
-  definition-owned `.parent` / `.sourceParent` chain intact; caller ancestry is
-  additive and belongs on `parentEdges.get(CALLER)`
-- if a node cannot answer a parent question without a render key, use a cursor
-- if a lookup only needs path selection, pass `renderKey` or cursor, not full
-  `Context`
-- for typed field reads, prefer `get<Field>(renderKey?)`
-- on converted nodes, inline `fooEdge?.get(renderKey) ?? foo` instead of
-  routing typed field reads back through generic `.get(...)`
-- reserve `enter<Field>(...)` for helpers that may wrap/adopt to establish a
-  render-owned container
-- if a node-local value truly changes identity, use a thin derived node only if edge rewiring is not enough
-- if a canonical node's static field changes, do not mutate it in place:
-  create or return a derived non-canonical replacement and let eval/edge wiring
-  own that new placement
-- normal lookup should walk the current placement first; any `leakyRules`
-  caller-parent fallback is secondary and should be visibly modeled as such
-- ordinary `getParent()` should keep returning the primary placement parent;
-  caller fallback should be a separate explicit lookup lane, not silently mixed
-  into the primary parent walk
-- in eval/runtime code, treat raw child field reads such as `node.params`,
-  `node.guard`, `node.rules`, `node.value`, and `node.parent` as suspect unless
-  the code is intentionally reading the canonical field. Current placement reads
-  should go through edge-aware accessors (`get(...)`, `getParent(...)`,
-  `getChildren(...)`, typed field getters, or a cursor).
-- for intentional direct canonical reads, prefer the direct field
-  (`node.value`, `node.rules`, `node.params`, etc.). Do not route canonical
-  reads back through generic `.get('value')` / `.get('rules')` calls just for
-  uniformity; those add indirection without adding placement information.
-- if a node is already non-canonical (`EVAL` or any other non-canonical
-  `RenderKey`), it is ephemeral: mutate or replace it directly and do not keep
-  the displaced derived node alive unless some edge still points to it
-- treat every clone/materialize helper as temporary debt, not neutral
-  infrastructure
-- treat generic function-wrapper machinery as suspect runtime overhead too;
-  `defineFunction()` should eventually stop using a `Proxy` for metadata
-  exposure and attach stable metadata (`name`, `options`, `_internal`)
-  directly to the callable instead
-- recent guard debugging produced two durable rules:
-  - emitted nested mixin definitions must keep their current-placement
-    `rules/params/guard` children attached on the active render-key path during
-    `Mixin.preEval()`
-  - guarded mixin evaluation must use the current guard read surface, not a
-    canonical `candidate.get('guard')` read with no context
-  Those fixes removed the old lock-closure regression and brought
-  `tests-unit/mixins-guards/mixins-guards.less` back to green.
-- the end-state is to remove generic `Node.clone()` / `Node.copy()` as ordinary
-  runtime tools from `node-base`; until then, every production callsite is
-  suspect and must justify itself in `node-update-status.md`
-- every remaining clone/materialize seam must be tracked in
-  `node-update-status.md` with:
-  - why it still exists
-  - what exact blocker keeps it alive
-  - what change should delete it
-- if a deep clone still exists in a hot runtime path, prove the blocker first.
-  Current known examples:
-  - JS-function arg isolation is blocked on the lack of an immutable/view model
-  - mixin arg normalization still has legacy frozen-copy paths around
-    `@arguments` / rest aggregation
-- do not add new generic `childEdges` maps as target architecture
-- when iterating, prefer one narrow component proof over broad suite churn
-- when a red only appears in `packages/jess/test/less/all-less.test.ts`, prefer
-  reproducing it in a focused core test first when practical; use the Jess
-  fixture only as the outer parity proof
+- Continue reducing ordinary `.copy()` / `.clone()` usage from normal eval flow,
+  but only after proving the caller does not need an owned eval/output surface.
+- Prefer explicit derived wrappers or lazy runtime state when a wrapper needs
+  local scope, registry, import/reference, merge, or output ownership.
+- Use the shared reusable-leaf helpers only when a container still proves it
+  needs an owned surface and childless source-free scalar leaves do not need
+  copies.
+- Keep direct comment children preserved per generated output placement until
+  the AST/comment ownership model explicitly changes.
+- Treat selector expansion and extend-generated selector output as generated
+  output ownership, not as the same class as shallow-wrapper replacement.
+- The preserve-rules-like call parent repair in `packages/core/src/tree/call.ts`
+  is still active. Removing it makes non-leaky detached-ruleset calls see caller
+  variables, so do not delete it without replacing that lexical-parent behavior.
+- `Node.render(context)` still has a legacy synchronous fallback for direct sync
+  callers. Top-level compile APIs and flat render buffers use the explicit
+  async render bridge. Plain CSS call buffers still need their local
+  arg/content renderer so async child failures keep calc-frame cleanup instead
+  of falling back to source text. New render bridges should share
+  `prepareRenderPrintState(...)` instead of adding local writer/frame/trivia
+  reuse heuristics.
+- The Jess compiler awaits its render phase, and plugin `postEvalVisitor`
+  remains the public compatibility hook name, but internally that phase is
+  treated as pre-render: visitors run after eval and before serialization.
+  Do not reintroduce a post-string-output visitor phase under this name.
 
 ## Work Loop
 
-1. Pick one narrow production target from [node-update-status.md](./node-update-status.md).
-2. Change the smallest owner/path surface that moves that target toward cursor + edge traversal.
-3. Add or update one focused proof test for that exact surface.
-4. Run only the focused proof and the nearest behavioral file while iterating.
-5. Update docs only if the model or migration status actually changed.
-6. Commit and push.
+1. Pick one production seam from [README.md](./README.md).
+2. Read the relevant source and focused tests before editing.
+3. Make the smallest behavior-preserving change.
+4. Run the focused proof first.
+5. Run the nearest broader verification.
+6. Commit and push when the checkpoint is clean.
 
-## Current Narrow Frontier
+## Do Not Resurrect
 
-- `tests-unit/import/import-reference.less` is fixed again after the parser-backed
-  reference-import activation / ancestry work. The key correction was in
-  `assembleMixinInvocationOutput(...)`: multi-candidate return assembly must
-  rebind candidate output wrappers onto the caller-owned output path without
-  flattening away the candidate wrappers or rebasing their own render-key/state
-  lanes.
-- `tests-unit/property-accessors/property-accessors.less` is fixed.
-  The useful permanent proof is now the focused core repro in
-  `packages/core/src/tree/__tests__/declaration.test.ts`; keep debugging on the
-  core proof first when property-merge behavior regresses again.
-- Two narrow guarded-mixin proofs are green again:
-  - `tests-unit/mixins-closure/mixins-closure.less`
-  - `tests-unit/mixins/mixins-advanced.less`
-- `tests-unit/mixins-guards/mixins-guards.less` is green again after preserving
-  per-candidate wrapper state during multi-output mixin assembly.
-- `tests-unit/mixins-interpolated/mixins-interpolated.less` is green again.
-  The fix came from restoring the start-aware ampersand / parent-selector
-  composition path so explicit leading parent selectors no longer get wrapped
-  in unnecessary generated `:is(...)`.
-- Focused core proofs now cover the formerly-live closure seam directly in
-  `packages/core/src/tree/__tests__/mixin.test.ts`:
-  - emitted namespace rules stay lookup-visible but render-hidden
-  - emitted nested mixins keep closure/default-param behavior
-  - same-named globals do not shadow emitted nested mixin closure
-
-## Current Jess Less State
-
-After the latest selector-grouping fix, core baseline cleanup, and the accepted
-fixture updates for `extend-nest.less` and `rulesets.less`,
-`packages/jess/test/less/all-less.test.ts` is green again.
-
-When future Less diffs appear, still treat each one as its own tracked
-disposition. Do not let one fixture imply the solution for another.
-
-Current extend-specific state:
-
-- `tests-unit/extend-nest/extend-nest.less`
-  no longer leaks a raw `&:hover` branch. The remaining diff is selector shape
-  only: Jess emits `:is(.button, .submit):hover, .submit:hover` where the Less
-  fixture expects `.button:hover, .submit:hover`.
-- `tests-unit/extend/extend.less`
-  is fixed again. The real parser-backed seam was exact local-child extend after
-  an earlier local `all` extend had widened the child own-selector list. The
-  durable fix lives in `applyInstructionToRuleset(...)`: exact local fallback is
-  allowed only for child rules under a single-parent-selector ruleset, and only
-  when the active parent selector does not already contain the extender.
-- `tests-unit/mixins-guards-default-func/mixins-guards-default-func.less`
-  is green again after the mixin output assembly and parent/render-path fixes.
-
-Per-fixture next action:
-
-- `tests-unit/extend-nest/extend-nest.less`
-  action: fixture updated in the Less worktree. Future improvement only if it
-  stays narrow: detect the grouped
-  `:is(.button, .submit):hover` branch as a no-value extend when adding the
-  redundant `.submit:hover` alternate, without broad selector-subsumption
-  matching.
-- `tests-unit/rulesets/rulesets.less`
-  action: fixed and fixture-updated in the Less worktree. Canonical Jess
-  behavior is to compose the complex parent first and then preserve the current
-  selector list `#fourth, #five, #six` as one grouped fragment
-  `:is(#fourth, #five, #six)` before child routes are applied.
-
-Formatting parity fixed in this pass:
-
-- `tests-unit/css-3/css-3.less`
-  preserved explicit multiline comma-list layout for the `-moz-box-shadow`
-  value without regressing flat comma-list output in `urls.less`.
-- `tests-unit/css-grid/css-grid.less`
-  preserved deliberate leading newlines on multiline declaration values such as
-  `grid-template-areas:`.
-- `tests-unit/whitespace/whitespace.less`
-  preserved multiline comma-list declaration formatting again.
-
-Core baseline cleanup from the same pass:
-
-- `packages/core/src/tree/rules.ts`
-  `Rules.flatRules(...)` now preserves the intended collapse order when a later
-  mixin-produced `Rules` wrapper follows pending descendant rulesets, without
-  regressing parent-block declaration coalescing.
-- `packages/core/src/tree/util/selector-utils.ts`
-  authored compound ampersand replacement restores type-selector ordering
-  during collapse (e.g. `h2.one.two`, not `.one.twoh2`).
-- `packages/core/src/tree/util/__tests__/process-leading-is.test.ts`
-  stale expectations were updated to the current production shapes:
-  the ampersand path already materializes `* b[e]`, and non-unwrapped
-  `:is(list)` compounds preserve their authored order.
-
-Serialization note:
-
-- `Rules` / `Ruleset` serialization still carries too much ad-hoc control flow,
-  especially in `packages/core/src/tree/util/serialize-helper.ts`.
-- Current text-prefix / start-character checks are transitional debugging debt,
-  not acceptable target architecture.
-- Future cleanup should move those decisions onto node shape and explicit
-  ownership state:
-  - container kind
-  - selector structure
-  - hoist / defer ownership
-  - reference-boundary behavior
-  rather than string inspection of already-rendered selectors.
-
-## What To Delete Over Time
-
-- `_carriedState`
-- `subtreeMap`
-- old detached wrapper/materialize helpers
-- any new code that assumes `EvalState` is the final architecture
+- checked-in task registries or unattended task loops
+- stage trackers that mostly describe absent machinery
+- broad "current dirty diff" notes copied from an old session
+- fixture-expectation changes that are not tied to an explicit Jess behavior
+  decision

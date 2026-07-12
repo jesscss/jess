@@ -3,7 +3,32 @@ import { defineType, Node } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import { compareNodeArray } from './util/compare.js';
 import { type Operator } from './util/calculate.js';
-import { LIST_ITEM_TRIM } from './util/regex.js';
+import {
+  consumeTrivia,
+  emitCommentTriviaBetweenNodes,
+  emitTriviaTokens
+} from './util/trivia.js';
+import { isThenable, type MaybePromise, serialForEach } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
+
+function emitListItem<T extends Node>(
+  item: T,
+  options: ReturnType<typeof getPrintOptions>,
+  suppressPre = false
+): void {
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
+  try {
+    item.toString(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
 
 export type ListOptions = {
   /**
@@ -27,9 +52,25 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or one / two / three
  */
 export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+  private withResolvedValue(value: Node[]): List<Node> {
+    return new List<Node>(
+      value,
+      this._options ? { ...this._options } : undefined
+    ).inherit(this);
+  }
+
+  private deriveAdditionList(): List<Node> {
+    return new List<Node>(
+      this.value.map(value => copyWithReusableLeaves(value)),
+      this._options ? { ...this._options } : undefined,
+      this.location.length ? this.location : undefined,
+      this.treeContext
+    ).inherit(this);
+  }
+
   private renderListSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
-    const w = options.writer!;
+    const printOptions = getPrintOptions(options);
+    const w = printOptions.writer;
     const sep = this._options?.sep ?? ',';
     let { value } = this;
     let length = value.length;
@@ -38,17 +79,31 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
       return '';
     }
     let item = value[0]!;
-    let out = w.capture(() => item.toString(options));
-    w.add(out.replace(LIST_ITEM_TRIM, ''), item);
+    emitListItem(item, printOptions);
     for (let i = 1; i < length; i++) {
+      const prev = item;
       item = value[i]!;
+      emitCommentTriviaBetweenNodes(prev, item, printOptions);
+      const leadingTrivia = printOptions.trivia
+        ? consumeTrivia(printOptions.trivia, item.location[0], 'before', printOptions)
+        : undefined;
+      const leadingWhitespace = leadingTrivia?.[0]?.tokenType.name === 'WS'
+        ? leadingTrivia[0].image
+        : '';
+      const preserveLeadingWhitespace = /[\r\n]/.test(leadingWhitespace);
       if (sep === '/') {
-        w.add(' / ');
+        w.add(preserveLeadingWhitespace ? ' /' : ' / ');
       } else {
-        w.add(`${sep} `);
+        w.add(preserveLeadingWhitespace ? sep : `${sep} `);
       }
-      out = (w.capture(() => item.toString(options))).replace(LIST_ITEM_TRIM, '');
-      w.add(out);
+      if (leadingTrivia) {
+        emitTriviaTokens(
+          leadingTrivia,
+          printOptions,
+          { skipLeadingWhitespace: !preserveLeadingWhitespace }
+        );
+      }
+      emitListItem(item, printOptions, true);
     }
     return w.getSince(mark);
   }
@@ -71,6 +126,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     return this.renderListSyntax(options);
   }
 
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
+  }
+
   override compare(other: Node) {
     if (other instanceof List) {
       const equalityMode = this.treeContext?.equalityMode ?? 'coerce';
@@ -90,14 +154,36 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     if (op !== '+') {
       throw new Error(`List operation "${op}" not supported`);
     }
-    const newList = new List<Node>([...this.value], this._options ? { ...this._options } : undefined);
-    newList.inherit(this);
+    const newList = this.deriveAdditionList();
     if (b instanceof List) {
-      newList.value.push(...b.value);
+      newList.value.push(...b.value.map(value => copyWithReusableLeaves(value)));
     } else {
-      newList.value.push(b);
+      newList.value.push(copyWithReusableLeaves(b));
     }
     return newList;
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    const values = new Array<Node>(this.value.length);
+    const maybe = serialForEach(this.value.map((item, index) => [item, index] as const), ([item, index]) => {
+      const out = item.resolve(context);
+      if (isThenable(out)) {
+        return (out as Promise<Node>).then((resolved) => {
+          values[index] = resolved;
+        });
+      }
+      values[index] = out as Node;
+    });
+
+    const finalize = (): Node => {
+      const unchanged = values.every((node, index) => node === this.value[index]);
+      return unchanged ? this : this.withResolvedValue(values);
+    };
+
+    if (isThenable(maybe)) {
+      return (maybe as Promise<void>).then(finalize);
+    }
+    return finalize();
   }
 
   /** @todo? Lists should collapse nested lists? */
@@ -107,7 +193,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // toCSS(context: Context, out: OutputCollector) {
   //   out.add('', this.location)
   //   const length = this.value.length - 1
-  //   const pre = context.pre
   //   const cast = context.cast
   //   this.value.forEach((node, i) => {
   //     const val = cast(node)
@@ -115,7 +200,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   //     if (i < length) {
   //       if (context.inSelector) {
-  //         out.add(`,\n${pre}`)
+  //         out.add(`,\n`)
   //       } else {
   //         out.add(', ')
   //       }
@@ -127,7 +212,6 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // toModule(context: Context, out: OutputCollector) {
   //   out.add('$J.list([\n', this.location)
   //   context.indent++
-  //   let pre = context.pre
   //   const length = this.value.length - 1
   //   this.value.forEach((node, i) => {
   //     out.add(pre)
@@ -141,8 +225,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   //     }
   //   })
   //   context.indent--
-  //   pre = context.pre
-  //   out.add(`\n${pre}])`)
+  //   out.add(`\n])`)
   //   return out
   // }
 }

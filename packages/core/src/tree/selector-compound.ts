@@ -1,4 +1,5 @@
 import {
+  type Node,
   defineType
 } from './node.js';
 import type { Context } from '../context.js';
@@ -7,6 +8,8 @@ import { attachSelectorBitLibrary, Selector } from './selector.js';
 import type { SimpleSelector } from './selector-simple.js';
 import { type MaybePromise, pipe, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import { consumeTrivia, emitTriviaTokens } from './util/trivia.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 /**
  * @example
@@ -16,30 +19,65 @@ import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState }
  */
 /** Anything other than type (element) or universal, which must come first */
 const nonElementRegex = /^[.#:[]/;
+
+function emitCompoundPart(
+  part: SimpleSelector,
+  options: ReturnType<typeof getPrintOptions>,
+  emitLeadingTrivia: boolean
+): void {
+  if (emitLeadingTrivia && options.trivia) {
+    emitTriviaTokens(
+      consumeTrivia(options.trivia, part.location[0], 'before', options),
+      options,
+      { skipLeadingWhitespace: true }
+    );
+  }
+  const saved = options.suppressBoundaryTrivia;
+  options.suppressBoundaryTrivia = 'pre';
+  try {
+    part.toString(options);
+  } finally {
+    options.suppressBoundaryTrivia = saved;
+  }
+}
+
 export class CompoundSelector extends Selector<SimpleSelector[]> {
-  private withComponents(value: Selector[]): this {
-    const node = this.clone();
-    // @ts-expect-error compound normalization can temporarily carry selector-like
-    // children produced by ampersand flattening before later collapse steps.
-    node.set(null, value);
-    return node;
+  private ownSelector(item: Selector): Selector {
+    const owned = canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item);
+    if (!(owned instanceof Selector)) {
+      throw new TypeError('Expected selector copy');
+    }
+    return owned;
+  }
+
+  private withComponents(value: Selector[], sourceValue: readonly Selector[] = this.value): this {
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        // Own unchanged source children; evaluated clones may carry runtime state.
+        value.map(item => sourceValue.includes(item) ? this.ownSelector(item) : item),
+        this._options ? { ...this._options } : undefined,
+        this.location,
+        this.treeContext
+      ]
+    );
+    if (value.some(item => item.hoistToRoot)) {
+      node.hoistToRoot = true;
+    }
+    return node.inherit(this);
   }
 
   private renderCompoundSyntax(options?: PrintOptions): string {
-    options = getPrintOptions(options);
+    const printOptions = getPrintOptions(options);
     const value = this.value;
-    for (let i = 0; i < value.length - 1; i++) {
-      value[i]!.post = undefined;
-    }
-    const w = options.writer!;
+    const w = printOptions.writer;
     const mark = w.mark();
-    const saved = savePrintState(options, ['ampersandFirst']);
+    const saved = savePrintState(printOptions, ['ampersandFirst']);
     for (let i = 0; i < value.length; i++) {
-      options.ampersandFirst = (i === 0);
-      const out = w.capture(() => value[i]!.toString(options));
-      w.add(out.trim(), value[i]!);
+      printOptions.ampersandFirst = (i === 0);
+      emitCompoundPart(value[i]!, printOptions, i > 0);
     }
-    restorePrintState(options, saved);
+    restorePrintState(printOptions, saved);
     return w.getSince(mark);
   }
 
@@ -139,7 +177,62 @@ export class CompoundSelector extends Selector<SimpleSelector[]> {
         if (!changed) {
           return sel;
         }
-        return sel.withComponents(value);
+        return sel.withComponents(value, currentValue);
+      }
+    );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    attachSelectorBitLibrary(this, context.selectorBits);
+    return pipe(
+      () => {
+        const sel = this;
+        const currentValue = sel.value;
+        const resolvedValue: Array<Selector | Nil> = [...currentValue];
+        const maybe = serialForEach(resolvedValue, (item, i) => {
+          const out = item.resolve(context);
+          if (isThenable(out)) {
+            return out.then((res) => {
+              if (res instanceof Selector || res instanceof Nil) {
+                resolvedValue[i] = res;
+              }
+              return undefined;
+            });
+          }
+          if (out instanceof Selector || out instanceof Nil) {
+            resolvedValue[i] = out;
+          }
+          return undefined;
+        });
+        if (isThenable(maybe)) {
+          return (maybe as Promise<void>).then(() => [sel, currentValue, resolvedValue] as const);
+        }
+        return [sel, currentValue, resolvedValue] as const;
+      },
+      ([sel, currentValue, resolvedValue]) => {
+        let value = resolvedValue.filter((n): n is Selector => n && !(n instanceof Nil));
+        value = value.sort((a, b) => {
+          let aIsElement = !nonElementRegex.test(a.valueOf());
+          let bIsElement = !nonElementRegex.test(b.valueOf());
+          if (aIsElement && bIsElement) {
+            return a.valueOf() < b.valueOf() ? -1 : 1;
+          }
+          return aIsElement ? -1 : bIsElement ? 1 : 0;
+        });
+        if (value.length === 0) {
+          return (new Nil()).inherit(this);
+        }
+        if (value.length === 1) {
+          return value[0]!.inherit(this) as Selector;
+        }
+        const changed = (
+          value.length !== currentValue.length
+          || value.some((part, idx) => part !== currentValue[idx])
+        );
+        if (!changed) {
+          return sel;
+        }
+        return sel.withComponents(value, currentValue);
       }
     );
   }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
-import { any, el, ref, rules, selcap, vardecl, type Rules as RulesClass } from '../index.js';
+import { any, attr, compound, el, ref, rules, selcap, vardecl, type Rules as RulesClass } from '../index.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('SelectorCapture', () => {
   let context: Context;
@@ -24,9 +25,32 @@ describe('SelectorCapture', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = selcap(ref({ key: 'capture-selector' }, { type: 'variable' })).render(context);
+    const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    const rendered = captureNode.render(context);
 
     expect(rendered).toBe('.foo');
+    expect(captureNode.evaluated).toBe(false);
+    expect(captureNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved selector capture output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-selector'),
+        value: el('.foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+
+    expect(await captureNode.render(context, buffer)).toBe('.foo');
+    expect(buffer.parts).toEqual(['.foo']);
+    expect(captureNode.evaluated).toBe(false);
+    expect(captureNode.preEvaluated).toBe(false);
   });
 
   it('resolves selector capture values without touching render state', async () => {
@@ -40,9 +64,37 @@ describe('SelectorCapture', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await selcap(ref({ key: 'capture-selector' }, { type: 'variable' })).resolve(context);
+    const captureNode = selcap(ref({ key: 'capture-selector' }, { type: 'variable' }));
+    const resolved = await captureNode.resolve(context);
 
-    expect(`${resolved}`).toBe('.foo');
+    expect(resolved.toTrimmedString()).toBe('.foo');
+    expect(captureNode.evaluated).toBe(false);
+    expect(captureNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source selector capture child containers canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('capture-attr'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const captureNode = selcap(compound([
+      el('a'),
+      attr({
+        name: 'data',
+        op: '=',
+        value: ref({ key: 'capture-attr' }, { type: 'variable' })
+      })
+    ]));
+    const resolved = await captureNode.resolve(context);
+
+    expect(resolved.render(context)).toBe('a[data=foo]');
+    expect(captureNode.toTrimmedString()).toBe('*[a[data=$capture-attr]]');
   });
 });

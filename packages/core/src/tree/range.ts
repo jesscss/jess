@@ -1,6 +1,12 @@
 import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export type RangeValue = {
   start: Node;
@@ -30,6 +36,19 @@ export class Range extends Node<RangeValue, RangeOptions> {
     return this;
   }
 
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -39,8 +58,13 @@ export class Range extends Node<RangeValue, RangeOptions> {
     const includeEnd = this._options?.includeEnd !== false;
 
     const emitTrimmed = (n: Node) => {
-      const s = w.capture(() => n.toString(options));
-      w.add(s.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), n);
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        n.toString(options);
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
     };
 
     emitTrimmed(start);

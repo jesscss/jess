@@ -1,7 +1,9 @@
 export {
   RecursiveDescentParser,
   SKIPPED_LABEL,
-  WS_NAME
+  WS_NAME,
+  type ParserTriviaMap,
+  type TriviaLookup
 } from './parser.js';
 
 export {

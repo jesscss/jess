@@ -2,6 +2,7 @@ import '@ungap/set-methods';
 // export * from './scope'
 export * from './tree/index.js';
 export * from './context.js';
+export { TreeContext } from './context.js';
 export * from './logger.js';
 export * from './logger/deprecation-processing.js';
 export * from './plugin.js';
@@ -16,8 +17,10 @@ export * from './tree/util/cast.js';
 export * from './tree/util/find-extendable-locations.js';
 export * from './tree/util/collections.js';
 export * from './tree/util/print.js';
+export * from './tree/util/trivia.js';
 export * from './tree/util/list-like.js';
 export * from './tree/util/serialize-types.js';
+export * from './tree/util/render-buffer.js';
 export * from './conversions.js';
 export * from './types/index.js';
 export * from './visitor/index.js';

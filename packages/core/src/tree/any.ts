@@ -6,6 +6,12 @@ import { Node, defineType, type LocationInfo, type NodeOptions, F_STATIC } from 
 import type { Context, TreeContext } from '../context.js';
 import { type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
+import { type PrintOptions, getPrintOptions } from './util/print.js';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export type AnyRole =
   'ident'
@@ -51,6 +57,10 @@ export class Any<
   }
 
   override preEval(context: Context): this | Nil {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(context: Context): this | Nil {
     this.preEvaluated = true;
     // Index should already be assigned by parent Rules
     if (this._options?.role === 'charset') {
@@ -64,8 +74,21 @@ export class Any<
   }
 
   // Any values are static and don't need evaluation
-  override evalNode(context: Context): MaybePromise<Node> {
+  override evalNode(_context: Context): MaybePromise<Node> {
     return this;
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return this.toTrimmedString(getPrintOptions({ ...bufferOrOptions, context }));
   }
 
   override compare(other: Node): 0 | 1 | -1 | undefined {
@@ -81,9 +104,13 @@ export class Any<
       if (!/^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(text)) {
         return undefined;
       }
-      const otherValue = (other as any).value;
-      const otherNumber = otherValue?.number;
-      const otherUnit = otherValue?.unit;
+      const otherValue = other.value;
+      const otherNumber = typeof otherValue === 'object' && otherValue !== null && 'number' in otherValue
+        ? otherValue.number
+        : undefined;
+      const otherUnit = typeof otherValue === 'object' && otherValue !== null && 'unit' in otherValue
+        ? otherValue.unit
+        : undefined;
       if (typeof otherNumber !== 'number') {
         return undefined;
       }
@@ -92,11 +119,8 @@ export class Any<
       }
       return Number(text) === otherNumber ? 0 : undefined;
     }
-    if ((other as any).toString) {
-      const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
-      return normalize(this.toString()) === normalize((other as any).toString()) ? 0 : undefined;
-    }
-    return undefined;
+    const normalize = (s: string) => s.replace(/;\s*/g, ', ').replace(/\s+/g, ' ').trim();
+    return normalize(this.toString()) === normalize(other.toString()) ? 0 : undefined;
   }
 }
 

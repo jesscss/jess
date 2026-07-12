@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { bool } from '../index.js';
 import { Context } from '../../context.js';
+import { createRenderBuffer } from '../util/render-buffer.js';
 
 describe('Bool', () => {
   let context: Context;
@@ -15,15 +16,34 @@ describe('Bool', () => {
   });
 
   it('renders bool values through render(context)', () => {
-    expect(bool(true).render(context)).toBe('true');
-    expect(bool(false).render(context)).toBe('false');
+    const truthy = bool(true);
+    const falsy = bool(false);
+
+    expect(truthy.render(context)).toBe('true');
+    expect(falsy.render(context)).toBe('false');
+    expect(truthy.evaluated).toBe(false);
+    expect(truthy.preEvaluated).toBe(false);
+    expect(falsy.evaluated).toBe(false);
+    expect(falsy.preEvaluated).toBe(false);
+  });
+
+  it('writes bool render output into flat buffers', async () => {
+    const buffer = createRenderBuffer('flat');
+    const node = bool(true);
+
+    expect(await node.render(context, buffer)).toBe('true');
+    expect(buffer.parts).toEqual(['true']);
   });
 
   it('resolves bool values without touching render state', async () => {
-    const resolved = await bool(true).resolve(context);
+    const node = bool(true);
+
+    const resolved = await node.resolve(context);
 
     expect(resolved).toBeInstanceOf((bool(true)).constructor);
     expect(resolved.value).toBe(true);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
   });
 });

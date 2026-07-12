@@ -47,7 +47,9 @@ The new system goal is:
 
 ## Merge strategy (keep vs replace vs scope)
 
-- **Keep**: state & orchestration docs (`PROJECT_STATE.md`, `DEBUGGING_ORCHESTRATION.md`, extend plans).
+- **Keep**: compact state and orchestration docs (`PROJECT_STATE.md`,
+  `DEBUGGING_ORCHESTRATION.md`). Area plans should stay small and should be
+  archived when they stop describing active work.
 - **Keep**: existing commands and repo-specific Jess agents.
 - **Promote/split**:
   - Promote generic agents to `~/.cursor/agents` (for example `verification-runner`, `codebase-mapper`).
@@ -65,4 +67,3 @@ The new system goal is:
 - `packages/less-parser/vitest.config.ts` imports `../../vitest.config.js`, but repo has `vitest.config.ts` (no `.js` found).
 - Prettier config not found; ESLint stylistic rules exist — unclear whether “ESLint as formatter” is the standard.
 - `packages/patch-css` contains a Jest reference (`test:tofix`) — unclear if legacy support is intentional.
-

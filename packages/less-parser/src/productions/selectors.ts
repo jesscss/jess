@@ -520,18 +520,8 @@ export function complexSelector(this: P, T: TokenMap) {
             const coImg = co.image as Combinators;
             combinator = new Combinator(coImg, undefined, $.getLocationInfo(co), $.context);
           } else {
-            const startOffset = $.LA(1).startOffset;
-            combinator = new Combinator(' ', undefined, undefined, $.context);
-            let pre = $.getPrePost(startOffset);
-            if (pre === 1) {
-              pre = 0;
-            } else if (pre) {
-              const last = pre[pre.length - 1];
-              if (typeof last === 'string' && last.endsWith(' ')) {
-                pre[pre.length - 1] = last.slice(0, -1);
-              }
-            }
-            combinator.pre = pre;
+            const ws = $.claimSpaceCombinator($.LA(1).startOffset);
+            combinator = new Combinator(' ', undefined, ws ? $.getLocationInfo(ws) : undefined, $.context);
           }
         }
 

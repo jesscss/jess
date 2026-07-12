@@ -32,8 +32,18 @@ export function isNode(
   }
   if (mask === undefined) {
     /** No-arg: check if it's any Node (including types not in the bitmask table) */
-    return value instanceof Node
-      || (typeof (value as any).type === 'string' && typeof (value as any).children === 'function');
+    if (value instanceof Node) {
+      return true;
+    }
+    if (typeof value !== 'object') {
+      return false;
+    }
+    return typeof Reflect.get(value, 'type') === 'string'
+      && typeof Reflect.get(value, 'children') === 'function';
   }
-  return ((value as any).nodeType & mask) !== 0;
+  if (typeof value !== 'object') {
+    return false;
+  }
+  const nodeType = Reflect.get(value, 'nodeType');
+  return typeof nodeType === 'number' && (nodeType & mask) !== 0;
 }

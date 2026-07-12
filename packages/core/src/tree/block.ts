@@ -1,6 +1,13 @@
 import type { Context } from '../context.js';
 import { Node, defineType } from './node.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
+import { consumeTriviaText } from './util/trivia.js';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export type BlockOptions = {
   type: 'curly' | 'square';
@@ -15,6 +22,18 @@ export interface Block extends Node<Node, BlockOptions> {
  * for things like custom properties and unknown at-rules.
  */
 export class Block extends Node<Node, BlockOptions> {
+  private withValue(value: Node): Block {
+    const location = this._location && this._location.length === 6
+      ? this._location
+      : undefined;
+    return new Block(
+      value,
+      this._options ? { ...this._options } : undefined,
+      location,
+      this.treeContext
+    ).inherit(this);
+  }
+
   override toTrimmedString(options?: PrintOptions) {
     options = getPrintOptions(options);
     const w = options.writer!;
@@ -24,8 +43,35 @@ export class Block extends Node<Node, BlockOptions> {
     let end = type === 'square' ? ']' : '}';
     w.add(start);
     super.toTrimmedString(options);
+    const trivia = options.trivia ?? this.treeContext?.opts?.trivia;
+    if (trivia) {
+      w.add(consumeTriviaText(trivia, this.location[3], 'before', options));
+    }
     w.add(end);
     return w.getSince(mark);
+  }
+
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    const value = this.value.resolve(context);
+    const finalize = (resolvedValue: Node): Node => {
+      if (resolvedValue === this.value) {
+        return this;
+      }
+      return this.withValue(resolvedValue);
+    };
+    if (isThenable(value)) {
+      return (value as Promise<Node>).then(finalize);
+    }
+    return finalize(value as Node);
   }
 }
 

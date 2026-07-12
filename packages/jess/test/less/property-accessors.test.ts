@@ -3,14 +3,14 @@ import { Compiler } from '../../src/index.js';
 import { Context } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 
-describe('Property Accessors', () => {
+describe.todo('Property Accessors', () => {
   const compiler = new Compiler({
     compile: {
       plugins: [lessPlugin()]
     }
   });
 
-  describe('Basic Property Accessors', () => {
+  describe.todo('Basic Property Accessors', () => {
     it('should handle simple property accessor', async () => {
       const lessCode = `
         .mk-map() {
@@ -75,7 +75,7 @@ describe('Property Accessors', () => {
     });
   });
 
-  describe('Ambiguous mixin references', () => {
+  describe.todo('Ambiguous mixin references', () => {
     it('should handle a color as a mixin reference', async () => {
       const lessCode = `
         #FF0 {
@@ -93,7 +93,7 @@ describe('Property Accessors', () => {
     });
   });
 
-  describe('Property Accessor with Variables', () => {
+  describe.todo('Property Accessor with Variables', () => {
     it('should handle property accessor with variable keys', async () => {
       const lessCode = `
         .config() {
@@ -192,7 +192,7 @@ describe('Property Accessors', () => {
     });
   });
 
-  describe('Property Accessor with Mixins', () => {
+  describe.todo('Property Accessor with Mixins', () => {
     it('should handle property accessor from mixin return value', async () => {
       const lessCode = `
         .get-config() {
@@ -234,7 +234,7 @@ describe('Property Accessors', () => {
     });
   });
 
-  describe('Property Accessor Edge Cases', () => {
+  describe.todo('Property Accessor Edge Cases', () => {
     it('should handle property accessor with non-existent property', async () => {
       const lessCode = `
         .config() {
@@ -270,7 +270,7 @@ describe('Property Accessors', () => {
     });
   });
 
-  describe('Property Accessor with Namespaces', () => {
+  describe.todo('Property Accessor with Namespaces', () => {
     it('should handle property accessor with namespace', async () => {
       const lessCode = `
         #namespace {

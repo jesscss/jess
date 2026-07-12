@@ -1,7 +1,8 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool } from '../index.js';
 import { Context, TreeContext } from '../../context.js';
 import { resolveFrameCell } from '../scope-frame.js';
 import { MixinRegistry } from '../util/registry-utils.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -74,6 +75,41 @@ describe('Mixin', () => {
     context.depth = 2;
   });
 
+  it('resolves mixin definitions without touching render state', async () => {
+    const node = mixin({
+      name: any('.button'),
+      rules: rules([
+        decl({ name: 'color', value: any('red') })
+      ])
+    });
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      .button() {
+        color: red;
+      }
+    `);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('prepares mixin identity without pre-evaluating the body', async () => {
+    const bodyDecl = decl({ name: 'color', value: any('red') });
+    const body = rules([bodyDecl]);
+    const node = mixin({
+      name: any('.button'),
+      rules: body
+    });
+
+    const prepared = await node.prepareRegistration(context);
+
+    expect(prepared.preEvaluated).toBe(true);
+    expect(body.preEvaluated).toBe(false);
+    expect(bodyDecl.preEvaluated).toBe(false);
+  });
+
   describe('calling', () => {
     it('should call a simple mixin', async () => {
       // Create a mixin definition: .my-mixin() { color: red; }
@@ -96,14 +132,92 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
           color: red;
         }
       `);
+    });
+
+    it('emits direct comment children for each mixin output placement', async () => {
+      const mixinDef = mixin({
+        name: any('.commented'),
+        rules: rules([
+          comment('/**/'),
+          decl({ name: 'color', value: any('red') })
+        ])
+      });
+      const firstRuleset = ruleset({
+        selector: el('.first'),
+        rules: rules([
+          call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
+        ])
+      });
+      const secondRuleset = ruleset({
+        selector: el('.second'),
+        rules: rules([
+          call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
+        ])
+      });
+      const root = rules([mixinDef, firstRuleset, secondRuleset]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context, { context });
+      expect(css).toBeString(`
+        .first {
+          /**/
+          color: red;
+        }
+        .second {
+          /**/
+          color: red;
+        }
+      `);
+    });
+
+    it('derives ordinary mixin output wrappers without cloning the source Rules root', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let clonedMixinRoots = 0;
+      const mixinBody = rules([
+        comment('/**/'),
+        decl({ name: 'color', value: ref({ key: 'accent' }, { type: 'variable' }) })
+      ]);
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this === mixinBody) {
+          clonedMixinRoots++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          vardecl({ name: 'accent', value: any('red') }),
+          mixin({
+            name: any('.commented'),
+            rules: mixinBody
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({ name: ref({ key: '.commented' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context, { context });
+
+        expect(css).toContain('/**/');
+        expect(css).toContain('color: red;');
+        expect(clonedMixinRoots).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
     });
 
     it('should call a ruleset as a mixin (no parens)', async () => {
@@ -127,8 +241,7 @@ describe('Mixin', () => {
       const root = rules([mixinRuleset, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .my-mixin {
@@ -138,6 +251,49 @@ describe('Mixin', () => {
           color: red;
         }
       `);
+    });
+
+    it('does not clone childless source-free scalar leaves when calling a ruleset as a mixin', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        deep?: boolean,
+        cloneFn?: (n: Node) => Node
+      ) {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.call(this, deep, cloneFn);
+      };
+
+      try {
+        const callerRules = rules([]);
+        const root = rules([
+          ruleset({
+            selector: el('.my-mixin'),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.test'),
+            rules: callerRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = callerRules;
+
+        const mixinCall = call({ name: ref({ key: '.my-mixin' }, { type: 'mixin-ruleset' }) });
+        callerRules.adopt(mixinCall);
+        const css = await renderNodeToString(root, context, { context });
+
+        expect(css).toContain('color: red;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
     });
 
     it('should call a mixin with parameters', async () => {
@@ -167,8 +323,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -211,8 +366,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset1, testRuleset2]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test1 {
@@ -287,8 +441,7 @@ describe('Mixin', () => {
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       // @hover-background = @background = blue
       // Jess preserves CSS nesting: &:hover stays nested, not compiled to .table-primary:hover
@@ -351,8 +504,7 @@ describe('Mixin', () => {
       const root = rules([hoverMixin, tableRowVariantMixin, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.table-hover');
       expect(css).toContain('&:hover');
@@ -388,11 +540,104 @@ describe('Mixin', () => {
       const root = rules([tableRowVariantMixin, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.table-primary');
       expect(css).toContain('background-color: blue');
+    });
+
+    it('unlocks detached rulesets without deep-cloning their body leaves first', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        deep?: boolean,
+        cloneFn?: (n: Node) => Node
+      ) {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.call(this, deep, cloneFn);
+      };
+
+      try {
+        const callerRules = rules([]);
+        const root = rules([
+          vardecl({
+            name: 'content',
+            value: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.test'),
+            rules: callerRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = callerRules;
+
+        const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
+        callerRules.adopt(detachedCall);
+        const result = await detachedCall.eval(context);
+        const css = await result.render(context);
+
+        expect(css).toContain('color: red;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('unlocks detached rulesets without shallow-cloning the rules wrapper', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let detachedRuleClones = 0;
+
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        const [deep] = args;
+        if (
+          deep === false
+          && this.value.some(node => (
+            node.type === 'Declaration'
+            && node.value?.name?.valueOf?.() === 'color'
+          ))
+        ) {
+          detachedRuleClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const callerRules = rules([]);
+        const root = rules([
+          vardecl({
+            name: 'content',
+            value: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.test'),
+            rules: callerRules
+          })
+        ]);
+        context.root = root;
+        context.rulesContext = callerRules;
+
+        const detachedCall = call({ name: ref({ key: 'content' }, { type: 'variable' }) });
+        callerRules.adopt(detachedCall);
+        const result = await detachedCall.eval(context);
+        const css = await result.render(context);
+
+        expect(css).toContain('color: red;');
+        expect(detachedRuleClones).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
     });
 
     it('resolves local mixin body vars when a detached ruleset variable is called inside a child ruleset', async () => {
@@ -429,8 +674,7 @@ describe('Mixin', () => {
       const root = rules([tableRowVariantMixin, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.table-primary');
       expect(css).toContain('.table-hover');
@@ -470,8 +714,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.table-primary');
       expect(css).toContain('background-color: blue');
@@ -514,8 +757,7 @@ describe('Mixin', () => {
       const mainRoot = rules([importedRoot, component]);
       context.root = mainRoot;
 
-      const evald = await mainRoot.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(mainRoot, context);
 
       expect(css).toBeString(`
         .component {
@@ -557,8 +799,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, component]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .btn-primary {
@@ -616,8 +857,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.heightIsSet');
       expect(css).toContain('height: 1024px;');
@@ -646,8 +886,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.tiny-scope');
       expect(css).toContain('color: blue;');
@@ -688,8 +927,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
@@ -742,10 +980,229 @@ describe('Mixin', () => {
         throw new Error('Expected Rules result');
       }
       expect(Reflect.has(result, 'sourceParent')).toBe(false);
-      const css = result.toString();
+      const css = await result.render(context);
       expect(css).toContain('default: top level;');
       expect(css).toContain('scope: top level;');
       expect(css).toContain('sub-scope-only: inside;');
+    });
+
+    it('does not shallow-clone mixin body children to create param guard wrappers', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let shallowMarkerBodyClones = 0;
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        const [deep] = args;
+        if (
+          deep === false
+          && this.value.some(node => (
+            node.type === 'Declaration'
+            && node.value?.name?.valueOf?.() === 'marker'
+          ))
+        ) {
+          shallowMarkerBodyClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.guarded'),
+            params: list([any('color', { role: 'property' })]),
+            guard: condition([
+              ref({ key: 'color' }, { type: 'variable' }),
+              '=',
+              any('red')
+            ]),
+            rules: rules([
+              decl({ name: 'marker', value: ref({ key: 'color' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.guarded' }, { type: 'mixin' }),
+                args: list([any('red')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('marker: red;');
+        expect(shallowMarkerBodyClones).toBe(0);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not copy childless evaluated scalar args just to bind mixin params', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.noop'),
+            params: list([any('color', { role: 'property' })]),
+            rules: rules([])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.noop' }, { type: 'mixin' }),
+                args: list([any('red')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toBe('');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('does not clone childless source-free scalar leaves when calling a dynamic mixin body', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          vardecl({ name: 'borderColor', value: any('blue') }),
+          mixin({
+            name: any('.paint'),
+            rules: rules([
+              decl({ name: 'color', value: any('red') }),
+              decl({ name: 'border-color', value: ref({ key: 'borderColor' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.test'),
+            rules: rules([
+              call({ name: ref({ key: '.paint' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toContain('color: red;');
+        expect(css).toContain('border-color: blue;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not copy childless scalar params again when resolving live slots', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.use-color'),
+            params: list([any('color', { role: 'property' })]),
+            rules: rules([
+              decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.use-color' }, { type: 'mixin' }),
+                args: list([any('red')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('color: red;');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('does not copy childless static default params just to bind mixin params', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.noop'),
+            params: list([
+              vardecl({ name: 'color', value: any('red') }, { paramVar: true })
+            ]),
+            rules: rules([])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.noop' }, { type: 'mixin' })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toBe('');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
     });
 
     it('should call a mixin with multiple parameters', async () => {
@@ -776,8 +1233,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -815,6 +1271,360 @@ describe('Mixin', () => {
       context.root = root;
 
       await expectRejects(root.eval(context), ReferenceError, /'arguments' is not defined/);
+    });
+
+    it('does not copy childless scalar param values through @arguments children', async () => {
+      context.treeContext = new TreeContext({
+        file: {
+          name: 'test.less',
+          path: '/virtual',
+          fullPath: '/virtual/test.less'
+        }
+      });
+
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.args'),
+            params: list([
+              any('color', { role: 'property' }),
+              any('size', { role: 'property' })
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.args' }, { type: 'mixin' }),
+                args: list([any('red'), any('10px')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        const css = await evald.render(context);
+
+        expect(css).toContain('margin: red 10px;');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('does not copy childless scalar rest param values when resolving rest slots', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.resty'),
+            params: list([
+              any('first', { role: 'property' }),
+              rest('rest')
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.resty' }, { type: 'mixin' }),
+                args: list([any('0'), any('red'), any('10px')])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('margin: red 10px;');
+        expect(scalarCopies).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('keeps default param containers owned without reparenting the source container', async () => {
+      const defaultValue = seq([any('red'), any('10px')]);
+      const param = vardecl({ name: 'space', value: defaultValue }, { paramVar: true });
+      const root = rules([
+        mixin({
+          name: any('.container-default'),
+          params: list([param]),
+          rules: rules([])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            call({
+              name: ref({ key: '.container-default' }, { type: 'mixin' })
+            })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+      expect(css).toBe('');
+      expect(defaultValue.parent).toBe(param);
+      expect(param.parent?.parent).toBe(root.value[0]);
+    });
+
+    it('does not clone source-free scalar leaves inside copied positional param containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.container-param'),
+            params: list([any('space', { role: 'property' })]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.container-param' }, { type: 'mixin' }),
+                args: list([seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+
+        expect(css).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free scalar leaves inside copied named arg containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.container-param'),
+            params: list([any('space', { role: 'property' })]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.container-param' }, { type: 'mixin' }),
+                args: list([
+                  vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
+                ])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free scalar leaves inside copied default param containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.container-default'),
+            params: list([
+              vardecl({ name: 'space', value: seq([any('red'), any('10px')]) }, { paramVar: true })
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'space' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.container-default' }, { type: 'mixin' })
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free scalar leaves inside copied rest containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.resty'),
+            params: list([
+              any('first', { role: 'property' }),
+              rest('rest')
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'rest' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.resty' }, { type: 'mixin' }),
+                args: list([any('0'), seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free scalar leaves inside copied @arguments containers', async () => {
+      context.treeContext = new TreeContext({
+        file: {
+          name: 'test.less',
+          path: '/virtual',
+          fullPath: '/virtual/test.less'
+        }
+      });
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red' || this.valueOf() === '10px') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.args'),
+            params: list([
+              any('space', { role: 'property' })
+            ]),
+            rules: rules([
+              decl({ name: 'margin', value: ref({ key: 'arguments' }, { type: 'variable' }) })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({
+                name: ref({ key: '.args' }, { type: 'mixin' }),
+                args: list([seq([any('red'), any('10px')])])
+              })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const evald = await root.eval(context);
+        const css = await evald.render(context);
+
+        expect(css).toContain('margin: red 10px;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
     });
 
     it('resolves param/default/rest/@arguments bindings without declaration lookup', async () => {
@@ -865,7 +1675,7 @@ describe('Mixin', () => {
         context.root = root;
 
         const evald = await root.eval(context);
-        const css = evald.toString();
+        const css = await evald.render(context);
 
         expect(css).toBeString(`
           .test {
@@ -922,8 +1732,7 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        const css = evald.toString();
+        const css = await renderNodeToString(root, context);
 
         expect(css).toBeString(`
           .test {
@@ -940,7 +1749,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('ScopeFrame (slice 6): declarationBucketsByName matches registry state after eval', async () => {
+    it('ScopeFrame declarationBucketsByName matches registry state after eval', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -979,7 +1788,7 @@ describe('Mixin', () => {
       expect(resolveFrameCell('unknown', frame)).toBeUndefined();
     });
 
-    it('mixinsByName fast path (slice 7): type=mixin static-name lookup skips MixinRegistry.find', async () => {
+    it('mixinsByName fast path: type=mixin static-name lookup skips MixinRegistry.find', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -1017,8 +1826,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             color: purple;
           }
@@ -1073,8 +1882,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             color: green;
           }
@@ -1124,8 +1933,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .fast-ruleset {
             color: green;
           }
@@ -1176,8 +1985,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             color: orange;
           }
@@ -1226,8 +2035,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .foo {
             color: red;
           }
@@ -1241,7 +2050,7 @@ describe('Mixin', () => {
       }
     });
 
-    it('mixinsByName fast path (slice 15): type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
+    it('mixinsByName fast path: type=mixin static-name miss skips MixinRegistry.find once scopes are indexed', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -1274,8 +2083,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             content: .missing-mixin;
           }
@@ -1319,8 +2128,8 @@ describe('Mixin', () => {
         ]);
         context.root = root;
 
-        const evald = await root.eval(context);
-        expect(evald.toString()).toBeString(`
+        const css = await renderNodeToString(root, context);
+        expect(css).toBeString(`
           .a {
             content: .missing-ruleset-mixin;
           }
@@ -1558,8 +2367,7 @@ describe('Mixin', () => {
 
       expect(found).toHaveLength(3);
 
-      const evald = await tree.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(tree, context, { context });
 
       expect(css).toContain('#guarded-caller {');
       expect(css).toContain('guarded: namespace;');
@@ -1567,7 +2375,7 @@ describe('Mixin', () => {
       expect(css).toContain('guarded: with default;');
     });
 
-    it('ScopeFrame live slots (slice 8/10): param and @arguments resolve via frame chain', async () => {
+    it('ScopeFrame live slots resolve param and @arguments via frame chain', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -1580,7 +2388,7 @@ describe('Mixin', () => {
         params: list([any('color', { role: 'property' })]),
         rules: rules([
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
-          // @arguments is automatically bound in liveSlotsByName (slice 10)
+          // @arguments is automatically bound in liveSlotsByName.
           decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
         ])
       });
@@ -1597,8 +2405,9 @@ describe('Mixin', () => {
       ]);
       context.root = root;
       const evald = await root.eval(context);
+      const css = await evald.render(context);
 
-      expect(evald.toString()).toBeString(`
+      expect(css).toBeString(`
         .a {
           color: red;
           args: red;
@@ -1611,7 +2420,7 @@ describe('Mixin', () => {
       expect('setRuntimeVarBinding' in RulesClass.prototype).toBe(false);
     });
 
-    it('frame live slots (slice 9/10): mixin param lookup goes via frame chain; runtimeVarBindings removed', async () => {
+    it('frame live slots resolve mixin params via frame chain after runtimeVarBindings removal', async () => {
       context.treeContext = new TreeContext({
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
@@ -1636,9 +2445,9 @@ describe('Mixin', () => {
         })
       ]);
       context.root = root;
-      const evald = await root.eval(context);
+      const css = await renderNodeToString(root, context);
 
-      expect(evald.toString()).toBeString(`
+      expect(css).toBeString(`
         .a {
           color: red;
           border-color: red;
@@ -1688,14 +2497,127 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset1, testRuleset2]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test1 {
           color: red;
         }
       `);
+    });
+
+    it('does not copy static bool guards before evaluating candidates', async () => {
+      const originalCopy = Bool.prototype.copy;
+      let guardCopies = 0;
+      Bool.prototype.copy = function copyForCounting(
+        this: Bool,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        guardCopies++;
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const root = rules([
+          mixin({
+            name: any('.guarded'),
+            guard: bool(true),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('color: red;');
+        expect(guardCopies).toBe(0);
+      } finally {
+        Bool.prototype.copy = originalCopy;
+      }
+    });
+
+    it('keeps dynamic guards on a copied eval surface', async () => {
+      context = new Context({ leakyRules: false });
+      const guard = condition([
+        expr(ref({ key: 'mode' }, { type: 'variable' })),
+        '=',
+        any('dark')
+      ]);
+      const root = rules([
+        mixin({
+          name: any('.guarded'),
+          guard,
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        }),
+        ruleset({
+          selector: el('.use'),
+          rules: rules([
+            vardecl({ name: 'mode', value: any('dark') }),
+            call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+          ])
+        })
+      ]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toContain('color: red;');
+      expect(guard.evaluated).toBe(false);
+      expect(guard.preEvaluated).toBe(false);
+    });
+
+    it('does not clone source-free scalar leaves inside copied dynamic guards', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'dark') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        context = new Context({ leakyRules: false });
+        const root = rules([
+          mixin({
+            name: any('.guarded'),
+            guard: condition([
+              expr(ref({ key: 'mode' }, { type: 'variable' })),
+              '=',
+              any('dark')
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.use'),
+            rules: rules([
+              vardecl({ name: 'mode', value: any('dark') }),
+              call({ name: ref({ key: '.guarded' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('color: red;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
     });
 
     it('evaluates dynamic mixin guards against caller scope while params still resolve from live slots', async () => {
@@ -1748,8 +2670,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: red;');
@@ -1789,8 +2710,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: black;');
@@ -1864,8 +2784,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: black;');
@@ -1942,8 +2861,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: red;');
@@ -1953,6 +2871,55 @@ describe('Mixin', () => {
       expect(css).toContain('value: outer-light;');
       expect(css).not.toContain('value: red;');
       expect(css).not.toContain('value: blue;');
+    });
+
+    it('does not clone source-free scalar leaves inside copied default guard probes', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'dark') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        context = new Context({ leakyRules: false });
+        const root = rules([
+          mixin({
+            name: any('.guarded-default'),
+            guard: condition([
+              condition([
+                expr(ref({ key: 'mode' }, { type: 'variable' })),
+                '=',
+                any('dark')
+              ]),
+              'and',
+              defaultguard()
+            ]),
+            rules: rules([
+              decl({ name: 'color', value: any('red') })
+            ])
+          }),
+          ruleset({
+            selector: el('.dark'),
+            rules: rules([
+              vardecl({ name: 'mode', value: any('dark') }),
+              call({ name: ref({ key: '.guarded-default' }, { type: 'mixin' }) })
+            ])
+          })
+        ]);
+        context.root = root;
+
+        const css = await renderNodeToString(root, context);
+        expect(css).toContain('color: red;');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
     });
 
     it('evaluates no-param default guards against caller scope', async () => {
@@ -2011,8 +2978,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('.dark {');
       expect(css).toContain('color: black;');
@@ -2062,8 +3028,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .match {
@@ -2112,8 +3077,7 @@ describe('Mixin', () => {
       const root = rules([baseMixin, wrapperMixin, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -2168,8 +3132,7 @@ describe('Mixin', () => {
       const root = rules([redMixin, blueMixin, testRuleset1, testRuleset2]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test1 {
@@ -2208,8 +3171,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -2285,8 +3247,7 @@ describe('Mixin', () => {
         })
       ]);
       context.opts.collapseNesting = true;
-      let evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
       expect(css).toBeString(`
         .do .re .mi .fa .sol .la .si {
           color: cyan;
@@ -2344,8 +3305,7 @@ describe('Mixin', () => {
           ])
         })
       ]);
-      let evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
       expect(css).toBeString(`
         .rule {
           background-color: cyan;
@@ -2376,8 +3336,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .foo {
@@ -2439,8 +3398,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one :is(.foo)');
       expect(css).toContain('.two :is(.bar)');
@@ -2490,8 +3448,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toContain('.one {\n  width: calc(20 * 1px * 1em);');
       expect(css).toContain('.two {\n  width: calc(30 * 1px * 1em);');
@@ -2544,8 +3501,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one .foo');
       expect(css).toContain('.two .bar');
@@ -2601,8 +3557,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one .base.foo');
       expect(css).toContain('.two .base.bar');
@@ -2659,8 +3614,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one .base .foo');
       expect(css).toContain('.two .base .bar');
@@ -2721,8 +3675,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one .foo');
       expect(css).toContain('.two .bar');
@@ -2775,8 +3728,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  value: (foo);');
       expect(css).toContain('.two {\n  value: (bar);');
@@ -2822,8 +3774,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  value: "foo";');
       expect(css).toContain('.two {\n  value: "bar";');
@@ -2869,8 +3820,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  value: foo tail;');
       expect(css).toContain('.two {\n  value: bar tail;');
@@ -2916,8 +3866,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  value: foo;');
       expect(css).toContain('.two {\n  value: bar;');
@@ -2968,8 +3917,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  prop-foo: ok;');
       expect(css).toContain('.two {\n  prop-bar: ok;');
@@ -2977,23 +3925,29 @@ describe('Mixin', () => {
       expect(css).not.toContain('.two {\n  prop-foo: ok;');
     });
 
-    it('keeps interpolated mixin preEval wrappers self-owned instead of back-pointing to the canonical mixin', async () => {
+    it('keeps interpolated mixin registration prep wrappers self-owned instead of back-pointing to the canonical mixin', async () => {
       const dynamicMixinName = interpolated({
         source: '.inner-' + INTERPOLATION_PLACEHOLDER,
         replacements: [any('foo')]
       });
+      const params = list([any('value', { role: 'property' })]);
+      const body = rules([
+        decl({ name: any('value'), value: any('ok') })
+      ]);
       const node = mixin({
         name: dynamicMixinName,
-        rules: rules([
-          decl({ name: any('value'), value: any('ok') })
-        ])
+        params,
+        rules: body
       });
 
-      const preEvald = await node.preEval(context);
+      const prepared = await node.prepareRegistration(context);
 
-      expect(preEvald).not.toBe(node);
-      expect(preEvald.sourceNode).toBe(preEvald);
-      expect(preEvald.value.name.valueOf()).toBe('.inner-foo');
+      expect(prepared).not.toBe(node);
+      expect(prepared.sourceNode).toBe(prepared);
+      expect(prepared.value.name.valueOf()).toBe('.inner-foo');
+      expect(dynamicMixinName.parent).toBe(node);
+      expect(params.parent).toBe(node);
+      expect(body.parent).toBe(node);
     });
 
     it('keeps nested interpolated mixin names isolated across repeated mixin calls', async () => {
@@ -3047,8 +4001,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
       expect(css).toContain('.one {\n  value: foo;\n}');
       expect(css).toContain('.two {\n  value: bar;\n}');
       expect(css).not.toContain('.inner-foo()');
@@ -3092,8 +4045,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one-suffix');
       expect(css).toContain('.two-suffix');
@@ -3138,8 +4090,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(node, context, { collapseNesting: true });
 
       expect(css).toContain('.one {\n  color: red;\n}');
       expect(css).toContain('.two {\n  color: red;\n}');
@@ -3191,8 +4142,7 @@ describe('Mixin', () => {
       ]);
       context.root = node;
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ collapseNesting: false });
+      const css = await renderNodeToString(node, context, { collapseNesting: false });
 
       expect(css).toContain('.one {\n  @media screen {\n    value: screen;');
       expect(css).toContain('.two {\n  @media print {\n    value: print;');
@@ -3235,8 +4185,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .b .bb {
@@ -3332,8 +4281,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(root, context, { collapseNesting: true });
 
       expect(css).toBeString(`
         .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
@@ -3386,8 +4334,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -3423,8 +4370,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -3460,12 +4406,53 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
           padding: 20px 30px 40px;
+        }
+      `);
+    });
+
+    it('expands rest call arguments across positional params', async () => {
+      const mixinDef = mixin({
+        name: any('.my-mixin'),
+        params: list([
+          any('a', { role: 'property' }),
+          any('b', { role: 'property' }),
+          any('c', { role: 'property' })
+        ]),
+        rules: rules([
+          decl({ name: 'padding', value: seq([
+            ref({ key: 'a' }, { type: 'variable' }),
+            ref({ key: 'b' }, { type: 'variable' }),
+            ref({ key: 'c' }, { type: 'variable' })
+          ]) })
+        ])
+      });
+
+      const testRuleset = ruleset({
+        selector: el('.test'),
+        rules: rules([
+          call({
+            name: ref({ key: '.my-mixin' }, { type: 'mixin' }),
+            args: list([
+              any('10px'),
+              rest(seq([any('20px'), any('30px')]))
+            ])
+          })
+        ])
+      });
+
+      const root = rules([mixinDef, testRuleset]);
+      context.root = root;
+
+      const css = await renderNodeToString(root, context);
+
+      expect(css).toBeString(`
+        .test {
+          padding: 10px 20px 30px;
         }
       `);
     });
@@ -3498,8 +4485,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -3536,8 +4522,7 @@ describe('Mixin', () => {
       const root = rules([mixinDef, testRuleset]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test {
@@ -3597,8 +4582,7 @@ describe('Mixin', () => {
       const root = rules([mixinWithoutRest, mixinWithRest, testRuleset1, testRuleset2]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toBeString(`
         .test1 {
@@ -3741,8 +4725,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(root, context);
 
       expect(css).toContain('gender: "Male";');
       expect(css).not.toContain('gender: "Outer";');
@@ -3797,8 +4780,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      const evald = await root.eval(context);
-      const css = evald.toString({ collapseNesting: true });
+      const css = await renderNodeToString(root, context, { collapseNesting: true });
 
       expect(css).toContain('gender: "Male";');
       expect(css).not.toContain('.person {\n}');
@@ -3854,8 +4836,7 @@ describe('Mixin', () => {
       context.root = root;
       context.opts.collapseNesting = true;
 
-      const evald = await root.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(root, context, { context });
 
       expect(css).toContain('mi-test-d {\n  gender: "Male";\n}');
       expect(css).not.toContain('mi-test-d .person {\n}');
@@ -3916,8 +4897,7 @@ describe('Mixin', () => {
       context.root = tree;
       context.opts.collapseNesting = true;
 
-      const evald = await tree.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(tree, context, { context });
 
       expect(css).toBeString(`
         .b .bb.foo-xxx .yyy-foo#foo .foo.bbb {
@@ -3954,7 +4934,7 @@ describe('Mixin', () => {
           decl({ name: 'background-color', value: any('white') })
         ])
       });
-      expect(`${rule}`).toBeString(`
+      expect(rule.toTrimmedString()).toBeString(`
         myMixin() {
           color: black;
           background-color: white;
@@ -3974,7 +4954,7 @@ describe('Mixin', () => {
           decl({ name: 'background-color', value: any('white') })
         ])
       });
-      expect(`${rule}`).toBeString(`
+      expect(rule.toTrimmedString()).toBeString(`
         my-mixin($a: black; $b: white) {
           color: black;
           background-color: white;
@@ -3995,7 +4975,7 @@ describe('Mixin', () => {
           decl({ name: 'background-color', value: any('white') })
         ])
       });
-      expect(`${rule}`).toBeString(`
+      expect(rule.toTrimmedString()).toBeString(`
         my-mixin($a: black; $b: white) when ($($a) = $($b)) {
           color: black;
           background-color: white;

@@ -28,7 +28,15 @@ export class Collection extends Rules {
     return this;
   }
 
-  override preEval(_context: Context): this | Promise<this> {
+  override resolve(context: Context): MaybePromise<this> {
+    return this.evalNode(context);
+  }
+
+  override preEval(context: Context): this | Promise<this> {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(_context: Context): this | Promise<this> {
     if (this.preEvaluated) {
       return this;
     }

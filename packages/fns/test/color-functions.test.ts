@@ -14,6 +14,18 @@ import hsl from '../src/less/hsl.js';
 import hsla from '../src/less/hsla.js';
 import argb from '../src/less/argb.js';
 
+type InternalFunction = {
+  call(thisArg: unknown): unknown;
+};
+
+function getInternalFunction(fn: object): InternalFunction {
+  const internal = Reflect.get(fn, '_internal');
+  if (typeof internal !== 'function') {
+    throw new TypeError('Expected defineFunction proxy to expose _internal');
+  }
+  return internal;
+}
+
 describe('Color Functions', () => {
   describe('RGB Function', () => {
     it('should handle absolute RGB values', async () => {
@@ -361,6 +373,34 @@ describe('Color Functions', () => {
       expect(result.toTrimmedString()).toBe('#1affeeaa');
     });
 
+    it('should generate argb output without cloning the input color', async () => {
+      const originalClone = Color.prototype.clone;
+      let cloneCalls = 0;
+      Color.prototype.clone = function countCloneCalls(
+        this: Color,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        cloneCalls++;
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const context = new Context();
+        const input = new Color({
+          rgb: [255, 238, 170],
+          alpha: 0.1
+        });
+        const before = input.toTrimmedString();
+        const result = await callWithContext(context, argb, input);
+
+        expect(result.toTrimmedString()).toBe('#1affeeaa');
+        expect(input.toTrimmedString()).toBe(before);
+        expect(cloneCalls).toBe(0);
+      } finally {
+        Color.prototype.clone = originalClone;
+      }
+    });
+
     it('should force functional hsla output when passed a hex color', async () => {
       const context = new Context();
       const result = await callWithContext(context, hsla, new Color('#5F59'));
@@ -506,7 +546,7 @@ describe('Color Functions', () => {
         };
 
         // Call the internal function directly
-        const rgbInternal = (rgb as any)._internal;
+        const rgbInternal = getInternalFunction(rgb);
         const result = await rgbInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -517,46 +557,91 @@ describe('Color Functions', () => {
       });
 
       it('should handle rgb(from #123456 calc(r + 40) calc(g + 40) b)', async () => {
-        const context = new Context();
-        // Create AST: rgb(from #123456 calc(r + 40) calc(g + 40) b)
-        const originColor = new Color('#123456'); // rgb(18, 52, 86)
-        const fromKeyword = new Any('from', { role: 'keyword' });
-        const rChannel = new Any('r', { role: 'ident' });
-        const gChannel = new Any('g', { role: 'ident' });
-        const bChannel = new Any('b', { role: 'ident' });
-
-        // Create calc(r + 40)
-        const rValue = new Any('r', { role: 'ident' });
-        const plus40 = new Dimension({ number: 40, unit: '' });
-        const calcRExpr = new Operation([rValue, '+', plus40]);
-        const calcR = new Call({ name: 'calc', args: new List([calcRExpr]) });
-
-        // Create calc(g + 40)
-        const gValue = new Any('g', { role: 'ident' });
-        const calcGExpr = new Operation([gValue, '+', plus40]);
-        const calcG = new Call({ name: 'calc', args: new List([calcGExpr]) });
-
-        // Create sequence: from #123456 calc(r + 40) calc(g + 40) b
-        const channelSequence = new Sequence([fromKeyword, originColor, calcR, calcG, bChannel]);
-        const argsList = new List([channelSequence]);
-
-        // Create FunctionThis manually
-        const functionThis = {
-          context,
-          args: () => argsList.eval(context),
-          rawArgs: argsList
+        const originalCallClone = Call.prototype.clone;
+        const originalOperationClone = Operation.prototype.clone;
+        const originalListClone = List.prototype.clone;
+        const originalSequenceClone = Sequence.prototype.clone;
+        let cloneCalls = 0;
+        const countClone = function countClone<
+          T extends Call | Operation | List | Sequence,
+          A extends unknown[],
+          R
+        >(this: T, original: (this: T, ...args: A) => R, ...args: A): R {
+          cloneCalls++;
+          return original.apply(this, args);
+        };
+        Call.prototype.clone = function cloneCallForCounting(
+          this: Call,
+          ...args: Parameters<typeof originalCallClone>
+        ): ReturnType<typeof originalCallClone> {
+          return countClone(this, originalCallClone, ...args);
+        };
+        Operation.prototype.clone = function cloneOperationForCounting(
+          this: Operation,
+          ...args: Parameters<typeof originalOperationClone>
+        ): ReturnType<typeof originalOperationClone> {
+          return countClone(this, originalOperationClone, ...args);
+        };
+        List.prototype.clone = function cloneListForCounting(
+          this: List,
+          ...args: Parameters<typeof originalListClone>
+        ): ReturnType<typeof originalListClone> {
+          return countClone(this, originalListClone, ...args);
+        };
+        Sequence.prototype.clone = function cloneSequenceForCounting(
+          this: Sequence,
+          ...args: Parameters<typeof originalSequenceClone>
+        ): ReturnType<typeof originalSequenceClone> {
+          return countClone(this, originalSequenceClone, ...args);
         };
 
-        const rgbInternal = (rgb as any)._internal;
-        const result = await rgbInternal.call(functionThis);
+        const context = new Context();
+        try {
+          // Create AST: rgb(from #123456 calc(r + 40) calc(g + 40) b)
+          const originColor = new Color('#123456'); // rgb(18, 52, 86)
+          const fromKeyword = new Any('from', { role: 'keyword' });
+          const gChannel = new Any('g', { role: 'ident' });
+          const bChannel = new Any('b', { role: 'ident' });
 
-        expect(result).toBeInstanceOf(Color);
-        expect(result.options.format).toBe(ColorFormat.RGB);
-        // #123456 is rgb(18, 52, 86)
-        // calc(r + 40) = 18 + 40 = 58
-        // calc(g + 40) = 52 + 40 = 92
-        // b = 86
-        expect(result.rgb).toEqual([58, 92, 86]);
+          // Create calc(r + 40)
+          const rValue = new Any('r', { role: 'ident' });
+          const plus40 = new Dimension({ number: 40, unit: '' });
+          const calcRExpr = new Operation([rValue, '+', plus40]);
+          const calcR = new Call({ name: 'calc', args: new List([calcRExpr]) });
+
+          // Create calc(g + 40)
+          const gValue = new Any('g', { role: 'ident' });
+          const calcGExpr = new Operation([gValue, '+', plus40]);
+          const calcG = new Call({ name: 'calc', args: new List([calcGExpr]) });
+
+          // Create sequence: from #123456 calc(r + 40) calc(g + 40) b
+          const channelSequence = new Sequence([fromKeyword, originColor, calcR, calcG, bChannel]);
+          const argsList = new List([channelSequence]);
+
+          // Create FunctionThis manually
+          const functionThis = {
+            context,
+            args: () => argsList.eval(context),
+            rawArgs: argsList
+          };
+
+          const rgbInternal = getInternalFunction(rgb);
+          const result = await rgbInternal.call(functionThis);
+
+          expect(result).toBeInstanceOf(Color);
+          expect(result.options.format).toBe(ColorFormat.RGB);
+          // #123456 is rgb(18, 52, 86)
+          // calc(r + 40) = 18 + 40 = 58
+          // calc(g + 40) = 52 + 40 = 92
+          // b = 86
+          expect(result.rgb).toEqual([58, 92, 86]);
+          expect(cloneCalls).toBe(0);
+        } finally {
+          Call.prototype.clone = originalCallClone;
+          Operation.prototype.clone = originalOperationClone;
+          List.prototype.clone = originalListClone;
+          Sequence.prototype.clone = originalSequenceClone;
+        }
       });
 
       it('should handle rgb(from hwb(120deg 10% 20%) r g calc(b + 200))', async () => {
@@ -590,7 +675,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const rgbInternal = (rgb as any)._internal;
+        const rgbInternal = getInternalFunction(rgb);
         const result = await rgbInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -619,7 +704,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const hslInternal = (hsl as any)._internal;
+        const hslInternal = getInternalFunction(hsl);
         const result = await hslInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -654,7 +739,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const hslInternal = (hsl as any)._internal;
+        const hslInternal = getInternalFunction(hsl);
         const result = await hslInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);
@@ -695,7 +780,7 @@ describe('Color Functions', () => {
           rawArgs: argsList
         };
 
-        const hslInternal = (hsl as any)._internal;
+        const hslInternal = getInternalFunction(hsl);
         const result = await hslInternal.call(functionThis);
 
         expect(result).toBeInstanceOf(Color);

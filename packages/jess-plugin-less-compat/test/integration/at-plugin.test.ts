@@ -160,7 +160,7 @@ describe('@plugin directive processing', () => {
 
     tree.accept(visitor);
 
-    const pluginDirective = tree.at(1);
+    const pluginDirective = tree.at(0);
     if (!pluginDirective || !isNode(pluginDirective, N.AtRule)) {
       throw new Error('Expected parsed @plugin directive');
     }

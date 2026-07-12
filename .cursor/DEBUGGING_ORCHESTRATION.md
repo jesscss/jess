@@ -2,7 +2,7 @@
 
 This document explains **why** Cursor/LLMs struggle with long debugging sessions, **what** best practices and systems exist, and **how** this project implements rules, commands, skills, and subagents to make debugging effective and context-persistent.
 
-**How it all fits together:** The always-applied **rules** (`00-global`, `20-quality-bar`, `30-tests`) provide core constraints. **PROJECT_STATE.md** is the shared memory (deps, build order, test commands, current focus); **area-specific plans** (e.g. EXTEND_DEBUG_PLAN) add detail for one area. **Commands** (`/start-debugging`, `/run-baseline`, `/update-debug-state`) are generic workflows for any bug. The **systematic-debugging** skill is applied when the agent thinks you’re debugging. The **jess-baseline-test-runner** subagent runs whatever baseline the parent asks for and returns a short report. Everything is designed to work for **any** debugging focus (extend, mixins, parser, etc.); extend is just the first well-documented example.
+**How it all fits together:** The always-applied **rules** (`00-global`, `20-quality-bar`, `30-tests`) provide core constraints. **PROJECT_STATE.md** is compact shared memory (build shape, verification commands, current focus only while active). **Commands** (`/start-debugging`, `/run-baseline`, `/update-debug-state`) are generic workflows for any bug. The **systematic-debugging** skill is applied when the agent thinks you’re debugging. The **jess-baseline-test-runner** subagent runs whatever baseline the parent asks for and returns a short report.
 
 ---
 
@@ -69,7 +69,7 @@ This document explains **why** Cursor/LLMs struggle with long debugging sessions
 | File | Purpose |
 |------|---------|
 | `.cursor/changes.md` | Daily log of what was done; recent first. Already in use. |
-| `.cursor/PROJECT_STATE.md` | Package dependency graph, build order, "who depends on whom", key test commands (§3), and **current debugging focus** (§4) for any area (extend, mixins, parser, etc.). |
+| `.cursor/PROJECT_STATE.md` | Compact package/build shape, key verification commands, and **current debugging focus** only while an issue is active. |
 | `packages/core/src/tree/util/EXTEND_RULES.md` | Canonical “single set of extend rules” (keep current). |
 | `packages/core/src/tree/util/__tests__/EXTEND_TEST_INDEX.md` | Canonical “where are the extend tests / where to add coverage” map. |
 | `.cursor/rules/subtrees/core__extend.mdc` | Cursor-native, auto-loaded extend hotspot pointers + baseline commands. |
@@ -87,8 +87,8 @@ For debugging sessions, state updates are handled via `PROJECT_STATE.md` and `/u
 ### 3.3 Commands (generic for any debugging area)
 
 - **`/start-debugging`** — Load state (PROJECT_STATE.md and any relevant plan file for the area); run the baseline for that area (extend, core, jess, etc.; see PROJECT_STATE §3); optionally focus one case with `.only`. Same workflow for any bug.
-- **`/run-baseline`** — Run the test baseline for the current focus (area from user or PROJECT_STATE §4). Report pass/fail only. No code changes.
-- **`/update-debug-state`** — Remind the agent to update PROJECT_STATE.md section 4 (and any area-specific plan file) with: current area, last thing tried, result, next step.
+- **`/run-baseline`** — Run the test baseline for the current focus (area from user or PROJECT_STATE). Report pass/fail only. No code changes.
+- **`/update-debug-state`** — Remind the agent to update PROJECT_STATE.md with: current area, focused baseline, last thing tried, result, next step. Do not paste long logs or old session history.
 
 ### 3.4 Skill: Systematic debugging
 
@@ -119,7 +119,7 @@ For debugging sessions, state updates are handled via `PROJECT_STATE.md` and `/u
 
 ### 4.3 When Cursor gets stuck
 
-- **Hand off via state:** Update PROJECT_STATE.md section 4 with "Stuck on X; tried A, B, C; hypothesis was Y." Start a new chat: "Read .cursor/PROJECT_STATE.md and continue debugging." (For extend, also consult `.cursor/rules/subtrees/core__extend.mdc` and the canonical core docs listed above.)
+- **Hand off via state:** Update PROJECT_STATE.md with "Stuck on X; tried A, B, C; hypothesis was Y." Start a new chat: "Read .cursor/PROJECT_STATE.md and continue debugging." (For extend, also consult `.cursor/rules/subtrees/core__extend.mdc` and the canonical core docs listed above.)
 - **Subagent:** "Run the Jess baseline test runner: run [the baseline you need, e.g. core extend tests] and report results." Use the report to decide next step without re-running in the main thread.
 
 ---
@@ -136,7 +136,7 @@ For debugging sessions, state updates are handled via `PROJECT_STATE.md` and `/u
 ## 6. File Checklist
 
 - [x] `.cursor/DEBUGGING_ORCHESTRATION.md` (this file)
-- [x] `.cursor/PROJECT_STATE.md` (package deps, build order, test commands, current debugging focus §4)
+- [x] `.cursor/PROJECT_STATE.md` (compact build shape, verification commands, current debugging focus)
 - [x] `.cursor/rules/00-global.mdc` (global behavior + debugging memory contract)
 - [x] `.cursor/rules/20-quality-bar.mdc` (AST/type/instrumentation invariants)
 - [x] `.cursor/rules/30-tests.mdc` (test and monorepo script discipline)

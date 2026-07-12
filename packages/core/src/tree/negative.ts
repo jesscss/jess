@@ -3,13 +3,11 @@ import type { Context } from '../context.js';
 import { Dimension } from './dimension.js';
 import { type MaybePromise, pipe, tryStep } from '@jesscss/awaitable-pipe';
 import { getPrintOptions, type PrintOptions } from './util/print.js';
-
-/**
- * The negative sign before a node
- */
-export interface Negative extends Node<Node> {
-  eval(context: Context): MaybePromise<Node>;
-}
+import {
+  isRenderBuffer,
+  renderNodeToBuffer,
+  type RenderBuffer
+} from './util/render-buffer.js';
 
 export class Negative extends Node<Node> {
   private renderNegativeSyntax(options?: PrintOptions): string {
@@ -31,6 +29,15 @@ export class Negative extends Node<Node> {
     return this.renderNegativeSyntax(options);
   }
 
+  override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
+  override render(context: Context, options?: PrintOptions): string;
+  override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
+    if (isRenderBuffer(bufferOrOptions)) {
+      return renderNodeToBuffer(this, context, bufferOrOptions, options);
+    }
+    return super.render(context, bufferOrOptions);
+  }
+
   override evalNode(context: Context): MaybePromise<Node> {
     return pipe(
       () => this.value.eval(context),
@@ -41,6 +48,10 @@ export class Negative extends Node<Node> {
         return value.operate(new Dimension({ number: -1 }), '*', context);
       }, { rethrow: true })
     );
+  }
+
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
   }
 }
 

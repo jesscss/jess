@@ -1,3 +1,4 @@
+import type { Context } from '../context.js';
 import { F_MAY_ASYNC, F_NON_STATIC, Node, defineType } from './node.js';
 import { type Quoted } from './quoted.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
@@ -65,6 +66,10 @@ export class JsImport extends Node<JsImportValue, JsImportOptions> {
     }
     w.add(';');
     return w.getSince(mark);
+  }
+
+  override resolve(_context: Context): this {
+    return this;
   }
 }
 

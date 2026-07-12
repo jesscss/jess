@@ -1,11 +1,16 @@
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   amp, rules, sel, el, co, spaced, any, sellist, ruleset, decl, attr,
   compound,
-  type SimpleSelector, type Combinator, type Selector
+  Ampersand,
+  BasicSelector,
+  type SimpleSelector, type Combinator
 } from '../index.js';
+import { Selector } from '../selector.js';
 import { Context } from '../../context.js';
-import { F_AMPERSAND, F_VISIBLE } from '../node.js';
+import { F_AMPERSAND, F_IMPLICIT_AMPERSAND, F_VISIBLE } from '../node.js';
 import { getPrintOptions, OutputWriter } from '../util/print.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 describe('Ampersand', () => {
@@ -51,7 +56,7 @@ describe('Ampersand', () => {
   /** We need a root node to bubble rules */
     let node = wrapAmp([amp()]);
     let evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(evald, context)).toBeString(`
       .one.two {
         chungus: foo bar;
         & {
@@ -61,7 +66,7 @@ describe('Ampersand', () => {
     `);
     node = wrapAmpList([sel([amp()])]);
     evald = await node.eval(context);
-    expect(`${evald}`).toBeString(`
+    expect(await renderNodeToString(evald, context)).toBeString(`
       .one,
       .two {
         chungus: foo bar;
@@ -88,12 +93,126 @@ describe('Ampersand', () => {
     expect(options.composedSelectorStack).toEqual([parentSelector]);
   });
 
+  it('resolves framed ampersands without touching render state', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const node = amp('-bar');
+
+    const resolved = await node.resolve(context);
+
+    expect(resolved.toTrimmedString()).toBe('.foo-bar');
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
+    expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('derives appended framed ampersand selectors without cloning the frame selector', async () => {
+    const frame = ruleset({
+      selector: sel([el('.foo')]),
+      rules: rules([])
+    });
+    context.rulesetFrames.push(frame);
+    const sourceSelector = frame.value.selector;
+    expect(sourceSelector).toBeInstanceOf(Selector);
+    if (!(sourceSelector instanceof Selector)) {
+      throw new Error(`Expected Selector, got ${sourceSelector.type}`);
+    }
+    const originalClone = sourceSelector.clone;
+    let clonedSourceSelectors = 0;
+    sourceSelector.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedSourceSelectors++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const node = amp('-bar');
+
+      const resolved = await node.resolve(context);
+
+      expect(clonedSourceSelectors).toBe(0);
+      expect(resolved.toTrimmedString()).toBe('.foo-bar');
+      expect(resolved).not.toBe(sourceSelector);
+      expect(sourceSelector.toTrimmedString()).toBe('.foo');
+      expect(frame.value.selector).toBe(sourceSelector);
+      expect(resolved.hoistToRoot).toBe(true);
+    } finally {
+      sourceSelector.clone = originalClone;
+    }
+  });
+
+  it('derives framed ampersand wrappers without shallow-cloning the source ampersand', async () => {
+    const originalClone = Ampersand.prototype.clone;
+    let clonedAmpersands = 0;
+    Ampersand.prototype.clone = function cloneForCounting(
+      this: Ampersand,
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      clonedAmpersands++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const frame = ruleset({
+        selector: sel([el('.foo')]),
+        rules: rules([])
+      });
+      context.rulesetFrames.push(frame);
+      const node = amp();
+
+      const resolved = await node.resolve(context);
+
+      expect(resolved).toBeInstanceOf(Ampersand);
+      if (!(resolved instanceof Ampersand)) {
+        throw new Error(`Expected Ampersand, got ${resolved.type}`);
+      }
+      expect(resolved.getResolvedSelector()?.toTrimmedString()).toBe('.foo');
+      expect(clonedAmpersands).toBe(0);
+      expect(node.evaluated).toBe(false);
+    } finally {
+      Ampersand.prototype.clone = originalClone;
+    }
+  });
+
+  it('wraps implicit selector-list ampersands without cloning reusable selector leaves', () => {
+    const one = el('.one');
+    const two = el('.two');
+    const selectorList = sellist([sel([one]), sel([two])]);
+    const sourceOneParent = one.parent;
+    const sourceTwoParent = two.parent;
+    const node = amp({ selectorContainer: { selector: selectorList } });
+    node.addFlag(F_IMPLICIT_AMPERSAND);
+    const originalClone = BasicSelector.prototype.clone;
+    let basicSelectorCloneCalls = 0;
+    BasicSelector.prototype.clone = function cloneForCounting(
+      this: BasicSelector,
+      ...args: Parameters<BasicSelector['clone']>
+    ): ReturnType<BasicSelector['clone']> {
+      basicSelectorCloneCalls++;
+      return originalClone.apply(this, args);
+    };
+
+    try {
+      const resolved = node.getResolvedSelector();
+
+      expect(resolved?.toTrimmedString()).toBe(':is(.one, .two)');
+      expect(basicSelectorCloneCalls).toBe(0);
+      expect(one.parent).toBe(sourceOneParent);
+      expect(two.parent).toBe(sourceTwoParent);
+    } finally {
+      BasicSelector.prototype.clone = originalClone;
+    }
+  });
+
   it('should collapse selectors when in collapsing mode #1', async () => {
     /** We need a root node to bubble rules */
     let node = wrapAmp([amp()]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one.two) is unwrapped to .one.two; same selector as outer so one block
     expect(css).toBeString(`
       .one.two {
@@ -108,9 +227,7 @@ describe('Ampersand', () => {
     let node = wrapAmpList([sel([amp()])]);
     context = new Context({ collapseNesting: true });
 
-    let evald = await node.eval(context);
-
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one,.two) is unwrapped to .one,.two; same selector as outer so one block
     expect(css).toBeString(`
       .one,
@@ -124,8 +241,7 @@ describe('Ampersand', () => {
   it('should order selectors when collapsing', async () => {
     let node = wrapAmp([amp(), el('h2')]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -139,8 +255,7 @@ describe('Ampersand', () => {
   it('should collapse selectors when ampersand is set to hoist #1', async () => {
     let node = wrapAmp([amp('')]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one.two) unwraps to .one.two; same selector so one block
     expect(css).toBeString(`
       .one.two {
@@ -153,8 +268,7 @@ describe('Ampersand', () => {
   it('should collapse selectors when ampersand is set to hoist #2', async () => {
     let node = wrapAmpList([sel([amp('')])]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // Generated :is(.one,.two) unwraps to .one,.two; same selector so one block
     expect(css).toBeString(`
       .one,
@@ -168,8 +282,7 @@ describe('Ampersand', () => {
   it('should collapse selectors when ampersand has an appended value #1', async () => {
     let node = wrapAmp([amp('-1')]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
@@ -183,8 +296,7 @@ describe('Ampersand', () => {
   it('should collapse selectors when ampersand has an appended value #2', async () => {
     let node = wrapAmpList([sel([amp('-1')])]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toBeString(`
       .one,
       .two {
@@ -217,8 +329,7 @@ describe('Ampersand', () => {
       })
     ]);
     context = new Context({ collapseNesting: true });
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css).toContain('.fruit-quoted-apple');
     expect(css).toContain('.fruit-quoted-satsuma');
     expect(css).toContain('.fruit-quoted-banana');
@@ -247,8 +358,7 @@ describe('Ampersand', () => {
   it('should wrap inner lists in :is()', async () => {
     let node = wrapAmpList([sel([amp()]), sel([el('.three')])]);
     context = new Context({ collapseNesting: true });
-    let evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
     // First item is generated :is(.one,.two) and unwraps to .one,.two; second stays :is(.one,.two) .three
     expect(css).toBeString(`
       .one,
@@ -262,8 +372,7 @@ describe('Ampersand', () => {
       }`
     );
     node = wrapAmpList([compound([amp(), el('.three')])]);
-    evald = await node.eval(context);
-    const css2 = evald.toString({ collapseNesting: true });
+    const css2 = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css2).toBeString(`
       .one,
       .two {
@@ -295,8 +404,7 @@ describe('Ampersand', () => {
       })
     ]);
     context = new Context({ collapseNesting: true });
-    const evald = await node.eval(context);
-    const css = evald.toString({ context, collapseNesting: true });
+    const css = await renderNodeToString(node, context, { context, collapseNesting: true });
     expect(css).toContain('* b[e]');
     expect(css).not.toContain(':is(* b)[e]');
   });

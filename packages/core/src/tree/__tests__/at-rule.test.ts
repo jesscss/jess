@@ -1,36 +1,61 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   vardecl, ref, mixin, call, list, op,
-  num, dimension, amp,
+  num, dimension, amp, F_MAY_ASYNC,
   paren, seq, comment, nil, quoted, color, co, interpolated
 } from '../index.js';
+import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import { AtRule } from '../at-rule.js';
 import { Rules } from '../rules.js';
 import { Node } from '../node.js';
 import { serializeTypes } from '../util/serialize-types.js';
+import type { TriviaMap } from '../../types/index.js';
+import { createTriviaMap } from '../util/trivia.js';
+import { getPrintOptions, OutputWriter } from '../util/print.js';
 import * as path from 'path';
 import * as fs from 'fs';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  tokenType: { name: tokenTypeName } as IToken['tokenType'],
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length
+});
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('AtRule', () => {
   beforeEach(() => {
     context = new Context();
   });
 
-  it('keeps static leaf at-rules canonical in preEval', async () => {
+  it('keeps static leaf at-rules canonical in registration prep', async () => {
     const node = atrule({
       name: any('@namespace', { role: 'atkeyword' }),
       prelude: seq([any('svg')])
     });
 
-    const preEvald = await node.preEval(context);
+    const prepared = await node.prepareRegistration(context);
 
-    expect(preEvald).toBe(node);
+    expect(prepared).toBe(node);
   });
 
-  it('keeps static at-rules canonical in preEval when child rules are already preEvaluated', async () => {
+  it('keeps static at-rules canonical in registration prep when child rules are already preEvaluated', async () => {
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
@@ -41,29 +66,116 @@ describe('AtRule', () => {
       rules: body
     });
 
-    const preEvald = await node.preEval(context);
+    const prepared = await node.prepareRegistration(context);
 
-    expect(preEvald).toBe(node);
+    expect(prepared).toBe(node);
   });
 
-  it('keeps interpolated at-rule preEval wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
+  it('keeps interpolated at-rule registration prep wrappers self-owned instead of back-pointing to the canonical at-rule', async () => {
+    const prelude = seq([any('screen', { role: 'keyword' })]);
     const node = atrule({
       name: interpolated({
         source: '@media',
         replacements: []
       }),
-      prelude: seq([any('screen', { role: 'keyword' })])
+      prelude
     });
 
-    const preEvald = await node.preEval(context);
+    const prepared = await node.prepareRegistration(context);
 
-    expect(preEvald).not.toBe(node);
-    expect(preEvald).toBeInstanceOf(AtRule);
-    expect(preEvald.sourceNode).toBe(preEvald);
-    if (!(preEvald instanceof AtRule)) {
+    expect(prepared).not.toBe(node);
+    expect(prepared).toBeInstanceOf(AtRule);
+    expect(prepared.sourceNode).toBe(prepared);
+    if (!(prepared instanceof AtRule)) {
       throw new Error('Expected AtRule result');
     }
-    expect(preEvald.value.name.valueOf()).toBe('@media');
+    expect(prepared.value.name.valueOf()).toBe('@media');
+    expect(prelude.parent).toBe(node);
+  });
+
+  it('restores at-rule body registration context when child registration prep throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.parent'),
+      rules: rules([])
+    });
+    const throwingChild = ruleset({
+      selector: el('.child'),
+      rules: rules([])
+    });
+    throwingChild.prepareRegistration = () => {
+      throw new Error('child registration prep failed');
+    };
+    const node = atrule({
+      name: any('@keyframes', { role: 'atkeyword' }),
+      rules: rules([throwingChild])
+    });
+    context.rulesetFrames = [savedFrame];
+    const extendRootStackLength = context.extendRoots.extendRootStack.length;
+
+    expect(() => node.prepareRegistration(context)).toThrow('child registration prep failed');
+    expect(context.rulesetFrames).toEqual([savedFrame]);
+    expect(context.extendRoots.extendRootStack).toHaveLength(extendRootStackLength);
+  });
+
+  it('restores rules context when at-rule prelude eval throws', () => {
+    const savedRulesContext = rules([]);
+    const parentAtRule = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      rules: savedRulesContext
+    });
+    const outerRulesContext = rules([parentAtRule]);
+    const prelude = any('screen');
+    prelude.eval = () => {
+      throw new Error('prelude eval failed');
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude,
+      rules: rules([])
+    });
+    expect(savedRulesContext.parent).toBe(parentAtRule);
+    expect(parentAtRule.parent).toBe(outerRulesContext);
+    context.rulesContext = savedRulesContext;
+
+    expect(() => node.eval(context)).toThrow('prelude eval failed');
+    expect(context.rulesContext).toBe(savedRulesContext);
+  });
+
+  it('restores at-rule frame when body eval throws', () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => {
+      throw new Error('body eval failed');
+    };
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: body
+    });
+    context.frames = [savedFrame];
+
+    expect(() => node.eval(context)).toThrow('body eval failed');
+    expect(context.frames).toEqual([savedFrame]);
+  });
+
+  it('restores at-rule frame when body eval rejects', async () => {
+    const savedFrame = ruleset({
+      selector: el('.frame'),
+      rules: rules([])
+    });
+    const body = rules([]);
+    body.eval = () => Promise.reject(new Error('body eval failed'));
+    body.addFlag(F_MAY_ASYNC);
+    const node = atrule({
+      name: any('@font-face', { role: 'atkeyword' }),
+      rules: body
+    });
+    context.frames = [savedFrame];
+
+    await expect(node.eval(context)).rejects.toThrow('body eval failed');
+    expect(context.frames).toEqual([savedFrame]);
   });
 
   it('renders resolved at-rules through render(context)', async () => {
@@ -110,6 +222,9 @@ describe('AtRule', () => {
         decl({ name: 'color', value: any('red') })
       ])
     });
+    const sourceName = node.value.name;
+    const sourcePrelude = node.value.prelude;
+    const sourceRules = node.value.rules;
 
     const resolved = await node.resolve(context);
 
@@ -118,7 +233,94 @@ describe('AtRule', () => {
         color: red;
       }
     `);
+    expect(sourceName.parent).toBe(node);
+    expect(sourcePrelude?.parent).toBe(node);
+    expect(sourceRules?.parent).toBe(node);
+    expect(node.evaluated).toBe(false);
+    expect(node.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('serializes comment trivia between at-rule preludes and blocks', () => {
+    const name = any('@-webkit-keyframes', { role: 'atkeyword' });
+    name._location = [0, 1, 1, 17, 1, 18];
+    const prelude = any('hover', { role: 'keyword' });
+    prelude._location = [32, 1, 33, 36, 1, 37];
+    const leading = [token(' '), token('/* Safari */', 'BlockComment'), token(' ')];
+    const trailing = [token(' '), token('/* and Chrome */', 'BlockComment'), token(' ')];
+    const trivia = createTriviaMap({
+      before: new Map([
+        [prelude.location[0], leading],
+        [55, trailing]
+      ]),
+      after: new Map([
+        [name.location[3], leading],
+        [prelude.location[3], trailing]
+      ])
+    }) satisfies TriviaMap;
+    const node = atrule({
+      name,
+      prelude,
+      rules: rules([
+        ruleset({
+          selector: sel([el('0%')]),
+          rules: rules([
+            decl({ name: 'color', value: any('red') })
+          ])
+        })
+      ])
+    });
+
+    expect(node.toString({ trivia })).toContain('@-webkit-keyframes /* Safari */ hover /* and Chrome */ {');
+  });
+
+  it('streams at-rule headers without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([any('screen', { role: 'keyword' })]),
+      rules: rules([])
+    });
+    const options = getPrintOptions({ writer });
+
+    expect(node.getHeaderString(options)).toBe('@media screen {\n');
+    expect(writer.toString()).toBe('');
+    expect(writer.captures).toBe(0);
+  });
+
+  it('renders comment-free at-rule headers without cloning source-free prelude leaves', () => {
+    const preludeLeaf = any('screen', { role: 'keyword' });
+    const originalClone = preludeLeaf.clone;
+    let preludeLeafClones = 0;
+    preludeLeaf.clone = function cloneForCounting(
+      ...args: Parameters<typeof originalClone>
+    ): ReturnType<typeof originalClone> {
+      preludeLeafClones++;
+      return originalClone.apply(this, args);
+    };
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: seq([preludeLeaf]),
+      rules: rules([])
+    });
+
+    try {
+      expect(node.getHeaderString(getPrintOptions(), true)).toBe('@media screen {\n');
+      expect(preludeLeafClones).toBe(0);
+      expect(preludeLeaf.parent?.valueOf()).toBe('screen');
+    } finally {
+      preludeLeaf.clone = originalClone;
+    }
+  });
+
+  it('normalizes leading prelude whitespace at the at-rule name boundary', () => {
+    const node = atrule({
+      name: any('@media', { role: 'atkeyword' }),
+      prelude: any('  all and (tv)', { role: 'keyword' }),
+      rules: rules([])
+    });
+
+    expect(node.getHeaderString(getPrintOptions())).toBe('@media all and (tv) {\n');
   });
 
   describe('nested @media rules', () => {
@@ -139,8 +341,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .body {
@@ -186,8 +387,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .body {
@@ -252,8 +452,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .body {
@@ -318,8 +517,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         .body {
@@ -355,8 +553,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         [popover]:popover-open {
@@ -382,8 +579,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         .box {
@@ -421,8 +617,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @keyframes "textscale" {
@@ -468,8 +663,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @supports (property: value) {
@@ -500,8 +694,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @font-face {
@@ -542,8 +735,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @media screen {
@@ -612,8 +804,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString({ context });
+      const css = await renderNodeToString(node, context, { context });
 
       expect(css).toBeString(`
         @supports (property: value) {
@@ -692,8 +883,7 @@ describe('AtRule', () => {
 
       const rootRules = rules([mixinDef, callSite]);
       context.root = rootRules;
-      const evald = await rootRules.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(rootRules, context);
 
       expect(css).toBeString(`
         .a {
@@ -761,9 +951,9 @@ describe('AtRule', () => {
 
       const explicitRoot = createMixinRoot([dimension([100, 'px'])]);
       context.root = explicitRoot;
-      const explicitEvald = await explicitRoot.eval(context);
+      const explicitCss = await renderNodeToString(explicitRoot, context);
 
-      expect(explicitEvald.toString()).toBeString(`
+      expect(explicitCss).toBeString(`
         .a {
           background: black;
           @media handheld {
@@ -778,9 +968,9 @@ describe('AtRule', () => {
       const defaultContext = new Context();
       const defaultRoot = createMixinRoot();
       defaultContext.root = defaultRoot;
-      const defaultEvald = await defaultRoot.eval(defaultContext);
+      const defaultCss = await renderNodeToString(defaultRoot, defaultContext);
 
-      expect(defaultEvald.toString()).toBeString(`
+      expect(defaultCss).toBeString(`
         .a {
           background: black;
           @media handheld {
@@ -826,8 +1016,7 @@ describe('AtRule', () => {
       ]);
 
       context.root = node;
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         @media print {
@@ -864,8 +1053,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         @media all and (tv) {
@@ -903,8 +1091,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         @media screen and (min-width: 61px) {
@@ -945,8 +1132,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      const evald = await node.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(node, context);
 
       expect(css).toBeString(`
         @media screen and (color), projection and (color) {
@@ -1014,8 +1200,7 @@ describe('AtRule', () => {
 
       const rootRules = rules([navJustifiedMixin, callSite]);
       context.root = rootRules;
-      const evald = await rootRules.eval(context);
-      const css = evald.toString();
+      const css = await renderNodeToString(rootRules, context);
 
       expect(css).toBeString(`
         .menu {
@@ -1024,6 +1209,67 @@ describe('AtRule', () => {
               > li {
                 display: table-cell;
               }
+            }
+          }
+        }
+      `);
+    });
+
+    it('does not duplicate callable ruleset output inside nested media calls', async () => {
+      context.opts.collapseNesting = true;
+      const navJustified = ruleset({
+        selector: sel([el('.nav-justified')]),
+        rules: rules([
+          atrule({
+            name: any('@media', { role: 'atkeyword' }),
+            prelude: seq([paren(decl({
+              name: 'min-width',
+              value: dimension([480, 'px'])
+            }))]),
+            rules: rules([
+              ruleset({
+                selector: sel([el('> li')]),
+                rules: rules([
+                  decl({ name: 'display', value: spaced([any('table-cell')]) })
+                ])
+              })
+            ])
+          })
+        ])
+      });
+
+      const menu = ruleset({
+        selector: sel([el('.menu')]),
+        rules: rules([
+          atrule({
+            name: any('@media', { role: 'atkeyword' }),
+            prelude: seq([paren(decl({
+              name: 'min-width',
+              value: dimension([768, 'px'])
+            }))]),
+            rules: rules([
+              call({
+                name: ref({ key: '.nav-justified' }, { type: 'mixin-ruleset' })
+              })
+            ])
+          })
+        ])
+      });
+
+      const rootRules = rules([navJustified, menu]);
+      context.root = rootRules;
+      const css = await renderNodeToString(rootRules, context, { context });
+
+      expect(css).toBeString(`
+        @media (min-width: 480px) {
+          .nav-justified > li {
+            display: table-cell;
+          }
+        }
+        @media (min-width: 768px) {
+          @media (min-width: 480px) {
+            .menu > li {
+              display: table-cell;
             }
           }
         }
@@ -2154,9 +2400,7 @@ describe('AtRule', () => {
         })
       ]);
 
-      /** This represents already eval'd nodes */
-      const evald = await node.eval(context);
-      const serialized = evald.toString({ context });
+      const serialized = await renderNodeToString(node, context, { context });
 
       // The serialized output should match the structure
       expect(serialized).toBeString(`

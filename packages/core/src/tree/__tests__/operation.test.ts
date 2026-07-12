@@ -1,6 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { any, call, decl, dimension, list, num, op, paren, ref, rules, ruleset, type Rules as RulesClass, vardecl } from '../index.js';
+import { OutputWriter } from '../util/print.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('Operation', () => {
   let context: Context;
@@ -15,6 +26,14 @@ describe('Operation', () => {
     expect(rule.toTrimmedString()).toBe('10 + 20');
   });
 
+  it('streams operation operands without capture scaffolding', () => {
+    const writer = new CountingWriter();
+    const rule = op([num(10), '+', num(20)]);
+
+    expect(rule.toTrimmedString({ writer })).toBe('10 + 20');
+    expect(writer.captures).toBe(0);
+  });
+
   it('renders resolved operation values through render(context)', async () => {
     const node = rules([
       vardecl({
@@ -26,13 +45,40 @@ describe('Operation', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const rendered = op([
+    const operationNode = op([
       num(10),
       '+',
       ref({ key: 'rhs' }, { type: 'variable' })
-    ]).render(context);
+    ]);
+    const rendered = operationNode.render(context);
 
     expect(rendered).toBe('30');
+    expect(operationNode.evaluated).toBe(false);
+    expect(operationNode.preEvaluated).toBe(false);
+  });
+
+  it('writes resolved operation render output into flat buffers', async () => {
+    const node = rules([
+      vardecl({
+        name: any('rhs'),
+        value: num(20)
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const buffer = createRenderBuffer('flat');
+    const operationNode = op([
+      num(10),
+      '+',
+      ref({ key: 'rhs' }, { type: 'variable' })
+    ]);
+
+    expect(await operationNode.render(context, buffer)).toBe('30');
+    expect(buffer.parts).toEqual(['30']);
+    expect(operationNode.evaluated).toBe(false);
+    expect(operationNode.preEvaluated).toBe(false);
   });
 
   it('resolves operation values without touching render state', async () => {
@@ -46,14 +92,45 @@ describe('Operation', () => {
     context.root = evald as RulesClass;
     context.rulesContext = evald as RulesClass;
 
-    const resolved = await op([
+    const operationNode = op([
       num(10),
       '+',
       ref({ key: 'rhs' }, { type: 'variable' })
-    ]).resolve(context);
+    ]);
+    const resolved = await operationNode.resolve(context);
 
-    expect(`${resolved}`).toBe('30');
+    expect(resolved.toTrimmedString()).toBe('30');
+    expect(operationNode.evaluated).toBe(false);
+    expect(operationNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  it('keeps source operation child containers canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: any('item'),
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald as RulesClass;
+    context.rulesContext = evald as RulesClass;
+
+    const operationNode = op([
+      list([
+        any('one'),
+        ref({ key: 'item' }, { type: 'variable' })
+      ]),
+      '+',
+      any('two')
+    ]);
+    const [leftOperand, , rightOperand] = operationNode.value;
+    const resolved = await operationNode.resolve(context);
+
+    expect(resolved.render(context)).toBe('one, foo, two');
+    expect(operationNode.toTrimmedString()).toBe('one, $item + two');
+    expect(leftOperand.parent).toBe(operationNode);
+    expect(rightOperand.parent).toBe(operationNode);
   });
 
   it('preserves slash-list operands instead of forcing math on outer operations', async () => {
@@ -83,11 +160,14 @@ describe('Operation', () => {
       '*',
       num(2)
     ]);
+    const [leftOperand, , rightOperand] = resolvedOperation.value;
 
     const resolved = await resolvedOperation.resolve(resolveContext);
     expect(resolveContext.printState.writer).toBeUndefined();
     expect(resolved.type).toBe('Operation');
     expect(resolved.toTrimmedString()).toBe('10px / 2 * 2');
+    expect(leftOperand.parent).toBe(resolvedOperation);
+    expect(rightOperand.parent).toBe(resolvedOperation);
   });
 
   it('normalizes slash-list variable refs inside calc while preserving direct calc arithmetic', async () => {
@@ -231,11 +311,7 @@ describe('Operation', () => {
       })
     ]);
 
-    const evald = await root.eval(context);
-    context.root = evald as RulesClass;
-    context.rulesContext = evald as RulesClass;
-
-    const css = evald.toString({ context });
+    const css = await renderNodeToString(root, context, { context });
 
     expect(css).toContain('.probe {');
     expect(css).toContain('margin: 20px;');

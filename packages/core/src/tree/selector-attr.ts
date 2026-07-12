@@ -8,6 +8,7 @@ import { quoted } from './quoted.js';
 import { pipe, isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 export type AttributeSelectorValue = {
   /** The name of the attribute */
@@ -26,10 +27,63 @@ export type AttributeSelectorValue = {
  *   e.g. [id="foo"]
 */
 export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
-  private createResolvedValueNode(value: Node): this {
-    const node = this.clone();
-    node.value.value = quoted(String(value.valueOf()));
+  private copyForDerived(node: Node): Node {
+    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
+  }
+
+  private withResolvedParts(name: string | Node, value: Node | undefined): this {
+    const currentName = this.value.name;
+    const currentValue = this.value.value;
+    const nextName = (
+      typeof name === 'string'
+        ? name
+        : name === currentName
+          ? this.copyForDerived(name)
+          : name
+    );
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        {
+          ...this.value,
+          name: nextName,
+          value: value && value === currentValue ? this.copyForDerived(value) : value
+        },
+        this._options ? { ...this._options } : undefined,
+        this.location,
+        this.treeContext
+      ]
+    );
+    node.inherit(this);
     return node;
+  }
+
+  private createResolvedValueNode(value: Node): this {
+    return this.withResolvedParts(this.value.name, quoted(String(value.valueOf())));
+  }
+
+  private resolveAttributeValue(context: Context): MaybePromise<Node | undefined> {
+    const { value } = this.value;
+    if (value instanceof Any && typeof value.value === 'string') {
+      const raw = value.value.trim();
+      const m = raw.match(/^@\{([^}]+)\}$/);
+      if (m) {
+        const key = m[1]!;
+        const rules = this.rulesParent;
+        if (rules) {
+          const found = rules.find('declaration', key, 'VarDeclaration');
+          const decl = Array.isArray(found) ? found[0] : found;
+          if (decl && isNode(decl, N.VarDeclaration)) {
+            const out = decl.value.value.resolve(context);
+            if (isThenable(out)) {
+              return (out as Promise<Node>).then(evaluated => quoted(String(evaluated.valueOf())));
+            }
+            return quoted(String((out as Node).valueOf()));
+          }
+        }
+      }
+    }
+    return value?.resolve(context);
   }
 
   private renderAttributeSyntax(options?: PrintOptions): string {
@@ -89,6 +143,25 @@ export class AttributeSelector extends SimpleSelector<AttributeSelectorValue> {
         return this;
       }
     );
+  }
+
+  override resolve(context: Context): MaybePromise<this> {
+    const currentName = this.value.name;
+    const currentValue = this.value.value;
+    const name = typeof currentName === 'string' ? currentName : currentName.resolve(context);
+    const value = this.resolveAttributeValue(context);
+    const finalize = (resolvedName: string | Node, resolvedValue: Node | undefined): this => {
+      if (resolvedName === currentName && resolvedValue === currentValue) {
+        return this;
+      }
+      return this.withResolvedParts(resolvedName, resolvedValue);
+    };
+    if (isThenable(name) || isThenable(value)) {
+      return Promise.all([name, value]).then(([resolvedName, resolvedValue]) => {
+        return finalize(resolvedName as string | Node, resolvedValue as Node | undefined);
+      });
+    }
+    return finalize(name as string | Node, value as Node | undefined);
   }
 
   override toTrimmedString(options?: PrintOptions) {

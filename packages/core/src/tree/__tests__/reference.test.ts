@@ -1,7 +1,8 @@
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Any, List, type Node } from '../index.js';
 import { Context } from '../../context.js';
 import * as Registries from '../util/registry-utils.js';
 import { isNode } from '../util/is-node.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 let context: Context;
 
 describe('reference', () => {
@@ -16,42 +17,42 @@ describe('reference', () => {
 
     it('should serialize a variable reference', () => {
       let node = ref({ key: 'foo' }, { type: 'variable' });
-      expect(`${node}`).toBe('$foo');
+      expect(node.toTrimmedString()).toBe('$foo');
     });
 
     it('should serialize a declaration reference', () => {
       let node = ref({ key: 'foo' }, { type: 'declaration' });
-      expect(`${node}`).toBe('$.foo');
+      expect(node.toTrimmedString()).toBe('$.foo');
     });
 
     it('should serialize an optional reference', () => {
       let node = ref({ key: 'foo' }, { type: 'variable', fallbackValue: true });
-      expect(`${node}`).toBe('$foo?');
+      expect(node.toTrimmedString()).toBe('$foo?');
     });
 
     it('should serialize a mixin reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin' });
-      expect(`${node}`).toBe('$ > foo');
+      expect(node.toTrimmedString()).toBe('$ > foo');
     });
 
     it('should serialize a mixin-ruleset reference', () => {
       let node = ref({ key: 'foo' }, { type: 'mixin-ruleset' });
-      expect(`${node}`).toBe('$ > *foo');
+      expect(node.toTrimmedString()).toBe('$ > *foo');
     });
 
     it('should serialize a number index', () => {
       let node = ref({ key: 0 }, { type: 'index' });
-      expect(`${node}`).toBe('$[0]');
+      expect(node.toTrimmedString()).toBe('$[0]');
     });
 
     it('should serialize a string (variable) index', () => {
       let node = ref({ key: 'foo' }, { type: 'index' });
-      expect(`${node}`).toBe('$[foo]');
+      expect(node.toTrimmedString()).toBe('$[foo]');
     });
 
     it('should serialize a quoted (property) index', () => {
       let node = ref({ key: quoted('foo') }, { type: 'index' });
-      expect(`${node}`).toBe('$["foo"]');
+      expect(node.toTrimmedString()).toBe('$["foo"]');
     });
   });
 
@@ -67,9 +68,12 @@ describe('reference', () => {
       context.root = evald as RulesClass;
       context.rulesContext = evald as RulesClass;
 
-      const rendered = ref({ key: 'foo' }, { type: 'variable' }).render(context);
+      const refNode = ref({ key: 'foo' }, { type: 'variable' });
+      const rendered = refNode.render(context);
 
       expect(rendered).toBe('red');
+      expect(refNode.evaluated).toBe(false);
+      expect(refNode.preEvaluated).toBe(false);
     });
 
     it('resolves a variable value without touching render state', async () => {
@@ -83,10 +87,209 @@ describe('reference', () => {
       context.root = evald as RulesClass;
       context.rulesContext = evald as RulesClass;
 
-      const resolved = await ref({ key: 'foo' }, { type: 'variable' }).resolve(context);
+      const refNode = ref({ key: 'foo' }, { type: 'variable' });
+      const resolved = await refNode.resolve(context);
 
-      expect(`${resolved}`).toBe('red');
+      expect(resolved.toTrimmedString()).toBe('red');
+      expect(refNode.evaluated).toBe(false);
+      expect(refNode.preEvaluated).toBe(false);
       expect(context.printState.writer).toBeUndefined();
+    });
+
+    it('keeps referenced source value containers canonical after resolve(context)', async () => {
+      const value = list([
+        any('one'),
+        ref({ key: 'item' }, { type: 'variable' })
+      ]);
+      const node = rules([
+        vardecl({
+          name: any('item'),
+          value: any('foo')
+        }),
+        vardecl({
+          name: any('source'),
+          value
+        })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      expect(value.toTrimmedString()).toBe('one, $item');
+
+      const refNode = ref({ key: 'source' }, { type: 'variable' });
+      const resolved = await refNode.resolve(context);
+
+      expect(resolved.render(context)).toBe('one, foo');
+      expect(value.toTrimmedString()).toBe('one, $item');
+      expect(refNode.toTrimmedString()).toBe('$source');
+    });
+
+    it('preserves rules-like variable references as shallow owned surfaces', async () => {
+      const originalClone = RulesClass.prototype.clone;
+      let clonedRules = 0;
+      RulesClass.prototype.clone = function cloneForCounting(
+        this: RulesClass,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        clonedRules++;
+        return originalClone.apply(this, args);
+      };
+      const sourceDecl = decl({ name: 'color', value: any('blue') });
+      const sourceValue = rules([sourceDecl]);
+      const sourceBinding = vardecl({
+        name: any('block'),
+        value: sourceValue
+      });
+      const node = rules([
+        sourceBinding
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      try {
+        const refNode = ref({ key: 'block' }, { type: 'variable', preserveRulesLike: true });
+        const resolved = await refNode.eval(context);
+
+        expect(resolved).toBeInstanceOf(RulesClass);
+        if (!(resolved instanceof RulesClass)) {
+          throw new Error('Expected Rules result');
+        }
+        expect(resolved).not.toBe(resolved.sourceNode);
+        const resolvedSource = resolved.sourceNode;
+        expect(resolvedSource).toBeInstanceOf(RulesClass);
+        if (!(resolvedSource instanceof RulesClass)) {
+          throw new Error('Expected Rules source');
+        }
+        expect(clonedRules).toBe(0);
+        expect(resolved.value[0]).toBe(resolvedSource.value[0]);
+      } finally {
+        RulesClass.prototype.clone = originalClone;
+      }
+    });
+
+    it('keeps fallback value containers canonical after resolve(context)', async () => {
+      const root = rules([
+        vardecl({
+          name: any('item'),
+          value: any('foo')
+        })
+      ]);
+      const evald = await root.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const fallback = list([
+        any('one'),
+        ref({ key: 'item' }, { type: 'variable' })
+      ]);
+      const refNode = ref(
+        { key: 'missing' },
+        {
+          type: 'variable',
+          fallbackValue: fallback
+        }
+      );
+      const resolved = await refNode.resolve(context);
+
+      expect(resolved.render(context)).toBe('one, foo');
+      expect(fallback.toTrimmedString()).toBe('one, $item');
+      expect(refNode.toTrimmedString()).toBe('$missing');
+    });
+
+    it('does not copy childless scalar fallback values before resolve(context)', async () => {
+      const originalCopy = Any.prototype.copy;
+      let scalarCopies = 0;
+      Any.prototype.copy = function copyForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalCopy>
+      ): ReturnType<typeof originalCopy> {
+        if (this.valueOf() === 'red') {
+          scalarCopies++;
+        }
+        return originalCopy.apply(this, args);
+      };
+
+      try {
+        const fallback = any('red');
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(scalarCopies).toBe(0);
+        expect(refNode.toTrimmedString()).toBe('$missing');
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
+    });
+
+    it('does not clone childless source-free scalar leaves inside copied fallback containers', async () => {
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const fallback = list([any('red')]);
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(scalarClones).toBe(0);
+        expect(fallback.toTrimmedString()).toBe('red');
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free fallback containers before resolving them', async () => {
+      const originalClone = List.prototype.clone;
+      let listClones = 0;
+      List.prototype.clone = function cloneForCounting(
+        this: List,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        listClones++;
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const fallback = list([any('red')]);
+        const refNode = ref(
+          { key: 'missing' },
+          {
+            type: 'variable',
+            fallbackValue: fallback
+          }
+        );
+        const resolved = await refNode.resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(listClones).toBe(0);
+        expect(fallback.toTrimmedString()).toBe('red');
+      } finally {
+        List.prototype.clone = originalClone;
+      }
     });
 
     it('preserves direct mixin-ruleset hits instead of returning the live canonical mixin', async () => {
@@ -106,6 +309,12 @@ describe('reference', () => {
       expect(resolved.value[0]).not.toBe(mixinDef);
       expect(resolved.value[0]!.type).toBe('Mixin');
       expect(resolved.value[0]!.sourceNode).toBe(mixinDef);
+
+      const resolvedAgain = resolved.resolve(context);
+
+      expect(resolvedAgain).toBe(resolved);
+      expect(resolved.evaluated).toBe(false);
+      expect(resolved.preEvaluated).toBe(false);
     });
 
     it('should get a variable from scope', async () => {
@@ -121,7 +330,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
       `);
     });
@@ -138,10 +347,76 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: red;
         bar: red;
       `);
+    });
+
+    it('does not clone childless source-free scalar leaves inside declaration reference containers', async () => {
+      const node = rules([
+        decl({
+          name: any('src'),
+          value: list([any('red')])
+        })
+      ]);
+      const evaldRoot = await node.eval(context);
+      context.root = evaldRoot as RulesClass;
+      context.rulesContext = evaldRoot as RulesClass;
+
+      const originalClone = Any.prototype.clone;
+      let scalarClones = 0;
+      Any.prototype.clone = function cloneForCounting(
+        this: Any,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        if (this.valueOf() === 'red') {
+          scalarClones++;
+        }
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(scalarClones).toBe(0);
+      } finally {
+        Any.prototype.clone = originalClone;
+      }
+    });
+
+    it('does not clone source-free declaration reference containers before resolving them', async () => {
+      const sourceValue = list([any('red')]);
+      const node = rules([
+        decl({
+          name: any('src'),
+          value: sourceValue
+        })
+      ]);
+      const evaldRoot = await node.eval(context);
+      context.root = evaldRoot as RulesClass;
+      context.rulesContext = evaldRoot as RulesClass;
+
+      const originalClone = List.prototype.clone;
+      let listClones = 0;
+      List.prototype.clone = function cloneForCounting(
+        this: List,
+        ...args: Parameters<typeof originalClone>
+      ): ReturnType<typeof originalClone> {
+        listClones++;
+        return originalClone.apply(this, args);
+      };
+
+      try {
+        const resolved = await ref({ key: 'src' }, { type: 'declaration' }).resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red');
+        expect(listClones).toBe(0);
+        expect(sourceValue.toTrimmedString()).toBe('red');
+      } finally {
+        List.prototype.clone = originalClone;
+      }
     });
 
     it('should get a var from scope below reference', async () => {
@@ -157,7 +432,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
       `);
     });
@@ -174,7 +449,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
         foo: red;
       `);
@@ -200,10 +475,43 @@ describe('reference', () => {
       const child = node.value[2]!;
       child.parent = node;
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(evald.toTrimmedString()).toBeString(`
         background-color: red, foo;
         background: red, foo;
       `);
+    });
+
+    it('flattens merged declaration references without recopying copied leaves', async () => {
+      const node = rules([
+        decl({
+          name: any('background-color'),
+          value: any('red')
+        }, { assign: '+:' }),
+        decl({
+          name: any('background-color'),
+          value: any('foo')
+        }, { assign: '+:' })
+      ]);
+      const evald = await node.eval(context);
+      context.root = evald as RulesClass;
+      context.rulesContext = evald as RulesClass;
+
+      const originalCopy = Any.prototype.copy;
+      let valueCopyCount = 0;
+      Any.prototype.copy = function(this: Any, deep?: boolean, cloneFn?: (n: Node) => Node) {
+        if (this.value === 'red' || this.value === 'foo') {
+          valueCopyCount++;
+        }
+        return originalCopy.call(this, deep, cloneFn);
+      };
+      try {
+        const resolved = await ref({ key: 'background-color' }, { type: 'declaration' }).resolve(context);
+
+        expect(resolved.toTrimmedString()).toBe('red, foo');
+        expect(valueCopyCount).toBe(0);
+      } finally {
+        Any.prototype.copy = originalCopy;
+      }
     });
 
     it('should treat keyword index as variable lookup', async () => {
@@ -219,7 +527,7 @@ describe('reference', () => {
       ]);
       let evald = await node.eval(context);
       /** The var declaration will be removed when going to CSS */
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
       `);
     });
@@ -240,7 +548,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: blue;
         bar: blue;
       `);
@@ -262,7 +570,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: blue;
         bar: red;
       `);
@@ -284,7 +592,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: blue;
         bar: red;
       `);
@@ -306,7 +614,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         foo: blue;
         bar: blue;
       `);
@@ -333,7 +641,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red red;
       `);
     });
@@ -472,7 +780,7 @@ describe('reference', () => {
           })
         ]);
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           bar: blue;
         `);
         expect(declarationHits).toHaveLength(0);
@@ -511,7 +819,7 @@ describe('reference', () => {
           })
         ]);
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           bar: blue;
         `);
         expect(declarationHits).toHaveLength(0);
@@ -520,7 +828,7 @@ describe('reference', () => {
       }
     });
 
-    it('prunes stale pendingDynamicDecls entries when a dynamic name resolves after ScopeFrame creation', async () => {
+    it('prunes stale pendingDeclarationNames entries when a dynamic name resolves after ScopeFrame creation', async () => {
       const originalFind = RulesClass.prototype.find;
       const declarationHits: string[] = [];
       RulesClass.prototype.find = function(...args: Parameters<typeof originalFind>) {
@@ -550,17 +858,124 @@ describe('reference', () => {
           })
         ]);
 
-        // Force a pre-resolution frame snapshot so pendingDynamicDecls is populated first.
+        // Force a pre-resolution frame snapshot so pendingDeclarationNames is populated first.
         node.getScopeFrame();
 
         node = await node.eval(context);
-        expect(`${node}`).toBeString(`
+        expect(await renderNodeToString(node, context)).toBeString(`
           bar: red;
         `);
         expect(declarationHits).toHaveLength(0);
       } finally {
         RulesClass.prototype.find = originalFind;
       }
+    });
+
+    it('resolves dynamic declaration names that depend on earlier dynamic names', async () => {
+      const node = rules([
+        vardecl({
+          name: any('first'),
+          value: any('second')
+        }),
+        vardecl({
+          name: interpolated({
+            source: INTERPOLATION_PLACEHOLDER,
+            replacements: [ref({ key: 'first' }, { type: 'variable' })]
+          }),
+          value: any('final')
+        }),
+        vardecl({
+          name: interpolated({
+            source: INTERPOLATION_PLACEHOLDER,
+            replacements: [ref({ key: 'second' }, { type: 'variable' })]
+          }),
+          value: any('red')
+        }),
+        decl({
+          name: any('color'),
+          value: ref({ key: 'final' }, { type: 'variable' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        color: red;
+      `);
+    });
+
+    it('retries blocked dynamic declaration names after later dynamic names resolve', async () => {
+      const retryCounts = new Map<string, number>();
+      const recordRegistrationPrep = (node: Node, label: string): void => {
+        const original = node.prepareRegistration.bind(node);
+        node.prepareRegistration = (ctx: Context) => {
+          retryCounts.set(label, (retryCounts.get(label) ?? 0) + 1);
+          return original(ctx);
+        };
+      };
+
+      const dependent = vardecl({
+        name: interpolated({
+          source: INTERPOLATION_PLACEHOLDER,
+          replacements: [ref({ key: 'second' }, { type: 'variable' })]
+        }),
+        value: any('red')
+      });
+      const provider = vardecl({
+        name: interpolated({
+          source: INTERPOLATION_PLACEHOLDER,
+          replacements: [ref({ key: 'first' }, { type: 'variable' })]
+        }),
+        value: any('final')
+      });
+      recordRegistrationPrep(dependent, 'dependent');
+      recordRegistrationPrep(provider, 'provider');
+
+      const node = rules([
+        vardecl({
+          name: any('first'),
+          value: any('second')
+        }),
+        dependent,
+        provider,
+        decl({
+          name: any('color'),
+          value: ref({ key: 'final' }, { type: 'variable' })
+        })
+      ]);
+
+      const evald = await node.eval(context);
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        color: red;
+      `);
+      expect(retryCounts.get('dependent')).toBe(2);
+      expect(retryCounts.get('provider')).toBe(1);
+    });
+
+    it('routes direct Rules.evalNode through registration prep', async () => {
+      const node = rules([
+        vardecl({
+          name: any('first'),
+          value: any('second')
+        }),
+        vardecl({
+          name: interpolated({
+            source: INTERPOLATION_PLACEHOLDER,
+            replacements: [ref({ key: 'first' }, { type: 'variable' })]
+          }),
+          value: any('final')
+        }),
+        decl({
+          name: any('color'),
+          value: ref({ key: 'second' }, { type: 'variable' })
+        })
+      ]);
+
+      const evald = await node.evalNode(context);
+
+      expect(await renderNodeToString(evald, context)).toBeString(`
+        color: final;
+      `);
+      expect(node.preEvaluated).toBe(true);
     });
 
     it('promotes pending dynamic declarations that have already become static before lookup', async () => {
@@ -594,9 +1009,9 @@ describe('reference', () => {
         dynamicDecl.set('name', any('x'));
 
         const resolved = await node.at(1)!.eval(context);
-        expect(`${resolved}`).toBe('bar: red');
+        expect(resolved.toTrimmedString()).toBe('bar: red');
         expect(declarationHits).toHaveLength(0);
-        expect(frame.pendingDynamicDecls).toHaveLength(0);
+        expect(frame.pendingDeclarationNames).toHaveLength(0);
         expect(frame.declarationBucketsByName.get('x')?.at(-1)?.sourceNode).toBe(dynamicDecl);
       } finally {
         RulesClass.prototype.find = originalFind;
@@ -637,7 +1052,7 @@ describe('reference', () => {
         context.rulesContext = node;
         await expect(async () => await node.at(2)!.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
-        expect(frame.pendingDynamicDecls).toHaveLength(1);
+        expect(frame.pendingDeclarationNames).toHaveLength(1);
       } finally {
         context.rulesContext = undefined;
         RulesClass.prototype.find = originalFind;
@@ -675,7 +1090,7 @@ describe('reference', () => {
         context.rulesContext = node;
         await expect(async () => await node.at(1)!.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
-        expect(frame.pendingDynamicDecls).toHaveLength(1);
+        expect(frame.pendingDeclarationNames).toHaveLength(1);
       } finally {
         context.rulesContext = undefined;
         RulesClass.prototype.find = originalFind;
@@ -714,7 +1129,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           color: white;
         }
@@ -739,7 +1154,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .\\123 {
           a: ok;
         }
@@ -767,7 +1182,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         #\\31a {
           a: ok;
         }
@@ -797,7 +1212,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .a.\\32b {
           a: ok;
         }
@@ -872,7 +1287,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: red;
         }
@@ -923,7 +1338,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: red;
         }
@@ -974,7 +1389,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: red;
         }
@@ -1038,7 +1453,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: red;
         }
@@ -1113,7 +1528,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: red;
           }
@@ -1151,7 +1566,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toContain('@keyframes some-name');
+      expect(await renderNodeToString(evald, context)).toContain('@keyframes some-name');
     });
 
     it('should resolve a mixin-ruleset call keyed by a compound selector path array', async () => {
@@ -1183,7 +1598,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
           b: 1;
         }
@@ -1233,7 +1648,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .b.bb.foo-xxx.yyy-foo#foo.foo.bbb {
             b: 1;
           }
@@ -1273,7 +1688,7 @@ describe('reference', () => {
       ]);
 
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         #foo-foo {
           > .bar.baz {
             c: c;
@@ -1322,7 +1737,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           #foo-foo {
             > .bar.baz {
               c: c;
@@ -1421,7 +1836,7 @@ describe('reference', () => {
         })
       ]);
       const evald = await node.eval(context);
-      expect(`${evald}`).toBeString(`
+      expect(await renderNodeToString(evald, context)).toBeString(`
         .output {
           background: cyan;
         }
@@ -1485,7 +1900,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: cyan;
           }
@@ -1564,7 +1979,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: cyan;
           }
@@ -1632,7 +2047,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: cyan;
           }
@@ -1712,7 +2127,7 @@ describe('reference', () => {
         ]);
 
         const evald = await node.eval(context);
-        expect(`${evald}`).toBeString(`
+        expect(await renderNodeToString(evald, context)).toBeString(`
           .output {
             background: red;
           }

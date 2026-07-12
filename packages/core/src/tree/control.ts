@@ -9,10 +9,9 @@ import { isNode } from './util/is-node.js';
 import { N } from './node-type.js';
 import { type PrintOptions, getPrintOptions } from './util/print.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import { Block } from './block.js';
 import { Range } from './range.js';
-import { List } from './list.js';
 import { buildScopeFrame, type BindingCell, type ScopeFrame } from './scope-frame.js';
+import { copyWithReusableLeaves } from './util/cloning.js';
 
 const PUBLIC_RULE_VISIBILITY = {
   Declaration: 'public',
@@ -26,6 +25,17 @@ function makeDirectiveRulesPublic(rules: Rules) {
     ...rules.options.rulesVisibility,
     ...PUBLIC_RULE_VISIBILITY
   };
+}
+
+function renderControlSourceSyntax(node: Node, context: Context, options?: PrintOptions): string {
+  const printOptions = getPrintOptions({ ...options, context });
+  const savedContext = printOptions.context;
+  printOptions.context = undefined;
+  try {
+    return node.toTrimmedString(printOptions);
+  } finally {
+    printOptions.context = savedContext;
+  }
 }
 
 export type ForPattern =
@@ -83,12 +93,21 @@ async function* resolveEntries(input: Node, context: Context): AsyncGenerator<[N
     }
     return;
   }
-  if (isNode(input, N.Rules | N.Ruleset | N.Mixin)) {
-    const rules = isNode(input, N.Rules)
-      ? input.value
-      : isNode(input, N.Ruleset)
-        ? (input.value.rules?.value ?? [])
-        : input.value.rules?.value ?? [];
+  if (isNode(input, N.Rules)) {
+    const rules = input.value;
+    for (const rule of rules) {
+      if (!rule || isNode(rule, N.Comment)) {
+        continue;
+      }
+      if (!isNode(rule, N.Declaration)) {
+        continue;
+      }
+      yield [rule.value.value, rule.value.name];
+    }
+    return;
+  }
+  if (isNode(input, N.Ruleset) || isNode(input, N.Mixin)) {
+    const rules = input.value.rules?.value ?? [];
     for (const rule of rules) {
       if (!rule || isNode(rule, N.Comment)) {
         continue;
@@ -179,6 +198,14 @@ export class If extends Node<IfValue> {
 
     return w.getSince(mark);
   }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return renderControlSourceSyntax(this, context, options);
+  }
+
+  override resolve(_context: Context): this {
+    return this;
+  }
 }
 
 export type StructuredLoopValue = {
@@ -195,8 +222,22 @@ export class For extends Node<StructuredLoopValue> {
   override allowRuleRoot = true;
 
   private createDerivedIterationOutputSurface(sourceRules: Rules, childNodes?: Node[]): Rules {
-    const output = sourceRules.clone(false) as Rules;
-    output.value = [];
+    const sourceOptions = sourceRules.options;
+    const sourceLocation = sourceRules.location.length === 0
+      ? undefined
+      : sourceRules.location;
+    const output = new Rules(
+      [],
+      {
+        ...sourceOptions,
+        rulesVisibility: { ...sourceOptions.rulesVisibility }
+      },
+      sourceLocation,
+      sourceRules.treeContext
+    ).inherit(sourceRules);
+    if (sourceRules.functionRegistry) {
+      output.functionRegistry = sourceRules.functionRegistry.cloneForRules(output);
+    }
     output.scopeFrame = undefined;
     if (childNodes) {
       for (const childNode of childNodes) {
@@ -204,6 +245,18 @@ export class For extends Node<StructuredLoopValue> {
       }
     }
     return output;
+  }
+
+  private createIterationEvalSurface(sourceRules: Rules): Rules {
+    const iterationRules = copyWithReusableLeaves(sourceRules);
+    if (!(iterationRules instanceof Rules)) {
+      throw new TypeError('Copied $for body must remain Rules');
+    }
+    iterationRules.options.rulesVisibility = {
+      ...iterationRules.options.rulesVisibility,
+      ...PUBLIC_RULE_VISIBILITY
+    };
+    return iterationRules;
   }
 
   constructor(value: StructuredLoopValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
@@ -225,7 +278,11 @@ export class For extends Node<StructuredLoopValue> {
     makeDirectiveRulesPublic(value.rules);
   }
 
-  override preEval(_context: Context): MaybePromise<Node> {
+  override preEval(context: Context): MaybePromise<Node> {
+    return this.prepareRegistration(context);
+  }
+
+  override prepareRegistration(_context: Context): MaybePromise<Node> {
     if (!this.preEvaluated) {
       this.preEvaluated = true;
       return this;
@@ -258,11 +315,7 @@ export class For extends Node<StructuredLoopValue> {
           resolvedKey = new Any(String(key), { role: 'property' });
         }
 
-        const iterationRules = originalRules.clone(false) as Rules;
-        iterationRules.options.rulesVisibility = {
-          ...iterationRules.options.rulesVisibility,
-          ...PUBLIC_RULE_VISIBILITY
-        };
+        const iterationRules = this.createIterationEvalSurface(originalRules);
 
         const bindings: Node[] = [resolvedValue, resolvedKey, new Num(counter)];
         const liveSlots = new Map<string, BindingCell>();
@@ -299,13 +352,22 @@ export class For extends Node<StructuredLoopValue> {
     return run();
   }
 
+  override resolve(context: Context): MaybePromise<Node> {
+    return this.evalNode(context);
+  }
+
   override toTrimmedString(options?: PrintOptions): string {
     options = getPrintOptions(options);
     const w = options.writer!;
     const mark = w.mark();
     const emitTrimmed = (node: Node) => {
-      const out = w.capture(() => node.toString(options));
-      w.add(out.replace(/^[ \t\r\f]+|[ \t\r\f]+$/g, ''), node);
+      const saved = options.suppressBoundaryTrivia;
+      options.suppressBoundaryTrivia = 'pre';
+      try {
+        node.toString(options);
+      } finally {
+        options.suppressBoundaryTrivia = saved;
+      }
     };
 
     w.add('$for ', this);
@@ -346,6 +408,10 @@ export class For extends Node<StructuredLoopValue> {
     this.value.rules.toBraced(options);
     return w.getSince(mark);
   }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return renderControlSourceSyntax(this, context, options);
+  }
 }
 
 export type WhileValue = {
@@ -363,6 +429,7 @@ export class While extends Node<WhileValue> {
   constructor(value: WhileValue, options?: any, location?: LocationInfo, treeContext?: TreeContext) {
     super(value, options, location, treeContext);
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_MAY_ASYNC);
+    makeDirectiveRulesPublic(value.rules);
   }
 
   override toTrimmedString(options?: PrintOptions): string {
@@ -374,6 +441,14 @@ export class While extends Node<WhileValue> {
     w.add(') ');
     this.value.rules.toBraced(options);
     return w.getSince(mark);
+  }
+
+  override render(context: Context, options?: PrintOptions): string {
+    return renderControlSourceSyntax(this, context, options);
+  }
+
+  override resolve(_context: Context): this {
+    return this;
   }
 }
 

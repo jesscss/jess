@@ -1,5 +1,6 @@
 import { attr, any, quoted, mixin, rules, ruleset, decl, call, ref, list, el, vardecl } from '../index.js';
 import { Context } from '../../context.js';
+import { renderNodeToString } from '../util/render-buffer.js';
 
 let context: Context;
 
@@ -28,15 +29,13 @@ describe('Attribute Selector', () => {
 
       expect(rule1.toString()).toBe('[foo=bar]');
 
-      let quote = quoted('bar');
-      quote.pre = 1;
       let rule2 = attr({
         name: 'FOO',
         op: '=',
-        value: quote
+        value: quoted('bar')
       });
 
-      expect(rule2.toString()).toBe('[FOO= "bar"]');
+      expect(rule2.toString()).toBe('[FOO="bar"]');
       expect(rule1.valueOf()).toBe(rule2.valueOf());
     });
   });
@@ -52,13 +51,16 @@ describe('Attribute Selector', () => {
     context.root = evald;
     context.rulesContext = evald;
 
-    const rendered = attr({
+    const attrNode = attr({
       name: 'data',
       op: '=',
       value: ref({ key: 'attr-data' }, { type: 'variable' })
-    }).render(context);
+    });
+    const rendered = attrNode.render(context);
 
     expect(rendered).toBe('[data=foo]');
+    expect(attrNode.evaluated).toBe(false);
+    expect(attrNode.preEvaluated).toBe(false);
   });
 
   test('resolves attribute selector values without touching render state', async () => {
@@ -72,14 +74,41 @@ describe('Attribute Selector', () => {
     context.root = evald;
     context.rulesContext = evald;
 
-    const resolved = await attr({
+    const attrNode = attr({
       name: 'data',
       op: '=',
       value: ref({ key: 'attr-data' }, { type: 'variable' })
-    }).resolve(context);
+    });
+    const resolved = await attrNode.resolve(context);
 
-    expect(`${resolved}`).toBe('[data=foo]');
+    expect(resolved.toTrimmedString()).toBe('[data=foo]');
+    expect(attrNode.evaluated).toBe(false);
+    expect(attrNode.preEvaluated).toBe(false);
     expect(context.printState.writer).toBeUndefined();
+  });
+
+  test('keeps source attribute selector values canonical after resolve(context)', async () => {
+    const node = rules([
+      vardecl({
+        name: 'attr-data',
+        value: any('foo')
+      })
+    ]);
+    const evald = await node.eval(context);
+    context.root = evald;
+    context.rulesContext = evald;
+
+    const attrNode = attr({
+      name: 'data',
+      op: '=',
+      value: ref({ key: 'attr-data' }, { type: 'variable' })
+    });
+    const sourceValue = attrNode.value.value;
+    const resolved = await attrNode.resolve(context);
+
+    expect(resolved.render(context)).toBe('[data=foo]');
+    expect(sourceValue?.parent).toBe(attrNode);
+    expect(attrNode.toTrimmedString()).toBe('[data=$attr-data]');
   });
 
   test('keeps interpolated attribute selector values isolated across repeated mixin calls', async () => {
@@ -130,8 +159,7 @@ describe('Attribute Selector', () => {
     ]);
     context.root = node;
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toContain('.one [data="foo"]');
     expect(css).toContain('.two [data="bar"]');

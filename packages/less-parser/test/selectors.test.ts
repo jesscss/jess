@@ -43,6 +43,96 @@ describe('Selector Productions', () => {
       expect(serializeTypes(tree)).toContainString('(CompoundSelector');
     });
 
+    it('should parse host pseudo arguments as compound selectors', () => {
+      const { errors, tree } = parser.parse(':host(.sel.a), :host-context(.sel.b) { color: red; }');
+      expect(errors.length).toBe(0);
+
+      const out = serializeTypes(tree);
+      expect(out).toContainString(`
+        (PseudoSelector
+          name: ':host'
+          arg:
+            (CompoundSelector
+              [
+                (BasicSelector '.sel')
+                (BasicSelector '.a')
+              ]
+            )
+        )
+      `);
+      expect(out).toContainString(`
+        (PseudoSelector
+          name: ':host-context'
+          arg:
+            (CompoundSelector
+              [
+                (BasicSelector '.sel')
+                (BasicSelector '.b')
+              ]
+            )
+        )
+      `);
+    });
+
+    it('should serialize unknown pseudo arguments from generic sequence nodes', () => {
+      const { errors, tree, trivia } = parser.parse(':unknown(.sel.a) { color: red; }');
+      expect(errors.length).toBe(0);
+      const ruleset = tree.value[0];
+      const selector = ruleset.value.selector;
+
+      expect(selector.toString({ trivia })).toBe(':unknown(.sel.a)');
+      expect(serializeTypes(selector)).toContainString(`
+        (PseudoSelector
+          name: ':unknown'
+          arg:
+            (Sequence
+              [
+                (Any '.sel')
+                (Any '.a')
+              ]
+            )
+        )
+      `);
+    });
+
+    it('should preserve trivia spacing in unknown pseudo arguments', () => {
+      const cases = [
+        [':unknown(.sel.a) { color: red; }', ':unknown(.sel.a)'],
+        [':unknown(.sel .a) { color: red; }', ':unknown(.sel .a)'],
+        [':unknown(.sel/*comment */.a) { color: red; }', ':unknown(.sel/*comment */.a)'],
+        [':unknown(.sel /*comment */.a) { color: red; }', ':unknown(.sel /*comment */.a)'],
+        [':unknown(.sel/*comment */ .a) { color: red; }', ':unknown(.sel/*comment */ .a)'],
+        [':unknown(.sel /*comment */ .a) { color: red; }', ':unknown(.sel /*comment */ .a)']
+      ] as const;
+
+      for (const [source, expected] of cases) {
+        const { errors, tree, trivia } = parser.parse(source);
+        expect(errors.length).toBe(0);
+        const ruleset = tree.value[0];
+        expect(ruleset.value.selector.toString({ trivia })).toBe(expected);
+      }
+    });
+
+    it('should preserve trivia spacing in host pseudo selector arguments', () => {
+      const cases = [
+        [':host(.sel.a) { color: red; }', ':host(.sel.a)', '(CompoundSelector'],
+        [':host(.sel .a) { color: red; }', ':host(.sel .a)', '(ComplexSelector'],
+        [':host(.sel/*comment */.a) { color: red; }', ':host(.sel/*comment */.a)', '(CompoundSelector'],
+        [':host(.sel /*comment */.a) { color: red; }', ':host(.sel /*comment */.a)', '(ComplexSelector'],
+        [':host(.sel/*comment */ .a) { color: red; }', ':host(.sel/*comment */ .a)', '(ComplexSelector'],
+        [':host(.sel /*comment */ .a) { color: red; }', ':host(.sel /*comment */ .a)', '(ComplexSelector']
+      ] as const;
+
+      for (const [source, expected, shape] of cases) {
+        const { errors, tree, trivia } = parser.parse(source);
+        expect(errors.length).toBe(0);
+        const ruleset = tree.value[0];
+        const selector = ruleset.value.selector;
+        expect(selector.toString({ trivia })).toBe(expected);
+        expect(serializeTypes(selector)).toContainString(shape);
+      }
+    });
+
     it('should parse single simple selector (not compound)', () => {
       const { errors, tree } = parser.parse('.foo { color: red; }');
       expect(errors.length).toBe(0);
@@ -56,6 +146,21 @@ describe('Selector Productions', () => {
       const { errors, tree } = parser.parse('.parent .child { color: red; }');
       expect(errors.length).toBe(0);
       expect(serializeTypes(tree)).toContainString('(ComplexSelector');
+    });
+
+    it('preserves comments around descendant combinator whitespace', () => {
+      const cases = [
+        ['.parent /* before-space */.child { color: red; }', '.parent /* before-space */.child'],
+        ['.parent/* after-comment */ .child { color: red; }', '.parent/* after-comment */ .child']
+      ] as const;
+
+      for (const [source, expected] of cases) {
+        const { errors, tree, trivia } = parser.parse(source);
+        expect(errors.length).toBe(0);
+        const ruleset = tree.value[0];
+        expect(ruleset.value.selector.toString({ trivia })).toBe(expected);
+        expect(serializeTypes(ruleset.value.selector)).toContainString('(ComplexSelector');
+      }
     });
 
     it('should parse complex selector with child combinator', () => {

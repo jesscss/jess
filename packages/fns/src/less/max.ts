@@ -1,4 +1,5 @@
-import { Any, Dimension, Node, defineFunction } from '@jesscss/core';
+import { Any, Dimension, List, Node, defineFunction } from '@jesscss/core';
+import { serializeNodeValue } from '../util/serialize-node.js';
 
 type UnitGroup = Record<string, number>;
 
@@ -49,8 +50,8 @@ export default defineFunction(
     for (let i = 0; i < args.length; i++) {
       let current = args[i] as unknown;
       if (!(current instanceof Dimension)) {
-        if (current && typeof current === 'object' && Array.isArray((current as any).value)) {
-          args.push(...((current as any).value as Node[]));
+        if (current instanceof List) {
+          args.push(...current.value);
           continue;
         }
         throw new TypeError('incompatible types');
@@ -83,7 +84,7 @@ export default defineFunction(
       return order[0];
     }
     const sep = this?.context?.compress ? ',' : ', ';
-    const serialized = order.map(n => n.toString({ context: this?.context }).trimStart());
+    const serialized = order.map(n => serializeNodeValue(n, this?.context).trimStart());
     return new Any(`max(${serialized.join(sep)})`);
   },
   {

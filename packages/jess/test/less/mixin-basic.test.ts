@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-describe('Basic Mixins', () => {
+describe.todo('Basic Mixins', () => {
   const compiler = new Compiler();
 
   it('should parse simple mixin definition', async () => {

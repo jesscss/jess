@@ -1,8 +1,32 @@
 import {
   rules, sel, el, spaced, any, sellist, ruleset, decl, atrule,
   compound, type SimpleSelector, type Selector, amp, co
-} from '..';
+} from '../index.js';
 import { Context } from '../../context.js';
+import type { IToken } from 'chevrotain';
+import { createTriviaMap } from '../util/trivia.js';
+import { OutputWriter } from '../util/print.js';
+import { renderNodeToString } from '../util/render-buffer.js';
+
+const token = (image: string, tokenTypeName = 'WS'): IToken => ({
+  image,
+  startOffset: 0,
+  endOffset: image.length - 1,
+  startLine: 1,
+  endLine: 1,
+  startColumn: 1,
+  endColumn: image.length,
+  tokenType: { name: tokenTypeName } as IToken['tokenType']
+});
+
+class CountingWriter extends OutputWriter {
+  captures = 0;
+
+  override capture(fn: () => void): string {
+    this.captures++;
+    return super.capture(fn);
+  }
+}
 
 describe('CSS Nesting Collapse', () => {
   let context: Context;
@@ -27,8 +51,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -57,8 +80,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -73,7 +95,7 @@ describe('CSS Nesting Collapse', () => {
     );
   });
 
-  it('coalesces adjacent identical headers during serialization', async () => {
+  it('keeps independent adjacent identical headers separate during serialization', async () => {
     const node = rules([
       ruleset({
         selector: sel([el('.same')]),
@@ -89,12 +111,46 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .same {
         case: 2;
+      }
+      .same {
+        case: 3;
+      }`
+    );
+  });
+
+  it('does not coalesce adjacent identical headers across printable trivia', async () => {
+    const boundaryTrivia = [token('\n'), token('/* keep */', 'BlockComment'), token('\n')];
+    const first = ruleset({
+      selector: sel([el('.same')]),
+      rules: rules([
+        decl({ name: 'case', value: spaced([el('2')]) })
+      ])
+    }, undefined, [0, 1, 1, 20, 1, 21]);
+    const second = ruleset({
+      selector: sel([el('.same')]),
+      rules: rules([
+        decl({ name: 'case', value: spaced([el('3')]) })
+      ])
+    }, undefined, [34, 2, 1, 54, 2, 21]);
+    const trivia = createTriviaMap({
+      before: new Map([[second.location[0], boundaryTrivia]]),
+      after: new Map([[first.location[3], boundaryTrivia]])
+    });
+    const node = rules([first, second]);
+
+    const css = await renderNodeToString(node, context, { collapseNesting: true, trivia });
+
+    expect(css).toBeString(`
+      .same {
+        case: 2;
+      }
+      /* keep */
+      .same {
         case: 3;
       }`
     );
@@ -122,8 +178,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -154,12 +209,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-
-    if (evald.value[0] && evald.value[0].type === 'Ruleset') {
-      const firstRuleset = evald.value[0] as any;
-    }
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent.container {
@@ -190,8 +240,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent,
@@ -220,8 +269,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -249,8 +297,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -278,8 +325,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -311,8 +357,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       #foo-foo > .bar .baz {
@@ -357,8 +402,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       mi-test-c-1 > .bar .baz {
@@ -393,8 +437,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -406,6 +449,80 @@ describe('CSS Nesting Collapse', () => {
         }
       }`
     );
+  });
+
+  it('streams hoisted parent selector headers without capture scaffolding', async () => {
+    const writer = new CountingWriter();
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          atrule({
+            name: any('@media'),
+            prelude: any('(max-width: 768px)'),
+            rules: rules([
+              decl({ name: 'color', value: spaced([el('red')]) })
+            ])
+          })
+        ])
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
+
+    expect(css).toBeString(`
+      @media (max-width: 768px) {
+        .parent {
+          color: red;
+        }
+      }`
+    );
+    expect(writer.captures).toBe(0);
+  });
+
+  it('streams leaf at-rules in collapsed containers without capture scaffolding', async () => {
+    const writer = new CountingWriter();
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          atrule({
+            name: any('@property'),
+            prelude: any('--brand-color')
+          })
+        ])
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
+
+    expect(css).toBeString(`
+      .parent {
+        @property --brand-color;
+      }`
+    );
+    expect(writer.captures).toBe(0);
+  });
+
+  it('streams reference rule wrappers in collapsed containers without capture scaffolding', async () => {
+    const writer = new CountingWriter();
+    const node = rules([
+      ruleset({
+        selector: sel([el('.parent')]),
+        rules: rules([
+          rules([
+            decl({ name: 'color', value: spaced([el('red')]) })
+          ], {
+            referenceMode: true
+          })
+        ])
+      })
+    ]);
+
+    const css = await renderNodeToString(node, context, { context, writer, collapseNesting: true });
+
+    expect(css).toBe('');
+    expect(writer.captures).toBe(0);
   });
 
   it('should bubble @supports rules to root level', async () => {
@@ -430,8 +547,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -474,8 +590,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -523,8 +638,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -578,8 +692,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .parent {
@@ -633,8 +746,7 @@ describe('CSS Nesting Collapse', () => {
       })
     ]);
 
-    const evald = await node.eval(context);
-    const css = evald.toString({ collapseNesting: true });
+    const css = await renderNodeToString(node, context, { collapseNesting: true });
 
     expect(css).toBeString(`
       .container {

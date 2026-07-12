@@ -14,8 +14,11 @@ import { List } from './list.js';
 import { spaced } from './sequence.js';
 import { Operation } from './operation.js';
 import { N } from './node-type.js';
-import { type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
+import type { Call } from './call.js';
+import { OutputWriter, type PrintOptions, getPrintOptions, savePrintState, restorePrintState } from './util/print.js';
 import { type MaybePromise, pipe, isThenable } from '@jesscss/awaitable-pipe';
+import { emitCommentTriviaAfterNode } from './util/trivia.js';
+import { canReuseLeaf, copyWithReusableLeaves, reuseLeaf } from './util/cloning.js';
 
 export const enum AssignmentType {
   Default = ':',
@@ -90,7 +93,13 @@ const shouldResolveCustomPropertyValue = (node: Node): boolean => {
   return false;
 };
 
-const isLessFunctionFallbackCall = (node: Node): boolean => (
+type LessFunctionFallbackCall = Call & {
+  value: Call['value'] & {
+    name: Reference;
+  };
+};
+
+const isLessFunctionFallbackCall = (node: Node): node is LessFunctionFallbackCall => (
   isNode(node, N.Call)
   && isNode(node.value.name, N.Reference)
   && node.value.name.options?.type === 'function'
@@ -102,6 +111,14 @@ const unwrapAtomicCustomValue = (node: Node): Node => {
     return unwrapAtomicCustomValue(node.value[0]!);
   }
   return node;
+};
+
+const stringifyDetached = (node: Node, options: PrintOptions): string => {
+  const printOptions = getPrintOptions(options);
+  return node.toString({
+    ...printOptions,
+    writer: new OutputWriter()
+  });
 };
 
 const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions): string | undefined => {
@@ -116,10 +133,10 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
     ? String(printableKey)
     : Array.isArray(printableKey)
       ? printableKey.map(part => String(part)).join('')
-      : getPrintOptions(options).writer!.capture(() => printableKey.toString(options)).trim();
+      : stringifyDetached(printableKey, options).trim();
   const argTexts = (args?.value ?? [])
     .filter(Boolean)
-    .map(arg => getPrintOptions(options).writer!.capture(() => arg.toString(options)).trim());
+    .map(arg => stringifyDetached(arg, options).trim());
 
   return `${nameText}(${argTexts.join(', ')})`;
 };
@@ -133,16 +150,78 @@ const stringifyCustomFallbackFunctionCall = (node: Node, options: PrintOptions):
 export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> extends Node<DeclarationValue, Opts> {
   override allowRuleRoot = true;
 
-  private withValue(value: Node): this {
-    const node = this.clone(false) as this;
-    node.value.value = value;
+  private copyNameForDerived(node: DeclarationValue['name']): DeclarationValue['name'] {
+    if (canReuseLeaf(node)) {
+      return reuseLeaf(node);
+    }
+    const copy = copyWithReusableLeaves(node);
+    if (!(copy instanceof Any) && !(copy instanceof Interpolated)) {
+      throw new TypeError('Copied declaration name must remain a declaration name');
+    }
+    copy.frozen = true;
+    return copy;
+  }
+
+  private copyValueForDerived(node: Node): Node {
+    return canReuseLeaf(node) ? reuseLeaf(node) : copyWithReusableLeaves(node);
+  }
+
+  private copyImportantForDerived(node: Any<'flag'> | undefined): Any<'flag'> | undefined {
+    if (!node) {
+      return undefined;
+    }
+    if (canReuseLeaf(node)) {
+      return reuseLeaf(node);
+    }
+    const copy = copyWithReusableLeaves(node);
+    if (!(copy instanceof Any)) {
+      throw new TypeError('Copied important flag must remain an Any node');
+    }
+    copy.frozen = true;
+    return copy;
+  }
+
+  private withParts(value: DeclarationValue): this {
+    const node: this = Reflect.construct(
+      this.constructor,
+      [
+        value,
+        this._options ? { ...this._options } : undefined,
+        this.location,
+        this.treeContext
+      ]
+    );
+    return node.inherit(this);
+  }
+
+  private derive(): this {
+    return this.withParts({
+      name: this.copyNameForDerived(this.value.name),
+      value: this.copyValueForDerived(this.value.value),
+      important: this.copyImportantForDerived(this.value.important)
+    });
+  }
+
+  deriveWithOptions(options: Opts & DeclarationOptions): this {
+    const node = this.derive();
+    node.options = options;
     return node;
   }
 
+  private withValue(value: Node): this {
+    return this.withParts({
+      name: this.copyNameForDerived(this.value.name),
+      value,
+      important: this.copyImportantForDerived(this.value.important)
+    });
+  }
+
   private withImportant(important: Any<'flag'>): this {
-    const node = this.clone(false) as this;
-    node.value.important = important;
-    return node;
+    return this.withParts({
+      name: this.copyNameForDerived(this.value.name),
+      value: this.copyValueForDerived(this.value.value),
+      important
+    });
   }
 
   private formatNonCustomValue(valOut: string, _options: PrintOptions) {
@@ -151,6 +230,9 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
     }
 
+    // Authored multiline declaration values keep their line breaks. We normalize
+    // only the minimum continuation indent rather than emulating historical
+    // Less fixture cases that collapsed some unindented continuations.
     const continuationIndent = '  ';
     const lines = trimmedEnd.split('\n');
     let out = '';
@@ -195,8 +277,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const effAssign = (setDefined && printedAssign === ':') ? ':=' : printedAssign;
     let a = effAssign === ':' ? ':' : ` ${effAssign}`;
     // Normalize property name by trimming trailing whitespace
-    const normalizedName = w.capture(() => name.toTrimmedString(options)).replace(/\s+$/, '');
-    w.add(`${normalizedName}${a}`, name);
+    const nameMark = w.mark();
+    name.toTrimmedString(options);
+    w.trimEndSince(nameMark);
+    emitCommentTriviaAfterNode(name, options);
+    w.add(a);
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = name.valueOf().startsWith('--');
     if (isCustomProperty) {
@@ -207,41 +292,38 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       //   drop that trailing line break so semicolon insertion stays inline.
       // - if a block comment is directly adjacent to a token (e.g. `a/*...*/`),
       //   insert a single separator space for stable CSS output.
-      const renderStructuredCustomValue = Boolean(options.context && shouldResolveCustomPropertyValue(value));
-      let customOut = renderStructuredCustomValue
-        ? w.capture(() => value.render(options.context!, options))
-        : w.capture(() => value.toString(options));
-      customOut = stringifyCustomFallbackFunctionCall(value, options) ?? customOut;
-      customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
-      customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
-      if (!/^[ \t\r\f]/.test(customOut) && customOut.trimStart().startsWith('/*')) {
-        customOut = ` ${customOut}`;
-      }
       const atomicValue = unwrapAtomicCustomValue(value);
-      if (!/^[ \t\r\f]/.test(customOut) && (isNode(atomicValue, N.Color) || isLessFunctionFallbackCall(atomicValue))) {
-        customOut = ` ${customOut}`;
-      }
-      w.add(customOut, value);
+      const valueMark = w.mark();
+      value.toString(options);
+      w.replaceSince(valueMark, (valueOut) => {
+        let customOut = stringifyCustomFallbackFunctionCall(value, options) ?? valueOut;
+        customOut = customOut.replace(/[ \t\r\f]*\n[ \t\r\f]*$/g, '');
+        customOut = customOut.replace(/([^\s])\/\*/g, '$1 /*');
+        if (!/^[ \t\r\f]/.test(customOut) && customOut.trimStart().startsWith('/*')) {
+          customOut = ` ${customOut}`;
+        }
+        if (!/^[ \t\r\f]/.test(customOut) && (isNode(atomicValue, N.Color) || isLessFunctionFallbackCall(atomicValue))) {
+          customOut = ` ${customOut}`;
+        }
+        return customOut;
+      }, value);
       restorePrintState(options, saved);
     } else {
-      // Capture value output to normalize spacing after ':'
-      let valOut = '';
-      try {
-        valOut = options.context
-          ? w.capture(() => value.render(options.context!, options))
-          : w.capture(() => value.toString(options));
-      } catch (error: unknown) {
-        throw error;
-      }
-      w.add(this.formatNonCustomValue(valOut, options), value);
+      const valueMark = w.mark();
+      value.toTrimmedString(options);
+      w.replaceSince(valueMark, valOut => this.formatNonCustomValue(valOut, options), value);
       if (!isNode(value, N.Collection)) {
         if (important) {
-          let imp = w.capture(() => important.toString(options));
-          imp = imp.replace(/^\s+|\s+$/g, '');
-
-          w.add(` ${imp}`, important);
+          w.add(' ');
+          const importantMark = w.mark();
+          important.toString(options);
+          w.trimStartSince(importantMark);
+          w.trimEndSince(importantMark);
         }
       }
+    }
+    if (this.requiredSemi) {
+      emitCommentTriviaAfterNode(important ?? value, options);
     }
     return w.getSince(mark);
   }
@@ -251,132 +333,151 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   override preEval(context: Context): MaybePromise<this> {
-    /** We need a derived declaration, because pre-eval normalization mutates name/value/options. */
-    let node = this.clone(false) as this;
-    node.preEvaluated = true;
-    // Index should already be assigned by parent Rules
-    return this._applyAssignmentNormalization(node, context);
+    return this.prepareRegistration(context);
   }
 
-  private _applyAssignmentNormalization(node: this, context: Context): MaybePromise<this> {
-    let { name, value } = node.value;
-    const setName = (newName: Any<'property'>) => {
-      node.set('name', newName);
-      name = newName;
-    };
-    const setValue = (newValue: Node) => {
-      node.set('value', newValue);
-      value = newValue;
-    };
+  override prepareRegistration(context: Context): MaybePromise<this> {
+    /** We need a derived declaration, because registration prep mutates name/value/options. */
+    let node = this.derive();
+    node.preEvaluated = true;
+    // Index should already be assigned by parent Rules
+    return this._prepareDeclarationRegistration(node, context);
+  }
 
-    const applyAssignmentNormalization = (key: Any<'property'>) => {
-      /** Normalize assignment types */
-      let assign = node.options?.assign;
-      const rawAssign = assign as string | undefined;
-      if (rawAssign === '+,:') {
-        assign = AssignmentType.MergeList;
-      } else if (rawAssign === '+_:') {
-        assign = AssignmentType.MergeSequence;
-      }
-      if (assign) {
-        const normalizedAssign = assign;
-        /** Reference type */
-        let type: 'declaration' | 'variable' =
-          node.type === 'Declaration' ? 'declaration' : 'variable';
-        switch (assign) {
-          case AssignmentType.MergeList:
-          case AssignmentType.MergeSequence: {
-            const isLessMergeAssign = (assignValue: string): boolean => (
-              assignValue === AssignmentType.MergeList
-              || assignValue === AssignmentType.MergeSequence
-              || assignValue === '+,:'
-              || assignValue === '+_:'
-            );
-            const ref = new Reference({ key }, {
-              type,
-              fallbackValue: new Nil(),
-              // Assignment normalization clears `assign` to Default, so matching by
-              // assignment flag prevents later merge iterations from seeing prior values.
-              // For Less-style property merges, any prior merge node participates in the chain,
-              // but plain declarations do not.
-              // Exclude only the current node to avoid self-reference.
-              filter: n => (
-                n !== node
-                && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
-              )
-            });
-            /**
-             * @note - It's up to Sequence and List to handle
-             *         the merging of the values, if Nil()
-             *         or a nested list.
-             */
-            const isMergeListAssign = assign === AssignmentType.MergeList;
-            value = isMergeListAssign
-              ? new List([ref, value])
-              : spaced([ref, value]);
-            setValue(value);
-            break;
-          }
-          case AssignmentType.Add: {
-            if (node.type === 'Declaration') {
-              // Less property `+:` appends comma-separated items.
-              // Use list composition (not generic `Operation +`) so scalar previous values
-              // remain distinct list members rather than string-concatenating.
-              setValue(new List([
-                new Reference({ key }, {
-                  type,
-                  fallbackValue: new Nil(),
-                  // Prevent self-referential reads while normalizing this node.
-                  filter: n => n !== node
-                }),
-                value
-              ]));
-            } else {
-              setValue(
-                new Operation([
-                  new Reference({ key }, { type }),
-                  '+',
-                  value
-                ])
-              );
-            }
-            break;
-          }
-          case AssignmentType.CondAssign: {
-            setValue(
-              new Reference({ key }, {
-                type,
-                fallbackValue: value
-              })
-            );
-            break;
-          }
-        }
-        node.options.normalizedFromAssign = normalizedAssign;
-      }
-      const out = node.value.value.preEval(context);
-      if (isThenable(out)) {
-        return out.then((value) => {
-          setValue(value);
-          return node;
-        });
-      }
-      setValue(out);
-      return node;
-    };
+  private _prepareDeclarationRegistration(node: this, context: Context): MaybePromise<this> {
+    const preparedName = this._prepareDeclarationNameIdentity(node, context);
+    if (isThenable(preparedName)) {
+      return preparedName.then(key => this._finishDeclarationRegistrationPrep(node, key, context));
+    }
+    return this._finishDeclarationRegistrationPrep(node, preparedName, context);
+  }
 
+  private _prepareDeclarationNameIdentity(node: this, context: Context): MaybePromise<Any<'property'>> {
+    const { name } = node.value;
     if (name instanceof Interpolated) {
       const maybeKey = name.eval(context);
       if (isThenable(maybeKey)) {
         return maybeKey.then((key) => {
-          setName(key);
-          return applyAssignmentNormalization(key);
+          node.set('name', key);
+          return key;
         });
       }
-      setName(maybeKey);
-      return applyAssignmentNormalization(maybeKey);
+      node.set('name', maybeKey);
+      return maybeKey;
     }
-    return applyAssignmentNormalization(name);
+    return name;
+  }
+
+  private _finishDeclarationRegistrationPrep(node: this, name: Any<'property'>, context: Context): MaybePromise<this> {
+    this._normalizeAssignmentValue(node, name);
+    return this._prepareDeclarationValueForCurrentPrep(node, context);
+  }
+
+  private _normalizeAssignmentValue(node: this, key: Any<'property'>): void {
+    let { value } = node.value;
+    const setValue = (newValue: Node) => {
+      node.set('value', newValue);
+      value = newValue;
+    };
+    /** Normalize assignment types */
+    let assign = node.options?.assign;
+    const rawAssign = assign as string | undefined;
+    if (rawAssign === '+,:') {
+      assign = AssignmentType.MergeList;
+    } else if (rawAssign === '+_:') {
+      assign = AssignmentType.MergeSequence;
+    }
+    if (assign) {
+      const normalizedAssign = assign;
+      /** Reference type */
+      let type: 'declaration' | 'variable' =
+        node.type === 'Declaration' ? 'declaration' : 'variable';
+      switch (assign) {
+        case AssignmentType.MergeList:
+        case AssignmentType.MergeSequence: {
+          const isLessMergeAssign = (assignValue: string): boolean => (
+            assignValue === AssignmentType.MergeList
+            || assignValue === AssignmentType.MergeSequence
+            || assignValue === '+,:'
+            || assignValue === '+_:'
+          );
+          const ref = new Reference({ key }, {
+            type,
+            fallbackValue: new Nil(),
+            // Assignment normalization clears `assign` to Default, so matching by
+            // assignment flag prevents later merge iterations from seeing prior values.
+            // For Less-style property merges, any prior merge node participates in the chain,
+            // but plain declarations do not.
+            // Exclude only the current node to avoid self-reference.
+            filter: n => (
+              n !== node
+              && isLessMergeAssign(String(n.options?.normalizedFromAssign ?? ''))
+            )
+          });
+          /**
+           * @note - It's up to Sequence and List to handle
+           *         the merging of the values, if Nil()
+           *         or a nested list.
+           */
+          const isMergeListAssign = assign === AssignmentType.MergeList;
+          value = isMergeListAssign
+            ? new List([ref, value])
+            : spaced([ref, value]);
+          setValue(value);
+          break;
+        }
+        case AssignmentType.Add: {
+          if (node.type === 'Declaration') {
+            // Less property `+:` appends comma-separated items.
+            // Use list composition (not generic `Operation +`) so scalar previous values
+            // remain distinct list members rather than string-concatenating.
+            setValue(new List([
+              new Reference({ key }, {
+                type,
+                fallbackValue: new Nil(),
+                // Prevent self-referential reads while normalizing this node.
+                filter: n => n !== node
+              }),
+              value
+            ]));
+          } else {
+            setValue(
+              new Operation([
+                new Reference({ key }, { type }),
+                '+',
+                value
+              ])
+            );
+          }
+          break;
+        }
+        case AssignmentType.CondAssign: {
+          setValue(
+            new Reference({ key }, {
+              type,
+              fallbackValue: value
+            })
+          );
+          break;
+        }
+      }
+      node.options.normalizedFromAssign = normalizedAssign;
+    }
+  }
+
+  private _prepareDeclarationValueForCurrentPrep(node: this, context: Context): MaybePromise<this> {
+    const setValue = (newValue: Node) => {
+      node.set('value', newValue);
+    };
+    const out = node.value.value.prepareRegistration(context);
+    if (isThenable(out)) {
+      return out.then((value) => {
+        setValue(value);
+        return node;
+      });
+    }
+    setValue(out);
+    return node;
   }
 
   override evalNode(context: Context): MaybePromise<this | Nil> {
@@ -427,12 +528,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             return;
           }
           if (mergedItems.length === 1) {
-            setVal(mergedItems[0]!.copy(true));
+            const item = mergedItems[0]!;
+            setVal(canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item));
             return;
           }
-          setVal(new List(mergedItems.map(item => item.copy(true))));
+          setVal(new List(mergedItems.map(item => (
+            canReuseLeaf(item) ? reuseLeaf(item) : copyWithReusableLeaves(item)
+          ))));
         };
-        /** Pre-eval already evaluated the name, just need to do value (if not a var declaration) */
+        /** Registration prep already stabilized the name; eval handles the value. */
         if (node.type === 'VarDeclaration') {
           return node;
         }
@@ -497,20 +601,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   // }
 
   // toModule(context: Context, out: OutputCollector) {
-  //   const pre = context.pre
   //   const loc = this.location
   //   out.add('$J.decl({\n', loc)
   //   context.indent++
-  //   out.add(`  ${pre}name: `)
+  //   out.add(`  name: `)
   //   this.name.toModule(context, out)
-  //   out.add(`,\n  ${pre}value: `)
+  //   out.add(`,\n  value: `)
   //   this.value.toModule(context, out)
   //   if (this.important) {
-  //     out.add(`,\n  ${pre}important: `)
+  //     out.add(`,\n  important: `)
   //     this.important.toModule(context, out)
   //   }
   //   context.indent--
-  //   out.add(`\n${pre}})`)
+  //   out.add(`\n})`)
   // }
 }
 
