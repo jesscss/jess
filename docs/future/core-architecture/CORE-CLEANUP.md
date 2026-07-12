@@ -376,6 +376,15 @@ recursively scans 10,777 evaluated surfaces to find 15 merge-bearing ones.
   for Jess's 203 ms render-only result; rank eval/render ahead of parser cuts
   for the <40 ms target while holding parser POCs to separate three-phase gates.
 
+- **Q-40 control refresh (2026-07-14, same-checkout no-op).** A fresh
+  Node-v25.9.0 arm64 run with the canonical fixture, `JESS_STATIC_NAMESPACE_TABLE`,
+  20 warmups, and 45 alternating pairs measured parse+render `239.933 ms`
+  versus `242.942 ms` (median delta `-1.501 ms`, mean delta `+2.709 ms`,
+  `26/45` candidate wins), and render-only `194.292 ms` versus `195.835 ms`
+  (median delta `+1.421 ms`, mean delta `+2.293 ms`, `19/45` wins). The
+  outliers and order-dependent spread make both controls non-causal; retain
+  them as the current noise floor, not as a speed claim.
+
 - **Q-40 profile refresh (2026-07-14, diagnostic only).** A fresh current-dev
   minified-build no-op control with the same fixture/runtime and 20 warmups /
   45 alternating pairs measured parse+render `217.263 ms` versus `215.872 ms`
