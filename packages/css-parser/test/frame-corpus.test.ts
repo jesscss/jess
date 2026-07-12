@@ -80,15 +80,64 @@ describe('css frame corpus — conditional groups (transparent frame)', () => {
   });
 });
 
-describe('css frame corpus — Phase 2 bodies stay lenient (frame 2 for now)', () => {
-  test('@keyframes with from/to blocks parses clean', () => {
+describe('css frame corpus — @keyframes (keyframe-selector blocks)', () => {
+  test('from/to blocks parse clean', () => {
+    expect(errs('@keyframes k { from {} to {} }')).toBe(0);
     expect(errs('@keyframes k { from { opacity: 0 } to { opacity: 1 } }')).toBe(0);
   });
 
-  test('@page with a descriptor parses clean', () => {
-    expect(errs('@page :left { margin: 0 }')).toBe(0);
+  test('a percentage selector parses clean', () => {
+    expect(errs('@keyframes k { 50% { opacity: .5 } }')).toBe(0);
   });
 
+  test('a comma-separated selector list parses clean', () => {
+    expect(errs('@keyframes k { 0%, 100% { opacity: 1 } }')).toBe(0);
+  });
+
+  test('vendor-prefixed @-webkit-keyframes parses clean', () => {
+    expect(errs('@-webkit-keyframes k { from {} to {} }')).toBe(0);
+  });
+
+  test('a bare declaration (no selector) is REJECTED', () => {
+    expect(errs('@keyframes k { color: red }')).toBeGreaterThanOrEqual(1);
+  });
+
+  test('a ruleset inside @keyframes is REJECTED', () => {
+    expect(errs('@keyframes k { .foo {} }')).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('css frame corpus — @page (descriptors + margin at-rules)', () => {
+  test('a descriptor parses clean', () => {
+    expect(errs('@page { margin: 1cm }')).toBe(0);
+  });
+
+  test('a page pseudo-selector prelude + margin at-rule parses clean', () => {
+    expect(errs('@page :left { @top-center { content: "x" } }')).toBe(0);
+  });
+
+  test('a ruleset inside @page is REJECTED', () => {
+    expect(errs('@page { .foo {} }')).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('css frame corpus — @font-feature-values (feature-value blocks)', () => {
+  test('a feature-value block parses clean', () => {
+    expect(errs('@font-feature-values Font { @styleset { nice: 1 } }')).toBe(0);
+  });
+
+  test('a bare declaration is REJECTED', () => {
+    expect(errs('@font-feature-values F { color: red }')).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('css frame corpus — @document (frame-1 style-rule body)', () => {
+  test('style rules inside @-moz-document parse clean', () => {
+    expect(errs('@-moz-document url-prefix() { .a { color: red } }')).toBe(0);
+  });
+});
+
+describe('css frame corpus — transparent bodies stay lenient', () => {
   test('a nested @layer with a bare declaration parses clean (transparent)', () => {
     expect(errs('.a { @layer overrides { color: blue } }')).toBe(0);
   });

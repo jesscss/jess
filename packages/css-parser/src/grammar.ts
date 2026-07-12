@@ -392,10 +392,11 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // Known block at-rules are dispatched to a SHAPE-appropriate body per spec
   // (rather than one grab-bag): conditional-group + `@layer` + `@starting-style`
   // are transparent (ambient frame); the descriptor family is declarations-only;
-  // `@scope` is frame 2. `@keyframes`/`@page`/`@font-feature-values` keep the
-  // frame-2 body for now (Phase 2 will specialize their real content models).
-  // Names inside a body are never a parse error — an unknown descriptor/property
-  // name still parses (shape only) and the language service judges it.
+  // `@scope` is frame 2; `@keyframes` is keyframe-selector blocks; `@page` is page
+  // descriptors + margin at-rules; `@font-feature-values` is feature-value blocks;
+  // `@document` wraps a frame-1 stylesheet body. Names inside a body are never a
+  // parse error — an unknown descriptor/property name still parses (shape only)
+  // and the language service judges it.
 
   // A NON-paren conditional-group query (`@media screen { … }`) reaches here
   // rather than the structured QueryAtRuleBlock. These still REQUIRE a query — an
@@ -413,25 +414,120 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // Descriptor-list at-rules: their body is DECLARATIONS ONLY — no rules, no
   // nested at-rules. Any ident descriptor name is accepted (shape only).
   const descriptorAtKeyword = regex(/@(?:font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition)(?![-\w])/i);
-  // TODO(Phase 2): @keyframes / @page / @font-feature-values have their own
-  // content models (keyframe-selector blocks / page + margin at-rules / feature
-  // blocks). Until then they take the frame-2 body so valid content such as
-  // `@keyframes k { from {} }` and `@page :left { margin: 0 }` still parses.
-  const phase2AtKeyword = regex(/@(?:(?:-[a-z]+-)?keyframes|page|font-feature-values|document)(?![-\w])/i);
 
   /**
    * Descriptor-list body — `<ident>: <value>;` declarations ONLY. A ruleset or
    * nested at-rule does not match here, so `@font-face { .foo {} }` recovers as a
    * parseError (structural garbage) while any descriptor NAME parses (LS-judged).
+   * Reused as the declarations-only body of keyframe blocks, page/margin boxes,
+   * and feature-value blocks (all of which hold property declarations, no rules).
    * @see https://www.w3.org/TR/css-syntax-3/#consume-declaration
    */
   const descriptorBody = many(choice(g.Declaration, g.CustomDeclaration, literal(';')));
 
+  // ── @keyframes ───────────────────────────────────────────────────────────
+  // `@keyframes <name> { <keyframe-block>* }` (+ vendor `@-webkit-keyframes` …).
+  // A keyframe block is a keyframe-selector list (`from` | `to` | `<percentage>`)
+  // followed by a declaration-only body. A bare declaration (no selector) or a
+  // ruleset does not match a keyframe block, so `@keyframes k { color: red }` and
+  // `@keyframes k { .foo {} }` recover as parseErrors (structural garbage).
+  const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-\w])/i);
+  /**
+   * A keyframe percentage selector (`0%`, `50%`, `100%`, `.5%`). Shape only — the
+   * 0–100 range is an LS concern, not a parse concern.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@keyframes#values
+   */
+  const keyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
+  /**
+   * A single keyframe selector — the `from` / `to` keywords or a percentage.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@keyframes#values
+   */
+  const keyframeSelector = choice(regex(/from(?![-\w])/i), regex(/to(?![-\w])/i), keyframePercent);
+  /**
+   * A comma-separated list of keyframe selectors (`0%, 100%`).
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@keyframes#values
+   */
+  const KeyframeSelectorList = node(
+    sequence(g.keyframeSelector, many(sequence(literal(','), g.keyframeSelector))));
+  /**
+   * A keyframe block — a selector list + a declaration-only body. Declarations
+   * only (no nested rules), so a ruleset inside recovers as a parseError.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@keyframes
+   */
+  const KeyframeBlock = node(
+    sequence(g.KeyframeSelectorList, literal('{'), g.descriptorBody, expect(literal('}'), '}')));
+  /**
+   * `@keyframes` body — a run of keyframe blocks. A bare declaration does not
+   * match (a keyframe block requires a selector), so `@keyframes k { color: red }`
+   * recovers as a parseError.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@keyframes
+   */
+  const keyframesBody = many(g.KeyframeBlock);
+
+  // ── @page ────────────────────────────────────────────────────────────────
+  // `@page <page-selector>? { <page-descriptor | margin-at-rule | ;>* }`. The
+  // optional page pseudo-selector prelude (`:left` / `:right` / `:first` /
+  // `:blank`) is absorbed by the generic `atPrelude` scan. The body holds page
+  // descriptors (declarations) and the 16 margin-box at-rules — NO style rules,
+  // so `@page { .foo {} }` recovers as a parseError.
+  const pageAtKeyword = regex(/@page(?![-\w])/i);
+  // The 16 page margin boxes (longest alternative first so `@top-right-corner`
+  // isn't shadowed by `@top-right`).
+  const marginAtKeyword = regex(/@(?:top-(?:left-corner|left|center|right-corner|right)|bottom-(?:left-corner|left|center|right-corner|right)|left-(?:top|middle|bottom)|right-(?:top|middle|bottom))(?![-\w])/i);
+  /**
+   * A page margin-box at-rule (`@top-center { content: "x" }`). Its body is page
+   * descriptors (declarations only).
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page#margin_at-rules
+   */
+  const MarginAtRule = node(
+    sequence(marginAtKeyword, literal('{'), g.descriptorBody, expect(literal('}'), '}')));
+  /**
+   * `@page` body — page descriptors, margin-box at-rules, and empty `;`. NO style
+   * rules: a ruleset does not match, so `@page { .foo {} }` recovers as a
+   * parseError.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@page
+   */
+  const pageBody = many(choice(g.Declaration, g.CustomDeclaration, g.MarginAtRule, literal(';')));
+
+  // ── @font-feature-values ───────────────────────────────────────────────────
+  // `@font-feature-values <family># { <feature-value-block>* }`. The font-family
+  // prelude is absorbed by the generic `atPrelude` scan. The body holds
+  // feature-value blocks (`@styleset { … }` …) — NO bare declarations, so
+  // `@font-feature-values F { color: red }` recovers as a parseError.
+  const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
+  const featureTypeKeyword = regex(/@(?:stylistic|styleset|character-variant|swash|ornaments|annotation|historical-forms)(?![-\w])/i);
+  /**
+   * A feature-value block (`@styleset { nice: 1 }`). Its body is declarations
+   * only (feature name → value indices).
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@font-feature-values
+   */
+  const FeatureValueBlock = node(
+    sequence(featureTypeKeyword, literal('{'), g.descriptorBody, expect(literal('}'), '}')));
+  /**
+   * `@font-feature-values` body — a run of feature-value blocks. A bare
+   * declaration does not match, so `@font-feature-values F { color: red }`
+   * recovers as a parseError.
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/@font-feature-values
+   */
+  const fontFeatureValuesBody = many(g.FeatureValueBlock);
+
+  // ── @document (deprecated) ─────────────────────────────────────────────────
+  // `@document <url-matching-fn># { <style-rule>* }` (+ legacy `@-moz-document`).
+  // It wraps style rules, so its body is frame 1 (`stylesheetBody`).
+  const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
+
   // Shared known-block arms whose body is frame-INDEPENDENT (same nested vs top).
   const descriptorBlock = sequence(descriptorAtKeyword, atPrelude, literal('{'), g.descriptorBody, expect(literal('}'), '}'));
   const scopeBlock = sequence(scopeAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}'));
-  const phase2Block = sequence(phase2AtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}'));
-  const sharedKnownArms = choice(descriptorBlock, scopeBlock, phase2Block);
+  // Spec-specific bodies (Phase 2). Each is frame-INDEPENDENT (its own fixed
+  // content model, identical top-level or nested): keyframe blocks / page +
+  // margin at-rules / feature-value blocks / (for `@document`) a frame-1
+  // stylesheet body.
+  const keyframesBlock = sequence(keyframesAtKeyword, atPrelude, literal('{'), g.keyframesBody, expect(literal('}'), '}'));
+  const pageBlock = sequence(pageAtKeyword, atPrelude, literal('{'), g.pageBody, expect(literal('}'), '}'));
+  const fontFeatureValuesBlock = sequence(fontFeatureValuesAtKeyword, atPrelude, literal('{'), g.fontFeatureValuesBody, expect(literal('}'), '}'));
+  const documentBlock = sequence(documentAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}'));
+  const sharedKnownArms = choice(descriptorBlock, scopeBlock, keyframesBlock, pageBlock, fontFeatureValuesBlock, documentBlock);
 
   /**
    * A known block at-rule reached from a frame-2 (nested) body. The transparent
@@ -565,6 +661,8 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     SelectorListNested, ComplexSelectorNested, CompoundSelectorNested, simpleSelectorNested,
     AttributeSelector, PseudoSelector, pseudoArg,
     Declaration, CustomDeclaration, declarationList, descriptorBody,
+    keyframeSelector, KeyframeSelectorList, KeyframeBlock, keyframesBody,
+    MarginAtRule, pageBody, FeatureValueBlock, fontFeatureValuesBody,
     valueList, valueSequence, value, parenBody, mathProduct, mathSum, calcBody,
     Dimension, Url, Call, anyValue,
     AtRuleBlock, AtRuleBlockTop, AtRuleStatement, ImportStatement,
