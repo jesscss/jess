@@ -22,15 +22,24 @@ converges **preprocessing + scoping + programmability + extensibility**, built o
 modern native CSS (nesting, `@layer`, `@scope`, container queries) instead of
 fighting it.
 
-That convergence is the vision. Here is where each part honestly stands today:
+That convergence is the vision. Here is where it honestly stands.
 
-**Today — earned, alpha-credible:**
+**Today — earned, shipping in the alpha:**
 
-- **Less.js.** Jess literally *is* Less v5. `.less` renders now.
-- **Sass.** Carried forward through the Jess **"Sass+"** dialect — the committed
-  successor to SCSS (in active development; see [Roadmap](#roadmap)).
+- **Less.js.** Jess literally *is* Less v5. `.less` renders now. This is the
+  first milestone, and it's being locked in first.
 
-**The vision — path to 1.0 (being proven through the alpha, not yet shipped):**
+**The language roadmap — an ordered progression:**
+
+- **Now:** Less.js — the current alpha, stabilizing first.
+- **Next:** the **"Sass+"** dialect — the Sass successor.
+- **Final:** the native **`.jess`** syntax.
+
+**The convergence — capabilities being proven along the way (not yet shipped):**
+
+Beyond preprocessing, the same engine is where scoping, programmability, and
+extensibility come together — the reason Jess aims to be *one* tool instead of
+four:
 
 - **CSS Modules** ← a real **module system** (`@use` / `@compose` / exports, the
   `style-resolver`) for scoped, composable styles.
@@ -39,10 +48,9 @@ That convergence is the vision. Here is where each part honestly stands today:
 - **PostCSS** ← an open **plugin architecture** over a real AST (the parseman
   parser toolkit) for transforms and tooling.
 
-These last three are the reason Jess aims to be *one* engine instead of four —
-but they are being **proven through the alpha, not claimed as done**. The
-capabilities that seed them exist; the full story is what we intend to earn
-before Jess exits alpha.
+Everything past Less.js is being **proven through the alpha, not claimed as
+done**. The capabilities that seed it exist; the full story is what we intend to
+earn before Jess exits alpha.
 
 > **Status: alpha.** The first alpha (`2.0.0-alpha.7`) is published to npm. It is
 > real, it renders real Less, and it is being dogfooded against the Less test
@@ -80,12 +88,8 @@ use Jess — but it's why the engine is being rebuilt rather than patched.
 
 ### Performance intent
 
-Speed is an explicit design goal, not a finished result. The rewrite has already
-moved the full `benchmark.less` render from roughly **8.3 s** (June 2026) down to
-about **213 ms** — around a **39× improvement**. That is still roughly **5.4×
-slower** than Less 4.x on the same benchmark (~40 ms), so performance is **not**
-settled: the standing target is parity with Less 4.x, and closing that gap is
-active work. (Measured 2026-07-11 under a controlled protocol; numbers will move.)
+Speed is a core design goal. In the alpha it's still being earned — the
+architecture is built for it, the optimization work is ongoing.
 
 ### Package layout
 
@@ -153,16 +157,17 @@ with Less v5 semantics for the output.
 
 ### Roadmap
 
-These are intended directions, **not** working features today:
+The language ships as an ordered progression — these are intended directions,
+**not** working features today:
 
-- **Sass+ dialect** — a planned dialect that fixes and extends Sass-style
-  ergonomics. Not shipped.
-- **Native `.jess` syntax** — a first-class Jess language (JS/TS interop,
-  advanced mixins, module-style imports). The `.jess` parser is deliberately
-  unfinished while Less (and later SCSS) stabilize, so `.jess` is not ready for
-  use.
-- **SCSS/Sass** — an SCSS parser and plugin exist but are experimental and are
-  **not a goal of this Less-focused alpha**.
+1. **Now — Less.js.** Less v5 is the current alpha, stabilizing first.
+2. **Next — the "Sass+" dialect.** The Sass successor: a dialect that fixes and
+   extends Sass-style ergonomics. An SCSS parser and plugin exist as the
+   experimental base, but Sass+ is not shipped.
+3. **Final — native `.jess` syntax.** A first-class Jess language (JS/TS interop,
+   advanced mixins, module-style imports). The `.jess` parser is deliberately
+   unfinished while Less (and then Sass+) stabilize, so `.jess` is not ready for
+   use.
 
 Anything you see elsewhere describing `$`-prefixed Jess syntax, JS/TS `import`
 into stylesheets, or Sass migration is roadmap material — treat it as a preview,

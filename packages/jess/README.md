@@ -79,10 +79,15 @@ and the Less built-in functions are all part of the alpha surface.
 
 ## Roadmap (not yet)
 
-- **Native `.jess` syntax** and a **"Sass+" dialect** are planned but not shipped;
-  the `.jess` parser is deliberately unfinished while Less stabilizes.
-- **SCSS/Sass** support is experimental and not a goal of this Less-focused alpha.
-- JS/TS interop, stylesheet exports, and bundler plugins are future work.
+The language ships as an ordered progression — only Less.js is shipping today:
+
+1. **Now — Less.js.** Less v5, the current alpha, stabilizing first.
+2. **Next — the "Sass+" dialect.** The Sass successor (an experimental SCSS
+   parser/plugin is the base; not shipped).
+3. **Final — native `.jess` syntax.** The `.jess` parser is deliberately
+   unfinished while Less (then Sass+) stabilize.
+
+JS/TS interop, stylesheet exports, and bundler plugins are future work.
 
 ## Contributing
 

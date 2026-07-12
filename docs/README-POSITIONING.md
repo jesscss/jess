@@ -22,28 +22,41 @@ engine, built on native CSS (nesting, `@layer`, `@scope`, container queries)
 instead of working around it. That five-way convergence is the vision and the
 ambition — and it is deliberately **tiered so we stay bold without overclaiming.**
 
-**The honest tiering (mandatory — never blur these two tiers):**
+**The honest tiering (mandatory — never blur these):**
 
-- **Tier 1 — Earned NOW (alpha-credible, lead with these):**
-  - **Less.js** — Jess *is* Less v5, literally. `.less` renders today.
-  - **Sass** — carried forward via the Jess **"Sass+"** dialect (the committed
-    successor to SCSS; in active development, not yet shipped — say so).
-- **Tier 2 — The vision / path to 1.0 (roadmap; "being proven through the alpha,"
-  NOT claimed as done):**
-  - **CSS Modules** ← the **module system** (`@use` / `@compose` / exports,
-    `@jesscss/style-resolver`) — scoped, composable styles.
-  - **CSS-in-JS** ← **JS execution** in stylesheets (`@use` / `@plugin`,
-    `@jesscss/plugin-node-modules`) — dynamism without leaving CSS files.
-  - **PostCSS** ← the **plugin architecture** over a real AST (the parseman
-    parser toolkit) — transforms and tooling.
-  - Owner's words: _"we need stronger evidence/story of the latter three before we
-    exit alpha."_ Present them as where Jess is *headed*, each seeded by a real
-    capability, always framed as being proven — never as finished.
+- **Tier 1 — Earned NOW (alpha-credible, lead with this — ONLY Less.js):**
+  - **Less.js** — Jess *is* Less v5, literally. `.less` renders today. This is
+    the first milestone and it's being locked in first. **Nothing else is in the
+    "today" tier.**
+- **Tier 2 — Roadmap.** The **language** is an ordered progression, and the
+  broader convergence is a set of capabilities being **proven through the alpha,
+  not claimed as done**:
+  - **Language progression (ordered):**
+    1. **Now — Less.js** (the current alpha, stabilizing first).
+    2. **Next — the "Sass+" dialect** (the Sass successor; experimental SCSS
+       parser/plugin is the base; not shipped).
+    3. **Final — native `.jess` syntax** (the `.jess` parser is deliberately
+       unfinished until Less, then Sass+, stabilize).
+  - **Convergence capabilities (being proven along the way):**
+    - **Sass** ← the **Sass+** dialect (roadmap milestone #2 above).
+    - **CSS Modules** ← the **module system** (`@use` / `@compose` / exports,
+      `@jesscss/style-resolver`) — scoped, composable styles.
+    - **CSS-in-JS** ← **JS execution** in stylesheets (`@use` / `@plugin`,
+      `@jesscss/plugin-node-modules`) — dynamism without leaving CSS files.
+    - **PostCSS** ← the **plugin architecture** over a real AST (the parseman
+      parser toolkit) — transforms and tooling.
+  - Owner's words: _"we need stronger evidence/story of the latter [convergence
+    capabilities] before we exit alpha."_ Present them as where Jess is *headed*,
+    each seeded by a real capability, always framed as being proven — never as
+    finished.
 
-Every place the convergence appears (root README, package READMEs, site copy)
-must show both tiers, or show Tier 1 alone. Do **not** list CSS Modules /
-CSS-in-JS / PostCSS as things Jess "does" without the "path to 1.0 / being
-proven" frame. Do **not** include **Stylus**.
+Keep the five-tool convergence (Less.js + Sass + CSS Modules + CSS-in-JS +
+PostCSS) as the vision/pitch, but **only Less.js is "shipping/earned today"** —
+Sass now lives in the roadmap alongside CSS Modules / CSS-in-JS / PostCSS. Every
+place the convergence appears (root README, package READMEs, site copy) must
+either show only Tier 1 (Less.js), or show Tier 1 plus a clearly-labelled
+roadmap. Do **not** list Sass / CSS Modules / CSS-in-JS / PostCSS as things Jess
+"does" without the roadmap / "being proven" frame. Do **not** include **Stylus**.
 
 **Honest differentiators.** Only claim these — they're real:
 
@@ -64,10 +77,12 @@ proven" frame. Do **not** include **Stylus**.
 **Claims to NOT make** (the old READMEs made several of these — do not carry them
 forward):
 
-- ❌ "Faster than Sass and Less." Jess is currently ~5.4× **slower** than Less 4.x
-  on `benchmark.less`. Parity is the goal, not a shipped fact. Frame performance
-  as _intent + trajectory_ (8.3 s → ~213 ms, ~39× better than mid-2026), never as
-  a win over 4.x.
+- ❌ "Faster than Sass and Less." Jess is **not** faster than Less 4.x today.
+  Performance is a core design goal still being earned. **Keep hard numbers /
+  benchmarks OUT of front READMEs** — if they belong anywhere it's a separate
+  docs/benchmarks page. The approved front-README wording is: _"Speed is a core
+  design goal. In the alpha it's still being earned — the architecture is built
+  for it, the optimization work is ongoing."_ Never claim a win over 4.x.
 - ❌ "A replacement for Less, Sass, CSS Modules, and CSS-in-JS." Today it renders
   Less. The rest is roadmap or out of scope.
 - ❌ Showing `$`-prefixed `.jess` / Sass+ syntax as if it works. The `.jess` parser
@@ -111,7 +126,7 @@ these as the opening line of each package README so the fan-out stays consistent
 
 | Package | One-liner |
 | --- | --- |
-| `jess` | The Less.js v5 command line and API — the `jess` and `lessc` CLIs plus a `Compiler` that renders `.less` to CSS. |
+| `jess` | The Less.js v5 command line — the `jess` and `lessc` CLIs that render `.less` to CSS. (The programmatic JS/TS API is not yet stabilized; the CLI is the public surface for the alpha.) |
 | `@jesscss/core` | The Jess compiler engine: the AST, evaluator, and single-pass serializer that turn a parsed stylesheet into CSS. |
 | `@jesscss/css-parser` | A spec-aligned CSS parser (parseman-based) — the shared base grammar the Less and SCSS parsers extend, and the real-AST foundation behind the **PostCSS-style plugin/tooling** vision. |
 | `@jesscss/less-parser` | The Less grammar, layered on the CSS base parser, producing the Jess AST. |
@@ -120,8 +135,8 @@ these as the opening line of each package README so the fan-out stays consistent
 | `@jesscss/style-resolver` | Stylesheet import resolution across css/less/scss/jess (include paths, load paths, extension/index) — a seed of the **module system** behind the CSS-Modules-style vision. |
 | `styles-config` | A shared configuration schema and loader for styling tools (Jess, Less, Sass, Tailwind, …). |
 | `@jesscss/awaitable-pipe` | A tiny, strongly-typed pipe that stays synchronous until a step returns a Promise — with one optional error handler. |
-| `@jesscss/plugin-less` | The Less language engine for Jess: the Less parser wired in with Less v5 rendering defaults (**Tier 1** — the shipping preprocessor). |
-| `@jesscss/plugin-scss` | The SCSS language engine for Jess — the base the **Sass+** dialect builds on (experimental/roadmap). |
+| `@jesscss/plugin-less` | The Less language engine for Jess: the Less parser wired in with Less v5 rendering defaults (the **"Now" / Less.js tier** — the one shipping surface today). |
+| `@jesscss/plugin-scss` | The SCSS language engine for Jess — the experimental base that seeds **Sass+** (roadmap milestone #2; not shipped). |
 | `@jesscss/plugin-node-modules` | Import resolver that loads npm packages from `node_modules` — a seed of the **JS-execution / CSS-in-JS** vision. |
 | `@jesscss/plugin-js` | Import bridge for JavaScript/TypeScript modules (with Deno runtime checks) — a seed of the **JS-execution / CSS-in-JS** vision. |
 | `@jesscss/plugin-less-compat` | A Less.js 4.x compatibility layer that lets existing Less plugins and visitors run against the Jess AST. |
@@ -135,6 +150,17 @@ these as the opening line of each package README so the fan-out stays consistent
   **published names** are `@jesscss/plugin-*` — use the published name in prose.
 - `scss-parser` / `plugin-scss` and the `.jess`/Sass+ story must each carry an
   explicit "experimental / roadmap / not the alpha focus" caveat in their README.
+  The language roadmap is ordered: **Now Less.js → Next Sass+ → Final `.jess`**.
+  Only Less.js is presented as shipping today.
+- **No public programmatic API in the alpha.** Do not document `Compiler.render` /
+  `renderString` / `renderToResult` in any README — the JS/TS API is not
+  stabilized. Present the CLI (`jess`, `lessc`) as the public surface and point at
+  the docs site for the API once it settles.
+- **Docs site is live** at <https://jesscss.github.io/> (content is currently
+  pre-alpha and will be updated separately). Link it from each README.
+- **Performance:** front READMEs use the approved line only (no numbers): _"Speed
+  is a core design goal. In the alpha it's still being earned — the architecture
+  is built for it, the optimization work is ongoing."_
 - `rollup-plugin-jess`, `jess-loader`, `patch-css` and the various tooling
   packages are early/utility surfaces — verify build + exports before writing
   anything beyond the one-liner; don't imply a finished integration that isn't.
